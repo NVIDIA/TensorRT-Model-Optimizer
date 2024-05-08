@@ -1,0 +1,40 @@
+FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+WORKDIR /workspace
+
+ENV PIP_EXTRA_INDEX_URL="https://pypi.nvidia.com https://urm.nvidia.com/artifactory/api/pypi/nv-shared-pypi/simple"
+
+RUN apt-get update && apt-get -y install python3.10 python3-pip python-is-python3 wget git
+
+# Install tensorrt
+ARG TRT_URL="https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.0.1/tars/TensorRT-10.0.1.6.Linux.x86_64-gnu.cuda-12.4.tar.gz"
+RUN wget -q ${TRT_URL} -O tensorrt.tar.gz \
+    && tar -xf tensorrt.tar.gz \
+    && cp -a TensorRT-*/lib/*.so* /usr/lib/x86_64-linux-gnu \
+    && cp TensorRT-*/targets/x86_64-linux-gnu/bin/trtexec /usr/lib/x86_64-linux-gnu \
+    && python -m pip install TensorRT-*/python/tensorrt-*-cp310-none-linux_x86_64.whl \
+    && cp TensorRT-*/targets/x86_64-linux-gnu/bin/trtexec /usr/bin
+
+# Install jax for faster AWQ
+RUN pip install -U "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+
+# Set environment and working directory
+ENV TRT_LIBPATH /usr/lib/x86_64-linux-gnu
+ENV TRT_OSSPATH /workspace/TensorRT
+ENV MODELOPT_OSSPATH /workspace/modelopt
+ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${TRT_OSSPATH}/build/out:${TRT_LIBPATH}"
+
+# Install ModelOpt for ONNX quantization
+ARG MODELOPT_VERSION=0.11.0
+RUN pip install "nvidia-modelopt[all]~=$MODELOPT_VERSION" -U --extra-index-url https://urm.nvidia.com/artifactory/api/pypi/nv-shared-pypi/simple --extra-index-url https://gitlab-master.nvidia.com/api/v4/projects/95421/packages/pypi/simple
+
+COPY onnx_ptq examples/onnx_ptq
+RUN pip install -r examples/onnx_ptq/requirements.txt
+
+# Sanity check ModelOpt installation (if deps are installed, this should work)
+RUN python -c "import modelopt.onnx.quantization as moq"
+RUN mkdir -p /usr/src/tensorrt/bin/ && ln -s /usr/bin/trtexec /usr/src/tensorrt/bin/trtexec
+
+# Set the working directory, user and shell
+USER root
+RUN ["/bin/bash"]
