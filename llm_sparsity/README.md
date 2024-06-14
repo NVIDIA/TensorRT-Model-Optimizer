@@ -25,13 +25,11 @@ python hf_pts.py --model_name_or_path meta-llama/Llama-2-7b-hf \
     --dtype fp16 \
     --sparsity_fmt sparsegpt \
     --calib_size 128 \
-    --output_dir saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1
+    --output_dir saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/pts
 ```
 
 The above command will sparsify the Llama2-7B model and save the sparsified model to `saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1` directory.
 The saved checkpoint, e.g. `pts_modelopt_state.pth`,  can be loaded using `modelopt.torch.opt.restore()` for inference.
-
-For details on the TensorRT-LLM deployment of the PTS model, please refer to [link](../llm_ptq/README.md#Post-training-Sparsity).
 
 ## Sparsity Aware Training (SAT)
 
@@ -69,9 +67,9 @@ The input data is tokenized to a maximum length of 1024 tokens. The tokenized da
 ```sh
 bash launch_finetune.sh --model meta-llama/Llama-2-7b-hf \
     --max_length 1024 \
-    --output_dir saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/finetuned \
     --num_epochs 3 \
-    --restore_path saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/pts_modelopt_state.pth
+    --restore_path saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/pts/pts_modelopt_state.pth \
+    --output_dir saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/finetuned
 ```
 
 The saved checkpoint, e.g. `finetuned_modelopt_state.pth`,  can be loaded using `modelopt.torch.opt.restore()` for inference.
@@ -103,3 +101,30 @@ ROUGE scores: {'rouge1': 42.174, 'rouge2': 19.2724, 'rougeL': 28.6989, 'rougeLsu
 ```
 
 Please refer to [link](../llm_eval/README.md#Evaluation-scripts-for-LLM-tasks) for more details of how to evaluate the sparsified models on other benchmarks, such as MMLU and HumanEval.
+
+## Export TensorRT-LLM Checkpoint
+
+To export the PTS pytorch model to a TensorRT-LLM checkpoint, run the following command:
+
+```sh
+python export_trtllm_ckpt.py --model_name_or_path meta-llama/Llama-2-7b-hf \
+    --model_max_length 1024 \
+    --dtype fp16 \
+    --modelopt_restore_path saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/pts_modelopt_state.pth \
+    --output_dir saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/trtllm/ckpt_pts
+```
+
+To export the finetuned pytorch model to a TensorRT-LLM checkpoint, run the following command:
+
+```sh
+python export_trtllm_ckpt.py --model_name_or_path meta-llama/Llama-2-7b-hf \
+    --model_max_length 1024 \
+    --dtype fp16 \
+    --modelopt_restore_path saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/finetuned/finetuned_modelopt_state.pth \
+    --output_dir saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/trtllm/ckpt_finetuned
+```
+
+## Build TensorRT-LLM Engine
+
+For guidance on how to build TensorRT-LLM engines, please refer to [link](../llm_ptq/README.md#TensorRT-LLM-Engine-Build).
+To validate the built TensorRT-LLM engines, please follow the instructions at [link](../llm_ptq/README.md#TensorRT-LLM-Engine-Validation).

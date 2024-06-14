@@ -19,45 +19,26 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-"""Utility to dump imagenet data for calibration."""
+"""An example script to combine the base model and medusa head into one state dict"""
 
 import argparse
 
-import numpy as np
-import timm
-from datasets import load_dataset
+from example_utils import combine_medusa_head
 
 
-def main():
-    """Prepares calibration data from ImageNet dataset and saves input dictionary."""
+def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--calibration_data_size",
-        type=int,
-        default=500,
-        help="Number[1-100000] of images to use in calibration.",
-    )
-    parser.add_argument(
-        "--fp16", action="store_true", help="Whether to save the image tensor data in FP16 format."
-    )
-    parser.add_argument(
-        "--output_path", type=str, default="calib.npy", help="Path to output npy file."
-    )
+    parser.add_argument("--base_model", type=str, required=True)
+    parser.add_argument("--medusa_model", type=str, required=True)
 
-    args = parser.parse_args()
-    dataset = load_dataset("zh-plus/tiny-imagenet")
-    model = timm.create_model("vit_base_patch16_224", pretrained=True)
-    data_config = timm.data.resolve_model_data_config(model)
-    transforms = timm.data.create_transform(**data_config, is_training=False)
-    images = dataset["train"][0 : args.calibration_data_size]["image"]
+    return parser.parse_args()
 
-    calib_tensor = []
-    for image in images:
-        calib_tensor.append(transforms(image))
 
-    calib_tensor = np.stack(calib_tensor, axis=0)
-    np.save(args.output_path, calib_tensor)
+def main(args):
+
+    combine_medusa_head(args.base_model, args.medusa_model)
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_arguments()
+    main(args)

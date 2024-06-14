@@ -11,11 +11,12 @@ parse_options() {
     PP=1
     GPUS=1
     SPARSITY_FMT="dense"
+    DEPLOYMENT="tensorrt_llm"
 
-    TASKS="build,summarize,mmlu,humaneval,benchmark"
+    TASKS="build,summarize,mmlu,humaneval,mtbench,benchmark"
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,input:,output:,batch:,summarize_ite:,tasks:," -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,input:,output:,batch:,summarize_ite:,tasks:,deployment:," -n "$0" -- "$@")
   eval set -- "$ARGS"
   while true; do
     case "$1" in
@@ -33,6 +34,7 @@ parse_options() {
       --batch ) BUILD_MAX_BATCH_SIZE="$2"; shift 2;;
       --summarize_ite ) SUMMARIZE_MAX_ITE="$2"; shift 2;;
       --tasks ) TASKS="$2"; shift 2;;
+      --deployment ) DEPLOYMENT="$2"; shift 2;;
       -- ) shift; break ;;
       * ) break ;;
     esac
@@ -41,7 +43,7 @@ parse_options() {
   DEFAULT_CALIB_NUM_BATCHES=512
   DEFAULT_BUILD_MAX_INPUT_LEN=2048
   DEFAULT_BUILD_MAX_OUTPUT_LEN=512
-  DEFAULT_BUILD_MAX_BATCH_SIZE=2
+  DEFAULT_BUILD_MAX_BATCH_SIZE=4
   DEFAULT_SUMMARIZE_MAX_ITE=20
 
   DEFAULT_AWQ_BLOCK_SIZE=128
@@ -73,7 +75,7 @@ parse_options() {
   fi
 
 
-  VALID_TASKS=("build" "summarize" "mmlu" "humaneval" "benchmark")
+  VALID_TASKS=("build" "summarize" "mmlu" "humaneval" "mtbench" "benchmark")
 
   for task in $(echo $TASKS | tr ',' ' '); do
     if [[ ! " ${VALID_TASKS[@]} " =~ " $task " ]]; then
@@ -111,5 +113,6 @@ parse_options() {
   echo "batch: $BUILD_MAX_BATCH_SIZE"
   echo "summarize_ite: $SUMMARIZE_MAX_ITE"
   echo "tasks: $TASKS"
+  echo "deployment: $DEPLOYMENT"
   echo "================="
 }

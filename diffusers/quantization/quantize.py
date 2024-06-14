@@ -24,6 +24,7 @@ import argparse
 import torch
 from diffusers import DiffusionPipeline, StableDiffusionPipeline
 from utils import (
+    check_lora,
     get_fp8_config,
     get_int8_config,
     load_calib_prompts,
@@ -77,6 +78,10 @@ def main():
         required=False,
         default="default",
         choices=["global_min", "min-max", "min-mean", "mean-max", "default"],
+        help=(
+            "Ways to collect the amax of each layers, for example, min-max means min(max(step_0),"
+            " max(step_1), ...)"
+        ),
     )
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--calib-size", type=int, default=128)
@@ -113,6 +118,7 @@ def main():
     )  # Depending on the scheduler. some schedulers will do n+1 steps
     if args.format == "int8":
         # Making sure to use global_min in the calibrator for SD 1.5
+        assert args.collect_method != "default"
         if args.model == "runwayml/stable-diffusion-v1-5":
             args.collect_method = "global_min"
         quant_config = get_int8_config(
@@ -123,7 +129,7 @@ def main():
             args.n_steps + extra_step,
             collect_method=args.collect_method,
         )
-    else:
+    elif args.format == "fp8":
         if args.collect_method == "default":
             quant_config = mtq.FP8_DEFAULT_CFG
         else:
@@ -142,6 +148,9 @@ def main():
             calib_size=args.calib_size,
             n_steps=args.n_steps,
         )
+
+    # All the LoRA layers should be fused
+    check_lora(pipe.unet)
 
     mtq.quantize(pipe.unet, quant_config, forward_loop)
     mto.save(pipe.unet, f"./unet.state_dict.{args.exp_name}.pt")

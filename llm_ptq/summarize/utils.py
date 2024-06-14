@@ -23,10 +23,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from tensorrt_llm.builder import get_engine_version
 from transformers import AutoTokenizer, T5Tokenizer
 
-# TODO(enweiz): Update for refactored models
 DEFAULT_HF_MODEL_DIRS = {
     "BaichuanForCausalLM": "baichuan-inc/Baichuan-13B-Chat",
     "BloomForCausalLM": "bigscience/bloom-560m",
@@ -53,18 +51,19 @@ DEFAULT_PROMPT_TEMPLATES = {
 
 
 def read_model_name(engine_dir: str):
-    engine_version = get_engine_version(engine_dir)
-
     with open(Path(engine_dir) / "config.json", "r") as f:
         config = json.load(f)
 
-    if engine_version is None:
+    # MODELOPT modification.
+    if "builder_config" in config:
         return config["builder_config"]["name"], None
 
     model_arch = config["pretrained_config"]["architecture"]
     model_version = None
     if model_arch == "ChatGLMForCausalLM":
         model_version = config["pretrained_config"]["chatglm_version"]
+    if model_arch == "QWenForCausalLM":
+        model_version = config["pretrained_config"]["qwen_type"]
     return model_arch, model_version
 
 
@@ -98,19 +97,19 @@ def load_tokenizer(
             tokenizer_type=tokenizer_type,
             use_fast=use_fast,
         )
-    elif model_name == "GemmaForCausalLM":
-        from transformers import GemmaTokenizer
-
-        # Initialize tokenizer from vocab file.
-        tokenizer = GemmaTokenizer(
-            vocab_file=vocab_file, padding_side="left", truncation_side="left", legacy=False
-        )
     elif vocab_file.endswith(".yaml"):
         # Model Optimizer modification
         # For Nemo models, tokenizer is instantiated based on its config
         from modelopt.deploy.llm.nemo_utils import get_nemo_tokenizer
 
         tokenizer = get_nemo_tokenizer(vocab_file)
+    elif model_name == "GemmaForCausalLM" or model_name == "RecurrentGemmaForCausalLM":
+        from transformers import GemmaTokenizer
+
+        # Initialize tokenizer from vocab file.
+        tokenizer = GemmaTokenizer(
+            vocab_file=vocab_file, padding_side="left", truncation_side="left", legacy=False
+        )
     else:
         # For gpt-next, directly load from tokenizer.model
         tokenizer = T5Tokenizer(
@@ -120,17 +119,14 @@ def load_tokenizer(
     # Model Optimizer modification
     if (
         model_name == "QWenForCausalLM"
+        and model_version == "qwen"
         and tokenizer_dir
         and (Path(tokenizer_dir) / "generation_config.json").exists()
     ):
         with open(Path(tokenizer_dir) / "generation_config.json") as f:
             gen_config = json.load(f)
-        chat_format = gen_config["chat_format"]
-        if chat_format == "raw" or chat_format == "chatml":
-            pad_id = gen_config["pad_token_id"]
-            end_id = gen_config["eos_token_id"]
-        else:
-            raise Exception(f"unknown chat format: {chat_format}")
+        pad_id = gen_config["pad_token_id"]
+        end_id = gen_config["eos_token_id"]
     elif model_name == "ChatGLMForCausalLM" and model_version == "glm":
         pad_id = tokenizer.pad_token_id
         end_id = tokenizer.eop_token_id

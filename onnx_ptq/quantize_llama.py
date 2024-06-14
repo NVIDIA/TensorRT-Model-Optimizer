@@ -55,7 +55,7 @@ import torch
 from datasets import load_dataset
 from transformers import LlamaConfig, LlamaTokenizer
 
-from modelopt.onnx.quantization.int4 import quantize_int4
+from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 
 # Set logging level to info
 logging.getLogger().setLevel(logging.INFO)
@@ -148,11 +148,10 @@ def main(args):
     )
 
     logging.info("Quantizing the model using awq_clip algorithm...")
-    onnx_model = onnx.load(args.onnx_path)
     inputs = {input_name: torch_tensor.cpu().numpy() for input_name, torch_tensor in inputs.items()}
 
     t = time.time()
-    quantized_onnx_model = quantize_int4(args.quantize_mode, onnx_model, [inputs])
+    quantized_onnx_model = quantize_int4(onnx_path=args.onnx_path, calibration_data_reader=[inputs])
     logging.info(f"Quantization process took {time.time() - t} seconds")
 
     t = time.time()
@@ -194,13 +193,6 @@ if __name__ == "__main__":
         type=bool,
         default=False,
         help="True when --use_gqa was passed during export.",
-    )
-    parser.add_argument(
-        "--quantize_mode",
-        type=str,
-        default="int4_awq_clip",
-        choices=["int4_awq_clip", "int4_rtn_dq"],
-        help="Algorithm to use for the quantization process. Supported options: int4_awq_clip, int4_rtn_dq",
     )
 
     args = parser.parse_args()

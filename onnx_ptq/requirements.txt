@@ -7,5 +7,5 @@ onnxconverter-common
 onnxmltools
 optimum
 sentencepiece
+timm
 torch
-transformers

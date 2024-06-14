@@ -85,11 +85,13 @@ SDXL_FP8_CFG = {
 def generate_fp8_scales(unet):
     # temporary solution due to a known bug in torch.onnx._dynamo_export
     for _, module in unet.named_modules():
-        if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)):
+        if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)) and (
+            hasattr(module.input_quantizer, "_amax") and module.input_quantizer is not None
+        ):
             module.input_quantizer._num_bits = 8
             module.weight_quantizer._num_bits = 8
-            module.input_quantizer._amax = (module.input_quantizer._amax * 127) / 448.0
-            module.weight_quantizer._amax = (module.weight_quantizer._amax * 127) / 448.0
+            module.input_quantizer._amax = module.input_quantizer._amax * (127 / 448.0)
+            module.weight_quantizer._amax = module.weight_quantizer._amax * (127 / 448.0)
 
 
 def generate_dummy_inputs(sd_version, device):

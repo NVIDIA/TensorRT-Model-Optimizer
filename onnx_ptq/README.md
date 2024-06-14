@@ -2,49 +2,46 @@
 
 ## Linux
 
-For ONNX PTQ deployment TensorRT 10.x is recommended. To run these examples, build the following docker which will install all the requirements as well.
-
-```
-bash docker/build_trt10.sh
-```
+Please follow the main [README](../README.md#docker) to build the docker image with TensorRT 10.x pre-installed.
 
 The container can be run with the following command:
 
 ```bash
-docker run --user 0:0 -it --gpus all --shm-size=2g -v /path/to/ImageNet/dataset:/workspace/imagenet docker.io/library/modelopt_onnx_examples:latest
+docker run --user 0:0 -it --gpus all --shm-size=2g -v /path/to/ImageNet/dataset:/workspace/imagenet docker.io/library/modelopt_examples:latest
 ```
 
 ## Prepare the example model
 
-Most of the examples in this doc use `vit-base-patch16-224.onnx` as the input model. The model can be downloaded with the following script:
+Most of the examples in this doc use `vit_base_patch16_224.onnx` as the input model. The model can be downloaded with the following script:
 
 ```bash
-python download_example_onnx.py --vit --output_path=vit-base-patch16-224.onnx
+python download_example_onnx.py --vit --output_path=vit_base_patch16_224.onnx
 ```
 
 # Quantize an ONNX model
 
-First, prepare some calibration data. TensorRT recommends calibration data size to be at least 500 for CNN and ViT models. The following command picks up 512 images from the [tiny-imagenet](https://huggingface.co/datasets/zh-plus/tiny-imagenet) dataset and converts them to a numpy-format calibration array. Reduce the calibration data size for resource constrained environments.
+First, prepare some calibration data. TensorRT recommends calibration data size to be at least 500 for CNN and ViT models. The following command picks up 500 images from the [tiny-imagenet](https://huggingface.co/datasets/zh-plus/tiny-imagenet) dataset and converts them to a numpy-format calibration array. Reduce the calibration data size for resource constrained environments.
 
 ```bash
 python image_prep.py \
-    --calibration_data_size=512 \
+    --calibration_data_size=500 \
     --output_path=calib.npy \
     --fp16 `# <Optional, if the input ONNX is in FP16 precision>`
 ```
 
 > *For Int4 quantization, it is recommended to set `--calibration_data_size=64`.*
 
-The model can be quantized as an INT8 or INT4 model. For INT4 quantization, you have a choice between [int4_awq_clip](https://arxiv.org/abs/2306.00978) and [int4_rtn_dq](https://ar5iv.labs.arxiv.org/html/2301.12017) algorithms.
+The model can be quantized as an INT8 or INT4 model. For INT8 quantization, you have choice between `minmax` and `entropy` calibration algorithms and for INT4, [awq_clip](https://arxiv.org/abs/2306.00978) or [rtn_dq](https://ar5iv.labs.arxiv.org/html/2301.12017) can be chosen.
 
 > *Note that, INT4 TensorRT engines are not performant yet compared to FP16 engines. Stay tuned for the next update.*
 
 ```bash
 python -m modelopt.onnx.quantization \
-    --onnx_path=vit-base-patch16-224.onnx \
-    --quantize_mode=<int8|int4_awq_clip|int4_rtn_dq> \
+    --onnx_path=vit_base_patch16_224.onnx \
+    --quantize_mode=<int8|int4> \
     --calibration_data=calib.npy \
-    --output_path=vit-base-patch16-224.quant.onnx
+    --calibration_method=<minxmax|entropy|awq_clip|rtn_dq> \
+    --output_path=vit_base_patch16_224.quant.onnx
 ```
 
 # Evaluate the quantized ONNX model
@@ -53,9 +50,9 @@ The following evaluation requires the `val` directory of the [ImageNet dataset](
 
 ```bash
 python evaluate_vit.py \
-    --vit_onnx_ckpt=<path to the ONNX checkpoint> \
+    --onnx_path=<path to the ONNX checkpoint> \
     --imagenet_path=<path to the ImageNet dataset> \
-    --quantize_mode=<int8|int4_awq_clip|int4_rtn_dq>
+    --quantize_mode=<int8|int4>
 ```
 
 This script converts the quantized ONNX model to a TensorRT engine and does the evaluation with that engine. Finally, the evaluation result will be reported as follows:
@@ -84,7 +81,6 @@ The model can be quantized to INT4 using the script below which uses `modelopt.o
 python quantize_llama.py \
     --model_name=meta-llama/Llama-2-7b-chat-hf \
     --onnx_path=Llama-2-7b-chat-hf-onnx/model.onnx \
-    --quantize_mode=<int4_awq_clip|int4_rtn_dq> \
     --output_path=Llama-2-7b-chat-hf-onnx-quant/model.quant.onnx
 ```
 

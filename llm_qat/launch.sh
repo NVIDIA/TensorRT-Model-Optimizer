@@ -1,6 +1,7 @@
 #!/bin/bash
-
+set -e
 set -x
+set -o pipefail
 
 while [ $# -gt 0 ]; do
   case "$1" in

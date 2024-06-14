@@ -15,15 +15,15 @@ for i in $(env | grep ^PMI_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMIX_ | cut -d"=" -f 1); do unset -v $i; done
 
 case $MODEL_TYPE in
-    gptj|llama|falcon|baichuan|gpt2|mpt|bloom|chatglm|gemma|recurrentgemma|phi|mixtral|gptnext|qwen|llava)
+    llama|mixtral)
         ;;
     *)
-        echo "Unsupported type argument: Expected one of: [gpt2, gptj, llama, falcon, baichuan, mpt, bloom, chatglm, gemma, recurrentgemma, phi, mixtral, gptnext, qwen, llava]" >&2
+        echo "Unsupported type argument: Expected one of: [llama, mixtral]" >&2
         exit 1
 esac
 
 if [ -z "$MODEL_PATH" ]; then
-    echo "Unsupported model argument: Expected a huggingface model path or model name or a nemo path" >&2
+    echo "Unsupported model argument: Expected a medusa model path" >&2
     exit 1
 fi
 
@@ -43,10 +43,10 @@ case $SPARSITY_FMT in
 esac
 
 case $QFORMAT in
-    fp8|fp8_naive|int8_sq|int4_awq|w4a8_awq|fp16)
+    fp8|fp16)
         ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, fp8_naive, int8_sq, int4_awq, w4a8_awq, fp16]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, fp16]" >&2
         exit 1
 esac
 
@@ -79,12 +79,7 @@ if [ -z "$ROOT_SAVE_PATH" ]; then
 fi
 
 MODEL_NAME=$(basename $MODEL_PATH | sed 's/\.[^.]*$//')
-SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT}_tp${TP}_pp${PP}
-
-if [ $DEPLOYMENT != "tensorrt_llm" ]; then
-    SAVE_PATH=${SAVE_PATH}_${DEPLOYMENT}
-fi
-
+SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT}_tp${TP}_pp${PP}_medusa
 MODEL_CONFIG=${SAVE_PATH}/config.json
 ENGINE_DIR=${SAVE_PATH}/${MODEL_TYPE}_${TP}x${PP}x${GPU_NAME}_input${BUILD_MAX_INPUT_LEN}_output${BUILD_MAX_OUTPUT_LEN}_batch${BUILD_MAX_BATCH_SIZE}_engine
 
@@ -101,7 +96,7 @@ fi
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
     if ! [ -f $MODEL_CONFIG ]; then
         echo "Quantizing original model..."
-        python hf_ptq.py \
+        python3 hf_ptq.py \
             --pyt_ckpt_path=$MODEL_PATH \
             --export_path=$SAVE_PATH \
             --sparsity_fmt=$SPARSITY_FMT \
@@ -109,7 +104,8 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --calib_size=$CALIB_NUM_BATCHES \
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
-            --deployment=$DEPLOYMENT \
+            --batch_size=1 \
+            --medusa
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
@@ -117,11 +113,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
 
     if [ $MODEL_TYPE == "llava" ]; then
         echo "Please build tensorrt_llm engine with this model from the tensorrt_llm repo."
-        exit 0
-    fi
-
-    if [ $DEPLOYMENT != "tensorrt_llm" ]; then
-        echo "Please continue deployment with $DEPLOYMENT. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
 
@@ -148,114 +139,24 @@ fi
 
 echo "Evaluating the built TRT engine (ite $SUMMARIZE_MAX_ITE), result saved to $SUMMARIZE_RESULT..."
 
+# specify medusa_choices for the tree-based attention (https://arxiv.org/abs/2401.10774)
 mpirun -n $GPUS --allow-run-as-root \
-    python summarize/summarize.py \
+    python3 summarize/summarize.py \
         --engine_dir=$ENGINE_DIR \
         --hf_model_dir=$MODEL_PATH \
         --data_type=fp16 \
         --test_trt_llm \
         --tensorrt_llm_rouge1_threshold=13 \
+        --medusa_choices="[[0], [0, 0], [1], [0, 1], [2], [0, 0, 0], [1, 0], [0, 2], [3], [0, 3], [4], [0, 4], [2, 0], [0, 5], [0, 0, 1],
+        [5], [0, 6], [6], [0, 7], [0, 1, 0], [1, 1], [7], [0, 8], [0, 0, 2], [3, 0], [0, 9], [8], [9], [1, 0, 0], [0, 2, 0], [1, 2], [0, 0, 3],
+        [4, 0], [2, 1], [0, 0, 4], [0, 0, 5], [0, 0, 0, 0], [0, 1, 1], [0, 0, 6], [0, 3, 0], [5, 0], [1, 3], [0, 0, 7], [0, 0, 8], [0, 0, 9],
+        [6, 0], [0, 4, 0], [1, 4], [7, 0], [0, 1, 2], [2, 0, 0], [3, 1], [2, 2], [8, 0], [0, 5, 0], [1, 5], [1, 0, 1], [0, 2, 1], [9, 0],
+        [0, 6, 0], [0, 0, 0, 1], [1, 6], [0, 7, 0]]" \
+        --use_py_session \
         --max_ite=$SUMMARIZE_MAX_ITE 2>&1 | tee $SUMMARIZE_RESULT
 
 fi
 
-if [[ -d "${MODEL_PATH}" ]]; then
-    MODEL_ABS_PATH=$(realpath ${MODEL_PATH})
-else
-    # model_path is a HF reference, not a local directory, no need to make the path absolute
-    MODEL_ABS_PATH=${MODEL_PATH}
-fi
-
-if [[ $TASKS =~ "mmlu" ]]; then
-
-MMLU_RESULT=${ENGINE_DIR}/mmlu.txt
-echo "Evaluating MMLU, result saved to $MMLU_RESULT..."
-
-pushd ../llm_eval/
-
-pip install -r requirements.txt
-
-if [ -z "$MMLU_DATA_PATH" ]; then
-    MMLU_DATA_PATH=data/mmlu
-fi
-if [[ ! -d "$MMLU_DATA_PATH" ]] || [[ ! $(ls -A $MMLU_DATA_PATH) ]]; then
-    echo "Preparing the MMLU test data"
-    wget https://people.eecs.berkeley.edu/~hendrycks/data.tar -O /tmp/mmlu.tar
-    mkdir -p data
-    tar -xf /tmp/mmlu.tar -C data && mv data/data $MMLU_DATA_PATH
-fi
-
-python mmlu.py \
-    --model_name causal \
-    --model_path $MODEL_ABS_PATH \
-    --engine_dir $ENGINE_DIR \
-    --data_dir $MMLU_DATA_PATH | tee $MMLU_RESULT
-popd
-
-fi
-
-if [[ $TASKS =~ "humaneval" ]]; then
-
-HUMANEVAL_RESULT=${ENGINE_DIR}/humaneval.txt
-echo "Evaluating humaneval, result saved to $HUMANEVAL_RESULT..."
-
-pushd ../llm_eval/
-
-pip install -r requirements.txt
-
-if [ -z "$HUMANEVAL_CODE_PATH" ]; then
-    HUMANEVAL_CODE_PATH=human_eval
-fi
-if [[ ! -d "$HUMANEVAL_CODE_PATH" ]] || [[ ! $(ls -A $HUMANEVAL_CODE_PATH) ]]; then
-    echo "Preparing the human eval tests"
-    wget https://github.com/declare-lab/instruct-eval/archive/refs/heads/main.zip -O /tmp/instruct-eval.zip
-    unzip /tmp/instruct-eval.zip "instruct-eval-main/human_eval/*" -d /tmp/
-    cp -r /tmp/instruct-eval-main/human_eval .
-fi
-
-python humaneval.py \
-    --model_name causal \
-    --model_path $MODEL_ABS_PATH \
-    --engine_dir $ENGINE_DIR \
-    --n_sample 1 | tee $HUMANEVAL_RESULT
-
-mv *.jsonl $ENGINE_DIR/
-
-popd
-
-fi
-
-if [[ $TASKS =~ "mtbench" ]]; then
-
-pushd ../llm_eval/
-
-bash run_fastchat.sh $MODEL_ABS_PATH $ENGINE_DIR
-find data/mt_bench/model_answer/ -type f -name '*.jsonl' -exec mv {} $ENGINE_DIR \;
-
-JSONL_PATH=$(readlink -f $(find $ENGINE_DIR -type f -name '*.jsonl'))
-echo "FastChat generation complete. The results are saved under $JSONL_PATH . Please run the judge(https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to evaluate the quality of the responses."
-
-popd
-
-fi
-
-if [[ $TASKS =~ "benchmark" ]]; then
-
-if [ "$PP" -ne 1 ]; then
-    echo "Benchmark does not work with multi PP. Please run the c++ benchmark in the TensorRT-LLM repo..."
-    exit 1
-fi
-
-BENCHMARK_RESULT=${ENGINE_DIR}/benchmark.txt
-echo "Evaluating performance, result saved to $BENCHMARK_RESULT..."
-
-mpirun -n $GPUS --allow-run-as-root \
-    python benchmarks/benchmark.py \
-        --engine_dir=$ENGINE_DIR \
-        --batch_size=$BUILD_MAX_BATCH_SIZE \
-        --input_output_len=$BUILD_MAX_INPUT_LEN,$BUILD_MAX_OUTPUT_LEN | tee $BENCHMARK_RESULT
-
-fi
 
 if [ -n "$FREE_SPACE" ]; then
     rm -f $SAVE_PATH/*.json

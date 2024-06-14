@@ -55,7 +55,7 @@ import modelopt.torch.opt as mto
 import modelopt.torch.utils.distributed as dist
 from modelopt.torch.opt.utils import is_dynamic
 
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True,max_split_size_mb:64"
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 IGNORE_INDEX = -100
 DEFAULT_PAD_TOKEN = "[PAD]"
@@ -87,8 +87,8 @@ class ModelArguments:
 
 @dataclass
 class DataArguments:
-    data_path: str = field(default=None, metadata={"help": "Path to the training data."})
-    val_data_path: str = field(default=None, metadata={"help": "Path to the eval data."})
+    train_datapath: str = field(default=None, metadata={"help": "Path to the training data."})
+    val_datapath: str = field(default=None, metadata={"help": "Path to the eval data."})
 
 
 @dataclass
@@ -225,27 +225,36 @@ def get_model_state_dict(trainer: transformers.Trainer):
 class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer, split: str):
+    def __init__(
+        self,
+        training_args: TrainingArguments,
+        data_path: str,
+        tokenizer: transformers.PreTrainedTokenizer,
+        split: str,
+    ):
         super(SupervisedDataset, self).__init__()
 
         pickle_name = f"dict_{split}_{tokenizer.model_max_length}.pickle"
-        if os.path.isfile(pickle_name):
-            with open(pickle_name, "rb") as f:
-                print_rank_0("Reuse pickled data")
-                data_dict = pickle.load(f)
-        else:
-            print_rank_0("Loading data...")
-            list_data_dict = utils.jload(data_path)
+        with training_args.main_process_first():
+            if os.path.isfile(pickle_name):
+                with open(pickle_name, "rb") as f:
+                    print_rank_0("Reuse pickled data")
+                    data_dict = pickle.load(f)
+            else:
+                print_rank_0("Loading data...")
+                list_data_dict = utils.jload(data_path)
 
-            print_rank_0("Formatting inputs...")
-            prompt_input = PROMPT_DICT["prompt_input"]
-            sources = [prompt_input.format_map(example) for example in list_data_dict]
-            targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
+                print_rank_0("Formatting inputs...")
+                prompt_input = PROMPT_DICT["prompt_input"]
+                sources = [prompt_input.format_map(example) for example in list_data_dict]
+                targets = [
+                    f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict
+                ]
 
-            print_rank_0("Tokenizing inputs... This may take some time...")
-            data_dict = preprocess(sources, targets, tokenizer)
-            with open(pickle_name, "wb") as f:
-                pickle.dump(data_dict, f, pickle.HIGHEST_PROTOCOL)
+                print_rank_0("Tokenizing inputs... This may take some time...")
+                data_dict = preprocess(sources, targets, tokenizer)
+                with open(pickle_name, "wb") as f:
+                    pickle.dump(data_dict, f, pickle.HIGHEST_PROTOCOL)
 
         self.input_ids = data_dict["input_ids"]
         self.labels = data_dict["labels"]
@@ -280,10 +289,15 @@ class DataCollatorForSupervisedDataset(object):
         )
 
 
-def make_supervised_data_module(args, tokenizer: transformers.PreTrainedTokenizer) -> Dict:
+def make_supervised_data_module(
+    training_args: TrainingArguments,
+    train_datapath: str,
+    val_datapath: str,
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> Dict:
     """Make dataset and collator for supervised fine-tuning."""
-    train_dataset = SupervisedDataset(args.data_path, tokenizer, "train")
-    val_dataset = SupervisedDataset(args.val_data_path, tokenizer, "val")
+    train_dataset = SupervisedDataset(training_args, train_datapath, tokenizer, "train")
+    val_dataset = SupervisedDataset(training_args, val_datapath, tokenizer, "val")
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
     return dict(train_dataset=train_dataset, eval_dataset=val_dataset, data_collator=data_collator)
 
@@ -329,7 +343,9 @@ def train():
             model=model,
         )
 
-    data_module = make_supervised_data_module(args, tokenizer=tokenizer)
+    data_module = make_supervised_data_module(
+        training_args, args.train_datapath, args.val_datapath, tokenizer=tokenizer
+    )
 
     # Detecting last checkpoint.
     last_checkpoint = None
