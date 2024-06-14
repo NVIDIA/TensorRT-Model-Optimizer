@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ONNX Quantization (Beta) &mdash; Model Optimizer 0.13.0</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
+      <link rel="stylesheet" type="text/css" href="../_static/togglebutton.css?v=13237357" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=d10054b6" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../_static/doctools.js?v=888ff710"></script>
+        <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+        <script src="../_static/copybutton.js?v=20d3d275"></script>
+        <script src="../_static/tabs.js?v=3ee01567"></script>
+        <script>let toggleHintShow = 'Click to show';</script>
+        <script>let toggleHintHide = 'Click to hide';</script>
+        <script>let toggleOpenOnPrint = 'true';</script>
+        <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
+        <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Sparsity" href="5_sparsity.html" />
+    <link rel="prev" title="PyTorch Quantization" href="_pytorch_quantization.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            TensorRT Model Optimizer
+          </a>
+              <div class="version">
+                0.13.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/1_overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/2_installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/6_sparsity.html">Quick Start: Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Optimization Guides</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="1_quantization.html">Quantization</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="_basic_quantization.html">Basic Concepts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="_choosing_quant_methods.html">Best practices to choose the right quantization methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="_pytorch_quantization.html">PyTorch Quantization</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">ONNX Quantization (Beta)</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#requirements">Requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#apply-post-training-quantization-ptq">Apply Post Training Quantization (PTQ)</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#prepare-calibration-dataset">Prepare calibration dataset</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#call-ptq-function">Call PTQ function</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#deploy-quantized-onnx-model">Deploy Quantized ONNX Model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#compare-the-performance">Compare the performance</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="5_sparsity.html">Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../examples/0_all_examples.html">All ModelOpt Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../reference/0_versions.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/1_modelopt_api.html">modelopt API</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Support</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../support/1_contact.html">Contact us</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../support/2_faqs.html">FAQs</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">TensorRT Model Optimizer</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="1_quantization.html">Quantization</a></li>
+      <li class="breadcrumb-item active">ONNX Quantization (Beta)</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/guides/_onnx_quantization.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="onnx-quantization-beta">
+<h1>ONNX Quantization (Beta)<a class="headerlink" href="#onnx-quantization-beta" title="Link to this heading"></a></h1>
+<p>ModelOpt provides ONNX quantization that works together with <a class="reference external" href="https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#explicit-implicit-quantization" rel="noopener noreferrer" target="_blank">TensorRT Explicit Quantization (EQ)</a>. The key advantages offered by ModelOpt’s ONNX quantization:</p>
+<ol class="arabic simple">
+<li><p>Easy to use for non-expert users.</p></li>
+<li><p>White-box design allowing expert users to customize the quantization process.</p></li>
+<li><p>Better support for vision transformers.</p></li>
+</ol>
+<p>Currently ONNX quantization supports INT4 and INT8 quantization.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>ModelOpt ONNX quantization generates new ONNX models with QDQ nodes following TensorRT rules.
+For real speedup, the generated ONNX should be compiled into TensorRT engine.</p>
+</div>
+<section id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>TensorRT &gt;= 8.6 ( &gt;= 10.0 preferred). Please refer to <a class="reference external" href="https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.0.1/tars/TensorRT-10.0.1.6.Linux.x86_64-gnu.cuda-12.4.tar.gz" rel="noopener noreferrer" target="_blank">TensorRT 10.0 download link</a>.</p></li>
+</ol>
+</section>
+<section id="apply-post-training-quantization-ptq">
+<h2>Apply Post Training Quantization (PTQ)<a class="headerlink" href="#apply-post-training-quantization-ptq" title="Link to this heading"></a></h2>
+<p>PTQ should be done with a calibration dataset. If calibration dataset is not provided, ModelOpt will use random scales for the QDQ nodes.</p>
+<section id="prepare-calibration-dataset">
+<h3>Prepare calibration dataset<a class="headerlink" href="#prepare-calibration-dataset" title="Link to this heading"></a></h3>
+<p>ModelOpt supports npz/npy file as calibration data format and that numpy file should be a dictionary with keys as model input names and values as numpy arrays.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example numpy file for single-input ONNX</span>
+<span class="n">calib_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">channels</span><span class="p">,</span> <span class="n">h</span><span class="p">,</span> <span class="n">w</span><span class="p">)</span>
+<span class="n">np</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;calib_data.npy&quot;</span><span class="p">,</span> <span class="n">calib_data</span><span class="p">)</span>
+
+<span class="c1"># Example numpy file for single/multi-input ONNX</span>
+<span class="c1"># Dict key should match the input names of ONNX</span>
+<span class="n">calib_data</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;input_name&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="o">*</span><span class="n">shape</span><span class="p">),</span>
+    <span class="s2">&quot;input_name2&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="o">*</span><span class="n">shape2</span><span class="p">),</span>
+<span class="p">}</span>
+<span class="n">np</span><span class="o">.</span><span class="n">savez</span><span class="p">(</span><span class="s2">&quot;calib_data.npz&quot;</span><span class="p">,</span> <span class="n">calib_data</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="call-ptq-function">
+<h3>Call PTQ function<a class="headerlink" href="#call-ptq-function" title="Link to this heading"></a></h3>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.onnx.quantization</span> <span class="k">as</span> <span class="nn">moq</span>
+
+<span class="n">calibration_data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">calibration_data_path</span><span class="p">)</span>
+
+<span class="n">moq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span>
+    <span class="n">onnx_path</span><span class="o">=</span><span class="n">onnx_path</span><span class="p">,</span>
+    <span class="n">calibration_data</span><span class="o">=</span><span class="n">calibration_data</span><span class="p">,</span>
+    <span class="n">output_path</span><span class="o">=</span><span class="s2">&quot;quant.onnx&quot;</span><span class="p">,</span>
+    <span class="n">quantize_mode</span><span class="o">=</span><span class="s2">&quot;int8&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Alternatively, you can call PTQ function in command line:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>modelopt.onnx.quantization<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--calibration_data_path<span class="w"> </span>/calibration/data/in/npz/npy/format<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--output_path<span class="w"> </span>/path/to/the/quantized/onnx/output<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>--quantize_mode<span class="w"> </span>int8
+</pre></div>
+</div>
+<p>By default, after running the calibraton, the quantization tool will insert the QDQ nodes by following TensorRT friendly QDQ insertion algorithm. Users can change the default quantization behavior by tweaking the API params like op_types_to_quantize, op_types_to_exclude etc. See the <a class="reference internal" href="../reference/generated/modelopt.onnx.quantization.quantize.html#module-modelopt.onnx.quantization.quantize" title="modelopt.onnx.quantization.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">modelopt.onnx.quantization.quantize()</span></code></a> for details.</p>
+</section>
+</section>
+<section id="deploy-quantized-onnx-model">
+<h2>Deploy Quantized ONNX Model<a class="headerlink" href="#deploy-quantized-onnx-model" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">trtexec</span></code> is a command-line tool provided by TensorRT. Typically, it’s within the <code class="docutils literal notranslate"><span class="pre">/usr/src/tensorrt/bin/</span></code> directory. Below is a simple command to compile the quantized onnx model generated by the previous step into a TensorRT engine file.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>trtexec<span class="w"> </span>--onnx<span class="o">=</span>quant.onnx<span class="w"> </span>--saveEngine<span class="o">=</span>quant.engine<span class="w"> </span>--best
+</pre></div>
+</div>
+</section>
+<section id="compare-the-performance">
+<h2>Compare the performance<a class="headerlink" href="#compare-the-performance" title="Link to this heading"></a></h2>
+<p>The following command will build the engine using fp16 precision. After building, check the reported “Latency” and “Throughput” fields and compare.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>trtexec<span class="w"> </span>--onnx<span class="o">=</span>original.onnx<span class="w"> </span>--saveEngine<span class="o">=</span>fp16.engine<span class="w"> </span>--fp16
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If you replace <code class="docutils literal notranslate"><span class="pre">--fp16</span></code> flag with <code class="docutils literal notranslate"><span class="pre">--best</span></code> flag, this command will create an int8 engine with TensorRT’s implicit quantization.</p>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="_pytorch_quantization.html" class="btn btn-neutral float-left" title="PyTorch Quantization" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="5_sparsity.html" class="btn btn-neutral float-right" title="Sparsity" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

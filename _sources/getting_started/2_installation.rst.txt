@@ -1,0 +1,110 @@
+============
+Installation
+============
+
+System requirements
+===================
+
+Model Optimizer (``nvidia-modelopt``) currently has the following system requirements:
+
++----------------------+-----------------------------+
+| OS                   |  Linux                      |
++----------------------+-----------------------------+
+| Architecture         |  x86_64                     |
++----------------------+-----------------------------+
+| Python               |  >=3.8,<3.13                |
++----------------------+-----------------------------+
+| PyTorch              |  >=1.11                     |
++----------------------+-----------------------------+
+| CUDA                 |  >=11.8 (Recommended)       |
++----------------------+-----------------------------+
+
+Install Model Optimizer
+=======================
+
+ModelOpt including its dependencies can be installed via ``pip``. Please review the
+license terms of ModelOpt and any dependencies before use.
+
+.. tab:: Quick install
+
+    .. empty tab
+
+.. tab:: Detailed instructions
+
+    **Setting up a virtual environment**
+
+    We recommend setting up a virtual environment if you don't have one already. Run the following
+    command to set up and activate a ``conda`` virtual environment named ``modelopt`` with Python 3.12:
+
+    .. code-block:: bash
+
+        conda create -n modelopt python=3.12 pip
+
+    .. code-block:: bash
+
+        conda activate modelopt
+
+    (Optional) **Install desired PyTorch version**
+
+
+    By default, the latest PyTorch version (``torch>=1.11``) available on ``pip`` will
+    be installed. If you want to install a specific PyTorch version for a specific CUDA version, please first
+    `follow the instructions to install your desired PyTorch version <https://pytorch.org/get-started/locally/>`_.
+    For example, to install latest ``torch>=1.11`` with CUDA 11.8 run:
+
+    .. code-block:: bash
+
+        pip install torch --extra-index-url https://download.pytorch.org/whl/cu118
+
+    **Identify correct partial dependencies**
+
+    Note that when installing ``nvidia-modelopt`` without optional dependencies, only the barebone
+    requirements are installed and none of the modules will work without the appropriate optional
+    dependencies or ``[all]`` optional dependencies. Below is a list of optional dependencies that
+    need to be installed to correctly use the corresponding modules:
+
+    .. list-table::
+        :widths: 30 30
+        :header-rows: 1
+
+        * - Module
+          - Optional dependencies
+        * - ``modelopt.deploy``
+          - ``[deploy]``
+        * - ``modelopt.onnx``
+          - ``[onnx]``
+        * - ``modelopt.torch``
+          - ``[torch]``
+        * - ``modelopt.torch._deploy``
+          - ``[torch, deploy]``
+
+    Additionally, we support the following 3rd-party plugins:
+
+    .. list-table::
+        :widths: 30 30
+        :header-rows: 1
+
+        * - Third-party package
+          - Optional dependencies
+        * - ``transformers`` (Huggingface)
+          - ``[hf]``
+
+**Install Model Optimizer** (``nvidia-modelopt``)
+
+.. code-block:: bash
+
+    pip install "nvidia-modelopt[all]" --no-cache-dir --extra-index-url https://pypi.nvidia.com
+
+Check installation
+==================
+
+.. tip::
+
+    When you use ModelOpt's PyTorch quantization APIs for the first time, it will compile the fast quantization kernels
+    using your installed torch and CUDA if available.
+    This may take a few minutes but subsequent quantization calls will be much faster.
+    To invoke the compilation now and check if it is successful, run the following command:
+
+    .. code-block:: bash
+
+        python -c "import modelopt.torch.quantization.extensions as ext; print(ext.cuda_ext); print(ext.cuda_ext_fp8)"

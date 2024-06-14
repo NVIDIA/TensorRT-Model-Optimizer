@@ -1,0 +1,53 @@
+.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
+
+graph\_utils
+============
+
+.. List the submodules
+
+
+
+
+
+.. Autodoc anything defined in the module itself
+
+   TODO: WE DON'T USE THIS OPTION RIGHT NOW BUT WE CAN REACTIVATE IF WANTED
+   We use :ignore-module-all: so sphinx does not document the same module twice, even if it is reimported
+   For reimports that should be documented somewhere other than where they are defined, the re-imports
+   __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
+   add in ``YYY.__module__ = __name__``.
+
+.. automodule:: modelopt.onnx.quantization.graph_utils
+   :members:
+   :undoc-members:
+
+   .. Also show members without docstrings. Only members from __all__ are considered as per conf.py
+   .. Ideally we should add docstrings for these members.
+
+
+   .. Overview table of available classes in the module
+   
+   
+   
+
+
+   .. Overview table of available functions in the module
+   
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+      :nosignatures:
+   
+      build_non_residual_input_map
+      classify_partition_nodes
+      filter_quantizable_kgen_heads
+      find_nodes_to_exclude
+      get_fusible_backbone
+      has_const_input
+      has_path_type
+      is_const_input
+      print_stat
+      remove_partial_input_qdq
+   
+   

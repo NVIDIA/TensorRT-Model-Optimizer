@@ -1,0 +1,10 @@
+====
+FAQs
+====
+
+1. Potential memory leak for ``FSDP`` with ``use_orig_params=True``
+-------------------------------------------------------------------
+
+When using ``FSDP`` with ``use_orig_params=True``, there is a potential memory leak during training
+when using ``FSDP`` in conjunction with modelopt-converted models. Please use
+``use_orig_params=False`` to avoid this issue.

@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tensor_quant &mdash; Model Optimizer 0.13.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
+      <link rel="stylesheet" type="text/css" href="../../_static/togglebutton.css?v=13237357" />
+      <link rel="stylesheet" type="text/css" href="../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=d10054b6" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+        <script src="../../_static/copybutton.js?v=20d3d275"></script>
+        <script src="../../_static/tabs.js?v=3ee01567"></script>
+        <script>let toggleHintShow = 'Click to show';</script>
+        <script>let toggleHintHide = 'Click to hide';</script>
+        <script>let toggleOpenOnPrint = 'true';</script>
+        <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
+        <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="utils" href="modelopt.torch.quantization.utils.html" />
+    <link rel="prev" title="quant_modules" href="modelopt.torch.quantization.quant_modules.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            TensorRT Model Optimizer
+          </a>
+              <div class="version">
+                0.13.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/1_overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/2_installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/6_sparsity.html">Quick Start: Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Optimization Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All ModelOpt Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../0_versions.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../1_modelopt_api.html">modelopt API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="modelopt.deploy.html">deploy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modelopt.onnx.html">onnx</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.export.html">export</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.extensions.html">extensions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.mode.html">mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_calib.html">model_calib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_quant.html">model_quant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.nn.html">nn</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.optim.html">optim</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.plugins.html">plugins</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.qtensor.html">qtensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.quant_modules.html">quant_modules</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">tensor_quant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.utils.html">utils</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.sparsity.html">sparsity</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.utils.html">utils</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Support</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../support/1_contact.html">Contact us</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../support/2_faqs.html">FAQs</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">TensorRT Model Optimizer</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../1_modelopt_api.html">modelopt API</a></li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.html">torch</a></li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.quantization.html">quantization</a></li>
+      <li class="breadcrumb-item active">tensor_quant</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/reference/generated/modelopt.torch.quantization.tensor_quant.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="tensor-quant">
+<h1>tensor_quant<a class="headerlink" href="#tensor-quant" title="Link to this heading"></a></h1>
+<p id="module-modelopt.torch.quantization.tensor_quant">Basic tensor quantization functions.</p>
+<p class="rubric">Classes</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FakeAffineTensorQuantFunction</span></code></a></p></td>
+<td><p>Fake version of affine quantization.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FakeTensorQuantFunction</span></code></a></p></td>
+<td><p>Fake version of TensorQuantFunction use CUDA extension.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LegacyFakeTensorQuantFunction</span></code></a></p></td>
+<td><p>Fake version of TensorQuantFunction.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.QuantDescriptor" title="modelopt.torch.quantization.tensor_quant.QuantDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">QuantDescriptor</span></code></a></p></td>
+<td><p>alias of <a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor" title="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ScaledQuantDescriptor</span></code></a></p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function" title="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ScaledE4M3Function</span></code></a></p></td>
+<td><p>E4M3fy input with scale.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor" title="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ScaledQuantDescriptor</span></code></a></p></td>
+<td><p>Supportive descriptor of quantization.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.TensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TensorQuantFunction</span></code></a></p></td>
+<td><p>A universal tensor quantization function.</p></td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.scaled_e4m3_abstract" title="modelopt.torch.quantization.tensor_quant.scaled_e4m3_abstract"><code class="xref py py-obj docutils literal notranslate"><span class="pre">scaled_e4m3_abstract</span></code></a></p></td>
+<td><p>Register an abstract implementation for scaled_e4m3.</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">FakeAffineTensorQuantFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
+<p>Fake version of affine quantization.</p>
+<p>gemmlowp style scale+shift quantization. See more details in
+<a class="reference external" href="https://github.com/google/gemmlowp/blob/master/doc/quantization.md" rel="noopener noreferrer" target="_blank">https://github.com/google/gemmlowp/blob/master/doc/quantization.md</a>.</p>
+<p>We DO NOT recommend affine quantization on weights for performance reason. There might be value to affine quantize
+activation as it can be cancelled by bias and comes with no performance penalty. This functionality is only added
+for experimental purpose.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction.backward" title="Link to this definition"></a></dt>
+<dd><p>Implements straight through estimation with clipping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ctx</strong> – Pytorch convention.</p></li>
+<li><p><strong>grad_output</strong> – A tensor of gradient of outputs.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tensor of gradient</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>grad_inputs</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_range</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_range</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction.forward" title="Link to this definition"></a></dt>
+<dd><p>As it will be only applied on activation with per tensor granularity, broadcast is not needed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ctx</strong> – Pytorch convention.</p></li>
+<li><p><strong>inputs</strong> – A Tensor of type float32.</p></li>
+<li><p><strong>min_range</strong> – A float.</p></li>
+<li><p><strong>max_range</strong> – A float.</p></li>
+<li><p><strong>num_bits</strong> – An integer</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A Tensor of type output_dtype</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>outputs</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">FakeTensorQuantFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
+<p>Fake version of TensorQuantFunction use CUDA extension.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.backward" title="Link to this definition"></a></dt>
+<dd><p>Implements straight through estimation with clipping.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward method.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.symbolic">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">symbolic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.symbolic" title="Link to this definition"></a></dt>
+<dd><p>ONNX symbolic function.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">LegacyFakeTensorQuantFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
+<p>Fake version of TensorQuantFunction.</p>
+<p>See comments of TensorQuantFunction, arguments are the same.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.backward" title="Link to this definition"></a></dt>
+<dd><p>Implements straight through estimation.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward method.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.QuantDescriptor">
+<span class="sig-name descname"><span class="pre">QuantDescriptor</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.QuantDescriptor" title="Link to this definition"></a></dt>
+<dd><p>alias of <a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor" title="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ScaledQuantDescriptor</span></code></a></p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ScaledE4M3Function</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
+<p>E4M3fy input with scale.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.backward" title="Link to this definition"></a></dt>
+<dd><p>Implements straight through estimation with clipping.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">E</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">M</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward method.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.symbolic">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">symbolic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">E</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">M</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">3</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.symbolic" title="Link to this definition"></a></dt>
+<dd><p>ONNX symbolic function.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ScaledQuantDescriptor</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Supportive descriptor of quantization.</p>
+<p>Describe how a tensor should be quantized. A QuantDescriptor and a tensor defines a quantized
+tensor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>num_bits</strong> – <p>An integer or a tuple of two integers.
+Specifically, <cite>num_bits</cite> can be:</p>
+<ol class="arabic simple">
+<li><dl class="simple">
+<dt>A positive integer argument for integer quantization. <cite>num_bits</cite> specify</dt><dd><p>the number of bits used for integer quantization.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>Constant integer tuple (E,M) for floating point quantization emulating</dt><dd><p>Nvidia’s FPx quantization. E is the number of exponent bits and M is the number
+of mantissa bits. Supported FPx quantizations: FP8 with (E=4, M=3).</p>
+</dd>
+</dl>
+</li>
+</ol>
+<p>Default: 8.</p>
+</p></li>
+<li><p><strong>name</strong> – Seems a nice thing to have</p></li>
+<li><p><strong>fake_quant</strong> – A boolean. If True, use fake quantization mode. Default True.</p></li>
+<li><p><strong>axis</strong> – None, int or tuple of int. The specified axis/axes will have its own amax for
+computing scaling factor. If None (the default), use per tensor scale. Must be in the
+range [-rank(input_tensor), rank(input_tensor)). E.g. For a KCRS weight tensor,
+<code class="docutils literal notranslate"><span class="pre">quant_axis=(0)</span></code> will yield per channel scaling.</p></li>
+<li><p><strong>block_sizes</strong> – <p>None or a dictionary. The dictionary specifies
+block quantization parameters. The keys are the axes for block quantization and the
+values are block sizes for quantization along the respective axes. Keys must be in the
+range <code class="docutils literal notranslate"><span class="pre">[-rank(input_tensor),</span> <span class="pre">rank(input_tensor)]</span></code>. Values, which are the block sizes
+for quantization must be positive integers.</p>
+<p>In addition, there can be special string keys “type” and “scale_bits”. Key “type”
+should map to “dynamic” or “static” where “dynamic” indicates dynamic block quantization and “static”
+indicates static calibrated block quantization. By default, the type is “static”. Key “scale_bits”
+specify the quantization bits for the per-block quantization scale factor
+(i.e a double quantization scheme). Key “scale_block_sizes” specify the block size for double quantization.
+By default per-block quantization scale is not quantized.</p>
+<p>For example, <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">32}</span></code> will quantize the last axis of the input tensor in
+blocks of size 32 with static calibration and <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">32,</span> <span class="pre">&quot;type&quot;:</span> <span class="pre">&quot;dynamic&quot;}</span></code>
+will perform dynamic block quantization. If None, block
+quantization is not performed. <code class="docutils literal notranslate"><span class="pre">axis</span></code> must be None when <code class="docutils literal notranslate"><span class="pre">block_sizes</span></code> is not None.</p>
+</p></li>
+<li><p><strong>amax</strong> – A float or list/ndarray of floats of user specified absolute max range. If supplied,
+ignore quant_axis and use this to quantize. If learn_amax is True, will be used to
+initialize learnable amax.</p></li>
+<li><p><strong>learn_amax</strong> – A boolean. If True, learn amax.</p></li>
+<li><p><strong>scale_amax</strong> – A float. If supplied, multiply amax by scale_amax. Default None. It is useful
+for some quick experiment.</p></li>
+<li><p><strong>calib_method</strong> – A string. One of <code class="docutils literal notranslate"><span class="pre">[&quot;max&quot;,</span> <span class="pre">&quot;histogram&quot;]</span></code> indicates which calibration to use.
+Except the simple max calibration, other methods are all histogram based.</p></li>
+<li><p><strong>unsigned</strong> – A boolean. If True, use unsigned.</p></li>
+<li><p><strong>narrow_range</strong> – A boolean. if True, symmetric integer range for signed quantization is used.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="simple">
+<dt>Read-only properties:</dt><dd><ul class="simple">
+<li><p>fake_quant:</p></li>
+<li><p>name:</p></li>
+<li><p>learn_amax:</p></li>
+<li><p>scale_amax:</p></li>
+<li><p>axis:</p></li>
+<li><p>calib_method:</p></li>
+<li><p>num_bits:</p></li>
+<li><p>amax:</p></li>
+<li><p>unsigned:</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fake_quant</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_sizes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">learn_amax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_amax</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calib_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'max'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dynamic</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize QuantDescriptor.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.amax">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">amax</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.amax" title="Link to this definition"></a></dt>
+<dd><p>Return amax.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.axis">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">axis</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.axis" title="Link to this definition"></a></dt>
+<dd><p>Return axis for quantization.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.block_sizes">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">block_sizes</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.block_sizes" title="Link to this definition"></a></dt>
+<dd><p>Return block_sizes for quantization.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.calib_method">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">calib_method</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.calib_method" title="Link to this definition"></a></dt>
+<dd><p>Return calibration method.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.dict">
+<span class="sig-name descname"><span class="pre">dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.dict" title="Link to this definition"></a></dt>
+<dd><p>Serialize to dict.</p>
+<p>The build-in __dict__ method returns all the attributes, which includes those have default value and have
+protected prefix “_”. This method only returns those have values other than the default one and don’t have _ in
+key. Construct a instance by dict returned by this method should get exactly the same instance.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.dynamic">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">dynamic</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.dynamic" title="Link to this definition"></a></dt>
+<dd><p>Returns True if the quantization is dynamic.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.fake_quant">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fake_quant</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.fake_quant" title="Link to this definition"></a></dt>
+<dd><p>Return True if fake quantization is used.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.get_block_quant_axes_and_sizes">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_block_quant_axes_and_sizes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">block_sizes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.get_block_quant_axes_and_sizes" title="Link to this definition"></a></dt>
+<dd><p>Return axes and sizes for block quantization.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>block_sizes</strong> (<em>dict</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.learn_amax">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">learn_amax</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.learn_amax" title="Link to this definition"></a></dt>
+<dd><p>Return True if amax is learnable.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.name" title="Link to this definition"></a></dt>
+<dd><p>Return name.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.narrow_range">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">narrow_range</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.narrow_range" title="Link to this definition"></a></dt>
+<dd><p>Return True if symmetric integer range for signed quantization is used.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.num_bits">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">num_bits</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.num_bits" title="Link to this definition"></a></dt>
+<dd><p>Return num_bits.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.scale_amax">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">scale_amax</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.scale_amax" title="Link to this definition"></a></dt>
+<dd><p>Return scale_amax.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.unsigned">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">unsigned</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.ScaledQuantDescriptor.unsigned" title="Link to this definition"></a></dt>
+<dd><p>Return True if unsigned integer range is used.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.TensorQuantFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">TensorQuantFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
+<p>A universal tensor quantization function.</p>
+<p>Take an input tensor, output an quantized tensor. The granularity of scale can be interpreted from the
+shape of amax.
+output_dtype indicates whether the quantized value will be stored in integer or float. The reason we want to store
+it in float is the pytorch function takes the quantized value may not accept integer input, e.g. Conv2D.</p>
+<p>It uses 2^num_bits -1 values instead of 2^num_bits. e.g., for num_bits=8, it uses [-127, 127] instead of [-128, 127]</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.TensorQuantFunction.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_scale</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction.backward" title="Link to this definition"></a></dt>
+<dd><p>Implements straight through estimation with clipping.</p>
+<p>For -amax &lt;= input &lt;= amax the gradient passes straight through, otherwise the gradient is zero.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ctx</strong> – A Context object with saved tensors from forward.</p></li>
+<li><p><strong>grad_outputs</strong> – A tensor of gradient of outputs.</p></li>
+<li><p><strong>grad_scale</strong> – A tensor of gradient of scale.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A tensor of gradient.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>grad_inputs</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.TensorQuantFunction.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward method.</p>
+<p>Follow tensorflow convention, max value is passed in and used to decide scale, instead of inputing scale
+directly. Though inputing scale directly may be more natural to use.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ctx</strong> – A Context object to store tensors for backward.</p></li>
+<li><p><strong>inputs</strong> – A Tensor of type float32.</p></li>
+<li><p><strong>amax</strong> – A Tensor of type float32. Inputs will be quantized within range [-amax, amax]
+amax will be broadcasted to inputs tensor.</p></li>
+<li><p><strong>num_bits</strong> – A integer used to calculate scaling factor, scale = (2^(num_bits-1) - 1) / max
+Effectively, it indicates how many integer bits is used to represent the value. Default 8.</p></li>
+<li><p><strong>output_dtype</strong> – A type of Tensor. torch.int32 or torch.float32.</p></li>
+<li><p><strong>unsigned</strong> – A boolean. Use unsigned integer range. E.g. [0, 255] for num_bits=8. Default False.</p></li>
+<li><p><strong>narrow_range</strong> – A boolean. Use symmetric integer range for signed quantization
+E.g. [-127,127] instead of [-128,127] for num_bits=8. Default True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A Tensor of type output_dtype.
+scale: A Tensor of type float32. outputs / scale will dequantize outputs tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>outputs</p>
+</dd>
+<dt class="field-even">Raises<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>ValueError</strong> – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.TensorQuantFunction.symbolic">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">symbolic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction.symbolic" title="Link to this definition"></a></dt>
+<dd><p>ONNX symbolic function.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.scaled_e4m3_abstract">
+<span class="sig-name descname"><span class="pre">scaled_e4m3_abstract</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.scaled_e4m3_abstract" title="Link to this definition"></a></dt>
+<dd><p>Register an abstract implementation for scaled_e4m3.</p>
+<p>This abstract function returns an empty tensor with the same shape and dtype.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>amax</strong> (<em>Tensor</em>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Tensor</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="modelopt.torch.quantization.quant_modules.html" class="btn btn-neutral float-left" title="quant_modules" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.quantization.utils.html" class="btn btn-neutral float-right" title="utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

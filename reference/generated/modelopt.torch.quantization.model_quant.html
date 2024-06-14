@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>model_quant &mdash; Model Optimizer 0.13.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
+      <link rel="stylesheet" type="text/css" href="../../_static/togglebutton.css?v=13237357" />
+      <link rel="stylesheet" type="text/css" href="../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=d10054b6" />
+
+  
+  <!--[if lt IE 9]>
+    <script src="../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+        <script src="../../_static/doctools.js?v=888ff710"></script>
+        <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+        <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+        <script src="../../_static/copybutton.js?v=20d3d275"></script>
+        <script src="../../_static/tabs.js?v=3ee01567"></script>
+        <script>let toggleHintShow = 'Click to show';</script>
+        <script>let toggleHintHide = 'Click to hide';</script>
+        <script>let toggleOpenOnPrint = 'true';</script>
+        <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
+        <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+        <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+        <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="nn" href="modelopt.torch.quantization.nn.html" />
+    <link rel="prev" title="model_calib" href="modelopt.torch.quantization.model_calib.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            TensorRT Model Optimizer
+          </a>
+              <div class="version">
+                0.13.0
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/1_overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/2_installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/6_sparsity.html">Quick Start: Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Optimization Guides</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All ModelOpt Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../0_versions.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../1_modelopt_api.html">modelopt API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="modelopt.deploy.html">deploy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modelopt.onnx.html">onnx</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.export.html">export</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.extensions.html">extensions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.mode.html">mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_calib.html">model_calib</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">model_quant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.nn.html">nn</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.optim.html">optim</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.plugins.html">plugins</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.qtensor.html">qtensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.quant_modules.html">quant_modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.tensor_quant.html">tensor_quant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.utils.html">utils</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.sparsity.html">sparsity</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.utils.html">utils</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Support</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../support/1_contact.html">Contact us</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../support/2_faqs.html">FAQs</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">TensorRT Model Optimizer</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../1_modelopt_api.html">modelopt API</a></li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.html">torch</a></li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.quantization.html">quantization</a></li>
+      <li class="breadcrumb-item active">model_quant</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/reference/generated/modelopt.torch.quantization.model_quant.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="model-quant">
+<h1>model_quant<a class="headerlink" href="#model-quant" title="Link to this heading"></a></h1>
+<p id="module-modelopt.torch.quantization.model_quant">User-facing quantization API.</p>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.quantize" title="modelopt.torch.quantization.model_quant.quantize"><code class="xref py py-obj docutils literal notranslate"><span class="pre">quantize</span></code></a></p></td>
+<td><p>Quantizes and calibrates the model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.disable_quantizer" title="modelopt.torch.quantization.model_quant.disable_quantizer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">disable_quantizer</span></code></a></p></td>
+<td><p>Disable quantizer by wildcard or filter function.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.enable_quantizer" title="modelopt.torch.quantization.model_quant.enable_quantizer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">enable_quantizer</span></code></a></p></td>
+<td><p>Enable quantizer by wildcard or filter function.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.print_quant_summary" title="modelopt.torch.quantization.model_quant.print_quant_summary"><code class="xref py py-obj docutils literal notranslate"><span class="pre">print_quant_summary</span></code></a></p></td>
+<td><p>Print summary of all quantizer modules in the model.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.fold_weight" title="modelopt.torch.quantization.model_quant.fold_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">fold_weight</span></code></a></p></td>
+<td><p>Fold weight quantizer for fast evaluation.</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.disable_quantizer">
+<span class="sig-name descname"><span class="pre">disable_quantizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wildcard_or_filter_func</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.disable_quantizer" title="Link to this definition"></a></dt>
+<dd><p>Disable quantizer by wildcard or filter function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
+<li><p><strong>wildcard_or_filter_func</strong> (<em>str</em><em> | </em><em>Callable</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.enable_quantizer">
+<span class="sig-name descname"><span class="pre">enable_quantizer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">wildcard_or_filter_func</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.enable_quantizer" title="Link to this definition"></a></dt>
+<dd><p>Enable quantizer by wildcard or filter function.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
+<li><p><strong>wildcard_or_filter_func</strong> (<em>str</em><em> | </em><em>Callable</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.fold_weight">
+<span class="sig-name descname"><span class="pre">fold_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.fold_weight" title="Link to this definition"></a></dt>
+<dd><p>Fold weight quantizer for fast evaluation.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.print_quant_summary">
+<span class="sig-name descname"><span class="pre">print_quant_summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.print_quant_summary" title="Link to this definition"></a></dt>
+<dd><p>Print summary of all quantizer modules in the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.quantize">
+<span class="sig-name descname"><span class="pre">quantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">forward_loop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.quantize" title="Link to this definition"></a></dt>
+<dd><p>Quantizes and calibrates the model.</p>
+<p>This method performs replacement of modules with their quantized counterparts and
+performs calibration as specified by <code class="docutils literal notranslate"><span class="pre">quant_cfg</span></code>.
+<code class="docutils literal notranslate"><span class="pre">forward_loop</span></code> is used to forward data through the model and gather statistics for calibration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>) – A pytorch model</p></li>
+<li><p><strong>config</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – <p>A dictionary specifying the values for keys <code class="docutils literal notranslate"><span class="pre">&quot;quant_cfg&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;algorithm&quot;</span></code>.
+The <code class="docutils literal notranslate"><span class="pre">&quot;quant_cfg&quot;</span></code> key specifies the quantization configurations.
+The <code class="docutils literal notranslate"><span class="pre">&quot;algorithm&quot;</span></code> key specifies the <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> argument to
+<a class="reference internal" href="modelopt.torch.quantization.model_calib.html#modelopt.torch.quantization.model_calib.calibrate" title="modelopt.torch.quantization.model_calib.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calibrate</span></code></a>.</p>
+<p>Quantization configurations is a dictionary mapping wildcards or filter functions
+to its quantizer attributes. The wildcards or filter functions  are matched
+against the quantizer module names. The quantizer modules have names ending with
+<code class="docutils literal notranslate"><span class="pre">weight_quantizer</span></code> and <code class="docutils literal notranslate"><span class="pre">input_quantizer</span></code> and they perform weight quantization and
+input quantization (or activation quantization) respectively. The quantizer modules
+are instances of
+<a class="reference internal" href="modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer" title="modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer"><code class="xref py py-class docutils literal notranslate"><span class="pre">TensorQuantizer</span></code></a> and the
+specified quantizer attributes describe its quantization behavior. See
+<a class="reference internal" href="modelopt.torch.quantization.conversion.html#modelopt.torch.quantization.conversion.set_quantizer_by_cfg" title="modelopt.torch.quantization.conversion.set_quantizer_by_cfg"><code class="xref py py-meth docutils literal notranslate"><span class="pre">set_quantizer_by_cfg</span></code></a> for more details
+on <code class="docutils literal notranslate"><span class="pre">&quot;quant_cfg&quot;</span></code> dictionary.</p>
+<p>An example <code class="docutils literal notranslate"><span class="pre">config</span></code> dictionary is given below:</p>
+<p>Please see <a class="reference internal" href="modelopt.torch.quantization.config.html#module-modelopt.torch.quantization.config" title="modelopt.torch.quantization.config"><code class="xref py py-mod docutils literal notranslate"><span class="pre">config</span></code></a> for more examples.</p>
+</p></li>
+<li><p><strong>forward_loop</strong> (<em>Callable</em><em>[</em><em>[</em><em>Module</em><em>]</em><em>, </em><em>None</em><em>] </em><em>| </em><em>None</em>) – <p>A callable that forwards all calibration data through the model. This is used
+to gather statistics for calibration. It should take model as the argument. It does not need
+to return anything. Here are a few examples for correct <code class="docutils literal notranslate"><span class="pre">forward_loop</span></code> definitions:
+Example 1:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">forward_loop</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># iterate over the data loader and forward data through the model</span>
+    <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">data_loader</span><span class="p">:</span>
+        <span class="n">model</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Example 2:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">forward_loop</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+    <span class="c1"># evaluate the model on the task</span>
+    <span class="k">return</span> <span class="n">evaluate</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">task</span><span class="p">,</span> <span class="o">....</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Example 3:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">forward_loop</span><span class="p">(</span><span class="n">model</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="c1"># run evaluation pipeline</span>
+    <span class="n">evaluator</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+    <span class="n">evaluator</span><span class="o">.</span><span class="n">evaluate</span><span class="p">()</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Calibration does not require forwarding the entire dataset through the model.
+Please subsample the dataset or reduce the number of batches if needed.</p>
+</div>
+</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Module</em></p>
+</dd>
+</dl>
+<p>Returns: A pytorch model which has been quantized and calibrated.</p>
+</dd></dl>
+
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="modelopt.torch.quantization.model_calib.html" class="btn btn-neutral float-left" title="model_calib" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.quantization.nn.html" class="btn btn-neutral float-right" title="nn" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
