@@ -14,11 +14,16 @@ for i in $(env | grep ^SLURM_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMI_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMIX_ | cut -d"=" -f 1); do unset -v $i; done
 
+if [ $DEPLOYMENT != "tensorrt_llm" ]; then
+    echo "Only support tensorrt_llm deployment."
+    exit 1
+fi
+
 case $MODEL_TYPE in
-    gptnext|llama|gpt2)
+    gptnext|llama|gpt2|gemma)
         ;;
     *)
-        echo "Unsupported type argument: Expected one of: [gptnext, gpt2, llama]" >&2
+        echo "Unsupported type argument: Expected one of: [gptnext, gpt2, llama, gemma]" >&2
         exit 1
 esac
 
@@ -36,7 +41,9 @@ case $QFORMAT in
         exit 1
 esac
 
-DTYPE="fp16"
+if [ -z "$DTYPE" ]; then
+    DTYPE="bf16"
+fi
 
 if [ "$QFORMAT" == "fp16" ] || [ "$QFORMAT" == "bf16" ]; then
     DTYPE=$QFORMAT
@@ -103,18 +110,18 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         echo "Quantizing original model..."
         mpirun -n $CALIB_TP --allow-run-as-root python nemo_ptq.py \
             model_file=$MODEL_PATH \
-	        tensor_model_parallel_size=$(($CALIB_TP)) \
+            tensor_model_parallel_size=$(($CALIB_TP)) \
             pipeline_model_parallel_size=1 \
-	        trainer.devices=$(($CALIB_TP)) \
+            trainer.devices=$(($CALIB_TP)) \
             trainer.num_nodes=1 \
             trainer.precision=$PREC \
             quantization.algorithm=$QFORMAT \
             quantization.awq_block_size=$(($AWQ_BLOCK_SIZE)) \
-	        quantization.num_calib_size=$(($CALIB_NUM_BATCHES)) \
-	        inference.batch_size=$(($CALIB_BATCH_SIZE)) \
+            quantization.num_calib_size=$(($CALIB_NUM_BATCHES)) \
+            inference.batch_size=$(($CALIB_BATCH_SIZE)) \
             export.path=$SAVE_PATH \
             export.decoder_type=$MODEL_TYPE \
-	        export.inference_tensor_parallel=$(($TP)) \
+            export.inference_tensor_parallel=$(($TP)) \
             export.inference_pipeline_parallel=$(($PP)) \
             export.dtype=$DTYPE
     else

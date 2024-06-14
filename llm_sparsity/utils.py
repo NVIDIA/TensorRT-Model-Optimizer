@@ -24,6 +24,29 @@ import json
 
 import torch
 
+MODEL_NAME_PATTERN_MAP = {
+    "GPT2": "gpt2",
+    "Llama": "llama",
+    "Mistral": "llama",
+    "GPTJ": "gptj",
+    "FalconForCausalLM": "falcon",
+    "RWForCausalLM": "falcon",
+    "baichuan": "baichuan",
+    "MPT": "mpt",
+    "Bloom": "bloom",
+    "ChatGLM": "chatglm",
+    "QWen": "qwen",
+    "RecurrentGemma": "recurrentgemma",
+    "Gemma": "gemma",
+    "phi3small": "phi3small",
+    "phi3": "phi3",
+    "phi": "phi",
+    "TLGv4ForCausalLM": "phi",
+    "MixtralForCausalLM": "llama",
+    "ArcticForCausalLM": "llama",
+    "StarCoder": "gptnext",
+}
+
 
 def _make_r_io_base(f, mode: str):
     if not isinstance(f, io.IOBase):
@@ -46,3 +69,10 @@ def print_rank_0(message):
             print(message, flush=True)
     else:
         print(message, flush=True)
+
+
+def get_model_type(model):
+    for k, v in MODEL_NAME_PATTERN_MAP.items():
+        if k.lower() in type(model).__name__.lower():
+            return v
+    return None

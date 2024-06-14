@@ -19,8 +19,10 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import json
 import os
 import sys
+from os.path import isfile, join
 
 import PIL
 import PIL.Image
@@ -41,11 +43,15 @@ MODEL_NAME_PATTERN_MAP = {
     "Bloom": "bloom",
     "ChatGLM": "chatglm",
     "QWen": "qwen",
+    "RecurrentGemma": "recurrentgemma",
     "Gemma": "gemma",
+    "phi3small": "phi3small",
+    "phi3": "phi3",
     "phi": "phi",
     "TLGv4ForCausalLM": "phi",
     "MixtralForCausalLM": "llama",
     "ArcticForCausalLM": "llama",
+    "StarCoder": "gptnext",
 }
 
 
@@ -89,8 +95,7 @@ def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, model_type=None):
     return tokenizer
 
 
-def get_model(ckpt_path, dtype="fp16", device="cuda"):
-    print(f"Initializing model from {ckpt_path}")
+def get_dtype(dtype):
     if dtype == "bf16":
         dtype = torch.bfloat16
     elif dtype == "fp16":
@@ -99,6 +104,14 @@ def get_model(ckpt_path, dtype="fp16", device="cuda"):
         dtype = torch.float32
     else:
         raise NotImplementedError(f"Unknown dtype {dtype}")
+
+    return dtype
+
+
+def get_model(ckpt_path, dtype="fp16", device="cuda"):
+    print(f"Initializing model from {ckpt_path}")
+
+    dtype = get_dtype(dtype)
 
     if "vila" in ckpt_path:
         register_vila(ckpt_path)
@@ -123,12 +136,15 @@ def get_model(ckpt_path, dtype="fp16", device="cuda"):
         )
     model.eval()
     if device == "cuda":
-        if not all("cuda" in str(param.device) for param in model.parameters()):
-            raise RuntimeError(
-                "Some parameters are not on a GPU. Ensure there is sufficient GPU memory or set the device to 'cpu'."
-            )
+        if not is_model_on_gpu(model):
+            print("Warning: Some parameters are not on a GPU. Calibration can be slow or hit OOM")
 
     return model
+
+
+def is_model_on_gpu(model) -> bool:
+    """Returns if the model is fully loaded on GPUs."""
+    return all("cuda" in str(param.device) for param in model.parameters())
 
 
 def register_vila(ckpt_path: str):
@@ -166,3 +182,72 @@ def image_process_vila(image: PIL.Image.Image, ckpt_path: str):
     image_processor = vision_tower.image_processor
     image = image_processor(images=image, return_tensors="pt")["pixel_values"]
     return model, image
+
+
+def combine_medusa_head(base_model: str, medusa_model: str):
+    """
+    Combines medusa heads with base model into one model state dict
+
+    Args:
+        base_model: path to the base model dir
+        medusa_model: path to the medusa head dir
+    """
+    medusa_weight = join(medusa_model, "medusa_lm_head.pt")
+    assert isfile(medusa_weight), "Medusa head not found at " + medusa_weight
+
+    index_file_list = [
+        join(base_model, f)
+        for f in os.listdir(base_model)
+        if isfile(join(base_model, f)) and f.endswith(".bin.index.json")
+    ]
+    if len(index_file_list) == 1:
+        base_model_bin_index = index_file_list[0]
+    else:
+        base_model_bin_index = None
+
+    bin_file_list = [
+        join(base_model, f)
+        for f in os.listdir(base_model)
+        if isfile(join(base_model, f)) and f.endswith(".bin")
+    ]
+    if len(bin_file_list) == 1:
+        base_model_weight = bin_file_list[0]
+    else:
+        base_model_weight = None
+
+    assert not (
+        base_model_weight is None and base_model_bin_index is None
+    ), "Base model state dict not detected."
+
+    with open(join(medusa_model, "config.json")) as f:
+        medusa_config = json.load(f)
+    with open(join(base_model, "config.json")) as f:
+        base_config = json.load(f)
+
+    # Copy the medusa config to base model config
+    for key in medusa_config.keys():
+        base_config[key] = medusa_config[key]
+    with open(join(base_model, "config.json"), "w") as f:
+        json.dump(base_config, f, indent=4)
+
+    medusa_modules = torch.load(medusa_weight)
+    # The bin.index file has higher priority. If it presents, we will update base_model_weight
+    if base_model_bin_index is not None:
+        base_model_weight = bin_file_list[0]
+
+        medusa_size = os.path.getsize(medusa_weight)
+        with open(base_model_bin_index) as f:
+            bin_index = json.load(f)
+        bin_index["metadata"]["total_size"] += medusa_size
+        for module in medusa_modules.keys():
+            bin_index["weight_map"]["medusa_head." + module] = base_model_weight.split("/")[-1]
+
+        with open(base_model_bin_index, "w") as f:
+            json.dump(bin_index, f, indent=4)
+
+    # Store the medusa head state dict to the base model state dict
+    base_model_modules = torch.load(base_model_weight)
+    for module in medusa_modules.keys():
+        base_model_modules["medusa_head." + module] = medusa_modules[module]
+
+    torch.save(base_model_modules, base_model_weight)

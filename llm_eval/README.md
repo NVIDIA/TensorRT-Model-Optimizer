@@ -66,3 +66,24 @@ python humaneval.py --model_name causal --model_path <HF model folder or model c
 ```sh
 python humaneval.py --model_name causal --model_path <HF model folder or model card> --engine_dir <built TensorRT-LLM folder> --n_sample 1
 ```
+
+## MT-Bench
+
+[MT-Bench](https://arxiv.org/abs/2306.05685). These reponses are generated using [FastChat](https://github.com/lm-sys/FastChat).
+
+### Baseline
+
+```bash
+bash run_fastchat.sh <HF model folder or model card>
+```
+
+### Evaluate the TensorRT-LLM engine
+
+```bash
+bash run_fastchat.sh <HF model folder or model card> <built TensorRT-LLM folder>
+```
+
+### Judging the responses
+
+The responses to questions from MT Bench will be stored under `data/mt_bench/model_answer`.
+The quality of the responses can be judged using [llm_judge](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) from the FastChat repository. Please refer to the [llm_judge](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to compute the final MT-Bench score.

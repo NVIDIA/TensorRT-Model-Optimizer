@@ -168,7 +168,7 @@ def evaluate(model: Union[EvalModel, LLM], data_path: str, **kwargs) -> dict:
 def main(
     data_path: str = "human_eval/HumanEval.jsonl.gz",
     quant_cfg: str = None,
-    batch_size: int = 4,
+    batch_size: int = 0,
     calib_size: int = 512,
     **kwargs,
 ):

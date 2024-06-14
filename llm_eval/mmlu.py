@@ -229,7 +229,7 @@ def main(
     data_dir: str = "data/mmlu",
     ntrain: int = 5,
     quant_cfg: str = None,
-    batch_size: int = 4,
+    batch_size: int = 0,
     calib_size: int = 512,
     dtype: str = "bfloat16",
     **kwargs,

@@ -19,9 +19,12 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import json
 import os
 from math import ceil
 
+import pandas as pd
+import tensorrt as trt
 import tensorrt_llm
 import torch
 from model_runner import read_config
@@ -39,7 +42,7 @@ def element_size(dtype: str):
 
 
 class GPTBenchmark(BaseBenchmark):
-    def __init__(self, args, batch_sizes, in_out_lens, rank, world_size):
+    def __init__(self, args, batch_sizes, in_out_lens, gpu_weights_percents, rank, world_size):
         # Model Optimizer modification
         model_config = read_config(args.engine_dir, rank)
         args.model = model_config.model_name
@@ -49,6 +52,7 @@ class GPTBenchmark(BaseBenchmark):
         )
         self.batch_sizes = batch_sizes
         self.in_out_lens = in_out_lens
+        self.gpu_weights_percents = gpu_weights_percents
         self.num_beams = args.num_beams
         self.mode = args.mode
         self.build_time = 0
@@ -62,6 +66,11 @@ class GPTBenchmark(BaseBenchmark):
         # the actual weights size shall be smaller because there are some other data in the engine file.
         # for large model, this approximate is close enough.
         self.weights_size_approx = 0
+
+        self.dump_layer_info = args.dump_layer_info
+        # change profiling_verbosity to detailed when enabling dump layer info
+        if self.dump_layer_info:
+            args.profiling_verbosity = "detailed"
 
         if args.engine_dir is not None:
             # Get build configs from engine directory is done in base class
@@ -96,19 +105,6 @@ class GPTBenchmark(BaseBenchmark):
             self.decoder = tensorrt_llm.runtime.GenerationSession(
                 model_config, engine_buffer, self.runtime_mapping
             )
-        elif "mamba" in args.model:
-            model_config.mamba_d_state = self.mamba_d_state
-            model_config.mamba_d_conv = self.mamba_d_conv
-            model_config.mamba_expand = self.mamba_expand
-            self.sampling_config = tensorrt_llm.runtime.SamplingConfig(
-                end_id=0, pad_id=0, top_k=args.top_k, top_p=args.top_p
-            )
-            self.decoder = tensorrt_llm.runtime.MambaLMHeadModelGenerationSession(
-                model_config,
-                engine_buffer,
-                self.runtime_mapping,
-                cuda_graph_mode=self.cuda_graph_mode,
-            )
         else:
             end_id = 50256
             pad_id = 50256
@@ -129,10 +125,19 @@ class GPTBenchmark(BaseBenchmark):
                 cuda_graph_mode=self.cuda_graph_mode,
             )
 
+        # Print context memory size for CI/CD to track.
+        context_mem_size = self.decoder.context_mem_size
+        print(f"Allocated {context_mem_size / 1048576.0:.2f} MiB for execution context memory.")
+
     def get_config(self):
         for inlen, outlen in self.in_out_lens:
             for batch_size in self.batch_sizes:
-                yield (batch_size, inlen, outlen)
+                for gpu_weights_percent in self.gpu_weights_percents:
+                    yield (batch_size, inlen, outlen, gpu_weights_percent)
+
+    def set_weight_streaming(self, config):
+        gpu_weights_percent = config[3]
+        self.decoder.runtime._set_weight_streaming(gpu_weights_percent)
 
     def prepare_inputs(self, config):
         batch_size, inlen, outlen = config[0], config[1], config[2]
@@ -175,9 +180,10 @@ class GPTBenchmark(BaseBenchmark):
         return 2 * local_nlayers * size_per_head * local_heads
 
     def check_memory(self, io_shapes: list, raise_exception=False):
-        """Compare the estimated GPU memory requirements for weights + activations + kv cache
+        r"""Compare the estimated GPU memory requirements for weights + activations + kv cache
         with the total GPU memory and log it.
-        Raise exception when the \\p raise_exception parameter is true.
+
+        Raise exception when the \p raise_exception parameter is true.
         """
         # we don't want to block the test due to this
         if self.build_config is None:
@@ -196,9 +202,17 @@ class GPTBenchmark(BaseBenchmark):
             )
             * element_size(self.kv_dtype)
         )
-        # when MHA is OOTB, it requires 2x KV cache size, one for past as engine input, one for present as engine output
+        # when MHA is OOTB, it requires extra KV cache size, because OOTB don't support inplace updating KV cache.
         if not self.use_gpt_attention_plugin:
-            kv_cache_size_in_bytes *= 2
+            if os.getenv("TRTLLM_DISABLE_OOTB_KVCACHE_REUSE") != "ON":
+                local_n_layer = ceil(self.build_config.num_layers / self.runtime_mapping.pp_size)
+                kv_cache_size_in_bytes = (
+                    kv_cache_size_in_bytes / local_n_layer * (local_n_layer + 1)
+                )
+            else:
+                # without reusing, we need one for past as engine inputs, one for present as engine outputs.
+                kv_cache_size_in_bytes *= 2
+
         kv_cache_size_in_mb = bytes_to_target_unit(kv_cache_size_in_bytes, "MiB")
         activation_size_in_mb = bytes_to_target_unit(
             self.decoder.runtime.engine.device_memory_size, "MiB"
@@ -210,10 +224,11 @@ class GPTBenchmark(BaseBenchmark):
         prefix = "[Memory Estimation]"
 
         mem_msg = (
-            f"{prefix} activation memory:{activation_size_in_mb:.3f} MiB,"
-            f" kv_cache:{kv_cache_size_in_mb:.3f} MiB, weights"
-            f" approximate:{weights_size_in_mb:.3f} MiB, approximate required GPU memory:"
-            f" {total_memory_approx_in_mb:.3f} MiB, total GPU memory: {total_in_mb:.3f} MiB"
+            f"{prefix} activation memory:{activation_size_in_mb:.3f} MiB, "
+            f"kv_cache:{kv_cache_size_in_mb:.3f} MiB, "
+            f"weights approximate:{weights_size_in_mb:.3f} MiB, "
+            f"approximate required GPU memory: {total_memory_approx_in_mb:.3f} MiB, "
+            f"total GPU memory: {total_in_mb:.3f} MiB"
         )
         tensorrt_llm.logger.info(mem_msg)
 
@@ -231,13 +246,13 @@ class GPTBenchmark(BaseBenchmark):
             tensorrt_llm.logger.info(f"{prefix} {k}:{v}")
 
         tensorrt_llm.logger.info(
-            'grep the "Total Activation" and "Total Weights" from verbose TRT engine build log to'
-            " see the precise memory size for those."
+            'grep the "Total Activation" and "Total Weights" from verbose TRT engine build log '
+            "to see the precise memory size for those."
         )
         if raise_exception and total_memory_approx_in_mb >= total_in_mb:
             raise Exception(
-                "Total memory estimation bigger than total gpu memory, the case will likely to OOM,"
-                " needs enhancement of waive the test case, see logs about the memory usage details"
+                "Total memory estimation bigger than total gpu memory, the case will likely to OOM, "
+                "needs enhancement of waive the test case, see logs about the memory usage details"
             )
 
     def report(
@@ -251,9 +266,10 @@ class GPTBenchmark(BaseBenchmark):
         benchmark_profiler=None,
     ):
         report_dict = super().get_report_dict()
-        batch_size, inlen, outlen = config[0], config[1], config[2]
+        batch_size, inlen, outlen, gpu_weights_percent = config[0], config[1], config[2], config[3]
         tokens_per_sec = round(batch_size * outlen / (latency / 1000), 2)
         report_dict["batch_size"] = batch_size
+        report_dict["gpu_weights_percent"] = gpu_weights_percent
         report_dict["input_length"] = inlen
         report_dict["output_length"] = outlen
         report_dict["latency(ms)"] = latency
@@ -283,3 +299,69 @@ class GPTBenchmark(BaseBenchmark):
                 kv_pairs = [f"{k} {v}" for k, v in report_dict.items()]
                 line = "[BENCHMARK] " + " ".join(kv_pairs)
                 print(line)
+
+        if self.dump_layer_info:
+            engine_inspector = self.decoder.engine_inspector
+            inspector_result = engine_inspector.get_engine_information(
+                trt.LayerInformationFormat.JSON
+            )
+            json_result = json.loads(inspector_result)
+            layers = json_result["Layers"]
+            for layer_idx, _ in enumerate(layers):
+                layer_info = engine_inspector.get_layer_information(
+                    layer_idx, trt.LayerInformationFormat.ONELINE
+                )
+                print(layer_info)
+
+    def report_profiler(self, benchmark_profiler=None):
+        if benchmark_profiler is not None and benchmark_profiler.is_recording_perf_profile:
+            perf_profile_data = self.decoder.profiler.results
+            if not perf_profile_data:
+                tensorrt_llm.logger.error("profiler data is empty")
+                return
+
+            ctx_layers = list()
+            generation_layers = list()
+            start = 0
+            ctx_iter_cnt = 0
+            generation_iter_cnt = 0
+
+            # split context/generations layer information
+            for idx, layer_info in enumerate(perf_profile_data):
+                if layer_info[0] == "step":
+                    if layer_info[1] == 0:
+                        ctx_layers.extend(perf_profile_data[start:idx])
+                        ctx_iter_cnt += 1
+                    else:
+                        generation_layers.extend(perf_profile_data[start:idx])
+                        generation_iter_cnt += 1
+                        start = idx + 1
+
+            # Reduce all data
+            def reduce_layer_data(layers):
+                layer_infos = dict()
+                for layer in layers:
+                    if layer[0] in layer_infos:
+                        layer_infos[layer[0]] += layer[1]
+                    else:
+                        layer_infos[layer[0]] = layer[1]
+                return layer_infos
+
+            # Dump kernel data
+            def dump_kernel_profile_table(name: str, profile_data: list, iter_cnt: int):
+                table = pd.DataFrame(
+                    [["{:0.3f}".format(v), k] for k, v in profile_data.items() if v != 0.0],  # type: ignore[attr-defined]
+                    columns=["times (ms)", "{} Phase LayerName".format(name)],
+                )
+
+                def ljust(s):
+                    s = s.astype(str).str.strip()
+                    return s.str.ljust(s.str.len().max())
+
+                print(table.apply(ljust).to_string(index=False, justify="left"))
+                print("{} phase step iter: {}".format(name, iter_cnt))
+
+            ctx_layer_infos = reduce_layer_data(ctx_layers)
+            generation_layer_infos = reduce_layer_data(generation_layers)
+            dump_kernel_profile_table("Context", ctx_layer_infos, ctx_iter_cnt)
+            dump_kernel_profile_table("Generation", generation_layer_infos, generation_iter_cnt)

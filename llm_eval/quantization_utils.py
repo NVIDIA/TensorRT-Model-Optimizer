@@ -1,8 +1,9 @@
-from datasets import load_dataset
-from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import AutoTokenizer
 
 import modelopt.torch.quantization as mtq
+import modelopt.torch.utils.dataset_utils as dataset_utils
+from modelopt.torch.quantization.plugins import register_hf_attentions_on_the_fly
 
 MAX_SEQ_LEN = 2048
 MAX_OUTPUT_LEN = 512
@@ -26,33 +27,6 @@ def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN):
     return tokenizer
 
 
-def _get_calib_dataloader(
-    data="cnn_dailymail", tokenizer=None, batch_size=1, calib_size=512, block_size=512, device=None
-):
-    print("Loading calibration dataset")
-    if data == "pileval":
-        dataset = load_dataset(
-            "json", data_files="https://the-eye.eu/public/AI/pile/val.jsonl.zst", split="train"
-        )
-        dataset = dataset["text"][:calib_size]
-    elif data == "cnn_dailymail":
-        dataset = load_dataset("cnn_dailymail", name="3.0.0", split="train")
-        dataset = dataset["article"][:calib_size]
-    else:
-        raise NotImplementedError
-
-    batch_encoded = tokenizer.batch_encode_plus(
-        dataset, return_tensors="pt", padding=True, truncation=True, max_length=block_size
-    )
-    if device:
-        batch_encoded = batch_encoded.to(device)
-    batch_encoded = batch_encoded["input_ids"]
-
-    calib_dataloader = DataLoader(batch_encoded, batch_size=batch_size, shuffle=False)
-
-    return calib_dataloader
-
-
 def _quantize_model_with_dataset(lm, quant_cfg: str, calib_dataset):
     atq_cfg = getattr(mtq, quant_cfg)
 
@@ -63,11 +37,38 @@ def _quantize_model_with_dataset(lm, quant_cfg: str, calib_dataset):
 
     def calibrate_loop(model):
         print("Calibrating model...")
-        for data in calib_dataset:
+        for data in tqdm(calib_dataset):
             model(data)
         print("Calibration complete.")
 
-    net = mtq.quantize(net, atq_cfg, calibrate_loop)
+    def is_dynamic(atq_cfg):
+        def _not_dynamic(cfg):
+            return cfg.get("enable", True) and cfg.get("type", "") != "dynamic"
+
+        for _, cfg in atq_cfg.get("quant_cfg", {}).items():
+            # quantization like W4A8 has a list of weight quantizers
+            if isinstance(cfg, list):
+                for config in cfg:
+                    if _not_dynamic(config):
+                        return False
+            else:
+                if _not_dynamic(cfg):
+                    return False
+
+        return True
+
+    use_calibration = not is_dynamic(atq_cfg)
+    if not use_calibration:
+        print("Dynamic quantization. Calibration skipped.")
+
+    quantize_bmm_attention = False
+    for key in atq_cfg["quant_cfg"]:
+        if "bmm_quantizer" in key:
+            quantize_bmm_attention = True
+    if quantize_bmm_attention:
+        register_hf_attentions_on_the_fly(net)
+
+    net = mtq.quantize(net, atq_cfg, calibrate_loop if use_calibration else None)
     # Fold weights for faster evaluation.
     mtq.fold_weight(net)
 
@@ -89,28 +90,44 @@ def quantize_model(model, quant_cfg: str, tokenizer, batch_size, calib_size, dat
         data: the name of the calibration dataset.
     """
     if "AWQ" in quant_cfg:
-        if calib_size > 32:
-            print(
-                f"AWQ calibration could take longer with calib_size = {calib_size}, Using"
-                " calib_size=32 instead"
-            )
-            calib_size = 32
         print(
-            "\nAWQ calibration could take longer than other calibration methods. Please"
-            " increase the batch size to speed up the calibration process. Batch size can"
-            " be set by adding the argument --batch_size <batch_size> to the command line."
+            "\n####\nAWQ calibration could take longer than other calibration methods. "
+            "Consider reducing calib_size to reduce calibration time.\n####\n"
         )
 
     device = model.device
     if hasattr(model, "model"):
         device = model.model.device
 
-    calib_dataloader = _get_calib_dataloader(
-        data=data,
+    if batch_size == 0:
+
+        if hasattr(model, "gpt2"):
+            net = model.gpt2
+        else:
+            net = model.model
+
+        # We let the system to determine the max data batch for each forward.
+        batch_size = dataset_utils.get_max_batch_size(net)
+        print(f"Update calib batch {batch_size}")
+
+    calib_dataloader = dataset_utils.get_dataset_dataloader(
+        dataset_name=data,
         tokenizer=tokenizer,
         batch_size=batch_size,
-        calib_size=calib_size,
+        num_samples=calib_size,
         device=device,
     )
 
+    input_str = tokenizer.decode(next(iter(calib_dataloader))[0])
+    generated_str_before_ptq = model.run(input_str)
+
     _quantize_model_with_dataset(model, quant_cfg, calib_dataloader)
+
+    generated_str_after_ptq = model.run(input_str)
+
+    print("--------")
+    print(f"example test input: {input_str}")
+    print("--------")
+    print(f"example outputs before ptq: {generated_str_before_ptq}")
+    print("--------")
+    print(f"example outputs after ptq: {generated_str_after_ptq}")

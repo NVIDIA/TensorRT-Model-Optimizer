@@ -19,28 +19,24 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import contextlib
 import copy
 import os
-import shutil
-import tarfile
-import tempfile
 import time
 
 import torch
 import torch.multiprocessing as mp
 from datasets import load_dataset
-from megatron.core import parallel_state
+from megatron.core import mpu, parallel_state
 from megatron.core.transformer.module import Float16Module
-from megatron.utils import unwrap_model
+from megatron.training.utils import unwrap_model
 from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import MegatronGPTModel
 from nemo.collections.nlp.modules.common.transformer.text_generation import (
     LengthParam,
 )
 from nemo.collections.nlp.parts.nlp_overrides import NLPDDPStrategy, NLPSaveRestoreConnector
 from nemo.core.config import hydra_runner
-from nemo.utils import AppState
-from omegaconf import DictConfig, OmegaConf
+from nemo.utils.model_utils import load_config, save_artifacts
+from omegaconf import OmegaConf
 from omegaconf.omegaconf import open_dict
 from pytorch_lightning.trainer.trainer import Trainer
 from tqdm import tqdm
@@ -48,69 +44,9 @@ from tqdm import tqdm
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export import export_tensorrt_llm_checkpoint
 from modelopt.torch.utils import print_rank_0
+from modelopt.torch.utils.distributed import set_data_parallel_group, set_tensor_parallel_group
 
 mp.set_start_method("spawn", force=True)
-
-
-def load_config(model_file: str) -> DictConfig:
-    """Load model config from extracted directory or '.nemo' tarball."""
-    if os.path.isfile(model_file):
-        with tempfile.TemporaryDirectory() as tmp, tarfile.open(model_file, "r:") as tar:
-            try:
-                tar.extract("./model_config.yaml", path=tmp)
-            except KeyError:
-                print_rank_0("File name not found, trying legacy name...")
-                tar.extract("model_config.yaml", path=tmp)
-            model_config = OmegaConf.load(os.path.join(tmp, "model_config.yaml"))
-    elif os.path.isdir(model_file):
-        model_config = OmegaConf.load(os.path.join(model_file, "model_config.yaml"))
-    else:
-        raise FileNotFoundError(model_file)
-
-    return model_config
-
-
-def save_artifacts(model, output_dir: str, use_abspath: bool = False) -> None:
-    """Save all model artifacts and tokenizer config to a given output directory."""
-    app_state = AppState()
-    model_file = app_state.model_restore_path
-    model_cfg = copy.deepcopy(model.cfg)
-    if not hasattr(model, "artifacts"):
-        if hasattr(model_cfg, "tokenizer"):
-            OmegaConf.save(model_cfg.tokenizer, os.path.join(output_dir, "tokenizer_config.yaml"))
-        return
-
-    # Setup model file handling context: directory or tarball
-    if os.path.isfile(model_file):
-        model_file_handler = tarfile.open
-        kwargs = {"name": model_file, "mode": "r:"}
-    elif os.path.isdir(model_file):
-        model_file_handler = contextlib.nullcontext
-        kwargs = {}
-    else:
-        raise FileNotFoundError(model_file)
-
-    # Copy or extract artifacts depending on the context
-    with model_file_handler(**kwargs) as maybe_tar:
-        for arti_name, arti_item in model.artifacts.items():
-            _, arti_file = arti_item.path.split("nemo:")
-            arti_path = os.path.join(output_dir, arti_name)
-            if maybe_tar is not None:
-                try:
-                    maybe_tar.extract(f"./{arti_file}", path=output_dir)
-                except KeyError:
-                    print_rank_0("File name not found, trying legacy name...")
-                    maybe_tar.extract(f"{arti_file}", path=output_dir)
-                os.rename(os.path.join(output_dir, arti_file), arti_path)
-            else:
-                shutil.copy(os.path.join(model_file, arti_file), arti_path)
-            # Store artifact path as basename by default. Otherwise save absolute path but bear in mind
-            # that in this case output directory should be permanent for correct artifact recovery later
-            arti_path = os.path.abspath(arti_path) if use_abspath else os.path.basename(arti_path)
-            OmegaConf.update(model_cfg, arti_name, arti_path)
-
-    if hasattr(model_cfg, "tokenizer"):
-        OmegaConf.save(model_cfg.tokenizer, os.path.join(output_dir, "tokenizer_config.yaml"))
 
 
 def get_calib_dataloader(
@@ -166,7 +102,7 @@ def main(cfg) -> None:
         model_cfg.sequence_parallel = False
         # Only custom Model Optimizer spec is supported for PTQ: this custom spec is largely based on local Megatron-LM
         # layer definitions to avoid Transformer Engine implementations that are currently not supported.
-        model_cfg.name = "ammo"
+        model_cfg.name = "modelopt"
 
     # trainer required for restoring model parallel models
     trainer = Trainer(strategy=NLPDDPStrategy(), **cfg.trainer)
@@ -199,6 +135,10 @@ def main(cfg) -> None:
 
     config = OmegaConf.to_container(cfg.inference)
     model.set_inference_config(config)
+
+    # Setting tensor parallel and data parallel group
+    set_data_parallel_group(mpu.get_data_parallel_group())
+    set_tensor_parallel_group(mpu.get_tensor_model_parallel_group())
 
     if cfg.quantization.algorithm and cfg.quantization.algorithm in QUANT_CFG_CHOICES:
         if "awq" in cfg.quantization.algorithm:
@@ -303,6 +243,7 @@ def main(cfg) -> None:
         export_dir=export_path,
         inference_tensor_parallel=cfg.export.inference_tensor_parallel,
         inference_pipeline_parallel=cfg.export.inference_pipeline_parallel,
+        use_nfs_workspace=cfg.trainer.num_nodes > 1,
     )
     end_time = time.time()
     print_rank_0(

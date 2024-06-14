@@ -31,7 +31,7 @@ Doing QAT without the original un-quantized training/fine-tuning is found to hav
 
 Here is an example code for performing QAT:
 
-```
+```python
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 
@@ -40,9 +40,11 @@ import modelopt.torch.quantization as mtq
 # [Not shown] load model, tokenizer, data loaders etc
 trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
 
+
 def forward_loop(model):
-   for i, data in enumerate(calib_dataloader):
-       model(data)
+    for i, data in enumerate(calib_dataloader):
+        model(data)
+
 
 # Quantize the model in-place; The model should be unwrapped from any distributed wrapper
 # The model may be wrapped in a DataParallel or DistributedDataParallel after `mtq.quantize`
@@ -55,7 +57,7 @@ torch.save(mto.modelopt_state(model), "modelopt_quantizer_states.pt")
 # load the quantizer states before loading the model weights
 # mto.restore_from_modelopt_state(model, torch.load("modelopt_quantizer_states.pt"))
 
-trainer.train()   # Train the quantized model (i.e, QAT)
+trainer.train()  # Train the quantized model (i.e, QAT)
 
 # Save the final model weights; An example usage
 trainer.save_model()
@@ -103,7 +105,7 @@ To perform QAT, run:
 
 You may alternatively perform QAT with any other quantization formats from **ModelOpt**. Please see more details on the supported quantization formats and how to use them as shown below:
 
-```
+```python
 import modelopt.torch.quantization as mtq
 
 # To learn about the quantization formats and quantization config from modelopt

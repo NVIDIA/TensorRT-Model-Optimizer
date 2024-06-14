@@ -25,6 +25,13 @@ import torch
 from calib.plugin_calib import PercentileCalibrator
 from diffusers.models.lora import LoRACompatibleConv, LoRACompatibleLinear
 
+USE_PEFT = True
+try:
+    from peft.tuners.lora.layer import Conv2d as PEFTLoRAConv2d
+    from peft.tuners.lora.layer import Linear as PEFTLoRALinear
+except ModuleNotFoundError:
+    USE_PEFT = False
+
 
 def filter_func(name):
     pattern = re.compile(
@@ -151,3 +158,15 @@ def load_calib_prompts(batch_size, calib_data_path="./calib_prompts.txt"):
     with open(calib_data_path, "r", encoding="utf8") as file:
         lst = [line.rstrip("\n") for line in file]
     return [lst[i : i + batch_size] for i in range(0, len(lst), batch_size)]
+
+
+def check_lora(unet):
+    for name, module in unet.named_modules():
+        if isinstance(module, (LoRACompatibleConv, LoRACompatibleLinear)):
+            assert (
+                module.lora_layer is None
+            ), f"To quantize {name}, LoRA layer should be fused/merged. Please fuse the LoRA layer before quantization."
+        elif USE_PEFT and isinstance(module, (PEFTLoRAConv2d, PEFTLoRALinear)):
+            assert (
+                module.merged
+            ), f"To quantize {name}, LoRA layer should be fused/merged. Please fuse the LoRA layer before quantization."

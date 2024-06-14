@@ -16,6 +16,7 @@
 
 ## Latest News
 
+- \[2024/06/03\] Model Optimizer now has an experimental feature to deploy to vLLM as part of our effort to support popular deployment frameworks. Check out the workflow [here](./llm_ptq/README.md#deploy-fp8-quantized-model-using-vllm)
 - \[2024/05/08\] [Announcement: Model Optimizer Now Formally Available to Further Accelerate GenAI Inference Performance](https://developer.nvidia.com/blog/accelerate-generative-ai-inference-performance-with-nvidia-tensorrt-model-optimizer-now-publicly-available/)
 - \[2024/03/27\] [Model Optimizer supercharges TensorRT-LLM to set MLPerf LLM inference records](https://developer.nvidia.com/blog/nvidia-h200-tensor-core-gpus-and-nvidia-tensorrt-llm-set-mlperf-llm-inference-records/)
 - \[2024/03/18\] [GTC Session: Optimize Generative AI Inference with Quantization in TensorRT-LLM and TensorRT](https://www.nvidia.com/en-us/on-demand/session/gtc24-s63213/)
@@ -45,7 +46,7 @@ Model Optimizer is available for free for all developers on [NVIDIA PyPI](https:
 ### [PIP](https://pypi.org/project/nvidia-modelopt/)
 
 ```bash
-pip install "nvidia-modelopt[all]~=0.11.0" --extra-index-url https://pypi.nvidia.com
+pip install "nvidia-modelopt[all]~=0.13.0" --extra-index-url https://pypi.nvidia.com
 ```
 
 See the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more fine-grained control over the installation.
@@ -67,6 +68,8 @@ docker run --gpus all -it --shm-size 20g --rm docker.io/library/modelopt_example
 python -c "import modelopt"
 ```
 
+Alternatively for PyTorch, you can also use [NVIDIA NGC PyTorch container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch/tags) with Model Optimizer pre-installed starting from 24.06 PyTorch container. Make sure to update the Model Optimizer version to the latest one if not already.
+
 ## Techniques
 
 ### Quantization
@@ -79,7 +82,11 @@ Sparsity is a technique to further reduce the memory footprint of deep learning 
 
 ## Examples
 
-- [PTQ for LLMs](./llm_ptq/README.md) covers how to use Post-training quantization (PTQ) for popular pre-trained [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) and [Hugging Face](https://huggingface.co/docs/hub/en/models-the-hub) models, export to [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for deployment.
+- [PTQ for LLMs](./llm_ptq/README.md) covers how to use Post-training quantization (PTQ) and export to [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for deployment for popular pre-trained models from frameworks like
+  - [Hugging Face](https://huggingface.co/docs/hub/en/models-the-hub)
+  - [NVIDIA NeMo](https://github.com/NVIDIA/NeMo)
+  - [NVIDIA Megatron-LM](https://github.com/NVIDIA/Megatron-LM)
+  - [Medusa](https://github.com/FasterDecoding/Medusa)
 - [PTQ for Diffusers](./diffusers/README.md) walks through how to quantize a diffusion model with FP8 or INT8, export to ONNX, and deploy with [TensorRT](https://github.com/NVIDIA/TensorRT/tree/release/10.0/demo/Diffusion). The Diffusers example in this repo is complementary to the [demoDiffusion example in TensorRT repo](https://github.com/NVIDIA/TensorRT/tree/release/9.3/demo/Diffusion#introduction) and includes FP8 plugins as well as the latest updates on INT8 quantization.
 - [QAT for LLMs](./llm_qat/README.md) demonstrates the recipe and workflow for Quantization-aware Training (QAT), which can further preserve model accuracy at low precisions (e.g., INT4, or 4-bit in [NVIDIA Blackwell platform](https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/)).
 - [Sparsity for LLMs](./llm_sparsity/README.md) shows how to perform Post-training Sparsification and Sparsity-aware fine-tuning on a pre-trained Hugging Face model.

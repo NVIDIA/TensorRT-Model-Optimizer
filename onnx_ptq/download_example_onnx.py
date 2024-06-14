@@ -22,11 +22,11 @@
 import argparse
 import os
 
+import timm
 import torch
 from onnx import load_model, save_model
 from onnxmltools.utils import float16_converter
 from optimum.onnxruntime import ORTModelForCausalLM
-from transformers import ViTForImageClassification
 
 
 def torch_to_onnx(
@@ -36,7 +36,7 @@ def torch_to_onnx(
     fp16,
     input_names=["input"],
     output_names=["output"],
-    opset=13,
+    opset=17,
     do_constant_folding=True,
 ):
     model.eval()
@@ -63,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--vit",
         action="store_true",
-        help="Export google/vit-base-patch16-224 to ONNX.",
+        help="Export timm/vit_base_patch16_224 model to ONNX.",
     )
     parser.add_argument(
         "--llama",
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.vit:
-        model = ViTForImageClassification.from_pretrained("google/vit-base-patch16-224")
+        model = timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=1000)
         input = torch.randn(args.batch_size, 3, 224, 224)
         torch_to_onnx(model, input, args.output_path, args.fp16)
 

@@ -1,0 +1,7 @@
+accelerate>=0.22.0
+datasets>=2.14.5
+diffusers>=0.27.2
+opencv-python==4.8.1.78
+optimum
+peft>=0.10.0
+transformers>=4.40.2

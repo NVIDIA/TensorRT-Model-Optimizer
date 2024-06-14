@@ -2,7 +2,7 @@
 
 This example shows how to use Model Optimizer to calibrate and quantize the UNet part of the SDXL and SD1.5. The UNet part typically consumes >95% of the e2e Stable Diffusion latency.
 
-We also provide instructions on deploying and running E2E SDXL and SD1.5 pipelines with Model Optimizer quantized int8 and fp8 UNet to generate images and measure latency on target GPUs.
+We also provide instructions on deploying and running E2E SDXL and SD1.5 pipelines with Model Optimizer quantized int8 and fp8 UNet to generate images and measure latency on target GPUs. Note, Jetson devices are not supported so far.
 
 ## Get Started
 
@@ -34,8 +34,8 @@ If you prefer to customize parameters in calibration or run other models, please
 
 We support calibration for both int8 and fp8 precision and for both weights and activations.
 
-> *Model calibration requires relatively more GPU computing powers and it does not need to be on the same GPUs as
-> the deployment target GPUs.*
+Note: Model calibration requires relatively more GPU computing powers and it does not need to be on the same GPUs as
+the deployment target GPUs.
 
 ### SDXL|SD1.5|SDXL-Turbo INT8
 
@@ -54,9 +54,8 @@ python quantize.py \
 ```sh
 python quantize.py \
   --model {stabilityai/stable-diffusion-xl-base-1.0|runwayml/stable-diffusion-v1-5|stabilityai/sdxl-turbo} \
-  --format fp8 --batch-size 2 --calib-size {CALIB_SIZE} \
-  --percentile {PERCENTILE} --quant-level {QUANT_LEVEL} \
-  --n_steps {N_STEPS} --exp_name {EXP_NAME} --collect-method default # `--alpha` is not needed in FP8 quantization
+  --format fp8 --batch-size 2 --calib-size {CALIB_SIZE} --quant-level {QUANT_LEVEL} \
+  --n_steps {N_STEPS} --exp_name {EXP_NAME} --collect-method default
 ```
 
 #### Important Parameters
@@ -71,7 +70,7 @@ python quantize.py \
 
 - `n_steps`: Recommendation: SD/SDXL 20 or 30, SDXL-Turbo 4.
 
-**Now, we can load the generated checkpoint and export the INT8/FP8 quantized model in the next step.**
+**Then, we can load the generated checkpoint and export the INT8/FP8 quantized model in the next step.**
 
 ## ONNX Export
 
@@ -111,7 +110,7 @@ We tested int8 TRT engine build and the following E2E pipeline on the following 
 
 If you want to run end-to-end SD/SDXL pipeline with Model Optimizer quantized UNet to generate images and measure latency on target GPUs, here are the steps:
 
-- Clone a copy of [demo/Diffusion repo](https://github.com/NVIDIA/TensorRT/tree/release/9.3/demo/Diffusion).
+- Clone a copy of [demo/Diffusion repo](https://github.com/NVIDIA/TensorRT/tree/release/10.0/demo/Diffusion).
 
 - Following the README from demoDiffusion to set up the pipeline (note: you can skip the installation instructions if you use the docker container built in this repo), and run a baseline txt2img example (fp16):
 
@@ -136,6 +135,55 @@ The engines must be built on the same GPU, with the INT8 engine name matching th
   1. INT8: ![Image generated with int8 engine](./assets/xl_base-int8.png)
 
 Similarly, you could run end-to-end SD1.5 or SDXL-turbo pipeline with Model Optimizer quantized UNet and corresponding examples in demoDiffusion.
+
+## LoRA
+
+For optimal performance of INT8/FP8 quantized models, we highly recommend fusing the LoRA weights prior to quantization. Failing to do so can disrupt TensorRT kernel fusion when integrating the LoRA layer with INT8/FP8 Quantize-Dequantize (QDQ) nodes, potentially leading to performance losses.
+
+### Recommended Workflow:
+
+Start by fusing the LoRA weights in your model. This process can help ensure that the model is optimized for quantization. Detailed guidance on how to fuse LoRA weights can be found in the Hugging Face [PEFT documentation](https://github.com/huggingface/peft):
+
+After fusing the weights, proceed with the calibration and you can follow our code to do the quantization.
+
+```python
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    variant="fp16",
+    use_safetensors=True,
+).to("cuda")
+pipe.load_lora_weights(
+    "CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy"
+)
+pipe.fuse_lora(lora_scale=0.9)
+...
+# All the LoRA layers should be fused
+check_lora(pipe.unet)
+
+mtq.quantize(pipe.unet, quant_config, forward_loop)
+mto.save(pipe.unet, ...)
+```
+
+When it's time to export the model to ONNX format, ensure that you load the PEFT-modified LoRA model first.
+
+```python
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    variant="fp16",
+    use_safetensors=True,
+)
+pipe.load_lora_weights(
+    "CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy"
+)
+pipe.fuse_lora(lora_scale=0.9)
+mto.restore(pipe.unet, your_quantized_ckpt)
+...
+# Export the onnx model
+```
+
+By following these steps, your PEFT LoRA model should be efficiently quantized using ModelOPT, ready for deployment while maximizing performance.
 
 ### Notes About Randomness
 
