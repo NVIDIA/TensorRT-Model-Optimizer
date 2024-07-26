@@ -78,7 +78,15 @@ def _quantize_model_with_dataset(lm, quant_cfg: str, calib_dataset):
         lm.model = net
 
 
-def quantize_model(model, quant_cfg: str, tokenizer, batch_size, calib_size, data="cnn_dailymail"):
+def quantize_model(
+    model,
+    quant_cfg: str,
+    tokenizer,
+    batch_size,
+    calib_size,
+    data="cnn_dailymail",
+    test_generated=True,
+):
     """Quantizes the model with the provided calibration dataset.
 
     Args:
@@ -88,6 +96,7 @@ def quantize_model(model, quant_cfg: str, tokenizer, batch_size, calib_size, dat
         batch_size: the calibration batch size for each calibration inference run.
         calib_size: the total calibration dataset size.
         data: the name of the calibration dataset.
+        test_generated:  If ``True``, test the generated text before and after quantization.
     """
     if "AWQ" in quant_cfg:
         print(
@@ -118,16 +127,18 @@ def quantize_model(model, quant_cfg: str, tokenizer, batch_size, calib_size, dat
         device=device,
     )
 
-    input_str = tokenizer.decode(next(iter(calib_dataloader))[0])
-    generated_str_before_ptq = model.run(input_str)
+    if test_generated:
+        input_str = tokenizer.decode(next(iter(calib_dataloader))[0])
+        generated_str_before_ptq = model.run(input_str)
 
     _quantize_model_with_dataset(model, quant_cfg, calib_dataloader)
 
-    generated_str_after_ptq = model.run(input_str)
+    if test_generated:
+        generated_str_after_ptq = model.run(input_str)
 
-    print("--------")
-    print(f"example test input: {input_str}")
-    print("--------")
-    print(f"example outputs before ptq: {generated_str_before_ptq}")
-    print("--------")
-    print(f"example outputs after ptq: {generated_str_after_ptq}")
+        print("--------")
+        print(f"example test input: {input_str}")
+        print("--------")
+        print(f"example outputs before ptq: {generated_str_before_ptq}")
+        print("--------")
+        print(f"example outputs after ptq: {generated_str_after_ptq}")

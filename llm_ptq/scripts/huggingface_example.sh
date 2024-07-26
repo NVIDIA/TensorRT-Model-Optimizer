@@ -15,10 +15,10 @@ for i in $(env | grep ^PMI_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMIX_ | cut -d"=" -f 1); do unset -v $i; done
 
 case $MODEL_TYPE in
-    gptj|llama|falcon|baichuan|gpt2|mpt|bloom|chatglm|gemma|recurrentgemma|phi|mixtral|gptnext|qwen|llava)
+    gptj|llama|falcon|baichuan|gpt2|mpt|bloom|chatglm|gemma|recurrentgemma|phi|mixtral|gptnext|qwen|dbrx|enc_dec|llava)
         ;;
     *)
-        echo "Unsupported type argument: Expected one of: [gpt2, gptj, llama, falcon, baichuan, mpt, bloom, chatglm, gemma, recurrentgemma, phi, mixtral, gptnext, qwen, llava]" >&2
+        echo "Unsupported type argument: Expected one of: [gpt2, gptj, llama, falcon, baichuan, mpt, bloom, chatglm, gemma, recurrentgemma, phi, mixtral, gptnext, qwen, dbrx, enc_dec, llava]" >&2
         exit 1
 esac
 

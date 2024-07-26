@@ -207,7 +207,8 @@ class SeqToSeqModel(EvalModel):
 
     def run(self, prompt: str, **kwargs) -> str:
         self.load()
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        device = self.model.device if hasattr(self.model, "device") else self.device
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(device)
         outputs = self.model.generate(
             **inputs,
             max_length=self.max_output_length,
@@ -259,7 +260,8 @@ class CausalModel(SeqToSeqModel):
 
     def run(self, prompt: str, **kwargs) -> str:
         self.load()
-        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+        device = self.model.device if hasattr(self.model, "device") else self.device
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(device)
         if "RWForCausalLM" in str(type(self.model)) or "Falcon" in str(type(self.model)):
             # this key is used by falcon 180b, but not by falcon 40b
             inputs.pop("token_type_ids", None)
@@ -326,7 +328,8 @@ class LlamaModel(SeqToSeqModel):
             text = prompt
 
         self.load()
-        inputs = self.tokenizer(text, return_tensors="pt").to(self.device)
+        device = self.model.device if hasattr(self.model, "device") else self.device
+        inputs = self.tokenizer(text, return_tensors="pt").to(device)
         if "65b" in self.model_path.lower():
             self.max_input_length = 1024
             inputs = self.tokenizer(
@@ -334,7 +337,7 @@ class LlamaModel(SeqToSeqModel):
                 return_tensors="pt",
                 truncation=True,
                 max_length=self.max_input_length,
-            ).to(self.device)
+            ).to(device)
 
         outputs = self.model.generate(
             **inputs,

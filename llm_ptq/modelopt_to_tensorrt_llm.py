@@ -22,10 +22,14 @@
 """An example to convert an Model Optimizer exported model to tensorrt_llm."""
 
 import argparse
+import subprocess
+from pathlib import Path
+from typing import Optional, Union
 
+import tensorrt_llm
+import torch
 from run_tensorrt_llm import run
-
-from modelopt.deploy.llm import build_tensorrt_llm
+from tensorrt_llm.models import PretrainedConfig
 
 
 def str2bool(v):
@@ -39,6 +43,123 @@ def str2bool(v):
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
 
+def build_tensorrt_llm(
+    pretrained_config: Union[str, Path],
+    engine_dir: Union[str, Path],
+    max_input_len: int = 200,
+    max_output_len: int = 200,
+    max_batch_size: int = 1,
+    max_beam_width: int = 1,
+    max_num_tokens: Optional[int] = None,
+    num_build_workers: int = 1,
+    enable_sparsity: bool = False,
+    max_prompt_embedding_table_size: int = 0,
+):
+    """The API to convert the TensorRT-LLM checkpoint to engines.
+
+    Args:
+        pretrained_config: The pretrained_config (file path) exported by
+            ``modelopt.torch.export.export_tensorrt_llm_checkpoint``.
+        engine_dir: The target output directory to save the built tensorrt_llm engines.
+        max_input_len: The max input sequence length.
+        max_output_len: The max output sequence length.
+        max_batch_size: The max batch size.
+        max_beam_width: The max beam search width.
+        max_num_tokens: The max number of tokens that can be processed at the same time.
+            For the context phase, the max_num_tokens counts the full sequence length.
+            For the generation phase, the max_num_tokens counts only the ones under generation
+            as the input sequence has been processed as cached.
+            max_num_tokens should fall between [max_batch_size * max_beam_width, max_batch_size * max_input_len].
+            when inflight batching is enabled.
+            Higher max_num_tokens means more GPU memory will be used for resource allocation.
+            If not specified the max_num_tokens will be set to the max bound.
+            Details: https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/perf_best_practices.md
+        num_build_workers: The number of workers to use for the building process.
+            If build time is a concern, you can increase this worker count to num of GPUs.
+            At a lost of higer CPU memory usage footprint.
+            If CPU memory is limited, num_build_workers should be set to 1 to conserve memory.
+        enable_sparsity: The switch to enable sparsity for TRT compiler.
+            With this flag, the TRT compiler will search tactics of sparse kernels for each node of which
+            weight tensors are sparsified. This increases engine building time significantly.
+        max_prompt_embedding_table_size: Length of the prepended/concatenated embeddings (either multimodal
+            feature embeddings or prompt tuning embeddings) to the LLM input embeddings.
+    """
+    engine_dir = Path(engine_dir)
+    engine_dir.mkdir(parents=True, exist_ok=True)
+
+    pretrained_config_path = Path(pretrained_config)
+    assert pretrained_config_path.exists()
+    config = PretrainedConfig.from_json_file(pretrained_config_path)
+    ckpt_dir = pretrained_config_path.parent
+
+    timing_cache_file = (
+        torch.cuda.get_device_name().replace(" ", "_")
+        + "_trtllm_"
+        + tensorrt_llm.__version__
+        + ".cache"
+    )
+    timing_cache_path = engine_dir / timing_cache_file
+
+    log_level = "warning"
+
+    if max_batch_size < 4:
+        print(
+            "Warning: TensorRT LLM may hit a runtime issue with batch size is smaller than 4 on some models."
+            " Force set to 4"
+        )
+        max_batch_size = 4
+
+    use_fused_mlp = config.quantization.quant_algo in [
+        "FP8",
+        None,
+    ] and config.hidden_act in ["silu", "swiglu", "fast-swiglu", "gelu", "geglu"]
+
+    quant_algo = config.quantization.quant_algo
+    use_qdq = quant_algo in ["FP8", "W8A8_SQ_PER_CHANNEL"]
+
+    builder_opt = 4 if "RecurrentGemma" not in config.architecture else 0
+
+    speculative_decoding_mode = "medusa" if "Medusa" in config.architecture else None
+
+    build_cmd = "trtllm-build "
+    build_cmd += f"--checkpoint_dir {ckpt_dir} "
+    build_cmd += f"--input_timing_cache {timing_cache_path} "
+    build_cmd += f"--output_timing_cache {timing_cache_path} "
+    build_cmd += f"--log_level {log_level} "
+    build_cmd += f"--output_dir {engine_dir} "
+    build_cmd += f"--workers {num_build_workers} "
+    build_cmd += f"--max_batch_size {max_batch_size} "
+    build_cmd += f"--max_input_len {max_input_len} "
+    build_cmd += f"--max_output_len {max_output_len} "
+    build_cmd += f"--max_beam_width {max_beam_width} "
+    build_cmd += f"--tp_size {config.mapping.tp_size} "
+    build_cmd += f"--pp_size {config.mapping.pp_size} "
+    build_cmd += f"--max_prompt_embedding_table_size {max_prompt_embedding_table_size} "
+    build_cmd += f"--builder_opt {builder_opt} "
+    build_cmd += f"--gpt_attention_plugin {config.dtype} "
+    build_cmd += f"--nccl_plugin {config.dtype} "
+    build_cmd += f"--max_num_tokens {max_batch_size * max_input_len} "
+
+    if use_fused_mlp:
+        build_cmd += "--use_fused_mlp " if "RecurrentGemma" not in config.architecture else ""
+    if enable_sparsity:
+        build_cmd += "--weight_sparsity "
+
+    if not use_qdq:
+        build_cmd += f"--gemm_plugin {config.dtype} "
+
+    if max_num_tokens:
+        build_cmd += f"--max_num_tokens {max_num_tokens} "
+
+    if speculative_decoding_mode:
+        build_cmd += f"--speculative_decoding_mode {speculative_decoding_mode} "
+
+    print("trtllm-build command:")
+    print(f"{build_cmd}")
+
+    subprocess.run(build_cmd, shell=True, check=True)
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_config", type=str, default="")
@@ -47,7 +168,6 @@ def parse_arguments():
     parser.add_argument("--max_batch_size", type=int, default=8)
     parser.add_argument("--max_num_beams", type=int, default=1)
     parser.add_argument("--engine_dir", type=str, default="/tmp/modelopt")
-    parser.add_argument("--refit_engine_dir", type=str, default="")
     parser.add_argument("--tokenizer", type=str, default="")
     parser.add_argument(
         "--input_texts",

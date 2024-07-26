@@ -19,11 +19,13 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+import os
 import re
 
 import torch
-from calib.plugin_calib import PercentileCalibrator
+from diffusers.models.attention_processor import Attention, AttnProcessor
 from diffusers.models.lora import LoRACompatibleConv, LoRACompatibleLinear
+from diffusers.utils import load_image
 
 USE_PEFT = True
 try:
@@ -35,7 +37,7 @@ except ModuleNotFoundError:
 
 def filter_func(name):
     pattern = re.compile(
-        r".*(time_emb_proj|time_embedding|conv_in|conv_out|conv_shortcut|add_embedding).*"
+        r".*(time_emb_proj|time_embedding|conv_in|conv_out|conv_shortcut|add_embedding|pos_embed|time_text_embed|context_embedder|norm_out|proj_out).*"
     )
     return pattern.match(name) is not None
 
@@ -47,117 +49,54 @@ def quantize_lvl(unet, quant_level=2.5):
     if we didn't add that unwanted layer into the config during the calibration
     """
     for name, module in unet.named_modules():
-        if isinstance(module, (torch.nn.Conv2d, LoRACompatibleConv)):
+        if isinstance(module, torch.nn.Conv2d):
             module.input_quantizer.enable()
             module.weight_quantizer.enable()
-        elif isinstance(module, (torch.nn.Linear, LoRACompatibleLinear)):
+        elif isinstance(module, torch.nn.Linear):
             if (
                 (quant_level >= 2 and "ff.net" in name)
                 or (quant_level >= 2.5 and ("to_q" in name or "to_k" in name or "to_v" in name))
-                or quant_level == 3
+                or quant_level >= 3
             ):
                 module.input_quantizer.enable()
                 module.weight_quantizer.enable()
             else:
                 module.input_quantizer.disable()
                 module.weight_quantizer.disable()
-
-
-def get_int8_config(
-    model,
-    quant_level=3,
-    alpha=0.8,
-    percentile=1.0,
-    num_inference_steps=20,
-    collect_method="min-mean",
-):
-    quant_config = {
-        "quant_cfg": {
-            "*lm_head*": {"enable": False},
-            "*output_layer*": {"enable": False},
-            "default": {"num_bits": 8, "axis": None},
-        },
-        "algorithm": {"method": "smoothquant", "alpha": alpha},
-    }
-    for name, module in model.named_modules():
-        w_name = f"{name}*weight_quantizer"
-        i_name = f"{name}*input_quantizer"
-
-        if w_name in quant_config["quant_cfg"].keys() or i_name in quant_config["quant_cfg"].keys():
-            continue
-        if filter_func(name):
-            continue
-        if isinstance(module, (torch.nn.Linear, LoRACompatibleLinear)):
-            if (
-                (quant_level >= 2 and "ff.net" in name)
-                or (quant_level >= 2.5 and ("to_q" in name or "to_k" in name or "to_v" in name))
-                or quant_level == 3
-            ):
-                quant_config["quant_cfg"][w_name] = {"num_bits": 8, "axis": 0}
-                quant_config["quant_cfg"][i_name] = {"num_bits": 8, "axis": -1}
-        elif isinstance(module, (torch.nn.Conv2d, LoRACompatibleConv)):
-            quant_config["quant_cfg"][w_name] = {"num_bits": 8, "axis": 0}
-            quant_config["quant_cfg"][i_name] = {
-                "num_bits": 8,
-                "axis": None,
-                "calibrator": (
-                    PercentileCalibrator,
-                    (),
-                    {
-                        "num_bits": 8,
-                        "axis": None,
-                        "percentile": percentile,
-                        "total_step": num_inference_steps,
-                        "collect_method": collect_method,
-                    },
-                ),
-            }
-    return quant_config
-
-
-def get_fp8_config(model, percentile=1.0, num_inference_steps=20, collect_method="min-mean"):
-    quant_config = {
-        "quant_cfg": {
-            "*lm_head*": {"enable": False},
-            "*output_layer*": {"enable": False},
-            "default": {"num_bits": 8, "axis": None},
-        },
-        "algorithm": "max",
-    }
-    for name, module in model.named_modules():
-        w_name = f"{name}*weight_quantizer"
-        i_name = f"{name}*input_quantizer"
-
-        if w_name in quant_config["quant_cfg"].keys() or i_name in quant_config["quant_cfg"].keys():  # type: ignore
-            continue
-        if filter_func(name):
-            continue
-        if isinstance(
-            module, (torch.nn.Conv2d, LoRACompatibleConv, torch.nn.Linear, LoRACompatibleLinear)
-        ):
-            quant_config["quant_cfg"][w_name] = {"num_bits": (4, 3), "axis": None}  # type: ignore
-            quant_config["quant_cfg"][i_name] = {  # type: ignore
-                "num_bits": (4, 3),
-                "axis": None,
-                "calibrator": (
-                    PercentileCalibrator,
-                    (),
-                    {
-                        "num_bits": (4, 3),
-                        "axis": None,
-                        "percentile": percentile,
-                        "total_step": num_inference_steps,
-                        "collect_method": collect_method,
-                    },
-                ),
-            }
-    return quant_config
+        elif isinstance(module, Attention):
+            if quant_level >= 4:
+                module.q_bmm_quantizer.enable()
+                module.k_bmm_quantizer.enable()
+                module.v_bmm_quantizer.enable()
+                module.softmax_quantizer.enable()
+            else:
+                module.q_bmm_quantizer.disable()
+                module.k_bmm_quantizer.disable()
+                module.v_bmm_quantizer.disable()
+                module.softmax_quantizer.disable()
 
 
 def load_calib_prompts(batch_size, calib_data_path="./calib_prompts.txt"):
     with open(calib_data_path, "r", encoding="utf8") as file:
         lst = [line.rstrip("\n") for line in file]
     return [lst[i : i + batch_size] for i in range(0, len(lst), batch_size)]
+
+
+def load_calib_images(folder_path):
+    images = []
+    for filename in os.listdir(folder_path):
+        img_path = os.path.join(folder_path, filename)
+        if os.path.isfile(img_path):
+            image = load_image(img_path)
+            if image is not None:
+                images.append(image)
+    return images
+
+
+def set_fmha(unet):
+    for name, module in unet.named_modules():
+        if isinstance(module, Attention):
+            module.set_processor(AttnProcessor())
 
 
 def check_lora(unet):

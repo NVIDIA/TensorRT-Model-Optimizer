@@ -79,20 +79,17 @@ def main(args):
     np.random.seed(RAND_SEED)
 
     if args.medusa:
-        from example_utils import get_dtype
         from medusa.model.medusa_model import MedusaModel
 
-        dtype = get_dtype(args.dtype)
         model = MedusaModel.from_pretrained(
             args.pyt_ckpt_path,
-            torch_dtype=dtype,
             low_cpu_mem_usage=True,
             device_map="auto",
         )
         model_type = get_model_type(model)
         tokenizer = model.get_tokenizer()
     else:
-        model = get_model(args.pyt_ckpt_path, args.dtype, args.device)
+        model = get_model(args.pyt_ckpt_path, args.device)
         model_type = get_model_type(model)
         tokenizer = get_tokenizer(args.pyt_ckpt_path, model_type=model_type)
 
@@ -104,13 +101,15 @@ def main(args):
         if args.batch_size == 0:
             # Sparse algorithm takes more GPU memory so we reduce the batch_size by 2.
             args.batch_size = max(dataset_utils.get_max_batch_size(model) // 2, 1)
+            if args.batch_size > args.calib_size:
+                args.batch_size = args.calib_size
 
         print(f"Use calib batch_size {args.batch_size}")
 
         # Different calibration datasets are also available, e.g., "pile" and "wikipedia"
         # Please also check the docstring for the datasets available
         calib_dataloader = dataset_utils.get_dataset_dataloader(
-            dataset_name="cnn_dailymail",
+            dataset_name=args.dataset_name,
             tokenizer=tokenizer,
             batch_size=args.batch_size,
             num_samples=args.calib_size,
@@ -138,11 +137,13 @@ def main(args):
 
         if args.batch_size == 0:
             args.batch_size = dataset_utils.get_max_batch_size(model)
+            if args.batch_size > args.calib_size:
+                args.batch_size = args.calib_size
 
         print(f"Use calib batch_size {args.batch_size}")
 
         calib_dataloader = dataset_utils.get_dataset_dataloader(
-            dataset_name="cnn_dailymail",
+            dataset_name=args.dataset_name,
             tokenizer=tokenizer,
             batch_size=args.batch_size,
             num_samples=args.calib_size,
@@ -185,8 +186,10 @@ def main(args):
 
         # Medusa generate can only run on single GPU per official implementation.
         # Therefore, we skip generate here in case multiple GPUs are needed for inference
+
+        # Only run single sample for preview
+        input_ids = next(iter(calib_dataloader))[0:1]
         if not args.medusa:
-            input_ids = next(iter(calib_dataloader))
             generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
 
         model = quantize_model(model, quant_cfg, calib_dataloader)
@@ -197,7 +200,6 @@ def main(args):
         # Therefore, we skip generate here in case multiple GPUs are needed for inference
         if not args.medusa:
             # Run some samples
-            input_ids = next(iter(calib_dataloader))
             generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
 
             print("--------")
@@ -212,7 +214,13 @@ def main(args):
                 f"example outputs after ptq: {tokenizer.batch_decode(generated_ids_after_ptq[:, input_ids.shape[1]:])}"
             )
     else:
-        print(f"No quantization applied, export {args.dtype} model")
+        assert model_type != "dbrx", f"Does not support export {model_type} without quantizaton"
+        print(f"No quantization applied, export {device} model")
+
+    if getattr(model.config, "model_type", None) in ["t5"]:
+        trtllm_dtype = torch.bfloat16
+    else:
+        trtllm_dtype = torch.float16
 
     with torch.inference_mode():
         if model_type is None:
@@ -235,7 +243,7 @@ def main(args):
             export_tensorrt_llm_checkpoint(
                 model,
                 model_type,
-                torch.float16,
+                trtllm_dtype,
                 export_dir=export_path,
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
@@ -256,7 +264,6 @@ if __name__ == "__main__":
         "--pyt_ckpt_path", help="Specify where the PyTorch checkpoint path is", required=True
     )
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--dtype", help="Model data type.", default="fp16")
     parser.add_argument("--qformat", help="Quantization format.", default="fp8")
     parser.add_argument(
         "--batch_size",
@@ -268,6 +275,9 @@ if __name__ == "__main__":
         "--calib_size", help="Number of samples for calibration.", type=int, default=512
     )
     parser.add_argument("--export_path", default="exported_model")
+    parser.add_argument(
+        "--dataset_name", help="name of dataset.", type=str, default="cnn_dailymail"
+    )
     parser.add_argument("--inference_tensor_parallel", type=int, default=1)
     parser.add_argument("--inference_pipeline_parallel", type=int, default=1)
     parser.add_argument("--awq_block_size", default=128)

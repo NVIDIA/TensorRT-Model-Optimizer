@@ -1,8 +1,8 @@
 # Stable Diffusion XL (Base/Turbo) and Stable Diffusion 1.5 Quantization with Model Optimizer
 
-This example shows how to use Model Optimizer to calibrate and quantize the UNet part of the SDXL and SD1.5. The UNet part typically consumes >95% of the e2e Stable Diffusion latency.
+This example shows how to use Model Optimizer to calibrate and quantize the backbone part of diffusion models. The backbone part typically consumes >95% of the e2e Stable Diffusion latency.
 
-We also provide instructions on deploying and running E2E SDXL and SD1.5 pipelines with Model Optimizer quantized int8 and fp8 UNet to generate images and measure latency on target GPUs. Note, Jetson devices are not supported so far.
+We also provide instructions on deploying and running E2E stable diffusion pipelines with Model Optimizer quantized INT8 and FP8 UNet to generate images and measure latency on target GPUs. Note, Jetson devices are not supported so far.
 
 ## Get Started
 
@@ -20,9 +20,9 @@ We assume you already installed NVIDIA TensorRT Model Optimizer `modelopt`, now 
 pip install -r requirements.txt
 ```
 
-## 8-bit TRT Engine Build Quick Start
+## 8-bit ONNX Export Quick Start
 
-You can run the following script to get the int8 or fp8 UNet engines built with default settings for SDXL, and then directly go to **Run End-to-end Stable Diffusion Pipeline with Model Optimizer Quantized Model and demoDiffusion** section to run E2E pipeline to generate images.
+You can run the following script to get the INT8 or FP8 UNet onnx model built with default settings for SDXL, and then directly go to **Build the TRT engine for the Quantized ONNX UNet** section to run E2E pipeline to generate images.
 
 ```sh
 bash build_sdxl_8bit_engine.sh --format {FORMAT} # FORMAT can be int8 or fp8
@@ -32,31 +32,34 @@ If you prefer to customize parameters in calibration or run other models, please
 
 ## Calibration with Model Optimizer
 
-We support calibration for both int8 and fp8 precision and for both weights and activations.
+We support calibration for both INT8 and FP8 precision and for both weights and activations.
 
 Note: Model calibration requires relatively more GPU computing powers and it does not need to be on the same GPUs as
-the deployment target GPUs.
+the deployment target GPUs. Using the command line below will execute both calibration and ONNX export.
 
-### SDXL|SD1.5|SDXL-Turbo INT8
+### SD3-Medium|SDXL|SD1.5|SDXL-Turbo INT8
 
 ```sh
 python quantize.py \
-  --model {stabilityai/stable-diffusion-xl-base-1.0|runwayml/stable-diffusion-v1-5|stabilityai/sdxl-turbo} \
+  --model {sdxl-1.0|sdxl-turbo|sd1.5|sd3-medium} \
   --format int8 --batch-size 2 \
-  --calib-size {CALIB_SIZE} --collect-method min-mean \
-  --percentile {PERCENTILE} --alpha {ALPHA} \
-  --quant-level {QUANT_LEVEL} --n_steps {N_STEPS} \
-  --exp_name {EXP_NAME}
+  --calib-size 32 --collect-method min-mean \
+  --percentile 1.0 --alpha 0.8 \
+  --quant-level 3.0 --n-steps 20 \
+  --exp-name {EXP_NAME} --onnx-dir {ONNX_DIR}
 ```
 
 ### SDXL|SD1.5|SDXL-Turbo FP8
 
 ```sh
 python quantize.py \
-  --model {stabilityai/stable-diffusion-xl-base-1.0|runwayml/stable-diffusion-v1-5|stabilityai/sdxl-turbo} \
-  --format fp8 --batch-size 2 --calib-size {CALIB_SIZE} --quant-level {QUANT_LEVEL} \
-  --n_steps {N_STEPS} --exp_name {EXP_NAME} --collect-method default
+  --model {sdxl-1.0|sdxl-turbo|sd1.5} \
+  --format fp8 --batch-size 2 --calib-size 128 --quant-level 4.0 \
+  --n-steps 20 --exp-name {EXP_NAME} --collect-method default \
+  --onnx-dir {ONNX_DIR}
 ```
+
+We recommend using a device with a minimum of 48GB of combined CPU and GPU memory for exporting ONNX models. Quant-level 4.0 requires additional memory.
 
 #### Important Parameters
 
@@ -64,7 +67,7 @@ python quantize.py \
 
 - `alpha`: A parameter in SmoothQuant, used for linear layers only. Recommendation: 0.8 for SDXL, 1.0 for SD 1.5
 
-- `quant-level`: Which layers to be quantized, 1: `CNNs`, 2: `CNN + FFN`, 2.5: `CNN + FFN + QKV`, 3: `CNN + Linear (Including FFN, QKV, Proj and others)`. Recommendation: 2, 2.5 and 3, depending on the requirements for image quality & speedup.
+- `quant-level`: Which layers to be quantized, 1: `CNNs`, 2: `CNN + FFN`, 2.5: `CNN + FFN + QKV`, 3: `CNN + Almost all Linear (Including FFN, QKV, Proj and others)`, 4: `CNN + Almost all Linear + fMHA`. Recommendation: 2, 2.5 and 3, 4 is only for FP8, depending on the requirements for image quality & speedup. **You might notice a slight difference between FP8 quant level 3.0 and 4.0, as we are currently working to enhance the performance of FP8 fMHA.**
 
 - `calib-size`: For SDXL INT8, we recommend 32 or 64, for SDXL FP8, 128 is recommended. For SD 1.5, set it to 512 or 1024.
 
@@ -72,69 +75,77 @@ python quantize.py \
 
 **Then, we can load the generated checkpoint and export the INT8/FP8 quantized model in the next step.**
 
-## ONNX Export
+**For FP8, we only support the TRT deployment on Ada/Hopper GPUs w/wo plugins**
 
-```sh
-python run_export.py --model {stabilityai/stable-diffusion-xl-base-1.0|runwayml/stable-diffusion-v1-5|stabilityai/sdxl-turbo} --quantized-ckpt {YOUR_QUANTIZED_CKPT} --format {FORMAT} --quant-level {1.0|2.0|2.5|3.0} --onnx-dir {ONNX_PATH}
+## Build the TRT engine for the Quantized ONNX UNet
+
+We assume you already have TensorRT environment setup. INT8 requires **TensorRT version >= 9.2.0**. If you prefer to use the FP8 TensorRT OOTB path instead of the plugin path, ensure you have **TensorRT version 10.2.0 or higher**. You can download the latest version of TensorRT at [here](https://developer.nvidia.com/tensorrt/download).
+
+Before you build the TRT FP8 engine, please run this command line:
+
+```bash
+python onnx_utils/sdxl_fp8_onnx_graphsurgeon.py --onnx-path {YOUR_FP8_ONNX/backbone.onnx} --output-onnx {NEW_ONNX_FILE_PATH}
 ```
 
-For ONNX export, we recommend using a device with CPU memory not less than 48GB.
+If you prefer using FP8 with plugins, we support TRT deployment on Ada and Hopper GPUs. Please refer to [`SDXL_FP8_README.md`](./SDXL_FP8_README.md) for more information.
 
-#### Optional for the exported ONNX model
+Then generate the INT8/FP8 UNet Engine
 
-*If the quant-level is 2.5 or above, you can use the following script*
-
-Run the QDQ fusion script
-
-```sh
-python onnx_utils/sdxl_graphsurgeon.py --onnx-path ./onnx/unet.onnx --output-onnx onnx_int8_fused/unet.onnx
+```bash
+trtexec --builderOptimizationLevel=4 --stronglyTyped --onnx=./backbone.onnx \
+  --minShapes=sample:2x4x128x128,timestep:1,encoder_hidden_states:2x77x2048,text_embeds:2x1280,time_ids:2x6 \
+  --optShapes=sample:16x4x128x128,timestep:1,encoder_hidden_states:16x77x2048,text_embeds:16x1280,time_ids:16x6 \
+  --maxShapes=sample:16x4x128x128,timestep:1,encoder_hidden_states:16x77x2048,text_embeds:16x1280,time_ids:16x6 \
+  --saveEngine=backbone.plan
 ```
 
-**Next, we can build the TRT engine for INT8 on your desired platforms.**
-**For FP8, we only support the TRT deployment on Ada and Hopper GPUs. Please refer to [`SDXL_FP8_README.md`](SDXL_FP8_README.md) for further steps.**
-
-## Build the TRT engine for the INT8 Quantized ONNX UNet
-
-Please make sure the TensorRT environment setup is present. This example requires TensorRT version >= 9.2.0. You can download the prebuilt TensorRT [here](https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.1.0/tars/TensorRT-10.1.0.27.Linux.x86_64-gnu.cuda-12.4.tar.gz) if you setup the environment yourself.
-
-```sh
-# INT8 SDXL Base or SDXL-turbo
-trtexec --onnx=./unet.onnx --shapes=sample:2x4x128x128,timestep:1,encoder_hidden_states:2x77x2048,text_embeds:2x1280,time_ids:2x6 --fp16 --int8 --builderOptimizationLevel=4 --saveEngine=unetxl.trt9.3.0.post12.dev1.engine
-# INT8 SD 1.5
-trtexec --onnx=./unet.onnx --shapes=sample:2x4x64x64,timestep:1,encoder_hidden_states:2x77x768 --fp16 --int8 --builderOptimizationLevel=4 --saveEngine=unet.trt9.3.0.post12.dev1.engine
-```
-
-We tested int8 TRT engine build and the following E2E pipeline on the following GPU platforms: A100, L40S, RTX6000, A10, L4, RTX4090
-
-## Run End-to-end Stable Diffusion Pipeline with Model Optimizer Quantized Model and demoDiffusion
+## Run End-to-end Stable Diffusion Pipeline with Model Optimizer Quantized ONNX Model and demoDiffusion
 
 If you want to run end-to-end SD/SDXL pipeline with Model Optimizer quantized UNet to generate images and measure latency on target GPUs, here are the steps:
 
-- Clone a copy of [demo/Diffusion repo](https://github.com/NVIDIA/TensorRT/tree/release/10.0/demo/Diffusion).
+- Clone a copy of [demo/Diffusion repo](https://github.com/NVIDIA/TensorRT/tree/release/10.2/demo/Diffusion).
 
-- Following the README from demoDiffusion to set up the pipeline (note: you can skip the installation instructions if you use the docker container built in this repo), and run a baseline txt2img example (fp16):
+- Following the README from demoDiffusion to set up the pipeline, and run a baseline txt2img example (fp16):
 
 ```sh
-# SDXL, please refer to the examples provided in the demoDiffusion SD/SDXL pipeline.
+# SDXL
 python demo_txt2img_xl.py "enchanted winter forest, soft diffuse light on a snow-filled day, serene nature scene, the forest is illuminated by the snow" --negative-prompt "normal quality, low quality, worst quality, low res, blurry, nsfw, nude" --version xl-1.0 --scheduler Euler --denoising-steps 30 --seed 2946901
+# Please refer to the examples provided in the demoDiffusion SD/SDXL pipeline.
 ```
 
-Note, it will take some time to build TRT engines for the first time.
+Note, it will take some time to build TRT engines for the first time
 
-- Replace the fp16 UNet TRT engine with int8 engine generated in [Build the TRT engine for the INT8 Quantized ONNX UNet](#build-the-trt-engine-for-the-int8-quantized-onnx-unet), e.g.,:
+- Replace the fp16 UNet TRT engine with int8 engine generated in [Build the TRT engine for the Quantized ONNX UNet](#build-the-trt-engine-for-the-quantized-onnx-unet), e.g.,:
 
 ```sh
-cp -r unetxl.{TRT_VERSION}.engine ./engine/
+cp -r {YOUR_UNETXL}.plan ./engine/
 ```
 
-The engines must be built on the same GPU, with the INT8 engine name matching the names of the FP16 engines to enable compatibility with the demoDiffusion pipeline.
+Note, the engines must be built on the same GPU, and ensure that the INT8 engine name matches the names of the FP16 engines to enable compatibility with the demoDiffusion pipeline.
 
 - Run the above txt2img example command again. You can compare the generated images and latency for fp16 vs int8.
+  Similarly, you could run end-to-end SD1.5 or SDXL-turbo pipeline with Model Optimizer quantized UNet and corresponding examples in demoDiffusion.
 
-  1. FP16: ![Image generated with fp16 engine](./assets/xl_base-fp16.png)
-  1. INT8: ![Image generated with int8 engine](./assets/xl_base-int8.png)
+## Demo Images
 
-Similarly, you could run end-to-end SD1.5 or SDXL-turbo pipeline with Model Optimizer quantized UNet and corresponding examples in demoDiffusion.
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="./assets/xl_base-fp16.png" alt="FP16" width="700"/>
+    </td>
+    <td align="center">
+      <img src="./assets/xl_base-int8.png" alt="INT8" width="700"/>
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      SDXL FP16
+    </td>
+    <td align="center">
+      SDXL INT8
+    </td>
+  </tr>
+</table>
 
 ## LoRA
 

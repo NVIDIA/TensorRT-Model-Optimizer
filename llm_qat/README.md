@@ -1,14 +1,20 @@
-# Quantization Aware Training (QAT) for Hugging Face (HF) Models
+# Quantization Aware Training (QAT)
 
 QAT helps to improve the model accuracy beyond post training quantization (PTQ).
 
-In this example, QAT workflow is demonstrated for a HF text generation model supervised fine-tuning (SFT) on a summarization task.
+In this example, QAT workflow is demonstrated for a NVIDIA NeMo and HF text generation model supervised fine-tuning (SFT) on a summarization task.
 
-## System Requirements
+## NVIDIA NeMo QAT
+
+Please refer to the NeMo [QAT playbook](https://docs.nvidia.com/nemo-framework/user-guide/latest/playbooks/index.html#deployment) for an example on how to do QAT on a NeMo Supervised Fine-Tuned (SFT) model.
+
+## Hugging Face QAT
+
+### System Requirements
 
 The Llama2-7B fine-tuning and QAT below requires a minimum of 2 80GB GPUs per machine.
 
-## Setup
+### Setup
 
 Install necessary modules
 
@@ -16,11 +22,11 @@ Install necessary modules
 pip install -r requirements.txt
 ```
 
-## QAT
+### QAT
 
 In QAT, a model quantized using `mtq.quantize()` can be directly fine-tuned with the original training pipeline. During QAT, the scaling factors inside quantizers are frozen and the model weights are fine-tuned.
 
-### QAT Example Workflow
+#### QAT Example Workflow
 
 Here is the recommended QAT workflow:
 
@@ -63,7 +69,7 @@ trainer.train()  # Train the quantized model (i.e, QAT)
 trainer.save_model()
 ```
 
-### End-to-end QAT Example
+#### End-to-end QAT Example
 
 This folder contains end-to-end runnable fine-tuning/QAT pipeline where Llama2-7B from huggingface is trained on
 SAMSum dataset.
@@ -117,7 +123,35 @@ help(mtq.config)
 > **_NOTE:_** Like any other model training, the QAT model accuracy can be further improved by optimizing the training
 > hyper-parameters such as learning rate, training duration etc. For example in the fine-tuning example above, QAT for training duration longer than 10% of the original training duration improves the model accuracy further.
 
-#### Results
+#### End-to-end QLoRA with Real Quantization
+
+[QLoRA](https://arxiv.org/pdf/2305.14314) is a technique mainly intended for further reducing the training memory requirement of LoRA. In QLoRA, the LoRA backbone weights are quantized to reduce the model footprint. Unlike QAT which uses simulated quantization, QLoRA requires real quantization. Currently, only NF4_REAL_QUANT_CFG and INT4_AWQ_REAL_QUANT_CFG are supported.
+
+To evaluate QLoRA quantized model before training, run:
+
+```sh
+# Load the HF checkpoint, quantize the model and evaluate without additional training
+./launch.sh --model meta-llama/Llama-2-7b-hf \
+   --do_train False \
+   --quant_cfg 'NF4_REAL_QUANT_CFG'
+```
+
+To perform QLoRA training, run:
+
+```sh
+# Load the HF checkpoint, quantize the model, add LoRA adapter, and run additional training
+./launch.sh --model meta-llama/Llama-2-7b-hf \
+   --num_epochs 0.5 \
+   --lr 1e-3 \
+   --do_train True \
+   --output_dir llama2-nf4-qlora \
+   --quant_cfg 'NF4_REAL_QUANT_CFG' \
+   --lora True
+```
+
+> **_NOTE:_** QLoRA is currently an experimental feature designed to reduce the memory footprint during training. Deployment functionality is not yet available.
+
+##### Results
 
 The result from performing the above experiments is tabulated below (You could get slightly different numbers). As we can see below, QAT has significantly improved the validation perplexity over PTQ alone (lower perplexity is better).
 
@@ -126,6 +160,8 @@ The result from performing the above experiments is tabulated below (You could g
 | Fine-tuned BF16 (No quantization) | 2.71  |
 | PTQ with INT4 weights & INT8 activations on the Fine-tuned BF16 model    | 188.48  |
 | QAT with INT4 weights & INT8 activations on Fine-tuned BF16 model        | 4.90  |
+| NF4 quantization    | 4.28  |
+| NF4 QLoRA after training    | 2.90  |
 
 #### Deployment
 

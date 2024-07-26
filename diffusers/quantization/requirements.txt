@@ -1,8 +1,10 @@
 accelerate>=0.22.0
+apex>=0.9.10.dev0
 datasets>=2.14.5
-diffusers>=0.23.1
+diffusers>=0.27.2
 nvtx
 onnx_graphsurgeon --index-url https://pypi.ngc.nvidia.com
 opencv-python==4.8.1.78
 optimum
-transformers>=4.33.1
+peft>=0.10.0
+transformers>=4.40.2

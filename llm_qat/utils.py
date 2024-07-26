@@ -66,7 +66,7 @@ def get_preprocessed_samsum(tokenizer, split, max_length=4096):
         }
         return sample
 
-    dataset = datasets.load_dataset("samsum", split=split)
+    dataset = datasets.load_dataset("samsum", split=split, trust_remote_code=True)
     prompt = "Summarize this dialog:\n{dialog}\n---\nSummary:\n"
     dataset = dataset.map(apply_prompt_template, remove_columns=list(dataset.features))
     dataset = dataset.map(tokenize_add_label, remove_columns=list(dataset.features))

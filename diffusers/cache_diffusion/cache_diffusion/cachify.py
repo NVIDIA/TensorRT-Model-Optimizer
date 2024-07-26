@@ -21,9 +21,21 @@
 
 import fnmatch
 
-from diffusers.models.attention import FeedForward
-from diffusers.models.attention_processor import Attention
-from diffusers.models.resnet import ResnetBlock2D, TemporalResnetBlock
+from diffusers.models.attention import BasicTransformerBlock
+from diffusers.models.unets.unet_2d_blocks import (
+    CrossAttnDownBlock2D,
+    CrossAttnUpBlock2D,
+    DownBlock2D,
+    UNetMidBlock2DCrossAttn,
+    UpBlock2D,
+)
+from diffusers.models.unets.unet_3d_blocks import (
+    CrossAttnDownBlockSpatioTemporal,
+    CrossAttnUpBlockSpatioTemporal,
+    DownBlockSpatioTemporal,
+    UNetMidBlockSpatioTemporal,
+    UpBlockSpatioTemporal,
+)
 from diffusers.pipelines.pixart_alpha.pipeline_pixart_alpha import PixArtAlphaPipeline
 from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl import (
     StableDiffusionXLPipeline,
@@ -35,15 +47,37 @@ from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion 
 from .module import CachedModule
 from .utils import replace_module
 
-SUPPORTED_METHODS = {PixArtAlphaPipeline, StableDiffusionXLPipeline, StableVideoDiffusionPipeline}
+CACHED_PIPE = {
+    StableDiffusionXLPipeline: (
+        DownBlock2D,
+        CrossAttnDownBlock2D,
+        UNetMidBlock2DCrossAttn,
+        CrossAttnUpBlock2D,
+        UpBlock2D,
+    ),
+    PixArtAlphaPipeline: (BasicTransformerBlock),
+    StableVideoDiffusionPipeline: (
+        CrossAttnDownBlockSpatioTemporal,
+        DownBlockSpatioTemporal,
+        UpBlockSpatioTemporal,
+        CrossAttnUpBlockSpatioTemporal,
+        UNetMidBlockSpatioTemporal,
+    ),
+}
 
 
-def cachify(model, num_inference_steps, config_list):
+def cachify(model, num_inference_steps, config_list, modules):
+    if hasattr(model, "use_trt_infer") and model.use_trt_infer:
+        for key, _ in model.engines.items():
+            for config in config_list:
+                if _pass(key, config["wildcard_or_filter_func"]):
+                    model.engines[key] = CachedModule(
+                        model.engines[key], num_inference_steps, config["select_cache_step_func"]
+                    )
+        return
     for name, module in model.named_modules():
         for config in config_list:
-            if _pass(name, config["wildcard_or_filter_func"]) and isinstance(
-                module, (Attention, ResnetBlock2D, TemporalResnetBlock, FeedForward)
-            ):
+            if _pass(name, config["wildcard_or_filter_func"]) and isinstance(module, modules):
                 replace_module(
                     model,
                     name,
@@ -86,8 +120,8 @@ def get_model(pipe):
 
 
 def prepare(pipe, num_inference_steps, config_list):
-    assert pipe.__class__ in SUPPORTED_METHODS, f"{pipe.__class__} is not supported!"
+    assert pipe.__class__ in CACHED_PIPE.keys(), f"{pipe.__class__} is not supported!"
 
     model = get_model(pipe)
 
-    cachify(model, num_inference_steps, config_list)
+    cachify(model, num_inference_steps, config_list, CACHED_PIPE[pipe.__class__])

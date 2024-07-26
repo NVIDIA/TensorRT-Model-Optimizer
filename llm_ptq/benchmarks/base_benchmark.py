@@ -18,7 +18,6 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
-
 import json
 import os
 import subprocess
@@ -47,7 +46,7 @@ def get_csv_filename(model, dtype, tp_size, mode, **kwargs):
 
 
 def get_engine_name(model, dtype, tp_size, rank):
-    return "rank{}.engine".format(rank)
+    return "{}_{}_tp{}_rank{}.engine".format(model, dtype, tp_size, rank)
 
 
 def serialize_engine(engine, path):
@@ -63,6 +62,7 @@ def serialize_engine(engine, path):
 
 
 class BaseBenchmark(object):
+
     def __init__(self, engine_dir, model_name, dtype, rank, world_size, serial_build: bool = False):
         self.engine_dir = engine_dir
         self.model_name = model_name
@@ -72,12 +72,12 @@ class BaseBenchmark(object):
         self.engine_model_name = model_name
         self.quant_mode = QuantMode(0)
         self.enable_fp8 = False
-        self.mode = ""
         if engine_dir is not None:
             # Read config from engine directory
             config_path = os.path.join(engine_dir, "config.json")
             with open(config_path, "r") as f:
                 self.config = json.load(f)
+            # Sanity checks
             if "pretrained_config" in self.config:  # new build api branch
                 config_dtype = self.config["pretrained_config"]["dtype"]
                 assert (
@@ -158,6 +158,14 @@ class BaseBenchmark(object):
 
     def get_report_dict(self, benchmark_profiler=None):
         report_fields = [
+            "model_name",
+            "world_size",
+            "num_heads",
+            "num_kv_heads",
+            "num_layers",
+            "hidden_size",
+            "vocab_size",
+            "precision",
             "batch_size",
             "gpu_weights_percent",
             "input_length",
@@ -184,7 +192,7 @@ class BaseBenchmark(object):
                 self.model_name,
                 self.dtype,
                 self.world_size,
-                self.mode,
+                self.mode,  # type: ignore[attr-defined]
                 fp8linear=int(self.enable_fp8),
             )
         return self.csv_filename

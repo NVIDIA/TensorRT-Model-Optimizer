@@ -20,6 +20,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 import argparse
+import re
 from copy import deepcopy
 
 import numpy as np
@@ -348,6 +349,28 @@ def modify_concat(graph):
     print("modify concat count: ", cnt)
 
 
+@gs.Graph.register()
+def insert_cast(self, input_tensor, attrs):
+    """
+    Create a cast layer using tensor as input.
+    """
+    output_tensor = gs.Variable(name=f"{input_tensor.name}/Cast_output", dtype=attrs["to"])
+    next_node_list = input_tensor.outputs.copy()
+    self.layer(
+        op="Cast",
+        name=f"{input_tensor.name}/Cast",
+        inputs=[input_tensor],
+        outputs=[output_tensor],
+        attrs=attrs,
+    )
+
+    # use cast output as input to next node
+    for next_node in next_node_list:
+        for idx, next_input in enumerate(next_node.inputs):
+            if next_input.name == input_tensor.name:
+                next_node.inputs[idx] = output_tensor
+
+
 def replace_fp8_qdq(graph):
     for n in graph.nodes:
         if n.op == "QuantizeLinear":
@@ -358,11 +381,145 @@ def replace_fp8_qdq(graph):
             n.inputs.pop(2)
 
 
+def convert_fp8_qdq(graph):
+    onnx_graph = gs.export_onnx(graph)
+
+    qdq_zero_nodes = set()
+    # Find all scale and zero constant nodes
+    for node in onnx_graph.graph.node:
+        if node.op_type == "QuantizeLinear":
+            if len(node.input) > 2:
+                qdq_zero_nodes.add(node.input[2])
+
+    print(f"Found {len(qdq_zero_nodes)} QDQ pairs")
+
+    # Convert zero point datatype from int8 to fp8
+    for node in onnx_graph.graph.node:
+        if node.output[0] in qdq_zero_nodes:
+            node.attribute[0].t.data_type = onnx.TensorProto.FLOAT8E4M3FN
+    return gs.import_onnx(onnx_graph)
+
+
+def insert_fp8_mha_cast(graph):
+    def remove_dummy_add_ask(add_node):
+        assert add_node.op == "Add"
+        add_node.o().inputs = add_node.i().outputs  # set BMM1 scale output as Softmax input
+        add_node.inputs = []
+
+    nodes = graph.nodes
+    tensors = graph.tensors()
+    tensor_names = tensors.keys()
+
+    node_dummy_add_mask_regex = r"\/.+\/attentions.\d+\/transformer_blocks.\d+\/attn\d+\/Add"
+    tensor_qkv_dq_output_regex = (
+        r"\/.+\/attentions.\d+\/transformer_blocks.\d+\/attn\d+\/[qkv]_"
+        + r"bmm_quantizer\/DequantizeLinear_output_0"
+    )
+    tensor_softmax_scale_input_regex = (
+        r"\/.+\/attentions.\d+\/transformer_blocks.\d+\/attn\d+\/MatMul_output_0"
+    )
+    tensor_softmax_dq_output_regex = (
+        r"\/.+\/attentions.\d+\/transformer_blocks.\d+\/attn\d+\/sof"
+        + r"tmax_quantizer\/DequantizeLinear_output_0"
+    )
+    tensor_bmm2_output_regex = (
+        r"\/.+\/attentions.\d+\/transformer_blocks.\d+\/attn\d+\/MatMul_1_output_0"
+    )
+
+    node_dummy_add_masks = [_n for _n in nodes if re.match(node_dummy_add_mask_regex, _n.name)]
+    print(f"Found {len(node_dummy_add_masks)} FP8 attentions")
+    tensor_qkv_dq_outputs = [
+        tensors[tensor_name]
+        for tensor_name in tensor_names
+        if re.match(tensor_qkv_dq_output_regex, tensor_name)
+    ]
+    tensor_softmax_scale_inputs = [
+        tensors[tensor_name]
+        for tensor_name in tensor_names
+        if re.match(tensor_softmax_scale_input_regex, tensor_name)
+    ]
+    tensor_softmax_dq_outputs = [
+        tensors[tensor_name]
+        for tensor_name in tensor_names
+        if re.match(tensor_softmax_dq_output_regex, tensor_name)
+    ]
+    tensor_bmm2_outputs = [
+        tensors[tensor_name]
+        for tensor_name in tensor_names
+        if re.match(tensor_bmm2_output_regex, tensor_name)
+    ]
+
+    # remove dummy add mask
+    for node in node_dummy_add_masks:
+        remove_dummy_add_ask(node)
+
+    # TRT 10.2 fp8 MHA required onnx pattern
+    #   Q           K           V
+    #   |           |           |
+    #   to_fp32   to_fp32     to_fp32
+    #   \          /           |
+    #      BMM1                |
+    #       |                  |
+    #     to_fp16             /
+    #       |               /
+    #     scale           /
+    #       |           /
+    #     SoftMax     /
+    #       |       /
+    #     to_fp32 /
+    #       |   /
+    #      BMM2
+    #       |
+    #     to_fp16
+    #       |
+
+    for tensor in tensor_qkv_dq_outputs:
+        graph.insert_cast(input_tensor=tensor, attrs={"to": np.float32})
+
+    for tensor in tensor_softmax_scale_inputs:
+        graph.insert_cast(input_tensor=tensor, attrs={"to": np.float16})
+
+    for tensor in tensor_softmax_dq_outputs:
+        graph.insert_cast(input_tensor=tensor, attrs={"to": np.float32})
+
+    for tensor in tensor_bmm2_outputs:
+        graph.insert_cast(input_tensor=tensor, attrs={"to": np.float16})
+
+
+def update_resize(graph):
+    nodes = graph.nodes
+    up_block_resize_regex = (
+        r"\/up_blocks.0\/upsamplers.0\/Resize|\/up_blocks.1\/upsamplers.0\/Resize"
+    )
+    up_block_resize_nodes = [_n for _n in nodes if re.match(up_block_resize_regex, _n.name)]
+
+    print(f"Found {len(up_block_resize_nodes)} Resize nodes to fix")
+    for resize_node in up_block_resize_nodes:
+        for input_tensor in resize_node.inputs:
+            if input_tensor.name:
+                graph.insert_cast(input_tensor=input_tensor, attrs={"to": np.float32})
+        for output_tensor in resize_node.outputs:
+            if output_tensor.name:
+                graph.insert_cast(input_tensor=output_tensor, attrs={"to": np.float16})
+
+
+def convert_fp16_io(graph):
+    for input_tensor in graph.inputs:
+        input_tensor.dtype = onnx.TensorProto.FLOAT16
+
+    for output_tensor in graph.outputs:
+        output_tensor.dtype = onnx.TensorProto.FLOAT16
+
+
 def parse_args():
     """
     Arguments that can be used for standalone run
     """
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--use-plugin",
+        action="store_true",
+    )
     parser.add_argument(
         "--onnx-path",
         type=str,
@@ -387,17 +544,25 @@ def parse_args():
 def main(args):
     model = onnx.load(args.onnx_path)
     graph = gs.import_onnx(model)
-    replace_fp8_qdq(graph)
-    add_fp8conv(graph)
-    add_groupnorm(graph)
-    modify_unsqueeze(graph)
-    add_transpose_after_convin(graph)
-    remove_transformer_transpose(graph)
-    modify_shortcut_conv(graph)
-    add_transpose_before_convout(graph)
-    modify_concat(graph)
-    modify_resize(graph)
-
+    if args.use_plugin:
+        replace_fp8_qdq(graph)
+        add_fp8conv(graph)
+        add_groupnorm(graph)
+        modify_unsqueeze(graph)
+        add_transpose_after_convin(graph)
+        remove_transformer_transpose(graph)
+        modify_shortcut_conv(graph)
+        add_transpose_before_convout(graph)
+        modify_concat(graph)
+        modify_resize(graph)
+    else:
+        # QDQ WAR, has to happen before constant folding, WAR it until ModelOpt fixes it
+        graph = convert_fp8_qdq(graph)
+        insert_fp8_mha_cast(graph)
+        # TRT complains about resize in 2 upsamplers, WAR it until ModelOpt fixes it
+        update_resize(graph)
+        # fp8 unet engine needs strongly typed onnx, convert io tensor from fp32 to fp16
+        convert_fp16_io(graph)
     onnx.save(gs.export_onnx(graph.cleanup()), args.output_onnx, save_as_external_data=True)
 
 

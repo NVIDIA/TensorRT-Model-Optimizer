@@ -8,18 +8,18 @@ performance** that can be delivered by Model Optimizer. All performance numbers 
 
 #### 1.1 Performanace
 
-Config: H100, nvidia-modelopt v0.11.0, TensorRT-LLM v0.9, latency measured with full batch inference (no inflight batching).
+Config: H100, nvidia-modelopt v0.15.0, TensorRT-LLM v0.11, latency measured with full batch inference (no inflight batching).
 Memory saving and inference speedup are compared to the FP16 baseline. Speedup is normalized to the GPU count.
 
 |            |            |            |     FP8    |         |   |            |  INT4 AWQ  |         |
 |:----------:|:----------:|:----------:|:----------:|:-------:|:-:|:----------:|:----------:|:-------:|
 |    Model   | Batch Size | Mem Saving | Tokens/sec | Speedup |   | Mem Saving | Tokens/sec | Speedup |
-|  Llama3-8B |      2     |    1.66x   |   337.67   |  1.39x  |   |    2.37x   |   392.99   |  1.61x  |
-|            |     32     |    1.56x   |   2368.69  |  1.66x  |   |    1.86x   |   2037.54  |  1.43x  |
-|            |     64     |    1.54x   |   2404.86  |  1.43x  |   |    1.76x   |   2308.57  |  1.37x  |
-| Llama3-70B |      2     |    1.98x   |    64.35   |  2.11x  |   |    3.49x   |    77.36   |  2.54x  |
-|            |     32     |    1.95x   |   391.73   |  3.03x  |   |    2.94x   |   479.11   |  3.71x  |
-|            |     64     |    1.91x   |   383.42   |  2.41x  |   |    2.46x   |   348.65   |  2.19x  |
+|  Llama3-8B |      1     |    1.63x   |   175.42   |  1.26x  |   |    2.34x   |   213.45   |  1.53x  |
+|            |     32     |    1.62x   |   3399.84  |  1.49x  |   |    1.89x   |   2546.12  |  1.11x  |
+|            |     64     |    1.58x   |   3311.03  |  1.34x  |   |    1.97x   |   3438.08  |  1.39x  |
+| Llama3-70B |      1     |    1.96x   |    32.85   |  1.87x  |   |    3.47x   |    47.49   |  2.70x  |
+|            |     32     |    1.93x   |   462.69   |  1.82x  |   |    2.62x   |   365.06   |  1.44x  |
+|            |     64     |    1.99x   |   449.09   |  1.91x  |   |    2.90x   |   483.51   |  2.05x  |
 
 ### 1.2 Accuracy
 

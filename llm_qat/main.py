@@ -83,6 +83,15 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     dataloader_drop_last: bool = field(default=True)
     bf16: bool = field(default=True)
+    lora: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to add LoRA (Low-Rank Adaptation) adapter before training. When using real quantization, "
+                "the LoRA adapter must be set, as quantized weights will be frozen during training."
+            )
+        },
+    )
 
 
 @dataclass
@@ -159,7 +168,10 @@ def train():
     quant_output_path = None
     if quant_args.quant_cfg is not None:
         quant_output_path = os.path.join(training_args.output_dir, "modelopt_state.pt")
-        if os.path.isfile(quant_output_path):
+        # Loading real quantization state dict is not supported yet
+        is_real_quant = "REAL_QUANT" in quant_args.quant_cfg
+        checkpoint = None if is_real_quant else checkpoint
+        if os.path.isfile(quant_output_path) and not is_real_quant:
             print_rank_0(f"Loading modelopt state from {quant_output_path}")
             modelopt_state = torch.load(quant_output_path)
             mto.restore_from_modelopt_state(model, modelopt_state)
@@ -170,6 +182,12 @@ def train():
                 shuffle=False,
                 collate_fn=default_data_collator,
             )
+
+            if "AWQ" in quant_args.quant_cfg:
+                print_rank_0(
+                    "\n####\nAWQ calibration could take longer than other calibration methods. "
+                    "Consider reducing calib_size to reduce calibration time.\n####\n"
+                )
 
             def calibrate_loop(model):
                 print_rank_0("Calibrating model...")
@@ -189,6 +207,25 @@ def train():
             if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
                 torch.save(mto.modelopt_state(model), quant_output_path)
             torch.cuda.empty_cache()  # Lets make sure to free up the memory for training
+
+    # add lora adapter
+    if training_args.lora:
+        from peft import LoraConfig
+
+        lora_config = LoraConfig(
+            r=8,
+            target_modules=[
+                "q_proj",
+                "o_proj",
+                "k_proj",
+                "v_proj",
+                "gate_proj",
+                "up_proj",
+                "down_proj",
+            ],
+            task_type="CAUSAL_LM",
+        )
+        model.add_adapter(lora_config, adapter_name="adapter")
 
     def monkey_patch_training_step_to_fix_memory_leak(trainer):
         def new_training_step(self, *args, **kwargs):

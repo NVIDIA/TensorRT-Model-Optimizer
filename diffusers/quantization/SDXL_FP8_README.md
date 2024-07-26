@@ -9,12 +9,12 @@ Note: We only support SDXL FP8 inference on Ada and Hopper GPUs (sm>=8.9).
 After exported the FP8 quantized SDXL ONNX model from Pytorch, a graph surgeon postprocess is required for FP8 ONNX model. The surgeon script only supports SDXL right now, SD1.5 and SD2.1 will be supported soon.
 
 ```sh
-mkdir onnx_fp8_surgeoned && python ./onnx_utils/sdxl_fp8_graphsurgeon.py --onnx-path ./onnx_fp8/unet.onnx  --output-onnx ./onnx_fp8_surgeoned/sdxl_fp8_graphsurgeon.onnx
+mkdir onnx_fp8_surgeoned && python ./onnx_utils/sdxl_fp8_onnx_graphsurgeon.py --onnx-path ./onnx_fp8/unet.onnx  --output-onnx ./onnx_fp8_surgeoned/sdxl_fp8_graphsurgeon.onnx --use-plugin
 ```
 
 ### Build TRT plugins
 
-If you are already in the docker built with instructions in [`public/README.md`](../README.md), then you can go to the next step. Otherwise, build the TRT plugins by yourself. We require CUDA 12.x and TRT version >= 9.2.0.
+If you are already in the docker built with instructions in [`../../README.md`](../../README.md#docker), then you can go to the next step. Otherwise, build the TRT plugins by yourself. We require CUDA 12.x and TRT version >= 9.2.0.
 
 Before building, update the addresses of "TRT" and "CUDA" according to your environment in file [`plugins/Makefile.config`](../plugins/Makefile.config).
 
@@ -24,7 +24,7 @@ Now build plugins.
 cd plugins && make -j 4
 ```
 
-If plugins are compiled successfully, you can find plugin files `plugins/bin/FP8Conv2DPlugin.so` and `plugins/bin/roupNormPlugin.so`.
+If plugins are compiled successfully, you can find plugin files `plugins/bin/FP8Conv2DPlugin.so` and `plugins/bin/groupNormPlugin.so`.
 
 Add the prebuilt kernel file [`plugins/prebuilt/libfp8convkernel.so`](../plugins/prebuilt/libfp8convkernel.so) to `LD_LIBRARY_PATH`:
 

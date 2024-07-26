@@ -45,6 +45,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       DO_TRAIN="${1#*=}"
       ;;
+    --lora*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      LORA="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument\n"
       exit 1
@@ -74,6 +78,19 @@ else
     QUANT_ARGS="--quant_cfg $QUANT_CFG --calib_size $CALIB_SIZE"
 fi
 
+if [ -z $LORA ]; then
+    LORA="False"
+else
+    LORA="$LORA"
+fi
+
+FSDP_ARGS="--fsdp 'full_shard auto_wrap' --fsdp_transformer_layer_cls_to_wrap 'LlamaDecoderLayer'"
+
+# real quantization does not work with FSDP
+if [[ "$QUANT_CFG" == *"REAL_QUANT"* ]]; then
+  FSDP_ARGS=""
+fi
+
 CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --model_name_or_path $MODEL \
     --model_max_length 4096 \
@@ -100,10 +117,9 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --lr_scheduler_type linear \
     --logging_steps 1 \
     --report_to tensorboard \
-    --fsdp 'full_shard auto_wrap' \
-    --fsdp_transformer_layer_cls_to_wrap 'LlamaDecoderLayer' \
     --tf32 True \
-    $QUANT_ARGS
+    --lora $LORA \
+    $FSDP_ARGS $QUANT_ARGS
 "
 
 start_time=$(date +%s)

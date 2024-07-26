@@ -21,6 +21,7 @@
 
 import argparse
 import ast
+import os
 from pathlib import Path
 
 import evaluate
@@ -35,7 +36,13 @@ from tensorrt_llm.models.qwen.utils import make_context
 from tensorrt_llm.runtime import PYTHON_BINDINGS, ModelRunner
 from tensorrt_llm.tools.ppl import ppl
 from transformers import AutoModel, AutoModelForCausalLM, AutoModelForSeq2SeqLM, GenerationConfig
-from utils import DEFAULT_HF_MODEL_DIRS, load_tokenizer, read_model_name
+from utils import (
+    DEFAULT_HF_MODEL_DIRS,
+    add_common_args,
+    load_tokenizer,
+    read_model_name,
+    supports_inflight_batching,
+)
 
 if PYTHON_BINDINGS:
     from tensorrt_llm.runtime import ModelRunnerCpp
@@ -50,8 +57,7 @@ def main(args):
     model_name, model_version = read_model_name(args.engine_dir)
     if args.hf_model_dir is None:
         logger.warning(
-            "hf_model_dir is not specified. Try to infer from model_name, but this may be"
-            " incorrect."
+            "hf_model_dir is not specified. Try to infer from model_name, but this may be incorrect."
         )
         if model_name in DEFAULT_HF_MODEL_DIRS:
             args.hf_model_dir = DEFAULT_HF_MODEL_DIRS[model_name]
@@ -88,6 +94,17 @@ def main(args):
         dataset_input_key = "input"
         dataset_output_key = "output"
         dataset_split = "validation"  # only this split contains reference strings
+    elif args.eval_task == "eval_context_ppl":
+        dataset_name = "SlimPajama-6B"
+        dataset_revision = None
+        dataset_input_key = "text"
+        dataset_output_key = "text"
+        dataset_split = "test"
+        args.output_len = 1  # Only want to compute the ppl of context
+        args.eval_ppl = True
+        logger.warning(
+            f"Run task '{args.eval_task}', setting 'output_len' to 1, and enable 'eval_ppl'."
+        )
     if args.dataset_dir is not None and isinstance(args.dataset_dir, str):
         args.dataset_dir = args.dataset_dir.rstrip("/")
         if args.dataset_dir.endswith(dataset_name):
@@ -107,6 +124,17 @@ def main(args):
     test_token_num = args.max_input_length
     max_attention_window_size = args.max_attention_window_size
     sink_token_length = args.sink_token_length
+
+    if args.end_id:
+        end_id = args.end_id
+
+    stop_words_list = None
+    if args.stop_words:
+        stop_words_list = tensorrt_llm.runtime.decode_words_list(args.stop_words, tokenizer)
+
+    bad_words_list = None
+    if args.bad_words:
+        bad_words_list = tensorrt_llm.runtime.decode_words_list(args.bad_words, tokenizer)
 
     # random_seed = 5
     temperature = args.temperature
@@ -130,15 +158,18 @@ def main(args):
                 f.write(f"Tokenizer path: {args.tokenizer_dir}\n")
 
     # TODO: Add random_seed flag in gptj
-    metric_tensorrt_llm = [evaluate.load("rouge") for _ in range(num_beams)]
-    metric_hf = [evaluate.load("rouge") for _ in range(num_beams)]
+    rouge_dir = args.rouge_dir if args.rouge_dir and os.path.exists(args.rouge_dir) else "rouge"
+    metric_tensorrt_llm = [evaluate.load(rouge_dir) for _ in range(num_beams)]
+    metric_hf = [evaluate.load(rouge_dir) for _ in range(num_beams)]
     for i in range(num_beams):
         metric_tensorrt_llm[i].seed = 0
         metric_hf[i].seed = 0
     ppls_trt_llm = [[] for _ in range(num_beams)]
     ppls_hf = [[] for _ in range(num_beams)]
 
-    def _prepare_inputs(batch_input_texts, eval_task="summarize", add_special_tokens=True):
+    def _prepare_inputs(
+        batch_input_texts, eval_task="summarize", add_special_tokens=True, min_input_length=0
+    ):
         batch_size = len(batch_input_texts)
         append_str = " TL;DR: " if eval_task == "summarize" else ""
         batch_input_ids = []
@@ -181,14 +212,27 @@ def main(args):
                     max_length=test_token_num,
                 ).squeeze(0)
 
-            batch_input_ids.append(input_ids)
+            if input_ids.numel() > min_input_length:
+                batch_input_ids.append(input_ids)
         return batch_input_ids
 
-    def eval_trt_llm(datapoint, eval_task="summarize", eval_ppl=False, add_special_tokens=True):
+    def eval_trt_llm(
+        datapoint,
+        eval_task="summarize",
+        eval_ppl=False,
+        add_special_tokens=True,
+        min_input_length=0,
+    ):
         batch_size = len(datapoint[dataset_input_key])
         batch_input_ids = _prepare_inputs(
-            datapoint[dataset_input_key], eval_task=eval_task, add_special_tokens=add_special_tokens
+            datapoint[dataset_input_key],
+            eval_task=eval_task,
+            add_special_tokens=add_special_tokens,
+            min_input_length=min_input_length,
         )
+        batch_size = len(batch_input_ids)
+        if batch_size == 0:
+            return [], [], [], {}
         input_lengths = [x.size(0) for x in batch_input_ids]
 
         with torch.no_grad():
@@ -202,12 +246,15 @@ def main(args):
                 temperature=temperature,
                 top_k=top_k,
                 top_p=top_p,
+                stop_words_list=stop_words_list,
+                bad_words_list=bad_words_list,
                 num_beams=num_beams,
                 length_penalty=length_penalty,
                 early_stopping=early_stopping,
                 repetition_penalty=repetition_penalty,
                 presence_penalty=presence_penalty,
                 frequency_penalty=frequency_penalty,
+                lora_uids=args.lora_task_uids,
                 output_sequence_lengths=True,
                 return_dict=True,
                 medusa_choices=args.medusa_choices,
@@ -260,7 +307,13 @@ def main(args):
             return output_beams_list, output_ids_list, ppls, lengths_info
         return [], [], [], {}
 
-    def eval_hf(datapoint, eval_task="summarize", eval_ppl=False, add_special_tokens=True):
+    def eval_hf(
+        datapoint,
+        eval_task="summarize",
+        eval_ppl=False,
+        add_special_tokens=True,
+        min_input_length=0,
+    ):
         batch_size = len(datapoint[dataset_input_key])
         if batch_size > 1:
             logger.warning(
@@ -268,8 +321,14 @@ def main(args):
                 f" batch size is {batch_size}"
             )
         batch_input_ids = _prepare_inputs(
-            datapoint[dataset_input_key], eval_task=eval_task, add_special_tokens=add_special_tokens
+            datapoint[dataset_input_key],
+            eval_task=eval_task,
+            add_special_tokens=add_special_tokens,
+            min_input_length=min_input_length,
         )
+        batch_size = len(batch_input_ids)
+        if batch_size == 0:
+            return [], [], [], [[] for _ in range(batch_size)]
         input_lengths = [x.size(0) for x in batch_input_ids]
         # Left padding for HF
         max_length = max(input_lengths)
@@ -322,7 +381,15 @@ def main(args):
             seq_lens = (output_ids != end_id).logical_and(output_ids != pad_id).sum(dim=-1)
             context_logits = context_outputs["logits"]
             # Remove the first generation logits which are same to last context logits
-            generation_logits = torch.stack(outputs["scores"][1:], dim=1)
+            generation_logits = outputs["scores"][1:]
+            # When output_len is 1, generation_logits would be () and lead to error if we do torch.stack
+            if len(generation_logits) == 0:
+                generation_logits = torch.empty(
+                    [context_logits.shape[0], 0, context_logits.shape[-1]],
+                    device=context_logits.device,
+                )
+            else:
+                generation_logits = torch.stack(generation_logits, dim=1)
             _, max_gen_len, voc_size = generation_logits.size()
             generation_logits = generation_logits.view(batch_size, num_beams, max_gen_len, voc_size)
             for batch_idx in range(batch_size):
@@ -346,6 +413,12 @@ def main(args):
         return output_lines_list, tokens_list, ppls
 
     if test_trt_llm:
+        if not supports_inflight_batching(args.engine_dir):
+            logger.warning(
+                "The given engine does not support in-flight batching, fallback to python session"
+            )
+            args.use_py_session = True
+
         if not PYTHON_BINDINGS and not args.use_py_session:
             logger.warning(
                 "Python bindings of C++ session is unavailable, fallback to Python session."
@@ -371,6 +444,10 @@ def main(args):
                 max_beam_width=num_beams,
                 max_attention_window_size=max_attention_window_size,
                 sink_token_length=sink_token_length,
+                max_tokens_in_paged_kv_cache=args.max_tokens_in_paged_kv_cache,
+                kv_cache_enable_block_reuse=args.kv_cache_enable_block_reuse,
+                kv_cache_free_gpu_memory_fraction=args.kv_cache_free_gpu_memory_fraction,
+                enable_chunked_context=args.enable_chunked_context,
             )
         runner = runner_cls.from_dir(**runner_kwargs)
         assert not (
@@ -383,8 +460,9 @@ def main(args):
             eval_task=args.eval_task,
             eval_ppl=args.eval_ppl,
             add_special_tokens=args.add_special_tokens,
+            min_input_length=args.min_input_length,
         )
-        if runtime_rank == 0:
+        if runtime_rank == 0 and args.eval_task != "eval_context_ppl":
             logger.info("---------------------------------------------------------")
             logger.info("TensorRT-LLM Generated : ")
             logger.info(f" Input : {datapoint[dataset_input_key]}")
@@ -406,7 +484,12 @@ def main(args):
                 eval_task=args.eval_task,
                 eval_ppl=args.eval_ppl,
                 add_special_tokens=args.add_special_tokens,
+                min_input_length=args.min_input_length,
             )
+            if output_tensorrt_llm == []:
+                data_point_idx += max_batch_size
+                ite_count += 1
+                continue
             profiler.stop("tensorrt_llm")
             if runtime_rank == 0:
                 input_lengths = lengths_info["input_lengths"]
@@ -431,8 +514,7 @@ def main(args):
                         for beam_idx in range(num_beams):
                             with (output_dir / "trtllm.out").open("a") as f:
                                 f.write(
-                                    f"[{data_point_idx + i}] [Beam {beam_idx}]"
-                                    f" {output_tensorrt_llm[beam_idx][i]}\n"
+                                    f"[{data_point_idx + i}] [Beam {beam_idx}] {output_tensorrt_llm[beam_idx][i]}\n"
                                 )
 
                 logger.debug("-" * 100)
@@ -479,13 +561,15 @@ def main(args):
             eval_task=args.eval_task,
             eval_ppl=args.eval_ppl,
             add_special_tokens=args.add_special_tokens,
+            min_input_length=args.min_input_length,
         )
-        logger.info("---------------------------------------------------------")
-        logger.info("HF Generated : ")
-        logger.info(f" Input : {datapoint[dataset_input_key]}")
-        logger.info(f"\n Reference : {datapoint[dataset_output_key]}")
-        logger.info(f"\n Output : {output}")
-        logger.info("---------------------------------------------------------")
+        if runtime_rank == 0 and args.eval_task != "eval_context_ppl":
+            logger.info("---------------------------------------------------------")
+            logger.info("HF Generated : ")
+            logger.info(f" Input : {datapoint[dataset_input_key]}")
+            logger.info(f"\n Reference : {datapoint[dataset_output_key]}")
+            logger.info(f"\n Output : {output}")
+            logger.info("---------------------------------------------------------")
 
         ite_count = 0
         data_point_idx = 0
@@ -501,9 +585,13 @@ def main(args):
                 eval_task=args.eval_task,
                 eval_ppl=args.eval_ppl,
                 add_special_tokens=args.add_special_tokens,
+                min_input_length=args.min_input_length,
             )
             profiler.stop("hf")
-
+            if output_hf == []:
+                data_point_idx += max_batch_size
+                ite_count += 1
+                continue
             if runtime_rank == 0:
                 seq_lengths = [len(tokens) for tokens in token_list]
                 total_output_token_count_hf += sum(seq_lengths)
@@ -521,8 +609,7 @@ def main(args):
                         for beam_idx in range(num_beams):
                             with (output_dir / "hf.out").open("a") as f:
                                 f.write(
-                                    f"[{data_point_idx + i}] [Beam {beam_idx}]"
-                                    f" {output_hf[beam_idx][i]}\n"
+                                    f"[{data_point_idx + i}] [Beam {beam_idx}] {output_hf[beam_idx][i]}\n"
                                 )
 
                 logger.debug("-" * 100)
@@ -548,10 +635,11 @@ def main(args):
             for beam_idx in range(num_beams):
                 logger.info(f"TensorRT-LLM beam {beam_idx} result")
                 computed_metrics_tensorrt_llm = metric_tensorrt_llm[beam_idx].compute()
-                for key in computed_metrics_tensorrt_llm.keys():
-                    logger.info(f"  {key} : {computed_metrics_tensorrt_llm[key]*100}")
+                if args.eval_task != "eval_context_ppl":
+                    for key in computed_metrics_tensorrt_llm.keys():
+                        logger.info(f"  {key} : {computed_metrics_tensorrt_llm[key]*100}")
 
-                if args.check_accuracy and beam_idx == 0:
+                if args.check_accuracy and beam_idx == 0 and args.eval_task != "eval_context_ppl":
                     assert (
                         computed_metrics_tensorrt_llm["rouge1"] * 100
                         > args.tensorrt_llm_rouge1_threshold
@@ -559,7 +647,11 @@ def main(args):
                 if args.eval_ppl:
                     logger.info(f"  Per-token perplexity: {np.mean(ppls_trt_llm[beam_idx])}")
                     if args.check_accuracy and beam_idx == 0:
-                        assert np.mean(ppls_trt_llm[beam_idx]) < args.tensorrt_llm_ppl_threshold
+                        avg_ppl = np.mean(ppls_trt_llm[beam_idx])
+                        assert avg_ppl < args.tensorrt_llm_ppl_threshold, (
+                            f"[FAILED] average PPL ({avg_ppl}) is larger than "
+                            f"threshold ({args.tensorrt_llm_ppl_threshold})"
+                        )
         if test_hf:
             np.random.seed(0)  # rouge score use sampling to compute the score
             logger.info(f'Hugging Face (total latency: {profiler.elapsed_time_in_sec("hf")} sec)')
@@ -571,43 +663,22 @@ def main(args):
             for beam_idx in range(num_beams):
                 logger.info(f"HF beam {beam_idx} result")
                 computed_metrics_hf = metric_hf[beam_idx].compute()
-                for key in computed_metrics_hf.keys():
-                    logger.info(f"  {key} : {computed_metrics_hf[key]*100}")
+                if args.eval_task != "eval_context_ppl":
+                    for key in computed_metrics_hf.keys():
+                        logger.info(f"  {key} : {computed_metrics_hf[key]*100}")
                 if args.eval_ppl and args.batch_size == 1:
                     logger.info(f"  Per-token perplexity: {np.mean(ppls_hf[beam_idx])}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hf_model_dir", "--model_dir", type=str, default=None)
-    parser.add_argument(
-        "--tokenizer_dir",
-        default=None,
-        help="tokenizer path; defaults to hf_model_dir if left unspecified",
-    )
-    parser.add_argument("--vocab_file")
     parser.add_argument("--test_hf", action="store_true")
     parser.add_argument("--test_trt_llm", action="store_true")
-    parser.add_argument(
-        "--hf_data_type",
-        "--data_type",
-        type=str,
-        choices=["fp32", "fp16", "bf16", "float32", "float16", "bfloat16"],
-        default="fp16",
-        help="The data type for hf model.",
-    )
-    parser.add_argument("--engine_dir", type=str, default="engine_outputs")
-    parser.add_argument(
-        "--use_py_session",
-        default=False,
-        action="store_true",
-        help="Whether or not to use Python runtime session",
-    )
     parser.add_argument(
         "--eval_task",
         type=str,
         default="summarize",
-        choices=["summarize", "summarize_long", "code_completion"],
+        choices=["summarize", "summarize_long", "code_completion", "eval_context_ppl"],
     )
     parser.add_argument("--check_accuracy", action="store_true")
     parser.add_argument("--tensorrt_llm_rouge1_threshold", type=float, default=15.0)
@@ -627,87 +698,32 @@ if __name__ == "__main__":
         help="The local cache directory for dataset; "
         "will use `~/.cache/huggingface/datasets` if not specified.",
     )
-    parser.add_argument("--log_level", type=str, default="info")
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--max_ite", type=int, default=20)
     parser.add_argument("--output_len", type=int, default=100)
     parser.add_argument("--max_input_length", type=int, default=923)
     parser.add_argument(
-        "--max_attention_window_size",
+        "--min_input_length",
         type=int,
-        default=None,
-        help=(
-            "The attention window size that controls the sliding window attention / cyclic kv cache"
-            " behavior"
-        ),
-    )
-    parser.add_argument(
-        "--sink_token_length", type=int, default=None, help="The sink token length."
-    )
-    parser.add_argument("--num_beams", type=int, default=1)
-    parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--top_k", type=int, default=1)
-    parser.add_argument("--top_p", type=float, default=0.0)
-    parser.add_argument("--length_penalty", type=float, default=1.0)
-    parser.add_argument("--repetition_penalty", type=float, default=1.0)
-    parser.add_argument("--presence_penalty", type=float, default=0.0)
-    parser.add_argument("--frequency_penalty", type=float, default=0.0)
-    parser.add_argument(
-        "--early_stopping",
-        type=int,
-        help=(
-            "Use early stopping if num_beams > 1"
-            "1 for early-stopping, 0 for non-early-stopping"
-            "other values for stopping by length"
-        ),
-        default=1,
-    )
-    parser.add_argument(
-        "--debug_mode",
-        default=False,
-        action="store_true",
-        help="Whether or not to turn on the debug mode",
-    )
-    parser.add_argument(
-        "--no_add_special_tokens",
-        dest="add_special_tokens",
-        default=True,
-        action="store_false",
-        help="Whether or not to add special tokens",
-    )
-    parser.add_argument(
-        "--hf_device_map_auto",
-        action="store_true",
-        help=(
-            "Use device map 'auto' to load a pretrained HF model. This may "
-            "help to test a large model that cannot fit into a singlue GPU."
-        ),
+        default=0,
+        help="skip the sentences which are shorter than min_input_length.",
     )
     parser.add_argument(
         "--output_dir",
         type=str,
         default=None,
-        help=(
-            "Directory where to save output sentences. 'trtllm.out' for "
-            "TensorRT-LLM outputs, and 'hf.out' for HF outputs.  If None, do not "
-            "save outputs."
-        ),
+        help="Directory where to save output sentences. 'trtllm.out' for "
+        "TensorRT-LLM outputs, and 'hf.out' for HF outputs.  If None, do not "
+        "save outputs.",
     )
     parser.add_argument(
-        "--medusa_choices",
-        type=str,
+        "--rouge_dir",
         default=None,
-        help=(
-            "Medusa choice to use, if not none, will use Medusa decoding."
-            "   E.g.: [[0, 0, 0, 0], [0, 1, 0], [1, 0], [1, 1]] for 9 medusa tokens."
-        ),
+        type=str,
+        help="evaluate.load('rouge') will attempt to pull rouge package from HF. "
+        "Use cached rouge can avoid network outage of host or HF.",
     )
-    parser.add_argument(
-        "--gpu_weights_percent",
-        default=1,
-        type=float,
-        help="Specify the percentage of weights that reside on GPU instead of CPU and streaming load during runtime.",
-    )
+    parser = add_common_args(parser)
     args = parser.parse_args()
 
     main(args)

@@ -22,16 +22,20 @@
 import argparse
 
 import torch
-from diffusers import DiffusionPipeline, StableDiffusionPipeline
-from utils import (
-    check_lora,
-    get_fp8_config,
-    get_int8_config,
-    load_calib_prompts,
-)
+from config import SDXL_FP8_DEFAULT_CONFIG, get_int8_config
+from diffusers import DiffusionPipeline, StableDiffusion3Pipeline, StableDiffusionPipeline
+from onnx_utils.export import generate_fp8_scales, modelopt_export_sd
+from utils import check_lora, filter_func, load_calib_prompts, quantize_lvl, set_fmha
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
+
+MODEL_ID = {
+    "sdxl-1.0": "stabilityai/stable-diffusion-xl-base-1.0",
+    "sdxl-turbo": "stabilityai/sdxl-turbo",
+    "sd1.5": "runwayml/stable-diffusion-v1-5",
+    "sd3-medium": "stabilityai/stable-diffusion-3-medium-diffusers",
+}
 
 
 def do_calibrate(pipe, calibration_prompts, **kwargs):
@@ -51,19 +55,25 @@ def do_calibrate(pipe, calibration_prompts, **kwargs):
 def main():
     parser = argparse.ArgumentParser()
     # Model hyperparameters
-    parser.add_argument("--exp_name", default=None)
+    parser.add_argument("--exp-name", default=None)
     parser.add_argument(
         "--model",
         type=str,
-        default="stabilityai/stable-diffusion-xl-base-1.0",
+        default="sdxl-1.0",
         choices=[
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            "stabilityai/sdxl-turbo",
-            "runwayml/stable-diffusion-v1-5",
+            "sdxl-1.0",
+            "sdxl-turbo",
+            "sd1.5",
+            "sd3-medium",
         ],
     )
     parser.add_argument(
-        "--n_steps",
+        "--restore-from",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--n-steps",
         type=int,
         default=30,
         help="Number of denoising steps, for SDXL-turbo, use 1-4 steps",
@@ -90,70 +100,94 @@ def main():
         "--quant-level",
         default=3.0,
         type=float,
-        choices=[1.0, 2.0, 2.5, 3.0],
-        help="Quantization level, 1: CNN, 2: CNN+FFN, 2.5: CNN+FFN+QKV, 3: CNN+FC",
+        choices=[1.0, 2.0, 2.5, 3.0, 4.0],
+        help="Quantization level, 1: CNN, 2: CNN+FFN, 2.5: CNN+FFN+QKV, 3: CNN+FC, 4: CNN+FC+fMHA",
+    )
+    parser.add_argument(
+        "--onnx-dir", type=str, default=None, help="Will export the ONNX if not None"
     )
 
     args = parser.parse_args()
 
     args.calib_size = args.calib_size // args.batch_size
 
-    if args.model == "runwayml/stable-diffusion-v1-5":
+    if args.model == "sd1.5":
         pipe = StableDiffusionPipeline.from_pretrained(
-            args.model, torch_dtype=torch.float16, safety_checker=None
+            MODEL_ID[args.model], torch_dtype=torch.float16, safety_checker=None
+        )
+    elif args.model == "sd3-medium":
+        pipe = StableDiffusion3Pipeline.from_pretrained(
+            MODEL_ID[args.model], torch_dtype=torch.float16
         )
     else:
         pipe = DiffusionPipeline.from_pretrained(
-            args.model,
+            MODEL_ID[args.model],
             torch_dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
         )
     pipe.to("cuda")
 
-    # This is a list of prompts
-    cali_prompts = load_calib_prompts(args.batch_size, "./calib/calib_prompts.txt")
-    extra_step = (
-        1 if args.model == "runwayml/stable-diffusion-v1-5" else 0
-    )  # Depending on the scheduler. some schedulers will do n+1 steps
-    if args.format == "int8":
-        # Making sure to use global_min in the calibrator for SD 1.5
-        assert args.collect_method != "default"
-        if args.model == "runwayml/stable-diffusion-v1-5":
-            args.collect_method = "global_min"
-        quant_config = get_int8_config(
-            pipe.unet,
-            args.quant_level,
-            args.alpha,
-            args.percentile,
-            args.n_steps + extra_step,
-            collect_method=args.collect_method,
+    backbone = pipe.unet if args.model != "sd3-medium" else pipe.transformer
+
+    if args.quant_level == 4.0:
+        assert args.format != "int8", "We only support fp8 for Level 4 Quantization"
+        assert args.model == "sdxl-1.0", "We only support fp8 for SDXL on Level 4"
+        set_fmha(backbone)
+    if not args.restore_from:
+        # This is a list of prompts
+        cali_prompts = load_calib_prompts(
+            args.batch_size,
+            "./calib/calib_prompts.txt",
         )
-    elif args.format == "fp8":
-        if args.collect_method == "default":
-            quant_config = mtq.FP8_DEFAULT_CFG
-        else:
-            quant_config = get_fp8_config(
-                pipe.unet,
+        extra_step = (
+            1 if args.model == "sd1.5" else 0
+        )  # Depending on the scheduler. some schedulers will do n+1 steps
+        if args.format == "int8":
+            # Making sure to use global_min in the calibrator for SD 1.5
+            assert args.collect_method != "default"
+            if args.model == "sd1.5":
+                args.collect_method = "global_min"
+            quant_config = get_int8_config(
+                backbone,
+                args.quant_level,
+                args.alpha,
                 args.percentile,
                 args.n_steps + extra_step,
                 collect_method=args.collect_method,
             )
+        elif args.format == "fp8":
+            if args.collect_method == "default":
+                quant_config = SDXL_FP8_DEFAULT_CONFIG
+            else:
+                raise NotImplementedError
 
-    def forward_loop(unet):
-        pipe.unet = unet
-        do_calibrate(
-            pipe=pipe,
-            calibration_prompts=cali_prompts,
-            calib_size=args.calib_size,
-            n_steps=args.n_steps,
-        )
+        def forward_loop(backbone):
+            if args.model != "sd3-medium":
+                pipe.unet = backbone
+            else:
+                pipe.transformer = backbone
+            do_calibrate(
+                pipe=pipe,
+                calibration_prompts=cali_prompts,
+                calib_size=args.calib_size,
+                n_steps=args.n_steps,
+            )
 
-    # All the LoRA layers should be fused
-    check_lora(pipe.unet)
+        # All the LoRA layers should be fused
+        check_lora(backbone)
+        mtq.quantize(backbone, quant_config, forward_loop)
+        mto.save(backbone, f"{args.exp_name}")
+    else:
+        mto.restore(backbone, args.restore_from)
+    quantize_lvl(backbone, args.quant_level)
+    mtq.disable_quantizer(backbone, filter_func)
 
-    mtq.quantize(pipe.unet, quant_config, forward_loop)
-    mto.save(pipe.unet, f"./unet.state_dict.{args.exp_name}.pt")
+    # if you want to export the model on CPU, move the dummy input and the model to cpu and float32
+    if args.onnx_dir is not None:
+        if args.format == "fp8":
+            generate_fp8_scales(backbone)
+        modelopt_export_sd(backbone, f"{str(args.onnx_dir)}", args.model)
 
 
 if __name__ == "__main__":

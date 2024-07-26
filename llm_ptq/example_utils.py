@@ -44,6 +44,7 @@ MODEL_NAME_PATTERN_MAP = {
     "ChatGLM": "chatglm",
     "QWen": "qwen",
     "RecurrentGemma": "recurrentgemma",
+    "Gemma2": "gemma2",
     "Gemma": "gemma",
     "phi3small": "phi3small",
     "phi3": "phi3",
@@ -52,6 +53,8 @@ MODEL_NAME_PATTERN_MAP = {
     "MixtralForCausalLM": "llama",
     "ArcticForCausalLM": "llama",
     "StarCoder": "gptnext",
+    "Dbrx": "dbrx",
+    "T5": "t5",
 }
 
 
@@ -108,15 +111,14 @@ def get_dtype(dtype):
     return dtype
 
 
-def get_model(ckpt_path, dtype="fp16", device="cuda"):
+def get_model(ckpt_path, device="cuda"):
     print(f"Initializing model from {ckpt_path}")
-
-    dtype = get_dtype(dtype)
 
     if "vila" in ckpt_path:
         register_vila(ckpt_path)
 
-    model_kwargs = {"torch_dtype": dtype}
+    # Note: Forcibly converting the model precision between bf16 and fp16 may introduce accuracy drop
+    model_kwargs = {"torch_dtype": "auto"}
     hf_config = AutoConfig.from_pretrained(ckpt_path, trust_remote_code=True)
 
     device_map = "auto"
@@ -130,6 +132,12 @@ def get_model(ckpt_path, dtype="fp16", device="cuda"):
             ckpt_path, device_map=device_map, **model_kwargs
         )
         model = hf_llava.language_model
+    elif hf_config.model_type == "t5":
+        from transformers import T5ForConditionalGeneration
+
+        model = T5ForConditionalGeneration.from_pretrained(
+            ckpt_path, device_map=device_map, **model_kwargs
+        )
     else:
         model = AutoModelForCausalLM.from_pretrained(
             ckpt_path, device_map=device_map, **model_kwargs, trust_remote_code=True

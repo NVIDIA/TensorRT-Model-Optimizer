@@ -35,6 +35,8 @@ def read_config(engine_dir, rank) -> ModelConfig:
     num_kv_heads = (num_kv_heads + tp_size - 1) // tp_size
     hidden_size = pretrained_config.hidden_size // tp_size
     head_size = pretrained_config.head_size
+    pretrained_config_dict = engine.config.pretrained_config.to_dict()
+    model_name = pretrained_config_dict["decoder"] if "decoder" in pretrained_config_dict else ""
 
     rnn_config_items = [
         "conv_kernel",
@@ -80,9 +82,7 @@ def read_config(engine_dir, rank) -> ModelConfig:
             else 0
         ),
         use_custom_all_reduce=build_config.plugin_config.use_custom_all_reduce,
-        moe_tp_mode=(
-            pretrained_config.moe_tp_mode if hasattr(pretrained_config, "moe_tp_mode") else 0
-        ),
         **rnn_configs_kwargs,
         gpu_weights_percent=1,
+        model_name=model_name,
     )

@@ -41,11 +41,12 @@ from pathlib import Path
 
 import onnx
 import torch
+from diffusers.models.attention_processor import Attention
 from optimum.onnx.utils import _get_onnx_external_data_tensors, check_model_uses_external_data
 from torch.onnx import export as onnx_export
 
 AXES_NAME = {
-    "stabilityai/stable-diffusion-xl-base-1.0": {
+    "sdxl-1.0": {
         "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
         "timestep": {0: "steps"},
         "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
@@ -53,7 +54,7 @@ AXES_NAME = {
         "time_ids": {0: "batch_size"},
         "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
     },
-    "stabilityai/sdxl-turbo": {
+    "sdxl-turbo": {
         "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
         "timestep": {0: "steps"},
         "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
@@ -61,11 +62,18 @@ AXES_NAME = {
         "time_ids": {0: "batch_size"},
         "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
     },
-    "runwayml/stable-diffusion-v1-5": {
+    "sd1.5": {
         "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
         "timestep": {0: "steps"},
         "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
         "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
+    },
+    "sd3-medium": {
+        "hidden_states": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
+        "timestep": {0: "steps"},
+        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
+        "pooled_projections": {0: "batch_size"},
+        "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
     },
 }
 
@@ -82,9 +90,9 @@ SDXL_FP8_CFG = {
 }
 
 
-def generate_fp8_scales(unet):
+def generate_fp8_scales(backbone):
     # temporary solution due to a known bug in torch.onnx._dynamo_export
-    for _, module in unet.named_modules():
+    for _, module in backbone.named_modules():
         if isinstance(module, (torch.nn.Linear, torch.nn.Conv2d)) and (
             hasattr(module.input_quantizer, "_amax") and module.input_quantizer is not None
         ):
@@ -92,44 +100,57 @@ def generate_fp8_scales(unet):
             module.weight_quantizer._num_bits = 8
             module.input_quantizer._amax = module.input_quantizer._amax * (127 / 448.0)
             module.weight_quantizer._amax = module.weight_quantizer._amax * (127 / 448.0)
+        elif isinstance(module, Attention) and (
+            hasattr(module.q_bmm_quantizer, "_amax") and module.q_bmm_quantizer is not None
+        ):
+            module.q_bmm_quantizer._num_bits = 8
+            module.q_bmm_quantizer._amax = module.q_bmm_quantizer._amax * (127 / 448.0)
+            module.k_bmm_quantizer._num_bits = 8
+            module.k_bmm_quantizer._amax = module.k_bmm_quantizer._amax * (127 / 448.0)
+            module.v_bmm_quantizer._num_bits = 8
+            module.v_bmm_quantizer._amax = module.v_bmm_quantizer._amax * (127 / 448.0)
+            module.softmax_quantizer._num_bits = 8
+            module.softmax_quantizer._amax = module.softmax_quantizer._amax * (127 / 448.0)
 
 
 def generate_dummy_inputs(sd_version, device):
     dummy_input = {}
-    if (
-        sd_version == "stabilityai/stable-diffusion-xl-base-1.0"
-        or sd_version == "stabilityai/sdxl-turbo"
-    ):
-        dummy_input["sample"] = torch.ones(2, 4, 128, 128).to(device)
-        dummy_input["timestep"] = torch.ones(1).to(device)
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 2048).to(device)
+    if sd_version == "sdxl-1.0" or sd_version == "sdxl-turbo":
+        dummy_input["sample"] = torch.ones(2, 4, 128, 128).to(device).half()
+        dummy_input["timestep"] = torch.ones(1).to(device).half()
+        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 2048).to(device).half()
         dummy_input["added_cond_kwargs"] = {}
-        dummy_input["added_cond_kwargs"]["text_embeds"] = torch.ones(2, 1280).to(device)
-        dummy_input["added_cond_kwargs"]["time_ids"] = torch.ones(2, 6).to(device)
-    elif sd_version == "runwayml/stable-diffusion-v1-5":
-        dummy_input["sample"] = torch.ones(2, 4, 64, 64).to(device)
-        dummy_input["timestep"] = torch.ones(1).to(device)
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 16, 768).to(device)
+        dummy_input["added_cond_kwargs"]["text_embeds"] = torch.ones(2, 1280).to(device).half()
+        dummy_input["added_cond_kwargs"]["time_ids"] = torch.ones(2, 6).to(device).half()
+    elif sd_version == "sd3-medium":
+        dummy_input["hidden_states"] = torch.ones(2, 16, 128, 128).to(device).half()
+        dummy_input["timestep"] = torch.ones(2).to(device).half()
+        dummy_input["encoder_hidden_states"] = torch.ones(2, 333, 4096).to(device).half()
+        dummy_input["pooled_projections"] = torch.ones(2, 2048).to(device).half()
+    elif sd_version == "sd1.5":
+        dummy_input["sample"] = torch.ones(2, 4, 64, 64).to(device).half()
+        dummy_input["timestep"] = torch.ones(1).to(device).half()
+        dummy_input["encoder_hidden_states"] = torch.ones(2, 16, 768).to(device).half()
     else:
         raise NotImplementedError(f"Unsupported sd_version: {sd_version}")
 
     return dummy_input
 
 
-def modelopt_export_sd(base, exp_name, model_name):
-    os.makedirs(f"./{exp_name}", exist_ok=True)
-    dummy_inputs = generate_dummy_inputs(model_name, device=base.unet.device)
+def modelopt_export_sd(backbone, onnx_dir, model_name):
+    os.makedirs(f"{onnx_dir}", exist_ok=True)
+    dummy_inputs = generate_dummy_inputs(model_name, device=backbone.device)
 
-    output = Path(f"./{exp_name}/unet.onnx")
-    if (
-        model_name == "stabilityai/stable-diffusion-xl-base-1.0"
-        or model_name == "stabilityai/sdxl-turbo"
-    ):
+    output = Path(f"{onnx_dir}/backbone.onnx")
+    if model_name == "sdxl-1.0" or model_name == "sdxl-turbo":
         input_names = ["sample", "timestep", "encoder_hidden_states", "text_embeds", "time_ids"]
         output_names = ["latent"]
-    elif model_name == "runwayml/stable-diffusion-v1-5":
+    elif model_name == "sd1.5":
         input_names = ["sample", "timestep", "encoder_hidden_states"]
         output_names = ["latent"]
+    elif model_name == "sd3-medium":
+        input_names = ["hidden_states", "encoder_hidden_states", "pooled_projections", "timestep"]
+        output_names = ["sample"]
     else:
         raise NotImplementedError(f"Unsupported sd_version: {model_name}")
 
@@ -139,7 +160,7 @@ def modelopt_export_sd(base, exp_name, model_name):
 
     # Copied from Huggingface's Optimum
     onnx_export(
-        base.unet,
+        backbone,
         (dummy_inputs,),
         f=output.as_posix(),
         input_names=input_names,

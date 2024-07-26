@@ -1,15 +1,11 @@
 # Cache Diffusion
 
-## News
-
-- [Utilizing DeepCache to Accelerate Stable Diffusion-XL Benchmarks in MLPerf Yields Leading Results](https://developer.nvidia.com/blog/nvidia-h200-tensor-core-gpus-and-nvidia-tensorrt-llm-set-mlperf-llm-inference-records/)
-
 ## Introduction
 
 | Supported Framework | Supported Models |
 |----------|----------|
 | **PyTorch** | [**PixArt-α**](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS), [**Stable Diffusion - XL**](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), [**SVD**](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt) |
-| **TensorRT** | **WIP** |
+| **TensorRT** | [**Stable Diffusion - XL**](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) |
 
 Cache Diffusion methods, such as [DeepCache](https://arxiv.org/abs/2312.00858), [Block Caching](https://arxiv.org/abs/2312.03209) and [T-Gate](https://arxiv.org/abs/2404.02747), optimize performance by reusing cached outputs from previous steps instead of recalculating them. This **training-free** caching approach is compatible with a variety of models, like **DiT** and **UNet**, enabling considerable acceleration without compromising quality.
 
@@ -52,9 +48,37 @@ Two parameters are essential: `wildcard_or_filter_func` and `select_cache_step_f
 
 Multiple configurations can be set up, but ensure that the `wildcard_or_filter_func` works correctly. If you input more than one pair of parameters with the same `wildcard_or_filter_func`, the later one in the list will overwrite the previous ones.
 
-## Demo
+### TensorRT support
 
-The following demo images are generated using `PyTorch==2.3.0 with 1xAda 6000 GPU backend`. TensorRT support will be available in the next ModelOPT release.
+#### Quick Start
+
+Install [TensorRT](https://developer.nvidia.com/tensorrt) then run:
+
+```bash
+python run_cache_diffusion.py
+```
+
+You can find the latest TensorRT at [here](https://developer.nvidia.com/tensorrt/download).
+
+To execute cache diffusion in TensorRT, follow these steps:
+
+```python
+# Load the model
+
+compile(
+    pipe.unet,
+    onnx_path=Path("./onnx"),
+    engine_path=Path("./engine"),
+)
+
+cachify.prepare(pipe, num_inference_steps, SDXL_DEFAULT_CONFIG)
+```
+
+Afterward, use it as a standard cache diffusion pipeline to generate the image.
+
+Please note that only the UNET component is running in TensorRT, while the other parts remain in PyTorch.
+
+## Demo
 
 Comparing with naively reducing the generation steps, cache diffusion can achieve the same speedup and also much better image quality, even close to the reference image. If the image quality does not meet your needs or product requirements, you can replace our default configuration with your customized settings.
 

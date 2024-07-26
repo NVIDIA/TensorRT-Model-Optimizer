@@ -18,7 +18,6 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
-
 import json
 import os
 from math import ceil
@@ -27,11 +26,11 @@ import pandas as pd
 import tensorrt as trt
 import tensorrt_llm
 import torch
-from model_runner import read_config
 from tensorrt_llm.builder import BuildConfig
 from tensorrt_llm.profiler import bytes_to_target_unit
 
 from base_benchmark import BaseBenchmark  # isort:skip
+from model_runner import read_config
 
 
 def element_size(dtype: str):
@@ -42,11 +41,10 @@ def element_size(dtype: str):
 
 
 class GPTBenchmark(BaseBenchmark):
+
     def __init__(self, args, batch_sizes, in_out_lens, gpu_weights_percents, rank, world_size):
-        # Model Optimizer modification
         model_config = read_config(args.engine_dir, rank)
         args.model = model_config.model_name
-
         super().__init__(
             args.engine_dir, args.model, args.dtype, rank, world_size, args.serial_build
         )
@@ -80,8 +78,7 @@ class GPTBenchmark(BaseBenchmark):
                 engine_buffer = f.read()
                 self.weights_size_approx = len(engine_buffer)
         else:
-            # Model Optimizer Modification
-            raise NotImplementedError("Please specify engine_dr")
+            raise ValueError("engine_dir is None")
 
         assert engine_buffer is not None
         if args.build_only:
@@ -103,6 +100,17 @@ class GPTBenchmark(BaseBenchmark):
                 end_id=2, pad_id=0, num_beams=self.num_beams, top_k=args.top_k, top_p=args.top_p
             )
             self.decoder = tensorrt_llm.runtime.GenerationSession(
+                model_config, engine_buffer, self.runtime_mapping
+            )
+        if args.model == "glm_10b":
+            self.sampling_config = tensorrt_llm.runtime.SamplingConfig(
+                end_id=50258,
+                pad_id=50256,
+                num_beams=self.num_beams,
+                top_k=args.top_k,
+                top_p=args.top_p,
+            )
+            self.decoder = tensorrt_llm.runtime.ChatGLMGenerationSession(
                 model_config, engine_buffer, self.runtime_mapping
             )
         else:
@@ -131,7 +139,19 @@ class GPTBenchmark(BaseBenchmark):
 
     def get_config(self):
         for inlen, outlen in self.in_out_lens:
+            if inlen > self.max_input_len or inlen + outlen > self.max_seq_len:
+                print(
+                    f"[WARNING] check inlen({inlen}) <= max_inlen({self.max_input_len}) or "
+                    f"seqlen({inlen + outlen}) <= max_seq_len({self.max_seq_len}) failed, skipping."
+                )
+                continue
             for batch_size in self.batch_sizes:
+                if batch_size > self.max_batch_size:
+                    print(
+                        f"[WARNING] check batch_size({batch_size}) "
+                        f"<= max_batch_size({self.max_batch_size}) failed, skipping."
+                    )
+                    continue
                 for gpu_weights_percent in self.gpu_weights_percents:
                     yield (batch_size, inlen, outlen, gpu_weights_percent)
 
@@ -180,10 +200,8 @@ class GPTBenchmark(BaseBenchmark):
         return 2 * local_nlayers * size_per_head * local_heads
 
     def check_memory(self, io_shapes: list, raise_exception=False):
-        r"""Compare the estimated GPU memory requirements for weights + activations + kv cache
-        with the total GPU memory and log it.
-
-        Raise exception when the \p raise_exception parameter is true.
+        r"""Compare the estimated GPU memory requirements for weights + activations + kv cache with
+        the total GPU memory and log it. Raise exception when the \p raise_exception parameter is true.
         """
         # we don't want to block the test due to this
         if self.build_config is None:
@@ -204,14 +222,8 @@ class GPTBenchmark(BaseBenchmark):
         )
         # when MHA is OOTB, it requires extra KV cache size, because OOTB don't support inplace updating KV cache.
         if not self.use_gpt_attention_plugin:
-            if os.getenv("TRTLLM_DISABLE_OOTB_KVCACHE_REUSE") != "ON":
-                local_n_layer = ceil(self.build_config.num_layers / self.runtime_mapping.pp_size)
-                kv_cache_size_in_bytes = (
-                    kv_cache_size_in_bytes / local_n_layer * (local_n_layer + 1)
-                )
-            else:
-                # without reusing, we need one for past as engine inputs, one for present as engine outputs.
-                kv_cache_size_in_bytes *= 2
+            local_n_layer = ceil(self.build_config.num_layers / self.runtime_mapping.pp_size)
+            kv_cache_size_in_bytes = kv_cache_size_in_bytes / local_n_layer * (local_n_layer + 1)
 
         kv_cache_size_in_mb = bytes_to_target_unit(kv_cache_size_in_bytes, "MiB")
         activation_size_in_mb = bytes_to_target_unit(
@@ -224,9 +236,8 @@ class GPTBenchmark(BaseBenchmark):
         prefix = "[Memory Estimation]"
 
         mem_msg = (
-            f"{prefix} activation memory:{activation_size_in_mb:.3f} MiB, "
-            f"kv_cache:{kv_cache_size_in_mb:.3f} MiB, "
-            f"weights approximate:{weights_size_in_mb:.3f} MiB, "
+            f"{prefix} activation memory:{activation_size_in_mb:.3f} MiB, kv_cache:{kv_cache_size_in_mb:.3f} MiB"
+            f", weights approximate:{weights_size_in_mb:.3f} MiB, "
             f"approximate required GPU memory: {total_memory_approx_in_mb:.3f} MiB, "
             f"total GPU memory: {total_in_mb:.3f} MiB"
         )
@@ -239,15 +250,15 @@ class GPTBenchmark(BaseBenchmark):
             output_length=outlen,
             max_batch_size=self.build_config.max_batch_size,
             max_input_len=self.build_config.max_input_len,
-            max_output_len=self.build_config.max_output_len,
+            max_seq_len=self.build_config.max_seq_len,
             max_beam_width=self.build_config.max_beam_width,
         )
         for k, v in build_args.items():
             tensorrt_llm.logger.info(f"{prefix} {k}:{v}")
 
         tensorrt_llm.logger.info(
-            'grep the "Total Activation" and "Total Weights" from verbose TRT engine build log '
-            "to see the precise memory size for those."
+            'grep the "Total Activation" and "Total Weights" from verbose TRT engine build log to '
+            "see the precise memory size for those."
         )
         if raise_exception and total_memory_approx_in_mb >= total_in_mb:
             raise Exception(
@@ -268,6 +279,11 @@ class GPTBenchmark(BaseBenchmark):
         report_dict = super().get_report_dict()
         batch_size, inlen, outlen, gpu_weights_percent = config[0], config[1], config[2], config[3]
         tokens_per_sec = round(batch_size * outlen / (latency / 1000), 2)
+        report_dict["num_heads"] = self.num_heads
+        report_dict["num_kv_heads"] = self.num_kv_heads
+        report_dict["num_layers"] = self.num_layers
+        report_dict["hidden_size"] = self.hidden_size
+        report_dict["vocab_size"] = self.vocab_size
         report_dict["batch_size"] = batch_size
         report_dict["gpu_weights_percent"] = gpu_weights_percent
         report_dict["input_length"] = inlen
@@ -348,9 +364,9 @@ class GPTBenchmark(BaseBenchmark):
                 return layer_infos
 
             # Dump kernel data
-            def dump_kernel_profile_table(name: str, profile_data: list, iter_cnt: int):
+            def dump_kernel_profile_table(name: str, profile_data: dict, iter_cnt: int):
                 table = pd.DataFrame(
-                    [["{:0.3f}".format(v), k] for k, v in profile_data.items() if v != 0.0],  # type: ignore[attr-defined]
+                    [["{:0.3f}".format(v), k] for k, v in profile_data.items() if v != 0.0],
                     columns=["times (ms)", "{} Phase LayerName".format(name)],
                 )
 

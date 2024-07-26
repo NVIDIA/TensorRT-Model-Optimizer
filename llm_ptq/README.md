@@ -98,16 +98,18 @@ MPT 7B, 30B | mpt | Yes | Yes | Yes | No
 Baichuan 1, 2 | baichuan | Yes | Yes | Yes | Yes
 ChatGLM2, 3 6B | chatglm | No | No | Yes | No
 Bloom | bloom | Yes | Yes | Yes | Yes
-Phi-1,2,3<sup>2</sup> | phi | Yes | Yes | Yes | Yes
+Phi-1,2,3 | phi | Yes | Yes | Yes | Yes
 Nemotron 8B | gptnext | Yes | No | Yes | No
 Gemma 2B, 7B | gemma | Yes | No | Yes | No
+Gemma 2 9B, 27B | gemma | Yes | No | Yes | No
 RecurrentGemma 2B | recurrentgemma | Yes | Yes | Yes | No
 StarCoder 2 | gptnext | Yes | Yes | Yes | No
 QWen-1,1.5 | qwen | Yes | Yes | Yes | Yes
+DBRX | dbrx | Yes | No | No | No
 
 > *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty. Only available on sm90 GPUs*
 
-> *<sup>2.</sup>For some models (e.g. phi3 small, medium), there is only support for exporting quantized checkpoints.*
+> *<sup>2.</sup>For some models, there is only support for exporting quantized checkpoints.*
 
 > *<sup>3.</sup>Mixtral FP8 only available on sm90 GPUs*
 
