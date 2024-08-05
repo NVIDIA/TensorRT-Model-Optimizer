@@ -71,13 +71,14 @@ class Engine:
         else:
             self.context = self.engine.create_execution_context()  # type: ignore
 
-    def allocate_buffers(self, shape_dict=None, device="cuda"):
+    def allocate_buffers(self, shape_dict=None, device="cuda", batch_size=1):
         for binding in range(self.engine.num_io_tensors):  # type: ignore
             name = self.engine.get_tensor_name(binding)  # type: ignore
             if shape_dict and name in shape_dict:
                 shape = shape_dict[name]
             else:
                 shape = self.engine.get_tensor_shape(name)  # type: ignore
+                shape = (batch_size * 2,) + shape[1:]
             dtype = trt.nptype(self.engine.get_tensor_dtype(name))  # type: ignore
             if self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:  # type: ignore
                 self.context.set_input_shape(name, shape)  # type: ignore

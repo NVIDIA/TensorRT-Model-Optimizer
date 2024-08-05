@@ -87,6 +87,11 @@ def cachify(model, num_inference_steps, config_list, modules):
 
 def disable(pipe):
     model = get_model(pipe)
+    if hasattr(model, "use_trt_infer") and model.use_trt_infer:
+        for _, module in model.engines.items():
+            if isinstance(module, CachedModule):
+                module.disable_cache()
+        return
     for _, module in model.named_modules():
         if isinstance(module, CachedModule):
             module.disable_cache()
@@ -94,6 +99,11 @@ def disable(pipe):
 
 def enable(pipe):
     model = get_model(pipe)
+    if hasattr(model, "use_trt_infer") and model.use_trt_infer:
+        for _, module in model.engines.items():
+            if isinstance(module, CachedModule):
+                module.enable_cache()
+        return
     for _, module in model.named_modules():
         if isinstance(module, CachedModule):
             module.enable_cache()

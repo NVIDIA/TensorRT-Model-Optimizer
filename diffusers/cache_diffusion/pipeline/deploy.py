@@ -54,7 +54,7 @@ def replace_new_forward(unet):
             upsample_block.forward = types.MethodType(cacheupblock2d_forward, upsample_block)
 
 
-def get_input_info(dummy_dict, info=None):
+def get_input_info(dummy_dict, info: str = None, batch_size: int = 1):
     return_val = [] if info == "profile_shapes" or info == "input_names" else {}
 
     def collect_leaf_keys(d):
@@ -62,6 +62,7 @@ def get_input_info(dummy_dict, info=None):
             if isinstance(value, dict):
                 collect_leaf_keys(value)
             else:
+                value = (value[0] * batch_size,) + value[1:]
                 if info == "profile_shapes":
                     return_val.append((key, value))  # type: ignore
                 elif info == "profile_shapes_dict":
@@ -75,7 +76,7 @@ def get_input_info(dummy_dict, info=None):
     return return_val
 
 
-def complie2trt(onnx_path: Path, engine_path: Path):
+def complie2trt(onnx_path: Path, engine_path: Path, batch_size: int = 1):
     subdirs = [f for f in onnx_path.iterdir() if f.is_dir()]
     for subdir in subdirs:
         if subdir.name not in SDXL_ONNX_CONFIG.keys():
@@ -86,15 +87,17 @@ def complie2trt(onnx_path: Path, engine_path: Path):
             print(f"Building {str(model_path)}")
             build_profile = Profile()
             profile_shapes = get_input_info(
-                SDXL_ONNX_CONFIG[subdir.name]["dummy_input"], "profile_shapes"
+                SDXL_ONNX_CONFIG[subdir.name]["dummy_input"], "profile_shapes", batch_size
             )
             for input_name, input_shape in profile_shapes:
-                build_profile.add(input_name, input_shape, input_shape, input_shape)
+                min_input_shape = (2,) + input_shape[1:]
+                build_profile.add(input_name, min_input_shape, input_shape, input_shape)
             block_network = network_from_onnx_path(
-                str(model_path), flags=[trt.OnnxParserFlag.NATIVE_INSTANCENORM]
+                str(model_path), flags=[trt.OnnxParserFlag.NATIVE_INSTANCENORM], strongly_typed=True
             )
             build_config = CreateConfig(
-                fp16=True,
+                builder_optimization_level=4,
+                tf32=True,
                 profiles=[build_profile],
             )
             engine = engine_from_network(
@@ -113,7 +116,7 @@ def get_total_device_memory(unet):
     return max_device_memory
 
 
-def load_engines(unet, engine_path: Path):
+def load_engines(unet, engine_path: Path, batch_size: int = 1):
     unet.engines = {}
     for f in engine_path.iterdir():
         if f.is_file():
@@ -127,9 +130,10 @@ def load_engines(unet, engine_path: Path):
     for block_name in unet.engines.keys():
         unet.engines[block_name].allocate_buffers(
             shape_dict=get_input_info(
-                SDXL_ONNX_CONFIG[block_name]["dummy_input"], "profile_shapes_dict"
+                SDXL_ONNX_CONFIG[block_name]["dummy_input"], "profile_shapes_dict", batch_size
             ),
             device=unet.device,
+            batch_size=batch_size,
         )
     # TODO: Free and clean up the origin pytorch cuda memory
 
@@ -216,10 +220,12 @@ def export_onnx(unet, onnx_path: Path):
             print(f"{str(_onnx_file)} alread exists!")
 
 
-def warm_up(unet):
+def warm_up(unet, batch_size: int = 1):
     print("Warming-up TensorRT engines...")
     for name, engine in unet.engines.items():
-        dummy_input = get_input_info(SDXL_ONNX_CONFIG[name]["dummy_input"], "dummy_input")
+        dummy_input = get_input_info(
+            SDXL_ONNX_CONFIG[name]["dummy_input"], "dummy_input", batch_size
+        )
         _ = engine(dummy_input, unet.cuda_stream)
 
 
@@ -231,13 +237,13 @@ def teardown(unet):
     del unet.cuda_stream
 
 
-def compile(unet, onnx_path: Path, engine_path: Path):
+def compile(unet, onnx_path: Path, engine_path: Path, batch_size: int = 1):
     onnx_path.mkdir(parents=True, exist_ok=True)
     engine_path.mkdir(parents=True, exist_ok=True)
 
     replace_new_forward(unet)
     export_onnx(unet, onnx_path)
-    complie2trt(onnx_path, engine_path)
-    load_engines(unet, engine_path)
-    warm_up(unet)
+    complie2trt(onnx_path, engine_path, batch_size)
+    load_engines(unet, engine_path, batch_size)
+    warm_up(unet, batch_size)
     unet.use_trt_infer = True
