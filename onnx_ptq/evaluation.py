@@ -20,6 +20,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 """Module to evaluate a device model for the specified task."""
+
 import random
 from typing import Any, Final, Tuple, Union
 
@@ -170,7 +171,7 @@ def evaluate(
     return {}
 
 
-def evaluate_accuracy(model, val_loader, num_examples, batch_size):
+def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,)):
     """Evaluate the accuracy of the model on the validation dataset.
 
     Args:
@@ -178,14 +179,17 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size):
         val_loader: DataLoader for the validation dataset.
         num_examples: Number of examples to evaluate on. If None, evaluate on the entire dataset.
         batch_size: Batch size to use for evaluation.
+        topk: fuction support topk accuracy. Return list of accuracy equal to topk length.
+            example of usage `top1, top5 = evaluate_accuracy(..., topk=(1,5))`
+            `top1, top5, top10 = evaluate_accuracy(..., topk=(1,5,10))`
 
     Returns:
         The accuracy of the model on the validation dataset.
     """
     if isinstance(model, torch.nn.Module):
         model.eval()
-    correct = 0
     total = 0
+    corrects = [0] * len(topk)
     for _, (inputs, labels) in tqdm(
         enumerate(val_loader),
         total=num_examples // batch_size if num_examples is not None else len(val_loader),
@@ -203,11 +207,13 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size):
             outputs = outputs[0]
         else:
             outputs = outputs.data
-        _, predicted = torch.max(outputs, 1)
-        labels_size = labels.size(0)
-        predicted = predicted[:labels_size]
-        total += labels_size
-        correct += (predicted == labels).sum().item()
 
-    accuracy = 100 * correct / total
-    return accuracy
+        labels_size = labels.size(0)
+        total += labels_size
+
+        for ind, k in enumerate(topk):
+            _, predicted = torch.topk(outputs, k, dim=1)
+            corrects[ind] += (predicted == labels.unsqueeze(1)).any(dim=1).sum().item()
+
+    res = [100 * corr / total for corr in corrects]
+    return res

@@ -23,7 +23,7 @@ import torch
 from calib.plugin_calib import PercentileCalibrator
 from utils import filter_func
 
-SDXL_FP8_DEFAULT_CONFIG = {
+FP8_FP16_DEFAULT_CONFIG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": None, "trt_high_precision_dtype": "Half"},
         "*input_quantizer": {"num_bits": (4, 3), "axis": None, "trt_high_precision_dtype": "Half"},
@@ -35,6 +35,28 @@ SDXL_FP8_DEFAULT_CONFIG = {
             "num_bits": (4, 3),
             "axis": None,
             "trt_high_precision_dtype": "Half",
+        },
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+FP8_FP32_DEFAULT_CONFIG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+            "trt_high_precision_dtype": "Float",
+        },
+        "*input_quantizer": {"num_bits": (4, 3), "axis": None, "trt_high_precision_dtype": "Float"},
+        "*output_quantizer": {"enable": False},
+        "*q_bmm_quantizer": {"num_bits": (4, 3), "axis": None, "trt_high_precision_dtype": "Float"},
+        "*k_bmm_quantizer": {"num_bits": (4, 3), "axis": None, "trt_high_precision_dtype": "Float"},
+        "*v_bmm_quantizer": {"num_bits": (4, 3), "axis": None, "trt_high_precision_dtype": "Float"},
+        "*softmax_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+            "trt_high_precision_dtype": "Float",
         },
         "default": {"enable": False},
     },
@@ -104,3 +126,9 @@ def get_int8_config(
                 ),
             }
     return quant_config
+
+
+def set_stronglytyped_precision(quant_config, precision: str = "Half"):
+    for key in quant_config["quant_cfg"].keys():
+        if "trt_high_precision_dtype" in quant_config["quant_cfg"][key].keys():
+            quant_config["quant_cfg"][key]["trt_high_precision_dtype"] = precision

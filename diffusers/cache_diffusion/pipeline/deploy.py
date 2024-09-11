@@ -24,9 +24,13 @@ from pathlib import Path
 
 import tensorrt as trt
 import torch
+from cache_diffusion.cachify import CACHED_PIPE, get_model
 from cuda import cudart
-from pipeline.config import SDXL_ONNX_CONFIG
-from pipeline.models import (
+from diffusers.models.transformers.transformer_sd3 import SD3Transformer2DModel
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
+from pipeline.config import ONNX_CONFIG
+from pipeline.models.sd3 import sd3_forward
+from pipeline.models.sdxl import (
     cachecrossattnupblock2d_forward,
     cacheunet_forward,
     cacheupblock2d_forward,
@@ -43,15 +47,21 @@ from torch.onnx import export as onnx_export
 from .utils import Engine
 
 
-def replace_new_forward(unet):
-    unet.forward = types.MethodType(cacheunet_forward, unet)
-    for upsample_block in unet.up_blocks:
-        if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
-            upsample_block.forward = types.MethodType(
-                cachecrossattnupblock2d_forward, upsample_block
-            )
-        else:
-            upsample_block.forward = types.MethodType(cacheupblock2d_forward, upsample_block)
+def replace_new_forward(backbone):
+    if backbone.__class__ == UNet2DConditionModel:
+        backbone.forward = types.MethodType(cacheunet_forward, backbone)
+        for upsample_block in backbone.up_blocks:
+            if (
+                hasattr(upsample_block, "has_cross_attention")
+                and upsample_block.has_cross_attention
+            ):
+                upsample_block.forward = types.MethodType(
+                    cachecrossattnupblock2d_forward, upsample_block
+                )
+            else:
+                upsample_block.forward = types.MethodType(cacheupblock2d_forward, upsample_block)
+    elif backbone.__class__ == SD3Transformer2DModel:
+        backbone.forward = types.MethodType(sd3_forward, backbone)
 
 
 def get_input_info(dummy_dict, info: str = None, batch_size: int = 1):
@@ -76,10 +86,10 @@ def get_input_info(dummy_dict, info: str = None, batch_size: int = 1):
     return return_val
 
 
-def complie2trt(onnx_path: Path, engine_path: Path, batch_size: int = 1):
+def complie2trt(cls, onnx_path: Path, engine_path: Path, batch_size: int = 1):
     subdirs = [f for f in onnx_path.iterdir() if f.is_dir()]
     for subdir in subdirs:
-        if subdir.name not in SDXL_ONNX_CONFIG.keys():
+        if subdir.name not in ONNX_CONFIG[cls].keys():
             continue
         model_path = subdir / "model.onnx"
         plan_path = engine_path / f"{subdir.name}.plan"
@@ -87,7 +97,7 @@ def complie2trt(onnx_path: Path, engine_path: Path, batch_size: int = 1):
             print(f"Building {str(model_path)}")
             build_profile = Profile()
             profile_shapes = get_input_info(
-                SDXL_ONNX_CONFIG[subdir.name]["dummy_input"], "profile_shapes", batch_size
+                ONNX_CONFIG[cls][subdir.name]["dummy_input"], "profile_shapes", batch_size
             )
             for input_name, input_shape in profile_shapes:
                 min_input_shape = (2,) + input_shape[1:]
@@ -109,141 +119,91 @@ def complie2trt(onnx_path: Path, engine_path: Path, batch_size: int = 1):
             print(f"{str(model_path)} already exists!")
 
 
-def get_total_device_memory(unet):
+def get_total_device_memory(backbone):
     max_device_memory = 0
-    for _, engine in unet.engines.items():
+    for _, engine in backbone.engines.items():
         max_device_memory = max(max_device_memory, engine.engine.device_memory_size)
     return max_device_memory
 
 
-def load_engines(unet, engine_path: Path, batch_size: int = 1):
-    unet.engines = {}
+def load_engines(backbone, engine_path: Path, batch_size: int = 1):
+    backbone.engines = {}
     for f in engine_path.iterdir():
         if f.is_file():
             eng = Engine()
             eng.load(str(f))
-            unet.engines[f"{f.stem}"] = eng
-    _, shared_device_memory = cudart.cudaMalloc(get_total_device_memory(unet))
-    for engine in unet.engines.values():
+            backbone.engines[f"{f.stem}"] = eng
+    _, shared_device_memory = cudart.cudaMalloc(get_total_device_memory(backbone))
+    for engine in backbone.engines.values():
         engine.activate(shared_device_memory)
-    unet.cuda_stream = cudart.cudaStreamCreate()[1]
-    for block_name in unet.engines.keys():
-        unet.engines[block_name].allocate_buffers(
+    backbone.cuda_stream = cudart.cudaStreamCreate()[1]
+    for block_name in backbone.engines.keys():
+        backbone.engines[block_name].allocate_buffers(
             shape_dict=get_input_info(
-                SDXL_ONNX_CONFIG[block_name]["dummy_input"], "profile_shapes_dict", batch_size
+                ONNX_CONFIG[backbone.__class__][block_name]["dummy_input"],
+                "profile_shapes_dict",
+                batch_size,
             ),
-            device=unet.device,
+            device=backbone.device,
             batch_size=batch_size,
         )
     # TODO: Free and clean up the origin pytorch cuda memory
 
 
-def export_onnx(unet, onnx_path: Path):
-
-    # In order to export these models into ONNX, we need modify some of the forward function
-    # 1, Down_block
-    for i, downsample_block in enumerate(unet.down_blocks):
-        _onnx_dir = onnx_path.joinpath(f"down_blocks.{i}")
-        _onnx_file = _onnx_dir.joinpath("model.onnx")
-        if not _onnx_file.exists():
-            _onnx_dir.mkdir(parents=True, exist_ok=True)
-            dummy_input = get_input_info(
-                SDXL_ONNX_CONFIG[f"down_blocks.{i}"]["dummy_input"], "dummy_input"
-            )
-            input_names = get_input_info(
-                SDXL_ONNX_CONFIG[f"down_blocks.{i}"]["dummy_input"], "input_names"
-            )
-            output_names = SDXL_ONNX_CONFIG[f"down_blocks.{i}"]["output_names"]
-            onnx_export(
-                downsample_block,
-                args=dummy_input,
-                f=_onnx_file.as_posix(),
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=SDXL_ONNX_CONFIG[f"down_blocks.{i}"]["dynamic_axes"],
-                do_constant_folding=True,
-                opset_version=17,
-            )
-        else:
-            print(f"{str(_onnx_file)} alread exists!")
-
-    # Mid block
-    if unet.mid_block is not None:
-        _onnx_dir = onnx_path.joinpath("mid_block")
-        _onnx_file = _onnx_dir.joinpath("model.onnx")
-        if not _onnx_file.exists():
-            _onnx_dir.mkdir(parents=True, exist_ok=True)
-            dummy_input = get_input_info(
-                SDXL_ONNX_CONFIG["mid_block"]["dummy_input"], "dummy_input"
-            )
-            input_names = get_input_info(
-                SDXL_ONNX_CONFIG["mid_block"]["dummy_input"], "input_names"
-            )
-            output_names = SDXL_ONNX_CONFIG["mid_block"]["output_names"]
-            onnx_export(
-                unet.mid_block,
-                args=dummy_input,
-                f=_onnx_file.as_posix(),
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=SDXL_ONNX_CONFIG["mid_block"]["dynamic_axes"],
-                do_constant_folding=True,
-                opset_version=17,
-            )
-        else:
-            print(f"{str(_onnx_file)} alread exists!")
-
-    # Up_block
-    for i, up_block in enumerate(unet.up_blocks):
-        _onnx_dir = onnx_path.joinpath(f"up_blocks.{i}")
-        _onnx_file = _onnx_dir.joinpath("model.onnx")
-        if not _onnx_file.exists():
-            _onnx_dir.mkdir(parents=True, exist_ok=True)
-            dummy_input = get_input_info(
-                SDXL_ONNX_CONFIG[f"up_blocks.{i}"]["dummy_input"], "dummy_input"
-            )
-            input_names = get_input_info(
-                SDXL_ONNX_CONFIG[f"up_blocks.{i}"]["dummy_input"], "input_names"
-            )
-            output_names = SDXL_ONNX_CONFIG[f"up_blocks.{i}"]["output_names"]
-            onnx_export(
-                up_block,
-                args=dummy_input,
-                f=_onnx_file.as_posix(),
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=SDXL_ONNX_CONFIG[f"up_blocks.{i}"]["dynamic_axes"],
-                do_constant_folding=True,
-                opset_version=17,
-            )
-        else:
-            print(f"{str(_onnx_file)} alread exists!")
+def export_onnx(backbone, onnx_path: Path):
+    for name, module in backbone.named_modules():
+        if isinstance(module, CACHED_PIPE[backbone.__class__]):
+            _onnx_dir = onnx_path.joinpath(f"{name}")
+            _onnx_file = _onnx_dir.joinpath("model.onnx")
+            if not _onnx_file.exists():
+                _onnx_dir.mkdir(parents=True, exist_ok=True)
+                dummy_input = get_input_info(
+                    ONNX_CONFIG[backbone.__class__][f"{name}"]["dummy_input"], "dummy_input"
+                )
+                input_names = get_input_info(
+                    ONNX_CONFIG[backbone.__class__][f"{name}"]["dummy_input"], "input_names"
+                )
+                output_names = ONNX_CONFIG[backbone.__class__][f"{name}"]["output_names"]
+                onnx_export(
+                    module,
+                    args=dummy_input,
+                    f=_onnx_file.as_posix(),
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=ONNX_CONFIG[backbone.__class__][f"{name}"]["dynamic_axes"],
+                    do_constant_folding=True,
+                    opset_version=17,
+                )
+            else:
+                print(f"{str(_onnx_file)} alread exists!")
 
 
-def warm_up(unet, batch_size: int = 1):
+def warm_up(backbone, batch_size: int = 1):
     print("Warming-up TensorRT engines...")
-    for name, engine in unet.engines.items():
+    for name, engine in backbone.engines.items():
         dummy_input = get_input_info(
-            SDXL_ONNX_CONFIG[name]["dummy_input"], "dummy_input", batch_size
+            ONNX_CONFIG[backbone.__class__][name]["dummy_input"], "dummy_input", batch_size
         )
-        _ = engine(dummy_input, unet.cuda_stream)
+        _ = engine(dummy_input, backbone.cuda_stream)
 
 
-def teardown(unet):
-    for engine in unet.engines.values():
+def teardown(pipe):
+    backbone = get_model(pipe)
+    for engine in backbone.engines.values():
         del engine
 
-    cudart.cudaStreamDestroy(unet.cuda_stream)
-    del unet.cuda_stream
+    cudart.cudaStreamDestroy(backbone.cuda_stream)
+    del backbone.cuda_stream
 
 
-def compile(unet, onnx_path: Path, engine_path: Path, batch_size: int = 1):
+def compile(pipe, onnx_path: Path, engine_path: Path, batch_size: int = 1):
+    backbone = get_model(pipe)
     onnx_path.mkdir(parents=True, exist_ok=True)
     engine_path.mkdir(parents=True, exist_ok=True)
 
-    replace_new_forward(unet)
-    export_onnx(unet, onnx_path)
-    complie2trt(onnx_path, engine_path, batch_size)
-    load_engines(unet, engine_path, batch_size)
-    warm_up(unet, batch_size)
-    unet.use_trt_infer = True
+    replace_new_forward(backbone)
+    export_onnx(backbone, onnx_path)
+    complie2trt(backbone.__class__, onnx_path, engine_path, batch_size)
+    load_engines(backbone, engine_path, batch_size)
+    warm_up(backbone, batch_size)
+    backbone.use_trt_infer = True

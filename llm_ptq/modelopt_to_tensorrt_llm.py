@@ -30,6 +30,7 @@ import tensorrt_llm
 import torch
 from run_tensorrt_llm import run
 from tensorrt_llm.models import PretrainedConfig
+from transformers import AutoTokenizer
 
 
 def str2bool(v):
@@ -54,6 +55,7 @@ def build_tensorrt_llm(
     num_build_workers: int = 1,
     enable_sparsity: bool = False,
     max_prompt_embedding_table_size: int = 0,
+    gather_context_logits: bool = False,
 ):
     """The API to convert the TensorRT-LLM checkpoint to engines.
 
@@ -83,6 +85,7 @@ def build_tensorrt_llm(
             weight tensors are sparsified. This increases engine building time significantly.
         max_prompt_embedding_table_size: Length of the prepended/concatenated embeddings (either multimodal
             feature embeddings or prompt tuning embeddings) to the LLM input embeddings.
+        gather_context_logits: Whether context logits can be returned as a part of the outputs.
     """
     engine_dir = Path(engine_dir)
     engine_dir.mkdir(parents=True, exist_ok=True)
@@ -109,10 +112,28 @@ def build_tensorrt_llm(
         )
         max_batch_size = 4
 
-    use_fused_mlp = config.quantization.quant_algo in [
+    is_no_quant_or_fp8 = config.quantization.quant_algo in [
         "FP8",
         None,
-    ] and config.hidden_act in ["silu", "swiglu", "fast-swiglu", "gelu", "geglu"]
+    ]
+
+    use_fused_mlp = is_no_quant_or_fp8 and config.hidden_act in [
+        "silu",
+        "swiglu",
+        "fast-swiglu",
+        "gelu",
+        "geglu",
+    ]
+
+    if config.quantization.exclude_modules:
+        for module_name in config.quantization.exclude_modules:
+            # fp8_context_fhma requires all attention.dense to be quantized
+            if "attention.dense" in module_name:
+                is_no_quant_or_fp8 = False
+            # For AutoQuant, fc and gate might not be quantized at the same time
+            # TODO: relax this limitation on the TRT-LLM side
+            if "gate" in module_name or "fc" in module_name:
+                use_fused_mlp = False
 
     quant_algo = config.quantization.quant_algo
     use_qdq = quant_algo in ["FP8", "W8A8_SQ_PER_CHANNEL"]
@@ -130,15 +151,23 @@ def build_tensorrt_llm(
     build_cmd += f"--workers {num_build_workers} "
     build_cmd += f"--max_batch_size {max_batch_size} "
     build_cmd += f"--max_input_len {max_input_len} "
-    build_cmd += f"--max_output_len {max_output_len} "
+    build_cmd += f"--max_seq_len {max_output_len + max_input_len} "
     build_cmd += f"--max_beam_width {max_beam_width} "
-    build_cmd += f"--tp_size {config.mapping.tp_size} "
-    build_cmd += f"--pp_size {config.mapping.pp_size} "
     build_cmd += f"--max_prompt_embedding_table_size {max_prompt_embedding_table_size} "
     build_cmd += f"--builder_opt {builder_opt} "
-    build_cmd += f"--gpt_attention_plugin {config.dtype} "
-    build_cmd += f"--nccl_plugin {config.dtype} "
     build_cmd += f"--max_num_tokens {max_batch_size * max_input_len} "
+    build_cmd += (
+        "--reduce_fusion enable "
+        if config.mapping.pp_size == 1
+        and config.architecture
+        not in ["DbrxForCausalLM", "BaichuanForCausalLM", "QWenForCausalLM", "GPTForCausalLM"]
+        else ""
+    )
+
+    print(
+        "Hint: For max througput, please build the engine with --multiple_profiles enable flag. "
+        "This is not enabled by default to save engine build time."
+    )
 
     if use_fused_mlp:
         build_cmd += "--use_fused_mlp " if "RecurrentGemma" not in config.architecture else ""
@@ -146,7 +175,7 @@ def build_tensorrt_llm(
         build_cmd += "--weight_sparsity "
 
     if not use_qdq:
-        build_cmd += f"--gemm_plugin {config.dtype} "
+        build_cmd += "--gemm_plugin auto "
 
     if max_num_tokens:
         build_cmd += f"--max_num_tokens {max_num_tokens} "
@@ -154,10 +183,22 @@ def build_tensorrt_llm(
     if speculative_decoding_mode:
         build_cmd += f"--speculative_decoding_mode {speculative_decoding_mode} "
 
+    if is_no_quant_or_fp8:
+        build_cmd += "--use_paged_context_fmha enable "
+
+    if gather_context_logits:
+        build_cmd += "--gather_context_logits "  # for evaluation benchmarking purpose
+
     print("trtllm-build command:")
     print(f"{build_cmd}")
 
     subprocess.run(build_cmd, shell=True, check=True)
+
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(ckpt_dir)
+        tokenizer.save_pretrained(engine_dir)
+    except Exception as e:
+        print(f"Cannot copy tokenizer to the engine dir. {e}")
 
 
 def parse_arguments():
@@ -208,6 +249,7 @@ def main(args):
     ):
         # Reduce output_len for the inference run example.
         args.max_output_len = 100
+
         run(args)
 
 

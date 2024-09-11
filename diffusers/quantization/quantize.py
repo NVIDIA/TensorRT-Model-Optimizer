@@ -22,8 +22,18 @@
 import argparse
 
 import torch
-from config import SDXL_FP8_DEFAULT_CONFIG, get_int8_config
-from diffusers import DiffusionPipeline, StableDiffusion3Pipeline, StableDiffusionPipeline
+from config import (
+    FP8_FP16_DEFAULT_CONFIG,
+    FP8_FP32_DEFAULT_CONFIG,
+    get_int8_config,
+    set_stronglytyped_precision,
+)
+from diffusers import (
+    DiffusionPipeline,
+    FluxPipeline,
+    StableDiffusion3Pipeline,
+    StableDiffusionPipeline,
+)
 from onnx_utils.export import generate_fp8_scales, modelopt_export_sd
 from utils import check_lora, filter_func, load_calib_prompts, quantize_lvl, set_fmha
 
@@ -33,8 +43,20 @@ import modelopt.torch.quantization as mtq
 MODEL_ID = {
     "sdxl-1.0": "stabilityai/stable-diffusion-xl-base-1.0",
     "sdxl-turbo": "stabilityai/sdxl-turbo",
-    "sd1.5": "runwayml/stable-diffusion-v1-5",
+    "sd2.1": "stabilityai/stable-diffusion-2-1",
+    "sd2.1-base": "stabilityai/stable-diffusion-2-1-base",
     "sd3-medium": "stabilityai/stable-diffusion-3-medium-diffusers",
+    "flux-dev": "black-forest-labs/FLUX.1-dev",
+}
+
+# You can include the desired arguments for calibration at this point.
+ADDTIONAL_ARGS = {
+    "flux-dev": {
+        "height": 1024,
+        "width": 1024,
+        "guidance_scale": 3.5,
+        "max_sequence_length": 512,
+    },
 }
 
 
@@ -42,20 +64,27 @@ def do_calibrate(pipe, calibration_prompts, **kwargs):
     for i_th, prompts in enumerate(calibration_prompts):
         if i_th >= kwargs["calib_size"]:
             return
-        pipe(
-            prompt=prompts,
-            num_inference_steps=kwargs["n_steps"],
-            negative_prompt=[
-                "normal quality, low quality, worst quality, low res, blurry, nsfw, nude"
-            ]
-            * len(prompts),
-        ).images
+        common_args = {
+            "prompt": prompts,
+            "num_inference_steps": kwargs["n_steps"],
+        }
+        other_args = (
+            ADDTIONAL_ARGS[kwargs["model_id"]]
+            if kwargs["model_id"] in ADDTIONAL_ARGS.keys()
+            else {}
+            # Also, you can add the negative_prompt when doing the calibration if the model allows
+        )
+        pipe(**common_args, **other_args).images
 
 
 def main():
     parser = argparse.ArgumentParser()
     # Model hyperparameters
-    parser.add_argument("--exp-name", default=None)
+    parser.add_argument(
+        "--quantized-torch-ckpt-save-path",
+        default=None,
+        help="The file path for the quantized Torch checkpoint ends with a .pt extension.",
+    )
     parser.add_argument(
         "--model",
         type=str,
@@ -63,8 +92,10 @@ def main():
         choices=[
             "sdxl-1.0",
             "sdxl-turbo",
-            "sd1.5",
+            "sd2.1",
+            "sd2.1-base",
             "sd3-medium",
+            "flux-dev",
         ],
     )
     parser.add_argument(
@@ -111,13 +142,18 @@ def main():
 
     args.calib_size = args.calib_size // args.batch_size
 
-    if args.model == "sd1.5":
+    if args.model == "sd2.1" or args.model == "sd2.1-base":
         pipe = StableDiffusionPipeline.from_pretrained(
             MODEL_ID[args.model], torch_dtype=torch.float16, safety_checker=None
         )
     elif args.model == "sd3-medium":
         pipe = StableDiffusion3Pipeline.from_pretrained(
             MODEL_ID[args.model], torch_dtype=torch.float16
+        )
+    elif args.model == "flux-dev":
+        pipe = FluxPipeline.from_pretrained(
+            MODEL_ID[args.model],
+            torch_dtype=torch.bfloat16,
         )
     else:
         pipe = DiffusionPipeline.from_pretrained(
@@ -128,7 +164,7 @@ def main():
         )
     pipe.to("cuda")
 
-    backbone = pipe.unet if args.model != "sd3-medium" else pipe.transformer
+    backbone = pipe.unet if args.model not in ["sd3-medium", "flux-dev"] else pipe.transformer
 
     if args.quant_level == 4.0:
         assert args.format != "int8", "We only support fp8 for Level 4 Quantization"
@@ -141,12 +177,12 @@ def main():
             "./calib/calib_prompts.txt",
         )
         extra_step = (
-            1 if args.model == "sd1.5" else 0
+            1 if args.model == "sd2.1" or args.model == "sd2.1-base" else 0
         )  # Depending on the scheduler. some schedulers will do n+1 steps
         if args.format == "int8":
-            # Making sure to use global_min in the calibrator for SD 1.5
+            # Making sure to use global_min in the calibrator for SD 2.1
             assert args.collect_method != "default"
-            if args.model == "sd1.5":
+            if args.model == "sd2.1" or args.model == "sd2.1-base":
                 args.collect_method = "global_min"
             quant_config = get_int8_config(
                 backbone,
@@ -158,12 +194,14 @@ def main():
             )
         elif args.format == "fp8":
             if args.collect_method == "default":
-                quant_config = SDXL_FP8_DEFAULT_CONFIG
+                quant_config = (
+                    FP8_FP32_DEFAULT_CONFIG if args.model == "sd2.1" else FP8_FP16_DEFAULT_CONFIG
+                )
             else:
                 raise NotImplementedError
 
         def forward_loop(backbone):
-            if args.model != "sd3-medium":
+            if args.model not in ["sd3-medium", "flux-dev"]:
                 pipe.unet = backbone
             else:
                 pipe.transformer = backbone
@@ -172,12 +210,15 @@ def main():
                 calibration_prompts=cali_prompts,
                 calib_size=args.calib_size,
                 n_steps=args.n_steps,
+                model_id=args.model,
             )
 
         # All the LoRA layers should be fused
         check_lora(backbone)
+        if args.model == "flux-dev":
+            set_stronglytyped_precision(quant_config, "BFloat16")
         mtq.quantize(backbone, quant_config, forward_loop)
-        mto.save(backbone, f"{args.exp_name}")
+        mto.save(backbone, f"{args.quantized_torch_ckpt_save_path}")
     else:
         mto.restore(backbone, args.restore_from)
     quantize_lvl(backbone, args.quant_level)
@@ -187,7 +228,11 @@ def main():
     if args.onnx_dir is not None:
         if args.format == "fp8":
             generate_fp8_scales(backbone)
-        modelopt_export_sd(backbone, f"{str(args.onnx_dir)}", args.model)
+        pipe.to("cpu")
+        torch.cuda.empty_cache()
+        # to save GPU memory
+        backbone.to("cuda")
+        modelopt_export_sd(backbone, f"{str(args.onnx_dir)}", args.model, args.format)
 
 
 if __name__ == "__main__":

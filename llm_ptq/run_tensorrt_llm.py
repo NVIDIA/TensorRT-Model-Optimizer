@@ -51,7 +51,9 @@ def parse_arguments():
 
 
 def run(args):
-    assert args.tokenizer, "Please specify the tokenizer."
+    if not args.tokenizer:
+        # Assume the tokenizer files are saved in the engine_dr.
+        args.tokenizer = args.engine_dir
 
     if isinstance(args.tokenizer, PreTrainedTokenizerBase):
         tokenizer = args.tokenizer
@@ -87,16 +89,19 @@ def run(args):
 
     llm = LLM(args.engine_dir, tokenizer=tokenizer)
     torch.cuda.cudart().cudaProfilerStart()
-
     outputs = llm.generate_text(input_texts, args.max_output_len)
-    print(outputs)
-
     torch.cuda.cudart().cudaProfilerStop()
 
     free_memory_after = torch.cuda.mem_get_info()
     print(
         f"Use GPU memory: {(free_memory_before[0] - free_memory_after[0]) / 1024 / 1024 / 1024} GB"
     )
+
+    print(f"Generated outputs: {outputs}")
+
+    if llm.gather_context_logits:
+        logits = llm.generate_context_logits(input_texts)
+        print(f"Generated logits: {logits}")
 
 
 if __name__ == "__main__":

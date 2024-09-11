@@ -82,6 +82,8 @@ MODEL_NAME=$(basename $MODEL_PATH | sed 's/\.[^.]*$//')
 SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT}_tp${TP}_pp${PP}_medusa
 MODEL_CONFIG=${SAVE_PATH}/config.json
 ENGINE_DIR=${SAVE_PATH}/${MODEL_TYPE}_${TP}x${PP}x${GPU_NAME}_input${BUILD_MAX_INPUT_LEN}_output${BUILD_MAX_OUTPUT_LEN}_batch${BUILD_MAX_BATCH_SIZE}_engine
+CONFIG_PATH=$MODEL_PATH/config.json
+TOKENIZER_PATH=$(jq -r '.base_model_name_or_path' $CONFIG_PATH)
 
 if [ "${REMOVE_EXISTING_MODEL_CONFIG,,}" = "true" ]; then
     rm -f $MODEL_CONFIG
@@ -101,11 +103,11 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --export_path=$SAVE_PATH \
             --sparsity_fmt=$SPARSITY_FMT \
             --qformat=$QFORMAT \
-            --calib_size=$CALIB_NUM_BATCHES \
+            --calib_size=$CALIB_SIZE \
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
             --batch_size=1 \
-            --medusa
+            --medusa \
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
@@ -121,7 +123,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
     python modelopt_to_tensorrt_llm.py \
         --model_config=$MODEL_CONFIG \
         --engine_dir=$ENGINE_DIR \
-        --tokenizer=$MODEL_PATH \
+        --tokenizer=$TOKENIZER_PATH \
         --max_input_len=$BUILD_MAX_INPUT_LEN \
         --max_output_len=$BUILD_MAX_OUTPUT_LEN \
         --max_batch_size=$BUILD_MAX_BATCH_SIZE \
@@ -143,7 +145,7 @@ echo "Evaluating the built TRT engine (ite $SUMMARIZE_MAX_ITE), result saved to 
 mpirun -n $GPUS --allow-run-as-root \
     python3 summarize/summarize.py \
         --engine_dir=$ENGINE_DIR \
-        --hf_model_dir=$MODEL_PATH \
+        --hf_model_dir=$TOKENIZER_PATH \
         --data_type=fp16 \
         --test_trt_llm \
         --tensorrt_llm_rouge1_threshold=13 \

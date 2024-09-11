@@ -97,7 +97,7 @@ def filter_code(completion: str) -> str:
 
 
 def gen_prompt(prompt: str) -> str:
-    return prompt
+    return prompt.strip()
 
 
 def count_indent(text: str) -> int:

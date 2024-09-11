@@ -26,16 +26,15 @@ import time
 import torch
 import torch.multiprocessing as mp
 from datasets import load_dataset
-from megatron.core import mpu, parallel_state
+from megatron.core import parallel_state
 from megatron.core.transformer.module import Float16Module
-from megatron.training.utils import unwrap_model
 from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import MegatronGPTModel
 from nemo.collections.nlp.modules.common.transformer.text_generation import (
     LengthParam,
 )
 from nemo.collections.nlp.parts.nlp_overrides import NLPDDPStrategy, NLPSaveRestoreConnector
 from nemo.core.config import hydra_runner
-from nemo.utils.model_utils import load_config, save_artifacts
+from nemo.utils.model_utils import load_config, save_artifacts, unwrap_model
 from omegaconf import OmegaConf
 from omegaconf.omegaconf import open_dict
 from pytorch_lightning.trainer.trainer import Trainer
@@ -44,7 +43,6 @@ from tqdm import tqdm
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export import export_tensorrt_llm_checkpoint
 from modelopt.torch.utils import print_rank_0
-from modelopt.torch.utils.distributed import set_data_parallel_group, set_tensor_parallel_group
 
 mp.set_start_method("spawn", force=True)
 
@@ -135,10 +133,6 @@ def main(cfg) -> None:
 
     config = OmegaConf.to_container(cfg.inference)
     model.set_inference_config(config)
-
-    # Setting tensor parallel and data parallel group
-    set_data_parallel_group(mpu.get_data_parallel_group())
-    set_tensor_parallel_group(mpu.get_tensor_model_parallel_group())
 
     if cfg.quantization.algorithm and cfg.quantization.algorithm in QUANT_CFG_CHOICES:
         if "awq" in cfg.quantization.algorithm:

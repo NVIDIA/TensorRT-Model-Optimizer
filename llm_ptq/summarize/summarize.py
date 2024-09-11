@@ -112,7 +112,11 @@ def main(args):
         else:
             dataset_name = f"{args.dataset_dir}/{dataset_name}"
     dataset = load_dataset(
-        dataset_name, dataset_revision, cache_dir=args.dataset_cache_dir, split=dataset_split
+        dataset_name,
+        dataset_revision,
+        cache_dir=args.dataset_cache_dir,
+        split=dataset_split,
+        trust_remote_code=True,
     )
 
     max_batch_size = args.batch_size

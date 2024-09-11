@@ -36,7 +36,7 @@ def torch_to_onnx(
     fp16,
     input_names=["input"],
     output_names=["output"],
-    opset=17,
+    opset=20,
     do_constant_folding=True,
 ):
     model.eval()

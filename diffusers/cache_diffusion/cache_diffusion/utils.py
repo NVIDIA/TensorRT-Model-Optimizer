@@ -44,6 +44,15 @@ SVD_DEFAULT_CONFIG = [
     }
 ]
 
+SD3_DEFAULT_CONFIG = [
+    {
+        "wildcard_or_filter_func": lambda name: re.search(
+            r"^((?!transformer_blocks\.(1[6-9]|2[0-3])).)*$", name
+        ),
+        "select_cache_step_func": lambda step: (step % 2) != 0,
+    }
+]
+
 
 def replace_module(parent, name_path, new_module):
     path_parts = name_path.split(".")

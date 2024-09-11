@@ -11,12 +11,12 @@ parse_options() {
     PP=1
     GPUS=1
     SPARSITY_FMT="dense"
-    DEPLOYMENT="tensorrt_llm"
+    EXPORT_FORMAT="tensorrt_llm"
 
     TASKS="build,summarize,mmlu,humaneval,mtbench,benchmark"
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,input:,output:,batch:,summarize_ite:,tasks:,deployment:," -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,compression:,input:,output:,batch:,summarize_ite:,tasks:,export_fmt:," -n "$0" -- "$@")
   eval set -- "$ARGS"
   while true; do
     case "$1" in
@@ -28,19 +28,22 @@ parse_options() {
       --pp ) PP="$2"; shift 2;;
       --sparsity ) SPARSITY_FMT="$2"; shift 2;;
       --awq_block_size ) AWQ_BLOCK_SIZE="$2"; shift 2;;
-      --calib ) CALIB_NUM_BATCHES="$2"; shift 2;;
+      --calib ) CALIB_SIZE="$2"; shift 2;;
+      --calib_batch_size ) CALIB_BATCH_SIZE="$2"; shift 2;;
+      --compression ) AUTO_QUANTIZE_COMPRESSION="$2"; shift 2;;
       --input ) BUILD_MAX_INPUT_LEN="$2"; shift 2;;
       --output ) BUILD_MAX_OUTPUT_LEN="$2"; shift 2;;
       --batch ) BUILD_MAX_BATCH_SIZE="$2"; shift 2;;
       --summarize_ite ) SUMMARIZE_MAX_ITE="$2"; shift 2;;
       --tasks ) TASKS="$2"; shift 2;;
-      --deployment ) DEPLOYMENT="$2"; shift 2;;
+      --export_fmt ) EXPORT_FORMAT="$2"; shift 2;;
       -- ) shift; break ;;
       * ) break ;;
     esac
   done
 
-  DEFAULT_CALIB_NUM_BATCHES=512
+  DEFAULT_CALIB_SIZE=512
+  DEFAULT_CALIB_BATCH_SIZE=0
   DEFAULT_BUILD_MAX_INPUT_LEN=2048
   DEFAULT_BUILD_MAX_OUTPUT_LEN=512
   DEFAULT_BUILD_MAX_BATCH_SIZE=4
@@ -50,8 +53,11 @@ parse_options() {
   if [ -z "$AWQ_BLOCK_SIZE" ]; then
     AWQ_BLOCK_SIZE=$DEFAULT_AWQ_BLOCK_SIZE
   fi
-  if [ -z "$CALIB_NUM_BATCHES" ]; then
-    CALIB_NUM_BATCHES=$DEFAULT_CALIB_NUM_BATCHES
+  if [ -z "$CALIB_SIZE" ]; then
+    CALIB_SIZE=$DEFAULT_CALIB_SIZE
+  fi
+  if [ -z "$CALIB_BATCH_SIZE" ]; then
+    CALIB_BATCH_SIZE=$DEFAULT_CALIB_BATCH_SIZE
   fi
   if [ -z "$BUILD_MAX_INPUT_LEN" ]; then
     BUILD_MAX_INPUT_LEN=$DEFAULT_BUILD_MAX_INPUT_LEN
@@ -69,7 +75,7 @@ parse_options() {
   # Verify required options are provided
   if [ -z "$MODEL_TYPE" ] || [ -z "$MODEL_PATH" ] || [ -z "$QFORMAT" ] || [ -z "$TASKS" ]; then
     echo "Usage: $0 --type=<MODEL_TYPE> --model=<MODEL_PATH> --quant=<QFORMAT> --tasks=<TASK,...>"
-    echo "Optional args: --tp=<TP> --pp=<PP> --sparsity=<SPARSITY_FMT> --awq_block_size=<AWQ_BLOCK_SIZE> --calib=<CALIB_NUM_BATCHES>"
+    echo "Optional args: --tp=<TP> --pp=<PP> --sparsity=<SPARSITY_FMT> --awq_block_size=<AWQ_BLOCK_SIZE> --calib=<CALIB_SIZE>"
     echo "Optional args for NeMo: --calib_tp=<CALIB_TP>"
     exit 1
   fi
@@ -107,12 +113,14 @@ parse_options() {
   echo "gpus: $GPUS"
   echo "sparsity: $SPARSITY_FMT"
   echo "awq_block_size: $AWQ_BLOCK_SIZE"
-  echo "calib: $CALIB_NUM_BATCHES"
+  echo "calib: $CALIB_SIZE"
+  echo "calib_batch_size: $CALIB_BATCH_SIZE"
+  echo "compression: $AUTO_QUANTIZE_COMPRESSION"
   echo "input: $BUILD_MAX_INPUT_LEN"
   echo "output: $BUILD_MAX_OUTPUT_LEN"
   echo "batch: $BUILD_MAX_BATCH_SIZE"
   echo "summarize_ite: $SUMMARIZE_MAX_ITE"
   echo "tasks: $TASKS"
-  echo "deployment: $DEPLOYMENT"
+  echo "export_fmt: $EXPORT_FORMAT"
   echo "================="
 }

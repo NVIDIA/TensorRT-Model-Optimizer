@@ -46,6 +46,7 @@ import os
 import random
 import time
 
+import openai
 import shortuuid
 import torch
 from fastchat.llm_judge.common import load_questions, temperature_config
@@ -56,6 +57,53 @@ from tqdm import tqdm
 from examples.public.llm_eval.quantization_utils import get_tokenizer
 from modelopt.deploy.llm import LLM
 
+# API setting constants
+API_MAX_RETRY = 16
+API_RETRY_SLEEP = 10
+API_ERROR_OUTPUT = "$ERROR$"
+
+
+# Model Optimizer modification
+# Reference:
+# https://github.com/lm-sys/FastChat/blob/5c0443edb8545babb37d495ade86c75ebbf68009/fastchat/llm_judge/common.py#L407
+def chat_completion_openai(model, conv, temperature, top_p, max_tokens, api_dict=None):
+    """Chat completion with the OpenAI API.
+
+    Args:
+        model: The model handle.
+        conv: The FastChat conversation template.
+        temperature: The temperature for sampling.
+        top_p: The nucleus sampling parameter.
+        max_tokens: The maximum number of tokens to generate.
+        api_dict: The API settings.
+
+    Returns:
+        The generated output.
+    """
+
+    if api_dict is not None:
+        openai.api_base = api_dict["api_base"]
+        openai.api_key = api_dict["api_key"]
+    output = API_ERROR_OUTPUT
+    for _ in range(API_MAX_RETRY):
+        try:
+            messages = conv.to_openai_api_messages()
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=messages,
+                n=1,
+                temperature=temperature,
+                top_p=top_p,
+                max_tokens=max_tokens,
+            )
+            output = response["choices"][0]["message"]["content"]
+            break
+        except openai.error.OpenAIError as e:
+            print(type(e), e)
+            time.sleep(API_RETRY_SLEEP)
+
+    return output
+
 
 def run_eval(
     model_path,
@@ -65,6 +113,8 @@ def run_eval(
     question_end,
     answer_file,
     max_new_token,
+    top_p,
+    temperature,
     num_choices,
     num_gpus_per_model,
     num_gpus_total,
@@ -73,6 +123,7 @@ def run_eval(
     revision,
     engine_dir,
     vocab_file,
+    nim_model,
 ):
     questions = load_questions(question_file, question_begin, question_end)
     # random shuffle the questions to balance the loading
@@ -102,8 +153,11 @@ def run_eval(
                 max_gpu_memory,
                 dtype=dtype,
                 revision=revision,
+                top_p=top_p,
+                temperature=temperature,
                 engine_dir=engine_dir,
                 vocab_file=vocab_file,
+                nim_model=nim_model,
             )
         )
 
@@ -123,8 +177,11 @@ def get_model_answers(
     max_gpu_memory,
     dtype,
     revision,
+    top_p=None,
+    temperature=None,
     engine_dir=None,
     vocab_file=None,
+    nim_model=None,
 ):
     # Model Optimizer modification
     if engine_dir:
@@ -148,7 +205,7 @@ def get_model_answers(
             model = LLM(engine_dir, tokenizer=tokenizer)
         else:
             raise ValueError("engine_dir is required for TensorRT LLM inference.")
-    else:
+    elif not nim_model:
         model, tokenizer = load_model(
             model_path,
             revision=revision,
@@ -162,11 +219,12 @@ def get_model_answers(
         )
 
     for question in tqdm(questions):
-        if question["category"] in temperature_config:
-            temperature = temperature_config[question["category"]]
-        else:
-            temperature = 0.7
-
+        if not temperature:
+            if question["category"] in temperature_config:
+                temperature = temperature_config[question["category"]]
+            else:
+                temperature = 0.7
+        top_p = top_p if top_p is not None else 1.0
         choices = []
         for i in range(num_choices):
             torch.manual_seed(i)
@@ -177,9 +235,28 @@ def get_model_answers(
                 conv.append_message(conv.roles[0], qs)
                 conv.append_message(conv.roles[1], None)
                 prompt = conv.get_prompt()
+                # Model Optimizer modification
+                if nim_model:
+                    api_key = os.getenv("OPENAI_API_KEY")
+
+                    if not api_key:
+                        raise ValueError("OPENAI_API_KEY environment variable is not set")
+                    api_dict = {}
+                    api_dict["api_base"] = os.getenv(
+                        "OPENAI_API_BASE", "https://integrate.api.nvidia.com/v1"
+                    )
+                    api_dict["api_key"] = api_key
+                    output = chat_completion_openai(
+                        nim_model, conv, temperature, top_p, max_new_token, api_dict
+                    )
+                    conv.update_last_message(output)
+                    turns.append(output)
+                    continue
+
                 input_ids = tokenizer([prompt]).input_ids
 
-                if temperature < 1e-4:
+                # Model Optimizer modification
+                if temperature <= 1e-4:
                     do_sample = False
                 else:
                     do_sample = True
@@ -192,16 +269,19 @@ def get_model_answers(
                             do_sample=do_sample,
                             temperature=temperature,
                             max_new_tokens=max_new_token,
+                            top_p=top_p,
                         )
                         if model.config.is_encoder_decoder:
                             output_ids = output_ids[0]
                         else:
                             output_ids = output_ids[0][len(input_ids[0]) :]
                     else:
+                        # Model Optimizer modification
                         output_ids = model.generate_tokens(
                             [prompt],
                             max_new_tokens=max_new_token,
                             temperature=temperature,
+                            top_p=top_p,
                             keep_input_prompt=False,
                         )[0]
 
@@ -309,6 +389,18 @@ if __name__ == "__main__":
         help="The maximum number of new generated tokens.",
     )
     parser.add_argument(
+        "--top-p",
+        type=float,
+        default=None,
+        help="The nucleus sampling parameter.",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help="The temperature for sampling.",
+    )
+    parser.add_argument(
         "--num-choices",
         type=int,
         default=1,
@@ -349,6 +441,11 @@ if __name__ == "__main__":
         type=str,
         help="The path to the vocabulary file.",
     )
+    parser.add_argument(
+        "--nim-model",
+        type=str,
+        help="The NIM model handle to use",
+    )
 
     args = parser.parse_args()
 
@@ -373,6 +470,8 @@ if __name__ == "__main__":
         question_end=args.question_end,
         answer_file=answer_file,
         max_new_token=args.max_new_token,
+        top_p=args.top_p,
+        temperature=args.temperature,
         num_choices=args.num_choices,
         num_gpus_per_model=args.num_gpus_per_model,
         num_gpus_total=args.num_gpus_total,
@@ -381,6 +480,7 @@ if __name__ == "__main__":
         revision=args.revision,
         engine_dir=args.engine_dir,
         vocab_file=args.vocab_file,
+        nim_model=args.nim_model,
     )
 
     reorg_answer_file(answer_file)

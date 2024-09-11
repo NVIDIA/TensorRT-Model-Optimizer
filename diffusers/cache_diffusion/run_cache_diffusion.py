@@ -41,7 +41,7 @@ prompt = "A random person with a head that is made of flowers, photo by James C.
         biomorphicy"
 
 compile(
-    pipe.unet,
+    pipe,
     onnx_path=Path("./onnx"),
     engine_path=Path("./engine"),
 )

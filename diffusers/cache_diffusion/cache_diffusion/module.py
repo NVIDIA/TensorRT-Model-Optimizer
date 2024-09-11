@@ -23,10 +23,9 @@ from torch import nn
 
 
 class CachedModule(nn.Module):
-    def __init__(self, block, num_inference_steps, select_cache_step_func) -> None:
+    def __init__(self, block, select_cache_step_func) -> None:
         super().__init__()
         self.block = block
-        self.num_inference_steps = num_inference_steps
         self.select_cache_step_func = select_cache_step_func
         self.cur_step = 0
         self.cached_results = None
@@ -48,12 +47,9 @@ class CachedModule(nn.Module):
         self.enabled = False
         self.cur_step = 0
 
-    def reset_num_inference_steps(self, new_step):
-        self.num_inference_steps = new_step
-
     def forward(self, *args, **kwargs):
         if not self.if_cache():
             self.cached_results = self.block(*args, **kwargs)
         if self.enabled:
-            self.cur_step = (self.cur_step + 1) % self.num_inference_steps
+            self.cur_step += 1
         return self.cached_results

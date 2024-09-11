@@ -35,9 +35,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import gc
 import os
-import types
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -46,10 +44,15 @@ import transformers
 from torch.utils.data import DataLoader
 from transformers import Trainer, default_data_collator
 from transformers.trainer_utils import get_last_checkpoint
-from utils import make_supervised_data_module
+from utils import (
+    get_lora_config,
+    make_supervised_data_module,
+    monkey_patch_training_step_to_fix_memory_leak,
+)
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
+import modelopt.torch.speculative as mtsp
 from modelopt.torch.utils import print_rank_0
 
 CUSTOM_QUANT_CFG = {
@@ -95,6 +98,14 @@ class TrainingArguments(transformers.TrainingArguments):
 
 
 @dataclass
+class DataArguments:
+    dataset: str = field(
+        default="samsum",
+        metadata={"help": "Specify the dataset.", "choices": ["samsum", "Daring-Anteater"]},
+    )
+
+
+@dataclass
 class QuantizationArguments:
     quant_cfg: Optional[str] = field(
         default=None,
@@ -117,6 +128,15 @@ class QuantizationArguments:
     )
 
 
+@dataclass
+class MedusaArguments:
+    medusa: Optional[bool] = field(default=False)
+    medusa_only_heads: Optional[bool] = field(default=True)
+    medusa_num_heads: Optional[int] = field(default=1)
+    medusa_num_layers: Optional[int] = field(default=1)
+    medusa_lm_head: Optional[str] = field(default="")
+
+
 def get_metrics_with_perplexity(metrics):
     metrics = {"perplexity": float(torch.exp(torch.tensor(metrics["eval_loss"]))), **metrics}
     return metrics
@@ -124,13 +144,27 @@ def get_metrics_with_perplexity(metrics):
 
 def train():
     parser = transformers.HfArgumentParser(
-        (ModelArguments, TrainingArguments, QuantizationArguments)
+        (ModelArguments, TrainingArguments, DataArguments, QuantizationArguments, MedusaArguments)
     )
-    model_args, training_args, quant_args = parser.parse_args_into_dataclasses()
-    print_rank_0(f"arguments: {model_args}, {training_args}, {quant_args}")
+    model_args, training_args, data_args, quant_args, medusa_args = (
+        parser.parse_args_into_dataclasses()
+    )
+    print_rank_0(f"arguments: {model_args}, {training_args}, {quant_args}, {medusa_args}")
+
+    # Enable automatic save/load of modelopt state huggingface checkpointing
+    # modelopt state will be saved automatically to "modelopt_state.pt"
+    mto.enable_huggingface_checkpointing()
+
+    # Detecting last checkpoint.
+    last_checkpoint = None
+    if os.path.isdir(training_args.output_dir) and training_args.do_train:
+        last_checkpoint = get_last_checkpoint(training_args.output_dir)
+        print_rank_0(f"Last checkpoint detected: {last_checkpoint}")
 
     model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path, cache_dir=training_args.cache_dir, torch_dtype=torch.bfloat16
+        model_args.model_name_or_path if last_checkpoint is None else last_checkpoint,
+        cache_dir=training_args.cache_dir,
+        torch_dtype=torch.bfloat16,
     )
     model.generation_config.do_sample = True
 
@@ -139,20 +173,8 @@ def train():
     )
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    # If there is a mismatch between tokenizer vocab size and embedding matrix,
-    # throw a warning and then expand the embedding matrix
-    if len(tokenizer) > model.get_input_embeddings().weight.shape[0]:
-        print_rank_0("WARNING: Resizing the embedding matrix to match the tokenizer vocab size.")
-        model.resize_token_embeddings(len(tokenizer))
-
     print_rank_0("Loading dataset...")
-    data_module = make_supervised_data_module(tokenizer=tokenizer)
-
-    # Detecting last checkpoint.
-    last_checkpoint = None
-    if os.path.isdir(training_args.output_dir) and training_args.do_train:
-        last_checkpoint = get_last_checkpoint(training_args.output_dir)
-        print_rank_0(f"Last checkpoint detected: {last_checkpoint}")
+    data_module = make_supervised_data_module(dataset=data_args.dataset, tokenizer=tokenizer)
 
     # Training
     checkpoint = None
@@ -161,24 +183,32 @@ def train():
     elif last_checkpoint is not None:
         checkpoint = last_checkpoint
 
+    # Torch >= 2.4 throws an error if `use_reentrant` is not set explicitly
+    if training_args.gradient_checkpointing and training_args.gradient_checkpointing_kwargs is None:
+        training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
+
     trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
     trainer._move_model_to_device(model, trainer.args.device)
+    if medusa_args.medusa:
+        print("Adding Medusa loss to the trainer...")
+        mtsp.plugins.transformers.replace_medusa_compute_loss(
+            trainer, medusa_only_heads=medusa_args.medusa_only_heads
+        )
 
-    # modelopt quantization
-    quant_output_path = None
-    if quant_args.quant_cfg is not None:
-        quant_output_path = os.path.join(training_args.output_dir, "modelopt_state.pt")
-        # Loading real quantization state dict is not supported yet
-        is_real_quant = "REAL_QUANT" in quant_args.quant_cfg
-        checkpoint = None if is_real_quant else checkpoint
-        if os.path.isfile(quant_output_path) and not is_real_quant:
-            print_rank_0(f"Loading modelopt state from {quant_output_path}")
-            modelopt_state = torch.load(quant_output_path)
-            mto.restore_from_modelopt_state(model, modelopt_state)
-        else:
+    if checkpoint is None:
+        # This needs to be done only once before training starts
+        if medusa_args.medusa:
+            config = {
+                "medusa_num_heads": medusa_args.medusa_num_heads,
+                "medusa_num_layers": medusa_args.medusa_num_layers,
+            }
+            mtsp.convert(model, [("medusa", config)])
+            if medusa_args.medusa_lm_head:
+                mtsp.plugins.transformers.load_medusa_head(model, medusa_args.medusa_lm_head)
+        if quant_args.quant_cfg is not None:
             calib_dataloader = DataLoader(
                 data_module["train_dataset"],
-                batch_size=1,
+                batch_size=training_args.per_device_eval_batch_size,
                 shuffle=False,
                 collate_fn=default_data_collator,
             )
@@ -192,7 +222,7 @@ def train():
             def calibrate_loop(model):
                 print_rank_0("Calibrating model...")
                 for i, data in enumerate(calib_dataloader):
-                    if i >= quant_args.calib_size:
+                    if i >= quant_args.calib_size // training_args.per_device_eval_batch_size:
                         break
                     data = {k: v.to(trainer.args.device) for k, v in data.items()}
                     model(**data)
@@ -203,39 +233,16 @@ def train():
                 else getattr(mtq, quant_args.quant_cfg)
             )
             model = mtq.quantize(model, quant_cfg, calibrate_loop)
-            # save the calibrated states
-            if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-                torch.save(mto.modelopt_state(model), quant_output_path)
-            torch.cuda.empty_cache()  # Lets make sure to free up the memory for training
+        torch.cuda.empty_cache()  # Lets make sure to free up the memory for training
+    else:
+        is_real_quant = quant_args.quant_cfg is not None and "REAL_QUANT" in quant_args.quant_cfg
+        assert not is_real_quant, "Real quantization does not support resuming training yet!"
 
     # add lora adapter
     if training_args.lora:
-        from peft import LoraConfig
+        model.add_adapter(get_lora_config(), adapter_name="adapter")
 
-        lora_config = LoraConfig(
-            r=8,
-            target_modules=[
-                "q_proj",
-                "o_proj",
-                "k_proj",
-                "v_proj",
-                "gate_proj",
-                "up_proj",
-                "down_proj",
-            ],
-            task_type="CAUSAL_LM",
-        )
-        model.add_adapter(lora_config, adapter_name="adapter")
-
-    def monkey_patch_training_step_to_fix_memory_leak(trainer):
-        def new_training_step(self, *args, **kwargs):
-            gc.collect()
-            return self._original_training_step(*args, **kwargs)
-
-        trainer._original_training_step = trainer.training_step
-        trainer.training_step = types.MethodType(new_training_step, trainer)
-
-    # There could be GPU memory leak during QAT. This is a workaround to fix it.
+    # There could be GPU memory leak during QAT causing OOM. This is a workaround to fix it.
     monkey_patch_training_step_to_fix_memory_leak(trainer)
 
     if training_args.do_train:
