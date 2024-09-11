@@ -19,13 +19,9 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import json
 import os
 import sys
-from os.path import isfile, join
 
-import PIL
-import PIL.Image
 import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
@@ -55,6 +51,9 @@ MODEL_NAME_PATTERN_MAP = {
     "StarCoder": "gptnext",
     "Dbrx": "dbrx",
     "T5": "t5",
+    "GLM": "glm",
+    "InternLM2ForCausalLM": "internlm",
+    "ExaoneForCausalLM": "exaone",
 }
 
 
@@ -77,6 +76,8 @@ def get_mode_type_from_engine_dir(engine_dir_str):
 
 def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, model_type=None):
     print(f"Initializing tokenizer from {ckpt_path}")
+    if "vila" in ckpt_path.lower():
+        ckpt_path += "/llm"
     tokenizer = AutoTokenizer.from_pretrained(
         ckpt_path,
         model_max_length=max_seq_len,
@@ -111,37 +112,85 @@ def get_dtype(dtype):
     return dtype
 
 
-def get_model(ckpt_path, device="cuda"):
+def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8):
     print(f"Initializing model from {ckpt_path}")
-
-    if "vila" in ckpt_path:
-        register_vila(ckpt_path)
-
-    # Note: Forcibly converting the model precision between bf16 and fp16 may introduce accuracy drop
-    model_kwargs = {"torch_dtype": "auto"}
-    hf_config = AutoConfig.from_pretrained(ckpt_path, trust_remote_code=True)
 
     device_map = "auto"
     if device == "cpu":
         device_map = "cpu"
 
-    if hf_config.model_type == "llava":
-        from transformers import LlavaForConditionalGeneration
+    # Note: Forcibly converting the model precision between bf16 and fp16 may introduce accuracy drop
+    model_kwargs = {"torch_dtype": "auto"}
 
-        hf_llava = LlavaForConditionalGeneration.from_pretrained(
-            ckpt_path, device_map=device_map, **model_kwargs
-        )
-        model = hf_llava.language_model
-    elif hf_config.model_type == "t5":
-        from transformers import T5ForConditionalGeneration
+    if "vila" in ckpt_path:
+        sys.path.append(os.path.join(ckpt_path, "..", "VILA"))
+        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa
+        from transformers import AutoModel
 
-        model = T5ForConditionalGeneration.from_pretrained(
-            ckpt_path, device_map=device_map, **model_kwargs
+        hf_vila = AutoModel.from_pretrained(
+            ckpt_path,
+            device_map=device_map,
+            trust_remote_code=True,
         )
+        model = hf_vila.llm
     else:
-        model = AutoModelForCausalLM.from_pretrained(
-            ckpt_path, device_map=device_map, **model_kwargs, trust_remote_code=True
-        )
+        hf_config = AutoConfig.from_pretrained(ckpt_path, trust_remote_code=True)
+
+        if hf_config.model_type == "llava":
+            from transformers import LlavaForConditionalGeneration
+
+            hf_llava = LlavaForConditionalGeneration.from_pretrained(
+                ckpt_path, device_map=device_map, **model_kwargs
+            )
+            model = hf_llava.language_model
+        elif hf_config.model_type == "t5":
+            from transformers import T5ForConditionalGeneration
+
+            model = T5ForConditionalGeneration.from_pretrained(
+                ckpt_path, device_map=device_map, **model_kwargs
+            )
+        elif hf_config.model_type == "glm":
+            from transformers import AutoModelForSeq2SeqLM
+
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                ckpt_path, device_map="cuda", **model_kwargs, trust_remote_code=True
+            )
+        else:
+            from accelerate import infer_auto_device_map, init_empty_weights
+            from accelerate.utils import get_max_memory
+
+            with init_empty_weights():
+                # When computing the device_map, assuming half precision by default,
+                # unless specified by the hf_config.
+                torch_dtype = getattr(hf_config, "torch_dtype", torch.float16)
+                model = AutoModelForCausalLM.from_config(
+                    hf_config, torch_dtype=torch_dtype, trust_remote_code=True
+                )
+
+            max_memory = get_max_memory()
+            inferred_device_map = infer_auto_device_map(model, max_memory=max_memory)
+
+            on_cpu = "cpu" in inferred_device_map.values()
+
+            if on_cpu:
+                for device in max_memory.keys():
+                    if isinstance(device, int):
+                        max_memory[device] *= gpu_mem_percentage
+
+                print(
+                    "Model does not fit to the GPU mem. "
+                    f"We apply the following memmory limit for calibration: \n{max_memory}\n"
+                    "If you hit GPU OOM issue, please adjust `gpu_mem_percentage` or "
+                    "reduce the calibration `batch_size` manually."
+                )
+                model_kwargs["max_memory"] = max_memory
+
+            model = AutoModelForCausalLM.from_pretrained(
+                ckpt_path,
+                device_map=device_map,
+                **model_kwargs,
+                trust_remote_code=True,
+            )
     model.eval()
     if device == "cuda":
         if not is_model_on_gpu(model):
@@ -153,109 +202,3 @@ def get_model(ckpt_path, device="cuda"):
 def is_model_on_gpu(model) -> bool:
     """Returns if the model is fully loaded on GPUs."""
     return all("cuda" in str(param.device) for param in model.parameters())
-
-
-def register_vila(ckpt_path: str):
-    """
-    Imports model class and model config from VILA source code until it is added to HF model zoo
-
-    Args: huggingface model directory
-    """
-    directory_path = ckpt_path + "/../VILA"
-    if os.path.isdir(directory_path):
-        sys.path.append(directory_path)
-        from llava.model import LlavaConfig, LlavaLlamaForCausalLM
-    else:
-        raise FileNotFoundError(f"The directory '{directory_path}' does not exist.")
-
-    AutoConfig.register("llava_llama", LlavaConfig)
-    AutoModelForCausalLM.register(LlavaConfig, LlavaLlamaForCausalLM)
-
-
-def image_process_vila(image: PIL.Image.Image, ckpt_path: str):
-    """
-    Processes input image using VILA image processor
-
-    Args:
-        image: the image to be processed using VILA image processor
-        ckpt_path: the huggingface model directory
-
-    Returns:
-        LlavaLlamaForCausalLM: instance of pretrained model class
-        Tensor: processed image using VILA image processor
-    """
-    register_vila(ckpt_path)
-    model = AutoModelForCausalLM.from_pretrained(ckpt_path, torch_dtype=torch.float16)
-    vision_tower = model.get_vision_tower()
-    image_processor = vision_tower.image_processor
-    image = image_processor(images=image, return_tensors="pt")["pixel_values"]
-    return model, image
-
-
-def combine_medusa_head(base_model: str, medusa_model: str):
-    """
-    Combines medusa heads with base model into one model state dict
-
-    Args:
-        base_model: path to the base model dir
-        medusa_model: path to the medusa head dir
-    """
-    medusa_weight = join(medusa_model, "medusa_lm_head.pt")
-    assert isfile(medusa_weight), "Medusa head not found at " + medusa_weight
-
-    index_file_list = [
-        join(base_model, f)
-        for f in os.listdir(base_model)
-        if isfile(join(base_model, f)) and f.endswith(".bin.index.json")
-    ]
-    if len(index_file_list) == 1:
-        base_model_bin_index = index_file_list[0]
-    else:
-        base_model_bin_index = None
-
-    bin_file_list = [
-        join(base_model, f)
-        for f in os.listdir(base_model)
-        if isfile(join(base_model, f)) and f.endswith(".bin")
-    ]
-    if len(bin_file_list) == 1:
-        base_model_weight = bin_file_list[0]
-    else:
-        base_model_weight = None
-
-    assert not (
-        base_model_weight is None and base_model_bin_index is None
-    ), "Base model state dict not detected."
-
-    with open(join(medusa_model, "config.json")) as f:
-        medusa_config = json.load(f)
-    with open(join(base_model, "config.json")) as f:
-        base_config = json.load(f)
-
-    # Copy the medusa config to base model config
-    for key in medusa_config.keys():
-        base_config[key] = medusa_config[key]
-    with open(join(base_model, "config.json"), "w") as f:
-        json.dump(base_config, f, indent=4)
-
-    medusa_modules = torch.load(medusa_weight)
-    # The bin.index file has higher priority. If it presents, we will update base_model_weight
-    if base_model_bin_index is not None:
-        base_model_weight = bin_file_list[0]
-
-        medusa_size = os.path.getsize(medusa_weight)
-        with open(base_model_bin_index) as f:
-            bin_index = json.load(f)
-        bin_index["metadata"]["total_size"] += medusa_size
-        for module in medusa_modules.keys():
-            bin_index["weight_map"]["medusa_head." + module] = base_model_weight.split("/")[-1]
-
-        with open(base_model_bin_index, "w") as f:
-            json.dump(bin_index, f, indent=4)
-
-    # Store the medusa head state dict to the base model state dict
-    base_model_modules = torch.load(base_model_weight)
-    for module in medusa_modules.keys():
-        base_model_modules["medusa_head." + module] = medusa_modules[module]
-
-    torch.save(base_model_modules, base_model_weight)

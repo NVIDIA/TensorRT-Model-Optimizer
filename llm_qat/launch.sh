@@ -13,6 +13,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       OUTPUT_DIR="${1#*=}"
       ;;
+    --dataset*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      DATASET="${1#*=}"
+      ;;
     --num_epochs*)
       if [[ "$1" != *=* ]]; then shift; fi
       NUM_EPOCHS="${1#*=}"
@@ -20,6 +24,10 @@ while [ $# -gt 0 ]; do
     --save_steps*)
       if [[ "$1" != *=* ]]; then shift; fi
       SAVE_STEPS="${1#*=}"
+      ;;
+    --accum_steps*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      ACCUM_STEPS="${1#*=}"
       ;;
     --lr*)
       if [[ "$1" != *=* ]]; then shift; fi
@@ -49,6 +57,26 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       LORA="${1#*=}"
       ;;
+    --medusa*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      MEDUSA="${1#*=}"
+      ;;
+    --only_medusa_heads*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      MEDUSA_ONLY_HEADS="${1#*=}"
+      ;;
+    --num_medusa_heads*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      MEDUSA_NUM_HEADS="${1#*=}"
+      ;;
+    --num_medusa_layers*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      MEDUSA_NUM_LAYERS="${1#*=}"
+      ;;
+    --lm_head_medusa*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      MEDUSA_LM_HEAD="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument\n"
       exit 1
@@ -64,13 +92,28 @@ DEFAULT_SAVE_STEPS=$((192 / GPU_COUNT))
 
 MODEL=${MODEL:-"meta-llama/Llama-2-7b-hf"}
 OUTPUT_DIR=${OUTPUT_DIR:-"llama2-finetune"}
+DATASET=${DATASET:-"samsum"}
 NUM_EPOCHS=${NUM_EPOCHS:-1}
 SAVE_STEPS=${SAVE_STEPS:-$DEFAULT_SAVE_STEPS}
+ACCUM_STEPS=${ACCUM_STEPS:-1}
 LR=${LR:-"1e-4"}
 CALIB_SIZE=${CALIB_SIZE:-512}
 TRAIN_BS=${TRAIN_BS:-4}
-EVAL_BS=${EVAL_BS:-1}
+EVAL_BS=${EVAL_BS:-4}
 DO_TRAIN=${DO_TRAIN:-True}
+MEDUSA=${MEDUSA:-False}
+MEDUSA_ONLY_HEADS=${MEDUSA_ONLY_HEADS:-True}
+MEDUSA_NUM_HEADS=${MEDUSA_NUM_HEADS:-1}
+MEDUSA_NUM_LAYERS=${MEDUSA_NUM_LAYERS:-1}
+
+MEDUSA_ARGS="--medusa $MEDUSA --medusa_only_heads $MEDUSA_ONLY_HEADS \
+             --medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
+
+if [ -z $MEDUSA_LM_HEAD ]; then
+    MEDUSA_ARGS=$MEDUSA_ARGS
+else
+    MEDUSA_ARGS="$MEDUSA_ARGS --medusa_lm_head $MEDUSA_LM_HEAD"
+fi
 
 if [ -z $QUANT_CFG ]; then
     QUANT_ARGS=""
@@ -99,10 +142,11 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --do_train $DO_TRAIN \
     --do_eval True \
     --output_dir $OUTPUT_DIR \
+    --dataset $DATASET \
     --num_train_epochs $NUM_EPOCHS \
     --per_device_train_batch_size $TRAIN_BS \
     --per_device_eval_batch_size $EVAL_BS \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps $ACCUM_STEPS \
     --eval_accumulation_steps 1 \
     --gradient_checkpointing True \
     --save_strategy steps \
@@ -119,6 +163,7 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --report_to tensorboard \
     --tf32 True \
     --lora $LORA \
+    $MEDUSA_ARGS \
     $FSDP_ARGS $QUANT_ARGS
 "
 

@@ -4,8 +4,8 @@
 
 | Supported Framework | Supported Models |
 |----------|----------|
-| **PyTorch** | [**PixArt-α**](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS), [**Stable Diffusion - XL**](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), [**SVD**](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt) |
-| **TensorRT** | [**Stable Diffusion - XL**](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) |
+| **PyTorch** | [**PixArt-α**](https://huggingface.co/PixArt-alpha/PixArt-XL-2-1024-MS), [**Stable Diffusion - XL**](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), [**SVD**](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt), [**SD3-Medium**](https://huggingface.co/stabilityai/stable-diffusion-3-medium) |
+| **TensorRT** | [**Stable Diffusion - XL**](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0), [**SD3-Medium**](https://huggingface.co/stabilityai/stable-diffusion-3-medium) |
 
 Cache Diffusion methods, such as [DeepCache](https://arxiv.org/abs/2312.00858), [Block Caching](https://arxiv.org/abs/2312.03209) and [T-Gate](https://arxiv.org/abs/2404.02747), optimize performance by reusing cached outputs from previous steps instead of recalculating them. This **training-free** caching approach is compatible with a variety of models, like **DiT** and **UNet**, enabling considerable acceleration without compromising quality.
 
@@ -19,13 +19,7 @@ Cache Diffusion methods, such as [DeepCache](https://arxiv.org/abs/2312.00858), 
 
 ## Quick Start
 
-1. Install the required packages:
-
-```bash
-pip install -r requirements.txt
-```
-
-2. Refer to the provided [example.ipynb](./example.ipynb) for detailed instructions on using cache diffusion.
+Refer to the provided [example.ipynb](./example.ipynb) for detailed instructions on using cache diffusion.
 
 Using our API, users can create various compute graphs by simply adjusting the parameters. For instance, the default parameter for SDXL is:
 
@@ -55,7 +49,7 @@ Multiple configurations can be set up, but ensure that the `wildcard_or_filter_f
 Install [TensorRT](https://developer.nvidia.com/tensorrt) then run:
 
 ```bash
-python run_cache_diffusion.py
+python benchmarks.py
 ```
 
 You can find the latest TensorRT at [here](https://developer.nvidia.com/tensorrt/download).
@@ -79,6 +73,8 @@ Afterward, use it as a standard cache diffusion pipeline to generate the image.
 Please note that only the UNET component is running in TensorRT, while the other parts remain in PyTorch.
 
 ## Demo
+
+The following demo images are generated using `PyTorch==2.3.0 with 1xAda 6000 GPU backend`.
 
 Comparing with naively reducing the generation steps, cache diffusion can achieve the same speedup and also much better image quality, even close to the reference image. If the image quality does not meet your needs or product requirements, you can replace our default configuration with your customized settings.
 

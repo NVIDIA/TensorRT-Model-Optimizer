@@ -1,0 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cu121
+datasets>=2.16.1
+flash-attn
+py7zr
+sentencepiece>=0.2.0
+tensorboardX
+torch>=2.1.0

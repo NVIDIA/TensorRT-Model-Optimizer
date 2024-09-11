@@ -42,14 +42,6 @@ the user must first complete the prerequisite PTS step above and generate a PTS 
 The SAT examples provided below have been verified to work on a system with 8 x A100/H100(80GB) GPUs.
 Each GPU typically utilizes approximately 40GB for finetuning the Llama2-7B model. The peak RAM usage is approximately 220GB.
 
-### Setup
-
-Install dependencies
-
-```sh
-pip install -r requirements.txt
-```
-
 ### Data Preparation
 
 Download and preprocess data for training and evaluation.

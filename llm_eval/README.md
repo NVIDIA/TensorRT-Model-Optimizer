@@ -32,6 +32,19 @@ python mmlu.py --model_name causal --model_path <HF model folder or model card>
 python mmlu.py --model_name causal --model_path <HF model folder or model card> --quant_cfg MODELOPT_QUANT_CFG
 ```
 
+### AutoQuantize (simulated)
+
+```bash
+# MODELOPT_QUANT_CFG_TO_SEARCH: Choose the formats to search separated by commas from [W4A8_AWQ_BETA_CFG,FP8_DEFAULT_CFG,NONE]
+# COMPRESSION: Weight compression constraint for AutoQuantize
+
+# Examples settings for optimally quantized model with W4A8 & FP8 with weights compressed to 30% to:
+# MODELOPT_QUANT_CFG_TO_SEARCH=W4A8_AWQ_BETA_CFG,FP8_DEFAULT_CFG,NONE
+# COMPRESSION=0.30
+
+python mmlu.py --model_name causal --model_path <HF model folder or model card> --quant_cfg $MODELOPT_QUANT_CFG_TO_SEARCH --auto_quantize_compression $COMPRESSION --batch_size 4
+```
+
 ### Evaluate the TensorRT-LLM engine
 
 ```bash

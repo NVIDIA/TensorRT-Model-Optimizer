@@ -1,28 +1,12 @@
-# Stable Diffusion XL (Base/Turbo) and Stable Diffusion 1.5 Quantization with Model Optimizer
+# Diffusion Models Quantization with Model Optimizer
 
-This example shows how to use Model Optimizer to calibrate and quantize the backbone part of diffusion models. The backbone part typically consumes >95% of the e2e Stable Diffusion latency.
+This example shows how to use Model Optimizer to calibrate and quantize the backbone part of diffusion models. The backbone part typically consumes >95% of the e2e diffusion latency.
 
-We also provide instructions on deploying and running E2E stable diffusion pipelines with Model Optimizer quantized INT8 and FP8 UNet to generate images and measure latency on target GPUs. Note, Jetson devices are not supported so far.
-
-## Get Started
-
-You may choose to run this example with docker or by installing the required software by yourself.
-
-### Docker
-
-Follow the instructions in [`../../README.md`](../../README.md#docker) to build the docker image and run the docker container.
-
-### By yourself
-
-We assume you already installed NVIDIA TensorRT Model Optimizer `modelopt`, now install required dependencies for Stable Diffusion:
-
-```sh
-pip install -r requirements.txt
-```
+We also provide instructions on deploying and running E2E diffusion pipelines with Model Optimizer quantized INT8 and FP8 Backbone to generate images and measure latency on target GPUs. Note, Jetson devices are not supported so far.
 
 ## 8-bit ONNX Export Quick Start
 
-You can run the following script to get the INT8 or FP8 UNet onnx model built with default settings for SDXL, and then directly go to **Build the TRT engine for the Quantized ONNX UNet** section to run E2E pipeline to generate images.
+You can run the following script to get the INT8 or FP8 Backbone onnx model built with default settings for SDXL, and then directly go to **Build the TRT engine for the Quantized ONNX Backbone** section to run E2E pipeline to generate images.
 
 ```sh
 bash build_sdxl_8bit_engine.sh --format {FORMAT} # FORMAT can be int8 or fp8
@@ -37,69 +21,79 @@ We support calibration for both INT8 and FP8 precision and for both weights and 
 Note: Model calibration requires relatively more GPU computing powers and it does not need to be on the same GPUs as
 the deployment target GPUs. Using the command line below will execute both calibration and ONNX export.
 
-### SD3-Medium|SDXL|SD1.5|SDXL-Turbo INT8
+### FLUX-Dev|SD3-Medium|SDXL|SD2.1|SDXL-Turbo INT8
 
 ```sh
 python quantize.py \
-  --model {sdxl-1.0|sdxl-turbo|sd1.5|sd3-medium} \
+  --model {flux-dev|sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base|sd3-medium} \
   --format int8 --batch-size 2 \
   --calib-size 32 --collect-method min-mean \
   --percentile 1.0 --alpha 0.8 \
   --quant-level 3.0 --n-steps 20 \
-  --exp-name {EXP_NAME} --onnx-dir {ONNX_DIR}
+  --quantized-torch-ckpt-save-path ./{MODEL}_int8.pt --onnx-dir {ONNX_DIR}
 ```
 
-### SDXL|SD1.5|SDXL-Turbo FP8
+### FLUX-Dev|SDXL|SD2.1|SDXL-Turbo FP8
 
 ```sh
 python quantize.py \
-  --model {sdxl-1.0|sdxl-turbo|sd1.5} \
-  --format fp8 --batch-size 2 --calib-size 128 --quant-level 4.0 \
-  --n-steps 20 --exp-name {EXP_NAME} --collect-method default \
+  --model {flux-dev|sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base} \
+  --format fp8 --batch-size 2 --calib-size {128|256} --quant-level {3.0|4.0} \
+  --n-steps 20 --quantized-torch-ckpt-save-path ./{MODEL}_fp8.pt --collect-method default \
   --onnx-dir {ONNX_DIR}
 ```
 
-We recommend using a device with a minimum of 48GB of combined CPU and GPU memory for exporting ONNX models. Quant-level 4.0 requires additional memory.
+We recommend using a device with a minimum of 48GB of combined CPU and GPU memory for exporting ONNX models. Quant-level 4.0 requires additional memory. Exporting the **FLUX-Dev** ONNX model requires a minimum of 60GB of memory.
 
 #### Important Parameters
 
 - `percentile`: Control quantization scaling factors (amax) collecting range, meaning that we will collect the chosen amax in the range of `(n_steps * percentile)` steps. Recommendation: 1.0
 
-- `alpha`: A parameter in SmoothQuant, used for linear layers only. Recommendation: 0.8 for SDXL, 1.0 for SD 1.5
+- `alpha`: A parameter in SmoothQuant, used for linear layers only. Recommendation: 0.8 for SDXL
 
 - `quant-level`: Which layers to be quantized, 1: `CNNs`, 2: `CNN + FFN`, 2.5: `CNN + FFN + QKV`, 3: `CNN + Almost all Linear (Including FFN, QKV, Proj and others)`, 4: `CNN + Almost all Linear + fMHA`. Recommendation: 2, 2.5 and 3, 4 is only for FP8, depending on the requirements for image quality & speedup. **You might notice a slight difference between FP8 quant level 3.0 and 4.0, as we are currently working to enhance the performance of FP8 fMHA.**
 
-- `calib-size`: For SDXL INT8, we recommend 32 or 64, for SDXL FP8, 128 is recommended. For SD 1.5, set it to 512 or 1024.
+- `calib-size`: For SDXL INT8, we recommend 32 or 64, for SDXL FP8, 128 is recommended.
 
 - `n_steps`: Recommendation: SD/SDXL 20 or 30, SDXL-Turbo 4.
 
-**Then, we can load the generated checkpoint and export the INT8/FP8 quantized model in the next step.**
+**Then, we can load the generated checkpoint and export the INT8/FP8 quantized model in the next step. For FP8, we only support the TRT deployment on Ada/Hopper GPUs.**
 
-**For FP8, we only support the TRT deployment on Ada/Hopper GPUs w/wo plugins**
+## Build the TRT engine for the Quantized ONNX Backbone
 
-## Build the TRT engine for the Quantized ONNX UNet
+We assume you already have TensorRT environment setup. INT8 requires **TensorRT version >= 9.2.0**. If you prefer to use the FP8 TensorRT, ensure you have **TensorRT version 10.2.0 or higher**. You can download the latest version of TensorRT at [here](https://developer.nvidia.com/tensorrt/download).
 
-We assume you already have TensorRT environment setup. INT8 requires **TensorRT version >= 9.2.0**. If you prefer to use the FP8 TensorRT OOTB path instead of the plugin path, ensure you have **TensorRT version 10.2.0 or higher**. You can download the latest version of TensorRT at [here](https://developer.nvidia.com/tensorrt/download).
-
-Before you build the TRT FP8 engine, please run this command line:
+Then generate the INT8/FP8 Backbone Engine
 
 ```bash
-python onnx_utils/sdxl_fp8_onnx_graphsurgeon.py --onnx-path {YOUR_FP8_ONNX/backbone.onnx} --output-onnx {NEW_ONNX_FILE_PATH}
-```
 
-If you prefer using FP8 with plugins, we support TRT deployment on Ada and Hopper GPUs. Please refer to [`SDXL_FP8_README.md`](./SDXL_FP8_README.md) for more information.
-
-Then generate the INT8/FP8 UNet Engine
-
-```bash
+# For SDXL
 trtexec --builderOptimizationLevel=4 --stronglyTyped --onnx=./backbone.onnx \
   --minShapes=sample:2x4x128x128,timestep:1,encoder_hidden_states:2x77x2048,text_embeds:2x1280,time_ids:2x6 \
   --optShapes=sample:16x4x128x128,timestep:1,encoder_hidden_states:16x77x2048,text_embeds:16x1280,time_ids:16x6 \
   --maxShapes=sample:16x4x128x128,timestep:1,encoder_hidden_states:16x77x2048,text_embeds:16x1280,time_ids:16x6 \
   --saveEngine=backbone.plan
+
+# For SD3-Medium
+trtexec --builderOptimizationLevel=4 --stronglyTyped --onnx=./backbone.onnx \
+  --minShapes=hidden_states:2x16x128x128,timestep:2,encoder_hidden_states:2x333x4096,pooled_projections:2x2048 \
+  --optShapes=hidden_states:16x16x128x128,timestep:16,encoder_hidden_states:16x333x4096,pooled_projections:16x2048 \
+  --maxShapes=hidden_states:16x16x128x128,timestep:16,encoder_hidden_states:16x333x4096,pooled_projections:16x2048 \
+  --saveEngine=backbone.plan
+
+# For FLUX-Dev FP8
+trtexec --onnx=./backbone.onnx --fp8 --bf16 --stronglyTyped \
+  --minShapes=hidden_states:1x4096x64,img_ids:1x4096x3,encoder_hidden_states:1x512x4096,txt_ids:1x512x3,timestep:1,pooled_projections:1x768,guidance:1 \
+  --optShapes=hidden_states:1x4096x64,img_ids:1x4096x3,encoder_hidden_states:1x512x4096,txt_ids:1x512x3,timestep:1,pooled_projections:1x768,guidance:1 \
+  --maxShapes=hidden_states:1x4096x64,img_ids:1x4096x3,encoder_hidden_states:1x512x4096,txt_ids:1x512x3,timestep:1,pooled_projections:1x768,guidance:1 \
+  --saveEngine=backbone.plan
 ```
 
+**Please note that `maxShapes` represents the maximum shape of the given tensor. If you want to use a larger batch size or any other dimensions, feel free to adjust the value accordingly.**
+
 ## Run End-to-end Stable Diffusion Pipeline with Model Optimizer Quantized ONNX Model and demoDiffusion
+
+### demoDiffusion
 
 If you want to run end-to-end SD/SDXL pipeline with Model Optimizer quantized UNet to generate images and measure latency on target GPUs, here are the steps:
 
@@ -115,7 +109,7 @@ python demo_txt2img_xl.py "enchanted winter forest, soft diffuse light on a snow
 
 Note, it will take some time to build TRT engines for the first time
 
-- Replace the fp16 UNet TRT engine with int8 engine generated in [Build the TRT engine for the Quantized ONNX UNet](#build-the-trt-engine-for-the-quantized-onnx-unet), e.g.,:
+- Replace the fp16 backbone TRT engine with int8 engine generated in [Build the TRT engine for the Quantized ONNX Backbone](#build-the-trt-engine-for-the-quantized-onnx-backbone), e.g.,:
 
 ```sh
 cp -r {YOUR_UNETXL}.plan ./engine/
@@ -124,7 +118,34 @@ cp -r {YOUR_UNETXL}.plan ./engine/
 Note, the engines must be built on the same GPU, and ensure that the INT8 engine name matches the names of the FP16 engines to enable compatibility with the demoDiffusion pipeline.
 
 - Run the above txt2img example command again. You can compare the generated images and latency for fp16 vs int8.
-  Similarly, you could run end-to-end SD1.5 or SDXL-turbo pipeline with Model Optimizer quantized UNet and corresponding examples in demoDiffusion.
+  Similarly, you could run end-to-end pipeline with Model Optimizer quantized backbone and corresponding examples in demoDiffusion with other diffusion models.
+
+### ModelOPT Python-native TRT Pipeline
+
+For our testing pipeline, all you need to do is generate the engine file using `trtexec`. The pipeline will then automatically load it for TensorRT inference. For more details, you can check the available options by running:
+
+```bash
+python trt_infer.py --help
+```
+
+To run the pipeline, execute the following command:
+
+```bash
+python trt_infer.py --model {sdxl-1.0|sd3-medium|flux-dev} --inf-img-size 1
+```
+
+If you prefer to use the Python-native TRT Pipeline in your scripts, you can use the following code:
+
+```
+deploy.load(
+    pipe,
+    {sdxl-1.0|sd3-medium},
+    Path({YOUR_ENGINE_FILE_PATH}),
+    {1|2|8|16},
+)
+```
+
+After that, you can use the pipe as you normally would with the Diffusers pipeline on your local machine, and it will automatically run in TensorRT without any additional changes, which will run faster than the PyTorch runtime.
 
 ## Demo Images
 

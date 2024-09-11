@@ -1,5 +1,4 @@
 --extra-index-url https://download.pytorch.org/whl/cu121
-accelerate>=0.27.2
 datasets>=2.16.1
 flash-attn
 peft
@@ -7,4 +6,3 @@ py7zr
 sentencepiece>=0.2.0
 tensorboardX
 torch>=2.1.0
-transformers>=4.40

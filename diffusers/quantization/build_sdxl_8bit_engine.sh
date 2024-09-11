@@ -39,16 +39,9 @@ cleaned_m="${model//\//-}"
 curt_exp="${cleaned_m}_${quant_level}_${format}"
 echo "=====>Processing $curt_exp"
 if [ "$format" == "fp8" ]; then
-    python quantize.py --model "$model" --format "$format" --batch-size 2 --calib-size 128 --quant-level 3.0 --n-steps 20 --exp-name "$curt_exp".pt --collect-method default --onnx-dir "$curt_exp".onnx
+    python quantize.py --model "$model" --format "$format" --batch-size 2 --calib-size 128 --quant-level 3.0 --n-steps 20 --quantized-torch-ckpt-save-path "$curt_exp".pt --collect-method default --onnx-dir "$curt_exp".onnx
 else
-    python quantize.py --model "$model" --format "$format" --batch-size 2 --calib-size 32 --collect-method "min-mean" --percentile 1.0 --alpha 0.8 --quant-level "$quant_level" --n-steps 20 --exp-name "$curt_exp".pt --onnx-dir "$curt_exp".onnx
+    python quantize.py --model "$model" --format "$format" --batch-size 2 --calib-size 32 --collect-method "min-mean" --percentile 1.0 --alpha 0.8 --quant-level "$quant_level" --n-steps 20 --quantized-torch-ckpt-save-path "$curt_exp".pt --onnx-dir "$curt_exp".onnx
 fi
 
 echo "=====>Exported to ONNX model."
-
-# Only run graph surgeon on certain conditions
-
-fp8=""
-if [ "$format" == "fp8" ]; then
-    python onnx_utils/sdxl_fp8_onnx_graphsurgeon.py --onnx-path "$curt_exp".onnx/backbone.onnx --output-onnx "$curt_exp".onnx/backbone.updated.onnx
-fi

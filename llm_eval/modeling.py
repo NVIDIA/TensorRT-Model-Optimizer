@@ -255,6 +255,8 @@ class CausalModel(SeqToSeqModel):
             if "device_map" not in args:
                 self.model.to(self.device)
             print_gpu_utilization()
+            # Sampling with temperature will cause MMLU to drop
+            self.model.generation_config.do_sample = False
         if self.tokenizer is None:
             self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
 

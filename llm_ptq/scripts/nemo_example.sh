@@ -89,6 +89,11 @@ fi
 if [ -z "$CALIB_TP" ]; then
     CALIB_TP=$(nvidia-smi --list-gpus | wc -l)
 fi
+
+if [ "$CALIB_BATCH_SIZE" -eq 0 ]; then
+    CALIB_BATCH_SIZE=64
+fi
+
 PREC=$(cat model_config.yaml | grep precision | awk -F':' '{print $NF}' | awk '{$1=$1};1')
 PREC=${PREC:-bf16}
 
@@ -117,7 +122,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             trainer.precision=$PREC \
             quantization.algorithm=$QFORMAT \
             quantization.awq_block_size=$(($AWQ_BLOCK_SIZE)) \
-            quantization.num_calib_size=$(($CALIB_NUM_BATCHES)) \
+            quantization.num_calib_size=$(($CALIB_SIZE)) \
             inference.batch_size=$(($CALIB_BATCH_SIZE)) \
             export.path=$SAVE_PATH \
             export.decoder_type=$MODEL_TYPE \
@@ -230,25 +235,6 @@ if [[ $TASKS =~ "humaneval" ]]; then
     mv *.jsonl $ENGINE_DIR/
 
     popd
-
-fi
-
-if [[ $TASKS =~ "benchmark" ]]; then
-
-    if [ "$PP" -ne 1 ]; then
-        echo "Benchmark does not work with multi PP. Please run the c++ benchmark in the TensorRT-LLM repo..."
-        exit 1
-    fi
-
-    BENCHMARK_RESULT=${ENGINE_DIR}/benchmark.txt
-    echo "Evaluating performance, result saved to $BENCHMARK_RESULT..."
-
-    mpirun -n $GPUS --allow-run-as-root \
-        python benchmarks/benchmark.py \
-            --engine_dir=$ENGINE_DIR \
-            --batch_size=$BUILD_MAX_BATCH_SIZE \
-            --input_output_len=$BUILD_MAX_INPUT_LEN,$BUILD_MAX_OUTPUT_LEN \
-            --dtype=$DTYPE | tee $BENCHMARK_RESULT
 
 fi
 

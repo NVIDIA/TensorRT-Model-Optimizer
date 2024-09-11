@@ -229,6 +229,7 @@ def main(
     data_dir: str = "data/mmlu",
     ntrain: int = 5,
     quant_cfg: str = None,
+    auto_quantize_compression: float = None,
     batch_size: int = 0,
     calib_size: int = 512,
     dtype: str = "bfloat16",
@@ -283,6 +284,7 @@ def main(
                 tokenizer=tokenizer,
                 batch_size=batch_size,
                 calib_size=calib_size,
+                auto_quantize_compression=auto_quantize_compression,
             )
 
     for subject in tqdm(subjects):

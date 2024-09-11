@@ -2,10 +2,7 @@
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 datasets>=2.14.4
-jax[cuda12_pip]==0.4.26
-onnxconverter-common
-onnxmltools
+jax[cuda12_pip]==0.4.30
 optimum
 sentencepiece
 timm
-torch
