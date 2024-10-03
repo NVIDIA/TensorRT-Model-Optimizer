@@ -44,7 +44,7 @@ RUN ln -s /usr/local/lib/python3.10/dist-packages/tensorrt_libs/libnvinfer.so.* 
 ENV LD_LIBRARY_PATH=$TRT_LIBPATH:$LD_LIBRARY_PATH
 
 # Find and install requirements.txt files for all examples
-COPY . /workspace/TensorRT-Model-Optimizer
+RUN git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer
 RUN find /workspace/TensorRT-Model-Optimizer -name "requirements.txt" | while read req_file; do \
     echo "Installing from $req_file"; \
     pip install -r "$req_file"; \
