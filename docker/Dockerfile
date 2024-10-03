@@ -50,5 +50,8 @@ RUN find /workspace/TensorRT-Model-Optimizer -name "requirements.txt" | while re
     pip install -r "$req_file"; \
     done
 
+# Precompile quantization extensions since this may take several minutes on every docker image restart so it's best to do it once ahead of time
+RUN python -c "import modelopt.torch.quantization.extensions as ext; print(ext.cuda_ext); print(ext.cuda_ext_fp8)"
+
 # Allow users to run without root
 RUN chmod -R 777 /workspace
