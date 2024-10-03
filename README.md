@@ -59,6 +59,8 @@ Model Optimizer is available for free for all developers on [NVIDIA PyPI](https:
 pip install "nvidia-modelopt[all]~=0.17.0" --extra-index-url https://pypi.nvidia.com
 ```
 
+Please note that unless you're an advanced user of this project, this step will not enable you to do almost anything, as multiple other requirements (and not only python packages) are required for things to work. You are advised to start with the [Docker](#docker) approach and then later adapt it to your specific environment.
+
 See the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more fine-grained control over the installation.
 
 Make sure to also install example-specific dependencies from their respective `requirements.txt` files if any.
