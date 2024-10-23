@@ -29,27 +29,25 @@ from datasets import load_dataset
 from megatron.core import parallel_state
 from megatron.core.transformer.module import Float16Module
 from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import MegatronGPTModel
-from nemo.collections.nlp.modules.common.transformer.text_generation import (
-    LengthParam,
-)
+from nemo.collections.nlp.modules.common.transformer.text_generation import LengthParam
 from nemo.collections.nlp.parts.nlp_overrides import NLPDDPStrategy, NLPSaveRestoreConnector
 from nemo.core.config import hydra_runner
 from nemo.utils.model_utils import load_config, save_artifacts, unwrap_model
 from omegaconf import OmegaConf
 from omegaconf.omegaconf import open_dict
 from pytorch_lightning.trainer.trainer import Trainer
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export import export_tensorrt_llm_checkpoint
 from modelopt.torch.utils import print_rank_0
+from modelopt.torch.utils.dataset_utils import _CustomDataset
 
 mp.set_start_method("spawn", force=True)
 
 
-def get_calib_dataloader(
-    data="cnn_dailymail", batch_size=64, calib_size=512, max_sequence_length=512
-):
+def get_dataset(data="cnn_dailymail"):
     if data == "pileval":
         dataset = load_dataset(
             "json", data_files="https://the-eye.eu/public/AI/pile/val.jsonl.zst", split="train"
@@ -61,6 +59,13 @@ def get_calib_dataloader(
     elif data == "cnn_dailymail":
         dataset = load_dataset("cnn_dailymail", name="3.0.0", split="train")
         text_column = "article"
+    return dataset, text_column
+
+
+def get_calib_dataloader(
+    data="cnn_dailymail", batch_size=64, calib_size=512, max_sequence_length=512
+):
+    dataset, text_column = get_dataset(data)
     calib_size = max(min(len(dataset), calib_size), batch_size)
     for i in range(calib_size // batch_size):
         batch = dataset[i * batch_size : (i + 1) * batch_size][text_column]
@@ -69,16 +74,52 @@ def get_calib_dataloader(
         yield batch
 
 
+def get_dataloader_for_fwd_bwd(
+    data="cnn_dailymail", tokenizer=None, batch_size=1, calib_size=512, sequence_length=512
+):
+    dataset, text_column = get_dataset(data)
+    encodings = {k: [] for k in ["tokens", "labels", "loss_mask", "position_ids", "attention_mask"]}
+    for i, data in zip(range(calib_size), dataset):
+        tokens = tokenizer.text_to_ids(data[text_column])
+        tokens, labels = tokens[:-1], tokens[1:]
+        loss_mask = [1.0] * len(tokens)
+        attention_mask = torch.tril(torch.ones((sequence_length, sequence_length))).unsqueeze(0)
+
+        if len(tokens) < sequence_length:
+            num_tokens = len(tokens)
+            tokens = tokens + [tokenizer.pad_id] * (sequence_length - num_tokens)
+            labels = labels + [tokenizer.pad_id] * (sequence_length - num_tokens)
+            loss_mask = loss_mask + [0.0] * (sequence_length - num_tokens)
+            attention_mask[:, num_tokens:] = 0.0
+        elif len(tokens) > sequence_length:
+            tokens = tokens[:sequence_length]
+            labels = labels[:sequence_length]
+            loss_mask = loss_mask[:sequence_length]
+
+        attention_mask = attention_mask < 0.5
+        encodings["tokens"].append(torch.tensor(tokens).cuda())
+        encodings["labels"].append(torch.tensor(labels).cuda())
+        encodings["loss_mask"].append(torch.tensor(loss_mask).cuda())
+        encodings["position_ids"].append(torch.arange(sequence_length, dtype=torch.int64).cuda())
+        encodings["attention_mask"].append(attention_mask.cuda())
+
+    dataset = _CustomDataset(encodings)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+
 QUANT_CFG_CHOICES = {
-    "int8": mtq.INT8_DEFAULT_CFG,
-    "int8_sq": mtq.INT8_SMOOTHQUANT_CFG,
-    "fp8": mtq.FP8_DEFAULT_CFG,
-    "int4_awq": mtq.INT4_AWQ_CFG,
-    "w4a8_awq": mtq.W4A8_AWQ_BETA_CFG,
+    "int8": "INT8_DEFAULT_CFG",
+    "int8_sq": "INT8_SMOOTHQUANT_CFG",
+    "fp8": "FP8_DEFAULT_CFG",
+    "int4_awq": "INT4_AWQ_CFG",
+    "w4a8_awq": "W4A8_AWQ_BETA_CFG",
 }
 
 
-@hydra_runner(config_path="config", config_name="megatron_quantization")
+@hydra_runner(
+    config_path="config",
+    config_name="megatron_quantization",
+)
 def main(cfg) -> None:
     if not torch.cuda.is_available():
         raise EnvironmentError("GPU is required for the inference.")
@@ -101,6 +142,14 @@ def main(cfg) -> None:
         # Only custom Model Optimizer spec is supported for PTQ: this custom spec is largely based on local Megatron-LM
         # layer definitions to avoid Transformer Engine implementations that are currently not supported.
         model_cfg.name = "modelopt"
+        if cfg.quantization.auto_quantize_bits is not None:
+            # Enable activation checkpointing if auto_quantize is enabled to reduce memory footprint
+            model_cfg.activations_checkpoint_granularity = "full"
+            model_cfg.activations_checkpoint_method = "uniform"
+            model_cfg.activations_checkpoint_num_layers = 1
+            # `forward_step` for auto_quantize is called with a single batch; Hence set number of micro_batches to 1;
+            model_cfg.global_batch_size = cfg.inference.batch_size
+            model_cfg.micro_batch_size = cfg.inference.batch_size
 
     # trainer required for restoring model parallel models
     trainer = Trainer(strategy=NLPDDPStrategy(), **cfg.trainer)
@@ -134,7 +183,7 @@ def main(cfg) -> None:
     config = OmegaConf.to_container(cfg.inference)
     model.set_inference_config(config)
 
-    if cfg.quantization.algorithm and cfg.quantization.algorithm in QUANT_CFG_CHOICES:
+    if cfg.quantization.algorithm and cfg.quantization.algorithm != "null":
         if "awq" in cfg.quantization.algorithm:
             if cfg.quantization.num_calib_size > 32:
                 print_rank_0(
@@ -155,28 +204,6 @@ def main(cfg) -> None:
             cfg.quantization.num_calib_size,
             cfg.inference.max_context_length,
         )
-        # =================== Start Quantization ====================
-        atq_config = QUANT_CFG_CHOICES[cfg.quantization.algorithm]
-
-        if "awq" in cfg.quantization.algorithm:
-            atq_config = copy.deepcopy(QUANT_CFG_CHOICES[cfg.quantization.algorithm])
-            weight_quantizer = atq_config["quant_cfg"]["*weight_quantizer"]  # type: ignore
-            if isinstance(weight_quantizer, list):
-                weight_quantizer = weight_quantizer[0]
-            weight_quantizer["block_sizes"][-1] = cfg.quantization.awq_block_size
-
-        # Always turn on FP8 kv cache to save memory footprint.
-        # For int8_sq, we do not quantize kv cache to preserve accuracy.
-        # TODO: Investigate why enabling FP8 kv cache will cause accuracy regressions for nemotron.
-        enable_quant_kv_cache = (
-            "int8" not in cfg.quantization.algorithm and cfg.export.decoder_type != "gptnext"
-        )
-        print(f'{"Enable" if enable_quant_kv_cache else "Disable"} KV cache quantization')
-        atq_config["quant_cfg"]["*output_quantizer"] = {  # type: ignore[index]
-            "num_bits": 8 if cfg.quantization.algorithm == "int8_sq" else (4, 3),
-            "axis": None,
-            "enable": enable_quant_kv_cache,
-        }
 
         dataloader = [data for data in dataloader]
 
@@ -185,8 +212,89 @@ def main(cfg) -> None:
             for i, batch in enumerate(tqdm(dataloader)):
                 model.predict_step(batch, i)
 
+        # =================== Start Quantization ====================
+
+        # Always turn on FP8 kv cache to save memory footprint.
+        # For int8_sq, we do not quantize kv cache to preserve accuracy.
+        # TODO: Investigate why enabling FP8 kv cache will cause accuracy regressions for nemotron.
+        enable_quant_kv_cache = (
+            "int8" not in cfg.quantization.algorithm and cfg.export.decoder_type != "gptnext"
+        )
+        print(f'{"Enable" if enable_quant_kv_cache else "Disable"} KV cache quantization')
+
         start_time = time.time()
-        model = mtq.quantize(model, atq_config, forward_loop)  # type: ignore[arg-type]
+        if cfg.quantization.auto_quantize_bits is not None:
+            # Check if list of quantization formats provided for auto quantize search are supported
+            qformat_list = cfg.quantization.algorithm.split(",")
+            assert all(
+                qformat in QUANT_CFG_CHOICES.keys() for qformat in qformat_list
+            ), "One or more quantization formats provided for auto quantize search are not supported"
+
+            dataloader = get_dataloader_for_fwd_bwd(
+                cfg.quantization.calib_dataset,
+                model.tokenizer,
+                cfg.inference.batch_size,
+                cfg.quantization.num_calib_size,
+            )
+            model, search_state = mtq.auto_quantize(
+                model,
+                data_loader=dataloader,
+                constraints={"effective_bits": float(cfg.quantization.auto_quantize_bits)},
+                quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list]
+                + [None],
+                forward_step=lambda model, data: model.fwd_bwd_step(
+                    iter([data]), forward_only=True
+                ),
+                forward_backward_step=lambda model, data: model.fwd_bwd_step(
+                    iter([data]), forward_only=False
+                ),
+                num_calib_steps=len(dataloader),
+                # Limit the number of score steps to avoid long auto-quantize time
+                num_score_steps=min(len(dataloader), 128 // cfg.inference.batch_size),
+                verbose=True,
+            )
+
+            # Disable activation checkpointing
+            model._reset_activation_checkpointing_args()
+
+            # KV cache is not quantized during auto_quantize; So lets quantize and calibrate just KV cache now
+            if enable_quant_kv_cache:
+                mtq.set_quantizer_by_cfg(
+                    model,
+                    quant_cfg={
+                        "*output_quantizer": {"num_bits": (4, 3), "axis": None, "enable": True}
+                    },
+                )
+                # Lets calibrate only the output quantizer this time
+                with mtq.set_quantizer_by_cfg_context(
+                    model, {"*": {"enable": False}, "*output_quantizer": {"enable": True}}
+                ):
+                    mtq.calibrate(model, algorithm="max", forward_loop=forward_loop)
+
+        else:
+            # Check if quantization.algorithm is in QUANT_CFG_CHOICES
+            assert (
+                cfg.quantization.algorithm in QUANT_CFG_CHOICES
+            ), f"Quantization format {cfg.quantization.algorithm} not supported"
+            atq_config = getattr(mtq, QUANT_CFG_CHOICES[cfg.quantization.algorithm])
+
+            if "awq" in cfg.quantization.algorithm:
+                atq_config = copy.deepcopy(
+                    getattr(mtq, QUANT_CFG_CHOICES[cfg.quantization.algorithm])
+                )
+                weight_quantizer = atq_config["quant_cfg"]["*weight_quantizer"]
+                if isinstance(weight_quantizer, list):
+                    weight_quantizer = weight_quantizer[0]
+                weight_quantizer["block_sizes"][-1] = cfg.quantization.awq_block_size
+
+            atq_config["quant_cfg"]["*output_quantizer"] = {
+                "num_bits": 8 if cfg.quantization.algorithm == "int8_sq" else (4, 3),
+                "axis": None,
+                "enable": enable_quant_kv_cache,
+            }
+
+            model = mtq.quantize(model, atq_config, forward_loop)
+
         end_time = time.time()
         tot_time = end_time - start_time
         tput = cfg.quantization.num_calib_size / tot_time
@@ -196,14 +304,14 @@ def main(cfg) -> None:
         if cfg.export.decoder_type == "gptnext":
             # We found squared_relu may have an under-calibration problem.
             # Clamp the scaling_factor with a min threshold to avoid under-calibration.
-            maxbound = 0
-            if cfg.quantization.algorithm == "fp8":
-                maxbound = 448
-            elif cfg.quantization.algorithm == "int8_sq":
-                maxbound = 127
-            model = mtq.postprocess_amax(
-                model, "*input_quantizer", lambda amax: torch.clamp(amax, min=0.01 * maxbound)
-            )
+            for name, module in model.named_modules():
+                # Clamping scaling_factor is performed for fp8 and int8_sq
+                if (
+                    name.endswith(".input_quantizer")
+                    and module.amax is not None
+                    and module.num_bits in [8, (4, 3)]
+                ):
+                    module.amax = torch.clamp(module.amax, min=0.01 * module.maxbound)
 
         if torch.distributed.get_rank() == 0:
             mtq.print_quant_summary(model)

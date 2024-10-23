@@ -1,7 +1,7 @@
 bitsandbytes
 datasets>=2.14.4
 fire
-git+https://github.com/Dao-AILab/flash-attention.git#subdirectory=csrc/rotary
+flash-attn>=2.6.0
 pynvml>=11.5.0
 rouge_score>=0.1.2
 tiktoken

@@ -22,13 +22,10 @@
 """An example script to run the tensorrt_llm engine."""
 
 import argparse
-from pathlib import Path
 
 import torch
-from summarize.utils import load_tokenizer, read_model_name
-from transformers import (
-    PreTrainedTokenizerBase,
-)
+from example_utils import get_tokenizer
+from transformers import PreTrainedTokenizerBase
 
 from modelopt.deploy.llm import LLM
 
@@ -58,27 +55,7 @@ def run(args):
     if isinstance(args.tokenizer, PreTrainedTokenizerBase):
         tokenizer = args.tokenizer
     else:
-        pad_id, end_id = None, None
-        model_name, _ = read_model_name(args.engine_dir)
-        tokenizer_path = Path(args.tokenizer)
-
-        if tokenizer_path.exists() and tokenizer_path.is_file():
-            tokenizer, pad_id, end_id = load_tokenizer(
-                vocab_file=args.tokenizer, model_name=model_name
-            )
-        else:
-            tokenizer, pad_id, end_id = load_tokenizer(
-                tokenizer_dir=args.tokenizer, model_name=model_name
-            )
-
-        if pad_id and end_id:
-            try:
-                if hasattr(tokenizer, "pad_token"):
-                    tokenizer.pad_token = tokenizer.convert_ids_to_tokens(pad_id)
-                if hasattr(tokenizer, "eos_token"):
-                    tokenizer.eos_token = tokenizer.convert_ids_to_tokens(end_id)
-            except AttributeError:
-                print("pad_token/eos_token is read-only and cannot be set.")
+        tokenizer = get_tokenizer(ckpt_path=args.tokenizer)
 
     input_texts = args.input_texts.split("|")
     assert input_texts, "input_text not specified"

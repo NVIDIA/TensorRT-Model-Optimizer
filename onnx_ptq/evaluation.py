@@ -24,7 +24,6 @@
 import random
 from typing import Any, Final, Tuple, Union
 
-import numpy as np
 import torch
 import torchvision.transforms as transforms
 from torchvision.datasets import ImageNet
@@ -42,7 +41,6 @@ deployment = {
 }
 
 ACCURACY: Final[str] = "accuracy"
-RANDOM_SEED: Final[int] = 1996
 DEVICE_MODEL: Final[str] = "device_model"
 TORCH_MODEL: Final[str] = "torch_model"
 
@@ -135,10 +133,6 @@ def evaluate(
     Returns:
         The evaluation result.
     """
-    # set seed for reproducibility
-    torch.manual_seed(RANDOM_SEED)
-    np.random.seed(RANDOM_SEED)
-    random.seed(RANDOM_SEED)
 
     device_model = None
     if isinstance(model, torch.nn.Module):
@@ -171,7 +165,7 @@ def evaluate(
     return {}
 
 
-def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,)):
+def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,), random_seed=None):
     """Evaluate the accuracy of the model on the validation dataset.
 
     Args:
@@ -182,10 +176,19 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,)):
         topk: fuction support topk accuracy. Return list of accuracy equal to topk length.
             example of usage `top1, top5 = evaluate_accuracy(..., topk=(1,5))`
             `top1, top5, top10 = evaluate_accuracy(..., topk=(1,5,10))`
+        random_seed: Random seed to use for evaluation.
 
     Returns:
         The accuracy of the model on the validation dataset.
     """
+
+    if random_seed:
+        torch.manual_seed(random_seed)
+        torch.cuda.manual_seed_all(random_seed)
+        random.seed(random_seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+
     if isinstance(model, torch.nn.Module):
         model.eval()
     total = 0
@@ -210,6 +213,8 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,)):
 
         labels_size = labels.size(0)
         total += labels_size
+
+        labels = labels.to(outputs.device)
 
         for ind, k in enumerate(topk):
             _, predicted = torch.topk(outputs, k, dim=1)

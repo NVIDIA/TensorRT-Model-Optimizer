@@ -79,12 +79,20 @@ def parse_arguments():
         default=None,
         help="Enable FMHA runner FP32 accumulation.",
     )
+    parser.add_argument(
+        "--use_py_session",
+        default=False,
+        action="store_true",
+        help="Whether or not to use Python runtime session",
+    )
 
     return parser.parse_args()
 
 
 def print_result(model, input_text, output_text, args):
     logger.info("---------------------------------------------------------")
+    if model.model_type != "nougat":
+        logger.info(f"\n[Q] {input_text}")
     for i in range(len(output_text)):
         logger.info(f"\n[A]: {output_text[i]}")
 
@@ -93,16 +101,29 @@ def print_result(model, input_text, output_text, args):
         logger.info(f"Generated {len(output_ids)} tokens")
 
     if args.check_accuracy:
-        if model.model_type == "vila":
-            if len(args.image_path.split(args.path_sep)) == 1:
-                assert output_text[0][0].lower() == (
-                    "the image captures a bustling city intersection teeming with life. "
-                    "from the perspective of a car's dashboard camera, we see"
+        if model.model_type != "nougat":
+            if model.model_type == "vila":
+                if len(args.image_path.split(args.path_sep)) == 1:
+                    assert (
+                        output_text[0][0].lower()
+                        == "the image captures a bustling city intersection teeming with life. "
+                        "from the perspective of a car's dashboard camera, we see"
+                    )
+            elif model.model_type == "fuyu":
+                assert output_text[0][0].lower() == "4"
+            elif model.model_type == "pix2struct":
+                assert (
+                    "characteristic | cat food, day | cat food, wet | cat treats"
+                    in output_text[0][0].lower()
                 )
-        elif model.model_type in ["phi-3-vision"]:
-            assert "singapore" in output_text[0][0].lower()
-        else:
-            assert output_text[0][0].lower() == "singapore"
+            elif model.model_type in ["blip2", "neva", "phi-3-vision", "llava_next"]:
+                assert "singapore" in output_text[0][0].lower()
+            elif model.model_type == "video-neva":
+                assert "robot" in output_text[0][0].lower()
+            elif model.model_type == "kosmos-2":
+                assert "snowman" in output_text[0][0].lower()
+            else:
+                assert output_text[0][0].lower() == "singapore"
 
     if args.run_profiling:
 

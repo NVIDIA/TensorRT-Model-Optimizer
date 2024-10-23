@@ -1,4 +1,3 @@
---extra-index-url https://download.pytorch.org/whl/cu121
 datasets>=2.16.1
 flash-attn
 sentencepiece>=0.2.0

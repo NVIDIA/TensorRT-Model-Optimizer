@@ -106,6 +106,7 @@ def check_lora(unet):
                 module.lora_layer is None
             ), f"To quantize {name}, LoRA layer should be fused/merged. Please fuse the LoRA layer before quantization."
         elif USE_PEFT and isinstance(module, (PEFTLoRAConv2d, PEFTLoRALinear)):
-            assert (
-                module.merged
-            ), f"To quantize {name}, LoRA layer should be fused/merged. Please fuse the LoRA layer before quantization."
+            assert module.merged, (
+                f"To quantize {name}, LoRA layer should be fused/merged. "
+                "Please fuse the LoRA layer before quantization."
+            )

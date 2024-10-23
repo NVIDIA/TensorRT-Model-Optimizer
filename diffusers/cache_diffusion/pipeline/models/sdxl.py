@@ -116,7 +116,6 @@ def cacheunet_forward(
     encoder_attention_mask: Optional[torch.Tensor] = None,
     return_dict: bool = True,
 ) -> Union[UNet2DConditionOutput, Tuple]:
-
     # 1. time
     t_emb = self.get_time_embed(sample=sample, timestep=timestep)
     emb = self.time_embedding(t_emb, timestep_cond)

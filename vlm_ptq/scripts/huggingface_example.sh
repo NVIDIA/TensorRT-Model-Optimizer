@@ -43,10 +43,10 @@ case $SPARSITY_FMT in
 esac
 
 case $QFORMAT in
-    fp8|fp8_naive|int8_sq|int4_awq|w4a8_awq|fp16)
+    fp8|fp8_naive|int8_sq|int4_awq|w4a8_awq|fp16|bf16)
         ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, fp8_naive, int8_sq, int4_awq, w4a8_awq, fp16]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, fp8_naive, int8_sq, int4_awq, w4a8_awq, fp16, bf16]" >&2
         exit 1
 esac
 
@@ -89,8 +89,8 @@ fi
 MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')
 SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT}_tp${TP}_pp${PP}
 
-if [ $DEPLOYMENT != "tensorrt_llm" ]; then
-    SAVE_PATH=${SAVE_PATH}_${DEPLOYMENT}
+if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
+    SAVE_PATH=${SAVE_PATH}_${EXPORT_FORMAT}
 fi
 
 MODEL_CONFIG=${SAVE_PATH}/config.json
@@ -106,8 +106,8 @@ if [ $QFORMAT == "fp8_naive" ]; then
     PTQ_ARGS+=" --naive_quantization "
 fi
 
-if [ -n "$AUTO_QUANTIZE_COMPRESSION" ]; then
-    PTQ_ARGS+=" --auto_quantize_compression $AUTO_QUANTIZE_COMPRESSION"
+if [ -n "$AUTO_QUANTIZE_BITS" ]; then
+    PTQ_ARGS+=" --auto_quantize_bits $AUTO_QUANTIZE_BITS"
 fi
 
 case "${MODEL_TYPE}" in
@@ -128,6 +128,9 @@ if [ "${MODEL_TYPE}" = "vila" ]; then
         echo "VILA repository is needed until it is added to HF model zoo. Cloning the repository..."
         git clone https://github.com/Efficient-Large-Model/VILA.git && cd VILA && git checkout b2c70791a4239c813d19f5fa949c3e580556f4df && cd ..
     fi
+elif [ "${MODEL_TYPE}" = "llava" ]; then
+    echo "LLAVA model needs transformers version 4.42.4"
+    pip install -r ../vlm_ptq/requirements-llava.txt
 fi
 
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
@@ -142,15 +145,15 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --batch_size=$CALIB_BATCH_SIZE \
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
-            --deployment=$DEPLOYMENT \
+            --export_fmt=$EXPORT_FORMAT \
             --vlm \
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
     fi
 
-    if [ $DEPLOYMENT != "tensorrt_llm" ]; then
-        echo "Please continue deployment with $DEPLOYMENT. Checkpoint export_path: $SAVE_PATH"
+    if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
+        echo "Please continue deployment with $EXPORT_FORMAT. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
 
@@ -197,6 +200,8 @@ python vlm_run.py  \
 
 if [ "${MODEL_TYPE}" = "vila" ]; then
     echo "For VILA model, current transformers version is 4.36.2, higher version transformers may be needed for other model."
+elif [ "${MODEL_TYPE}" = "llava" ]; then
+    echo "For VILA model, current transformers version is 4.42.4, higher version transformers may be needed for other model."
 fi
 
 popd

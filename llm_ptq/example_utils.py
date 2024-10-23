@@ -74,27 +74,38 @@ def get_mode_type_from_engine_dir(engine_dir_str):
     return model_type
 
 
-def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, model_type=None):
+def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN):
     print(f"Initializing tokenizer from {ckpt_path}")
+
     if "vila" in ckpt_path.lower():
         ckpt_path += "/llm"
-    tokenizer = AutoTokenizer.from_pretrained(
-        ckpt_path,
-        model_max_length=max_seq_len,
-        padding_side="left",
-        trust_remote_code=True,
-    )
-    if model_type and model_type == "qwen":
-        # qwen use token id 151643 as pad and eos tokens
-        tokenizer.pad_token = tokenizer.convert_ids_to_tokens(151643)
-        tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
 
-    # can't set attribute 'pad_token' for "<unk>"
-    if tokenizer.pad_token != "<unk>":
-        tokenizer.pad_token = tokenizer.eos_token
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    assert tokenizer.pad_token is not None, f"Pad token for {model_type} cannot be set!"
+    if ckpt_path.endswith(".yaml"):
+        # Model Optimizer modification
+        # For Nemo models, tokenizer is instantiated based on its config
+        from modelopt.deploy.llm.nemo_utils import get_nemo_tokenizer
+
+        tokenizer = get_nemo_tokenizer(ckpt_path)
+
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
+            ckpt_path,
+            model_max_length=max_seq_len,
+            padding_side="left",
+            trust_remote_code=True,
+        )
+
+        if "qwen" in type(tokenizer).__name__.lower():
+            # qwen use token id 151643 as pad and eos tokens
+            tokenizer.pad_token = tokenizer.convert_ids_to_tokens(151643)
+            tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
+
+        # can't set attribute 'pad_token' for "<unk>"
+        # We skip this step for Nemo models
+        if tokenizer.pad_token != "<unk>" or tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+    assert tokenizer.pad_token is not None, f"Pad token for {ckpt_path} cannot be set!"
 
     return tokenizer
 

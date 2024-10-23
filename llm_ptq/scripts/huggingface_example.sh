@@ -14,33 +14,30 @@ for i in $(env | grep ^SLURM_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMI_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMIX_ | cut -d"=" -f 1); do unset -v $i; done
 
-case $MODEL_TYPE in
-    gptj|llama|falcon|baichuan|gpt2|mpt|bloom|chatglm|gemma|recurrentgemma|phi|mixtral|gptnext|qwen|dbrx|enc_dec|glm|internlm|exaone)
-        ;;
-    *)
-        echo "Unsupported type argument: Expected one of: [gpt2, gptj, llama, falcon, baichuan, mpt, bloom, chatglm, gemma, recurrentgemma, phi, mixtral, gptnext, qwen, dbrx, enc_dec, internlm, exaone]" >&2
-        exit 1
-esac
-
 if [ -z "$MODEL_PATH" ]; then
     echo "Unsupported model argument: Expected a huggingface model path or model name or a nemo path" >&2
     exit 1
 fi
 
-#Check if arguments are supported by unified_hf export format
+#Check if arguments are supported by HF export path
 if [ "$EXPORT_FORMAT" = "hf" ]; then
     if [ "$SPARSITY_FMT" != "dense" ]; then
         echo "Unsupported sparsity argument: Expected dense" >&2
         exit 1
     fi
 
-    case $QFORMAT in
-    fp8|int4_awq)
-        ;;
-    *)
-        echo "Unsupported quant argument: Expected one of: [fp8, int4_awq]" >&2
-        exit 1
-    esac
+    #Iterate over list of qformats provided and check if they are supported in HF export path
+    IFS=","
+    for qformat in $QFORMAT; do
+        case $qformat in
+        fp8|int4_awq)
+            ;;
+        *)
+            echo "Unsupported quant argument: Expected one of: [fp8, int4_awq]" >&2
+            exit 1
+        esac
+    done
+    IFS=" "
 fi
 
 # Check if ENABLE_SPARSITY environment variable is set to "true"
@@ -58,13 +55,18 @@ case $SPARSITY_FMT in
         exit 1
 esac
 
-case $QFORMAT in
-    fp8|fp8_naive|int8_sq|int4_awq|w4a8_awq|fp16)
-        ;;
-    *)
-        echo "Unknown quant argument: Expected one of: [fp8, fp8_naive, int8_sq, int4_awq, w4a8_awq, fp16]" >&2
-        exit 1
-esac
+#Iterate over list of qformats provided and check if they are valid
+IFS=","
+for qformat in $QFORMAT; do
+     case $qformat in
+        fp8|fp8_naive|int8_sq|int4_awq|w4a8_awq|fp16|bf16)
+            ;;
+        *)
+            echo "Unknown quant argument: Expected one of: [fp8, fp8_naive, int8_sq, int4_awq, w4a8_awq, fp16, bf16]" >&2
+            exit 1
+    esac
+done
+IFS=" "
 
 case $TP in
     1|2|4|8)
@@ -94,15 +96,17 @@ if [ -z "$ROOT_SAVE_PATH" ]; then
     ROOT_SAVE_PATH=$(pwd)
 fi
 
+QFORMAT_MODIFIED="${QFORMAT//,/_}"
+
 MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')
-SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT}_tp${TP}_pp${PP}
+SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT_MODIFIED}_tp${TP}_pp${PP}
 
 if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
     SAVE_PATH=${SAVE_PATH}_${EXPORT_FORMAT}
 fi
 
 MODEL_CONFIG=${SAVE_PATH}/config.json
-ENGINE_DIR=${SAVE_PATH}/${MODEL_TYPE}_${TP}x${PP}x${GPU_NAME}_input${BUILD_MAX_INPUT_LEN}_output${BUILD_MAX_OUTPUT_LEN}_batch${BUILD_MAX_BATCH_SIZE}_engine
+ENGINE_DIR=${SAVE_PATH}/${TP}x${PP}x${GPU_NAME}_input${BUILD_MAX_INPUT_LEN}_output${BUILD_MAX_OUTPUT_LEN}_batch${BUILD_MAX_BATCH_SIZE}_engine
 
 if [ "${REMOVE_EXISTING_MODEL_CONFIG,,}" = "true" ]; then
     rm -f $MODEL_CONFIG
@@ -111,11 +115,16 @@ fi
 PTQ_ARGS=""
 if [ $QFORMAT == "fp8_naive" ]; then
     QFORMAT=fp8
-    PTQ_ARGS+=" --naive_quantization "
+    PTQ_ARGS+="--naive_quantization"
 fi
 
-if [ -n "$AUTO_QUANTIZE_COMPRESSION" ]; then
-    PTQ_ARGS+=" --auto_quantize_compression $AUTO_QUANTIZE_COMPRESSION"
+if [ -n "$AUTO_QUANTIZE_BITS" ]; then
+    PTQ_ARGS+="--auto_quantize_bits=$AUTO_QUANTIZE_BITS"
+fi
+
+AWQ_ARGS=""
+if [ -n "$AWQ_BLOCK_SIZE" ]; then
+    AWQ_ARGS+="--awq_block_size=$AWQ_BLOCK_SIZE"
 fi
 
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
@@ -125,23 +134,34 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --pyt_ckpt_path=$MODEL_PATH \
             --export_path=$SAVE_PATH \
             --sparsity_fmt=$SPARSITY_FMT \
-            --qformat=$QFORMAT \
+            --qformat="${QFORMAT// /,}" \
             --calib_size=$CALIB_SIZE \
             --batch_size=$CALIB_BATCH_SIZE \
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
             --export_fmt=$EXPORT_FORMAT \
-            $PTQ_ARGS
+            $PTQ_ARGS \
+            $AWQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
     fi
 
-    if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
-        echo "Please continue to deployment. Checkpoint export_path: $SAVE_PATH"
+    if [[ $EXPORT_FORMAT != "tensorrt_llm" ]]; then
+        echo "Please continue to deployment with $EXPORT_FORMAT. Checkpoint export_path: $SAVE_PATH"
+        exit 0
+    fi
+
+    if [[ -n "$AUTO_QUANTIZE_BITS" ]]; then
+        echo "Please build tensorrt_llm engine with this model from the tensorrt_llm repo for deployment. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
 
     echo "Building tensorrt_llm engine from Model Optimizer-quantized model..."
+
+    perf=""
+    if [[ $TASKS =~ "benchmark" && ! $TASKS =~ "lm_eval" ]]; then
+        perf=" --perf "
+    fi
 
     python modelopt_to_tensorrt_llm.py \
         --model_config=$MODEL_CONFIG \
@@ -151,28 +171,8 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         --max_output_len=$BUILD_MAX_OUTPUT_LEN \
         --max_batch_size=$BUILD_MAX_BATCH_SIZE \
         --num_build_workers=$GPUS \
-        --enable_sparsity=$ENABLE_SPARSITY
-fi
-
-if [[ $TASKS =~ "summarize" ]]; then
-
-SUMMARIZE_RESULT=${ENGINE_DIR}/summarize.txt
-
-if [ -z "$SUMMARIZE_MAX_ITE" ]; then
-    SUMMARIZE_MAX_ITE=20
-fi
-
-echo "Evaluating the built TRT engine (ite $SUMMARIZE_MAX_ITE), result saved to $SUMMARIZE_RESULT..."
-
-mpirun -n $GPUS --allow-run-as-root \
-    python summarize/summarize.py \
-        --engine_dir=$ENGINE_DIR \
-        --hf_model_dir=$MODEL_PATH \
-        --data_type=fp16 \
-        --test_trt_llm \
-        --tensorrt_llm_rouge1_threshold=13 \
-        --max_ite=$SUMMARIZE_MAX_ITE 2>&1 | tee $SUMMARIZE_RESULT
-
+        --enable_sparsity=$ENABLE_SPARSITY \
+        $perf
 fi
 
 if [[ -d "${MODEL_PATH}" ]]; then
@@ -180,6 +180,36 @@ if [[ -d "${MODEL_PATH}" ]]; then
 else
     # model_path is a HF reference, not a local directory, no need to make the path absolute
     MODEL_ABS_PATH=${MODEL_PATH}
+fi
+
+
+if [[ $TASKS =~ "lm_eval" ]]; then
+
+if [ -z "$LM_EVAL_TASKS" ]; then
+    echo "lm_eval_tasks not specified"
+    exit 1
+fi
+
+lm_eval_flags=""
+if [ -n "$LM_EVAL_LIMIT" ]; then
+    lm_eval_flags=" --limit $LM_EVAL_LIMIT "
+fi
+
+LM_EVAL_RESULT=${ENGINE_DIR}/lm_eval.txt
+echo "Evaluating lm_eval, result saved to $LM_EVAL_RESULT..."
+
+pushd ../llm_eval/
+
+pip install -r requirements.txt
+
+python lm_eval_tensorrt_llm.py \
+    --model trt-llm \
+    --model_args tokenizer=$MODEL_PATH,engine_dir=$ENGINE_DIR \
+    --tasks $LM_EVAL_TASKS \
+    --batch_size $BUILD_MAX_BATCH_SIZE $lm_eval_flags | tee $LM_EVAL_RESULT
+
+popd
+
 fi
 
 if [[ $TASKS =~ "mmlu" ]]; then

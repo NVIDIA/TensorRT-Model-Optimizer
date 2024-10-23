@@ -33,6 +33,8 @@ Step 3: Train/fine-tune the quantized model with a small learning rate, e.g. 1e-
 
 > **_TIP:_** We find QAT without the original precision training/fine-tuning (i.e skipping `Step 1` of the QAT workflow from above) to give worser accuracy. Therefore, we recommend un-quantized original precision training/fine-tuning followed by QAT for best accuracy.
 
+> **_NOTE:_** Huggingface models trained with modelopt.torch.speculative (mtsp) can be used in QAT directly like regular Huggingface models.
+
 Here is an example code for performing QAT:
 
 ```python
@@ -182,35 +184,3 @@ similar validation perplexity as that of BF16 finetuning while consuming signifi
 | Fine-tuned BF16 (No quantization) | 2.71  |
 | NF4 quantization    | 4.28  |
 | NF4 QLoRA after training    | 2.90  |
-
-### End-to-end Medusa QAT Example
-
-[Medusa](https://github.com/FasterDecoding/Medusa) is a simple framework that democratizes the acceleration techniques for LLM generation with multiple decoding heads. It adds extra "heads" to LLMs to predict multiple future tokens simultaneously. During generation, these heads each produce multiple likely words for the corresponding position. These options are then combined and processed using a tree-based attention mechanism. Finally, a typical acceptance scheme is employed to pick the longest plausible prefix from the candidates for further decoding. ModelOpt supports quantizing the medusa model to further speed up the inference. This PTQ medusa model can be fine-tuned to improve accuracy as well as performance since medusa speedup depends on its heads' accuracy.
-
-First, we need to run un-quantized fine-tuning of both base model and medusa heads. Here is the command for that:
-
-```sh
-./launch.sh --model meta-llama/Llama-2-7b-hf \
-   --num_epochs 5.0 \
-   --lr 1e-5 \
-   --do_train True \
-   --output_dir llama2-medusa-finetune \
-   --medusa True \
-   --only_medusa_heads False \
-   --num_medusa_heads 2 --num_medusa_layers 1
-```
-
-This will generate a fine-tuned medusa checkpoint in `output_dir` specified above. Next we perform PTQ and fine-tune the quantized medusa model. Note, by setting the --only_medusa_heads flag to True, we will freeze the base model and only fine-tune the medusa heads. This may be helpful to maintain the base model distribution.
-
-```sh
-# Load the checkpoint from previous fine-tuning stage, quantize the model and run additional training (QAT)
-./launch.sh --model llama2-medusa-finetune \
-   --num_epochs 0.5 \
-   --lr 1e-5 \
-   --do_train True \
-   --output_dir llama2-medusa-qat \
-   --quant_cfg 'INT4_WEIGHT_INT8_ACTIVATIONS' \
-   --medusa True \
-   --only_medusa_heads True \
-   --num_medusa_heads 2 --num_medusa_layers 1
-```

@@ -33,18 +33,23 @@ if [[ -z "$MODEL_PATH" ]] || [[ ! -f "$MODEL_PATH" ]] && [[ ! -d "$MODEL_PATH" ]
     exit 1
 fi
 
-case $QFORMAT in
-    bf16|fp16|fp8|int8_sq|int4_awq|w4a8_awq)
-        ;;
-    *)
-        echo "Unknown quant argument: Expected one of: [bf16, fp16, fp8, int8_sq, int4_awq, w4a8_awq]" >&2
-        exit 1
-esac
-
+#Check if provided quantization format/list of comma separated quantization formats provided are valid
+IFS=','
+for qformat in $QFORMAT; do
+    case $qformat in
+        bf16|fp16|fp8|int8_sq|int4_awq|w4a8_awq)
+            ;;
+        *)
+            echo "Unknown quant argument: Expected one of: [bf16, fp16, fp8, int8_sq, int4_awq, w4a8_awq]" >&2
+            exit 1
+    esac
+done
+IFS=" "
 if [ -z "$DTYPE" ]; then
     DTYPE="bf16"
 fi
 
+#Does not apply for auto quantize case
 if [ "$QFORMAT" == "fp16" ] || [ "$QFORMAT" == "bf16" ]; then
     DTYPE=$QFORMAT
     QFORMAT="null"
@@ -101,10 +106,15 @@ if [ -z "$ROOT_SAVE_PATH" ]; then
     ROOT_SAVE_PATH=$(pwd)
 fi
 
+if [ -n "$AUTO_QUANTIZE_BITS" ]; then
+    AUTO_QUANTIZE_ARGS+="quantization.auto_quantize_bits=$AUTO_QUANTIZE_BITS"
+fi
+
+QFORMAT_MODIFIED="${QFORMAT//,/_}"
 MODEL_NAME=$(basename $MODEL_PATH | sed 's/\.[^.]*$//')
-SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${QFORMAT}_${DTYPE}_tp${TP}_pp${PP}
+SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${QFORMAT_MODIFIED}_${DTYPE}_tp${TP}_pp${PP}
 MODEL_CONFIG_PTQ=${SAVE_PATH}/config.json
-ENGINE_DIR=${SAVE_PATH}/${MODEL_TYPE}_${TP}x${PP}x${GPU_NAME}_input${BUILD_MAX_INPUT_LEN}_output${BUILD_MAX_OUTPUT_LEN}_batch${BUILD_MAX_BATCH_SIZE}_engine
+ENGINE_DIR=${SAVE_PATH}/${TP}x${PP}x${GPU_NAME}_input${BUILD_MAX_INPUT_LEN}_output${BUILD_MAX_OUTPUT_LEN}_batch${BUILD_MAX_BATCH_SIZE}_engine
 TOKENIZER_CONFIG=${SAVE_PATH}/tokenizer_config.yaml
 
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
@@ -120,7 +130,8 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             trainer.devices=$(($CALIB_TP)) \
             trainer.num_nodes=1 \
             trainer.precision=$PREC \
-            quantization.algorithm=$QFORMAT \
+            quantization.algorithm="'$QFORMAT'" \
+            $AUTO_QUANTIZE_ARGS \
             quantization.awq_block_size=$(($AWQ_BLOCK_SIZE)) \
             quantization.num_calib_size=$(($CALIB_SIZE)) \
             inference.batch_size=$(($CALIB_BATCH_SIZE)) \
@@ -138,6 +149,12 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         exit 1
     fi
 
+    # Deployment is skipped for auto quantize
+    if [[ -n $AUTO_QUANTIZE_BITS ]]; then
+        echo "Please build tensorrt_llm engine with this model from the tensorrt_llm repo for deployment. Checkpoint export_path: $SAVE_PATH"
+        exit 1
+    fi
+
     echo "Building tensorrt_llm engine from Model Optimizer-quantized model..."
 
     # By default, the quantized model is deployed to TensorRT-LLM on a single GPU.
@@ -150,31 +167,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         --max_output_len=$BUILD_MAX_OUTPUT_LEN \
         --max_batch_size=$BUILD_MAX_BATCH_SIZE \
         --num_build_workers=$GPUS
-
-fi
-
-if [[ $TASKS =~ "summarize" ]]; then
-
-    SUMMARIZE_RESULT=${ENGINE_DIR}/summarize.txt
-
-    if [ -z "$SUMMARIZE_MAX_ITE" ]; then
-        SUMMARIZE_MAX_ITE=20
-    fi
-
-    echo "Evaluating the built TRT engine (ite $SUMMARIZE_MAX_ITE), result saved to $SUMMARIZE_RESULT..."
-
-    # In order to handle tokenizer for Nemo models you have two options:
-    # (1.) specify --vocab_file that is yaml tokenizer config (i.e. given by 'tokenizer' section in model_config.yaml)
-    # (2.) specify --hf_model_dir for models converted from HuggingFace (works for e.g. Llama2)
-    # We choose more explicit Option (1.) here:
-    mpirun -n $GPUS --allow-run-as-root \
-        python summarize/summarize.py \
-            --engine_dir $ENGINE_DIR \
-            --vocab_file $TOKENIZER_CONFIG \
-            --test_trt_llm \
-            --tensorrt_llm_rouge1_threshold=13 \
-            --max_ite=$SUMMARIZE_MAX_ITE \
-            --data_type=$DTYPE | tee $SUMMARIZE_RESULT
 
 fi
 
@@ -198,7 +190,7 @@ if [[ $TASKS =~ "mmlu" ]]; then
     fi
 
     # For handling Nemo tokenizers you can specify either --vocab_file as yaml tokenizer config (recommended)
-    # or --model_path in case of HF-converted models, see the comment for summarize.py script above.
+    # or --model_path in case of HF-converted models.
     python mmlu.py \
         --engine_dir $ENGINE_DIR \
         --vocab_file $TOKENIZER_CONFIG \

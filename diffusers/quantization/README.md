@@ -120,32 +120,37 @@ Note, the engines must be built on the same GPU, and ensure that the INT8 engine
 - Run the above txt2img example command again. You can compare the generated images and latency for fp16 vs int8.
   Similarly, you could run end-to-end pipeline with Model Optimizer quantized backbone and corresponding examples in demoDiffusion with other diffusion models.
 
-### ModelOPT Python-native TRT Pipeline
+### Running the inference pipeline with DeviceModel
 
-For our testing pipeline, all you need to do is generate the engine file using `trtexec`. The pipeline will then automatically load it for TensorRT inference. For more details, you can check the available options by running:
+DeviceModel is an interface designed to run TensorRT engines like torch models. It takes torch inputs and returns torch outputs. Under the hood, DeviceModel exports a torch checkpoint to ONNX and then generates a TensorRT engine from it. This allows you to swap the backbone of the diffusion pipeline with DeviceModel and execute the pipeline for your desired prompt.<br><br>
 
-```bash
-python trt_infer.py --help
-```
-
-To run the pipeline, execute the following command:
+Generate a quantized torch checkpoint using the command shown below:
 
 ```bash
-python trt_infer.py --model {sdxl-1.0|sd3-medium|flux-dev} --inf-img-size 1
+python quantize.py \
+  --model {sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base|sd3-medium|flux-dev|flux-schnell} \
+  --format fp8 \
+  --batch-size {1|2} \
+  --calib-size 128 \
+  --quant-level 3.0 \
+  --n-steps 20 \
+  --quantized-torch-ckpt-save-path ./{MODEL}_fp8.pt \
+  --collect-method default \
 ```
 
-If you prefer to use the Python-native TRT Pipeline in your scripts, you can use the following code:
+Generate images for the quantized checkpoint with the following command:
 
-```
-deploy.load(
-    pipe,
-    {sdxl-1.0|sd3-medium},
-    Path({YOUR_ENGINE_FILE_PATH}),
-    {1|2|8|16},
-)
+```bash
+python diffusion_trt.py \
+  --model {sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base|sd3-medium|flux-dev|flux-schnell} \
+  --prompt "A cat holding a sign that says hello world" \
+  [--restore-from ./{MODEL}_fp8.pt] \
+  [--onnx-load-path {ONNX_DIR}] \
+  [--trt_engine-path {ENGINE_DIR}]
 ```
 
-After that, you can use the pipe as you normally would with the Diffusers pipeline on your local machine, and it will automatically run in TensorRT without any additional changes, which will run faster than the PyTorch runtime.
+This script will save the output image as `./{MODEL}.png` and report the latency of the TensorRT backbone.
+To generate the image with FP16|BF16 precision, you can run the command shown above without the `--restore-from` argument.<br><br>
 
 ## Demo Images
 

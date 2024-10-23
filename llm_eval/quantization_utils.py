@@ -1,3 +1,5 @@
+from typing import List, Union
+
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -28,24 +30,26 @@ def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN):
 
 
 def _quantize_model_with_dataset(
-    lm, quant_cfg: str, calib_dataset, auto_quantize_compression=None, batch_size=1
+    lm, quant_cfg: Union[str, List[str]], calib_dataset, auto_quantize_bits=None, batch_size=1
 ):
     if hasattr(lm, "gpt2"):
         net = lm.gpt2
-    else:
+    elif hasattr(lm, "model"):
         net = lm.model
+    else:
+        net = lm
 
-    if auto_quantize_compression is not None:
+    if auto_quantize_bits is not None:
         quant_cfg_for_search = [
             quant_fmt if quant_fmt != "NONE" else None for quant_fmt in quant_cfg
         ]
         net, _ = mtq.auto_quantize(
             net,
-            data_loader=calib_dataset,
-            loss_func=lambda output, batch: output.loss,
-            constraints={"weight_compression": auto_quantize_compression},
+            constraints={"effective_bits": auto_quantize_bits},
             quantization_formats=quant_cfg_for_search,
-            collect_func=lambda x: x,
+            data_loader=calib_dataset,
+            forward_step=lambda model, batch: model(**batch),
+            loss_func=lambda output, data: output.loss,
             num_calib_steps=len(calib_dataset),
             num_score_steps=min(
                 len(calib_dataset), 128 // batch_size
@@ -53,8 +57,7 @@ def _quantize_model_with_dataset(
             verbose=True,
         )
     else:
-
-        atq_cfg = getattr(mtq, quant_cfg)
+        atq_cfg = getattr(mtq, quant_cfg)  # type: ignore [arg-type]
 
         def calibrate_loop(model):
             print("Calibrating model...")
@@ -64,7 +67,11 @@ def _quantize_model_with_dataset(
 
         def is_dynamic(atq_cfg):
             def _not_dynamic(cfg):
-                return cfg.get("enable", True) and cfg.get("type", "") != "dynamic"
+                return (
+                    cfg.get("enable", True)
+                    and cfg.get("type", "") != "dynamic"
+                    and cfg.get("*", {}).get("enable", True)
+                )
 
             for _, cfg in atq_cfg.get("quant_cfg", {}).items():
                 # quantization like W4A8 has a list of weight quantizers
@@ -94,11 +101,6 @@ def _quantize_model_with_dataset(
     # Fold weights for faster evaluation.
     mtq.fold_weight(net)
 
-    if hasattr(lm, "gpt2"):
-        lm.gpt2 = net
-    else:
-        lm.model = net
-
 
 def quantize_model(
     model,
@@ -106,7 +108,7 @@ def quantize_model(
     tokenizer,
     batch_size,
     calib_size,
-    auto_quantize_compression=None,
+    auto_quantize_bits=None,
     data="cnn_dailymail",
     test_generated=True,
 ):
@@ -118,7 +120,7 @@ def quantize_model(
         tokenizer: the tokenizer.
         batch_size: the calibration batch size for each calibration inference run.
         calib_size: the total calibration dataset size.
-        auto_quantize_compression: The weight compression constraint for AutoQuantize.
+        auto_quantize_bits: The effective bits constraint for AutoQuantize.
         data: the name of the calibration dataset.
         test_generated:  If ``True``, test the generated text before and after quantization.
     """
@@ -133,8 +135,7 @@ def quantize_model(
         device = model.model.device
 
     if batch_size == 0:
-
-        assert auto_quantize_compression is None, "AutoQuantize requires batch_size to be set."
+        assert auto_quantize_bits is None, "AutoQuantize requires batch_size to be set."
 
         if hasattr(model, "gpt2"):
             net = model.gpt2
@@ -151,16 +152,14 @@ def quantize_model(
         batch_size=batch_size,
         num_samples=calib_size,
         device=device,
-        include_labels=auto_quantize_compression is not None,
+        include_labels=auto_quantize_bits is not None,
     )
 
     if test_generated:
         input_str = tokenizer.decode(next(iter(calib_dataloader))["input_ids"][0])
         generated_str_before_ptq = model.run(input_str)
 
-    _quantize_model_with_dataset(
-        model, quant_cfg, calib_dataloader, auto_quantize_compression, batch_size
-    )
+    _quantize_model_with_dataset(model, quant_cfg, calib_dataloader, auto_quantize_bits, batch_size)
 
     if test_generated:
         generated_str_after_ptq = model.run(input_str)

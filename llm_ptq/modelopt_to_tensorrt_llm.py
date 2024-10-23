@@ -28,9 +28,19 @@ from typing import Optional, Union
 
 import tensorrt_llm
 import torch
-from run_tensorrt_llm import run
+from packaging.version import parse
 from tensorrt_llm.models import PretrainedConfig
 from transformers import AutoTokenizer
+
+try:
+    # run depends on features from the min-supported TensorRT-LLM
+    from run_tensorrt_llm import run
+except Exception as e:
+    print(f"Cannot run TensorRT-LLM inference: {e}")
+    run = None
+
+
+MIN_TENSORRT_LLM_VERSION = "0.13.0"
 
 
 def str2bool(v):
@@ -55,7 +65,7 @@ def build_tensorrt_llm(
     num_build_workers: int = 1,
     enable_sparsity: bool = False,
     max_prompt_embedding_table_size: int = 0,
-    gather_context_logits: bool = False,
+    perf_mode: bool = False,
 ):
     """The API to convert the TensorRT-LLM checkpoint to engines.
 
@@ -85,7 +95,7 @@ def build_tensorrt_llm(
             weight tensors are sparsified. This increases engine building time significantly.
         max_prompt_embedding_table_size: Length of the prepended/concatenated embeddings (either multimodal
             feature embeddings or prompt tuning embeddings) to the LLM input embeddings.
-        gather_context_logits: Whether context logits can be returned as a part of the outputs.
+        perf_mode: Whether build the engine with max perf at a cost of longer build time and less flexibility.
     """
     engine_dir = Path(engine_dir)
     engine_dir.mkdir(parents=True, exist_ok=True)
@@ -117,14 +127,7 @@ def build_tensorrt_llm(
         None,
     ]
 
-    use_fused_mlp = is_no_quant_or_fp8 and config.hidden_act in [
-        "silu",
-        "swiglu",
-        "fast-swiglu",
-        "gelu",
-        "geglu",
-    ]
-
+    use_fused_mlp = True
     if config.quantization.exclude_modules:
         for module_name in config.quantization.exclude_modules:
             # fp8_context_fhma requires all attention.dense to be quantized
@@ -164,13 +167,12 @@ def build_tensorrt_llm(
         else ""
     )
 
-    print(
-        "Hint: For max througput, please build the engine with --multiple_profiles enable flag. "
-        "This is not enabled by default to save engine build time."
-    )
-
     if use_fused_mlp:
-        build_cmd += "--use_fused_mlp " if "RecurrentGemma" not in config.architecture else ""
+        build_cmd += (
+            "--use_fused_mlp enable "
+            if "RecurrentGemma" not in config.architecture
+            else "--use_fused_mlp disable "
+        )
     if enable_sparsity:
         build_cmd += "--weight_sparsity "
 
@@ -186,12 +188,19 @@ def build_tensorrt_llm(
     if is_no_quant_or_fp8:
         build_cmd += "--use_paged_context_fmha enable "
 
-    if gather_context_logits:
+    if perf_mode:
+        build_cmd += "--multiple_profiles enable"
+    elif not speculative_decoding_mode:
         build_cmd += "--gather_context_logits "  # for evaluation benchmarking purpose
 
     print("trtllm-build command:")
     print(f"{build_cmd}")
 
+    assert parse(tensorrt_llm.__version__) >= parse(MIN_TENSORRT_LLM_VERSION), (
+        f"Detected lower version of tensorrt_llm installed instead of {MIN_TENSORRT_LLM_VERSION}. "
+        f"Please build the tensorrt_llm engines with tensorrt_llm version {MIN_TENSORRT_LLM_VERSION} or higher instead."
+        f"\n\n Build command: {build_cmd}"
+    )
     subprocess.run(build_cmd, shell=True, check=True)
 
     try:
@@ -208,6 +217,11 @@ def parse_arguments():
     parser.add_argument("--max_input_len", type=int, default=2048)
     parser.add_argument("--max_batch_size", type=int, default=8)
     parser.add_argument("--max_num_beams", type=int, default=1)
+    parser.add_argument(
+        "--perf",
+        action="store_true",
+        help="Build engines for max perf benchmark",
+    )
     parser.add_argument("--engine_dir", type=str, default="/tmp/modelopt")
     parser.add_argument("--tokenizer", type=str, default="")
     parser.add_argument(
@@ -242,10 +256,13 @@ def main(args):
         num_build_workers=args.num_build_workers,
         enable_sparsity=args.enable_sparsity,
         max_prompt_embedding_table_size=args.max_prompt_embedding_table_size,
+        perf_mode=args.perf,
     )
 
-    if args.model_config is not None and all(
-        model_name not in args.model_config for model_name in ("vila", "llava")
+    if (
+        args.model_config is not None
+        and all(model_name not in args.model_config for model_name in ("vila", "llava"))
+        and run is not None
     ):
         # Reduce output_len for the inference run example.
         args.max_output_len = 100

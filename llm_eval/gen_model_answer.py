@@ -40,6 +40,7 @@
 Usage:
 python3 gen_model_answer.py --model-path lmsys/fastchat-t5-3b-v1.0 --model-id fastchat-t5-3b-v1.0
 """
+
 import argparse
 import json
 import os
@@ -52,10 +53,13 @@ import torch
 from fastchat.llm_judge.common import load_questions, temperature_config
 from fastchat.model import get_conversation_template, load_model
 from fastchat.utils import str_to_torch_dtype
-from quantization_utils import get_tokenizer
+from quantization_utils import get_tokenizer, quantize_model
 from tqdm import tqdm
 
-from modelopt.deploy.llm import LLM
+try:
+    from modelopt.deploy.llm import LLM
+except ImportError:
+    LLM = None  # type: ignore[misc]
 
 # API setting constants
 API_MAX_RETRY = 16
@@ -124,6 +128,7 @@ def run_eval(
     engine_dir,
     vocab_file,
     nim_model,
+    args,
 ):
     questions = load_questions(question_file, question_begin, question_end)
     # random shuffle the questions to balance the loading
@@ -206,7 +211,7 @@ def get_model_answers(
         else:
             raise ValueError("engine_dir is required for TensorRT LLM inference.")
     elif not nim_model:
-        model, tokenizer = load_model(
+        model, _ = load_model(
             model_path,
             revision=revision,
             device="cuda",
@@ -217,6 +222,17 @@ def get_model_answers(
             cpu_offloading=False,
             debug=False,
         )
+        tokenizer = get_tokenizer(model_path)
+        if args.quant_cfg:
+            quantize_model(
+                model,
+                args.quant_cfg,
+                tokenizer,
+                args.calib_batch_size,
+                args.calib_size,
+                args.auto_quantize_bits,
+                test_generated=False,
+            )
 
     for question in tqdm(questions):
         if not temperature:
@@ -446,8 +462,35 @@ if __name__ == "__main__":
         type=str,
         help="The NIM model handle to use",
     )
+    parser.add_argument(
+        "--quant_cfg",
+        type=str,
+        help="The quantization algorithm config name.",
+    )
+    parser.add_argument(
+        "--calib_size",
+        type=int,
+        default=512,
+        help="The number of quantization calibration samples.",
+    )
+    parser.add_argument(
+        "--calib_batch_size",
+        type=int,
+        default=4,
+        help="The calibration batch size for quantization calibration.",
+    )
+    parser.add_argument(
+        "--auto_quantize_bits",
+        type=float,
+        default=None,
+        help=(
+            "Effective bits constraint for AutoQuantize. If not set, "
+            "regular quantization without AutoQuantize search will be applied."
+        ),
+    )
 
     args = parser.parse_args()
+    print(args)
 
     if args.num_gpus_total // args.num_gpus_per_model > 1:
         import ray
@@ -481,6 +524,7 @@ if __name__ == "__main__":
         engine_dir=args.engine_dir,
         vocab_file=args.vocab_file,
         nim_model=args.nim_model,
+        args=args,
     )
 
     reorg_answer_file(answer_file)

@@ -52,7 +52,6 @@ from utils import (
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
-import modelopt.torch.speculative as mtsp
 from modelopt.torch.utils import print_rank_0
 
 CUSTOM_QUANT_CFG = {
@@ -128,15 +127,6 @@ class QuantizationArguments:
     )
 
 
-@dataclass
-class MedusaArguments:
-    medusa: Optional[bool] = field(default=False)
-    medusa_only_heads: Optional[bool] = field(default=True)
-    medusa_num_heads: Optional[int] = field(default=1)
-    medusa_num_layers: Optional[int] = field(default=1)
-    medusa_lm_head: Optional[str] = field(default="")
-
-
 def get_metrics_with_perplexity(metrics):
     metrics = {"perplexity": float(torch.exp(torch.tensor(metrics["eval_loss"]))), **metrics}
     return metrics
@@ -144,12 +134,10 @@ def get_metrics_with_perplexity(metrics):
 
 def train():
     parser = transformers.HfArgumentParser(
-        (ModelArguments, TrainingArguments, DataArguments, QuantizationArguments, MedusaArguments)
+        (ModelArguments, TrainingArguments, DataArguments, QuantizationArguments)
     )
-    model_args, training_args, data_args, quant_args, medusa_args = (
-        parser.parse_args_into_dataclasses()
-    )
-    print_rank_0(f"arguments: {model_args}, {training_args}, {quant_args}, {medusa_args}")
+    model_args, training_args, data_args, quant_args = parser.parse_args_into_dataclasses()
+    print_rank_0(f"arguments: {model_args}, {training_args}, {quant_args}")
 
     # Enable automatic save/load of modelopt state huggingface checkpointing
     # modelopt state will be saved automatically to "modelopt_state.pt"
@@ -189,22 +177,8 @@ def train():
 
     trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
     trainer._move_model_to_device(model, trainer.args.device)
-    if medusa_args.medusa:
-        print("Adding Medusa loss to the trainer...")
-        mtsp.plugins.transformers.replace_medusa_compute_loss(
-            trainer, medusa_only_heads=medusa_args.medusa_only_heads
-        )
 
     if checkpoint is None:
-        # This needs to be done only once before training starts
-        if medusa_args.medusa:
-            config = {
-                "medusa_num_heads": medusa_args.medusa_num_heads,
-                "medusa_num_layers": medusa_args.medusa_num_layers,
-            }
-            mtsp.convert(model, [("medusa", config)])
-            if medusa_args.medusa_lm_head:
-                mtsp.plugins.transformers.load_medusa_head(model, medusa_args.medusa_lm_head)
         if quant_args.quant_cfg is not None:
             calib_dataloader = DataLoader(
                 data_module["train_dataset"],
@@ -235,8 +209,7 @@ def train():
             model = mtq.quantize(model, quant_cfg, calibrate_loop)
         torch.cuda.empty_cache()  # Lets make sure to free up the memory for training
     else:
-        is_real_quant = quant_args.quant_cfg is not None and "REAL_QUANT" in quant_args.quant_cfg
-        assert not is_real_quant, "Real quantization does not support resuming training yet!"
+        assert not training_args.lora, "Does not support LoRA resuming training yet!"
 
     # add lora adapter
     if training_args.lora:

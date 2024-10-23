@@ -4,7 +4,7 @@ The Model Optimizer's `modelopt.torch.prune` module provides advanced state-of-t
 
 Model Optimizer can be used in one of the following complementary pruning modes to create a search space for optimizing the model:
 
-1. [Minitron](https://arxiv.org/pdf/2408.11796): A pruning method developed by NVIDIA Research for pruning GPT-style models in NVIDIA NeMo or Megatron-LM framework that are using Pipeline or Tensor Parallellisms. It uses the activation magnitudes to prune the mlp, attention heads, and GQA query groups the model.
+1. [Minitron](https://arxiv.org/pdf/2408.11796): A pruning method developed by NVIDIA Research for pruning GPT-style models in NVIDIA NeMo or Megatron-LM framework that are using Pipeline or Tensor Parallellisms. It uses the activation magnitudes to prune the mlp, attention heads, GQA query groups, embedding hidden size and number of layers of the model.
 1. GradNAS: A light-weight pruning method recommended for language models like Hugging Face BERT, GPT-J. It uses the gradient information to prune the model's linear layers and attention heads to meet the given constraints.
 1. FastNAS: A pruning method recommended for Computer Vision models. Given a pretrained model, FastNAS finds the subnet which maximizes the score function while meeting the given constraints.
 
@@ -13,6 +13,10 @@ Model Optimizer can be used in one of the following complementary pruning modes 
 Checkout the [Quick Start: Pruning](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/4_pruning.html) and the detailed [Optimization Guide](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_pruning.html) in the Model Optimizer documentation for more information on how to use the above pruning algorithms in Model Optimizer.
 
 ## Algorithms
+
+### Pruning NVIDIA NeMo / Megatron-LM LLMs (e.g. Llama 3) using Minitron
+
+Checkout the Minitron pruning example in the [NVIDIA NeMo repository](https://github.com/NVIDIA/NeMo/tree/main/examples/nlp/language_modeling/megatron_gpt_prune.py) which showcases the usage of the powerful Minitron pruning algorithm developed by NVIDIA Research for pruning LLMs like Llama 3.1 8B or Mistral NeMo 12B.
 
 ### Pruning HuggingFace Language Models (e.g. BERT) using GradNAS
 

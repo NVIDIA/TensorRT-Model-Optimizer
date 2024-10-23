@@ -126,6 +126,10 @@ def test_fix_indents():
 
 def evaluate(model: Union[EvalModel, LLM], data_path: str, **kwargs) -> dict:
     dataset = read_problems(data_path)
+    if "num_samples" in kwargs:
+        dataset = dict(
+            (key, dataset[key]) for key in list(dataset.keys())[: int(kwargs["num_samples"])]
+        )
     model_path = kwargs.get("model_path", "")
     n_sample = kwargs.get("n_sample", 1)
     best_temperature = {1: 0.1, 10: 0.6, 100: 0.8}
@@ -184,7 +188,10 @@ def main(
         model_ckpt_path = kwargs["model_path"]
         tokenizer = get_tokenizer(model_ckpt_path)
     if kwargs.get("engine_dir", None):
-        model = LLM(engine_dir=kwargs["engine_dir"], tokenizer=tokenizer)
+        medusa_choices = kwargs.get("medusa_choices", None)
+        model = LLM(
+            engine_dir=kwargs["engine_dir"], tokenizer=tokenizer, medusa_choices=medusa_choices
+        )
     else:
         model = select_model(
             max_input_length=MAX_SEQ_LEN, max_output_length=MAX_OUTPUT_LEN, **kwargs

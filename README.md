@@ -16,6 +16,7 @@
 
 ## Latest News
 
+- \[2024/9/10\] [Post-Training Quantization of LLMs with NVIDIA NeMo and TensorRT Model Optimizer](https://developer.nvidia.com/blog/post-training-quantization-of-llms-with-nvidia-nemo-and-nvidia-tensorrt-model-optimizer/)
 - \[2024/8/28\] [Boosting Llama 3.1 405B Performance up to 44% with TensorRT Model Optimizer on NVIDIA H200 GPUs](https://developer.nvidia.com/blog/boosting-llama-3-1-405b-performance-by-up-to-44-with-nvidia-tensorrt-model-optimizer-on-nvidia-h200-gpus/)
 - \[2024/8/28\] [Up to 1.9X Higher Llama 3.1 Performance with Medusa](https://developer.nvidia.com/blog/low-latency-inference-chapter-1-up-to-1-9x-higher-llama-3-1-performance-with-medusa-on-nvidia-hgx-h200-with-nvlink-switch/)
 - \[2024/08/15\] New features in recent releases: [Cache Diffusion](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/diffusers/cache_diffusion), [QLoRA workflow with NVIDIA NeMo](https://docs.nvidia.com/nemo-framework/user-guide/latest/sft_peft/qlora.html), and more. Check out [our blog](https://developer.nvidia.com/blog/nvidia-tensorrt-model-optimizer-v0-15-boosts-inference-performance-and-expands-model-support/) for details.
@@ -51,39 +52,33 @@ For enterprise users, the 8-bit quantization with Stable Diffusion is also avail
 
 Model Optimizer is available for free for all developers on [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/). This repository is for sharing examples and GPU-optimized recipes as well as collecting feedback from the community.
 
-## Installation
+## Installation / Docker
 
-### [PIP](https://pypi.org/project/nvidia-modelopt/)
+Easiest way to get started with using Model Optimizer and additional dependencies (e.g. TensorRT-LLM deployment) is to start from our docker image.
 
-```bash
-pip install "nvidia-modelopt[all]~=0.17.0" --extra-index-url https://pypi.nvidia.com
-```
-
-See the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more fine-grained control over the installation.
-
-Make sure to also install example-specific dependencies from their respective `requirements.txt` files if any.
-
-### Docker
-
-After installing the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit),
-please run the following commands to build the Model Optimizer example docker container which has all the necessary
+After installing the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+please run the following commands to build the Model Optimizer docker container which has all the necessary
 dependencies pre-installed for running the examples.
 
 ```bash
-# Build the docker
-docker/build.sh
+# Clone the ModelOpt repository
+git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer.git
+cd TensorRT-Model-Optimizer
 
-# Obtain and start the basic docker image environment.
-# The default built docker image is docker.io/library/modelopt_examples:latest
+# Build the docker (will be tagged `docker.io/library/modelopt_examples:latest`)
+# You may customize `docker/Dockerfile` to include or exclude certain dependencies you may or may not need.
+bash docker/build.sh
+
+# Run the docker image
 docker run --gpus all -it --shm-size 20g --rm docker.io/library/modelopt_examples:latest bash
 
-# Check installation
-python -c "import modelopt"
+# Check installation (inside the docker container)
+python -c "import modelopt; print(modelopt.__version__)"
 ```
 
-NOTE: Unless specified otherwise, all example READMEs assume they are using the ModelOpt docker image for running the examples.
+See the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more details on alternate pre-built docker images or installation in a local environment.
 
-Alternatively for PyTorch, you can also use [NVIDIA NGC PyTorch container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch/tags) with Model Optimizer pre-installed starting from 24.06 container. Make sure to update the Model Optimizer version to the latest one if not already.
+NOTE: Unless specified otherwise, all example READMEs assume they are using the above ModelOpt docker image for running the examples. The example specific dependencies are required to be install separately from their respective `requirements.txt` files if not using the ModelOpt's docker image.
 
 ## Techniques
 
@@ -97,7 +92,7 @@ Sparsity is a technique to further reduce the memory footprint of deep learning 
 
 ### Pruning
 
-Pruning is a technique to reduce the model size and accelerate the inference by removing unnecessary weights. Model Optimizer provides Python APIs to prune Linear and Conv layers, and Transformer attention heads, MLP, and depth.
+Pruning is a technique to reduce the model size and accelerate the inference by removing unnecessary weights. Model Optimizer provides Python APIs to prune Linear and Conv layers, and Transformer attention heads, MLP, embedding hidden size and number of layers (depth).
 
 ### Distillation
 

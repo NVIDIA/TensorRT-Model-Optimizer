@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.5.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.6.1-devel-ubuntu22.04
 
 WORKDIR /workspace
 
@@ -13,12 +13,16 @@ RUN rm -rf /usr/lib/python3/dist-packages/setuptools*
 RUN pip install setuptools -U
 
 # TensorRT LLM
-ARG TRT_LLM_VERSION=0.12.0
+ARG TRT_LLM_VERSION=0.13.0
 RUN pip install "tensorrt-llm~=$TRT_LLM_VERSION" -U
 RUN git clone --depth 1 --branch "v$TRT_LLM_VERSION" https://github.com/NVIDIA/TensorRT-LLM.git && \
     mkdir tensorrt-llm && \
     mv TensorRT-LLM/benchmarks/ tensorrt-llm && \
     rm -rf TensorRT-LLM
+
+# Required by TensorRT LLM benchmark.
+RUN cd /usr/local/lib/python3.10/dist-packages/tensorrt_llm/libs && ln -s libnvinfer_plugin_tensorrt_llm.so libnvinfer_plugin_tensorrt_llm.so.10
+ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/tensorrt_llm/libs:$LD_LIBRARY_PATH
 
 # ModelOpt installation with all optional dependencies.
 ARG MODELOPT_VERSION=0.17.0
@@ -29,19 +33,17 @@ RUN python -c "import modelopt"
 ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # TensorRT dev environment installation.
-ARG TENSORRT_URL=https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.3.0/tars/TensorRT-10.3.0.26.Linux.x86_64-gnu.cuda-12.5.tar.gz
+ARG TENSORRT_URL=https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.4.0/tars/TensorRT-10.4.0.26.Linux.x86_64-gnu.cuda-12.6.tar.gz
 RUN wget -q -O tensorrt.tar.gz $TENSORRT_URL && \
     tar -xf tensorrt.tar.gz && \
     cp TensorRT-*/bin/trtexec /usr/local/bin && \
     cp TensorRT-*/include/* /usr/include/x86_64-linux-gnu && \
     python -m pip install TensorRT-*/python/tensorrt-*-cp310-none-linux_x86_64.whl && \
+    cp -a TensorRT-*/targets/x86_64-linux-gnu/lib/* /usr/local/lib/python3.10/dist-packages/tensorrt_libs && \
     rm -rf TensorRT-*.Linux.x86_64-gnu.cuda-*.tar.gz TensorRT-* tensorrt.tar.gz
 
-# Set the TensorRT library path. Used while building CUDA plugins.
-ENV TRT_LIBPATH=/usr/local/lib/python3.10/dist-packages/tensorrt_libs
-RUN ln -s /usr/local/lib/python3.10/dist-packages/tensorrt_libs/libnvinfer.so.* /usr/local/lib/python3.10/dist-packages/tensorrt_libs/libnvinfer.so
-
-ENV LD_LIBRARY_PATH=$TRT_LIBPATH:$LD_LIBRARY_PATH
+ENV TRT_LIB_PATH=/usr/local/lib/python3.10/dist-packages/tensorrt_libs
+ENV LD_LIBRARY_PATH=$TRT_LIB_PATH:$LD_LIBRARY_PATH
 
 # Find and install requirements.txt files for all examples
 COPY . /workspace/TensorRT-Model-Optimizer
@@ -49,6 +51,10 @@ RUN find /workspace/TensorRT-Model-Optimizer -name "requirements.txt" | while re
     echo "Installing from $req_file"; \
     pip install -r "$req_file"; \
     done
+
+# Precompile quantization extensions since this may take several minutes on every docker image restart so it's best to do it once ahead of time
+ENV TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST:-"5.2 6.0 6.1 7.0 7.2 7.5 8.0 8.6 8.7 9.0+PTX"}
+RUN python -c "import modelopt.torch.quantization.extensions as ext; ext.precompile()"
 
 # Allow users to run without root
 RUN chmod -R 777 /workspace

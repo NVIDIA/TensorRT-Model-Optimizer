@@ -154,7 +154,6 @@ def make_supervised_data_module(
 
 
 def get_lora_config():
-
     return LoraConfig(
         r=8,
         target_modules=[

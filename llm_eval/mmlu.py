@@ -229,7 +229,7 @@ def main(
     data_dir: str = "data/mmlu",
     ntrain: int = 5,
     quant_cfg: str = None,
-    auto_quantize_compression: float = None,
+    auto_quantize_bits: float = None,
     batch_size: int = 0,
     calib_size: int = 512,
     dtype: str = "bfloat16",
@@ -270,7 +270,10 @@ def main(
             tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
 
         assert LLM is not None, "tensorrt_llm APIs could not be imported."
-        model = LLM(kwargs["engine_dir"], tokenizer=tokenizer)
+        medusa_choices = kwargs.get("medusa_choices", None)
+        model = LLM(
+            engine_dir=kwargs["engine_dir"], tokenizer=tokenizer, medusa_choices=medusa_choices
+        )
     else:
         model = select_model(
             max_input_length=MAX_SEQ_LEN, max_output_length=2, dtype=dtype, **kwargs
@@ -284,7 +287,7 @@ def main(
                 tokenizer=tokenizer,
                 batch_size=batch_size,
                 calib_size=calib_size,
-                auto_quantize_compression=auto_quantize_compression,
+                auto_quantize_bits=auto_quantize_bits,
             )
 
     for subject in tqdm(subjects):

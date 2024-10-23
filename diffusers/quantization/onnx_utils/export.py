@@ -103,6 +103,15 @@ AXES_NAME = {
         "guidance": {0: "batch_size"},
         "output": {0: "batch_size"},
     },
+    "flux-schnell": {
+        "hidden_states": {0: "batch_size", 1: "sequence"},
+        "encoder_hidden_states": {0: "batch_size"},
+        "pooled_projections": {0: "batch_size"},
+        "timestep": {0: "batch_size"},
+        "img_ids": {0: "batch_size", 1: "sequence"},
+        "txt_ids": {0: "batch_size"},
+        "output": {0: "batch_size"},
+    },
 }
 
 # Per-tensor for INT8, we will convert it to FP8 later in onnxgraphsurgeon
@@ -159,11 +168,13 @@ def generate_dummy_inputs(sd_version, device, is_infer=False):
         dummy_input["added_cond_kwargs"] = {}
         dummy_input["added_cond_kwargs"]["text_embeds"] = torch.ones(2, 1280).to(device).half()
         dummy_input["added_cond_kwargs"]["time_ids"] = torch.ones(2, 6).to(device).half()
+        dummy_input["return_dict"] = False
     elif sd_version == "sd3-medium":
         dummy_input["hidden_states"] = torch.ones(2, 16, 128, 128).to(device).half()
         dummy_input["timestep"] = torch.ones(2).to(device).half()
         dummy_input["encoder_hidden_states"] = torch.ones(2, 333, 4096).to(device).half()
         dummy_input["pooled_projections"] = torch.ones(2, 2048).to(device).half()
+        dummy_input["return_dict"] = False
     elif sd_version == "sd1.5":
         dummy_input["sample"] = torch.ones(2, 4, 64, 64).to(device).half()
         dummy_input["timestep"] = torch.ones(1).to(device).half()
@@ -172,7 +183,8 @@ def generate_dummy_inputs(sd_version, device, is_infer=False):
         dummy_input["sample"] = torch.ones(2, 4, 96, 96).to(device).half()
         dummy_input["timestep"] = torch.ones(1).to(device).half()
         dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 1024).to(device).half()
-    elif sd_version == "flux-dev":
+        dummy_input["return_dict"] = False
+    elif sd_version == "flux-dev" or sd_version == "flux-schnell":
         dummy_input["hidden_states"] = torch.randn(
             1, 1024 if not is_infer else 4096, 64, dtype=torch.bfloat16, device=device
         )
@@ -186,6 +198,7 @@ def generate_dummy_inputs(sd_version, device, is_infer=False):
         )
         dummy_input["txt_ids"] = torch.randn(1, 512, 3, dtype=torch.float32, device=device)
         dummy_input["guidance"] = torch.randn(1, dtype=torch.float32, device=device)
+        dummy_input["return_dict"] = False
     else:
         raise NotImplementedError(f"Unsupported sd_version: {sd_version}")
 

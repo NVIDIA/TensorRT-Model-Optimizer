@@ -12,11 +12,13 @@ parse_options() {
     GPUS=1
     SPARSITY_FMT="dense"
     EXPORT_FORMAT="tensorrt_llm"
+    LM_EVAL_TASKS="mmlu,gsm8k"
+    LM_EVAL_LIMIT=
 
     TASKS="build"
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,compression:,input:,output:,batch:,summarize_ite:,tasks:,export_fmt:," -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:" -n "$0" -- "$@")
   eval set -- "$ARGS"
   while true; do
     case "$1" in
@@ -30,13 +32,15 @@ parse_options() {
       --awq_block_size ) AWQ_BLOCK_SIZE="$2"; shift 2;;
       --calib ) CALIB_SIZE="$2"; shift 2;;
       --calib_batch_size ) CALIB_BATCH_SIZE="$2"; shift 2;;
-      --compression ) AUTO_QUANTIZE_COMPRESSION="$2"; shift 2;;
+      --effective_bits ) AUTO_QUANTIZE_BITS="$2"; shift 2;;
       --input ) BUILD_MAX_INPUT_LEN="$2"; shift 2;;
       --output ) BUILD_MAX_OUTPUT_LEN="$2"; shift 2;;
       --batch ) BUILD_MAX_BATCH_SIZE="$2"; shift 2;;
-      --summarize_ite ) SUMMARIZE_MAX_ITE="$2"; shift 2;;
       --tasks ) TASKS="$2"; shift 2;;
       --export_fmt ) EXPORT_FORMAT="$2"; shift 2;;
+      --lm_eval_tasks ) LM_EVAL_TASKS="$2"; shift 2;;
+      --lm_eval_limit ) LM_EVAL_LIMIT="$2"; shift 2;;
+      --num_samples ) NUM_SAMPLES="$2"; shift 2;;
       -- ) shift; break ;;
       * ) break ;;
     esac
@@ -47,12 +51,7 @@ parse_options() {
   DEFAULT_BUILD_MAX_INPUT_LEN=2048
   DEFAULT_BUILD_MAX_OUTPUT_LEN=512
   DEFAULT_BUILD_MAX_BATCH_SIZE=4
-  DEFAULT_SUMMARIZE_MAX_ITE=20
 
-  DEFAULT_AWQ_BLOCK_SIZE=128
-  if [ -z "$AWQ_BLOCK_SIZE" ]; then
-    AWQ_BLOCK_SIZE=$DEFAULT_AWQ_BLOCK_SIZE
-  fi
   if [ -z "$CALIB_SIZE" ]; then
     CALIB_SIZE=$DEFAULT_CALIB_SIZE
   fi
@@ -73,15 +72,14 @@ parse_options() {
   echo "$TASKS"
 
   # Verify required options are provided
-  if [ -z "$MODEL_TYPE" ] || [ -z "$MODEL_PATH" ] || [ -z "$QFORMAT" ] || [ -z "$TASKS" ]; then
-    echo "Usage: $0 --type=<MODEL_TYPE> --model=<MODEL_PATH> --quant=<QFORMAT> --tasks=<TASK,...>"
+  if [ -z "$MODEL_PATH" ] || [ -z "$QFORMAT" ] || [ -z "$TASKS" ]; then
+    echo "Usage: $0 --model=<MODEL_PATH> --quant=<QFORMAT> --tasks=<TASK,...>"
     echo "Optional args: --tp=<TP> --pp=<PP> --sparsity=<SPARSITY_FMT> --awq_block_size=<AWQ_BLOCK_SIZE> --calib=<CALIB_SIZE>"
-    echo "Optional args for NeMo: --calib_tp=<CALIB_TP>"
+    echo "Optional args for NeMo: --type=<MODEL_TYPE> --calib_tp=<CALIB_TP>"
     exit 1
   fi
 
-
-  VALID_TASKS=("build" "summarize" "mmlu" "humaneval" "mtbench" "benchmark")
+  VALID_TASKS=("build" "mmlu" "humaneval" "mtbench" "benchmark" "lm_eval")
 
   for task in $(echo $TASKS | tr ',' ' '); do
     if [[ ! " ${VALID_TASKS[@]} " =~ " $task " ]]; then
@@ -115,12 +113,14 @@ parse_options() {
   echo "awq_block_size: $AWQ_BLOCK_SIZE"
   echo "calib: $CALIB_SIZE"
   echo "calib_batch_size: $CALIB_BATCH_SIZE"
-  echo "compression: $AUTO_QUANTIZE_COMPRESSION"
+  echo "effective_bits: $AUTO_QUANTIZE_BITS"
   echo "input: $BUILD_MAX_INPUT_LEN"
   echo "output: $BUILD_MAX_OUTPUT_LEN"
   echo "batch: $BUILD_MAX_BATCH_SIZE"
-  echo "summarize_ite: $SUMMARIZE_MAX_ITE"
   echo "tasks: $TASKS"
   echo "export_fmt: $EXPORT_FORMAT"
+  echo "lm_eval_tasks: $LM_EVAL_TASKS"
+  echo "lm_eval_limit: $LM_EVAL_LIMIT"
+  echo "num_sample: $NUM_SAMPLES"
   echo "================="
 }

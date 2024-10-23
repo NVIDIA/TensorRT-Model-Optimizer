@@ -3,6 +3,8 @@ set -e
 set -x
 set -o pipefail
 
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --model*)
@@ -57,26 +59,6 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       LORA="${1#*=}"
       ;;
-    --medusa*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      MEDUSA="${1#*=}"
-      ;;
-    --only_medusa_heads*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      MEDUSA_ONLY_HEADS="${1#*=}"
-      ;;
-    --num_medusa_heads*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      MEDUSA_NUM_HEADS="${1#*=}"
-      ;;
-    --num_medusa_layers*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      MEDUSA_NUM_LAYERS="${1#*=}"
-      ;;
-    --lm_head_medusa*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      MEDUSA_LM_HEAD="${1#*=}"
-      ;;
     *)
       >&2 printf "Error: Invalid argument\n"
       exit 1
@@ -101,19 +83,7 @@ CALIB_SIZE=${CALIB_SIZE:-512}
 TRAIN_BS=${TRAIN_BS:-4}
 EVAL_BS=${EVAL_BS:-4}
 DO_TRAIN=${DO_TRAIN:-True}
-MEDUSA=${MEDUSA:-False}
-MEDUSA_ONLY_HEADS=${MEDUSA_ONLY_HEADS:-True}
-MEDUSA_NUM_HEADS=${MEDUSA_NUM_HEADS:-1}
-MEDUSA_NUM_LAYERS=${MEDUSA_NUM_LAYERS:-1}
 
-MEDUSA_ARGS="--medusa $MEDUSA --medusa_only_heads $MEDUSA_ONLY_HEADS \
-             --medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
-
-if [ -z $MEDUSA_LM_HEAD ]; then
-    MEDUSA_ARGS=$MEDUSA_ARGS
-else
-    MEDUSA_ARGS="$MEDUSA_ARGS --medusa_lm_head $MEDUSA_LM_HEAD"
-fi
 
 if [ -z $QUANT_CFG ]; then
     QUANT_ARGS=""
@@ -163,7 +133,6 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --report_to tensorboard \
     --tf32 True \
     --lora $LORA \
-    $MEDUSA_ARGS \
     $FSDP_ARGS $QUANT_ARGS
 "
 

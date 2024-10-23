@@ -26,9 +26,7 @@ import tensorrt as trt
 import torch
 from cuda import cudart
 from polygraphy.backend.common import bytes_from_path
-from polygraphy.backend.trt import (
-    engine_from_bytes,
-)
+from polygraphy.backend.trt import engine_from_bytes
 
 numpy_to_torch_dtype_dict = {
     np.uint8: torch.uint8,
@@ -88,7 +86,6 @@ class Engine:
             self.tensors[name] = tensor
 
     def __call__(self, feed_dict, stream, use_cuda_graph=False):
-
         for name, buf in feed_dict.items():
             self.tensors[name].copy_(buf)
 

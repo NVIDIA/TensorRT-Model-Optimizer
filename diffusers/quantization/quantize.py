@@ -47,6 +47,7 @@ MODEL_ID = {
     "sd2.1-base": "stabilityai/stable-diffusion-2-1-base",
     "sd3-medium": "stabilityai/stable-diffusion-3-medium-diffusers",
     "flux-dev": "black-forest-labs/FLUX.1-dev",
+    "flux-schnell": "black-forest-labs/FLUX.1-schnell",
 }
 
 # You can include the desired arguments for calibration at this point.
@@ -218,11 +219,11 @@ def main():
         if args.model == "flux-dev":
             set_stronglytyped_precision(quant_config, "BFloat16")
         mtq.quantize(backbone, quant_config, forward_loop)
+        quantize_lvl(backbone, args.quant_level)
+        mtq.disable_quantizer(backbone, filter_func)
         mto.save(backbone, f"{args.quantized_torch_ckpt_save_path}")
     else:
         mto.restore(backbone, args.restore_from)
-    quantize_lvl(backbone, args.quant_level)
-    mtq.disable_quantizer(backbone, filter_func)
 
     # if you want to export the model on CPU, move the dummy input and the model to cpu and float32
     if args.onnx_dir is not None:

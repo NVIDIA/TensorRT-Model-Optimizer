@@ -60,7 +60,7 @@ trainer.save_model("<path to the output directory>")
 
 #### End-to-end Medusa Example
 
-This folder contains end-to-end runnable medusa fine-tuning pipeline where TinyLlama from huggingface is trained on ShareGPT dataset.
+This folder contains end-to-end runnable medusa fine-tuning pipeline where TinyLlama from huggingface is trained on Daring-Anteater dataset.
 
 First, we need to download the data:
 

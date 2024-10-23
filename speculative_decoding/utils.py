@@ -98,7 +98,6 @@ def preprocess(
     for conv_index, (conversation, target, prompt) in enumerate(
         zip(conversations, targets, prompts)
     ):
-
         for turn in conversation:
             if turn["role"] == "assistant":
                 content = turn["content"]

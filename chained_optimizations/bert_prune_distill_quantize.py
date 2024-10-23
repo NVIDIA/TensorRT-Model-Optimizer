@@ -39,6 +39,7 @@
 Example showcasing how to do end-to-end optimization of a BERT model on SQuAD using Model Optimizer.
 This includes GradNAS pruning, INT8 quantization, fine-tuning / QAT with distillation, and ONNX export.
 """
+
 import argparse
 import collections
 import json
@@ -875,7 +876,6 @@ def teacher_factory(model_name_or_path):
 
 # Model Optimizer: Define a custom distillation loss function that uses start and end logits
 class StartEndLogitsDistillationLoss(mtd.LogitsDistillationLoss):
-
     def forward(self, outputs_s, outputs_t):
         loss_start = super().forward(outputs_s.start_logits, outputs_t.start_logits)
         loss_end = super().forward(outputs_s.end_logits, outputs_t.end_logits)

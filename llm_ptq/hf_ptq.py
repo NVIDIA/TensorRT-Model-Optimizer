@@ -21,8 +21,6 @@
 
 import argparse
 import copy
-import json
-import os
 import random
 import time
 
@@ -30,11 +28,10 @@ import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
 from example_utils import get_model, get_model_type, get_tokenizer, is_model_on_gpu
-from tqdm import tqdm
 
+import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 import modelopt.torch.sparsity as mts
-import modelopt.torch.speculative as mtsp
 import modelopt.torch.utils.dataset_utils as dataset_utils
 from modelopt.torch.export import export_hf, export_tensorrt_llm_checkpoint
 
@@ -48,20 +45,31 @@ QUANT_CFG_CHOICES = {
     "w4a8_awq": "W4A8_AWQ_BETA_CFG",
 }
 
+mto.enable_huggingface_checkpointing()
+
 
 def auto_quantize(
-    model, qformat, auto_quantize_compression, calib_dataloader, calibrate_loop, batch_size=1
+    model, qformat, auto_quantize_bits, calib_dataloader, calibrate_loop, batch_size=1
 ):
+    qformat_list = qformat.split(",")
+    # Check if all provided quantization formats are supported
+    if args.export_fmt == "hf":
+        assert all(
+            qformat in ["fp8", "int4_awq"] for qformat in qformat_list
+        ), "One or more quantization formats provided are not supported for unified checkpoint export"
+    else:
+        assert all(
+            qformat in ["fp8", "int8_sq", "int4_awq", "w4a8_awq"] for qformat in qformat_list
+        ), "One or more quantization formats provided are not supported for tensorrt llm export"
+
     model, _ = mtq.auto_quantize(
         model,
+        constraints={"effective_bits": auto_quantize_bits},
         data_loader=calib_dataloader,
-        loss_func=lambda output, batch: output.loss,
-        constraints={"weight_compression": auto_quantize_compression},
-        quantization_formats=[
-            QUANT_CFG_CHOICES[qformat],
-            None,
-        ],  # TRTLLM only support one quantization format or None
-        collect_func=lambda x: x,
+        forward_step=lambda model, batch: model(**batch),
+        loss_func=lambda output, data: output.loss,
+        quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list]
+        + [None],  # TRTLLM only support one quantization format or None
         num_calib_steps=len(calib_dataloader),
         num_score_steps=min(
             len(calib_dataloader), 128 // batch_size
@@ -94,23 +102,31 @@ def quantize_model(model, quant_cfg, args, calib_dataloader=None):
     # quant_cfg = ...  # Setup quantization configuration
     # forward_loop = create_forward_loop(model=model, dataset_name="cnn_dailymail", tokenizer=tokenizer)
     # mtq.quantize(model, quant_cfg, forward_loop=forward_loop)
-    def calibrate_loop(model):
-        """Adjusts weights and scaling factors based on selected algorithms."""
-        print("Calibrating the model...")
-        for data in tqdm(calib_dataloader):
-            model(**data)
+
+    # The calibrate_loop is a custom defined method to run the model with the input data.
+    # The basic version looks like:
+    #
+    # def calibrate_loop(model, dataloader):
+    #     for data in dataloader:
+    #         model(**data)
+    #
+    # We also provided a util method to generate the forward_loop with additional error handlings.
+
+    calibrate_loop = dataset_utils.create_forward_loop(
+        calib_dataloader, dataloader=calib_dataloader
+    )
 
     assert not (
-        args.auto_quantize_compression and args.inference_pipeline_parallel > 1
+        args.auto_quantize_bits and args.inference_pipeline_parallel > 1
     ), "Auto Quantization is not supported for pipeline parallel size > 1"
 
     print("Starting quantization...")
     start_time = time.time()
-    if args.auto_quantize_compression:
+    if args.auto_quantize_bits:
         model = auto_quantize(
             model,
             args.qformat,
-            args.auto_quantize_compression,
+            args.auto_quantize_bits,
             calib_dataloader,
             calibrate_loop,
             args.batch_size,
@@ -129,29 +145,27 @@ def main(args):
     random.seed(RAND_SEED)
     np.random.seed(RAND_SEED)
 
+    # Check that only one quantization format is provided for non auto_quant case
+    if not args.auto_quantize_bits:
+        assert (
+            len(args.qformat.split(",")) == 1
+        ), "Quantization supports only one quantization format."
+
     # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
     if args.export_fmt == "hf":
-        assert (
-            not args.auto_quantize_compression
-        ), "Per-layer quantization config not supported by unified export api."
-        assert not args.medusa, "Medusa not supported by unified export api."
         assert (
             args.sparsity_fmt == "dense"
         ), f"Sparsity format {args.sparsity_fmt} not supported by unified export api."
 
-    if args.medusa:
-        with open(os.path.join(args.pyt_ckpt_path, "config.json")) as f:
-            medusa_config = json.load(f)
-            model = get_model(medusa_config["base_model_name_or_path"], args.device)
-            model_type = get_model_type(model)
-            tokenizer = get_tokenizer(
-                medusa_config["base_model_name_or_path"], model_type=model_type
-            )
-    else:
-        model = get_model(args.pyt_ckpt_path, args.device)
-        model_type = get_model_type(model)
-        tokenizer = get_tokenizer(args.pyt_ckpt_path, model_type=model_type)
+        if not args.auto_quantize_bits:
+            assert args.qformat in [
+                "int4_awq",
+                "fp8",
+            ], f"Quantization format {args.qformat} not supported for HF export path"
 
+    model = get_model(args.pyt_ckpt_path, args.device)
+    tokenizer = get_tokenizer(args.pyt_ckpt_path)
+    model_type = get_model_type(model)
     device = model.device
     if hasattr(model, "model"):
         device = model.model.device
@@ -181,15 +195,12 @@ def main(args):
         )
         mts.export(model)
 
-    if args.medusa:
-        config = {
-            "medusa_num_heads": medusa_config["medusa_num_heads"],
-            "medusa_num_layers": medusa_config["medusa_num_layers"],
-        }
-        mtsp.convert(model, [("medusa", config)])
-        mtsp.plugins.transformers.load_medusa_head(model, medusa_config["medusa_head_path"])
-
-    if args.qformat in ["fp8", "int8_sq", "int4_awq", "w4a8_awq"] and not args.naive_quantization:
+    if (
+        not args.auto_quantize_bits
+        and args.qformat in ["fp8", "int8_sq", "int4_awq", "w4a8_awq"]
+        and not args.naive_quantization
+    ) or args.auto_quantize_bits:
+        # If any qformat provided is not fp8, assert model is on GPU
         if args.qformat != "fp8":
             assert is_model_on_gpu(model), (
                 f"Model must be fully loaded onto GPUs for {args.qformat} calibration. "
@@ -205,7 +216,7 @@ def main(args):
         if args.batch_size == 0:
             # TODO: Enable auto-batch size calculation for AutoQuantize
             assert (
-                args.auto_quantize_compression is None
+                args.auto_quantize_bits is None
             ), "AutoQuantize requires batch_size to be specified, please specify batch_size."
             # Calibration/sparsification will actually take much more memory than regular inference
             # due to intermediate tensors for fake quantization. Setting sample_memory_usage_ratio
@@ -225,72 +236,73 @@ def main(args):
             batch_size=args.batch_size,
             num_samples=args.calib_size,
             device=device,
-            include_labels=args.auto_quantize_compression is not None,
+            include_labels=args.auto_quantize_bits is not None,
         )
-        if args.qformat in QUANT_CFG_CHOICES:
-            quant_cfg = getattr(mtq, QUANT_CFG_CHOICES[args.qformat])
-        else:
-            raise ValueError(f"Unsupported quantization format: {args.qformat}")
 
-        if "awq" in args.qformat:
-            quant_cfg = copy.deepcopy(getattr(mtq, QUANT_CFG_CHOICES[args.qformat]))
-            weight_quantizer = quant_cfg["quant_cfg"]["*weight_quantizer"]
-            if isinstance(weight_quantizer, list):
-                weight_quantizer = weight_quantizer[0]
-            weight_quantizer["block_sizes"][-1] = args.awq_block_size
+        quant_cfg = None
+        if not args.auto_quantize_bits:
+            if args.qformat in QUANT_CFG_CHOICES:
+                quant_cfg = getattr(mtq, QUANT_CFG_CHOICES[args.qformat])
+            else:
+                raise ValueError(f"Unsupported quantization format: {args.qformat}")
 
-            # Coarser optimal scale search seems to resolve the overflow in TRT-LLM for some models
-            if "w4a8_awq" == args.qformat and model_type in ["gemma", "mpt"]:
-                quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
+            if "awq" in args.qformat:
+                quant_cfg = copy.deepcopy(getattr(mtq, QUANT_CFG_CHOICES[args.qformat]))
+                weight_quantizer = quant_cfg["quant_cfg"]["*weight_quantizer"]
+                if isinstance(weight_quantizer, list):
+                    weight_quantizer = weight_quantizer[0]
+                # If awq_block_size argument is provided, update weight_quantizer
+                if args.awq_block_size:
+                    weight_quantizer["block_sizes"][-1] = args.awq_block_size
 
-        # Always turn on FP8 kv cache to save memory footprint.
-        # For int8_sq, we do not quantize kv cache to preserve accuracy.
-        # We turn off FP8 kv cache for unified_hf checkpoint
-        enable_quant_kv_cache = "int8" not in args.qformat and "hf" not in args.export_fmt
-        print(f'{"Enable" if enable_quant_kv_cache else "Disable"} KV cache quantization')
-        quant_cfg["quant_cfg"]["*output_quantizer"] = {
-            "num_bits": 8 if args.qformat == "int8_sq" else (4, 3),
-            "axis": None,
-            "enable": enable_quant_kv_cache,
-        }
+                # Coarser optimal scale search seems to resolve the overflow in TRT-LLM for some models
+                if "w4a8_awq" == args.qformat and model_type in ["gemma", "mpt"]:
+                    quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
 
-        # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
-        if model_type == "gemma" and args.qformat == "int8_sq":
-            quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
+            # Always turn on FP8 kv cache to save memory footprint.
+            # For int8_sq, we do not quantize kv cache to preserve accuracy.
+            # We turn off FP8 kv cache for unified_hf checkpoint
+            enable_quant_kv_cache = "int8_sq" not in args.qformat and "hf" not in args.export_fmt
+            print(f'{"Enable" if enable_quant_kv_cache else "Disable"} KV cache quantization')
+            quant_cfg["quant_cfg"]["*output_quantizer"] = {
+                "num_bits": 8 if args.qformat == "int8_sq" else (4, 3),
+                "axis": None,
+                "enable": enable_quant_kv_cache,
+            }
 
-        # Medusa generate can only run on single GPU per official implementation.
-        # Therefore, we skip generate here in case multiple GPUs are needed for inference
+            # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
+            if model_type == "gemma" and "int8_sq" in args.qformat:
+                quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
+
         # Only run single sample for preview
         input_ids = next(iter(calib_dataloader))["input_ids"][0:1]
-        if not args.medusa and not args.vlm:
-            generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
+        generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
 
         model = quantize_model(model, quant_cfg, args, calib_dataloader)
         # Lets print the quantization summary
         mtq.print_quant_summary(model)
 
-        # Medusa generate can only run on single GPU per official implementation.
-        # Therefore, we skip generate here in case multiple GPUs are needed for inference
-        if not args.medusa and not args.vlm:
-            # Run some samples
-            generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
+        # Run some samples
+        generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
 
-            print("--------")
-            print(f"example test input: {tokenizer.batch_decode(input_ids)}")
-            print("--------")
-            print(
-                "example outputs before ptq: "
-                f"{tokenizer.batch_decode(generated_ids_before_ptq[:, input_ids.shape[1]:])}"
-            )
-            print("--------")
-            print(
-                f"example outputs after ptq: {tokenizer.batch_decode(generated_ids_after_ptq[:, input_ids.shape[1]:])}"
-            )
+        print("--------")
+        print(f"example test input: {tokenizer.batch_decode(input_ids)}")
+        print("--------")
+        print(
+            "example outputs before ptq: "
+            f"{tokenizer.batch_decode(generated_ids_before_ptq[:, input_ids.shape[1]:])}"
+        )
+        print("--------")
+        print(
+            f"example outputs after ptq: {tokenizer.batch_decode(generated_ids_after_ptq[:, input_ids.shape[1]:])}"
+        )
     else:
         assert model_type != "dbrx", f"Does not support export {model_type} without quantizaton"
         print(f"No quantization applied, export {device} model")
 
-    if getattr(model.config, "model_type", None) in ["t5"]:
+    if getattr(model.config, "model_type", None) in ["t5", "gemma2"]:
+        export_dtype = torch.bfloat16
+    elif args.qformat == "bf16":
         export_dtype = torch.bfloat16
     else:
         export_dtype = torch.float16
@@ -337,13 +349,15 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--pyt_ckpt_path", help="Specify where the PyTorch checkpoint path is", required=True
+        "--pyt_ckpt_path",
+        help="Specify where the PyTorch checkpoint path is",
+        required=True,
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument(
         "--qformat",
         help=(
-            "Quantization format. If --auto_quantize_compression is set, this argument specifies the quantization "
+            "Quantization format. If --auto_quantize_bits is set, this argument specifies the quantization "
             "format for optimal per-layer AutoQuantize search."
         ),
         default="fp8",
@@ -363,7 +377,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--inference_tensor_parallel", type=int, default=1)
     parser.add_argument("--inference_pipeline_parallel", type=int, default=1)
-    parser.add_argument("--awq_block_size", default=128)
+    parser.add_argument("--awq_block_size", default=0, type=int)
     parser.add_argument(
         "--sparsity_fmt",
         help="Sparsity format.",
@@ -372,17 +386,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--naive_quantization", default=False, action="store_true")
     parser.add_argument(
-        "--medusa",
-        help="Specify whether this is a Medusa model",
-        default=False,
-        action="store_true",
-    )
-    parser.add_argument(
-        "--auto_quantize_compression",
+        "--auto_quantize_bits",
         default=None,
         type=float,
         help=(
-            "Weight compression constraint for AutoQuantize. If not set, "
+            "Effective bits constraint for AutoQuantize. If not set, "
             "regular quantization without AutoQuantize search will be applied."
         ),
     )

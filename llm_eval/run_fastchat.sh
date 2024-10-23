@@ -28,6 +28,11 @@ set -x
 hf_model_name=""
 engine_dir=""
 nim_model_name=""
+answer_file=""
+quant_cfg=""
+auto_quantize_bits=""
+calib_size=""
+calib_batch_size=""
 
 # Parse command line arguments
 while [[ "$1" != "" ]]; do
@@ -43,6 +48,26 @@ while [[ "$1" != "" ]]; do
         -n | --nim_model_name )
             shift
             nim_model_name=$1
+            ;;
+        --answer_file )
+            shift
+            answer_file=$1
+            ;;
+        --quant_cfg )
+            shift
+            quant_cfg=$1
+            ;;
+        --auto_quantize_bits )
+            shift
+            auto_quantize_bits=$1
+            ;;
+        --calib_size )
+            shift
+            calib_size=$1
+            ;;
+        --calib_batch_size )
+            shift
+            calib_batch_size=$1
             ;;
         * )
             usage
@@ -62,6 +87,25 @@ fi
 
 if [ "$nim_model_name" != "" ]; then
     nim_model_name=" --nim-model $nim_model_name "
+fi
+
+if [ "$answer_file" != "" ]; then
+    answer_file=" --answer-file $answer_file "
+fi
+
+if [ "$quant_cfg" != "" ]; then
+    quant_args="--quant_cfg $quant_cfg"
+    if [ "$auto_quantize_bits" != "" ]; then
+        quant_args+=" --auto_quantize_bits $auto_quantize_bits"
+    fi
+    if [ "$calib_size" != "" ]; then
+        quant_args+=" --calib_size $calib_size"
+    fi
+    if [ "$calib_batch_size" != "" ]; then
+        quant_args+=" --calib_batch_size $calib_batch_size"
+    fi
+else
+    quant_args=""
 fi
 
 # Clone FastChat repository
@@ -85,4 +129,6 @@ PYTHONPATH=FastChat:$PYTHONPATH python gen_model_answer.py \
     --temperature 0.0001 \
     --top-p 0.0001 \
     $engine_dir \
-    $nim_model_name
+    $nim_model_name \
+    $answer_file \
+    $quant_args
