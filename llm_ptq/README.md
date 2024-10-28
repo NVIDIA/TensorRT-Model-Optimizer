@@ -94,7 +94,7 @@ Falcon 7B | Yes | Yes | No | No
 MPT 7B, 30B | Yes | Yes | Yes | Yes
 Baichuan 1, 2 | Yes | Yes | Yes | Yes
 ChatGLM2, 3 6B | No | No | Yes | No
-Bloom | bloom | Yes | Yes | Yes
+Bloom | Yes | Yes | Yes | Yes
 Phi-1,2,3 | Yes | Yes | Yes | Yes<sup>4</sup>
 Nemotron 8B | Yes | No | Yes | No
 Gemma 2B, 7B | Yes | No | Yes | Yes

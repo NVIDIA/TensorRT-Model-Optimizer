@@ -22,7 +22,7 @@
 import argparse
 
 import torch
-from config import DYNAMIC_SHAPES, get_io_shapes, update_dynamic_axes
+from config import DYNAMIC_SHAPES, get_io_shapes, remove_nesting, update_dynamic_axes
 from diffusers import (
     DiffusionPipeline,
     FluxPipeline,
@@ -110,6 +110,11 @@ def main():
         update_dynamic_axes(args.model, dynamic_axes)
 
     compilation_args = DYNAMIC_SHAPES[args.model]
+
+    # We only need to remove the nesting for SDXL models as they contain the nested input added_cond_kwargs
+    # which are renamed by the DeviceModel
+    if args.onnx_load_path != "" and args.model in ["sdxl-1.0", "sdxl-turbo"]:
+        remove_nesting(compilation_args)
 
     # Define deployment configuration
     deployment = {

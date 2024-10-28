@@ -203,6 +203,21 @@ def create_dynamic_shapes(dynamic_shapes):
     }
 
 
+def remove_nesting(compilation_args):
+    compilation_args["dynamic_shapes"]["minShapes"]["text_embeds"] = compilation_args[
+        "dynamic_shapes"
+    ]["minShapes"].pop("added_cond_kwargs.text_embeds")
+    compilation_args["dynamic_shapes"]["minShapes"]["time_ids"] = compilation_args[
+        "dynamic_shapes"
+    ]["minShapes"].pop("added_cond_kwargs.time_ids")
+    compilation_args["dynamic_shapes"]["optShapes"]["text_embeds"] = compilation_args[
+        "dynamic_shapes"
+    ]["optShapes"].pop("added_cond_kwargs.text_embeds")
+    compilation_args["dynamic_shapes"]["optShapes"]["time_ids"] = compilation_args[
+        "dynamic_shapes"
+    ]["optShapes"].pop("added_cond_kwargs.time_ids")
+
+
 DYNAMIC_SHAPES = {
     "sdxl-1.0": create_dynamic_shapes(SDXL_DYNAMIC_SHAPES),
     "sdxl-turbo": create_dynamic_shapes(SDXL_DYNAMIC_SHAPES),
@@ -236,5 +251,8 @@ def get_io_shapes(model, onnx_load_path):
     else:
         output_name = "out.0"
     io_shapes = IO_SHAPES[model]
-    io_shapes[output_name] = io_shapes.pop("out.0")
+    # For models that are loaded from the output name will not be "out.0"
+    # so we need to update the dictionary key to match the output name
+    if "out.0" in io_shapes.keys():
+        io_shapes[output_name] = io_shapes.pop("out.0")
     return io_shapes

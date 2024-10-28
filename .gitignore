@@ -3,8 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# C extensions
+# C, CPP extensions
 *.so
+.rendered.*.cpp
+.rendered.*.o
 # Exclude the plugin file
 !libfp8convkernel.so
 
@@ -177,6 +179,6 @@ cython_debug/
 **.pb
 **.onnx
 **.ckpt
-
-# Ignore temporary files created by tox
-pyproject.toml.bak
+**.safetensors
+**.bin
+**.pkl
