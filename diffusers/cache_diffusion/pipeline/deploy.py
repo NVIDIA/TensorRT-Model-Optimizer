@@ -148,7 +148,10 @@ def load_engines(backbone, engine_path: Path, batch_size: int = 1):
             batch_size=batch_size,
         )
     # TODO: Free and clean up the origin pytorch cuda memory
-
+    backbone.mid_block.to_empty(device='cpu')
+    backbone.down_blocks.to_empty(device='cpu')
+    backbone.up_blocks.to_empty(device='cpu')
+    torch.cuda.empty_cache()
 
 def export_onnx(backbone, onnx_path: Path):
     for name, module in backbone.named_modules():
