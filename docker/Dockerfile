@@ -25,8 +25,7 @@ RUN cd /usr/local/lib/python3.10/dist-packages/tensorrt_llm/libs && ln -s libnvi
 ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/tensorrt_llm/libs:$LD_LIBRARY_PATH
 
 # ModelOpt installation with all optional dependencies.
-ARG MODELOPT_VERSION=0.17.0
-RUN pip install "nvidia-modelopt[all]~=$MODELOPT_VERSION" -U
+RUN pip install "nvidia-modelopt[all]" -U
 RUN python -c "import modelopt"
 
 # Export the path to 'libcudnn.so.X' needed by 'libonnxruntime_providers_tensorrt.so'
