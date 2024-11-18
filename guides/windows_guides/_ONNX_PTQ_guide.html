@@ -1,0 +1,444 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ONNX Quantization - Windows &mdash; Model Optimizer 0.19.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
+      <link rel="stylesheet" type="text/css" href="../../_static/togglebutton.css?v=13237357" />
+      <link rel="stylesheet" type="text/css" href="../../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../../_static/custom.css?v=7a224f4b" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../../_static/copybutton.js?v=20d3d275"></script>
+      <script src="../../_static/tabs.js?v=3ee01567"></script>
+      <script>let toggleHintShow = 'Click to show';</script>
+      <script>let toggleHintHide = 'Click to hide';</script>
+      <script>let toggleOpenOnPrint = 'true';</script>
+      <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
+      <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
+      <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="Pruning" href="../2_pruning.html" />
+    <link rel="prev" title="ONNX Quantization - Linux (Beta)" href="../_onnx_quantization.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            TensorRT Model Optimizer
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/1_overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/2_installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/7_sparsity.html">Quick Start: Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="../1_quantization.html">Quantization</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="../_basic_quantization.html">Basic Concepts</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../_choosing_quant_methods.html">Best practices to choose the right quantization methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../_pytorch_quantization.html">PyTorch Quantization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../_onnx_quantization.html">ONNX Quantization - Linux (Beta)</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">ONNX Quantization - Windows</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#modelopt-windows-quantization">ModelOpt-Windows Quantization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#preparing-and-optimizing-base-models-for-onnx-ptq">Preparing and Optimizing Base Models for ONNX PTQ</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#apply-post-training-quantization-ptq">Apply Post Training Quantization (PTQ)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#deploy-quantized-onnx-model">Deploy Quantized ONNX Model</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../2_pruning.html">Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../3_nas.html">NAS</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../4_distillation.html">Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../5_sparsity.html">Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../6_save_load.html">Saving &amp; Restoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../7_speculative_decoding.html">Speculative Decoding</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../reference/0_changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../reference/1_modelopt_api.html">modelopt API</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Support</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../support/1_contact.html">Contact us</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../support/2_faqs.html">FAQs</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">TensorRT Model Optimizer</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../1_quantization.html">Quantization</a></li>
+      <li class="breadcrumb-item active">ONNX Quantization - Windows</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../../_sources/guides/windows_guides/_ONNX_PTQ_guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="onnx-quantization-windows">
+<span id="onnx-ptq-guide-windows"></span><h1>ONNX Quantization - Windows<a class="headerlink" href="#onnx-quantization-windows" title="Link to this heading"></a></h1>
+<p>Quantization is a powerful method to reduce model size and boost computational efficiency. By converting model weights to low-precision formats, significant storage and memory savings are achieved. Quantization applies lower-precision data types to model parameters; for example:</p>
+<ul class="simple">
+<li><p>FP16 uses 2 bytes per value.</p></li>
+<li><p>INT4 requires only 4 bits (0.5 bytes) per value.</p></li>
+</ul>
+<p>This transformation reduces model size and allows deployment on systems with limited memory.</p>
+<p><strong>Quantization Techniques</strong>:</p>
+<ol class="arabic simple">
+<li><p><strong>Post-Training Quantization (PTQ)</strong>: Quantization is applied after model training.</p></li>
+<li><p><strong>Quantization-Aware Training (QAT)</strong>: Quantization is integrated during model training.</p></li>
+</ol>
+<section id="modelopt-windows-quantization">
+<h2>ModelOpt-Windows Quantization<a class="headerlink" href="#modelopt-windows-quantization" title="Link to this heading"></a></h2>
+<p>The TensorRT Model Optimizer - Windows is designed to create optimized ONNX models for DirectML and TensorRT* backends.</p>
+<p><strong>Supported Techniques</strong>:</p>
+<ul class="simple">
+<li><p>PTQ: Supported in ONNX</p></li>
+<li><p>QAT: Experimental for PyTorch</p></li>
+</ul>
+</section>
+<section id="preparing-and-optimizing-base-models-for-onnx-ptq">
+<h2>Preparing and Optimizing Base Models for ONNX PTQ<a class="headerlink" href="#preparing-and-optimizing-base-models-for-onnx-ptq" title="Link to this heading"></a></h2>
+<p>ModelOpt-Windows’s ONNX PTQ API requires a base ONNX model, which can be obtained from Hugging Face or various ONNX exporter tools such as:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://pytorch.org/docs/stable/onnx.html" rel="noopener noreferrer" target="_blank">torch.onnx.export</a></p></li>
+<li><p><a class="reference external" href="https://huggingface.co/docs/optimum/en/exporters/onnx/usage_guides/export_a_model/" rel="noopener noreferrer" target="_blank">HuggingFace-Optimum</a></p></li>
+<li><p><a class="reference external" href="https://github.com/microsoft/onnxruntime-genai/" rel="noopener noreferrer" target="_blank">GenAI</a></p></li>
+<li><p><a class="reference external" href="https://github.com/microsoft/Olive/" rel="noopener noreferrer" target="_blank">Olive</a></p></li>
+</ul>
+<p>Each tool offers unique features and options for conversion from PyTorch or other frameworks to the ONNX format.</p>
+<p><strong>Base Model Precision</strong>: ModelOpt-Windows supports base models in both FP16 and FP32 formats. Choosing FP16 over FP32 can help reduce memory usage and improve speed, especially on hardware optimized for lower precision, such as NVIDIA GPUs with Tensor Cores. However, FP16’s smaller dynamic range may require careful tuning.</p>
+<p><strong>ONNX FP16 Conversion Tools</strong>: Some popular FP32 to FP16 ONNX conversion tools include:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://onnxruntime.ai/docs/performance/model-optimizations/float16.html" rel="noopener noreferrer" target="_blank">ONNX Converter Tool</a></p></li>
+<li><p>Hugging Face <em>Optimum</em> tool with a <em>dtype</em> argument for FP16 generation - Refer to optimum’s <a class="reference external" href="https://huggingface.co/docs/optimum/en/exporters/onnx/usage_guides/export_a_model/" rel="noopener noreferrer" target="_blank">CLI</a>, and <a class="reference external" href="https://github.com/huggingface/optimum/blob/main/optimum/exporters/onnx/convert.py/" rel="noopener noreferrer" target="_blank">API</a> usage.</p></li>
+<li><p>Microsoft Olive, which supports FP16 via configuration files. Refer <em>float16</em> option in this example <a class="reference external" href="https://github.com/microsoft/Olive/blob/main/examples/directml/llm/config_llm.json/" rel="noopener noreferrer" target="_blank">config</a>.</p></li>
+</ul>
+<p>Once base model is obtained, ModelOpt-Windows’s PTQ can be applied to get the quantized mode. The resulting quantized model can be deployed on DirectML and TensorRT* backend.</p>
+</section>
+<section id="apply-post-training-quantization-ptq">
+<span id="apply-onnx-ptq"></span><h2>Apply Post Training Quantization (PTQ)<a class="headerlink" href="#apply-post-training-quantization-ptq" title="Link to this heading"></a></h2>
+<p><strong>Prepare calibration data</strong></p>
+<p>The SmoothQuant (SQ) and Activation-Aware-Quantization (AWQ) algorithms require calibration data during quantization. If the <em>quantize</em> API’s calibration-data argument is not provided (i.e., set to <em>None</em>), ModelOpt-Windows will internally use randomly generated model inputs for calibration. Refer to the sample code below for preparing calibration inputs.</p>
+<p>Preparing calibration data for ModelOpt-Windows involves two steps:</p>
+<ol class="arabic simple">
+<li><p><strong>Generate Token Encodings</strong>: Use a dataset like <em>cnn-dailymail</em> or <em>pile</em> with the model’s tokenizer to generate token encodings and related data from the representative dataset</p></li>
+<li><p><strong>Format for Model Input</strong>: Convert encodings into model-compatible formats.</p></li>
+</ol>
+<p>See the code example below for details.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Refer get_calib_inputs() method below to prepare calibration inputs for your model.</span>
+
+<span class="c1"># Note that names and shapes of inputs and outputs can vary from model to model, and also between ONNX exporter tools.</span>
+<span class="c1"># So, use following code as reference for preparing calibration data for your model.</span>
+
+<span class="k">def</span> <span class="nf">make_model_input</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">,</span>
+    <span class="n">input_ids_arg</span><span class="p">,</span>
+    <span class="n">attention_mask_arg</span><span class="p">,</span>
+    <span class="n">add_past_kv_inputs</span><span class="p">,</span>
+    <span class="n">device</span><span class="p">,</span>
+    <span class="n">use_fp16</span><span class="p">,</span>
+    <span class="n">use_buffer_share</span><span class="p">,</span>
+    <span class="n">add_position_ids</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="n">input_ids</span> <span class="o">=</span> <span class="n">input_ids_arg</span>
+    <span class="n">attention_mask</span> <span class="o">=</span> <span class="n">attention_mask_arg</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">input_ids_arg</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="n">input_ids</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">input_ids_arg</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="n">attention_mask</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">attention_mask_arg</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+
+    <span class="n">inputs</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;input_ids&quot;</span><span class="p">:</span> <span class="n">input_ids</span><span class="o">.</span><span class="n">contiguous</span><span class="p">(),</span>
+        <span class="s2">&quot;attention_mask&quot;</span><span class="p">:</span> <span class="n">attention_mask</span><span class="o">.</span><span class="n">contiguous</span><span class="p">(),</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="n">add_position_ids</span><span class="p">:</span>
+        <span class="n">position_ids</span> <span class="o">=</span> <span class="n">attention_mask</span><span class="o">.</span><span class="n">long</span><span class="p">()</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">position_ids</span><span class="o">.</span><span class="n">masked_fill_</span><span class="p">(</span><span class="n">attention_mask</span> <span class="o">==</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">inputs</span><span class="p">[</span><span class="s2">&quot;position_ids&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">position_ids</span><span class="o">.</span><span class="n">contiguous</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">add_past_kv_inputs</span><span class="p">:</span>
+        <span class="n">torch_dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float16</span> <span class="k">if</span> <span class="n">use_fp16</span> <span class="k">else</span> <span class="n">torch</span><span class="o">.</span><span class="n">float32</span>
+        <span class="n">batch_size</span><span class="p">,</span> <span class="n">sequence_length</span> <span class="o">=</span> <span class="n">input_ids</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">max_sequence_length</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">max_position_embeddings</span>
+        <span class="n">num_heads</span><span class="p">,</span> <span class="n">head_size</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">num_key_value_heads</span><span class="p">,</span>
+            <span class="n">config</span><span class="o">.</span><span class="n">hidden_size</span> <span class="o">//</span> <span class="n">config</span><span class="o">.</span><span class="n">num_attention_heads</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="s2">&quot;head_dim&quot;</span><span class="p">):</span>
+            <span class="n">head_size</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">head_dim</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">num_hidden_layers</span><span class="p">):</span>
+            <span class="n">past_key</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+                <span class="n">batch_size</span><span class="p">,</span>
+                <span class="n">num_heads</span><span class="p">,</span>
+                <span class="n">max_sequence_length</span> <span class="k">if</span> <span class="n">use_buffer_share</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="n">head_size</span><span class="p">,</span>
+                <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">torch_dtype</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">past_value</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+                <span class="n">batch_size</span><span class="p">,</span>
+                <span class="n">num_heads</span><span class="p">,</span>
+                <span class="n">max_sequence_length</span> <span class="k">if</span> <span class="n">use_buffer_share</span> <span class="k">else</span> <span class="mi">0</span><span class="p">,</span>
+                <span class="n">head_size</span><span class="p">,</span>
+                <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+                <span class="n">dtype</span><span class="o">=</span><span class="n">torch_dtype</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">inputs</span><span class="o">.</span><span class="n">update</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="sa">f</span><span class="s2">&quot;past_key_values.</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">.key&quot;</span><span class="p">:</span> <span class="n">past_key</span><span class="o">.</span><span class="n">contiguous</span><span class="p">(),</span>
+                    <span class="sa">f</span><span class="s2">&quot;past_key_values.</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">.value&quot;</span><span class="p">:</span> <span class="n">past_value</span><span class="o">.</span><span class="n">contiguous</span><span class="p">(),</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">inputs</span>
+
+
+<span class="k">def</span> <span class="nf">get_calib_inputs</span><span class="p">(</span>
+    <span class="n">dataset_name</span><span class="p">,</span>
+    <span class="n">model_name</span><span class="p">,</span>
+    <span class="n">cache_dir</span><span class="p">,</span>
+    <span class="n">calib_size</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">,</span>
+    <span class="n">block_size</span><span class="p">,</span>
+    <span class="n">device</span><span class="p">,</span>
+    <span class="n">use_fp16</span><span class="p">,</span>
+    <span class="n">use_buffer_share</span><span class="p">,</span>
+    <span class="n">add_past_kv_inputs</span><span class="p">,</span>
+    <span class="n">max_calib_rows_to_load</span><span class="p">,</span>
+    <span class="n">add_position_ids</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="c1"># from transformers import LlamaConfig</span>
+    <span class="c1"># config = LlamaConfig.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True)</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">AutoConfig</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
+        <span class="n">model_name</span><span class="p">,</span> <span class="n">use_auth_token</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache_dir</span><span class="o">=</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">trust_remote_code</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
+        <span class="n">model_name</span><span class="p">,</span> <span class="n">use_auth_token</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache_dir</span><span class="o">=</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">trust_remote_code</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">)</span>
+    <span class="n">tokenizer</span><span class="o">.</span><span class="n">add_special_tokens</span><span class="p">({</span><span class="s2">&quot;pad_token&quot;</span><span class="p">:</span> <span class="s2">&quot;[PAD]&quot;</span><span class="p">})</span>
+    <span class="n">tokenizer</span><span class="o">.</span><span class="n">pad_token</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token</span>
+
+    <span class="k">assert</span> <span class="p">(</span>
+        <span class="n">calib_size</span> <span class="o">&lt;=</span> <span class="n">max_calib_rows_to_load</span>
+    <span class="p">),</span> <span class="s2">&quot;calib size should be no more than max_calib_rows_to_load&quot;</span>
+
+    <span class="n">dataset2</span> <span class="o">=</span> <span class="n">load_dataset</span><span class="p">(</span><span class="s2">&quot;cnn_dailymail&quot;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;3.0.0&quot;</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="s2">&quot;train&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">max_calib_rows_to_load</span><span class="p">))</span>
+    <span class="n">column</span> <span class="o">=</span> <span class="s2">&quot;article&quot;</span>
+
+    <span class="c1"># dataset2 = dataset2.shuffle(seed=42)</span>
+    <span class="n">dataset2</span> <span class="o">=</span> <span class="n">dataset2</span><span class="p">[</span><span class="n">column</span><span class="p">][:</span><span class="n">calib_size</span><span class="p">]</span>
+    <span class="n">batch_encoded</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">batch_encode_plus</span><span class="p">(</span>
+        <span class="n">dataset2</span><span class="p">,</span> <span class="n">return_tensors</span><span class="o">=</span><span class="s2">&quot;pt&quot;</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">truncation</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">max_length</span><span class="o">=</span><span class="n">block_size</span>
+    <span class="p">)</span>  <span class="c1"># return_tensors=&quot;pt&quot;,</span>
+    <span class="n">batch_encoded</span> <span class="o">=</span> <span class="n">batch_encoded</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="n">batch_encoded_input_ids</span> <span class="o">=</span> <span class="n">batch_encoded</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">]</span>
+    <span class="n">batch_encoded_attention_mask</span> <span class="o">=</span> <span class="n">batch_encoded</span><span class="p">[</span><span class="s2">&quot;attention_mask&quot;</span><span class="p">]</span>
+    <span class="n">calib_dataloader_input_ids</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">batch_encoded_input_ids</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">calib_dataloader_attenton_mask</span> <span class="o">=</span> <span class="n">DataLoader</span><span class="p">(</span><span class="n">batch_encoded_attention_mask</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">shuffle</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="n">number_of_batched_samples</span> <span class="o">=</span> <span class="n">calib_size</span> <span class="o">//</span> <span class="n">batch_size</span>
+
+    <span class="n">batched_input_ids</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">calib_dataloader_input_ids</span><span class="p">):</span>
+        <span class="n">batched_input_ids</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">==</span> <span class="p">(</span><span class="n">number_of_batched_samples</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="n">batched_attention_mask</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">data</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">calib_dataloader_attenton_mask</span><span class="p">):</span>
+        <span class="n">batched_attention_mask</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">idx</span> <span class="o">==</span> <span class="p">(</span><span class="n">number_of_batched_samples</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">break</span>
+
+    <span class="n">batched_inputs_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">number_of_batched_samples</span><span class="p">):</span>
+        <span class="n">input_ids</span> <span class="o">=</span> <span class="n">batched_input_ids</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="n">attention_mask</span> <span class="o">=</span> <span class="n">batched_attention_mask</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+        <span class="n">inputs</span> <span class="o">=</span> <span class="n">make_model_input</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">input_ids</span><span class="p">,</span> <span class="n">attention_mask</span><span class="p">,</span> <span class="n">add_past_kv_inputs</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span>
+                                  <span class="n">use_fp16</span><span class="p">,</span>
+                                  <span class="n">use_buffer_share</span><span class="p">,</span>
+                                  <span class="n">add_position_ids</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">inputs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">input_name</span><span class="p">:</span> <span class="n">torch_tensor</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span> <span class="k">for</span> <span class="n">input_name</span><span class="p">,</span> <span class="n">torch_tensor</span> <span class="ow">in</span> <span class="n">inputs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="p">}</span>
+        <span class="n">batched_inputs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">batched_inputs_list</span>
+</pre></div>
+</div>
+<p><strong>Call Quantization API</strong></p>
+<p>The example below demonstrates how to quantize an ONNX model using ModelOpt-Windows with INT4 precision.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">modelopt.onnx.quantization.int4</span> <span class="kn">import</span> <span class="n">quantize</span> <span class="k">as</span> <span class="n">quantize_int4</span>
+<span class="c1"># import other packages as needed</span>
+<span class="n">calib_inputs</span> <span class="o">=</span> <span class="n">get_calib_inputs</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">model_name</span><span class="p">,</span> <span class="n">cache_dir</span><span class="p">,</span> <span class="n">calib_size</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span><span class="o">...</span><span class="p">)</span>
+<span class="n">quantized_onnx_model</span> <span class="o">=</span> <span class="n">quantize_int4</span><span class="p">(</span>
+    <span class="n">onnx_path</span><span class="p">,</span>
+    <span class="n">calibration_method</span><span class="o">=</span><span class="s2">&quot;awq_lite&quot;</span><span class="p">,</span>
+    <span class="n">calibration_data_reader</span><span class="o">=</span><span class="kc">None</span> <span class="k">if</span> <span class="n">use_random_calib</span> <span class="k">else</span> <span class="n">calib_inputs</span><span class="p">,</span>
+    <span class="n">calibration_eps</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;dml&quot;</span><span class="p">,</span> <span class="s2">&quot;cpu&quot;</span><span class="p">]</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Check <a class="reference internal" href="../../reference/generated/modelopt.onnx.quantization.int4.html#modelopt.onnx.quantization.int4.quantize" title="modelopt.onnx.quantization.int4.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">modelopt.onnx.quantization.quantize_int4</span></code></a> for details about quantization API.</p>
+<p><strong>Upgrade Opset to 21+</strong></p>
+<p>ModelOpt-Windows uses ONNX’s <a class="reference external" href="https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html" rel="noopener noreferrer" target="_blank">DequantizeLinear</a> (DQ) nodes, which support INT4 data-type from opset version 21 onward. Ensure the model’s opset version is 21 or higher, for deployment on DirectML backend.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example steps to check opset</span>
+
+<span class="k">def</span> <span class="nf">get_onnx_opset</span><span class="p">(</span><span class="n">model_path</span><span class="p">):</span>
+  <span class="c1"># Load the ONNX model</span>
+  <span class="n">model</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">model_path</span><span class="p">)</span>
+
+  <span class="c1"># Get the opset import information</span>
+  <span class="n">opset_imports</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">opset_import</span>
+
+  <span class="c1"># Print opset information</span>
+  <span class="k">for</span> <span class="n">opset</span> <span class="ow">in</span> <span class="n">opset_imports</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Domain: </span><span class="si">{</span><span class="n">opset</span><span class="o">.</span><span class="n">domain</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Version: </span><span class="si">{</span><span class="n">opset</span><span class="o">.</span><span class="n">version</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Use the above steps to inspect the ONNX model’s opset version.</p>
+<blockquote>
+<div><dl class="simple">
+<dt><em>ONNX Opset Upgrade Tools</em>:</dt><dd><ul class="simple">
+<li><p><a class="reference external" href="https://github.com/onnx/onnx/blob/main/onnx/version_converter.py" rel="noopener noreferrer" target="_blank">ONNX opset conversion utility</a></p></li>
+<li><p><a class="reference external" href="https://huggingface.co/docs/optimum/en/exporters/onnx/usage_guides/export_a_model" rel="noopener noreferrer" target="_blank">Optimum-CLI</a></p></li>
+</ul>
+</dd>
+</dl>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example steps for opset-21 upgrade of default (onnx) domain</span>
+<span class="c1"># Update opsets for other domains as needed for your requirement (or exclude them as suitable).</span>
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">onnx_path</span><span class="p">)</span>
+
+<span class="n">op</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">OperatorSetIdProto</span><span class="p">()</span>
+<span class="n">op</span><span class="o">.</span><span class="n">version</span> <span class="o">=</span> <span class="mi">21</span>
+<span class="n">new_opset_imports</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">helper</span><span class="o">.</span><span class="n">make_opsetid</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="mi">21</span><span class="p">),</span>  <span class="c1"># Default domain with opset version 15</span>
+    <span class="c1">#helper.make_opsetid(&quot;ai.onnx.ml&quot;, 2)  # ai.onnx.ml domain with opset version 2</span>
+    <span class="n">helper</span><span class="o">.</span><span class="n">make_opsetid</span><span class="p">(</span><span class="s2">&quot;com.microsoft&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+<span class="p">]</span>
+
+<span class="n">updated_quantized_onnx_model</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">helper</span><span class="o">.</span><span class="n">make_model</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">graph</span><span class="p">,</span> <span class="n">opset_imports</span><span class="o">=</span><span class="n">new_opset_imports</span><span class="p">)</span>
+</pre></div>
+</div>
+</div></blockquote>
+<p><strong>Save Quantized Model</strong></p>
+<p>To save a quantized ONNX model with external data, use the following code:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">onnx</span><span class="o">.</span><span class="n">save_model</span><span class="p">(</span>
+    <span class="n">updated_quantized_onnx_model</span><span class="p">,</span>
+    <span class="n">output_path</span><span class="p">,</span>
+    <span class="n">save_as_external_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">location</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;_data&quot;</span><span class="p">,</span>
+    <span class="n">size_threshold</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="deploy-quantized-onnx-model">
+<h2>Deploy Quantized ONNX Model<a class="headerlink" href="#deploy-quantized-onnx-model" title="Link to this heading"></a></h2>
+<p>Inference of the quantized models can be done using tools like <a class="reference external" href="https://github.com/microsoft/onnxruntime-genai/" rel="noopener noreferrer" target="_blank">GenAI</a>, <a class="reference external" href="https://onnxruntime.ai//" rel="noopener noreferrer" target="_blank">OnnxRunTime (ORT)</a>. These APIs can do inference on backends like DML. For details about DirectML deployment, see <a class="reference internal" href="../../deployment/2_directml_deployment.html#directml-deployment"><span class="std std-ref">DirectML Deployment</span></a>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../_onnx_quantization.html" class="btn btn-neutral float-left" title="ONNX Quantization - Linux (Beta)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../2_pruning.html" class="btn btn-neutral float-right" title="Pruning" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,6 +1,6 @@
-========================
-ONNX Quantization (Beta)
-========================
+================================
+ONNX Quantization - Linux (Beta)
+================================
 
 ModelOpt provides ONNX quantization that works together with `TensorRT Explicit Quantization (EQ) <https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#explicit-implicit-quantization>`_. The key advantages offered by ModelOpt's ONNX quantization:
 

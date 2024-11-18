@@ -62,9 +62,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/1_overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/2_installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../getting_started/4_pruning.html">Quick Start: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../getting_started/5_distillation.html">Quick Start: Distillation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../getting_started/6_sparsity.html">Quick Start: Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/7_sparsity.html">Quick Start: Sparsity</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
@@ -79,6 +80,7 @@
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
@@ -88,13 +90,22 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../reference/0_changelog.html">Model Optimizer Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/0_changelog.html">Changelog</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../reference/1_modelopt_api.html">modelopt API</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Support</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="1_contact.html">Contact us</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">FAQs</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#modelopt-windows">ModelOpt-Windows</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-quantization">1. Why is awq-scale search taking too long or stuck at 0% during ONNX quantization?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-is-cuda-ep-not-found-error-showing-during-onnx-quantization">2. Why is “CUDA EP not found” error showing during ONNX quantization?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-does-ort-session-creation-fail-for-cuda-ep-despite-having-cuda-toolkit-and-cudnn">3. Why does ORT-session creation fail for CUDA-EP despite having CUDA toolkit and cuDNN?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-quantized-model-s-size-increases-on-re-runs">4. Why quantized model’s size increases on re-runs?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue">5. Running quantized ONNX model on DirectML backend gives following error. What can be the issue?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-int4-quantized-onnx-model-on-directml-backend-gives-following-kind-of-error-what-can-be-the-issue">6. Running INT4 quantized ONNX model on DirectML backend gives following kind of error. What can be the issue?</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#nas-pruning">NAS/Pruning</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#parallel-search">Parallel search</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#monkey-patched-functions">Monkey-patched functions</a></li>
@@ -134,6 +145,53 @@
              
   <section id="faqs">
 <h1>FAQs<a class="headerlink" href="#faqs" title="Link to this heading"></a></h1>
+<section id="modelopt-windows">
+<span id="faq-modelopt-windows"></span><h2>ModelOpt-Windows<a class="headerlink" href="#modelopt-windows" title="Link to this heading"></a></h2>
+<p><strong>ONNX PTQ</strong></p>
+<section id="why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-quantization">
+<h3>1. Why is awq-scale search taking too long or stuck at 0% during ONNX quantization?<a class="headerlink" href="#why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-quantization" title="Link to this heading"></a></h3>
+<p>Awq-scale search should complete in minutes with NVIDIA GPU acceleration. If stalled:</p>
+<ul class="simple">
+<li><p><strong>GPU acceleration may be disabled.</strong> Install <em>cupy</em> and dependencies (see ModelOpt-Windows setup).</p></li>
+<li><p><strong>Low GPU memory.</strong> Quantization needs 20-24GB VRAM; low memory forces slower shared memory usage.</p></li>
+<li><p><strong>Using CPU for quantization.</strong> Install ORT-GPU (supports CUDA EP) or ORT-DML (supports DML EP) for better speed.</p></li>
+</ul>
+</section>
+<section id="why-is-cuda-ep-not-found-error-showing-during-onnx-quantization">
+<h3>2. Why is “CUDA EP not found” error showing during ONNX quantization?<a class="headerlink" href="#why-is-cuda-ep-not-found-error-showing-during-onnx-quantization" title="Link to this heading"></a></h3>
+<p>ORT used in GenAI may conflict with ModelOpt-Windows ORT:</p>
+<ul class="simple">
+<li><p>Uninstall ORT, run <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">cache</span> <span class="pre">purge</span></code>, and reinstall <em>nvidia-modelopt[onnx]</em>.</p></li>
+<li><p>Use separate virtual environments for GenAI and quantization (e.g., with <em>venv</em> or <em>conda</em>).</p></li>
+</ul>
+</section>
+<section id="why-does-ort-session-creation-fail-for-cuda-ep-despite-having-cuda-toolkit-and-cudnn">
+<h3>3. Why does ORT-session creation fail for CUDA-EP despite having CUDA toolkit and cuDNN?<a class="headerlink" href="#why-does-ort-session-creation-fail-for-cuda-ep-despite-having-cuda-toolkit-and-cudnn" title="Link to this heading"></a></h3>
+<p>This usually results from mismatched CUDA and cuDNN versions or missing paths. Ensure:</p>
+<ul class="simple">
+<li><p>Compatible CUDA toolkit and cuDNN versions (check <a class="reference external" href="https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements/" rel="noopener noreferrer" target="_blank">CUDA EP requirements</a>).</p></li>
+<li><p>Add cuDNN’s <em>bin</em> and <em>lib</em> paths to <em>PATH</em> and restart the command prompt.</p></li>
+</ul>
+</section>
+<section id="why-quantized-model-s-size-increases-on-re-runs">
+<h3>4. Why quantized model’s size increases on re-runs?<a class="headerlink" href="#why-quantized-model-s-size-increases-on-re-runs" title="Link to this heading"></a></h3>
+<p>Make sure that the output directory is clean before each quantization run since, otherwise, existing quantized model file may get appended in each run leading to increase in model’s size and possibly corrupting it.</p>
+</section>
+<section id="running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue">
+<h3>5. Running quantized ONNX model on DirectML backend gives following error. What can be the issue?<a class="headerlink" href="#running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue" title="Link to this heading"></a></h3>
+<blockquote>
+<div><p><cite>Error Unrecognized attribute: block_size for operator DequantizeLinear</cite></p>
+</div></blockquote>
+<p>ModelOpt-Windows uses ONNX’s <a class="reference external" href="https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html" rel="noopener noreferrer" target="_blank">DequantizeLinear</a> (DQ) nodes. The <em>block_size</em> attribute was added in DeQuantizeLinear node in Opset-21. Make sure that quantized model’s opset version is 21 or higher. Refer <a class="reference internal" href="../guides/windows_guides/_ONNX_PTQ_guide.html#apply-onnx-ptq"><span class="std std-ref">Apply Post Training Quantization (PTQ)</span></a> for details.</p>
+</section>
+<section id="running-int4-quantized-onnx-model-on-directml-backend-gives-following-kind-of-error-what-can-be-the-issue">
+<h3>6. Running INT4 quantized ONNX model on DirectML backend gives following kind of error. What can be the issue?<a class="headerlink" href="#running-int4-quantized-onnx-model-on-directml-backend-gives-following-kind-of-error-what-can-be-the-issue" title="Link to this heading"></a></h3>
+<blockquote>
+<div><p><cite>Error: Type ‘tensor(int4)’ of input parameter (onnx::MatMul_6508_i4) of operator (DequantizeLinear) in node (onnx::MatMul_6508_DequantizeLinear) is invalid.</cite></p>
+</div></blockquote>
+<p>ModelOpt-Windows uses One possible reason for above error is that INT4 quantized ONNC model’s opset version (default or onnx domain) is less than 21. Ensure the INT4 quantized model’s opset version is 21 or higher since INT4 data-type support in DeQuantizeLinear ONNX node came in opset-21.</p>
+</section>
+</section>
 <section id="nas-pruning">
 <span id="nas-faqs"></span><h2>NAS/Pruning<a class="headerlink" href="#nas-pruning" title="Link to this heading"></a></h2>
 <section id="parallel-search">

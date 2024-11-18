@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ONNX Quantization (Beta) &mdash; Model Optimizer 0.19.0</title>
+  <title>ONNX Quantization - Linux (Beta) &mdash; Model Optimizer 0.19.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -35,7 +35,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Pruning" href="2_pruning.html" />
+    <link rel="next" title="ONNX Quantization - Windows" href="windows_guides/_ONNX_PTQ_guide.html" />
     <link rel="prev" title="PyTorch Quantization" href="_pytorch_quantization.html" /> 
 </head>
 
@@ -63,9 +63,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/1_overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/2_installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../getting_started/4_pruning.html">Quick Start: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../getting_started/5_distillation.html">Quick Start: Distillation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../getting_started/6_sparsity.html">Quick Start: Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/7_sparsity.html">Quick Start: Sparsity</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
@@ -73,7 +74,7 @@
 <li class="toctree-l2"><a class="reference internal" href="_basic_quantization.html">Basic Concepts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="_choosing_quant_methods.html">Best practices to choose the right quantization methods</a></li>
 <li class="toctree-l2"><a class="reference internal" href="_pytorch_quantization.html">PyTorch Quantization</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">ONNX Quantization (Beta)</a><ul>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">ONNX Quantization - Linux (Beta)</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#requirements">Requirements</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#apply-post-training-quantization-ptq">Apply Post Training Quantization (PTQ)</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#prepare-calibration-dataset">Prepare calibration dataset</a></li>
@@ -84,6 +85,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#compare-the-performance">Compare the performance</a></li>
 </ul>
 </li>
+<li class="toctree-l2"><a class="reference internal" href="windows_guides/_ONNX_PTQ_guide.html">ONNX Quantization - Windows</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="2_pruning.html">Pruning</a></li>
@@ -96,6 +98,7 @@
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
@@ -105,7 +108,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../reference/0_changelog.html">Model Optimizer Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/0_changelog.html">Changelog</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../reference/1_modelopt_api.html">modelopt API</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Support</span></p>
@@ -129,7 +132,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="1_quantization.html">Quantization</a></li>
-      <li class="breadcrumb-item active">ONNX Quantization (Beta)</li>
+      <li class="breadcrumb-item active">ONNX Quantization - Linux (Beta)</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/guides/_onnx_quantization.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -139,8 +142,8 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="onnx-quantization-beta">
-<h1>ONNX Quantization (Beta)<a class="headerlink" href="#onnx-quantization-beta" title="Link to this heading"></a></h1>
+  <section id="onnx-quantization-linux-beta">
+<h1>ONNX Quantization - Linux (Beta)<a class="headerlink" href="#onnx-quantization-linux-beta" title="Link to this heading"></a></h1>
 <p>ModelOpt provides ONNX quantization that works together with <a class="reference external" href="https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#explicit-implicit-quantization" rel="noopener noreferrer" target="_blank">TensorRT Explicit Quantization (EQ)</a>. The key advantages offered by ModelOpt’s ONNX quantization:</p>
 <ol class="arabic simple">
 <li><p>Easy to use for non-expert users.</p></li>
@@ -228,7 +231,7 @@ For real speedup, the generated ONNX should be compiled into TensorRT engine.</p
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="_pytorch_quantization.html" class="btn btn-neutral float-left" title="PyTorch Quantization" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="2_pruning.html" class="btn btn-neutral float-right" title="Pruning" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="windows_guides/_ONNX_PTQ_guide.html" class="btn btn-neutral float-right" title="ONNX Quantization - Windows" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

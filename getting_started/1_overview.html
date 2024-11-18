@@ -75,9 +75,10 @@
 </li>
 <li class="toctree-l1"><a class="reference internal" href="2_installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="3_quantization.html">Quick Start: Quantization</a></li>
-<li class="toctree-l1"><a class="reference internal" href="4_pruning.html">Quick Start: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="5_distillation.html">Quick Start: Distillation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="6_sparsity.html">Quick Start: Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="7_sparsity.html">Quick Start: Sparsity</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
@@ -92,6 +93,7 @@
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
@@ -101,7 +103,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../reference/0_changelog.html">Model Optimizer Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/0_changelog.html">Changelog</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../reference/1_modelopt_api.html">modelopt API</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Support</span></p>
@@ -142,14 +144,9 @@
 The <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer" rel="noopener noreferrer" target="_blank">NVIDIA TensorRT Model Optimizer</a> (referred to as Model Optimizer, or ModelOpt)
 is a library comprising state-of-the-art model optimization techniques including quantization and sparsity to compress model.
 It accepts a torch or ONNX model as input and provides Python APIs for users to easily stack different model optimization
-techniques to produce optimized &amp; quantized checkpoints. Seamlessly integrated within the NVIDIA AI software ecosystem, the quantized
-checkpoint generated from Model Optimizer is ready for deployment in downstream inference frameworks like
-<a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/quantization" rel="noopener noreferrer" target="_blank">TensorRT-LLM</a> or <a class="reference external" href="https://github.com/NVIDIA/TensorRT" rel="noopener noreferrer" target="_blank">TensorRT</a>.
-Further integrations are planned for <a class="reference external" href="https://github.com/NVIDIA/NeMo" rel="noopener noreferrer" target="_blank">NVIDIA NeMo</a> and <a class="reference external" href="https://github.com/NVIDIA/Megatron-LM" rel="noopener noreferrer" target="_blank">Megatron-LM</a>
-for training-in-the-loop optimization techniques. For enterprise users, the 8-bit quantization with Stable Diffusion is also available on
-<a class="reference external" href="https://developer.nvidia.com/blog/nvidia-nim-offers-optimized-inference-microservices-for-deploying-ai-models-at-scale/" rel="noopener noreferrer" target="_blank">NVIDIA NIM</a>.</p>
-<p>Model Optimizer is available for free for all developers on <a class="reference external" href="https://pypi.org/project/nvidia-modelopt/" rel="noopener noreferrer" target="_blank">NVIDIA PyPI</a>.
-Visit the <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer" rel="noopener noreferrer" target="_blank">TensorRT Model Optimizer GitHub repository</a> for end-to-end
+techniques to produce optimized &amp; quantized checkpoints. Seamlessly integrated within the NVIDIA AI software ecosystem, the quantized checkpoint generated from Model Optimizer is ready for deployment in downstream inference frameworks like <a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/quantization" rel="noopener noreferrer" target="_blank">TensorRT-LLM</a> or <a class="reference external" href="https://github.com/NVIDIA/TensorRT" rel="noopener noreferrer" target="_blank">TensorRT</a> (Linux). ModelOpt is integrated with <a class="reference external" href="https://github.com/NVIDIA/NeMo" rel="noopener noreferrer" target="_blank">NVIDIA NeMo</a> and <a class="reference external" href="https://github.com/NVIDIA/Megatron-LM" rel="noopener noreferrer" target="_blank">Megatron-LM</a> for training-in-the-loop optimization techniques. For enterprise users, the 8-bit quantization with Stable Diffusion is also available on <a class="reference external" href="https://developer.nvidia.com/blog/nvidia-nim-offers-optimized-inference-microservices-for-deploying-ai-models-at-scale/" rel="noopener noreferrer" target="_blank">NVIDIA NIM</a>.</p>
+<p>For Windows users, the <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/windows/README.md" rel="noopener noreferrer" target="_blank">TensorRT Model Optimizer for Windows</a> (ModelOpt-Windows) delivers model compression techniques, including quantization, on Windows RTX PC systems. ModelOpt-Windows is optimized for efficient quantization, featuring local GPU calibration, reduced system and video memory consumption, and swift processing times. It integrates seamlessly with the Windows ecosystem, with optimized ONNX models as output for <a class="reference external" href="https://github.com/microsoft/DirectML" rel="noopener noreferrer" target="_blank">Microsoft DirectML</a> backends. Furthermore, ModelOpt-Windows supports SDKs such as <a class="reference external" href="https://github.com/microsoft/Olive" rel="noopener noreferrer" target="_blank">Microsoft Olive</a> and <a class="reference external" href="https://github.com/microsoft/onnxruntime" rel="noopener noreferrer" target="_blank">ONNX Runtime</a>, enabling the deployment of quantized models across various independent hardware vendors through the DirectML path.</p>
+<p>TensorRT Model Optimizer for both Linux and Windows are available for free for all developers on <a class="reference external" href="https://pypi.org/project/nvidia-modelopt/" rel="noopener noreferrer" target="_blank">NVIDIA PyPI</a>. Visit the <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer" rel="noopener noreferrer" target="_blank">TensorRT Model Optimizer GitHub repository</a> for end-to-end
 example scripts and recipes optimized for NVIDIA GPUs.</p>
 <section id="techniques">
 <h3>Techniques<a class="headerlink" href="#techniques" title="Link to this heading"></a></h3>

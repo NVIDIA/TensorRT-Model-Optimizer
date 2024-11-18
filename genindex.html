@@ -60,9 +60,10 @@
 <li class="toctree-l1"><a class="reference internal" href="getting_started/1_overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started/2_installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="getting_started/3_quantization.html">Quick Start: Quantization</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started/4_pruning.html">Quick Start: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started/5_distillation.html">Quick Start: Distillation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="getting_started/6_sparsity.html">Quick Start: Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="getting_started/7_sparsity.html">Quick Start: Sparsity</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
@@ -77,6 +78,7 @@
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="deployment/2_directml_deployment.html">DirectML Deployment</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
@@ -86,7 +88,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="reference/0_changelog.html">Model Optimizer Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="reference/0_changelog.html">Changelog</a></li>
 <li class="toctree-l1"><a class="reference internal" href="reference/1_modelopt_api.html">modelopt API</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Support</span></p>
@@ -1304,6 +1306,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.get_parallel_state">get_parallel_state() (in module modelopt.torch.quantization.utils)</a>
 </li>
+      <li><a href="reference/generated/modelopt.onnx.quantization.int4.html#modelopt.onnx.quantization.int4.get_parent_child_nodes_map">get_parent_child_nodes_map() (in module modelopt.onnx.quantization.int4)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_parent_nodes">get_parent_nodes() (in module modelopt.onnx.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.layer_utils.html#modelopt.torch.export.layer_utils.get_prequant_scaling_factor">get_prequant_scaling_factor() (in module modelopt.torch.export.layer_utils)</a>
@@ -1566,17 +1570,19 @@
         <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.is_export_mode">(QuantizeExportModeDescriptor property)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.trace.tracer.html#modelopt.torch.trace.tracer.GraphCollection.is_failed">is_failed() (GraphCollection method)</a>
 
       <ul>
         <li><a href="reference/generated/modelopt.torch.trace.tracer.html#modelopt.torch.trace.tracer.RobustTracer.is_failed">(RobustTracer method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol.is_free">is_free (Symbol property)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.op_types.html#modelopt.onnx.op_types.is_fusible_reduction_op">is_fusible_reduction_op() (in module modelopt.onnx.op_types)</a>
+</li>
+      <li><a href="reference/generated/modelopt.onnx.op_types.html#modelopt.onnx.op_types.is_fusible_scaling_op">is_fusible_scaling_op() (in module modelopt.onnx.op_types)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.op_types.html#modelopt.onnx.op_types.is_generator_op">is_generator_op() (in module modelopt.onnx.op_types)</a>
 </li>

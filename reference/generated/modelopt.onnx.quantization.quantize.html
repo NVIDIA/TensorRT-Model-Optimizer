@@ -63,9 +63,10 @@
 <li class="toctree-l1"><a class="reference internal" href="../../getting_started/1_overview.html">Overview</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../getting_started/2_installation.html">Installation</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../getting_started/4_pruning.html">Quick Start: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../getting_started/5_distillation.html">Quick Start: Distillation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../getting_started/6_sparsity.html">Quick Start: Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/7_sparsity.html">Quick Start: Sparsity</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
@@ -80,6 +81,7 @@
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
@@ -89,7 +91,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="../0_changelog.html">Model Optimizer Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../0_changelog.html">Changelog</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="../1_modelopt_api.html">modelopt API</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="modelopt.deploy.html">deploy</a></li>
 <li class="toctree-l2 current"><a class="reference internal" href="modelopt.onnx.html">onnx</a><ul class="current">
@@ -168,7 +170,7 @@
 fp8: ‘max’ (default) and int4: ‘awq_clip’ (default), ‘awq_lite’, ‘awq_full’ and ‘rtn_dq’.</p></li>
 <li><p><strong>calibration_cache_path</strong> (<em>str</em>) – Path to pre-calculated activation tensor ranges, also known as calibration cache.</p></li>
 <li><p><strong>calibration_eps</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Priority order for the execution providers (EP) to calibrate the model.
-Any subset of [‘cuda:x’, ‘cpu’, ‘trt’], where ‘x’ is the device id.</p></li>
+Any subset of [‘cuda:x’, ‘dml:x’, ‘cpu’, ‘trt’], where ‘x’ is the device id.</p></li>
 <li><p><strong>op_types_to_quantize</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of op types to quantize. If None (default), all supported operators are quantized.
 This flag does not support regular expression.</p></li>
 <li><p><strong>op_types_to_exclude</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of op types to exclude from quantization. This flag does not support regular expression.</p></li>

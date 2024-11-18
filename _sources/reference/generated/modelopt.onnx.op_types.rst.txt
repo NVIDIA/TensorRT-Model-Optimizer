@@ -45,6 +45,7 @@ op\_types
       is_copy_op
       is_default_quantizable_op_by_ort
       is_fusible_reduction_op
+      is_fusible_scaling_op
       is_generator_op
       is_irregular_mem_access_op
       is_linear_op

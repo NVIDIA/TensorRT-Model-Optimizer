@@ -51,6 +51,7 @@ int4
       find_scales
       get_act_scale
       get_act_to_weight_map_and_act_to_wa_pack_map
+      get_parent_child_nodes_map
       get_scale
       get_weight_scale
       get_x_w_mean_for_subgraph
