@@ -1,0 +1,521 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: MIT
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+
+import argparse
+import logging
+import os
+import time
+
+import numpy as np
+import onnx
+import torch
+from datasets import load_dataset
+from onnx import helper
+from torch.utils.data import DataLoader
+from transformers import AutoConfig, AutoTokenizer
+
+from modelopt.onnx.quantization.int4 import quantize as quantize_int4
+
+logging.getLogger().setLevel(logging.INFO)
+
+pt_to_np = {"torch.int64": np.int64, "torch.float32": np.float32, "torch.float16": np.float16}
+
+
+def make_model_input(
+    config,
+    input_ids_arg,
+    attention_mask_arg,
+    add_past_kv_inputs,
+    device,
+    use_fp16,
+    use_buffer_share,
+    add_position_ids,
+):
+    input_ids = input_ids_arg
+    attention_mask = attention_mask_arg
+
+    if isinstance(input_ids_arg, list):
+        input_ids = torch.tensor(input_ids_arg, device=device, dtype=torch.int64)
+        attention_mask = torch.tensor(attention_mask_arg, device=device, dtype=torch.int64)
+
+    inputs = {
+        "input_ids": input_ids.contiguous(),
+        "attention_mask": attention_mask.contiguous(),
+    }
+
+    if add_position_ids:
+        # print(f"\n--Quantize-Script-- adding position ids\n")
+        position_ids = attention_mask.long().cumsum(-1) - 1
+        position_ids.masked_fill_(attention_mask == 0, 1)
+        inputs["position_ids"] = position_ids.contiguous()
+
+    if add_past_kv_inputs:
+        # print(f"\n--Quantize-Script-- adding past KV cache value\n")
+        torch_dtype = torch.float16 if use_fp16 else torch.float32
+        batch_size, sequence_length = input_ids.shape
+        max_sequence_length = config.max_position_embeddings
+        num_heads, head_size = (
+            config.num_key_value_heads,
+            config.hidden_size // config.num_attention_heads,
+        )
+
+        if hasattr(config, "head_dim"):
+            head_size = config.head_dim
+
+        for i in range(config.num_hidden_layers):
+            past_key = torch.zeros(
+                batch_size,
+                num_heads,
+                max_sequence_length if use_buffer_share else 0,
+                head_size,
+                device=device,
+                dtype=torch_dtype,
+            )
+            past_value = torch.zeros(
+                batch_size,
+                num_heads,
+                max_sequence_length if use_buffer_share else 0,
+                head_size,
+                device=device,
+                dtype=torch_dtype,
+            )
+            inputs.update(
+                {
+                    f"past_key_values.{i}.key": past_key.contiguous(),
+                    f"past_key_values.{i}.value": past_value.contiguous(),
+                }
+            )
+
+    return inputs
+
+
+def get_initial_inputs(
+    config, tokenizer, prompt, device, use_fp16, use_buffer_share, add_past_kv_inputs
+):
+    """
+    Get initial inputs for the model for inference.
+    These values will include the input_ids, attention_mask, and position_ids and past_key_values.
+
+    Args:
+        config: Huggingface config of the model.
+        tokenizer: Tokenizer to encode and decode text.
+        prompt: List of prompts to be supplied for inference.
+        device: Device used to run the inference.
+        use_fp16: Flag to select the float16 dtype in torch.
+        use_buffer_share: True when --use_gqa is passed during the onnx export process
+    """
+    # tokenizer.pad_token = "[PAD]"
+    tokenizer.pad_token = tokenizer.eos_token
+    encodings_dict = tokenizer.batch_encode_plus(prompt, padding=True)
+
+    # max_length = model.config.max_position_embeddings
+    # input_ids = tokenizer.encode(text, truncation=True, padding='max_length', max_length=max_length)
+
+    return make_model_input(
+        config,
+        encodings_dict["input_ids"],
+        encodings_dict["attention_mask"],
+        add_past_kv_inputs,
+        device,
+        use_fp16,
+        use_buffer_share,
+    )
+
+
+def get_calib_inputs_0(
+    model_name, cache_dir, calib_size, batch_size, block_size, device, use_fp16, use_buffer_share
+):
+    dataset = load_dataset("cnn_dailymail", name="3.0.0", split="train")
+    prompt = dataset["article"][:calib_size]
+
+    config = AutoConfig.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir)
+    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    tokenizer.pad_token = tokenizer.eos_token
+
+    inputs = get_initial_inputs(config, tokenizer, prompt, device, use_fp16, use_buffer_share)
+
+    logging.info(f"\n --vishal --cnn-- calib_size={calib_size}\n")
+    inputs = {input_name: torch_tensor.cpu().numpy() for input_name, torch_tensor in inputs.items()}
+    return inputs
+
+
+def get_calib_inputs(
+    dataset_name,
+    model_name,
+    cache_dir,
+    calib_size,
+    batch_size,
+    block_size,
+    device,
+    use_fp16,
+    use_buffer_share,
+    add_past_kv_inputs,
+    max_calib_rows_to_load,
+    add_position_ids,
+):
+    # from transformers import LlamaConfig
+    # config = LlamaConfig.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True)
+    config = AutoConfig.from_pretrained(
+        model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True
+    )
+    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    tokenizer.pad_token = tokenizer.eos_token
+
+    assert (
+        calib_size <= max_calib_rows_to_load
+    ), "calib size should be no more than max_calib_rows_to_load"
+
+    if "cnn" in dataset_name:
+        dataset2 = load_dataset("cnn_dailymail", name="3.0.0", split="train").select(
+            range(max_calib_rows_to_load)
+        )
+        column = "article"
+    elif "pilevel" in dataset_name:
+        dataset2 = load_dataset("mit-han-lab/pile-val-backup", split="validation")
+        column = "text"
+    else:
+        assert 0, f'dataset "{dataset_name}" not supported'
+
+    # dataset2 = dataset2.shuffle(seed=42)
+    dataset2 = dataset2[column][:calib_size]
+    batch_encoded = tokenizer.batch_encode_plus(
+        dataset2, return_tensors="pt", padding=True, truncation=True, max_length=block_size
+    )  # return_tensors="pt",
+    batch_encoded = batch_encoded.to(device)
+    batch_encoded_input_ids = batch_encoded["input_ids"]
+    batch_encoded_attention_mask = batch_encoded["attention_mask"]
+    calib_dataloader_input_ids = DataLoader(
+        batch_encoded_input_ids, batch_size=batch_size, shuffle=False
+    )
+    calib_dataloader_attenton_mask = DataLoader(
+        batch_encoded_attention_mask, batch_size=batch_size, shuffle=False
+    )
+
+    assert len(calib_dataloader_input_ids.dataset) == len(calib_dataloader_attenton_mask.dataset)
+    assert len(calib_dataloader_input_ids) == len(calib_dataloader_attenton_mask)
+
+    number_of_batched_samples = calib_size // batch_size
+
+    batched_input_ids = []
+    for idx, data in enumerate(calib_dataloader_input_ids):
+        batched_input_ids.append(data)
+        if idx == (number_of_batched_samples - 1):
+            break
+
+    batched_attention_mask = []
+    for idx, data in enumerate(calib_dataloader_attenton_mask):
+        batched_attention_mask.append(data)
+        if idx == (number_of_batched_samples - 1):
+            break
+
+    print(
+        f"\n--Quantize-Script-- number_of_batched_samples={number_of_batched_samples}, "
+        f"batch-input-ids-list-len={len(batched_input_ids)}, "
+        f"batched_attention_mask={len(batched_attention_mask)}\n"
+    )
+
+    batched_inputs_list = []
+    for i in range(number_of_batched_samples):
+        input_ids = batched_input_ids[i]
+        attention_mask = batched_attention_mask[i]
+
+        inputs = make_model_input(
+            config,
+            input_ids,
+            attention_mask,
+            add_past_kv_inputs,
+            device,
+            use_fp16,
+            use_buffer_share,
+            add_position_ids,
+        )
+        inputs = {
+            input_name: torch_tensor.cpu().numpy() for input_name, torch_tensor in inputs.items()
+        }
+        batched_inputs_list.append(inputs)
+
+    print(f"\n--Quantize-Script-- number of batched inputs = {len(batched_inputs_list)}\n")
+    return batched_inputs_list
+
+
+def parse_calibration_eps(value):
+    """Parse and validate the calibration_eps input."""
+    valid_choices = {"cuda", "cpu", "dml"}
+    # Split the input by commas and remove any surrounding whitespace
+    eps = [item.strip() for item in value.split(",")]
+    # Validate each calibration endpoint
+    for ep in eps:
+        if ep not in valid_choices:
+            raise argparse.ArgumentTypeError(
+                f"Invalid calibration endpoint: '{ep}'. Choose from 'cuda', 'cpu', 'dml'."
+            )
+    return eps
+
+
+def convert_opset_to_21_proto(model_proto):
+    """Modify the model's opset to 21 if it's not already, operating on a ModelProto.
+
+    Args:
+        model_proto (ModelProto): The ONNX model proto to modify.
+
+    Returns:
+        ModelProto: The updated ONNX model proto with opset version 21.
+
+    """
+    current_opset = {opset.domain: opset.version for opset in model_proto.opset_import}
+
+    default_domain_version = current_opset.get("", 0)
+    if default_domain_version >= 21:
+        logging.info(
+            "Model already uses opset version %s for the default domain. Skip conversion.",
+            default_domain_version,
+        )
+        return model_proto  # No conversion needed
+
+    new_opset_imports = [
+        helper.make_opsetid("", 21),  # Default domain with opset version 21
+        helper.make_opsetid("com.microsoft", 1),  # Microsoft domain with version 1
+    ]
+
+    for domain, version in current_opset.items():
+        if domain not in ["", "com.microsoft"]:
+            new_opset_imports.append(helper.make_opsetid(domain, version))
+
+    # Update the model's opset imports
+    model_proto.ClearField("opset_import")
+    model_proto.opset_import.extend(new_opset_imports)
+
+    logging.info("Model opset successfully converted to 21.")
+
+    return model_proto
+
+
+def main(args):
+    cache_dir = "C:\\tmp"
+
+    # device_id = 0
+    # device = torch.device(f"cuda:{device_id}")
+    device = torch.device(args.device)
+
+    print(
+        f"\n--Quantize-Script-- algo={args.algo}, dataset={args.dataset}, calib_size={args.calib_size}, "
+        f"batch_size={args.batch_size}, block_size={args.block_size}, add-position-ids={args.add_position_ids}, "
+        f"past-kv={args.add_past_kv_inputs}, rcalib={args.use_random_calib}, device={args.device}, "
+        f"use_zero_point={args.use_zero_point}\n"
+    )
+
+    print(
+        f"\n\n--Quantize-Script-- awqlite_alpha_step={args.awqlite_alpha_step}, "
+        f"awqlite_fuse_nodes={args.awqlite_fuse_nodes}, "
+        f"awqlite_run_per_subgraph={args.awqlite_run_per_subgraph}, "
+        f"awqclip_alpha_step={args.awqclip_alpha_step}, "
+        f"awqclip_alpha_min={args.awqclip_alpha_min}, "
+        f"awqclip_bsz_col={args.awqclip_bsz_col}, "
+        f"calibration_eps={args.calibration_eps}\n"
+    )
+
+    calib_inputs = get_calib_inputs(
+        args.dataset,
+        args.model_name,
+        cache_dir,
+        args.calib_size,
+        args.batch_size,
+        512,
+        device,
+        args.use_fp16,
+        args.use_buffer_share,
+        args.add_past_kv_inputs,
+        128,
+        args.add_position_ids,
+    )
+
+    t = time.time()
+    logging.info("\nQuantizing the model....\n")
+    quantized_onnx_model = quantize_int4(
+        args.onnx_path,
+        calibration_method=args.algo,
+        calibration_data_reader=None if args.use_random_calib else calib_inputs,
+        calibration_eps=args.calibration_eps,
+        use_zero_point=args.use_zero_point,
+        block_size=args.block_size,
+        awqlite_alpha_step=args.awqlite_alpha_step,
+        awqlite_run_per_subgraph=args.awqlite_run_per_subgraph,
+        awqlite_fuse_nodes=args.awqlite_fuse_nodes,
+        awqclip_alpha_step=args.awqclip_alpha_step,
+        awqclip_alpha_min=args.awqclip_alpha_min,
+        awqclip_bsz_col=args.awqclip_bsz_col,
+    )
+    logging.info(f"\nQuantization process took {time.time() - t} seconds")
+
+    quantized_onnx_model = convert_opset_to_21_proto(quantized_onnx_model)
+
+    t = time.time()
+    onnx.save_model(
+        quantized_onnx_model,
+        args.output_path,
+        save_as_external_data=True,
+        location=os.path.basename(args.output_path) + "_data",
+        size_threshold=0,
+    )
+    logging.info(f"Saving to {args.output_path} took {time.time() - t} seconds")
+    print("\nDone\n")
+
+
+if __name__ == "__main__":
+    st = time.time()
+    parser = argparse.ArgumentParser(description="Quantize ONNX model.")
+    parser.add_argument(
+        "--model_name", type=str, required=True, help="Name of the llama model variant."
+    )
+    parser.add_argument(
+        "--onnx_path",
+        type=str,
+        required=True,
+        help="Input ONNX model path.",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        required=True,
+        help="Output quantized model path.",
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cpu",
+        help="Device for calibration data",
+    )
+    parser.add_argument(
+        "--algo",
+        type=str,
+        default="awq_lite",
+        help="Device for calibration data",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        default="cnn",
+        help="Dataset for calibration",
+    )
+    parser.add_argument(
+        "--calib_size",
+        type=int,
+        default=32,
+        help="Number of input calibration samples, should be no more than 128",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="Batch size for calibration samples",
+    )
+    parser.add_argument(
+        "--use_fp16",
+        type=bool,
+        default=True,
+        help="True when KV cache inputs/outputs are in float16.",
+    )
+    parser.add_argument(
+        "--awqlite_alpha_step",
+        type=float,
+        default=0.1,
+        help="Alpha step-size for AWQ scale search",
+    )
+    parser.add_argument(
+        "--awqlite_run_per_subgraph",
+        type=bool,
+        default=False,
+        help="If true, then AWQ scale search will iterate over each subgraphs with quantizable matmuls",
+    )
+    parser.add_argument(
+        "--awqlite_fuse_nodes",
+        type=bool,
+        default=True,
+        help="If true, then input scaling part will be fused in the parent node as and when possible",
+    )
+    parser.add_argument(
+        "--awqclip_alpha_step",
+        type=float,
+        default=0.05,
+        help="Step-size for AWQ weight clipping",
+    )
+    parser.add_argument(
+        "--awqclip_alpha_min",
+        type=float,
+        default=0.5,
+        help="Minimum AWQ weight-clipping threshold",
+    )
+    parser.add_argument(
+        "--awqclip_bsz_col",
+        type=int,
+        default=1024,
+        help="Number of Columns taken in one chunk during AWQ weight clipping loss computation",
+    )
+    parser.add_argument(
+        "--block_size",
+        type=int,
+        default=128,
+        help="Block size for AWQ quantization",
+    )
+    parser.add_argument(
+        "--use_zero_point",
+        type=bool,
+        default=False,
+        help="True when we want to perform zero-point based quantization",
+    )
+    parser.add_argument(
+        "--add_past_kv_inputs",
+        type=bool,
+        default=True,
+        help="Add past KV cache values in inputs",
+    )
+    parser.add_argument(
+        "--use_buffer_share",
+        type=bool,
+        default=False,
+        help="True when --use_gqa was passed during export.",
+    )
+    parser.add_argument(
+        "--add_position_ids",
+        type=bool,
+        default=True,
+        help="True when we want to also pass position_ids input to model",
+    )
+    parser.add_argument(
+        "--use_random_calib",
+        type=bool,
+        default=False,
+        help="True when we want to use a random calibration data",
+    )
+
+    parser.add_argument(
+        "--calibration_eps",
+        type=parse_calibration_eps,  # Use the custom parser
+        default=["dml", "cpu"],  # Default as a list
+        help="Comma-separated list of calibration endpoints. Choose from 'cuda', 'cpu', 'dml'. Default is 'dml,cpu'.",
+    )
+
+    args = parser.parse_args()
+    main(args)

@@ -10,7 +10,8 @@
 
 [Examples](#examples) |
 [Benchmark Results](./benchmark.md) |
-[Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer)
+[Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer) |
+[ModelOpt-Windows](./windows/README.md)
 
 </div>
 
