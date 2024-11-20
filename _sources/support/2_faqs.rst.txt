@@ -38,7 +38,7 @@ This usually results from mismatched CUDA and cuDNN versions or missing paths. E
 4. Why quantized model's size increases on re-runs?
 ---------------------------------------------------
 
-Make sure that the output directory is clean before each quantization run since, otherwise, existing quantized model file may get appended in each run leading to increase in model's size and possibly corrupting it.
+Make sure that the output directory is clean before each quantization run otherwise, existing quantized model file may get appended in each run leading to increase in model's size and possibly corrupting it.
 
 5. Running quantized ONNX model on DirectML backend gives following error. What can be the issue?
 -------------------------------------------------------------------------------------------------
@@ -52,7 +52,7 @@ ModelOpt-Windows uses ONNX’s `DequantizeLinear <https://onnx.ai/onnx/operators
 
     `Error: Type 'tensor(int4)' of input parameter (onnx::MatMul_6508_i4) of operator (DequantizeLinear) in node (onnx::MatMul_6508_DequantizeLinear) is invalid.`
 
-ModelOpt-Windows uses One possible reason for above error is that INT4 quantized ONNC model's opset version (default or onnx domain) is less than 21. Ensure the INT4 quantized model's opset version is 21 or higher since INT4 data-type support in DeQuantizeLinear ONNX node came in opset-21.
+One possible reason for above error is that INT4 quantized ONNX model's opset version (default or onnx domain) is less than 21. Ensure the INT4 quantized model's opset version is 21 or higher since INT4 data-type support in DeQuantizeLinear ONNX node came in opset-21.
 
 .. _nas_faqs:
 

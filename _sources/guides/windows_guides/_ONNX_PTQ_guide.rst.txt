@@ -27,6 +27,7 @@ The TensorRT Model Optimizer - Windows is designed to create optimized ONNX mode
 - PTQ: Supported in ONNX
 - QAT: Experimental for PyTorch
 
+Refer :ref:`Feature_Support_Matrix` for details about supported features and models.
 
 Preparing and Optimizing Base Models for ONNX PTQ
 -------------------------------------------------

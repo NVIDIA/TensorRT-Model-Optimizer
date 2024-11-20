@@ -146,6 +146,7 @@
 <li><p>Visual Studio 2022 / MSVC / C/C++ Build Tools</p></li>
 </ul>
 </div></blockquote>
+<p>Update <code class="docutils literal notranslate"><span class="pre">PATH</span></code> environment variable as needed for above prerequisites.</p>
 <p><strong>2. Setup Virtual Environment (Optional but Recommended)</strong></p>
 <p>It is recommended to use a virtual environment for managing Python dependencies. Tools such as <em>conda</em> or Python’s built-in <em>venv</em> module can help create and activate a virtual environment. Example steps for using Python’s <em>venv</em> module:</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>mkdir<span class="w"> </span>myEnv
@@ -207,7 +208,7 @@ If you prefer to use the CUDA EP for calibration, uninstall the existing <em>onn
 </dd>
 </dl>
 </li>
-<li><p><strong>Environment Variables</strong>: For workflows using CUDA dependencies (e.g., CUDA EP-based calibration), ensure environment variables like <em>CUDA_PATH</em>, <em>CUDA_V12_4</em>, or <em>CUDA_V11_8</em> etc. are set correctly.</p></li>
+<li><p><strong>Environment Variables</strong>: For workflows using CUDA dependencies (e.g., CUDA EP-based calibration), ensure environment variables like <em>CUDA_PATH</em>, <em>CUDA_V12_4</em>, or <em>CUDA_V11_8</em> etc. are set correctly. Reopen the command-prompt if any environment variable is updated or newly created.</p></li>
 <li><p><strong>ModelOpt-Windows Import Check</strong>: Run the following command to ensure the installation is successful:</p>
 <blockquote>
 <div><div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">c</span> <span class="s2">&quot;import modelopt.onnx.quantization&quot;</span>

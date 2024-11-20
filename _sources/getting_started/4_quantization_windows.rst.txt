@@ -34,7 +34,9 @@ The ONNX quantization API requires a model, calibration data, along with quantiz
 
 Check :meth:`modelopt.onnx.quantization.quantize_int4 <modelopt.onnx.quantization.int4.quantize>` for details about quantization API.
 
-For more details about ONNX PTQ, refer :ref:`ONNX_PTQ_Guide_Windows` and `example script <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/windows/onnx_ptq/>`_.
+Refer :ref:`Feature_Support_Matrix` for details about supported features and models.
+
+To know more about ONNX PTQ, refer :ref:`ONNX_PTQ_Guide_Windows` and `example script <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/windows/onnx_ptq/>`_.
 
 
 Deployment

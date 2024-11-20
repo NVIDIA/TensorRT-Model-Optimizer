@@ -175,7 +175,7 @@
 </section>
 <section id="why-quantized-model-s-size-increases-on-re-runs">
 <h3>4. Why quantized model’s size increases on re-runs?<a class="headerlink" href="#why-quantized-model-s-size-increases-on-re-runs" title="Link to this heading"></a></h3>
-<p>Make sure that the output directory is clean before each quantization run since, otherwise, existing quantized model file may get appended in each run leading to increase in model’s size and possibly corrupting it.</p>
+<p>Make sure that the output directory is clean before each quantization run otherwise, existing quantized model file may get appended in each run leading to increase in model’s size and possibly corrupting it.</p>
 </section>
 <section id="running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue">
 <h3>5. Running quantized ONNX model on DirectML backend gives following error. What can be the issue?<a class="headerlink" href="#running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue" title="Link to this heading"></a></h3>
@@ -189,7 +189,7 @@
 <blockquote>
 <div><p><cite>Error: Type ‘tensor(int4)’ of input parameter (onnx::MatMul_6508_i4) of operator (DequantizeLinear) in node (onnx::MatMul_6508_DequantizeLinear) is invalid.</cite></p>
 </div></blockquote>
-<p>ModelOpt-Windows uses One possible reason for above error is that INT4 quantized ONNC model’s opset version (default or onnx domain) is less than 21. Ensure the INT4 quantized model’s opset version is 21 or higher since INT4 data-type support in DeQuantizeLinear ONNX node came in opset-21.</p>
+<p>One possible reason for above error is that INT4 quantized ONNX model’s opset version (default or onnx domain) is less than 21. Ensure the INT4 quantized model’s opset version is 21 or higher since INT4 data-type support in DeQuantizeLinear ONNX node came in opset-21.</p>
 </section>
 </section>
 <section id="nas-pruning">
