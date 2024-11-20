@@ -77,6 +77,17 @@ Refer to the following example scripts and tutorials for deployment:
 1. [ORT GenAI examples](https://github.com/microsoft/onnxruntime-genai/tree/main/examples/python)
 1. [ONNX Runtime documentation](https://onnxruntime.ai/docs/api/python/)
 
+### Model Support Matrix
+
+Model | int4_awq
+--- | ---
+Llama3.1-8B-Instruct | Yes
+Phi3.5-mini-Instruct | Yes
+Mistral-7B-Instruct-v0.3 | Yes
+Llama3.2-3B-Instruct| Yes
+Gemma-2b-it | Yes
+Nemotron Mini 4B Instruct  | Yes
+
 ### Troubleshoot
 
 1. **Configure Directories**

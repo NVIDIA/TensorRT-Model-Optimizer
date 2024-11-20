@@ -6,11 +6,6 @@
   - [MMLU (Massive Multitask Language Understanding)](#mmlu-massive-multitask-language-understanding)
     - [Setup](#setup)
     - [Evaluation Methods](#evaluation-methods)
-      - [1. Evaluate with ORT-DML using GenAI APIs](#1-evaluate-with-ort-dml-using-genai-apis)
-      - [2. Evaluate with ORT-DML, CUDA, and CPU using Native ORT Path](#2-evaluate-with-ort-dml-cuda-and-cpu-using-native-ort-path)
-      - [3. Evaluate the PyTorch Model of HF Weights](#3-evaluate-the-pytorch-model-of-hf-weights)
-      - [4. Evaluate the TensorRT-LLM](#4-evaluate-the-tensorrt-llm)
-      - [5. Evaluate the PyTorch Model Quantized with AutoAWQ](#5-evaluate-the-pytorch-model-quantized-with-autoawq)
 
 ## Overview
 

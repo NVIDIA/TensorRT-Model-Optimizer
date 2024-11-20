@@ -6,7 +6,7 @@
 
 [![Documentation](https://img.shields.io/badge/Documentation-latest-brightgreen.svg?style=flat)](https://nvidia.github.io/TensorRT-Model-Optimizer/)
 [![version](https://img.shields.io/pypi/v/nvidia-modelopt?label=Release)](https://pypi.org/project/nvidia-modelopt/)
-[![license](https://img.shields.io/badge/License-MIT-blue)](./LICENSE)
+[![license](https://img.shields.io/badge/License-MIT-blue)](../LICENSE)
 
 [Examples](#examples) |
 [Benchmark Results](#benchmark-results)
@@ -42,10 +42,10 @@ ModelOpt-Windows can be installed either as a standalone toolkit or through Micr
 
 ### Standalone Toolkit Installation (with CUDA 12.x)
 
-To install ModelOpt-Windows as a standalone toolkit with CUDA 12.x support, run the following commands:
+To install ModelOpt-Windows as a standalone toolkit on CUDA 12.x systems, run the following commands:
 
 ```bash
-pip install nvidia-modelopt[onnx]~=0.19.0 --extra-index-url https://pypi.nvidia.com
+pip install nvidia-modelopt[onnx] --extra-index-url https://pypi.nvidia.com
 pip install cupy-cuda12x
 ```
 
@@ -71,12 +71,12 @@ For more details, please refer to the [detailed quantization guide](https://nvid
 
 ## Examples
 
-- [PTQ for LLMs](./onnx_ptq/README.md) covers how to use Post-training quantization (PTQ) and deployment with DirectML
+- [PTQ for LLMs](./onnx_ptq/README.md) covers how to use ONNX Post-Training Quantization (PTQ) and deployment with DirectML
 - [MMLU Benchmark](./accuracy_benchmark/README.md) provides an example script for MMLU benchmark and demonstrates how to run it with various popular backends like DirectML, TensorRT-LLM\* and model formats like ONNX and PyTorch\*.
 
 ## Support Matrix
 
-Please refer to [feature support matrix](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/windows/_feature_support_matrix.html) for a full list of supported features.
+Please refer to [support matrix](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/windows/_feature_support_matrix.html) for a full list of supported features and models.
 
 ## Benchmark Results
 
