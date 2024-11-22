@@ -9,14 +9,16 @@
 [![license](https://img.shields.io/badge/License-MIT-blue)](./LICENSE)
 
 [Examples](#examples) |
+[Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer)  |
 [Benchmark Results](./benchmark.md) |
-[Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer) |
+[Roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/108) |
 [ModelOpt-Windows](./windows/README.md)
 
 </div>
 
 ## Latest News
 
+- \[2024/10/23\] Quantized FP8 Llama-3.1 Instruct models available on Hugging Face for download: [8B](https://huggingface.co/nvidia/Llama-3.1-8B-Instruct-FP8), [70B](https://huggingface.co/nvidia/Llama-3.1-70B-Instruct-FP8), [405B](https://huggingface.co/nvidia/Llama-3.1-405B-Instruct-FP8)
 - \[2024/9/10\] [Post-Training Quantization of LLMs with NVIDIA NeMo and TensorRT Model Optimizer](https://developer.nvidia.com/blog/post-training-quantization-of-llms-with-nvidia-nemo-and-nvidia-tensorrt-model-optimizer/)
 - \[2024/8/28\] [Boosting Llama 3.1 405B Performance up to 44% with TensorRT Model Optimizer on NVIDIA H200 GPUs](https://developer.nvidia.com/blog/boosting-llama-3-1-405b-performance-by-up-to-44-with-nvidia-tensorrt-model-optimizer-on-nvidia-h200-gpus/)
 - \[2024/8/28\] [Up to 1.9X Higher Llama 3.1 Performance with Medusa](https://developer.nvidia.com/blog/low-latency-inference-chapter-1-up-to-1-9x-higher-llama-3-1-performance-with-medusa-on-nvidia-hgx-h200-with-nvlink-switch/)
@@ -40,6 +42,8 @@
 - [Examples](#examples)
 - [Support Matrix](#support-matrix)
 - [Benchmark](#benchmark)
+- [Quantized Checkpoints](#quantized-checkpoints)
+- [Roadmap](#roadmap)
 - [Release Notes](#release-notes)
 
 ## Model Optimizer Overview
@@ -48,10 +52,10 @@ Minimizing inference costs presents a significant challenge as generative AI mod
 The **NVIDIA TensorRT Model Optimizer** (referred to as **Model Optimizer**, or **ModelOpt**) is a library comprising state-of-the-art model optimization techniques including [quantization](#quantization), [sparsity](#sparsity), [distillation](#distillation), and [pruning](#pruning) to compress models.
 It accepts a torch or [ONNX](https://github.com/onnx/onnx) model as inputs and provides Python APIs for users to easily stack different model optimization techniques to produce an optimized quantized checkpoint.
 Seamlessly integrated within the NVIDIA AI software ecosystem, the quantized checkpoint generated from Model Optimizer is ready for deployment in downstream inference frameworks like [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/quantization) or [TensorRT](https://github.com/NVIDIA/TensorRT).
-Further integrations are planned for [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) and [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) for training-in-the-loop optimization techniques.
+ModelOpt is integrated with [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) and [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) for training-in-the-loop optimization techniques.
 For enterprise users, the 8-bit quantization with Stable Diffusion is also available on [NVIDIA NIM](https://developer.nvidia.com/blog/nvidia-nim-offers-optimized-inference-microservices-for-deploying-ai-models-at-scale/).
 
-Model Optimizer is available for free for all developers on [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/). This repository is for sharing examples and GPU-optimized recipes as well as collecting feedback from the community.
+Model Optimizer for both Linux and Windows are available for free for all developers on [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/). This repository is for sharing examples and GPU-optimized recipes as well as collecting feedback from the community.
 
 ## Installation / Docker
 
@@ -126,6 +130,14 @@ by using a more powerful model's learned features to guide a student model's obj
 ## Benchmark
 
 Please find the benchmarks [here](./benchmark.md).
+
+## Quantized Checkpoints
+
+[Quantized checkpoints](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4) in Hugging Face model hub are ready for [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and [vLLM](https://github.com/vllm-project/vllm) deployments. More models coming soon.
+
+## Roadmap
+
+Please see our [product roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/108).
 
 ## Release Notes
 
