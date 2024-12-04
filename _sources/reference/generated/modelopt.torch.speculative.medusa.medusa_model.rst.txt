@@ -34,7 +34,6 @@ medusa\_model
       :nosignatures:
    
       MedusaModel
-      ResBlock
    
    
 

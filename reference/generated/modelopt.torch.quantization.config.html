@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>config &mdash; Model Optimizer 0.19.0</title>
+  <title>config &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -102,7 +103,6 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.algorithms.html">algorithms</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
@@ -145,7 +145,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -204,7 +204,7 @@ is supported. Please use quantization config <code class="docutils literal notra
 <p>Quantization config is dictionary specifying the values for keys <code class="docutils literal notranslate"><span class="pre">&quot;quant_cfg&quot;</span></code> and
 <code class="docutils literal notranslate"><span class="pre">&quot;algorithm&quot;</span></code>. The <code class="docutils literal notranslate"><span class="pre">&quot;quant_cfg&quot;</span></code> key specifies the quantization configurations. The
 <code class="docutils literal notranslate"><span class="pre">&quot;algorithm&quot;</span></code> key specifies the <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> argument to
-<a class="reference internal" href="modelopt.torch.quantization.model_calib.html#modelopt.torch.quantization.model_calib.calibrate" title="modelopt.torch.quantization.model_calib.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calibrate</span></code></a>. Please see <a class="reference internal" href="#modelopt.torch.quantization.config.QuantizeConfig" title="modelopt.torch.quantization.config.QuantizeConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizeConfig</span></code></a>
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">calibrate</span></code>. Please see <a class="reference internal" href="#modelopt.torch.quantization.config.QuantizeConfig" title="modelopt.torch.quantization.config.QuantizeConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizeConfig</span></code></a>
 for the quantization config definition.</p>
 <p>‘Quantization configurations’ is a dictionary mapping wildcards or filter functions
 to its ‘quantizer attributes’. The wildcards or filter functions  are matched
@@ -692,7 +692,7 @@ for more information on how to specify the constructor.</p>
 </li>
 <li><dl class="simple">
 <dt>Constant integer tuple (E,M) for floating point quantization emulating</dt><dd><p>Nvidia’s FPx quantization. E is the number of exponent bits and M is the number
-of mantissa bits. Supported FPx quantization formats: FP8 (E4M3, E5M2), FP6(E3M2, E2M3), FP4(E2M1).</p>
+of mantissa bits. Supported FPx quantization formats: FP8 (E4M3).</p>
 </dd>
 </dl>
 </li>

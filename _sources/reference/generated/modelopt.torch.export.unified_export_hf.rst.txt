@@ -39,7 +39,6 @@ unified\_export\_hf
    .. autosummary::
       :nosignatures:
    
-      export_hf
       export_hf_checkpoint
    
    

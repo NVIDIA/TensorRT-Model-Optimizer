@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pruning &mdash; Model Optimizer 0.19.0</title>
+  <title>Pruning &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="1_quantization.html">Quantization</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Pruning</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#training">Training</a></li>
@@ -129,7 +130,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -161,9 +162,9 @@ attention heads of the model. More details on these pruning modes is as follows:
 <li><p><code class="docutils literal notranslate"><span class="pre">fastnas</span></code>: A pruning method recommended for Computer Vision models. Given a pretrained model,
 FastNAS finds the subnet which maximizes the score function while meeting the given constraints.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">mcore_gpt_minitron</span></code>: A pruning method developed by NVIDIA Research for pruning GPT-style models (e.g. Llama 3)
-in NVIDIA NeMo or Megatron-LM framework that are using Pipeline Parallellism. It uses the activation
-magnitudes to prune the mlp, attention heads, and GQA query groups. Checkout more details of the
-algorithm in the <a class="reference external" href="https://arxiv.org/abs/2408.11796" rel="noopener noreferrer" target="_blank">paper</a>.</p></li>
+in NVIDIA NeMo or Megatron-LM framework that are using Pipeline Parallelism. It uses the activation
+magnitudes to prune the mlp, attention heads, GQA query groups, embedding hidden size and number of layers of the model.
+Checkout more details of the algorithm in the <a class="reference external" href="https://arxiv.org/abs/2408.11796" rel="noopener noreferrer" target="_blank">paper</a>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">gradnas</span></code>: A light-weight pruning method recommended for language models like Hugging Face BERT and GPT-J.
 It uses the gradient information to prune the model’s linear layers and attention heads to meet the given constraints.</p></li>
 </ol>
@@ -207,7 +208,7 @@ specifying an upper bound in terms of absolute number (<code class="docutils lit
 <li><p>You should also specify the pruning algorithm (<code class="docutils literal notranslate"><span class="pre">mode</span></code>), you would like to use. Depending on the
 mode, you will need to provide additional <code class="docutils literal notranslate"><span class="pre">config</span></code> parameters like <code class="docutils literal notranslate"><span class="pre">score_func</span></code> (<code class="docutils literal notranslate"><span class="pre">fastnas</span></code> mode)
 or <code class="docutils literal notranslate"><span class="pre">loss_func</span></code> (<code class="docutils literal notranslate"><span class="pre">gradnas</span></code> mode), <code class="docutils literal notranslate"><span class="pre">dataloader</span></code>, <code class="docutils literal notranslate"><span class="pre">checkpoint</span></code>, etc. The most common score function
-is the validation accuracy of the model and is used to rank the sub-nets sampled from the serach space.
+is the validation accuracy of the model and is used to rank the sub-nets sampled from the search space.
 Loss function is used to run some forward and backward passes on the train dataloader to get the gradients.</p></li>
 <li><p>Please see the API reference of <a class="reference internal" href="../reference/generated/modelopt.torch.prune.pruning.html#modelopt.torch.prune.pruning.prune" title="modelopt.torch.prune.pruning.prune"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtp.prune()</span></code></a> for more details.</p></li>
 </ol>
@@ -366,8 +367,8 @@ Note: all constraints can be satisfied within the search space!
 constraint that you can iterate on.</p>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Generally a search space with max/min ratio above 3 is a good search space with many layers pruneable.
-The higher the max/min ratio, the more pruneable the model is (potentially making FastNAS slower but better).</p>
+<p>Generally a search space with max/min ratio above 3 is a good search space with many layers prunable.
+The higher the max/min ratio, the more prunable the model is (potentially making FastNAS slower but better).</p>
 <p>A good starting point for your search constraints is the centroid of the search space. If you are using flops/params
 constraints, we highly recommend you first obtain a pruned model and measure its latency on your target deployment
 before you finetune the pruned model. Depending on the latency, you can adjust the constraints accordingly.
@@ -377,8 +378,8 @@ the constraints and repeat the process.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>If the constraint cannnot be satisfied within the search space, the pruning will be interrupted
-and an errror will be raised.</p>
+<p>If the constraint cannot be satisfied within the search space, the pruning will be interrupted
+and an error will be raised.</p>
 </div>
 </section>
 </section>

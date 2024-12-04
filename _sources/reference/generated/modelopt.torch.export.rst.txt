@@ -23,6 +23,9 @@ export
    modelopt.torch.export.layer_utils
 
 
+   modelopt.torch.export.mcore_config_map
+
+
    modelopt.torch.export.model_config
 
 
@@ -35,7 +38,7 @@ export
    modelopt.torch.export.postprocess
 
 
-   modelopt.torch.export.scaling_factor_utils
+   modelopt.torch.export.quantization_utils
 
 
    modelopt.torch.export.tensorrt_llm_type
@@ -48,9 +51,6 @@ export
 
 
    modelopt.torch.export.unified_export_hf
-
-
-   modelopt.torch.export.vllm
 
 
 

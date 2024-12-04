@@ -47,6 +47,7 @@ model\_config
       ModelConfig
       QKVConfig
       RecurrentConfig
+      RelativeAttentionTableConfig
       RgLruConfig
    
    

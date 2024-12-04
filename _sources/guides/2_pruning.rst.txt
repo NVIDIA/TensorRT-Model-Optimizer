@@ -18,9 +18,9 @@ attention heads of the model. More details on these pruning modes is as follows:
 #.  ``fastnas``: A pruning method recommended for Computer Vision models. Given a pretrained model,
     FastNAS finds the subnet which maximizes the score function while meeting the given constraints.
 #.  ``mcore_gpt_minitron``: A pruning method developed by NVIDIA Research for pruning GPT-style models (e.g. Llama 3)
-    in NVIDIA NeMo or Megatron-LM framework that are using Pipeline Parallellism. It uses the activation
-    magnitudes to prune the mlp, attention heads, and GQA query groups. Checkout more details of the
-    algorithm in the `paper <https://arxiv.org/abs/2408.11796>`_.
+    in NVIDIA NeMo or Megatron-LM framework that are using Pipeline Parallelism. It uses the activation
+    magnitudes to prune the mlp, attention heads, GQA query groups, embedding hidden size and number of layers of the model.
+    Checkout more details of the algorithm in the `paper <https://arxiv.org/abs/2408.11796>`_.
 #.  ``gradnas``: A light-weight pruning method recommended for language models like Hugging Face BERT and GPT-J.
     It uses the gradient information to prune the model's linear layers and attention heads to meet the given constraints.
 
@@ -73,7 +73,7 @@ Prerequisites
 #. You should also specify the pruning algorithm (``mode``), you would like to use. Depending on the
    mode, you will need to provide additional ``config`` parameters like ``score_func`` (``fastnas`` mode)
    or ``loss_func`` (``gradnas`` mode), ``dataloader``, ``checkpoint``, etc. The most common score function
-   is the validation accuracy of the model and is used to rank the sub-nets sampled from the serach space.
+   is the validation accuracy of the model and is used to rank the sub-nets sampled from the search space.
    Loss function is used to run some forward and backward passes on the train dataloader to get the gradients.
 #. Please see the API reference of :meth:`mtp.prune() <modelopt.torch.prune.pruning.prune>` for more details.
 
@@ -248,8 +248,8 @@ constraint that you can iterate on.
 
 .. tip::
 
-    Generally a search space with max/min ratio above 3 is a good search space with many layers pruneable.
-    The higher the max/min ratio, the more pruneable the model is (potentially making FastNAS slower but better).
+    Generally a search space with max/min ratio above 3 is a good search space with many layers prunable.
+    The higher the max/min ratio, the more prunable the model is (potentially making FastNAS slower but better).
 
     A good starting point for your search constraints is the centroid of the search space. If you are using flops/params
     constraints, we highly recommend you first obtain a pruned model and measure its latency on your target deployment
@@ -260,8 +260,8 @@ constraint that you can iterate on.
 
 .. note::
 
-    If the constraint cannnot be satisfied within the search space, the pruning will be interrupted
-    and an errror will be raised.
+    If the constraint cannot be satisfied within the search space, the pruning will be interrupted
+    and an error will be raised.
 
 .. _pruning_fine_tuning:
 

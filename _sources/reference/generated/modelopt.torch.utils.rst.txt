@@ -26,6 +26,9 @@ utils
    modelopt.torch.utils.graph
 
 
+   modelopt.torch.utils.import_utils
+
+
    modelopt.torch.utils.list
 
 

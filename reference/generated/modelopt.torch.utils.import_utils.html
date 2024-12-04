@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>vllm &mdash; Model Optimizer 0.19.0</title>
+  <title>import_utils &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -35,8 +35,8 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="nas" href="modelopt.torch.nas.html" />
-    <link rel="prev" title="unified_export_hf" href="modelopt.torch.export.unified_export_hf.html" /> 
+    <link rel="next" title="list" href="modelopt.torch.utils.list.html" />
+    <link rel="prev" title="graph" href="modelopt.torch.utils.graph.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -97,22 +98,7 @@
 <li class="toctree-l2"><a class="reference internal" href="modelopt.onnx.html">onnx</a></li>
 <li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.distill.html">distill</a></li>
-<li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.export.html">export</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.scaling_factor_utils.html">scaling_factor_utils</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html">tensorrt_llm_utils</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.transformer_engine.html">transformer_engine</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html">unified_export_hf</a></li>
-<li class="toctree-l4 current"><a class="current reference internal" href="#">vllm</a></li>
-</ul>
-</li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.export.html">export</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
@@ -120,7 +106,20 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.sparsity.html">sparsity</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.speculative.html">speculative</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.trace.html">trace</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.utils.html">utils</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.utils.html">utils</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.cpp_extension.html">cpp_extension</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.dataset_utils.html">dataset_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.distributed.html">distributed</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.graph.html">graph</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">import_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.list.html">list</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.logging.html">logging</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.network.html">network</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.perf.html">perf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.random.html">random</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.tensor.html">tensor</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -142,16 +141,16 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../1_modelopt_api.html">modelopt API</a></li>
           <li class="breadcrumb-item"><a href="modelopt.torch.html">torch</a></li>
-          <li class="breadcrumb-item"><a href="modelopt.torch.export.html">export</a></li>
-      <li class="breadcrumb-item active">vllm</li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.utils.html">utils</a></li>
+      <li class="breadcrumb-item active">import_utils</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../../_sources/reference/generated/modelopt.torch.export.vllm.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../../_sources/reference/generated/modelopt.torch.utils.import_utils.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -159,30 +158,21 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="vllm">
-<h1>vllm<a class="headerlink" href="#vllm" title="Link to this heading"></a></h1>
-<p id="module-modelopt.torch.export.vllm">Utility to convert a Model Optimizer exported model to vLLM Checkpoint.</p>
+  <section id="import-utils">
+<h1>import_utils<a class="headerlink" href="#import-utils" title="Link to this heading"></a></h1>
+<p id="module-modelopt.torch.utils.import_utils">Handles suppressing import errors for third-party modules that may or may not be available.</p>
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.vllm.export_to_vllm" title="modelopt.torch.export.vllm.export_to_vllm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_to_vllm</span></code></a></p></td>
-<td><p>Exports the torch model to vLLM checkpoint and saves to export_dir.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.import_utils.import_plugin" title="modelopt.torch.utils.import_utils.import_plugin"><code class="xref py py-obj docutils literal notranslate"><span class="pre">import_plugin</span></code></a></p></td>
+<td><p>Context manager to import a plugin and suppress ModuleNotFoundError.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.vllm.export_to_vllm">
-<span class="sig-name descname"><span class="pre">export_to_vllm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.vllm.export_to_vllm" title="Link to this definition"></a></dt>
-<dd><p>Exports the torch model to vLLM checkpoint and saves to export_dir.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em>) – the torch model</p></li>
-<li><p><strong>tokenizer</strong> (<em>Module</em>) – the tokenizer used for model</p></li>
-<li><p><strong>export_path</strong> (<em>Path</em><em> | </em><em>str</em>) – Path for exporting the vLLM compatible quantized checkpoint</p></li>
-</ul>
-</dd>
-</dl>
+<dt class="sig sig-object py" id="modelopt.torch.utils.import_utils.import_plugin">
+<span class="sig-name descname"><span class="pre">import_plugin</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">plugin_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.import_utils.import_plugin" title="Link to this definition"></a></dt>
+<dd><p>Context manager to import a plugin and suppress ModuleNotFoundError.</p>
 </dd></dl>
 
 </section>
@@ -191,8 +181,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modelopt.torch.export.unified_export_hf.html" class="btn btn-neutral float-left" title="unified_export_hf" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.nas.html" class="btn btn-neutral float-right" title="nas" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.utils.graph.html" class="btn btn-neutral float-left" title="graph" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.utils.list.html" class="btn btn-neutral float-right" title="list" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

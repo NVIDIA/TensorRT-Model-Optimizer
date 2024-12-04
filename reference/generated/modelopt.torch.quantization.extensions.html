@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>extensions &mdash; Model Optimizer 0.19.0</title>
+  <title>extensions &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -102,7 +103,6 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.algorithms.html">algorithms</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
@@ -145,7 +145,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -174,30 +174,31 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.extensions.get_cuda_ext_fp8" title="modelopt.torch.quantization.extensions.get_cuda_ext_fp8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_cuda_ext_fp8</span></code></a></p></td>
 <td><p>Returns the cuda extention for tensor_quant_fp8.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.extensions.get_cuda_ext_mx" title="modelopt.torch.quantization.extensions.get_cuda_ext_mx"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_cuda_ext_mx</span></code></a></p></td>
-<td><p>Returns the cuda extention for tensor_quant_mx.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.extensions.precompile" title="modelopt.torch.quantization.extensions.precompile"><code class="xref py py-obj docutils literal notranslate"><span class="pre">precompile</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.extensions.precompile" title="modelopt.torch.quantization.extensions.precompile"><code class="xref py py-obj docutils literal notranslate"><span class="pre">precompile</span></code></a></p></td>
 <td><p>Precompile the CUDA extensions.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.extensions.get_cuda_ext">
-<span class="sig-name descname"><span class="pre">get_cuda_ext</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.extensions.get_cuda_ext" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">get_cuda_ext</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raise_if_failed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.extensions.get_cuda_ext" title="Link to this definition"></a></dt>
 <dd><p>Returns the cuda extention for tensor_quant.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>raise_if_failed</strong> (<em>bool</em>) – </p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.extensions.get_cuda_ext_fp8">
-<span class="sig-name descname"><span class="pre">get_cuda_ext_fp8</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.extensions.get_cuda_ext_fp8" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">get_cuda_ext_fp8</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">raise_if_failed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.extensions.get_cuda_ext_fp8" title="Link to this definition"></a></dt>
 <dd><p>Returns the cuda extention for tensor_quant_fp8.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.extensions.get_cuda_ext_mx">
-<span class="sig-name descname"><span class="pre">get_cuda_ext_mx</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.extensions.get_cuda_ext_mx" title="Link to this definition"></a></dt>
-<dd><p>Returns the cuda extention for tensor_quant_mx.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>raise_if_failed</strong> (<em>bool</em>) – </p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">

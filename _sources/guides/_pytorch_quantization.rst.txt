@@ -29,7 +29,7 @@ The simplest way to quantize a model using ModelOpt is to use :meth:`mtq.quantiz
 refer to :any:`quantization-configs` for the list of quantization configs supported by default. You may also define your own quantization config as
 described in :ref:`customizing quantizer config <customize_quantizer_config>`.
 
-ModelOpt supports algorithms such as AWQ, SmoothQuant or max for calibration. Please refer to :meth:`mtq.calibrate <modelopt.torch.quantization.model_calib.calibrate>`
+ModelOpt supports algorithms such as AWQ, SmoothQuant or max for calibration. Please refer to :meth:`mtq.calibrate <modelopt.torch.quantization.model_quant.calibrate>`
 for more details.
 
 The forward loop is used to pass data through the model in-order to collect statistics for calibration.
@@ -293,7 +293,7 @@ The quantization config might need to be customized if you define a custom quant
 Fast evaluation
 ---------------
 
-Weight folding avoids repeated quantization of weights during each inferece forward pass and speedup evaluation. This can be done with the following code:
+Weight folding avoids repeated quantization of weights during each inference forward pass and speedup evaluation. This can be done with the following code:
 
 .. code-block:: python
 

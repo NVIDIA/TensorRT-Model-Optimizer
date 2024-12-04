@@ -17,6 +17,9 @@ speculative
    modelopt.torch.speculative.config
 
 
+   modelopt.torch.speculative.eagle
+
+
    modelopt.torch.speculative.medusa
 
 
@@ -26,7 +29,13 @@ speculative
    modelopt.torch.speculative.plugins
 
 
+   modelopt.torch.speculative.redrafter
+
+
    modelopt.torch.speculative.speculative_decoding
+
+
+   modelopt.torch.speculative.utils
 
 
 

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NAS &mdash; Model Optimizer 0.19.0</title>
+  <title>NAS &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="2_pruning.html">Pruning</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">NAS</a><ul>
@@ -161,7 +162,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -487,7 +488,8 @@ can be converted into searchable units:</p>
 <span class="n">nn</span><span class="o">.</span><span class="n">Sequential</span>
 
 <span class="c1"># We convert Megatron-core / NeMo GPT-style models (e.g. Llama3.1, NeMo Mistral, etc.)</span>
-<span class="c1"># to automatically search over the MLP hidden size, number of attention heads, and number of GQA groups.</span>
+<span class="c1"># to automatically search over the MLP hidden size, number of attention heads, number of GQA groups,</span>
+<span class="c1"># and depth of the model.</span>
 <span class="n">megatron</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">transformer</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">MegatronModule</span>
 <span class="n">nemo</span><span class="o">.</span><span class="n">collections</span><span class="o">.</span><span class="n">nlp</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">language_modeling</span><span class="o">.</span><span class="n">megatron_gpt_model</span><span class="o">.</span><span class="n">MegatronGPTModel</span>
 
@@ -656,7 +658,7 @@ optimal subnet for your deployment constraints.</p>
 </section>
 <section id="nas-based-training">
 <h4>NAS-based training<a class="headerlink" href="#nas-based-training" title="Link to this heading"></a></h4>
-<p>During training of an search sapce, we simultaneously train both the model’s weights and
+<p>During training of an search space, we simultaneously train both the model’s weights and
 architecture:</p>
 <ul class="simple">
 <li><p>Using <a class="reference internal" href="../reference/generated/modelopt.torch.nas.html#module-modelopt.torch.nas" title="modelopt.torch.nas"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.nas</span></code></a> you can re-use your existing

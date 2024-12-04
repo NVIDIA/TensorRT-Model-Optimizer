@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>conversion &mdash; Model Optimizer 0.19.0</title>
+  <title>conversion &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -137,7 +138,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -300,11 +301,14 @@ set to True but the module with state is not the root module.</p>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.opt.conversion.ModeloptStateManager.load_state_dict">
-<span class="sig-name descname"><span class="pre">load_state_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.load_state_dict" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">load_state_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">state_dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">version</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.load_state_dict" title="Link to this definition"></a></dt>
 <dd><p>Load the provided <code class="docutils literal notranslate"><span class="pre">state_dict</span></code> to the modelopt_state.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>state_dict</strong> (<em>List</em><em>[</em><em>Tuple</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em><em>]</em>) – </p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>state_dict</strong> (<em>List</em><em>[</em><em>Tuple</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em><em>]</em>) – </p></li>
+<li><p><strong>version</strong> (<em>str</em>) – </p></li>
+</ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -332,6 +336,12 @@ set to True but the module with state is not the root module.</p>
 <dd class="field-odd"><p><em>List</em>[<em>Tuple</em>[<em>str</em>, <em>Dict</em>[<em>str</em>, <em>Dict</em>[<em>str</em>, <em>Any</em>]]]]</p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.conversion.ModeloptStateManager.state_version">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">state_version</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.state_version" title="Link to this definition"></a></dt>
+<dd><p>Return the version of modelopt state contained in the state manager.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -474,7 +484,7 @@ process. Please wrap the model after the restore process.</p>
 <dt class="sig sig-object py" id="modelopt.torch.opt.conversion.restore_from_modelopt_state">
 <span class="sig-name descname"><span class="pre">restore_from_modelopt_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">modelopt_state</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.restore_from_modelopt_state" title="Link to this definition"></a></dt>
 <dd><p>Restore the model architecture from the modelopt state dictionary based on the user-provided model.</p>
-<p>This method does not restore the model parameters such as weights and biases.
+<p>This method does not restore the model parameters such as weights, biases and quantization scales.
 Please load the weights and biases with the original checkpoint loading method after restoring
 modelopt states with <cite>restore_from_modelopt_state</cite>. For example:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.opt</span> <span class="k">as</span> <span class="nn">mto</span>
@@ -488,7 +498,7 @@ modelopt states with <cite>restore_from_modelopt_state</cite>. For example:</p>
 <span class="n">model</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;model_weights.pt&quot;</span><span class="p">),</span> <span class="o">...</span><span class="p">)</span>  <span class="c1"># Load the model weights</span>
 </pre></div>
 </div>
-<p>If you want to restore the model weights and the modelopt state together, please use
+<p>If you want to restore the model weights and the modelopt state with saved scales, please use
 <a class="reference internal" href="#modelopt.torch.opt.conversion.restore" title="modelopt.torch.opt.conversion.restore"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mto.restore()</span></code></a>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>

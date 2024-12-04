@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PyTorch Quantization &mdash; Model Optimizer 0.19.0</title>
+  <title>PyTorch Quantization &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1 current"><a class="reference internal" href="1_quantization.html">Quantization</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="_basic_quantization.html">Basic Concepts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="_choosing_quant_methods.html">Best practices to choose the right quantization methods</a></li>
@@ -131,7 +132,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -172,7 +173,7 @@ The simplest way to quantize a model using ModelOpt is to use <a class="referenc
 <p><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.quantize()</span></code> takes a model, a quantization config and a forward loop callable as input.  The quantization config specifies the layers to quantize, their quantization formats as well as the algorithm to use for calibration. Please
 refer to <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.config.html#quantization-configs"><span class="std std-ref">Quantization Configs</span></a> for the list of quantization configs supported by default. You may also define your own quantization config as
 described in <a class="reference internal" href="#customize-quantizer-config"><span class="std std-ref">customizing quantizer config</span></a>.</p>
-<p>ModelOpt supports algorithms such as AWQ, SmoothQuant or max for calibration. Please refer to <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.model_calib.html#modelopt.torch.quantization.model_calib.calibrate" title="modelopt.torch.quantization.model_calib.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.calibrate</span></code></a>
+<p>ModelOpt supports algorithms such as AWQ, SmoothQuant or max for calibration. Please refer to <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.calibrate" title="modelopt.torch.quantization.model_quant.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.calibrate</span></code></a>
 for more details.</p>
 <p>The forward loop is used to pass data through the model in-order to collect statistics for calibration.
 It should wrap around the calibration dataloader and the model.</p>
@@ -394,7 +395,7 @@ Here is the code to register the custom quantized module:</p>
 </section>
 <section id="fast-evaluation">
 <h3>Fast evaluation<a class="headerlink" href="#fast-evaluation" title="Link to this heading"></a></h3>
-<p>Weight folding avoids repeated quantization of weights during each inferece forward pass and speedup evaluation. This can be done with the following code:</p>
+<p>Weight folding avoids repeated quantization of weights during each inference forward pass and speedup evaluation. This can be done with the following code:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Fold quantizer together with weight tensor</span>
 <span class="n">mtq</span><span class="o">.</span><span class="n">fold_weight</span><span class="p">(</span><span class="n">quantized_model</span><span class="p">)</span>
 

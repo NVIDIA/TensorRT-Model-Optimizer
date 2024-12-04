@@ -72,7 +72,7 @@ Alternatively, you can call PTQ function in command line:
         --quantize_mode int8
 
 
-By default, after running the calibraton, the quantization tool will insert the QDQ nodes by following TensorRT friendly QDQ insertion algorithm. Users can change the default quantization behavior by tweaking the API params like op_types_to_quantize, op_types_to_exclude etc. See the :meth:`modelopt.onnx.quantization.quantize() <modelopt.onnx.quantization.quantize>` for details.
+By default, after running the calibration, the quantization tool will insert the QDQ nodes by following TensorRT friendly QDQ insertion algorithm. Users can change the default quantization behavior by tweaking the API params like op_types_to_quantize, op_types_to_exclude etc. See the :meth:`modelopt.onnx.quantization.quantize() <modelopt.onnx.quantization.quantize>` for details.
 
 
 Deploy Quantized ONNX Model

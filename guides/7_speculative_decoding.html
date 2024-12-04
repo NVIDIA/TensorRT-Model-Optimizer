@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Speculative Decoding &mdash; Model Optimizer 0.19.0</title>
+  <title>Speculative Decoding &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="3_nas.html">NAS</a></li>
@@ -79,12 +80,13 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Speculative Decoding</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#introduction">Introduction</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#convert">Convert</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#fine-tune-medusa-model-and-save">Fine-tune Medusa model and save</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#fine-tune-speculative-decoding-model-and-store-restore-the-model">Fine-tune speculative decoding model and store/restore the model</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#speculative-decoding-concepts">Speculative Decoding Concepts</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#sepculative-decoding">Sepculative decoding</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1">Speculative decoding</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#medusa-algorithm">Medusa algorithm</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#eagle-algorithm">EAGLE algorithm</a></li>
 </ul>
 </li>
 </ul>
@@ -122,7 +124,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -144,14 +146,15 @@
 enables your model to generate multiple tokens in each generate step. This can be useful for reducing the
 latency of your model and speeds up inference.</p>
 <p>Below are the speculative decoding algorithms supported by ModelOpt:
-- Medusa</p>
-<p>Follow the steps described below to obtain a model with Medusa speculative decoding using ModelOpt’s
+- Medusa
+- EAGLE</p>
+<p>Follow the steps described below to obtain a model with Medusa or EAGLE speculative decoding using ModelOpt’s
 Speculative Decoding module <a class="reference internal" href="../reference/generated/modelopt.torch.speculative.html#module-modelopt.torch.speculative" title="modelopt.torch.speculative"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.speculative</span></code></a>:</p>
 <ol class="arabic simple">
 <li><p><strong>Convert your model via</strong> <a class="reference internal" href="../reference/generated/modelopt.torch.speculative.speculative_decoding.html#modelopt.torch.speculative.speculative_decoding.convert" title="modelopt.torch.speculative.speculative_decoding.convert"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtsp.convert</span></code></a>:
-Add Medusa head to your model and enable Medusa speculative decoding in inference.</p></li>
-<li><p><strong>Fine-tune Medusa head</strong>: Update the compute_loss function of your trainer and fine-tune the Medusa head.
-The base model can be frozen or fine-tuned together with Medua head.</p></li>
+Add Medusa heads or EAGLE module to your model.</p></li>
+<li><p><strong>Fine-tune Medusa heads or EAGLE module</strong>: Fine-tune the Medusa heads or EAGLE module.
+The base model is recommended to be frozen.</p></li>
 <li><p><strong>Checkpoint and re-load</strong>: Save the model via <a class="reference internal" href="../reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.save" title="modelopt.torch.opt.conversion.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mto.save</span></code></a> and
 restore via <a class="reference internal" href="../reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.restore" title="modelopt.torch.opt.conversion.restore"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mto.restore</span></code></a></p></li>
 </ol>
@@ -169,40 +172,38 @@ restore via <a class="reference internal" href="../reference/generated/modelopt.
 <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;TinyLlama/TinyLlama-1.1B-Chat-v1.0&quot;</span><span class="p">)</span>
 <span class="n">tokenizer</span><span class="o">.</span><span class="n">pad_token_id</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token_id</span>
 
-<span class="c1"># Configure and convert to medusa</span>
-<span class="n">medusa_config</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;medusa_num_heads&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span>
-    <span class="s2">&quot;medusa_num_layers&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
-<span class="p">}</span>
-<span class="n">medusa_model</span> <span class="o">=</span> <span class="n">mtsp</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">[(</span><span class="s2">&quot;medusa&quot;</span><span class="p">,</span> <span class="n">config</span><span class="p">)])</span>
+<span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;medusa&quot;</span><span class="p">:</span>
+    <span class="c1"># Configure and convert to medusa</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;medusa_num_heads&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="s2">&quot;medusa_num_layers&quot;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="p">}</span>
+<span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;eagle&quot;</span><span class="p">:</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;eagle_num_layers&quot;</span><span class="p">:</span> <span class="mi">1</span>
+        <span class="p">}</span>
+<span class="n">mtsp</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="p">[(</span><span class="n">mode</span><span class="p">,</span> <span class="n">config</span><span class="p">)])</span>
 </pre></div>
 </div>
-<section id="fine-tune-medusa-model-and-save">
-<h3>Fine-tune Medusa model and save<a class="headerlink" href="#fine-tune-medusa-model-and-save" title="Link to this heading"></a></h3>
-<p>After converting to a Medusa model, you need to fine-tune the Medusa head:</p>
+<section id="fine-tune-speculative-decoding-model-and-store-restore-the-model">
+<h3>Fine-tune speculative decoding model and store/restore the model<a class="headerlink" href="#fine-tune-speculative-decoding-model-and-store-restore-the-model" title="Link to this heading"></a></h3>
+<p>After converting to a speculative decoding model, you need to fine-tune the decoding module:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">os</span>
 <span class="kn">from</span> <span class="nn">transformers</span> <span class="kn">import</span> <span class="n">Trainer</span>
 <span class="kn">import</span> <span class="nn">modelopt.torch.opt</span> <span class="k">as</span> <span class="nn">mto</span>
 
-<span class="n">trainer</span> <span class="o">=</span> <span class="n">Trainer</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">medusa_model</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">training_args</span><span class="p">,</span> <span class="o">**</span><span class="n">data_module</span><span class="p">)</span>
-<span class="n">trainer</span><span class="o">.</span><span class="n">_move_model_to_device</span><span class="p">(</span><span class="n">medusa_model</span><span class="p">,</span> <span class="n">trainer</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-<span class="n">mtsp</span><span class="o">.</span><span class="n">plugins</span><span class="o">.</span><span class="n">transformers</span><span class="o">.</span><span class="n">replace_medusa_compute_loss</span><span class="p">(</span><span class="n">trainer</span><span class="p">,</span> <span class="n">medusa_only_heads</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-
 <span class="n">mto</span><span class="o">.</span><span class="n">enable_huggingface_checkpointing</span><span class="p">()</span>
+
+<span class="n">trainer</span> <span class="o">=</span> <span class="n">Trainer</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">training_args</span><span class="p">,</span> <span class="o">**</span><span class="n">data_module</span><span class="p">)</span>
+<span class="n">trainer</span><span class="o">.</span><span class="n">_move_model_to_device</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">trainer</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
 
 <span class="n">trainer</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">resume_from_checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">)</span>
 <span class="n">trainer</span><span class="o">.</span><span class="n">save_state</span><span class="p">()</span>
 <span class="n">trainer</span><span class="o">.</span><span class="n">save_model</span><span class="p">(</span><span class="s2">&quot;&lt;path to the output directory&gt;&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>If “medusa_only_heads” is set to True, the original model will be frozen and only the Medusa head
-will be fine-tuned.</p>
-</div>
-<p>To restore the saved speculative model:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Re-initialize the original, unmodified model</span>
-<span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;&lt;path to the output directory&gt;&quot;</span><span class="p">)</span>
+<p>To restore the saved speculative decoding model:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForCausalLM</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="s2">&quot;&lt;path to the output directory&gt;&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>
@@ -211,8 +212,8 @@ will be fine-tuned.</p>
 <span id="speculative-concepts"></span><h2>Speculative Decoding Concepts<a class="headerlink" href="#speculative-decoding-concepts" title="Link to this heading"></a></h2>
 <p>Below, we will provide an overview of ModelOpt’s speculative decoding feature as well as its basic
 concepts and terminology.</p>
-<section id="sepculative-decoding">
-<h3>Sepculative decoding<a class="headerlink" href="#sepculative-decoding" title="Link to this heading"></a></h3>
+<section id="id1">
+<h3>Speculative decoding<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
 <p>The standard way of generating text from a language model is with autoregressive decoding: one token
 is generated each step and appended to the input context for the next token generation. This means
 to generate <em>K</em> tokens it will take <em>K</em> serial runs of the model. Inference from large autoregressive
@@ -233,6 +234,14 @@ the corresponding position. These options are then combined and processed using 
 mechanism. Finally, a typical acceptance scheme is employed to pick the longest plausible prefix from
 the candidates for further decoding. Since the draft model is the target model itself, this guarantees
 the output distribution is the same as that of the target model.</p>
+</section>
+<section id="eagle-algorithm">
+<h3>EAGLE algorithm<a class="headerlink" href="#eagle-algorithm" title="Link to this heading"></a></h3>
+<p>Unlike Medusa that predicts future tokens based on the base model hidden states, EAGLE predicts
+future hidden states through a lightweight autoregressive decoder, which is then used to
+predict the future tokens. Since autoregression at the feature (hidden states) level is simpler
+than at the token level, EAGLE can predict future tokens more accurately than Medusa. Therefore, it
+achieves higher speedup.</p>
 </section>
 </section>
 </section>

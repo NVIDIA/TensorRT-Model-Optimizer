@@ -28,7 +28,7 @@ Set up the search
 Setting up search for pruning involves setting up the training and validation data loaders, and optionally defining a
 score function (FastNAS) or loss function (GradNAS) and specifying the desired pruning constraints.
 The most common score function is the validation accuracy of the model and is used to rank the sub-nets sampled from
-the serach space. Loss function is used to run some forward and backward passes on the model to get the gradients
+the search space. Loss function is used to run some forward and backward passes on the model to get the gradients
 of the model.
 
 Please see an example of FastNAS pruning set up below.

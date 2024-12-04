@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Feature Support Matrix &mdash; Model Optimizer 0.19.0</title>
+  <title>redrafter &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -34,7 +34,9 @@
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
-    <link rel="search" title="Search" href="../../search.html" /> 
+    <link rel="search" title="Search" href="../../search.html" />
+    <link rel="next" title="conversion" href="modelopt.torch.speculative.redrafter.conversion.html" />
+    <link rel="prev" title="plugins" href="modelopt.torch.speculative.plugins.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -58,16 +60,17 @@
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../1_overview.html">Overview</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../2_installation.html">Installation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../3_quantization.html">Quick Start: Quantization</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../5_pruning.html">Quick Start: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../6_distillation.html">Quick Start: Distillation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../7_sparsity.html">Quick Start: Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/1_overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/2_installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../getting_started/7_sparsity.html">Quick Start: Sparsity</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -88,9 +91,36 @@
 <li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../../reference/0_changelog.html">Changelog</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../reference/1_modelopt_api.html">modelopt API</a></li>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../0_changelog.html">Changelog</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="../1_modelopt_api.html">modelopt API</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="modelopt.deploy.html">deploy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="modelopt.onnx.html">onnx</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.distill.html">distill</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.export.html">export</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.sparsity.html">sparsity</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.speculative.html">speculative</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.config.html">config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.eagle.html">eagle</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.medusa.html">medusa</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mode.html">mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.plugins.html">plugins</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">redrafter</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.speculative_decoding.html">speculative_decoding</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.utils.html">utils</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.trace.html">trace</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.utils.html">utils</a></li>
+</ul>
+</li>
+</ul>
+</li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Support</span></p>
 <ul>
@@ -108,13 +138,16 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Feature Support Matrix</li>
+          <li class="breadcrumb-item"><a href="../1_modelopt_api.html">modelopt API</a></li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.html">torch</a></li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.speculative.html">speculative</a></li>
+      <li class="breadcrumb-item active">redrafter</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../../_sources/getting_started/windows/_feature_support_matrix.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../../_sources/reference/generated/modelopt.torch.speculative.redrafter.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -122,119 +155,29 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="feature-support-matrix">
-<span id="id1"></span><h1>Feature Support Matrix<a class="headerlink" href="#feature-support-matrix" title="Link to this heading"></a></h1>
-<section id="quantization-techniques-windows">
-<h2>Quantization Techniques - Windows<a class="headerlink" href="#quantization-techniques-windows" title="Link to this heading"></a></h2>
-<table class="docutils align-default">
-<thead>
-<tr class="row-odd"><th class="head"><p><strong>Quantization Format</strong></p></th>
-<th class="head"><p><strong>Details</strong></p></th>
-<th class="head"><p><strong>Supported Model Formats</strong></p></th>
-<th class="head"><p><strong>Deployment</strong></p></th>
-</tr>
-</thead>
+  <section id="redrafter">
+<h1>redrafter<a class="headerlink" href="#redrafter" title="Link to this heading"></a></h1>
+<p class="rubric">Modules</p>
+<table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-even"><td><p><strong>W4A16 (INT4 Weights
-Only)</strong></p></td>
-<td><ul class="simple">
-<li><p>Block-wise INT4 Weights, F16 Activations</p></li>
-<li><p>Uses AWQ Algorithm</p></li>
-<li><p>GPUs: Ampere and Later</p></li>
-</ul>
-</td>
-<td><p>PyTorch*, ONNX</p></td>
-<td><ul class="simple">
-<li><p>ORT-DirectML,
-TensorRT*,
-TensorRT-LLM*</p></li>
-</ul>
-</td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.speculative.redrafter.conversion.html#module-modelopt.torch.speculative.redrafter.conversion" title="modelopt.torch.speculative.redrafter.conversion"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.speculative.redrafter.conversion</span></code></a></p></td>
+<td><p>Redrafter conversion/restore utilities.</p></td>
 </tr>
-<tr class="row-odd"><td><p><strong>W4A8 (INT4 Weights,
-FP8 Activations)</strong></p></td>
-<td><ul class="simple">
-<li><p>Block-wise INT8 Weights, Per-Tensor FP8
-Activations</p></li>
-<li><p>Uses AWQ Algorithm</p></li>
-<li><p>GPUs: Ada and Later</p></li>
-</ul>
-</td>
-<td><p>PyTorch*</p></td>
-<td><ul class="simple">
-<li><p>TensorRT-LLM*</p></li>
-</ul>
-</td>
-</tr>
-<tr class="row-even"><td><p><strong>FP8</strong></p></td>
-<td><ul class="simple">
-<li><p>Per-Tensor FP8 Weight &amp; Activations</p></li>
-<li><p>GPUs: Ada and Later</p></li>
-</ul>
-</td>
-<td><p>PyTorch*, ONNX*</p></td>
-<td><ul class="simple">
-<li><p>TensorRT*,
-TensorRT-LLM*</p></li>
-</ul>
-</td>
-</tr>
-<tr class="row-odd"><td><p><strong>INT8</strong></p></td>
-<td><ul class="simple">
-<li><p>Per-channel INT8 Weights, Per-Tensor FP8
-Activations</p></li>
-<li><p>Uses Smooth Quant Algorithm</p></li>
-<li><p>GPUs: Ada and Later</p></li>
-</ul>
-</td>
-<td><p>PyTorch*, ONNX*</p></td>
-<td><ul class="simple">
-<li><p>TensorRT*,
-TensorRT-LLM*</p></li>
-</ul>
-</td>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.speculative.redrafter.redrafter_model.html#module-modelopt.torch.speculative.redrafter.redrafter_model" title="modelopt.torch.speculative.redrafter.redrafter_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.speculative.redrafter.redrafter_model</span></code></a></p></td>
+<td><p>Redrafter model to support redrafter decoding.</p></td>
 </tr>
 </tbody>
 </table>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>Features marked with an asterisk (*) are considered experimental.</p>
-</div>
-</section>
-<section id="supported-models-windows">
-<h2>Supported Models - Windows<a class="headerlink" href="#supported-models-windows" title="Link to this heading"></a></h2>
-<table class="docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><strong>Model</strong></p></td>
-<td><p><strong>ONNX INT4 AWQ</strong></p></td>
-</tr>
-<tr class="row-even"><td><p>Llama3.1-8B-Instruct</p></td>
-<td><p>Yes</p></td>
-</tr>
-<tr class="row-odd"><td><p>Phi3.5-mini-Instruct</p></td>
-<td><p>Yes</p></td>
-</tr>
-<tr class="row-even"><td><p>Mistral-7B-Instruct-v0.3</p></td>
-<td><p>Yes</p></td>
-</tr>
-<tr class="row-odd"><td><p>Llama3.2-3B-Instruct</p></td>
-<td><p>Yes</p></td>
-</tr>
-<tr class="row-even"><td><p>Gemma-2b-it</p></td>
-<td><p>Yes</p></td>
-</tr>
-<tr class="row-odd"><td><p>Nemotron Mini 4B Instruct</p></td>
-<td><p>Yes</p></td>
-</tr>
-</tbody>
-</table>
-</section>
+<p id="module-modelopt.torch.speculative.redrafter">Redrafter Optimization Method.</p>
 </section>
 
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="modelopt.torch.speculative.plugins.html" class="btn btn-neutral float-left" title="plugins" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.speculative.redrafter.conversion.html" class="btn btn-neutral float-right" title="conversion" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 

@@ -33,7 +33,7 @@ The export API (:meth:`export_tensorrt_llm_checkpoint <modelopt.torch.export.mod
     with torch.inference_mode():
         export_tensorrt_llm_checkpoint(
             model,  # The quantized model.
-            decoder_type,  # The type of the model as str, e.g gptj, llama or gptnext.
+            decoder_type,  # The type of the model as str, e.g gpt, gptj, llama.
             dtype,  # the weights data type to export the unquantized layers.
             export_dir,  # The directory where the exported files will be stored.
             inference_tensor_parallel,  # The number of GPUs used in the inference time for tensor parallelism.

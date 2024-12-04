@@ -28,14 +28,6 @@ int4
    .. Overview table of available classes in the module
    
    
-   .. rubric:: Classes
-
-   .. autosummary::
-      :nosignatures:
-   
-      AWQClipHelper
-      AWQLiteHelper
-   
    
 
 
@@ -47,19 +39,6 @@ int4
    .. autosummary::
       :nosignatures:
    
-      dq_tensor
-      find_scales
-      get_act_scale
-      get_act_to_weight_map_and_act_to_wa_pack_map
-      get_parent_child_nodes_map
-      get_scale
-      get_weight_scale
-      get_x_w_mean_for_subgraph
-      quant_tensor
       quantize
-      quantize_rtn
-      rtn
-      run_awq_scale_search_per_node
-      run_awq_scale_search_per_subgraph
    
    

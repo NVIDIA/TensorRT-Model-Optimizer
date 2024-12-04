@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Model Optimizer Changelog (Windows) &mdash; Model Optimizer 0.19.0</title>
+  <title>Model Optimizer Changelog (Windows) &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guides/3_nas.html">NAS</a></li>
@@ -117,7 +118,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -139,7 +140,7 @@
 <p><strong>New Features</strong></p>
 <ul class="simple">
 <li><p>This is the first official release of TensorRT Model Optimizer for Windows</p></li>
-<li><p><strong>ONNX INT4 Quantization:</strong> <a class="reference internal" href="generated/modelopt.onnx.quantization.int4.html#modelopt.onnx.quantization.int4.quantize" title="modelopt.onnx.quantization.int4.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">modelopt.onnx.quantization.quantize_int4</span></code></a> now supports ONNX INT4 quantization for DirectML and TensorRT* deployment. See <a class="reference internal" href="../getting_started/windows/_feature_support_matrix.html#feature-support-matrix"><span class="std std-ref">Feature Support Matrix</span></a> for details about supported features and models.</p></li>
+<li><p><strong>ONNX INT4 Quantization:</strong> <a class="reference internal" href="generated/modelopt.onnx.quantization.int4.html#modelopt.onnx.quantization.int4.quantize" title="modelopt.onnx.quantization.int4.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">modelopt.onnx.quantization.quantize_int4</span></code></a> now supports ONNX INT4 quantization for DirectML and TensorRT* deployment. See <a class="reference internal" href="../guides/0_support_matrix.html#support-matrix"><span class="std std-ref">Support Matrix</span></a> for details about supported features and models.</p></li>
 <li><p><strong>LLM Quantization with Olive:</strong> Enabled LLM quantization through Olive, streamlining model optimization workflows. Refer <a class="reference external" href="https://github.com/microsoft/Olive/tree/main/examples/phi3#quantize-models-with-nvidia-tensorrt-model-optimizer" rel="noopener noreferrer" target="_blank">example</a></p></li>
 <li><p><strong>DirectML Deployment Guide:</strong> Added DML deployment guide. Refer <a class="reference internal" href="../deployment/2_directml_deployment.html#directml-deployment"><span class="std std-ref">DirectML Deployment</span></a>.</p></li>
 <li><p><strong>MMLU Benchmark for Accuracy Evaluations:</strong> Introduced <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/windows/accuracy_benchmark/README.md" rel="noopener noreferrer" target="_blank">MMLU benchmarking</a> for accuracy evaluation of ONNX models on DirectML (DML).</p></li>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>scaling_factor_utils &mdash; Model Optimizer 0.19.0</title>
+  <title>mcore_config_map &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -35,8 +35,8 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="tensorrt_llm_type" href="modelopt.torch.export.tensorrt_llm_type.html" />
-    <link rel="prev" title="postprocess" href="modelopt.torch.export.postprocess.html" /> 
+    <link rel="next" title="model_config" href="modelopt.torch.export.model_config.html" />
+    <link rel="prev" title="layer_utils" href="modelopt.torch.export.layer_utils.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -101,16 +102,16 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
+<li class="toctree-l4 current"><a class="current reference internal" href="#">mcore_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
-<li class="toctree-l4 current"><a class="current reference internal" href="#">scaling_factor_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quantization_utils.html">quantization_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html">tensorrt_llm_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.transformer_engine.html">transformer_engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html">unified_export_hf</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.vllm.html">vllm</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
@@ -142,16 +143,16 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../1_modelopt_api.html">modelopt API</a></li>
           <li class="breadcrumb-item"><a href="modelopt.torch.html">torch</a></li>
           <li class="breadcrumb-item"><a href="modelopt.torch.export.html">export</a></li>
-      <li class="breadcrumb-item active">scaling_factor_utils</li>
+      <li class="breadcrumb-item active">mcore_config_map</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../../_sources/reference/generated/modelopt.torch.export.scaling_factor_utils.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../../_sources/reference/generated/modelopt.torch.export.mcore_config_map.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -159,95 +160,17 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="scaling-factor-utils">
-<h1>scaling_factor_utils<a class="headerlink" href="#scaling-factor-utils" title="Link to this heading"></a></h1>
-<p id="module-modelopt.torch.export.scaling_factor_utils">Utils for scaling factors adjustments.</p>
-<p class="rubric">Functions</p>
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.scaling_factor_utils.adjust_attn_amax_values" title="modelopt.torch.export.scaling_factor_utils.adjust_attn_amax_values"><code class="xref py py-obj docutils literal notranslate"><span class="pre">adjust_attn_amax_values</span></code></a></p></td>
-<td><p>Adjusts the amax values for the attention layers.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.scaling_factor_utils.convert_state_dict_amax_to_scales" title="modelopt.torch.export.scaling_factor_utils.convert_state_dict_amax_to_scales"><code class="xref py py-obj docutils literal notranslate"><span class="pre">convert_state_dict_amax_to_scales</span></code></a></p></td>
-<td><p>Convert _amax keys in a quantized state dictionary to scale values and update the state dictionary accordingly.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.scaling_factor_utils.get_weights_scaling_factor_and_amax" title="modelopt.torch.export.scaling_factor_utils.get_weights_scaling_factor_and_amax"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weights_scaling_factor_and_amax</span></code></a></p></td>
-<td><p>Calculate the weight scaling facotrs for a given group size.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.scaling_factor_utils.resmooth_and_get_scale_and_amax" title="modelopt.torch.export.scaling_factor_utils.resmooth_and_get_scale_and_amax"><code class="xref py py-obj docutils literal notranslate"><span class="pre">resmooth_and_get_scale_and_amax</span></code></a></p></td>
-<td><p>Resmooths weights from a single or multiple ranks and get scaling factors and amax.</p></td>
-</tr>
-</tbody>
-</table>
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.scaling_factor_utils.adjust_attn_amax_values">
-<span class="sig-name descname"><span class="pre">adjust_attn_amax_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.scaling_factor_utils.adjust_attn_amax_values" title="Link to this definition"></a></dt>
-<dd><p>Adjusts the amax values for the attention layers.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.scaling_factor_utils.convert_state_dict_amax_to_scales">
-<span class="sig-name descname"><span class="pre">convert_state_dict_amax_to_scales</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quantized_state_dict</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maxbound</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers_quant_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.scaling_factor_utils.convert_state_dict_amax_to_scales" title="Link to this definition"></a></dt>
-<dd><p>Convert _amax keys in a quantized state dictionary to scale values and update the state dictionary accordingly.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>quantized_state_dict</strong> (<em>dict</em>) – The input state dictionary with quantized values.</p></li>
-<li><p><strong>maxbound</strong> (<em>float</em>) – The maximum bound value for the given quantization format.</p></li>
-<li><p><strong>layers_quant_config</strong> (<em>dict/str</em>) – Dictionary containing per layer quantization format information for</p></li>
-<li><p><strong>quantization.</strong> (<em>mixed_precision and str containing quantization format for regular</em>) – </p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The updated state dictionary with converted scale values.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>dict</em></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.scaling_factor_utils.get_weights_scaling_factor_and_amax">
-<span class="sig-name descname"><span class="pre">get_weights_scaling_factor_and_amax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_size</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.scaling_factor_utils.get_weights_scaling_factor_and_amax" title="Link to this definition"></a></dt>
-<dd><p>Calculate the weight scaling facotrs for a given group size.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.scaling_factor_utils.resmooth_and_get_scale_and_amax">
-<span class="sig-name descname"><span class="pre">resmooth_and_get_scale_and_amax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">merged_weights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pre_quant_scales</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ranks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">avg_pre_quant_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.scaling_factor_utils.resmooth_and_get_scale_and_amax" title="Link to this definition"></a></dt>
-<dd><p>Resmooths weights from a single or multiple ranks and get scaling factors and amax.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>merged_weights</strong> (<em>Tensor</em>) – Merged weights from ranks.</p></li>
-<li><p><strong>pre_quant_scales</strong> (<em>List</em><em>[</em><em>Tensor</em><em>]</em>) – List of pre-quantization scales for each rank.</p></li>
-<li><p><strong>ranks</strong> (<em>int</em>) – Number of ranks.</p></li>
-<li><p><strong>group_size</strong> (<em>int</em>) – Group size of the quantization block.</p></li>
-<li><p><strong>avg_pre_quant_scale</strong> (<em>optional</em>) – If not provided, weights will be resmoothed using
-the average of pre_quant_scales.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Resmoothed weights.
-weight_scaling_factors: Resmoothed scaling factors.
-avg_pre_quant_scale: Calculated average of the quantization scale.
-amaxes: Amax values for the weights.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>weights</p>
-</dd>
-</dl>
-</dd></dl>
-
+  <section id="mcore-config-map">
+<h1>mcore_config_map<a class="headerlink" href="#mcore-config-map" title="Link to this heading"></a></h1>
+<p id="module-modelopt.torch.export.mcore_config_map">Define the config mapping between Mcore and modelopt.</p>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modelopt.torch.export.postprocess.html" class="btn btn-neutral float-left" title="postprocess" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.export.tensorrt_llm_type.html" class="btn btn-neutral float-right" title="tensorrt_llm_type" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.export.layer_utils.html" class="btn btn-neutral float-left" title="layer_utils" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.export.model_config.html" class="btn btn-neutral float-right" title="model_config" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

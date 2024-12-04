@@ -39,7 +39,6 @@ model\_config\_utils
    .. autosummary::
       :nosignatures:
    
-      from_quantized_weight
       merge_fc1_gate
       merge_qkv
       model_config_from_dict
@@ -47,9 +46,7 @@ model\_config\_utils
       naive_quantization
       pack_linear_weights
       pad_weights
-      process_layer_quant_config
       restore_model_config
       split_config_and_weights
-      to_quantized_weight
    
    

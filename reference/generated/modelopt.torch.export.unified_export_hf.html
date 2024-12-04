@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>unified_export_hf &mdash; Model Optimizer 0.19.0</title>
+  <title>unified_export_hf &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -35,7 +35,7 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="vllm" href="modelopt.torch.export.vllm.html" />
+    <link rel="next" title="nas" href="modelopt.torch.nas.html" />
     <link rel="prev" title="transformer_engine" href="modelopt.torch.export.transformer_engine.html" /> 
 </head>
 
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -101,16 +102,16 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_config_map.html">mcore_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.scaling_factor_utils.html">scaling_factor_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quantization_utils.html">quantization_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html">tensorrt_llm_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.transformer_engine.html">transformer_engine</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">unified_export_hf</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.vllm.html">vllm</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
@@ -142,7 +143,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -165,50 +166,22 @@
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.unified_export_hf.export_hf" title="modelopt.torch.export.unified_export_hf.export_hf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_hf</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.unified_export_hf.export_hf_checkpoint" title="modelopt.torch.export.unified_export_hf.export_hf_checkpoint"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_hf_checkpoint</span></code></a></p></td>
 <td><p>Exports the torch model to unified checkpoint and saves to export_dir.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.unified_export_hf.export_hf_checkpoint" title="modelopt.torch.export.unified_export_hf.export_hf_checkpoint"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_hf_checkpoint</span></code></a></p></td>
-<td><p>Exports the torch model to the packed checkpoint with original HF naming and save to the export_dir.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.unified_export_hf.export_hf">
-<span class="sig-name descname"><span class="pre">export_hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.unified_export_hf.export_hf" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.export.unified_export_hf.export_hf_checkpoint">
+<span class="sig-name descname"><span class="pre">export_hf_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.unified_export_hf.export_hf_checkpoint" title="Link to this definition"></a></dt>
 <dd><p>Exports the torch model to unified checkpoint and saves to export_dir.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – the torch model.</p></li>
-<li><p><strong>dtype</strong> (<em>dtype</em>) – the weights data type to export the unquantized layers.</p></li>
+<li><p><strong>dtype</strong> (<em>dtype</em><em> | </em><em>None</em>) – the weights data type to export the unquantized layers or the default model data type if None.</p></li>
 <li><p><strong>export_dir</strong> (<em>Path</em><em> | </em><em>str</em>) – the target export path.</p></li>
 </ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.unified_export_hf.export_hf_checkpoint">
-<span class="sig-name descname"><span class="pre">export_hf_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.unified_export_hf.export_hf_checkpoint" title="Link to this definition"></a></dt>
-<dd><p>Exports the torch model to the packed checkpoint with original HF naming and save to the export_dir.</p>
-<p>The packed checkpoint will be consumed by the TensorRT-LLM unified converter.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em>) – the torch model.</p></li>
-<li><p><strong>dtype</strong> (<em>dtype</em>) – the weights data type to export the unquantized layers.</p></li>
-<li><p><strong>export_dir</strong> (<em>Path</em><em> | </em><em>str</em>) – the target export path.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Dict containing quantized weights
-quant_config: config information to export hf_quant_cfg.json
-per_layer_quantization: Dict containing layerwise quantization information to export quant_cfg.json
-in mixed_precision case.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>post_state_dict</p>
 </dd>
 </dl>
 </dd></dl>
@@ -220,7 +193,7 @@ in mixed_precision case.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="modelopt.torch.export.transformer_engine.html" class="btn btn-neutral float-left" title="transformer_engine" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.export.vllm.html" class="btn btn-neutral float-right" title="vllm" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.nas.html" class="btn btn-neutral float-right" title="nas" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

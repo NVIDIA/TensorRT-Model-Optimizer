@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_config_utils &mdash; Model Optimizer 0.19.0</title>
+  <title>model_config_utils &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -101,16 +102,16 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_config_map.html">mcore_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">model_config_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.scaling_factor_utils.html">scaling_factor_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quantization_utils.html">quantization_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html">tensorrt_llm_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.transformer_engine.html">transformer_engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html">unified_export_hf</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.vllm.html">vllm</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
@@ -142,7 +143,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -165,32 +166,26 @@
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.from_quantized_weight" title="modelopt.torch.export.model_config_utils.from_quantized_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">from_quantized_weight</span></code></a></p></td>
-<td><p>Converts the quantized weight to the target torch_dtype format.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.merge_fc1_gate" title="modelopt.torch.export.model_config_utils.merge_fc1_gate"><code class="xref py py-obj docutils literal notranslate"><span class="pre">merge_fc1_gate</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.merge_fc1_gate" title="modelopt.torch.export.model_config_utils.merge_fc1_gate"><code class="xref py py-obj docutils literal notranslate"><span class="pre">merge_fc1_gate</span></code></a></p></td>
 <td><p>Merges the qkv fields in model_config from QKVConfig to a single LinearConfig.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.merge_qkv" title="modelopt.torch.export.model_config_utils.merge_qkv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">merge_qkv</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.merge_qkv" title="modelopt.torch.export.model_config_utils.merge_qkv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">merge_qkv</span></code></a></p></td>
 <td><p>Merges the qkv fields in model_config from QKVConfig to a single LinearConfig.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.model_config_from_dict" title="modelopt.torch.export.model_config_utils.model_config_from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_config_from_dict</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.model_config_from_dict" title="modelopt.torch.export.model_config_utils.model_config_from_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_config_from_dict</span></code></a></p></td>
 <td><p>Load a dict to a <cite>ModelConfig</cite> instance.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.model_config_to_dict" title="modelopt.torch.export.model_config_utils.model_config_to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_config_to_dict</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.model_config_to_dict" title="modelopt.torch.export.model_config_utils.model_config_to_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_config_to_dict</span></code></a></p></td>
 <td><p>Converts the instance to a python dict.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.naive_quantization" title="modelopt.torch.export.model_config_utils.naive_quantization"><code class="xref py py-obj docutils literal notranslate"><span class="pre">naive_quantization</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.naive_quantization" title="modelopt.torch.export.model_config_utils.naive_quantization"><code class="xref py py-obj docutils literal notranslate"><span class="pre">naive_quantization</span></code></a></p></td>
 <td><p>Generates a constant scaling factor (1) with target quantization.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.pack_linear_weights" title="modelopt.torch.export.model_config_utils.pack_linear_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">pack_linear_weights</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.pack_linear_weights" title="modelopt.torch.export.model_config_utils.pack_linear_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">pack_linear_weights</span></code></a></p></td>
 <td><p>Packs the quantized linear weights in the model_config to the quantized format.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.pad_weights" title="modelopt.torch.export.model_config_utils.pad_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">pad_weights</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.pad_weights" title="modelopt.torch.export.model_config_utils.pad_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">pad_weights</span></code></a></p></td>
 <td><p>Returns the padded weights to tp_size.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.process_layer_quant_config" title="modelopt.torch.export.model_config_utils.process_layer_quant_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">process_layer_quant_config</span></code></a></p></td>
-<td><p>Processes per layer quantization information for TRTLLM export to quant_cfg.json.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.restore_model_config" title="modelopt.torch.export.model_config_utils.restore_model_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">restore_model_config</span></code></a></p></td>
 <td><p>Recursively restores the model_config from json and loads np.ndarray or torch.Tensor weights from weights.</p></td>
@@ -198,26 +193,8 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.split_config_and_weights" title="modelopt.torch.export.model_config_utils.split_config_and_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">split_config_and_weights</span></code></a></p></td>
 <td><p>Util function to split the weights or any torch.Tensor in nested config to weights.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.model_config_utils.to_quantized_weight" title="modelopt.torch.export.model_config_utils.to_quantized_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">to_quantized_weight</span></code></a></p></td>
-<td><p>Converts the weight to the quantized (packed) format.</p></td>
-</tr>
 </tbody>
 </table>
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config_utils.from_quantized_weight">
-<span class="sig-name descname"><span class="pre">from_quantized_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quantization</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">torch_dtype</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_utils.from_quantized_weight" title="Link to this definition"></a></dt>
-<dd><p>Converts the quantized weight to the target torch_dtype format.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>weight</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>weights_scaling_factor</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>quantization</strong> (<em>str</em>) – </p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config_utils.merge_fc1_gate">
 <span class="sig-name descname"><span class="pre">merge_fc1_gate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_utils.merge_fc1_gate" title="Link to this definition"></a></dt>
@@ -288,12 +265,6 @@
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config_utils.process_layer_quant_config">
-<span class="sig-name descname"><span class="pre">process_layer_quant_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer_config_dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_utils.process_layer_quant_config" title="Link to this definition"></a></dt>
-<dd><p>Processes per layer quantization information for TRTLLM export to quant_cfg.json.</p>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config_utils.restore_model_config">
 <span class="sig-name descname"><span class="pre">restore_model_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_utils.restore_model_config" title="Link to this definition"></a></dt>
 <dd><p>Recursively restores the model_config from json and loads np.ndarray or torch.Tensor weights from weights.</p>
@@ -318,23 +289,6 @@ when relevant. It is used to export quantization.json for auto_quant checkpoint.
 <li><p><strong>weights</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>tensor</em><em>]</em>) – </p></li>
 <li><p><strong>prefix</strong> (<em>str</em>) – </p></li>
 <li><p><strong>layer_config_dict</strong> (<em>dict</em>) – </p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config_utils.to_quantized_weight">
-<span class="sig-name descname"><span class="pre">to_quantized_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quantization</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor2</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_utils.to_quantized_weight" title="Link to this definition"></a></dt>
-<dd><p>Converts the weight to the quantized (packed) format.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>weight</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>weights_scaling_factor</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>quantization</strong> (<em>str</em>) – </p></li>
-<li><p><strong>weights_scaling_factor2</strong> (<em>Tensor</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>block_size</strong> (<em>int</em><em> | </em><em>None</em>) – </p></li>
 </ul>
 </dd>
 </dl>

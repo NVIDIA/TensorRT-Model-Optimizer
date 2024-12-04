@@ -39,7 +39,10 @@ quant\_utils
    .. autosummary::
       :nosignatures:
    
+      get_weights_scaling_factor
+      get_weights_scaling_factor_2
       pack_float32_to_4bit_cpp_based
       pack_float32_to_4bit_optimized
+      quantize
    
    

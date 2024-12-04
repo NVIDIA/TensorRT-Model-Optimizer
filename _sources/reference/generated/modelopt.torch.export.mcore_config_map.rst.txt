@@ -1,7 +1,7 @@
 .. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
 
-vllm
-====
+mcore\_config\_map
+==================
 
 .. List the submodules
 
@@ -17,7 +17,7 @@ vllm
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.export.vllm
+.. automodule:: modelopt.torch.export.mcore_config_map
    :members:
    :undoc-members:
 
@@ -33,12 +33,5 @@ vllm
 
    .. Overview table of available functions in the module
    
-   
-   .. rubric:: Functions
-
-   .. autosummary::
-      :nosignatures:
-   
-      export_to_vllm
    
    

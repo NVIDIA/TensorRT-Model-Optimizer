@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>export_onnx &mdash; Model Optimizer 0.19.0</title>
+  <title>export_onnx &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -102,7 +103,6 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.algorithms.html">algorithms</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
@@ -145,7 +145,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -168,14 +168,39 @@
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.export_onnx.export_fp8" title="modelopt.torch.quantization.export_onnx.export_fp8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_fp8</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.export_onnx.export_fp4" title="modelopt.torch.quantization.export_onnx.export_fp4"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_fp4</span></code></a></p></td>
+<td><p>Export quantized model to FP4 ONNX.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.export_onnx.export_fp8" title="modelopt.torch.quantization.export_onnx.export_fp8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_fp8</span></code></a></p></td>
 <td><p>Export quantized model to FP8 ONNX.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.export_onnx.export_fp8_mha" title="modelopt.torch.quantization.export_onnx.export_fp8_mha"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_fp8_mha</span></code></a></p></td>
+<td><p>Export quantized fMHA to FP8 ONNX.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.export_onnx.export_int8" title="modelopt.torch.quantization.export_onnx.export_int8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_int8</span></code></a></p></td>
 <td><p>Export quantized model to INT8 ONNX.</p></td>
 </tr>
 </tbody>
 </table>
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.export_onnx.export_fp4">
+<span class="sig-name descname"><span class="pre">export_fp4</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onnx_quantizer_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.export_onnx.export_fp4" title="Link to this definition"></a></dt>
+<dd><p>Export quantized model to FP4 ONNX.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>g</strong> (<em>GraphContext</em>) – </p></li>
+<li><p><strong>inputs</strong> (<em>Value</em>) – </p></li>
+<li><p><strong>block_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>amax</strong> (<em>Value</em>) – </p></li>
+<li><p><strong>num_bits</strong> (<em>Tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em>) – </p></li>
+<li><p><strong>trt_high_precision_dtype</strong> (<em>str</em>) – </p></li>
+<li><p><strong>onnx_quantizer_type</strong> (<em>str</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.export_onnx.export_fp8">
 <span class="sig-name descname"><span class="pre">export_fp8</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.export_onnx.export_fp8" title="Link to this definition"></a></dt>
@@ -187,6 +212,54 @@
 <li><p><strong>inputs</strong> (<em>Value</em>) – </p></li>
 <li><p><strong>amax</strong> (<em>float</em>) – </p></li>
 <li><p><strong>trt_high_precision_dtype</strong> (<em>str</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.export_onnx.export_fp8_mha">
+<span class="sig-name descname"><span class="pre">export_fp8_mha</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attn_mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dropout_p</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_causal</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">q_quantized_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k_quantized_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">v_quantized_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">high_precision_flag</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Half'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">disable_fp8_mha</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.export_onnx.export_fp8_mha" title="Link to this definition"></a></dt>
+<dd><p>Export quantized fMHA to FP8 ONNX.</p>
+<p>FP8 ONNX graph:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Q</span>           <span class="n">K</span>          <span class="n">V</span>
+<span class="o">|</span>           <span class="o">|</span>          <span class="o">|</span>
+\          <span class="o">/</span>           <span class="o">|</span>
+<span class="n">QDQ</span>      <span class="n">QDQ</span>           <span class="o">|</span>
+  \      <span class="o">/</span>             <span class="o">|</span>
+ <span class="n">Cast</span>   <span class="n">Cast</span>           <span class="o">|</span>
+   \    <span class="o">/</span>              <span class="o">|</span>
+    <span class="n">BMM1</span>               <span class="o">|</span>
+     \                 <span class="o">|</span>
+    <span class="n">Cast</span>              <span class="n">QDQ</span>
+       \               <span class="o">|</span>
+      <span class="n">SoftMax</span>          <span class="o">|</span>
+         <span class="o">|</span>             <span class="o">|</span>
+        <span class="n">QDQ</span>            <span class="o">|</span>
+          \            <span class="o">|</span>
+           <span class="n">Cast</span>      <span class="n">Cast</span>
+               \     <span class="o">/</span>
+                <span class="n">BMM2</span>
+                 <span class="o">|</span>
+                <span class="n">Cast</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>g</strong> (<em>GraphContext</em>) – </p></li>
+<li><p><strong>query</strong> (<em>Value</em>) – </p></li>
+<li><p><strong>key</strong> (<em>Value</em>) – </p></li>
+<li><p><strong>value</strong> (<em>Value</em>) – </p></li>
+<li><p><strong>attn_mask</strong> (<em>Value</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>dropout_p</strong> (<em>float</em>) – </p></li>
+<li><p><strong>is_causal</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>scale</strong> (<em>Value</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>q_quantized_scale</strong> (<em>float</em>) – </p></li>
+<li><p><strong>k_quantized_scale</strong> (<em>float</em>) – </p></li>
+<li><p><strong>v_quantized_scale</strong> (<em>float</em>) – </p></li>
+<li><p><strong>high_precision_flag</strong> (<em>str</em>) – </p></li>
+<li><p><strong>disable_fp8_mha</strong> (<em>bool</em>) – </p></li>
 </ul>
 </dd>
 </dl>

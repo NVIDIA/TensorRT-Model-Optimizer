@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>medusa_model &mdash; Model Optimizer 0.19.0</title>
+  <title>medusa_model &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -105,10 +106,13 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.sparsity.html">sparsity</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.speculative.html">speculative</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.config.html">config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.eagle.html">eagle</a></li>
 <li class="toctree-l4 current"><a class="reference internal" href="modelopt.torch.speculative.medusa.html">medusa</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mode.html">mode</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.plugins.html">plugins</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.redrafter.html">redrafter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.speculative_decoding.html">speculative_decoding</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.utils.html">utils</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.trace.html">trace</a></li>
@@ -134,7 +138,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -161,9 +165,6 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.medusa.medusa_model.MedusaModel" title="modelopt.torch.speculative.medusa.medusa_model.MedusaModel"><code class="xref py py-obj docutils literal notranslate"><span class="pre">MedusaModel</span></code></a></p></td>
 <td><p>Base Medusa Model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.medusa.medusa_model.ResBlock" title="modelopt.torch.speculative.medusa.medusa_model.ResBlock"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ResBlock</span></code></a></p></td>
-<td><p>A Residual Block module.</p></td>
-</tr>
 </tbody>
 </table>
 <dl class="py class">
@@ -175,45 +176,6 @@
 <dt class="sig sig-object py" id="modelopt.torch.speculative.medusa.medusa_model.MedusaModel.modify">
 <span class="sig-name descname"><span class="pre">modify</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">medusa_num_heads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">medusa_num_layers</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.medusa.medusa_model.MedusaModel.modify" title="Link to this definition"></a></dt>
 <dd><p>Base Medusa Model modify function. Child class should implement the details.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.medusa.medusa_model.ResBlock">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ResBlock</span></span><a class="headerlink" href="#modelopt.torch.speculative.medusa.medusa_model.ResBlock" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>A Residual Block module.</p>
-<p>This module performs a linear transformation followed by a SiLU activation,
-and then adds the result to the original input, creating a residual connection.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>hidden_size</strong> (<em>int</em>) – The size of the hidden layers in the block.</p>
-</dd>
-</dl>
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.medusa.medusa_model.ResBlock.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_size</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.medusa.medusa_model.ResBlock.__init__" title="Link to this definition"></a></dt>
-<dd><p>Init function of ResBlock.</p>
-<p>Args:
-hidden_size (int): The size of the hidden layers in the block.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.medusa.medusa_model.ResBlock.forward">
-<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.medusa.medusa_model.ResBlock.forward" title="Link to this definition"></a></dt>
-<dd><p>Forward pass of the ResBlock.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>x</strong> (<em>torch.Tensor</em>) – Input tensor.</p>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>Output after the residual connection and activation.</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
-</dd>
-</dl>
 </dd></dl>
 
 </dd></dl>

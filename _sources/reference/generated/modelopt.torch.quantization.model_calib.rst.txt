@@ -39,7 +39,9 @@ model\_calib
    .. autosummary::
       :nosignatures:
    
-      calibrate
-      postprocess_amax
+      max_calibrate
+      real_quantize
+      awq
+      smoothquant
    
    

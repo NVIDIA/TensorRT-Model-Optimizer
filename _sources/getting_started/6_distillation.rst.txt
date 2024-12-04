@@ -14,7 +14,7 @@ training pipeline.
 Set up your base models
 -----------------------
 
-First obtain both a pretrained model to act as the teacher and a (usualy smaller) model to serve
+First obtain both a pretrained model to act as the teacher and a (usually smaller) model to serve
 as the student.
 
 .. code-block:: python

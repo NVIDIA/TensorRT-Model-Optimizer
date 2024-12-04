@@ -33,7 +33,9 @@ mode
    .. autosummary::
       :nosignatures:
    
+      EagleModeDescriptor
       MedusaModeDescriptor
+      RedrafterModeDescriptor
    
    
 

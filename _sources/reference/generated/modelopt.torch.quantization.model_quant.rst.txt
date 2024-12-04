@@ -39,6 +39,8 @@ model\_quant
    .. autosummary::
       :nosignatures:
    
+      calibrate
+      postprocess_amax
       quantize
       auto_quantize
       disable_quantizer

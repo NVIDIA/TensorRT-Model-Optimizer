@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_quant &mdash; Model Optimizer 0.19.0</title>
+  <title>model_quant &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -102,7 +103,6 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.algorithms.html">algorithms</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
@@ -145,7 +145,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -168,6 +168,12 @@
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.calibrate" title="modelopt.torch.quantization.model_quant.calibrate"><code class="xref py py-obj docutils literal notranslate"><span class="pre">calibrate</span></code></a></p></td>
+<td><p>Adjusts weights and scaling factors based on selected algorithms.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.postprocess_amax" title="modelopt.torch.quantization.model_quant.postprocess_amax"><code class="xref py py-obj docutils literal notranslate"><span class="pre">postprocess_amax</span></code></a></p></td>
+<td><p>Experimental API to postprocess the amax values after calibration.</p></td>
+</tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.model_quant.quantize" title="modelopt.torch.quantization.model_quant.quantize"><code class="xref py py-obj docutils literal notranslate"><span class="pre">quantize</span></code></a></p></td>
 <td><p>Quantizes and calibrates the model in-place.</p></td>
 </tr>
@@ -288,7 +294,7 @@ A higher value could increase the time taken for performing <code class="docutil
 Q, K, V linear layers belonging to the same transformer layer will have the same quantization format.
 This is to ensure compatibility with TensorRT-LLM which fuses these three linear layers into a single linear
 layer.</p>
-<p>A list of regex pattern rules as defined in <a class="reference internal" href="modelopt.torch.quantization.algorithms.html#modelopt.torch.quantization.algorithms.AutoQuantizeSearcher.rules" title="modelopt.torch.quantization.algorithms.AutoQuantizeSearcher.rules"><code class="xref py py-attr docutils literal notranslate"><span class="pre">rules</span></code></a>
+<p>A list of regex pattern rules as defined in <code class="xref py py-attr docutils literal notranslate"><span class="pre">rules</span></code>
 are used to specify the group of layers. The first captured group
 in the regex pattern (i.e, <code class="docutils literal notranslate"><span class="pre">pattern.match(name).group(1)</span></code>) is used to group the layers. All the layers
 that share the same first captured group will have the same quantization format..</p>
@@ -311,6 +317,34 @@ groups the <cite>q_proj</cite>, <cite>k_proj</cite>, <cite>v_proj</cite> linear 
 <p>The <code class="docutils literal notranslate"><span class="pre">auto_quantize</span></code> API and algorithm is experimental and subject to change. <code class="docutils literal notranslate"><span class="pre">auto_quantize</span></code> searched models
 might not be readily deployable to TensorRT-LLM yet.</p>
 </div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.calibrate">
+<span class="sig-name descname"><span class="pre">calibrate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'max'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">forward_loop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.calibrate" title="Link to this definition"></a></dt>
+<dd><p>Adjusts weights and scaling factors based on selected algorithms.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>) – A pytorch model with quantizer modules.</p></li>
+<li><p><strong>algorithm</strong> (<em>str</em><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.MaxCalibConfig" title="modelopt.torch.quantization.config.MaxCalibConfig"><em>MaxCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SmoothQuantCalibConfig" title="modelopt.torch.quantization.config.SmoothQuantCalibConfig"><em>SmoothQuantCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><em>AWQLiteCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><em>AWQClipCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><em>AWQFullCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.RealQuantizeConfig" title="modelopt.torch.quantization.config.RealQuantizeConfig"><em>RealQuantizeConfig</em></a><em> | </em><em>None</em>) – A string or dictionary specifying the calibration algorithm to use. Supported
+algorithms are <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;smoothquant&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;awq_lite&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;awq_full&quot;</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">&quot;awq_clip&quot;</span></code>. If a dictionary is passed, the key <code class="docutils literal notranslate"><span class="pre">&quot;method&quot;</span></code> should specify the
+calibration algorithm to use. Other key-value pairs  in this dictionary will be passed
+as kwargs to the algorithm. An example dictionary argument:
+<code class="docutils literal notranslate"><span class="pre">{&quot;method&quot;:</span> <span class="pre">&quot;awq_clip&quot;,</span> <span class="pre">&quot;max_co_batch_size&quot;:</span> <span class="pre">4096}</span></code>. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, no calibration is
+performed. For real quantization, the key <code class="docutils literal notranslate"><span class="pre">method</span></code> should be <code class="docutils literal notranslate"><span class="pre">real_quantize</span></code>, and
+the calibration algorithm used should be specified in <code class="docutils literal notranslate"><span class="pre">additional_algorithm</span></code>.</p></li>
+<li><p><strong>forward_loop</strong> (<em>Callable</em><em>[</em><em>[</em><em>Module</em><em>]</em><em>, </em><em>None</em><em>] </em><em>| </em><em>None</em>) – A callable which takes the model as argument and forwards calibration data
+through the model. This is not required for weight-only quantization with the <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>
+algorithm.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Module</em></p>
+</dd>
+</dl>
+<p>Returns: The calibrated pytorch model.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -353,6 +387,23 @@ might not be readily deployable to TensorRT-LLM yet.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.postprocess_amax">
+<span class="sig-name descname"><span class="pre">postprocess_amax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">post_process_fn</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.postprocess_amax" title="Link to this definition"></a></dt>
+<dd><p>Experimental API to postprocess the amax values after calibration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
+<li><p><strong>key</strong> (<em>str</em>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Module</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.print_quant_summary">
 <span class="sig-name descname"><span class="pre">print_quant_summary</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.print_quant_summary" title="Link to this definition"></a></dt>
 <dd><p>Print summary of all quantizer modules in the model.</p>
@@ -380,7 +431,7 @@ values for keys <code class="docutils literal notranslate"><span class="pre">&qu
 It is basically a dictionary specifying the values for keys <code class="docutils literal notranslate"><span class="pre">&quot;quant_cfg&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;algorithm&quot;</span></code>.
 The <code class="docutils literal notranslate"><span class="pre">&quot;quant_cfg&quot;</span></code> key specifies the quantization configurations.
 The <code class="docutils literal notranslate"><span class="pre">&quot;algorithm&quot;</span></code> key specifies the <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> argument to
-<a class="reference internal" href="modelopt.torch.quantization.model_calib.html#modelopt.torch.quantization.model_calib.calibrate" title="modelopt.torch.quantization.model_calib.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calibrate</span></code></a>.</p>
+<a class="reference internal" href="#modelopt.torch.quantization.model_quant.calibrate" title="modelopt.torch.quantization.model_quant.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calibrate</span></code></a>.</p>
 <p>Quantization configurations is a dictionary mapping wildcards or filter functions
 to its quantizer attributes. The wildcards or filter functions  are matched
 against the quantizer module names. The quantizer modules have names ending with

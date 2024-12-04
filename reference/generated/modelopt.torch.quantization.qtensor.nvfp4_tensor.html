@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>nvfp4_tensor &mdash; Model Optimizer 0.19.0</title>
+  <title>nvfp4_tensor &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -102,7 +103,6 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.algorithms.html">algorithms</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
@@ -145,7 +145,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -165,12 +165,12 @@
              
   <section id="nvfp4-tensor">
 <h1>nvfp4_tensor<a class="headerlink" href="#nvfp4-tensor" title="Link to this heading"></a></h1>
-<p id="module-modelopt.torch.quantization.qtensor.nvfp4_tensor">Not Implemented!</p>
+<p id="module-modelopt.torch.quantization.qtensor.nvfp4_tensor">Implements NVFP4 quantization for efficient tensor storage and computation.</p>
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor" title="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">NVFP4QTensor</span></code></a></p></td>
-<td><p>Not Implemented!</p></td>
+<td><p>Not implemented.</p></td>
 </tr>
 </tbody>
 </table>
@@ -178,41 +178,83 @@
 <dt class="sig sig-object py" id="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">NVFP4QTensor</span></span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="modelopt.torch.quantization.qtensor.base_qtensor.html#modelopt.torch.quantization.qtensor.base_qtensor.BaseQuantizedTensor" title="modelopt.torch.quantization.qtensor.base_qtensor.BaseQuantizedTensor"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseQuantizedTensor</span></code></a></p>
-<p>Not Implemented!</p>
+<p>Not implemented.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.dequantize">
-<span class="sig-name descname"><span class="pre">dequantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.dequantize" title="Link to this definition"></a></dt>
-<dd><p>Not Implemented!</p>
+<span class="sig-name descname"><span class="pre">dequantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float16</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwarg</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.dequantize" title="Link to this definition"></a></dt>
+<dd><p>Not implemented.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>dtype</strong> (<em>dtype</em>) – </p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_activation_scaling_factor">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_activation_scaling_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_activation_scaling_factor" title="Link to this definition"></a></dt>
-<dd><p>Not Implemented!</p>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_activation_scaling_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quantizer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_activation_scaling_factor" title="Link to this definition"></a></dt>
+<dd><p>Not implemented.</p>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_weights_scaling_factor">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_weights_scaling_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_weights_scaling_factor" title="Link to this definition"></a></dt>
-<dd><p>Not Implemented!</p>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_weights_scaling_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor_2</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_high_precision</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_weights_scaling_factor" title="Link to this definition"></a></dt>
+<dd><p>Not implemented.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>block_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>weights_scaling_factor_2</strong> (<em>Tensor</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>keep_high_precision</strong> (<em>bool</em>) – </p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_weights_scaling_factor_2">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_weights_scaling_factor_2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_weights_scaling_factor_2" title="Link to this definition"></a></dt>
-<dd><p>Not Implemented!</p>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_weights_scaling_factor_2</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.get_weights_scaling_factor_2" title="Link to this definition"></a></dt>
+<dd><p>Not implemented.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>input</strong> (<em>Tensor</em>) – </p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.quantize">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">quantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.quantize" title="Link to this definition"></a></dt>
-<dd><p>Not Implemented!</p>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">quantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor_2</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_high_precision</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.quantize" title="Link to this definition"></a></dt>
+<dd><p>Not implemented.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>block_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>weights_scaling_factor</strong> (<em>Tensor</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>weights_scaling_factor_2</strong> (<em>Tensor</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>keep_high_precision</strong> (<em>bool</em>) – </p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.resmooth_weights_and_get_scales">
-<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">resmooth_weights_and_get_scales</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.resmooth_weights_and_get_scales" title="Link to this definition"></a></dt>
-<dd><p>Not Implemented!</p>
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">resmooth_weights_and_get_scales</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">merged_weights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pre_quant_scales</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ranks</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">avg_pre_quant_scale</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.qtensor.nvfp4_tensor.NVFP4QTensor.resmooth_weights_and_get_scales" title="Link to this definition"></a></dt>
+<dd><p>Not implemented.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>merged_weights</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>pre_quant_scales</strong> (<em>List</em><em>[</em><em>Tensor</em><em>]</em>) – </p></li>
+<li><p><strong>ranks</strong> (<em>int</em>) – </p></li>
+<li><p><strong>group_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>avg_pre_quant_scale</strong> (<em>Tensor</em>) – </p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>

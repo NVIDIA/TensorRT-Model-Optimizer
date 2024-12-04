@@ -39,7 +39,9 @@ export\_onnx
    .. autosummary::
       :nosignatures:
    
+      export_fp4
       export_fp8
+      export_fp8_mha
       export_int8
    
    

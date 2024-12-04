@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>config &mdash; Model Optimizer 0.19.0</title>
+  <title>config &mdash; Model Optimizer 0.21.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -35,7 +35,7 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="medusa" href="modelopt.torch.speculative.medusa.html" />
+    <link rel="next" title="eagle" href="modelopt.torch.speculative.eagle.html" />
     <link rel="prev" title="speculative" href="modelopt.torch.speculative.html" /> 
 </head>
 
@@ -70,6 +70,7 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Guides</span></p>
 <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/0_support_matrix.html">Support Matrix</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/1_quantization.html">Quantization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/2_pruning.html">Pruning</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/3_nas.html">NAS</a></li>
@@ -105,10 +106,13 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.sparsity.html">sparsity</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.speculative.html">speculative</a><ul class="current">
 <li class="toctree-l4 current"><a class="current reference internal" href="#">config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.eagle.html">eagle</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.medusa.html">medusa</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mode.html">mode</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.plugins.html">plugins</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.redrafter.html">redrafter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.speculative_decoding.html">speculative_decoding</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.utils.html">utils</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.trace.html">trace</a></li>
@@ -134,7 +138,7 @@
       </nav>
 
       <div class="wy-nav-content">
-        <div class="rst-content">
+        <div class="rst-content style-external-links">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
@@ -154,6 +158,30 @@
   <section id="config">
 <h1>config<a class="headerlink" href="#config" title="Link to this heading"></a></h1>
 <p id="module-modelopt.torch.speculative.config">Configurations for speculative decoding modes.</p>
+<dl class="py class pydantic_model">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.config.EagleConfig">
+<em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">EagleConfig</span></span><a class="headerlink" href="#modelopt.torch.speculative.config.EagleConfig" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModeloptBaseConfig</span></code></a></p>
+<p>Eagle config.</p>
+<p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show default config as JSON</summary><dl class="field-list simple">
+<dt class="field-odd">Default config (JSON)<span class="colon">:</span></dt>
+<dd class="field-odd"><p></p></dd>
+</dl>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">   </span><span class="nt">&quot;eagle_num_layers&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</details></p><dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.config.EagleConfig.eagle_num_layers">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">eagle_num_layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#modelopt.torch.speculative.config.EagleConfig.eagle_num_layers" title="Link to this definition"></a></dt>
+<dd><p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show details</summary><p>The number of decoder used in the eagle model.</p>
+</details></p></dd></dl>
+
+</dd></dl>
+
 <dl class="py class pydantic_model">
 <dt class="sig sig-object py" id="modelopt.torch.speculative.config.MedusaConfig">
 <em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">MedusaConfig</span></span><a class="headerlink" href="#modelopt.torch.speculative.config.MedusaConfig" title="Link to this definition"></a></dt>
@@ -186,6 +214,38 @@
 
 </dd></dl>
 
+<dl class="py class pydantic_model">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.config.RedrafterConfig">
+<em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">RedrafterConfig</span></span><a class="headerlink" href="#modelopt.torch.speculative.config.RedrafterConfig" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModeloptBaseConfig</span></code></a></p>
+<p>Redrafter config.</p>
+<p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show default config as JSON</summary><dl class="field-list simple">
+<dt class="field-odd">Default config (JSON)<span class="colon">:</span></dt>
+<dd class="field-odd"><p></p></dd>
+</dl>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">   </span><span class="nt">&quot;redrafter_predict_n_tokens&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;redrafter_num_layers&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</details></p><dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.config.RedrafterConfig.redrafter_num_layers">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">redrafter_num_layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#modelopt.torch.speculative.config.RedrafterConfig.redrafter_num_layers" title="Link to this definition"></a></dt>
+<dd><p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show details</summary><p>The number of ResBlocks used in lm head.</p>
+</details></p></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.config.RedrafterConfig.redrafter_predict_n_tokens">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">redrafter_predict_n_tokens</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#modelopt.torch.speculative.config.RedrafterConfig.redrafter_predict_n_tokens" title="Link to this definition"></a></dt>
+<dd><p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show details</summary><p>The number of tokens that redrafter will predict</p>
+</details></p></dd></dl>
+
+</dd></dl>
+
 </section>
 
 
@@ -193,7 +253,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="modelopt.torch.speculative.html" class="btn btn-neutral float-left" title="speculative" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.speculative.medusa.html" class="btn btn-neutral float-right" title="medusa" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.speculative.eagle.html" class="btn btn-neutral float-right" title="eagle" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

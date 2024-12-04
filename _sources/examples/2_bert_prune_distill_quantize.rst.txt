@@ -10,7 +10,7 @@ using the combination of ``modelopt.torch.prune``, ``modelopt.torch.distill`` an
 
 Prerequisites
 -------------
-#. Install the Model Optimizer and optional torch and huggingface dependencies:
+#. Install Model Optimizer with optional torch and huggingface dependencies:
 
     .. code-block:: bash
 
@@ -27,12 +27,11 @@ You can view the full code below with ModelOpt integration points highlighted.
 The source code and scripts are also available on `ModelOpt GitHub <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/chained_optimizations>`_
 
 .. NOTE: MAKE SURE THAT LINE NUMBERS ARE UP-TO-DATE
-
 .. toggle::
 
-    .. literalinclude:: ../../../examples/public/chained_optimizations/bert_prune_distill_quantize.py
+    .. literalinclude:: ../../../examples/chained_optimizations/bert_prune_distill_quantize.py
         :linenos:
-        :emphasize-lines: 74-78, 243-288, 872-884, 1040-1044, 1142-1155, 1157-1182, 1184-1204, 1207-1215, 1228-1232
+        :emphasize-lines: 74-82, 251-291, 873-885, 1042-1046, 1151-1176, 1178-1198, 1205-1213, 1219-1221
         :caption: bert_prune_distill_quantize.py
 
 Commands
@@ -44,7 +43,7 @@ Commands
    for fine-tuning, which is different from the 2 epochs used originally in fine-tuning Bert without distillation since
    distillation requires more epochs to converge but achieves much better results.
 
-    .. literalinclude:: ../../../examples/public/chained_optimizations/scripts/1_prune.sh
+    .. literalinclude:: ../../../examples/chained_optimizations/scripts/1_prune.sh
         :language: bash
         :caption: 1_prune.sh
 
@@ -52,12 +51,12 @@ Commands
    Note that PTQ will result in a slight drop in F1 score but we will be able to recover the F1 score with QAT.
    We run QAT with distillation as well from unpruned teacher model.
 
-    .. literalinclude:: ../../../examples/public/chained_optimizations/scripts/2_int8_quantize.sh
+    .. literalinclude:: ../../../examples/chained_optimizations/scripts/2_int8_quantize.sh
         :language: bash
         :caption: 2_int8_quantize.sh
 
 #. Export the quantized model to ONNX format for deployment with TensorRT.
 
-    .. literalinclude:: ../../../examples/public/chained_optimizations/scripts/3_onnx_export.sh
+    .. literalinclude:: ../../../examples/chained_optimizations/scripts/3_onnx_export.sh
         :language: bash
         :caption: 3_onnx_export.sh

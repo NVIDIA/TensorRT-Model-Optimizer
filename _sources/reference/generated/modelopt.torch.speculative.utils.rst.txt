@@ -1,7 +1,7 @@
 .. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
 
-scaling\_factor\_utils
-======================
+utils
+=====
 
 .. List the submodules
 
@@ -17,7 +17,7 @@ scaling\_factor\_utils
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.export.scaling_factor_utils
+.. automodule:: modelopt.torch.speculative.utils
    :members:
    :undoc-members:
 
@@ -28,20 +28,17 @@ scaling\_factor\_utils
    .. Overview table of available classes in the module
    
    
+   .. rubric:: Classes
+
+   .. autosummary::
+      :nosignatures:
+   
+      ResBlock
+   
    
 
 
    .. Overview table of available functions in the module
    
-   
-   .. rubric:: Functions
-
-   .. autosummary::
-      :nosignatures:
-   
-      adjust_attn_amax_values
-      convert_state_dict_amax_to_scales
-      get_weights_scaling_factor_and_amax
-      resmooth_and_get_scale_and_amax
    
    
