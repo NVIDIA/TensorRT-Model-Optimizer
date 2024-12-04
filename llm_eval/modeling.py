@@ -277,6 +277,21 @@ class CausalModel(SeqToSeqModel):
         batch_size, length = inputs.input_ids.shape
         return self.tokenizer.decode(outputs[0, length:], skip_special_tokens=True)
 
+    def run_batch(self, batch_input: transformers.BatchEncoding, **kwargs):
+        # Run batched inference.
+        self.load()
+        outputs = self.model.generate(
+            **batch_input,
+            max_new_tokens=self.max_output_length,
+            pad_token_id=self.tokenizer.eos_token_id,  # Avoid pad token warning
+            **kwargs,
+        )
+
+        # Left padding, we need to remove the padding in the outputs
+        _, length = batch_input.input_ids.shape
+        output_ids = outputs[:, length:].cpu().tolist()
+        return self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
+
     def get_choice(self, text: str, **kwargs) -> Tuple[float, float]:
         self.load()
         inputs = self.tokenizer(text, return_tensors="pt").to(self.device)

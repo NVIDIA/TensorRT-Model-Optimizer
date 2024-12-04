@@ -20,10 +20,10 @@ if [ $DEPLOYMENT != "tensorrt_llm" ]; then
 fi
 
 case $MODEL_TYPE in
-    gptnext|llama|gpt2|gemma)
+    gpt|llama|gemma)
         ;;
     *)
-        echo "Unsupported type argument: Expected one of: [gptnext, gpt2, llama, gemma]" >&2
+        echo "Unsupported type argument: Expected one of: [gpt, llama, gemma]" >&2
         exit 1
 esac
 
@@ -142,11 +142,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             export.dtype=$DTYPE
     else
         echo "Quantized model config $MODEL_CONFIG_PTQ exists, skipping the quantization stage"
-    fi
-
-    if [ "$PP" -ne 1 ] && [[ "$MODEL_TYPE" =~ "gpt" ]]; then
-        echo "PP on GPT/GPTNext has not be enabled for the TensorRT-LLM 0.9 release."
-        exit 1
     fi
 
     # Deployment is skipped for auto quantize

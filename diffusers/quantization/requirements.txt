@@ -4,5 +4,4 @@ diffusers>=0.30.1
 nvtx
 onnx_graphsurgeon --index-url https://pypi.ngc.nvidia.com
 opencv-python==4.8.1.78
-optimum
 peft>=0.10.0

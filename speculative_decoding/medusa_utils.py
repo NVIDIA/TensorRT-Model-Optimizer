@@ -75,7 +75,7 @@ def preprocess(
     # Apply prompt templates
     conversations = []
     prompts = []
-    # # import pdb; pdb.set_trace()
+
     for i, conversation in enumerate(sources):
         chat = change_format(conversation["conversations"])
         prompt = tokenizer.apply_chat_template(chat, tokenize=False)
@@ -103,13 +103,19 @@ def preprocess(
                 content = turn["content"]
                 # Unfortunate strip() necessary because chat templates are doing the same.
                 start = prompt.index(content.strip())
+                stop = start + len(content)
                 indices = []
                 for tok_index, (tok_start, tok_stop) in enumerate(
                     encoding.offset_mapping[conv_index]
                 ):
-                    if tok_stop >= start or tok_start < tok_stop:
+                    if tok_start >= start and tok_stop <= stop:
                         indices.append(tok_index)
                 target[indices] = encoding.input_ids[conv_index][indices]
+
+        # Shift target to the left by 1 token
+        targets[conv_index] = torch.cat(
+            [target[1:], torch.tensor([IGNORE_TOKEN_ID], dtype=target.dtype)]
+        )
 
     return dict(
         input_ids=input_ids,
@@ -185,7 +191,9 @@ class LazySupervisedDataset(Dataset):
         return ret
 
 
-def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, data_args) -> Dict:
+def make_medusa_supervised_data_module(
+    tokenizer: transformers.PreTrainedTokenizer, data_args
+) -> Dict:
     """Make dataset and collator for supervised fine-tuning.
 
     Args:
@@ -200,15 +208,10 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, dat
 
     if data_args.data_path.endswith("jsonl"):
         with open(data_args.data_path, "r") as f:
-            train_json = [json.loads(line) for line in f]
+            data_json = [json.loads(line) for line in f]
     else:
-        train_json = json.load(open(data_args.data_path, "r"))
-    train_dataset = dataset_cls(train_json, tokenizer=tokenizer)
-
-    if data_args.eval_data_path:
-        eval_json = json.load(open(data_args.eval_data_path, "r"))
-        eval_dataset = dataset_cls(eval_json, tokenizer=tokenizer)
-    else:
-        eval_dataset = None
+        data_json = json.load(open(data_args.data_path, "r"))
+    train_dataset = dataset_cls(data_json[: int(len(data_json) * 0.95)], tokenizer=tokenizer)
+    eval_dataset = dataset_cls(data_json[int(len(data_json) * 0.95) :], tokenizer=tokenizer)
 
     return dict(train_dataset=train_dataset, eval_dataset=eval_dataset)

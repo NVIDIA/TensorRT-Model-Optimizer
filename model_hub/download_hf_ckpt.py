@@ -19,19 +19,19 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import io
-import json
+import os
 
+from huggingface_hub import login, snapshot_download
 
-def _make_r_io_base(f, mode: str):
-    if not isinstance(f, io.IOBase):
-        f = open(f, mode=mode)
-    return f
-
-
-def jload(f, mode="r"):
-    """Load a .json file into a dictionary."""
-    f = _make_r_io_base(f, mode)
-    jdict = json.load(f)
-    f.close()
-    return jdict
+login(token="<YOUR-HF-TOKEN>", add_to_git_credential=True)
+model_names = [
+    "Llama-3.1-8B-Instruct-FP8",
+    "Llama-3.1-70B-Instruct-FP8",
+    "Llama-3.1-405B-Instruct-FP8",
+]
+for model_name in model_names:
+    hf_repo = "nvidia/" + model_name
+    local_dir = "quantized_ckpts/" + model_name
+    os.makedirs(local_dir, exist_ok=True)
+    print(f"downloading {model_name}...")
+    snapshot_download(repo_id=hf_repo, local_dir=local_dir)

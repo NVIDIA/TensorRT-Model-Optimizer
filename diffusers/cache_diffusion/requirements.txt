@@ -1,6 +1,6 @@
 cuda-python
 datasets>=2.14.5
 opencv-python==4.8.1.78
-optimum
 peft>=0.10.0
 polygraphy==0.49.9
+sentencepiece

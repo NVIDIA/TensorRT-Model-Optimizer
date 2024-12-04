@@ -22,16 +22,20 @@
 import argparse
 import os
 import random
+import sys
+from pathlib import Path
 from typing import Dict
 
 import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
-from utils import get_model_type
 
 import modelopt.torch.opt as mto
 import modelopt.torch.sparsity as mts
 from modelopt.torch.export import export_tensorrt_llm_checkpoint
+
+sys.path.append(str(Path(__file__).resolve().parent / "../llm_ptq"))
+from example_utils import get_model_type
 
 DEFAULT_PAD_TOKEN = "[PAD]"
 

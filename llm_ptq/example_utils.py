@@ -28,7 +28,8 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 MAX_SEQ_LEN = 2048
 
 MODEL_NAME_PATTERN_MAP = {
-    "GPT2": "gpt2",
+    "GPT2": "gpt",
+    "Mllama": "mllama",
     "Llama": "llama",
     "Mistral": "llama",
     "GPTJ": "gptj",
@@ -44,16 +45,18 @@ MODEL_NAME_PATTERN_MAP = {
     "Gemma": "gemma",
     "phi3small": "phi3small",
     "phi3": "phi3",
+    "PhiMoEForCausalLM": "phi3",
     "phi": "phi",
     "TLGv4ForCausalLM": "phi",
     "MixtralForCausalLM": "llama",
     "ArcticForCausalLM": "llama",
-    "StarCoder": "gptnext",
+    "StarCoder": "gpt",
     "Dbrx": "dbrx",
     "T5": "t5",
     "GLM": "glm",
     "InternLM2ForCausalLM": "internlm",
     "ExaoneForCausalLM": "exaone",
+    "Nemotron": "gpt",
 }
 
 
@@ -133,7 +136,7 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8):
     # Note: Forcibly converting the model precision between bf16 and fp16 may introduce accuracy drop
     model_kwargs = {"torch_dtype": "auto"}
 
-    if "vila" in ckpt_path:
+    if "vila" in ckpt_path.lower():
         sys.path.append(os.path.join(ckpt_path, "..", "VILA"))
         from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa
         from transformers import AutoModel
@@ -166,6 +169,21 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8):
             model = AutoModelForSeq2SeqLM.from_pretrained(
                 ckpt_path, device_map="cuda", **model_kwargs, trust_remote_code=True
             )
+        elif hf_config.model_type == "mllama":
+            from transformers import MllamaForConditionalGeneration
+
+            model = MllamaForConditionalGeneration.from_pretrained(
+                ckpt_path,
+                device_map=device_map,
+                **model_kwargs,
+                trust_remote_code=True,
+            )
+
+            # Add vision_output_dim back to the language model config for export.
+            vision_output_dim = model.config.vision_config.vision_output_dim
+            model = model.language_model
+            setattr(model.config, "vision_output_dim", vision_output_dim)
+
         else:
             from accelerate import infer_auto_device_map, init_empty_weights
             from accelerate.utils import get_max_memory

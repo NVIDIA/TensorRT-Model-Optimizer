@@ -66,6 +66,7 @@ def main(args):
 
     compile(
         pipe,
+        args.model_id,
         onnx_path=Path("./onnx"),
         engine_path=Path("./engine"),
         batch_size=args.batch_size,

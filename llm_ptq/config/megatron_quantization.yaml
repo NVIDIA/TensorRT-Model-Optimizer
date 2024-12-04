@@ -30,7 +30,7 @@ quantization:
 
 export:
   path: . # Path where the quantized model will be saved
-  decoder_type: llama # gptnext, gpt2, llama
+  decoder_type: llama # gpt, llama
   inference_tensor_parallel: 1 # Default using 1 TP for inference
   inference_pipeline_parallel: 1 # Default using 1 PP for inference
   dtype: fp16 # Default precision data type

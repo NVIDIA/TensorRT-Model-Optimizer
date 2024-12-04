@@ -42,12 +42,13 @@ from pathlib import Path
 import onnx
 import onnx_graphsurgeon as gs
 import torch
-from diffusers.models.attention_processor import Attention
 from onnxmltools.utils.float16_converter import convert_float_to_float16
-from optimum.onnx.utils import _get_onnx_external_data_tensors, check_model_uses_external_data
 from torch.onnx import export as onnx_export
 
-from .fp8_onnx_graphsurgeon import cast_fp8_mha_io, cast_resize_io, convert_fp16_io, convert_zp_fp8
+from modelopt.torch._deploy.utils.onnx_utils import check_model_uses_external_data
+from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
+
+from .fp8_onnx_graphsurgeon import cast_resize_io, convert_fp16_io, convert_zp_fp8
 
 AXES_NAME = {
     "sdxl-1.0": {
@@ -103,15 +104,6 @@ AXES_NAME = {
         "guidance": {0: "batch_size"},
         "output": {0: "batch_size"},
     },
-    "flux-schnell": {
-        "hidden_states": {0: "batch_size", 1: "sequence"},
-        "encoder_hidden_states": {0: "batch_size"},
-        "pooled_projections": {0: "batch_size"},
-        "timestep": {0: "batch_size"},
-        "img_ids": {0: "batch_size", 1: "sequence"},
-        "txt_ids": {0: "batch_size"},
-        "output": {0: "batch_size"},
-    },
 }
 
 # Per-tensor for INT8, we will convert it to FP8 later in onnxgraphsurgeon
@@ -146,22 +138,11 @@ def generate_fp8_scales(backbone):
             module.weight_quantizer._num_bits = 8
             module.input_quantizer._amax = module.input_quantizer._amax * (127 / 448.0)
             module.weight_quantizer._amax = module.weight_quantizer._amax * (127 / 448.0)
-        elif isinstance(module, Attention) and (
-            hasattr(module.q_bmm_quantizer, "_amax") and module.q_bmm_quantizer is not None
-        ):
-            module.q_bmm_quantizer._num_bits = 8
-            module.q_bmm_quantizer._amax = module.q_bmm_quantizer._amax * (127 / 448.0)
-            module.k_bmm_quantizer._num_bits = 8
-            module.k_bmm_quantizer._amax = module.k_bmm_quantizer._amax * (127 / 448.0)
-            module.v_bmm_quantizer._num_bits = 8
-            module.v_bmm_quantizer._amax = module.v_bmm_quantizer._amax * (127 / 448.0)
-            module.softmax_quantizer._num_bits = 8
-            module.softmax_quantizer._amax = module.softmax_quantizer._amax * (127 / 448.0)
 
 
-def generate_dummy_inputs(sd_version, device, is_infer=False):
+def generate_dummy_inputs(model_id, device, model_dtype="bf16"):
     dummy_input = {}
-    if sd_version == "sdxl-1.0" or sd_version == "sdxl-turbo":
+    if model_id == "sdxl-1.0" or model_id == "sdxl-turbo":
         dummy_input["sample"] = torch.ones(2, 4, 128, 128).to(device).half()
         dummy_input["timestep"] = torch.ones(1).to(device).half()
         dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 2048).to(device).half()
@@ -169,57 +150,91 @@ def generate_dummy_inputs(sd_version, device, is_infer=False):
         dummy_input["added_cond_kwargs"]["text_embeds"] = torch.ones(2, 1280).to(device).half()
         dummy_input["added_cond_kwargs"]["time_ids"] = torch.ones(2, 6).to(device).half()
         dummy_input["return_dict"] = False
-    elif sd_version == "sd3-medium":
+    elif model_id == "sd3-medium":
         dummy_input["hidden_states"] = torch.ones(2, 16, 128, 128).to(device).half()
         dummy_input["timestep"] = torch.ones(2).to(device).half()
         dummy_input["encoder_hidden_states"] = torch.ones(2, 333, 4096).to(device).half()
         dummy_input["pooled_projections"] = torch.ones(2, 2048).to(device).half()
         dummy_input["return_dict"] = False
-    elif sd_version == "sd1.5":
-        dummy_input["sample"] = torch.ones(2, 4, 64, 64).to(device).half()
-        dummy_input["timestep"] = torch.ones(1).to(device).half()
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 768).to(device).half()
-    elif sd_version == "sd2.1" or sd_version == "sd2.1-base":
+    elif model_id == "sd2.1":
         dummy_input["sample"] = torch.ones(2, 4, 96, 96).to(device).half()
         dummy_input["timestep"] = torch.ones(1).to(device).half()
         dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 1024).to(device).half()
         dummy_input["return_dict"] = False
-    elif sd_version == "flux-dev" or sd_version == "flux-schnell":
-        dummy_input["hidden_states"] = torch.randn(
-            1, 1024 if not is_infer else 4096, 64, dtype=torch.bfloat16, device=device
-        )
+    elif model_id == "sd2.1-base":
+        dummy_input["sample"] = torch.ones(2, 4, 64, 64).to(device).half()
+        dummy_input["timestep"] = torch.ones(1).to(device).half()
+        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 1024).to(device).half()
+        dummy_input["return_dict"] = False
+    elif model_id == "flux-dev":
+        torch_dtype = torch.bfloat16 if model_dtype == "BFloat16" else torch.float16
+        dummy_input["hidden_states"] = torch.randn(1, 1024, 64, dtype=torch_dtype, device=device)
         dummy_input["encoder_hidden_states"] = torch.randn(
-            1, 512, 4096, dtype=torch.bfloat16, device=device
+            1, 512, 4096, dtype=torch_dtype, device=device
         )
-        dummy_input["pooled_projections"] = torch.randn(1, 768, dtype=torch.bfloat16, device=device)
-        dummy_input["timestep"] = torch.randn(1, dtype=torch.bfloat16, device=device)
-        dummy_input["img_ids"] = torch.randn(
-            1, 1024 if not is_infer else 4096, 3, dtype=torch.float32, device=device
-        )
+        dummy_input["pooled_projections"] = torch.randn(1, 768, dtype=torch_dtype, device=device)
+        dummy_input["timestep"] = torch.randn(1, dtype=torch_dtype, device=device)
+        dummy_input["img_ids"] = torch.randn(1, 1024, 3, dtype=torch.float32, device=device)
         dummy_input["txt_ids"] = torch.randn(1, 512, 3, dtype=torch.float32, device=device)
-        dummy_input["guidance"] = torch.randn(1, dtype=torch.float32, device=device)
+        dummy_input["guidance"] = (
+            torch.randn(1, dtype=torch.float32, device=device) if model_id == "flux-dev" else None
+        )
         dummy_input["return_dict"] = False
     else:
-        raise NotImplementedError(f"Unsupported sd_version: {sd_version}")
+        raise NotImplementedError(f"Unsupported model_id: {model_id}")
 
     return dummy_input
 
 
-def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
+def save_onnx(onnx_model, output):
+    onnx.save(
+        onnx_model,
+        str(output),
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=output.name + "_data",
+        size_threshold=1024,
+    )
+    print(f"ONNX model saved to {output}")
+
+
+def set_onnx_export_attr(model, dtype):
+    for name, module in model.named_modules():
+        if isinstance(module, (TensorQuantizer, SequentialQuantizer)):
+            if any(
+                q_tag in name
+                for q_tag in [
+                    "q_bmm_quantizer",
+                    "k_bmm_quantizer",
+                    "v_bmm_quantizer",
+                    "softmax_quantizer",
+                    "bmm2_output_quantizer",
+                ]
+            ):
+                module._trt_high_precision_dtype = dtype
+        elif isinstance(module, torch.nn.Linear):
+            module.input_quantizer._trt_high_precision_dtype = dtype
+            module.input_quantizer._onnx_quantizer_type = "dynamic"
+            module.weight_quantizer._onnx_quantizer_type = "static"
+        else:
+            assert not hasattr(module, "input_quantizer")
+            assert not hasattr(module, "weight_quantizer")
+
+
+def modelopt_export_sd(backbone, onnx_dir, model_name, precision, model_dtype="BFloat16"):
     os.makedirs(f"{onnx_dir}", exist_ok=True)
-    dummy_inputs = generate_dummy_inputs(model_name, device=backbone.device)
+    dummy_inputs = generate_dummy_inputs(
+        model_name, device=backbone.device, model_dtype=model_dtype
+    )
 
     output = Path(f"{onnx_dir}/backbone.onnx")
     if model_name == "sdxl-1.0" or model_name == "sdxl-turbo":
         input_names = ["sample", "timestep", "encoder_hidden_states", "text_embeds", "time_ids"]
         output_names = ["latent"]
-    elif model_name == "sd1.5" or model_name == "sd2.1" or model_name == "sd2.1-base":
-        input_names = ["sample", "timestep", "encoder_hidden_states"]
-        output_names = ["latent"]
     elif model_name == "sd3-medium":
         input_names = ["hidden_states", "encoder_hidden_states", "pooled_projections", "timestep"]
         output_names = ["sample"]
-    elif model_name == "flux-dev":
+    elif model_name in ["flux-dev"]:
         input_names = [
             "hidden_states",
             "encoder_hidden_states",
@@ -230,8 +245,11 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
             "guidance",
         ]
         output_names = ["output"]
+    elif model_name == "sd2.1" or model_name == "sd2.1-base":
+        input_names = ["sample", "timestep", "encoder_hidden_states"]
+        output_names = ["latent"]
     else:
-        raise NotImplementedError(f"Unsupported sd_version: {model_name}")
+        raise NotImplementedError(f"Unsupported model_id: {model_name}")
 
     dynamic_axes = AXES_NAME[model_name]
     do_constant_folding = True
@@ -253,18 +271,13 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     model_uses_external_data = check_model_uses_external_data(onnx_model)
 
     if model_uses_external_data:
-        tensors_paths = _get_onnx_external_data_tensors(onnx_model)
         onnx_model = onnx.load(str(output), load_external_data=True)
-        onnx.save(
-            onnx_model,
-            str(output),
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-            location=output.name + "_data",
-            size_threshold=1024,
-        )
-        for tensor in tensors_paths:
-            os.remove(output.parent / tensor)
+        # Iterate over all files in the folder and delete them
+        output_folder = output.parent
+        for file in output_folder.iterdir():
+            if file.is_file():
+                file.unlink()
+        save_onnx(onnx_model, output)
 
     if precision == "fp8":
         onnx_model = onnx.load(str(output), load_external_data=True)
@@ -273,23 +286,20 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         for file in output_folder.iterdir():
             if file.is_file():
                 file.unlink()
-        onnx_model = convert_zp_fp8(onnx_model)
+
         if model_name != "flux-dev":
+            graph = gs.import_onnx(onnx_model)
+            graph.cleanup().toposort()
+            convert_fp16_io(graph)
+            onnx_model = gs.export_onnx(graph)
+            onnx_model = convert_zp_fp8(onnx_model)
             onnx_model = convert_float_to_float16(
                 onnx_model, keep_io_types=True, disable_shape_infer=True
             )
             graph = gs.import_onnx(onnx_model)
             cast_resize_io(graph)
-            convert_fp16_io(graph)
-            cast_fp8_mha_io(graph)
-            onnx_model = gs.export_onnx(graph)
+            onnx_model = gs.export_onnx(graph.cleanup())
         else:
             flux_convert_rope_weight_type(onnx_model)
-        onnx.save(
-            onnx_model,
-            str(output),
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-            location=output.name + "_data",
-            size_threshold=1024,
-        )
+
+        save_onnx(onnx_model, output)

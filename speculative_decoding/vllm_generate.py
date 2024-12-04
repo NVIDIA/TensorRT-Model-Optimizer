@@ -53,7 +53,7 @@ base_url_pool = []
 
 # List models API
 for i in range(10):
-    openai.base_url = "http://localhost:800{}/v1".format(i)
+    openai.base_url = "http://localhost:8000{}/v1".format(i)
 
     try:
         models = client.models.list().data[0].id
@@ -74,8 +74,12 @@ parser.add_argument("--max_tokens", type=int, default=2048)
 parser.add_argument("--chat", action="store_true")
 args = parser.parse_args()
 
-# Assuming the ShareGPT format
-data = json.load(open(args.data_path, "r"))
+
+if args.data_path.endswith("jsonl"):
+    with open(args.data_path, "r") as f:
+        data = [json.loads(line) for line in f]
+else:
+    data = json.load(open(args.data_path, "r"))
 
 
 def generate_data(messages, idx):
@@ -87,18 +91,11 @@ def generate_data(messages, idx):
         if args.chat:
             converted_messages = []
             output_messages = []
-            if messages[0]["from"] == "system":
-                converted_messages.append(
-                    {
-                        "role": "system",
-                        "content": messages[0]["text"],
-                    }
-                )
-                output_messages.append(messages[0])
-                messages = messages[1:]
+
             for message in messages[::2]:
-                if message["from"] != "human":
+                if message["from"].lower() != "user":
                     return
+                message["from"] = "user"
                 converted_messages.append(
                     {
                         "role": "user",
@@ -118,7 +115,7 @@ def generate_data(messages, idx):
                     output_messages.append(message)
                     output_messages.append(
                         {
-                            "from": "gpt",
+                            "from": "assistant",
                             "value": response,
                         }
                     )
@@ -138,9 +135,6 @@ def generate_data(messages, idx):
                 f.write(json.dumps({"conversations": output_messages}) + "\n")
         else:
             conv = get_conversation_template(model_name)
-            if messages[0]["from"] == "system":
-                conv.system_message = messages[0]["text"]
-                messages = messages[1:]
             conv.append_message(conv.roles[0], messages[0]["value"])
             conv.append_message(conv.roles[1], None)
             prompt = conv.get_prompt()

@@ -9,8 +9,8 @@
 [![license](https://img.shields.io/badge/License-MIT-blue)](./LICENSE)
 
 [Examples](#examples) |
-[Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer)  |
-[Benchmark Results](./benchmark.md) |
+[Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer) |
+[Benchmark Results](#benchmark) |
 [Roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/108) |
 [ModelOpt-Windows](./windows/README.md)
 
@@ -33,23 +33,24 @@
 ## Table of Contents
 
 - [Model Optimizer Overview](#model-optimizer-overview)
-- [Installation](#installation)
+- [Installation](#installation--docker)
 - [Techniques](#techniques)
   - [Quantization](#quantization)
-  - [Sparsity](#sparsity)
   - [Distillation](#distillation)
   - [Pruning](#pruning)
+  - [Sparsity](#sparsity)
 - [Examples](#examples)
-- [Support Matrix](#support-matrix)
+- [Support Matrix](#model-support-matrix)
 - [Benchmark](#benchmark)
 - [Quantized Checkpoints](#quantized-checkpoints)
 - [Roadmap](#roadmap)
 - [Release Notes](#release-notes)
+- [Contributing](#contributing)
 
 ## Model Optimizer Overview
 
 Minimizing inference costs presents a significant challenge as generative AI models continue to grow in complexity and size.
-The **NVIDIA TensorRT Model Optimizer** (referred to as **Model Optimizer**, or **ModelOpt**) is a library comprising state-of-the-art model optimization techniques including [quantization](#quantization), [sparsity](#sparsity), [distillation](#distillation), and [pruning](#pruning) to compress models.
+The **NVIDIA TensorRT Model Optimizer** (referred to as **Model Optimizer**, or **ModelOpt**) is a library comprising state-of-the-art model optimization techniques including [quantization](#quantization), [distillation](#distillation), [pruning](#pruning), and [sparsity](#sparsity) to compress models.
 It accepts a torch or [ONNX](https://github.com/onnx/onnx) model as inputs and provides Python APIs for users to easily stack different model optimization techniques to produce an optimized quantized checkpoint.
 Seamlessly integrated within the NVIDIA AI software ecosystem, the quantized checkpoint generated from Model Optimizer is ready for deployment in downstream inference frameworks like [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/quantization) or [TensorRT](https://github.com/NVIDIA/TensorRT).
 ModelOpt is integrated with [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) and [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) for training-in-the-loop optimization techniques.
@@ -72,7 +73,7 @@ cd TensorRT-Model-Optimizer
 
 # Build the docker (will be tagged `docker.io/library/modelopt_examples:latest`)
 # You may customize `docker/Dockerfile` to include or exclude certain dependencies you may or may not need.
-bash docker/build.sh
+./docker/build.sh
 
 # Run the docker image
 docker run --gpus all -it --shm-size 20g --rm docker.io/library/modelopt_examples:latest bash
@@ -91,18 +92,18 @@ NOTE: Unless specified otherwise, all example READMEs assume they are using the 
 
 Quantization is an effective model optimization technique for large models. Quantization with Model Optimizer can compress model size by 2x-4x, speeding up inference while preserving model quality. Model Optimizer enables highly performant quantization formats including FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, and Double Quantization with easy-to-use Python APIs. Both Post-training quantization (PTQ) and Quantization-aware training (QAT) are supported.
 
-### Sparsity
+### Distillation
 
-Sparsity is a technique to further reduce the memory footprint of deep learning models and accelerate the inference. Model Optimizer Python APIs to apply weight sparsity to a given model. It also supports [NVIDIA 2:4 sparsity pattern](https://arxiv.org/pdf/2104.08378) and various sparsification methods, such as [NVIDIA ASP](https://github.com/NVIDIA/apex/tree/master/apex/contrib/sparsity) and [SparseGPT](https://arxiv.org/abs/2301.00774).
+Knowledge Distillation allows for increasing the accuracy and/or convergence speed of a desired model architecture
+by using a more powerful model's learned features to guide a student model's objective function into imitating it.
 
 ### Pruning
 
 Pruning is a technique to reduce the model size and accelerate the inference by removing unnecessary weights. Model Optimizer provides Python APIs to prune Linear and Conv layers, and Transformer attention heads, MLP, embedding hidden size and number of layers (depth).
 
-### Distillation
+### Sparsity
 
-Knowledge Distillation allows for increasing the accuracy and/or convergence speed of a desired model architecture
-by using a more powerful model's learned features to guide a student model's objective function into imitating it.
+Sparsity is a technique to further reduce the memory footprint of deep learning models and accelerate the inference. Model Optimizer Python APIs to apply weight sparsity to a given model. It also supports [NVIDIA 2:4 sparsity pattern](https://arxiv.org/pdf/2104.08378) and various sparsification methods, such as [NVIDIA ASP](https://github.com/NVIDIA/apex/tree/master/apex/contrib/sparsity) and [SparseGPT](https://arxiv.org/abs/2301.00774).
 
 ## Examples
 
@@ -121,15 +122,18 @@ by using a more powerful model's learned features to guide a student model's obj
 - [ONNX PTQ](./onnx_ptq/README.md) shows how to quantize the ONNX models in INT4 or INT8 quantization mode. The examples also include the deployment of quantized ONNX models using TensorRT.
 - [Distillation for LLMs](./llm_distill/README.md) demonstrates how to use Knowledge Distillation, which can increasing the accuracy and/or convergence speed for finetuning / QAT.
 - [Chained Optimizations](./chained_optimizations/README.md) shows how to chain multiple optimizations together (e.g. Pruning + Distillation + Quantization).
+- [Model Hub](./model_hub/) provides an example to deploy and run quantized Llama 3.1 8B instruct model from Nvidia's Hugging Face model hub on both TensorRT-LLM and vLLM.
 
-## Support Matrix
+## Model Support Matrix
 
 - For LLM quantization, please refer to this [support matrix](./llm_ptq/README.md#model-support-list).
-- For Diffusion, the Model Optimizer supports [Stable Diffusion 1.5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [Stable Diffusion XL](https://huggingface.co/papers/2307.01952), and [SDXL-Turbo](https://huggingface.co/stabilityai/sdxl-turbo).
+- For VLM quantization, please refer to this [support matrix](./vlm_ptq/README.md#model-support-list).
+- For Diffusion, Model Optimizer supports [FLUX](https://huggingface.co/black-forest-labs/FLUX.1-dev), [Stable Diffusion 3](https://huggingface.co/stabilityai/stable-diffusion-3-medium), [Stable Diffusion XL](https://huggingface.co/papers/2307.01952), [SDXL-Turbo](https://huggingface.co/stabilityai/sdxl-turbo), and [Stable Diffusion 2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1).
+- For speculative decoding, please refer to this [support matrix](./speculative_decoding/README.md#model-support-list).
 
 ## Benchmark
 
-Please find the benchmarks [here](./benchmark.md).
+Please find the benchmarks at [here](./benchmark.md).
 
 ## Quantized Checkpoints
 
@@ -142,3 +146,7 @@ Please see our [product roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimi
 ## Release Notes
 
 Please see Model Optimizer Changelog [here](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/0_changelog.html).
+
+## Contributing
+
+At the moment, we are not accepting external contributions. However, this will soon change after we open source our library in early 2025 with a focus on extensibility. We welcome any feedback and feature requests. Please open an issue if you have any suggestions or questions.

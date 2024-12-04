@@ -20,6 +20,7 @@
 # DEALINGS IN THE SOFTWARE.
 
 import argparse
+import csv
 
 import timm
 import torch
@@ -41,12 +42,12 @@ def main():
         [batch_size,3,224,224] and output shape of [1,1000]""",
     )
     parser.add_argument(
-        "--imagenet_path", type=str, required=True, help="Path to the imagenet dataset"
+        "--imagenet_path", type=str, default=None, help="Path to the imagenet dataset"
     )
     parser.add_argument(
         "--model_name",
         type=str,
-        required=True,
+        default=None,
         help="use for timm.create_model to load data config",
     )
     parser.add_argument("--batch_size", type=int, default=1, help="Batch size for evaluation")
@@ -63,9 +64,12 @@ def main():
         "--quantize_mode",
         type=str,
         default="best",
-        choices=["fp8", "fp16", "fp32", "int4", "int8", "bf16", "best", "stronglyTyped"],
+        choices=["fp8", "fp16", "fp32", "int4", "int8", "int8_iq", "bf16", "best", "stronglyTyped"],
         help="Quantization mode for the TensorRT engine. \
-            Supported options: fp8, fp16, fp32, int8, bf16, best, stronglyTyped",
+            Supported options: fp8, fp16, fp32, int8, int8_iq(implicit quantization), bf16, best, stronglyTyped",
+    )
+    parser.add_argument(
+        "--results_path", type=str, default=None, help="Save the results to the specified path"
     )
 
     args = parser.parse_args()
@@ -90,6 +94,7 @@ def main():
     # Create the device model
     device_model = DeviceModel(client, compiled_model, metadata={})
 
+    top1_accuracy, top5_accuracy = 0.0, 0.0
     if args.imagenet_path:
         model = timm.create_model(args.model_name, pretrained=False, num_classes=1000)
         data_config = timm.data.resolve_model_data_config(model)
@@ -105,7 +110,19 @@ def main():
         print(f"The top1 accuracy of the model is {top1_accuracy}%")
         print(f"The top5 accuracy of the model is {top5_accuracy}%")
 
-    print(f"Inference latency of the model is {device_model.get_latency()} ms")
+    latency = device_model.get_latency()
+    print(f"Inference latency of the model is {latency} ms")
+
+    if args.results_path:
+        results: list[list[str | float]] = [
+            ["Metric", "Value"],
+            ["Top 1", top1_accuracy],
+            ["Top 5", top5_accuracy],
+            ["Latency", latency],
+        ]
+        with open(args.results_path, "w", newline="") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerows(results)
 
 
 if __name__ == "__main__":

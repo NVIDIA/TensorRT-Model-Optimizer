@@ -58,7 +58,7 @@ esac
 #Iterate over list of qformats provided and check if they are valid
 IFS=","
 for qformat in $QFORMAT; do
-     case $qformat in
+    case $qformat in
         fp8|fp8_naive|int8_sq|int4_awq|w4a8_awq|fp16|bf16)
             ;;
         *)
@@ -127,8 +127,14 @@ if [ -n "$AWQ_BLOCK_SIZE" ]; then
     AWQ_ARGS+="--awq_block_size=$AWQ_BLOCK_SIZE"
 fi
 
+if [[ -f $MODEL_CONFIG ]] || [[ -f "$SAVE_PATH/encoder/config.json" && -f "$SAVE_PATH/decoder/config.json" ]]; then
+    MODEL_CONFIG_EXIST=true
+else
+    MODEL_CONFIG_EXIST=false
+fi
+
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
-    if ! [ -f $MODEL_CONFIG ]; then
+    if [[ "$MODEL_CONFIG_EXIST" == false ]]; then
         echo "Quantizing original model..."
         python hf_ptq.py \
             --pyt_ckpt_path=$MODEL_PATH \
@@ -151,7 +157,13 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         exit 0
     fi
 
-    if [[ -n "$AUTO_QUANTIZE_BITS" ]]; then
+    # for enc-dec model, users need to refer TRT-LLM example to build engines and deployment
+    if [[ -f "$SAVE_PATH/encoder/config.json" && -f "$SAVE_PATH/decoder/config.json" && ! -f $MODEL_CONFIG ]]; then
+        echo "Please continue to deployment with the TRT-LLM enc_dec example, https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/enc_dec. Checkpoint export_path: $SAVE_PATH"
+        exit 0
+    fi
+
+    if [[ "$QFORMAT" == *"nvfp4"* ]]; then
         echo "Please build tensorrt_llm engine with this model from the tensorrt_llm repo for deployment. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
@@ -287,6 +299,11 @@ fi
 
 if [[ $TASKS =~ "benchmark" ]]; then
 
+if [ -z "$perf" ]; then
+    echo "!!!Warning: Not building tensorrt llm with optimized perf (e.g. context logits enabled). The benchmark result might be lower than optimal perf."
+    echo "Please rebuild the engine and not run accuracy evals where the context logits are needed (e.g. lm_eval)."
+fi
+
 if [ "$PP" -ne 1 ]; then
     echo "Benchmark does not work with multi PP. Please run the c++ benchmark in the TensorRT-LLM repo..."
     exit 1
@@ -323,7 +340,8 @@ else
     fi
 fi
 
-python benchmarks/benchmark_suite.py --model $MODEL_PATH throughput --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee $BENCHMARK_RESULT
+python benchmarks/benchmark_suite.py --model $MODEL_PATH latency --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee $BENCHMARK_RESULT
+python benchmarks/benchmark_suite.py --model $MODEL_PATH throughput --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
 
 fi
 

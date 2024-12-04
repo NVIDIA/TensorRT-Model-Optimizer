@@ -107,7 +107,6 @@ def complie2trt(cls, onnx_path: Path, engine_path: Path, batch_size: int = 1):
             )
             build_config = CreateConfig(
                 builder_optimization_level=4,
-                tf32=True,
                 profiles=[build_profile],
             )
             engine = engine_from_network(
@@ -147,7 +146,17 @@ def load_engines(backbone, engine_path: Path, batch_size: int = 1):
             device=backbone.device,
             batch_size=batch_size,
         )
-    # TODO: Free and clean up the origin pytorch cuda memory
+
+
+def free_memory(model_id, backbone):
+    if model_id == "sd3-medium":
+        for block in backbone.transformer_blocks:
+            block.to_empty(device="cpu")
+    else:
+        backbone.mid_block.to_empty(device="cpu")
+        backbone.down_blocks.to_empty(device="cpu")
+        backbone.up_blocks.to_empty(device="cpu")
+        torch.cuda.empty_cache()
 
 
 def export_onnx(backbone, onnx_path: Path):
@@ -196,7 +205,7 @@ def teardown(pipe):
     del backbone.cuda_stream
 
 
-def compile(pipe, onnx_path: Path, engine_path: Path, batch_size: int = 1):
+def compile(pipe, model_id: str, onnx_path: Path, engine_path: Path, batch_size: int = 1):
     backbone = get_model(pipe)
     onnx_path.mkdir(parents=True, exist_ok=True)
     engine_path.mkdir(parents=True, exist_ok=True)
@@ -205,5 +214,6 @@ def compile(pipe, onnx_path: Path, engine_path: Path, batch_size: int = 1):
     export_onnx(backbone, onnx_path)
     complie2trt(backbone.__class__, onnx_path, engine_path, batch_size)
     load_engines(backbone, engine_path, batch_size)
+    free_memory(model_id, backbone)
     warm_up(backbone, batch_size)
     backbone.use_trt_infer = True

@@ -218,7 +218,7 @@ def main(cfg) -> None:
         # For int8_sq, we do not quantize kv cache to preserve accuracy.
         # TODO: Investigate why enabling FP8 kv cache will cause accuracy regressions for nemotron.
         enable_quant_kv_cache = (
-            "int8" not in cfg.quantization.algorithm and cfg.export.decoder_type != "gptnext"
+            "int8" not in cfg.quantization.algorithm and cfg.export.decoder_type != "gpt"
         )
         print(f'{"Enable" if enable_quant_kv_cache else "Disable"} KV cache quantization')
 
@@ -301,7 +301,7 @@ def main(cfg) -> None:
         print_rank_0(f"Quantization done. Total time used {tot_time}s. Throughput {tput} samples/s")
         # =================== End Quantization ======================
 
-        if cfg.export.decoder_type == "gptnext":
+        if cfg.export.decoder_type == "gpt":
             # We found squared_relu may have an under-calibration problem.
             # Clamp the scaling_factor with a min threshold to avoid under-calibration.
             for name, module in model.named_modules():

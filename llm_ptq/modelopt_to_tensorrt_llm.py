@@ -23,12 +23,14 @@
 
 import argparse
 import subprocess
+import warnings
 from pathlib import Path
 from typing import Optional, Union
 
 import tensorrt_llm
 import torch
 from packaging.version import parse
+from tensorrt_llm.builder import BuildConfig
 from tensorrt_llm.models import PretrainedConfig
 from transformers import AutoTokenizer
 
@@ -36,7 +38,7 @@ try:
     # run depends on features from the min-supported TensorRT-LLM
     from run_tensorrt_llm import run
 except Exception as e:
-    print(f"Cannot run TensorRT-LLM inference: {e}")
+    warnings.warn(f"Cannot run TensorRT-LLM inference: {e}")
     run = None
 
 
@@ -64,7 +66,8 @@ def build_tensorrt_llm(
     max_num_tokens: Optional[int] = None,
     num_build_workers: int = 1,
     enable_sparsity: bool = False,
-    max_prompt_embedding_table_size: int = 0,
+    max_prompt_embedding_table_size: int = BuildConfig.max_prompt_embedding_table_size,
+    max_encoder_input_len: int = BuildConfig.max_encoder_input_len,
     perf_mode: bool = False,
 ):
     """The API to convert the TensorRT-LLM checkpoint to engines.
@@ -95,6 +98,7 @@ def build_tensorrt_llm(
             weight tensors are sparsified. This increases engine building time significantly.
         max_prompt_embedding_table_size: Length of the prepended/concatenated embeddings (either multimodal
             feature embeddings or prompt tuning embeddings) to the LLM input embeddings.
+        max_encoder_input_len: Maximum encoder input length for enc-dec models.
         perf_mode: Whether build the engine with max perf at a cost of longer build time and less flexibility.
     """
     engine_dir = Path(engine_dir)
@@ -116,9 +120,8 @@ def build_tensorrt_llm(
     log_level = "warning"
 
     if max_batch_size < 4:
-        print(
-            "Warning: TensorRT LLM may hit a runtime issue with batch size is smaller than 4 on some models."
-            " Force set to 4"
+        warnings.warn(
+            "TensorRT LLM may hit a runtime issue with batch size is smaller than 4 on some models. Force setting to 4"
         )
         max_batch_size = 4
 
@@ -127,7 +130,7 @@ def build_tensorrt_llm(
         None,
     ]
 
-    use_fused_mlp = True
+    use_fused_mlp = "RecurrentGemma" not in config.architecture
     if config.quantization.exclude_modules:
         for module_name in config.quantization.exclude_modules:
             # fp8_context_fhma requires all attention.dense to be quantized
@@ -140,8 +143,6 @@ def build_tensorrt_llm(
 
     quant_algo = config.quantization.quant_algo
     use_qdq = quant_algo in ["FP8", "W8A8_SQ_PER_CHANNEL"]
-
-    builder_opt = 4 if "RecurrentGemma" not in config.architecture else 0
 
     speculative_decoding_mode = "medusa" if "Medusa" in config.architecture else None
 
@@ -157,7 +158,7 @@ def build_tensorrt_llm(
     build_cmd += f"--max_seq_len {max_output_len + max_input_len} "
     build_cmd += f"--max_beam_width {max_beam_width} "
     build_cmd += f"--max_prompt_embedding_table_size {max_prompt_embedding_table_size} "
-    build_cmd += f"--builder_opt {builder_opt} "
+    build_cmd += f"--max_encoder_input_len {max_encoder_input_len} "
     build_cmd += f"--max_num_tokens {max_batch_size * max_input_len} "
     build_cmd += (
         "--reduce_fusion enable "
@@ -168,11 +169,10 @@ def build_tensorrt_llm(
     )
 
     if use_fused_mlp:
-        build_cmd += (
-            "--use_fused_mlp enable "
-            if "RecurrentGemma" not in config.architecture
-            else "--use_fused_mlp disable "
-        )
+        build_cmd += "--use_fused_mlp enable "
+    else:
+        build_cmd += "--use_fused_mlp disable "
+
     if enable_sparsity:
         build_cmd += "--weight_sparsity "
 
@@ -193,8 +193,7 @@ def build_tensorrt_llm(
     elif not speculative_decoding_mode:
         build_cmd += "--gather_context_logits "  # for evaluation benchmarking purpose
 
-    print("trtllm-build command:")
-    print(f"{build_cmd}")
+    print(f"trtllm-build command:\n{build_cmd}")
 
     assert parse(tensorrt_llm.__version__) >= parse(MIN_TENSORRT_LLM_VERSION), (
         f"Detected lower version of tensorrt_llm installed instead of {MIN_TENSORRT_LLM_VERSION}. "
@@ -207,7 +206,7 @@ def build_tensorrt_llm(
         tokenizer = AutoTokenizer.from_pretrained(ckpt_dir)
         tokenizer.save_pretrained(engine_dir)
     except Exception as e:
-        print(f"Cannot copy tokenizer to the engine dir. {e}")
+        warnings.warn(f"Cannot copy tokenizer to the engine dir. {e}")
 
 
 def parse_arguments():
@@ -238,8 +237,15 @@ def parse_arguments():
         "--max_prompt_embedding_table_size",
         "--max_multimodal_len",
         type=int,
-        default=0,
-        help="Setting to a value > 0 enables support for prompt tuning or multimodal input.",
+        default=BuildConfig.max_prompt_embedding_table_size,
+        help="Maximum prompt embedding table size for prompt tuning, "
+        "or maximum multimodal input size for multimodal models.",
+    )
+    parser.add_argument(
+        "--max_encoder_input_len",
+        type=int,
+        default=BuildConfig.max_encoder_input_len,
+        help="Maximum encoder input length for enc-dec models.",
     )
 
     return parser.parse_args()
@@ -256,6 +262,7 @@ def main(args):
         num_build_workers=args.num_build_workers,
         enable_sparsity=args.enable_sparsity,
         max_prompt_embedding_table_size=args.max_prompt_embedding_table_size,
+        max_encoder_input_len=args.max_encoder_input_len,
         perf_mode=args.perf,
     )
 

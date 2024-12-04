@@ -6,7 +6,7 @@ performance** that can be delivered by Model Optimizer. All performance numbers 
 
 ### 1. Post-training quantization (PTQ) for LLMs
 
-#### 1.1 Performanace
+#### 1.1 Performance
 
 Config: H100, nvidia-modelopt v0.15.0, TensorRT-LLM v0.11, latency measured with full batch inference (no inflight batching).
 Memory saving and inference speedup are compared to the FP16 baseline. Speedup is normalized to the GPU count.

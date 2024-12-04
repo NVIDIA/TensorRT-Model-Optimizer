@@ -172,6 +172,7 @@ def cast_fp8_mha_io(graph):
                 DQ
     The insertion of Cast ops in the FP8 MHA part actually forbids the MHAs to run
     with FP16 accumulation because TensorRT only has FP32 accumulation kernels for FP8 MHAs.
+    If your torch doesn't support SDPA, you can use this function to modify your onnx graph
     """
     # Find FP8 MHA pattern.
     # Match FP8 MHA: Q -> DQ -> BMM1 -> (Mul/Div) -> (Add) -> Softmax -> (Cast) -> Q -> DQ -> BMM2 -> Q -> DQ

@@ -37,29 +37,29 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       TRAIN_BS="${1#*=}"
       ;;
-    --heads*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      HEADS="${1#*=}"
-      ;;
-    --layers*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      LAYERS="${1#*=}"
-      ;;
-    --only_medusa_heads*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      MEDUSA_ONLY_HEADS="${1#*=}"
-      ;;
-    --num_medusa_heads*)
+    --medusa_num_heads*)
       if [[ "$1" != *=* ]]; then shift; fi
       MEDUSA_NUM_HEADS="${1#*=}"
       ;;
-    --num_medusa_layers*)
+    --medusa_num_layers*)
       if [[ "$1" != *=* ]]; then shift; fi
       MEDUSA_NUM_LAYERS="${1#*=}"
       ;;
-    --lm_head_medusa*)
+    --eagle_num_layers*)
       if [[ "$1" != *=* ]]; then shift; fi
-      MEDUSA_LM_HEAD="${1#*=}"
+      EAGLE_NUM_LAYERS="${1#*=}"
+      ;;
+    --redrafter_predict_n_tokens*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      REDRAFTER_TOKENS="${1#*=}"
+      ;;
+    --redrafter_num_layers*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      REDRAFTER_NUM_LAYERS="${1#*=}"
+      ;;
+    --fsdp_transformer_layer_cls_to_wrap*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP="${1#*=}"
       ;;
     *)
       >&2 printf "Error: Invalid argument\n"
@@ -81,49 +81,50 @@ NUM_EPOCHS=${NUM_EPOCHS:-1}
 SAVE_STEPS=${SAVE_STEPS:-$DEFAULT_SAVE_STEPS}
 LR=${LR:-"1e-4"}
 TRAIN_BS=${TRAIN_BS:-4}
-HEADS=${HEADS:-2}
-LAYERS=${LAYERS:-1}
-MEDUSA_ONLY_HEADS=${MEDUSA_ONLY_HEADS:-True}
 MEDUSA_NUM_HEADS=${MEDUSA_NUM_HEADS:-1}
 MEDUSA_NUM_LAYERS=${MEDUSA_NUM_LAYERS:-1}
-
-MEDUSA_ARGS="--medusa_only_heads $MEDUSA_ONLY_HEADS --medusa_num_heads $MEDUSA_NUM_HEADS \
-             --medusa_num_layers $MEDUSA_NUM_LAYERS"
-if [ -z $MEDUSA_LM_HEAD ]; then
-    MEDUSA_ARGS=$MEDUSA_ARGS
-else
-    MEDUSA_ARGS="$MEDUSA_ARGS --medusa_lm_head $MEDUSA_LM_HEAD"
-fi
+EAGLE_NUM_LAYERS=${EAGLE_NUM_LAYERS:-1}
+REDRAFTER_TOKENS=${REDRAFTER_TOKENS:-1}
+REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
+FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 
 if [[ "$MODE" == "medusa" ]]; then
-  CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
-      --model_name_or_path $MODEL \
-      --model_max_length 2048 \
-      --dataloader_drop_last True \
-      --bf16 True \
-      --output_dir $OUTPUT_DIR \
-      --num_train_epochs $NUM_EPOCHS \
-      --per_device_train_batch_size $TRAIN_BS \
-      --gradient_accumulation_steps 1 \
-      --eval_accumulation_steps 1 \
-      --gradient_checkpointing True \
-      --save_strategy steps \
-      --save_steps $SAVE_STEPS \
-      --learning_rate $LR \
-      --weight_decay 0.0 \
-      --warmup_ratio 0.1 \
-      --lr_scheduler_type linear \
-      --logging_steps 1 \
-      --fsdp 'full_shard auto_wrap' \
-      --fsdp_transformer_layer_cls_to_wrap 'LlamaDecoderLayer' \
-      --tf32 True \
-      --data_path $DATA \
-      $MEDUSA_ARGS
-  "
-
-  start_time=$(date +%s)
-  sh -c "$CMD"
-  echo "Total time taken: $(( $(date +%s) - $start_time )) seconds"
+  SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
+elif [[ "$MODE" == "eagle" ]]; then
+  SPECULATIVE_ARGS="--eagle_num_layers $EAGLE_NUM_LAYERS"
+elif [[ "$MODE" == "redrafter" ]]; then
+  SPECULATIVE_ARGS="--redrafter_predict_n_tokens $REDRAFTER_TOKENS --redrafter_num_layers $REDRAFTER_NUM_LAYERS"
 else
-  echo "Only medusa supported for now!"
+  echo "Only medusa and eagle supported for now!"
+  exit 1
 fi
+
+CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
+    --mode $MODE \
+    --model_name_or_path $MODEL \
+    --model_max_length 2048 \
+    --dataloader_drop_last True \
+    --bf16 True \
+    --output_dir $OUTPUT_DIR \
+    --num_train_epochs $NUM_EPOCHS \
+    --per_device_train_batch_size $TRAIN_BS \
+    --per_device_eval_batch_size $TRAIN_BS \
+    --gradient_accumulation_steps 1 \
+    --eval_accumulation_steps 1 \
+    --save_strategy steps \
+    --save_steps $SAVE_STEPS \
+    --learning_rate $LR \
+    --weight_decay 0.0 \
+    --warmup_steps 100 \
+    --lr_scheduler_type linear \
+    --logging_steps 1 \
+    --fsdp 'full_shard auto_wrap' \
+    --fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP \
+    --tf32 True \
+    --data_path $DATA \
+    $SPECULATIVE_ARGS
+"
+
+start_time=$(date +%s)
+sh -c "$CMD"
+echo "Total time taken: $(( $(date +%s) - $start_time )) seconds"

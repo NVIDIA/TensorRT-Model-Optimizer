@@ -19,24 +19,24 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-import tensorrt_llm.bindings.executor as trtllm
-from tensorrt_llm.bench.run.run import RuntimeConfig
+from pathlib import Path
+from typing import Dict, Tuple, Union
+
+import tensorrt_llm.bench.benchmark.utils as utils
+from tensorrt_llm.bench.benchmark.utils import (
+    get_settings_from_engine as get_settings_from_engine_original,
+)
 
 
-def _override_get_config(self) -> trtllm.ExecutorConfig:
-    return trtllm.ExecutorConfig(
-        scheduler_config=self.settings_config.get_scheduler_config(),
-        kv_cache_config=self.settings_config.get_kvcache_config(),
-        parallel_config=self.world_config.get_parallel_config(),
-        batching_type=trtllm.BatchingType.INFLIGHT,
-        iter_stats_max_iterations=0,
-        request_stats_max_iterations=0,
-        max_batch_size=self.settings_config.max_batch_size,
-        max_num_tokens=self.settings_config.max_num_tokens,
-        # ModelOpt modification
-        # TODO: set this according to engine config
-        enable_chunked_context=False,
-    )
+def get_settings_from_engine_override(
+    engine_path: Path,
+) -> Tuple[Dict[str, Union[str, int]], Dict[str, Union[str, int]]]:
+    exec_settings, build_cfg = get_settings_from_engine_original(engine_path)
+    # Do not enable chunking if use_paged_context_fmha if not enabled.
+    exec_settings["settings_config"]["chunking"] = build_cfg["plugin_config"][
+        "use_paged_context_fmha"
+    ]
+    return exec_settings, build_cfg
 
 
-RuntimeConfig.get_config = _override_get_config
+utils.get_settings_from_engine = get_settings_from_engine_override

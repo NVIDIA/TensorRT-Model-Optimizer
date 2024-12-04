@@ -37,17 +37,21 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 import transformers
+from eagle_utils import make_eagle_supervised_data_module
+from medusa_utils import make_medusa_supervised_data_module
 from transformers import Trainer
 from transformers.trainer_utils import get_last_checkpoint
-from utils import make_supervised_data_module
 
 import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
 from modelopt.torch.utils import print_rank_0
+
+torch.manual_seed(0)
+mto.enable_huggingface_checkpointing()
 
 
 @dataclass
@@ -77,55 +81,43 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     dataloader_drop_last: bool = field(default=True)
     bf16: bool = field(default=True)
+    mode: Literal["eagle", "medusa", "redrafter"] = "medusa"
 
 
 @dataclass
 class MedusaArguments:
-    medusa_only_heads: Optional[bool] = field(default=True)
     medusa_num_heads: Optional[int] = field(default=1)
     medusa_num_layers: Optional[int] = field(default=1)
-    medusa_lm_head: Optional[str] = field(default="")
 
 
-def get_metrics_with_perplexity(metrics):
-    metrics = {"perplexity": float(torch.exp(torch.tensor(metrics["eval_loss"]))), **metrics}
-    return metrics
+@dataclass
+class EagleArguments:
+    eagle_num_layers: Optional[int] = field(default=1)
+
+
+@dataclass
+class RedrafterArguments:
+    redrafter_predict_n_tokens: Optional[int] = field(default=1)
+    redrafter_num_layers: Optional[int] = field(default=1)
 
 
 def train():
     parser = transformers.HfArgumentParser(
-        (ModelArguments, DataArguments, TrainingArguments, MedusaArguments)
+        (
+            ModelArguments,
+            DataArguments,
+            TrainingArguments,
+            MedusaArguments,
+            EagleArguments,
+            RedrafterArguments,
+        )
     )
-    model_args, data_args, training_args, medusa_args = parser.parse_args_into_dataclasses()
-    print_rank_0(f"arguments: {model_args}, {training_args}, {medusa_args}")
-
-    mto.enable_huggingface_checkpointing()
-    model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path,
+    model_args, data_args, training_args, medusa_args, eagle_args, redrafter_args = (
+        parser.parse_args_into_dataclasses()
     )
-
-    modelopt_state_path = os.path.join(training_args.output_dir, "modelopt_state.pt")
-    if os.path.isfile(modelopt_state_path):
-        print_rank_0(f"Loading modelopt state from {modelopt_state_path}")
-        modelopt_state = torch.load(modelopt_state_path)
-        mto.restore_from_modelopt_state(model, modelopt_state)
-    else:
-        config = {
-            "medusa_num_heads": medusa_args.medusa_num_heads,
-            "medusa_num_layers": medusa_args.medusa_num_layers,
-        }
-        mtsp.convert(model, [("medusa", config)])
-    if medusa_args.medusa_lm_head:
-        mtsp.plugins.transformers.load_medusa_head(model, medusa_args.medusa_lm_head)
-    model.generation_config.do_sample = True
-
-    tokenizer = transformers.AutoTokenizer.from_pretrained(
-        model_args.model_name_or_path, model_max_length=training_args.model_max_length
+    print_rank_0(
+        f"arguments: {model_args}, {training_args}, {medusa_args}, {eagle_args}, {redrafter_args}"
     )
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    print_rank_0("Loading dataset...")
-    data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
 
     # Detecting last checkpoint.
     last_checkpoint = None
@@ -133,23 +125,71 @@ def train():
         last_checkpoint = get_last_checkpoint(training_args.output_dir)
         print_rank_0(f"Last checkpoint detected: {last_checkpoint}")
 
-    # Training
     checkpoint = None
     if training_args.resume_from_checkpoint is not None:
         checkpoint = training_args.resume_from_checkpoint
     elif last_checkpoint is not None:
         checkpoint = last_checkpoint
 
+    if checkpoint:
+        model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
+    else:
+        model = transformers.AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            model_max_length=training_args.model_max_length,
+        )
+        if tokenizer.chat_template is None:
+            tokenizer.chat_template = (
+                "{%- for message in messages %}"
+                "{{- '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n' }}"
+                "{%- endfor %}"
+            )
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token_id = tokenizer.eos_token_id
+
+        if training_args.mode == "medusa":
+            config = {
+                "medusa_num_heads": medusa_args.medusa_num_heads,
+                "medusa_num_layers": medusa_args.medusa_num_layers,
+            }
+            mtsp.convert(model, [("medusa", config)])
+        elif training_args.mode == "eagle":
+            config = {"eagle_num_layers": eagle_args.eagle_num_layers}
+            mtsp.convert(model, [("eagle", config)])
+        elif training_args.mode == "redrafter":
+            config = {
+                "redrafter_predict_n_tokens": redrafter_args.redrafter_predict_n_tokens,
+                "redrafter_num_layers": redrafter_args.redrafter_num_layers,
+            }
+            mtsp.convert(model, [("redrafter", config)])
+        else:
+            raise Exception(f"{training_args.mode} is not supported!")
+
+    print_rank_0("Loading dataset...")
+    if training_args.mode == "medusa" or training_args.mode == "redrafter":
+        data_module = make_medusa_supervised_data_module(tokenizer, data_args)
+    elif training_args.mode == "eagle":
+        data_module = make_eagle_supervised_data_module(tokenizer, data_args)
+
     trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
     trainer._move_model_to_device(model, trainer.args.device)
-    mtsp.plugins.transformers.replace_medusa_compute_loss(
-        trainer, medusa_only_heads=medusa_args.medusa_only_heads
-    )
+
+    # Manually enable this to return loss in eval
+    trainer.can_return_loss = True
+    # Make sure label_smoother is None
+    assert (
+        trainer.label_smoother is None
+    ), "label_smoother is not supported in speculative decoding!"
 
     print_rank_0("Start training...")
     trainer.train(resume_from_checkpoint=checkpoint)
     trainer.save_state()
     trainer.save_model(training_args.output_dir)
+
+    metrics = trainer.evaluate()
+    print_rank_0(f"Evaluation results: \n{metrics}")
 
 
 if __name__ == "__main__":

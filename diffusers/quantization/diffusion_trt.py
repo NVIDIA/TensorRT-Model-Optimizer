@@ -34,8 +34,22 @@ from quantize import MODEL_ID
 
 import modelopt.torch.opt as mto
 from modelopt.torch._deploy._runtime import RuntimeRegistry
+from modelopt.torch._deploy._runtime.tensorrt.constants import SHA_256_HASH_LENGTH
+from modelopt.torch._deploy._runtime.tensorrt.tensorrt_utils import prepend_hash_to_bytes
 from modelopt.torch._deploy.device_model import DeviceModel
 from modelopt.torch._deploy.utils import get_onnx_bytes_and_metadata
+
+
+def generate_image(pipe, prompt, image_name):
+    seed = 42
+    image = pipe(
+        prompt,
+        output_type="pil",
+        num_inference_steps=20,
+        generator=torch.Generator("cuda").manual_seed(seed),
+    ).images[0]
+    image.save(f"{image_name}.png")
+    print(f"Image generated using {image_name} model saved as {image_name}.png")
 
 
 def main():
@@ -54,10 +68,27 @@ def main():
             "flux-schnell",
         ],
     )
-    parser.add_argument("--restore-from", type=str, default=None)
-    parser.add_argument("--prompt", type=str, default="A cat holding a sign that says hello world")
-    parser.add_argument("--onnx-load-path", type=str, default="")
-    parser.add_argument("--trt-engine-path", type=str, default=None)
+    parser.add_argument(
+        "--restore-from", type=str, default=None, help="Path to the modelopt quantized checkpoint"
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default="a photo of an astronaut riding a horse on mars",
+        help="Input text prompt for the model",
+    )
+    parser.add_argument(
+        "--onnx-load-path", type=str, default="", help="Path to load the ONNX model"
+    )
+    parser.add_argument(
+        "--trt-engine-load-path", type=str, default=None, help="Path to load the TRT engine"
+    )
+    parser.add_argument(
+        "--dq-only", action="store_true", help="Converts the ONNX model to a dq_only model"
+    )
+    parser.add_argument(
+        "--torch", action="store_true", help="Generate an image using the torch pipeline"
+    )
     args = parser.parse_args()
 
     if args.model in ["sd2.1", "sd2.1-base"]:
@@ -81,6 +112,11 @@ def main():
             use_safetensors=True,
         )
 
+    if args.torch:
+        pipe.to("cuda")
+        generate_image(pipe, args.prompt, args.model)
+        return
+
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
     backbone = None
@@ -99,13 +135,13 @@ def main():
 
     backbone.to("cuda")
 
-    # Generate dummy inputs for the Flux model
+    # Generate dummy inputs for the backbone
     dummy_inputs = generate_dummy_inputs(args.model, "cuda", True)
 
     # Define dynamic axes for ONNX export
     dynamic_axes = AXES_NAME[args.model]
 
-    # Postprocess the dynamic axes to match the input and outputs names with DeviceModel
+    # Postprocess the dynamic axes to match the input and output names with DeviceModel
     if args.onnx_load_path == "":
         update_dynamic_axes(args.model, dynamic_axes)
 
@@ -133,14 +169,22 @@ def main():
         onnx_load_path=args.onnx_load_path,
         dynamic_axes=dynamic_axes,
         onnx_opset=int(deployment["onnx_opset"]),
+        remove_exported_model=False,
+        dq_only=args.dq_only,
     )
 
-    if not args.trt_engine_path:
+    if not args.trt_engine_load_path:
         # Compile the TRT engine from the exported ONNX model
         compiled_model = client.ir_to_compiled(onnx_bytes, compilation_args)
+        # Save TRT engine for future use
+        with open(f"{args.model}.plan", "wb") as f:
+            # Remove the SHA-256 hash from the compiled model, used to maintain state in the trt_client
+            f.write(compiled_model[SHA_256_HASH_LENGTH:])
     else:
-        with open(args.trt_engine_path, "rb") as f:
+        with open(args.trt_engine_load_path, "rb") as f:
             compiled_model = f.read()
+            # Prepend the SHA-256 hash from the compiled model, used to maintain state in the trt_client
+            compiled_model = prepend_hash_to_bytes(compiled_model)
 
     # The output shapes will need to be specified for models with dynamic output dimensions
     device_model = DeviceModel(
@@ -154,7 +198,7 @@ def main():
     if hasattr(pipe, "unet") and add_embedding:
         setattr(device_model, "add_embedding", add_embedding)
 
-    # Move the backbone back to the CPU and set the transformer to the compiled device model
+    # Move the backbone back to the CPU and set the backbone to the compiled device model
     backbone.to("cpu")
     if hasattr(pipe, "unet"):
         pipe.unet = device_model
@@ -164,15 +208,7 @@ def main():
         raise ValueError("Pipeline does not have a transformer or unet backbone")
     pipe.to("cuda")
 
-    # Generate an image using the Flux model
-    seed = 42
-    image = pipe(
-        args.prompt,
-        output_type="pil",
-        num_inference_steps=20,
-        generator=torch.Generator("cuda").manual_seed(seed),
-    ).images[0]
-    image.save(f"{args.model}.png")
+    generate_image(pipe, args.prompt, args.model)
     print(f"Image generated using {args.model} model saved as {args.model}.png")
 
     print(f"Inference latency of the backbone of the pipeline is {device_model.get_latency()} ms")

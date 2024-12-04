@@ -1,5 +1,5 @@
-# NOTE: This is adapted from run_qa_no_trainer.py and utils_qa.py from https://github.com/huggingface/
-# transformers/blob/c52b515e948fc12ff58ad773a0385860d0162f61/examples/pytorch/question-answering
+# NOTE: This is adapted from run_qa_no_trainer.py and utils_qa.py from
+# https://github.com/huggingface/transformers/blob/c52b515e/examples/pytorch/question-answering
 #
 # Copyright 2021 The HuggingFace Inc. team. All rights reserved.
 #
@@ -17,17 +17,17 @@
 
 # SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: MIT
-
+#
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
 # to deal in the Software without restriction, including without limitation
 # the rights to use, copy, modify, merge, publish, distribute, sublicense,
 # and/or sell copies of the Software, and to permit persons to whom the
 # Software is furnished to do so, subject to the following conditions:
-
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
@@ -71,11 +71,15 @@ from transformers import (
     get_scheduler,
 )
 
+# Model Optimizer: imports
 import modelopt.torch.distill as mtd
 import modelopt.torch.opt as mto
 import modelopt.torch.prune as mtp
 import modelopt.torch.quantization as mtq
 from modelopt.torch._deploy.utils import get_onnx_bytes
+
+# Enable automatic save/load of modelopt_state with huggingface checkpointing
+mto.enable_huggingface_checkpointing()
 
 logger = get_logger(__name__)
 
@@ -95,9 +99,7 @@ def parse_args(input_args: Optional[List[str]] = None):
         help="Path to pretrained model or model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--do_train",
-        action="store_true",
-        help="Whether to run training / fine-tuning.",
+        "--do_train", action="store_true", help="Whether to run training / fine-tuning."
     )
     parser.add_argument(
         "--per_device_train_batch_size",
@@ -165,7 +167,10 @@ def parse_args(input_args: Optional[List[str]] = None):
 
     # Logging and checkpointing arguments
     parser.add_argument(
-        "--output_dir", type=str, default="results", help="Where to store the optimized models."
+        "--finetuned_model_path",
+        type=str,
+        default=None,
+        help="Path to save the finetuned (pruned or quantized) model for restoring later with `.from_pretrained()`.",
     )
     parser.add_argument(
         "--with_tracking",
@@ -175,7 +180,7 @@ def parse_args(input_args: Optional[List[str]] = None):
     parser.add_argument(
         "--checkpointing_steps",
         type=str,
-        default=None,
+        default="epoch",
         help=(
             "Whether the various states should be saved at the end of every n steps, or 'epoch' for"
             " each epoch."
@@ -184,7 +189,10 @@ def parse_args(input_args: Optional[List[str]] = None):
     parser.add_argument(
         "--resume_from_last_ckpt",
         action="store_true",
-        help="If the training should continue from the latest checkpoint in output_dir.",
+        help="If the training should continue from the latest checkpoint in model_name_or_path.",
+    )
+    parser.add_argument(
+        "--onnx_export_path", type=str, default=None, help="Path to export the ONNX model to."
     )
 
     # Misc arguments for Bert (should not be modified in most cases)
@@ -252,6 +260,12 @@ def parse_args(input_args: Optional[List[str]] = None):
         default=None,
         help="The percentage (between 0 and 100) of FLOPs to retain in the pruned model.",
     )
+    parser.add_argument(
+        "--pruned_model_path",
+        type=str,
+        default=None,
+        help="Path to save the pruned model for further finetuning.",
+    )
 
     # Model Optimizer: quantization arguments
     parser.add_argument(
@@ -267,41 +281,28 @@ def parse_args(input_args: Optional[List[str]] = None):
         help="Whether or not to use distillation. A teacher model must be specified.",
     )
     parser.add_argument(
-        "--temperature",
-        type=float,
-        default=2.0,
-        help="The temperature to use when distilling.",
-    )
-
-    # Model Optimizer: save and restore arguments
-    parser.add_argument(
-        "--modelopt_save_file",
-        type=str,
-        default=None,
-        help="File (inside output_dir) to save the modelopt modified model to.",
+        "--temperature", type=float, default=2.0, help="The temperature to use when distilling."
     )
     parser.add_argument(
-        "--modelopt_restore_path",
+        "--ptq_model_path",
         type=str,
         default=None,
-        help="Path to restore the modelopt modified model from.",
-    )
-
-    # ONNX export arguments
-    parser.add_argument(
-        "--onnx_export_file",
-        type=str,
-        default=None,
-        help="File (inside output_dir) to export the ONNX model to.",
+        help="Path to save the PTQ quantized model for further QAT.",
     )
 
     args = parser.parse_args(input_args)
 
     # Sanity checks
-    if args.do_modelopt_prune and not args.modelopt_prune_flops_percent:
+    if args.do_train and not args.finetuned_model_path:
+        raise ValueError("`finetuned_model_path` required when `do_train` is passed.")
+    if args.do_modelopt_prune and not (
+        args.modelopt_prune_flops_percent and args.pruned_model_path
+    ):
         raise ValueError(
-            "Need a `modelopt_prune_flops_percent` when `do_modelopt_prune` is passed."
+            "`modelopt_prune_flops_percent` and `pruned_model_path` required when `do_modelopt_prune` is passed."
         )
+    if args.modelopt_quantize_cfg and not args.ptq_model_path:
+        raise ValueError("`ptq_model_path` required when `modelopt_quantize_cfg` is passed.")
 
     return args
 
@@ -857,7 +858,7 @@ def evaluate_model(
         predictions=outputs_numpy,
         n_best_size=args.n_best_size,
         max_answer_length=args.max_answer_length,
-        # output_dir=args.output_dir,
+        # output_dir=args.finetuned_model_path,
         prefix=prefix,
     )
 
@@ -887,7 +888,6 @@ class StartEndLogitsDistillationLoss(mtd.LogitsDistillationLoss):
 def train_and_evaluate_model(
     args,
     model: nn.Module,
-    tokenizer: PreTrainedTokenizer,
     accelerator: Accelerator,
     examples: Dict,
     dataset: Dict,
@@ -988,11 +988,13 @@ def train_and_evaluate_model(
         # Get the most recent checkpoint
         dirs = [
             f.path
-            for f in os.scandir(args.output_dir)
+            for f in os.scandir(args.finetuned_model_path)
             if f.is_dir() and (f.name.startswith("epoch_") or f.name.startswith("step_"))
         ]
         if len(dirs) == 0:
-            logger.warning("No checkpoint found in output_dir. Training from scratch!")
+            logger.warning(
+                f"No checkpoint found in {args.finetuned_model_path}. Training from scratch!"
+            )
         else:
             latest_dir = max(dirs, key=os.path.getctime)
             accelerator.load_state(latest_dir)
@@ -1057,13 +1059,15 @@ def train_and_evaluate_model(
                 completed_steps += 1
 
             if isinstance(checkpointing_steps, int) and completed_steps % checkpointing_steps == 0:
-                accelerator.save_state(os.path.join(args.output_dir, f"step_{completed_steps}"))
+                accelerator.save_state(
+                    os.path.join(args.finetuned_model_path, f"step_{completed_steps}")
+                )
 
             if completed_steps >= args.max_train_steps:
                 break
 
         if args.checkpointing_steps == "epoch":
-            accelerator.save_state(os.path.join(args.output_dir, f"epoch_{epoch}"))
+            accelerator.save_state(os.path.join(args.finetuned_model_path, f"epoch_{epoch}"))
 
         eval_metric = evaluate_model(
             args,
@@ -1091,7 +1095,7 @@ def train_and_evaluate_model(
         for key in list(eval_metric.keys()):
             eval_metric[f"Eval_{key}"] = eval_metric.pop(key)
 
-        with open(os.path.join(args.output_dir, "results.json"), "w") as f:
+        with open(os.path.join(args.finetuned_model_path, "results.json"), "w") as f:
             json.dump(eval_metric, f, indent=4)
 
 
@@ -1102,7 +1106,7 @@ def main(input_args: Optional[List[str]] = None) -> None:
     accelerator_log_kwargs = {}
     if args.with_tracking:
         accelerator_log_kwargs["log_with"] = "tensorboard"
-        accelerator_log_kwargs["project_dir"] = args.output_dir
+        accelerator_log_kwargs["project_dir"] = args.finetuned_model_path
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps, **accelerator_log_kwargs
     )
@@ -1124,9 +1128,6 @@ def main(input_args: Optional[List[str]] = None) -> None:
     # Set the training seed
     set_seed(SEED)
 
-    # Handle the output_dir creation
-    if accelerator.is_main_process:
-        os.makedirs(args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
 
     # Load pretrained model and tokenizer
@@ -1139,20 +1140,13 @@ def main(input_args: Optional[List[str]] = None) -> None:
         args, tokenizer, accelerator
     )
 
-    # Model Optimizer: Save the pruned or quantized model
-    def save_modelopt_model(model):
-        if accelerator.is_main_process and args.modelopt_save_file is not None:
-            save_path = os.path.join(args.output_dir, args.modelopt_save_file)
-            logger.info(f"Saving modelopt optimized model to {save_path}")
-            mto.save(model, save_path)
-
-    # Model Optimizer: Restore the pruned or quantized model from a checkpoint
-    if args.modelopt_restore_path:
-        assert os.path.exists(
-            args.modelopt_restore_path
-        ), f"{args.modelopt_restore_path} does not exist."
-        logger.info(f"Restoring model from {args.modelopt_restore_path}")
-        model = mto.restore(model, args.modelopt_restore_path)
+    def save(model, output_path):
+        if accelerator.is_main_process:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            model = accelerator.unwrap_model(model)
+            model.save_pretrained(output_path)
+            tokenizer.save_pretrained(output_path)
+            logger.info(f"Saved model and tokenizer to {output_path}")
 
     # Model Optimizer: Prune the model to given FLOPS target using GradNAS algorithm
     if args.do_modelopt_prune:
@@ -1179,7 +1173,7 @@ def main(input_args: Optional[List[str]] = None) -> None:
                 ),
             },
         )
-        save_modelopt_model(model)
+        save(model, args.pruned_model_path)
 
     # Model Optimizer: Quantize the model to INT8 precision
     if args.modelopt_quantize_cfg:
@@ -1201,9 +1195,13 @@ def main(input_args: Optional[List[str]] = None) -> None:
 
         model = mtq.quantize(model, getattr(mtq, args.modelopt_quantize_cfg), forward_loop)
         torch.cuda.empty_cache()
-        save_modelopt_model(model)
+        save(model, args.ptq_model_path)
 
     if args.do_train:
+        # Handle the finetuned_model_path creation
+        if accelerator.is_main_process:
+            os.makedirs(args.finetuned_model_path, exist_ok=True)
+
         # Model Optimizer: Convert to a DistillationModel containing teacher to train with distillation
         if args.do_modelopt_distill:
             logger.info(f"Using distillation with teacher {args.model_name_or_path}")
@@ -1215,31 +1213,23 @@ def main(input_args: Optional[List[str]] = None) -> None:
             model = mtd.convert(model, mode=[("kd_loss", kd_config)])
 
         train_and_evaluate_model(
-            args,
-            model,
-            tokenizer,
-            accelerator,
-            examples,
-            dataset,
-            dataloader,
-            answer_column_name,
+            args, model, accelerator, examples, dataset, dataloader, answer_column_name
         )
 
         # Model Optimizer: Export the distilled model
         if args.do_modelopt_distill:
             model = mtd.export(model)
 
-        save_modelopt_model(model)
+        save(model, args.finetuned_model_path)
 
-    if accelerator.is_main_process and args.onnx_export_file is not None:
-        save_path = os.path.join(args.output_dir, args.onnx_export_file)
-        logger.info(f"Exporting ONNX model to {save_path}")
+    if accelerator.is_main_process and args.onnx_export_path is not None:
+        logger.info(f"Exporting ONNX model to {args.onnx_export_path}")
 
         # Move the model and dummy_input to the device
         model = model.to(accelerator.device)
         dummy_input = dummy_input.to(accelerator.device)
 
-        with open(save_path, "wb") as f:
+        with open(args.onnx_export_path, "wb") as f:
             f.write(get_onnx_bytes(model, dummy_input, onnx_opset=14))
 
     logger.info("Done!")

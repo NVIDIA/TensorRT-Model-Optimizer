@@ -9,7 +9,7 @@ This document introduces:
 - The scripts to quantize, convert and evaluate LLMs,
 - The Python code and APIs to quantize and deploy the models.
 
-If you are interseted in quantization-aware training (QAT) for LLMs, please refer to the [QAT README](../llm_qat/README.md).
+If you are interested in quantization-aware training (QAT) for LLMs, please refer to the [QAT README](../llm_qat/README.md).
 
 ## Model Quantization and TRT LLM Conversion
 
@@ -44,27 +44,27 @@ scripts/huggingface_example.sh --model $HF_PATH --quant [fp8|int8_sq|int4_awq|w4
 
 > *If the Huggingface model calibration fails on a multi-GPU system due to mismatched tensor placement, please try setting CUDA_VISIBLE_DEVICES to a smaller number.*
 
-> \*FP8 calibration over a large model with limited GPU memory is not recommended but possible with the [accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/big_modeling) package. Please tune the device_map setting in [`example_utils.py`](./example_utils.py) if needed for model loading and the calibration process can be slow.
+> *FP8 calibration over a large model with limited GPU memory is not recommended but possible with the [accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/big_modeling) package. Please tune the device_map setting in [`example_utils.py`](./example_utils.py) if needed for model loading and the calibration process can be slow.*
 
-> *Huggingface models trained with modelopt.torch.speculative (mtsp) can be used as regular Huggingface models in PTQ.*
+> *Huggingface models trained with `modelopt.torch.speculative` can be used as regular Huggingface models in PTQ.*
 
 #### For NeMo models like [nemotron](https://huggingface.co/nvidia/nemotron-3-8b-base-4k):
 
-NeMo PTQ requires the NeMo package installed. It's recommended to start from the NeMo container(`nvcr.io/nvidia/nemo:24.07`) directly.
+NeMo PTQ requires the NeMo package installed. It's recommended to start from the NeMo containers like `nvcr.io/nvidia/nemo:24.07` or latest `nvcr.io/nvidia/nemo:dev` directly.
 
 ```bash
 # Inside the NeMo container:
 # Download the nemotron model from the Hugging Face.
 export GPT_MODEL_FILE=Nemotron-3-8B-Base-4k.nemo
 
-# Install modelopt and build the extensions.
+# Reinstall latest modelopt and build the extensions if not already done.
 pip install -U "nvidia-modelopt[torch]" --extra-index-url https://pypi.nvidia.com
 python -c "import modelopt.torch.quantization.extensions as ext; ext.precompile()"
 
-scripts/nemo_example.sh --type gptnext --model $GPT_MODEL_FILE --quant [fp8|int8_sq|int4_awq] --tp [1|2|4|8]
-
-# If the TensorRT-LLM version in the NeMo container is lower than the supported version, please continue building with the newer version TensorRT-LLM outside the container.
+scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant [fp8|int8_sq|int4_awq] --tp [1|2|4|8]
 ```
+
+> *If the TensorRT-LLM version in the NeMo container is older than the supported version, please continue building TRT-LLM engine with the `docker.io/library/modelopt_examples:latest` container built in the ModelOpt docker build step. Additionally you would also need to `pip install megatron-core "nemo-toolkit[all]" --extra-index-url https://pypi.nvidia.com` to install required NeMo dependencies*
 
 #### For Megatron-LM models:
 
@@ -96,15 +96,17 @@ Baichuan 1, 2 | Yes | Yes | Yes | Yes
 ChatGLM2, 3 6B | No | No | Yes | No
 Bloom | Yes | Yes | Yes | Yes
 Phi-1,2,3 | Yes | Yes | Yes | Yes<sup>4</sup>
+Phi-3.5 MOE | Yes | No | No | No
 Nemotron 8B | Yes | No | Yes | No
 Gemma 2B, 7B | Yes | No | Yes | Yes
 Gemma 2 9B, 27B | Yes | No | Yes | No
 RecurrentGemma 2B | Yes | Yes | Yes | No
 StarCoder 2 | Yes | Yes | Yes | No
-QWen-1,1.5 | Yes | Yes | Yes | Yes
+QWen<sup>5</sup> | Yes | Yes | Yes | Yes
 DBRX | Yes | No | No | No
 InternLM2 | Yes | No | Yes | Yes<sup>4</sup>
 Exaone | Yes | Yes | Yes | Yes
+Minitron | Yes | Yes | Yes | Yes<sup>2</sup>
 
 > *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty. Only available on sm90 GPUs*
 
@@ -113,6 +115,8 @@ Exaone | Yes | Yes | Yes | Yes
 > *<sup>3.</sup>Mixtral FP8 only available on sm90 GPUs*
 
 > *<sup>4.</sup>W4A8_AWQ is only available on some models but not all*
+
+> *<sup>5.</sup>For some models, KV cache quantization may result in a higher accuracy penalty.*
 
 > *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](./hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*
 
@@ -142,7 +146,7 @@ print(llm_fp8.generate(["What's the age of the earth? "]))
 ### Model Support List
 
 Model | FP8
---- | --- | ---
+--- | ---
 LLAMA 2 | Yes
 LLAMA 3, 3.1 | Yes
 QWen2 | Yes
@@ -178,7 +182,7 @@ The usage is similar for NeMo models to perform `AutoQuantize`. Please refer to 
 ```bash
 # --effective_bits specifies the constraint for `AutoQuantize`
 # --quant specifies the formats to be searched for `AutoQuantize`. Multiple formats can be searched over by passing them as comma separated values
-scripts/nemo_example.sh --type gptnext --model $GPT_MODEL_FILE --quant fp8,int4_awq --effective_bits 6.4 --tp [1|2|4|8]
+scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant fp8,int4_awq --effective_bits 6.4 --tp [1|2|4|8]
 ```
 
 ## Technical Details
@@ -255,7 +259,7 @@ from modelopt.torch.export import export_tensorrt_llm_checkpoint
 with torch.inference_mode():
     export_tensorrt_llm_checkpoint(
         model,  # The quantized model.
-        decoder_type,  # The type of the model, e.g gptj, llama or gptnext.
+        decoder_type,  # The type of the model, e.g gpt, gptj, or llama.
         dtype,  # The exported weights data type.
         export_dir,  # The directory where the exported files will be stored.
         inference_tensor_parallel,  # The number of GPUs used in the inference time tensor parallel.

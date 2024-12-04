@@ -15,10 +15,10 @@ for i in $(env | grep ^PMI_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMIX_ | cut -d"=" -f 1); do unset -v $i; done
 
 case $MODEL_TYPE in
-    llava|phi|vila)
+    llava|phi|vila|mllama)
         ;;
     *)
-        echo "Unsupported type argument: Expected one of: [llava, phi, vila]" >&2
+        echo "Unsupported type argument: Expected one of: [llava, phi, vila, mllama]" >&2
         exit 1
 esac
 
@@ -112,25 +112,33 @@ fi
 
 case "${MODEL_TYPE}" in
     "vila" | "phi")
-        MULTIMODAL_LEN=$((BUILD_MAX_BATCH_SIZE * 4096))
+        VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * 4096)) "
         ;;
     "llava")
-        MULTIMODAL_LEN=$((BUILD_MAX_BATCH_SIZE * 576))
+        VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * 576)) "
+        ;;
+    "mllama")
+        VLM_ARGS=" --max_encoder_input_len=4100 "
         ;;
 esac
 
 if [ "${MODEL_TYPE}" = "vila" ]; then
     # Install required dependency for VILA
-    echo "VILA model needs transformers version 4.36.2"
     pip install -r ../vlm_ptq/requirements-vila.txt
     # Clone oringinal VILA repo
-    if [ ! -d "VILA" ]; then
-        echo "VILA repository is needed until it is added to HF model zoo. Cloning the repository..."
-        git clone https://github.com/Efficient-Large-Model/VILA.git && cd VILA && git checkout b2c70791a4239c813d19f5fa949c3e580556f4df && cd ..
+    if [ ! -d "$(dirname "$MODEL_PATH")/VILA" ]; then
+        echo "VILA repository is needed until it is added to HF model zoo. Cloning the repository parallel to $MODEL_PATH..."
+        git clone https://github.com/Efficient-Large-Model/VILA.git "$(dirname "$MODEL_PATH")/VILA" && \
+	cd "$(dirname "$MODEL_PATH")/VILA" && \
+	git checkout ec7fb2c264920bf004fd9fa37f1ec36ea0942db5 && \
+	cd "$script_dir/.."
     fi
 elif [ "${MODEL_TYPE}" = "llava" ]; then
-    echo "LLAVA model needs transformers version 4.42.4"
+    echo "LLAVA model needs transformers version 4.42.4."
     pip install -r ../vlm_ptq/requirements-llava.txt
+elif [ "${MODEL_TYPE}" = "mllama" ]; then
+    echo "Mllama3.2 model requires transformers version 4.46.2 or try the latest version."
+    pip install -r ../vlm_ptq/requirements-mllama.txt
 fi
 
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
@@ -157,6 +165,12 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         exit 0
     fi
 
+    if [ $MODEL_TYPE == "mllama" ]; then
+        echo "Please continue deployment with the latest TensorRT-LLM main branch. Checkpoint export_path: $SAVE_PATH"
+        exit 0
+    fi
+
+
     echo "Building tensorrt_llm engine from Model Optimizer-quantized model..."
 
     python ../llm_ptq/modelopt_to_tensorrt_llm.py \
@@ -168,7 +182,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         --max_batch_size=$BUILD_MAX_BATCH_SIZE \
         --num_build_workers=$GPUS \
         --enable_sparsity=$ENABLE_SPARSITY \
-        --max_multimodal_len=$MULTIMODAL_LEN
+        $VLM_ARGS
 fi
 
 echo "Build visual engine"
@@ -198,10 +212,8 @@ python vlm_run.py  \
     --visual_engine_dir $VISION_ENCODER_DIR \
     --llm_engine_dir $ENGINE_DIR \
 
-if [ "${MODEL_TYPE}" = "vila" ]; then
-    echo "For VILA model, current transformers version is 4.36.2, higher version transformers may be needed for other model."
-elif [ "${MODEL_TYPE}" = "llava" ]; then
-    echo "For VILA model, current transformers version is 4.42.4, higher version transformers may be needed for other model."
+if [ "${MODEL_TYPE}" = "llava" ]; then
+    echo "For Llava model, current transformers version is 4.42.4, higher version transformers may be needed for other model."
 fi
 
 popd

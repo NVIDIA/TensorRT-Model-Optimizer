@@ -15,6 +15,7 @@
 
 ## Latest News
 
+- \[2024/11/19\] [Microsoft and NVIDIA Supercharge AI Development on RTX AI PCs](https://blogs.nvidia.com/blog/ai-decoded-microsoft-ignite-rtx/)
 - \[2024/11/18\] [Quantized INT4 ONNX models available on Hugging Face for download](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus-67373fe7c006ebc1df310613)
 
 ## Table of Contents
@@ -76,7 +77,7 @@ For more details, please refer to the [detailed quantization guide](https://nvid
 
 ## Support Matrix
 
-Please refer to [support matrix](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/windows/_feature_support_matrix.html) for a full list of supported features and models.
+Please refer to [support matrix](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/guides/0_support_matrix.html) for a full list of supported features and models.
 
 ## Benchmark Results
 

@@ -49,11 +49,11 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 from transformers import Trainer
 from transformers.trainer_utils import get_last_checkpoint
-from utils import print_rank_0
 
 import modelopt.torch.opt as mto
 import modelopt.torch.utils.distributed as dist
 from modelopt.torch.opt.utils import is_dynamic
+from modelopt.torch.utils import print_rank_0
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 

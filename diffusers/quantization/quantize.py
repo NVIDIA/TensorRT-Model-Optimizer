@@ -23,10 +23,10 @@ import argparse
 
 import torch
 from config import (
+    FP8_BF16_FLUX_MMDIT_BMM2_FP8_OUTPUT_CONFIG,
     FP8_FP16_DEFAULT_CONFIG,
     FP8_FP32_DEFAULT_CONFIG,
     get_int8_config,
-    set_stronglytyped_precision,
 )
 from diffusers import (
     DiffusionPipeline,
@@ -35,7 +35,7 @@ from diffusers import (
     StableDiffusionPipeline,
 )
 from onnx_utils.export import generate_fp8_scales, modelopt_export_sd
-from utils import check_lora, filter_func, load_calib_prompts, quantize_lvl, set_fmha
+from utils import check_lora, filter_func, fp8_mha_disable, load_calib_prompts, quantize_lvl
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
@@ -47,7 +47,6 @@ MODEL_ID = {
     "sd2.1-base": "stabilityai/stable-diffusion-2-1-base",
     "sd3-medium": "stabilityai/stable-diffusion-3-medium-diffusers",
     "flux-dev": "black-forest-labs/FLUX.1-dev",
-    "flux-schnell": "black-forest-labs/FLUX.1-schnell",
 }
 
 # You can include the desired arguments for calibration at this point.
@@ -110,6 +109,7 @@ def main():
         default=30,
         help="Number of denoising steps, for SDXL-turbo, use 1-4 steps",
     )
+    parser.add_argument("--model-dtype", type=str, default="Half", choices=["Half", "BFloat16"])
 
     # Calibration and quantization parameters
     parser.add_argument("--format", type=str, default="int8", choices=["int8", "fp8"])
@@ -141,6 +141,8 @@ def main():
 
     args = parser.parse_args()
 
+    if args.model not in ["flux-dev"]:
+        assert args.model_dtype != "BFloat16", "Only Flux-dev can be BF16 precision"
     args.calib_size = args.calib_size // args.batch_size
 
     if args.model == "sd2.1" or args.model == "sd2.1-base":
@@ -151,10 +153,10 @@ def main():
         pipe = StableDiffusion3Pipeline.from_pretrained(
             MODEL_ID[args.model], torch_dtype=torch.float16
         )
-    elif args.model == "flux-dev":
+    elif args.model in ["flux-dev"]:
         pipe = FluxPipeline.from_pretrained(
             MODEL_ID[args.model],
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.bfloat16 if args.model_dtype == "BFloat16" else torch.float16,
         )
     else:
         pipe = DiffusionPipeline.from_pretrained(
@@ -169,8 +171,6 @@ def main():
 
     if args.quant_level == 4.0:
         assert args.format != "int8", "We only support fp8 for Level 4 Quantization"
-        assert args.model == "sdxl-1.0", "We only support fp8 for SDXL on Level 4"
-        set_fmha(backbone)
     if not args.restore_from:
         # This is a list of prompts
         cali_prompts = load_calib_prompts(
@@ -192,14 +192,20 @@ def main():
                 args.percentile,
                 args.n_steps + extra_step,
                 collect_method=args.collect_method,
+                trt_precision_flag=args.model_dtype,
             )
         elif args.format == "fp8":
             if args.collect_method == "default":
-                quant_config = (
-                    FP8_FP32_DEFAULT_CONFIG if args.model == "sd2.1" else FP8_FP16_DEFAULT_CONFIG
-                )
+                if args.model == "flux-dev":
+                    quant_config = FP8_BF16_FLUX_MMDIT_BMM2_FP8_OUTPUT_CONFIG
+                elif args.model == "sd2.1":
+                    quant_config = FP8_FP32_DEFAULT_CONFIG
+                else:
+                    quant_config = FP8_FP16_DEFAULT_CONFIG
             else:
                 raise NotImplementedError
+        else:
+            raise NotImplementedError
 
         def forward_loop(backbone):
             if args.model not in ["sd3-medium", "flux-dev"]:
@@ -216,10 +222,8 @@ def main():
 
         # All the LoRA layers should be fused
         check_lora(backbone)
-        if args.model == "flux-dev":
-            set_stronglytyped_precision(quant_config, "BFloat16")
         mtq.quantize(backbone, quant_config, forward_loop)
-        quantize_lvl(backbone, args.quant_level)
+        quantize_lvl(args.model, backbone, args.quant_level)
         mtq.disable_quantizer(backbone, filter_func)
         mto.save(backbone, f"{args.quantized_torch_ckpt_save_path}")
     else:
@@ -227,13 +231,19 @@ def main():
 
     # if you want to export the model on CPU, move the dummy input and the model to cpu and float32
     if args.onnx_dir is not None:
-        if args.format == "fp8":
+        if args.format == "fp8" and args.model != "flux-dev":
             generate_fp8_scales(backbone)
         pipe.to("cpu")
         torch.cuda.empty_cache()
         # to save GPU memory
         backbone.to("cuda")
-        modelopt_export_sd(backbone, f"{str(args.onnx_dir)}", args.model, args.format)
+        if args.quant_level == 4.0:
+            fp8_mha_disable(backbone, quantized_mha_output=False)
+        backbone.eval()
+        with torch.no_grad():
+            modelopt_export_sd(
+                backbone, f"{str(args.onnx_dir)}", args.model, args.format, args.model_dtype
+            )
 
 
 if __name__ == "__main__":

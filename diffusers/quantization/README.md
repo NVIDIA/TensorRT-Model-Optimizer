@@ -30,6 +30,7 @@ python quantize.py \
   --calib-size 32 --collect-method min-mean \
   --percentile 1.0 --alpha 0.8 \
   --quant-level 3.0 --n-steps 20 \
+  --model-dtype {Half/BFloat16} \
   --quantized-torch-ckpt-save-path ./{MODEL}_int8.pt --onnx-dir {ONNX_DIR}
 ```
 
@@ -37,7 +38,7 @@ python quantize.py \
 
 ```sh
 python quantize.py \
-  --model {flux-dev|sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base} \
+  --model {flux-dev|sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base} --model-dtype {Half|BFloat16} \
   --format fp8 --batch-size 2 --calib-size {128|256} --quant-level {3.0|4.0} \
   --n-steps 20 --quantized-torch-ckpt-save-path ./{MODEL}_fp8.pt --collect-method default \
   --onnx-dir {ONNX_DIR}

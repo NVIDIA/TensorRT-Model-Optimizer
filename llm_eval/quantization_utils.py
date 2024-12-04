@@ -1,11 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: MIT
+#
+# Permission is hereby granted, free of charge, to any person obtaining a
+# copy of this software and associated documentation files (the "Software"),
+# to deal in the Software without restriction, including without limitation
+# the rights to use, copy, modify, merge, publish, distribute, sublicense,
+# and/or sell copies of the Software, and to permit persons to whom the
+# Software is furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+
+import sys
+from pathlib import Path
 from typing import List, Union
 
-from tqdm import tqdm
 from transformers import AutoTokenizer
 
 import modelopt.torch.quantization as mtq
-import modelopt.torch.utils.dataset_utils as dataset_utils
 from modelopt.torch.quantization.plugins import register_hf_attentions_on_the_fly
+
+sys.path.append(str(Path(__file__).resolve().parent / "../common"))
+from dataset_utils import create_forward_loop, get_dataset_dataloader, get_max_batch_size
 
 MAX_SEQ_LEN = 2048
 MAX_OUTPUT_LEN = 512
@@ -59,11 +83,15 @@ def _quantize_model_with_dataset(
     else:
         atq_cfg = getattr(mtq, quant_cfg)  # type: ignore [arg-type]
 
-        def calibrate_loop(model):
-            print("Calibrating model...")
-            for data in tqdm(calib_dataset):
-                model(**data)
-            print("Calibration complete.")
+        # The calibrate_loop is a custom defined method to run the model with the input data.
+        # The basic version looks like:
+        #
+        # def calibrate_loop(model, dataloader):
+        #     for data in dataloader:
+        #         model(**data)
+        #
+        # We also provided a util method to generate the forward_loop with additional error handlings.
+        calibrate_loop = create_forward_loop(dataloader=calib_dataset)
 
         def is_dynamic(atq_cfg):
             def _not_dynamic(cfg):
@@ -143,10 +171,10 @@ def quantize_model(
             net = model.model
 
         # We let the system to determine the max data batch for each forward.
-        batch_size = dataset_utils.get_max_batch_size(net)
+        batch_size = get_max_batch_size(net)
         print(f"Update calib batch {batch_size}")
 
-    calib_dataloader = dataset_utils.get_dataset_dataloader(
+    calib_dataloader = get_dataset_dataloader(
         dataset_name=data,
         tokenizer=tokenizer,
         batch_size=batch_size,

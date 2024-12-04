@@ -22,7 +22,9 @@
 import argparse
 import copy
 import random
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -32,8 +34,10 @@ from example_utils import get_model, get_model_type, get_tokenizer, is_model_on_
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 import modelopt.torch.sparsity as mts
-import modelopt.torch.utils.dataset_utils as dataset_utils
-from modelopt.torch.export import export_hf, export_tensorrt_llm_checkpoint
+from modelopt.torch.export import export_hf_checkpoint, export_tensorrt_llm_checkpoint
+
+sys.path.append(str(Path(__file__).resolve().parent / "../common"))
+from dataset_utils import create_forward_loop, get_dataset_dataloader, get_max_batch_size
 
 RAND_SEED = 1234
 
@@ -112,9 +116,7 @@ def quantize_model(model, quant_cfg, args, calib_dataloader=None):
     #
     # We also provided a util method to generate the forward_loop with additional error handlings.
 
-    calibrate_loop = dataset_utils.create_forward_loop(
-        calib_dataloader, dataloader=calib_dataloader
-    )
+    calibrate_loop = create_forward_loop(dataloader=calib_dataloader)
 
     assert not (
         args.auto_quantize_bits and args.inference_pipeline_parallel > 1
@@ -173,7 +175,7 @@ def main(args):
     if args.sparsity_fmt != "dense":
         if args.batch_size == 0:
             # Sparse algorithm takes more GPU memory so we reduce the batch_size by 4.
-            args.batch_size = max(dataset_utils.get_max_batch_size(model) // 4, 1)
+            args.batch_size = max(get_max_batch_size(model) // 4, 1)
             if args.batch_size > args.calib_size:
                 args.batch_size = args.calib_size
 
@@ -181,7 +183,7 @@ def main(args):
 
         # Different calibration datasets are also available, e.g., "pile" and "wikipedia"
         # Please also check the docstring for the datasets available
-        calib_dataloader = dataset_utils.get_dataset_dataloader(
+        calib_dataloader = get_dataset_dataloader(
             dataset_name=args.dataset_name,
             tokenizer=tokenizer,
             batch_size=args.batch_size,
@@ -201,7 +203,7 @@ def main(args):
         and not args.naive_quantization
     ) or args.auto_quantize_bits:
         # If any qformat provided is not fp8, assert model is on GPU
-        if args.qformat != "fp8":
+        if args.qformat not in ["fp8"]:
             assert is_model_on_gpu(model), (
                 f"Model must be fully loaded onto GPUs for {args.qformat} calibration. "
                 "Please make sure the system has enough GPU memory to load the model."
@@ -222,7 +224,7 @@ def main(args):
             # due to intermediate tensors for fake quantization. Setting sample_memory_usage_ratio
             # to 2 to avoid OOM for AWQ/SmoothQuant fake quantization as it will take more memory than inference.
             sample_memory_usage_ratio = 2 if "awq" in args.qformat or "sq" in args.qformat else 1.1
-            args.batch_size = dataset_utils.get_max_batch_size(
+            args.batch_size = get_max_batch_size(
                 model, sample_memory_usage_ratio=sample_memory_usage_ratio
             )
             if args.batch_size > args.calib_size:
@@ -230,7 +232,7 @@ def main(args):
 
         print(f"Use calib batch_size {args.batch_size}")
 
-        calib_dataloader = dataset_utils.get_dataset_dataloader(
+        calib_dataloader = get_dataset_dataloader(
             dataset_name=args.dataset_name,
             tokenizer=tokenizer,
             batch_size=args.batch_size,
@@ -300,13 +302,6 @@ def main(args):
         assert model_type != "dbrx", f"Does not support export {model_type} without quantizaton"
         print(f"No quantization applied, export {device} model")
 
-    if getattr(model.config, "model_type", None) in ["t5", "gemma2"]:
-        export_dtype = torch.bfloat16
-    elif args.qformat == "bf16":
-        export_dtype = torch.bfloat16
-    else:
-        export_dtype = torch.float16
-
     with torch.inference_mode():
         if model_type is None:
             print(f"Unknown model type {type(model).__name__}. Continue exporting...")
@@ -314,24 +309,26 @@ def main(args):
 
         export_path = args.export_path
 
-        # Move meta tensor back to device before exporting.
-        remove_hook_from_module(model, recurse=True)
-
         start_time = time.time()
         if args.export_fmt == "tensorrt_llm":
+            # Move meta tensor back to device before exporting.
+            remove_hook_from_module(model, recurse=True)
+
+            if "w4a8_awq" in args.qformat:
+                # TensorRT-LLM w4a8 only support fp16 as the dtype.
+                model = model.to(torch.float16)
+
             export_tensorrt_llm_checkpoint(
                 model,
                 model_type,
-                export_dtype,
                 export_dir=export_path,
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
                 naive_fp8_quantization=args.naive_quantization,
             )
         elif args.export_fmt == "hf":
-            export_hf(
+            export_hf_checkpoint(
                 model,
-                export_dtype,
                 export_dir=export_path,
             )
         else:
