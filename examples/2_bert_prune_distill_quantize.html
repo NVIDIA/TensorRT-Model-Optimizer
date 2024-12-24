@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>HF BERT: Prune, Distill &amp; Quantize &mdash; Model Optimizer 0.21.0</title>
+  <title>HF BERT: Prune, Distill &amp; Quantize &mdash; Model Optimizer 0.21.1</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -1007,402 +1007,398 @@ The source code and scripts are also available on <a class="reference external" 
 <span class="linenos"> 841</span>            <span class="n">all_start_logits</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">gather_for_metrics</span><span class="p">(</span><span class="n">start_logits</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">())</span>
 <span class="linenos"> 842</span>            <span class="n">all_end_logits</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">gather_for_metrics</span><span class="p">(</span><span class="n">end_logits</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">())</span>
 <span class="linenos"> 843</span>
-<span class="linenos"> 844</span>    <span class="c1"># Model Optimizer: clear the intermediate states of the distillation model from the forward passes</span>
-<span class="linenos"> 845</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_distill</span><span class="p">:</span>
-<span class="linenos"> 846</span>        <span class="n">model</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">compute_kd_loss</span><span class="p">()</span>
-<span class="linenos"> 847</span>
-<span class="linenos"> 848</span>    <span class="n">max_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">all_start_logits</span><span class="p">])</span>  <span class="c1"># Get the max_length of the tensor</span>
+<span class="linenos"> 844</span>    <span class="n">max_len</span> <span class="o">=</span> <span class="nb">max</span><span class="p">([</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">all_start_logits</span><span class="p">])</span>  <span class="c1"># Get the max_length of the tensor</span>
+<span class="linenos"> 845</span>
+<span class="linenos"> 846</span>    <span class="c1"># concatenate the numpy array</span>
+<span class="linenos"> 847</span>    <span class="n">start_logits_concat</span> <span class="o">=</span> <span class="n">create_and_fill_np_array</span><span class="p">(</span><span class="n">all_start_logits</span><span class="p">,</span> <span class="n">max_len</span><span class="p">)</span>
+<span class="linenos"> 848</span>    <span class="n">end_logits_concat</span> <span class="o">=</span> <span class="n">create_and_fill_np_array</span><span class="p">(</span><span class="n">all_end_logits</span><span class="p">,</span> <span class="n">max_len</span><span class="p">)</span>
 <span class="linenos"> 849</span>
-<span class="linenos"> 850</span>    <span class="c1"># concatenate the numpy array</span>
-<span class="linenos"> 851</span>    <span class="n">start_logits_concat</span> <span class="o">=</span> <span class="n">create_and_fill_np_array</span><span class="p">(</span><span class="n">all_start_logits</span><span class="p">,</span> <span class="n">max_len</span><span class="p">)</span>
-<span class="linenos"> 852</span>    <span class="n">end_logits_concat</span> <span class="o">=</span> <span class="n">create_and_fill_np_array</span><span class="p">(</span><span class="n">all_end_logits</span><span class="p">,</span> <span class="n">max_len</span><span class="p">)</span>
-<span class="linenos"> 853</span>
-<span class="linenos"> 854</span>    <span class="n">outputs_numpy</span> <span class="o">=</span> <span class="p">(</span><span class="n">start_logits_concat</span><span class="p">,</span> <span class="n">end_logits_concat</span><span class="p">)</span>
-<span class="linenos"> 855</span>    <span class="n">prediction</span> <span class="o">=</span> <span class="n">postprocess_qa_predictions</span><span class="p">(</span>
-<span class="linenos"> 856</span>        <span class="n">examples</span><span class="o">=</span><span class="n">eval_examples</span><span class="p">,</span>
-<span class="linenos"> 857</span>        <span class="n">features</span><span class="o">=</span><span class="n">eval_dataset</span><span class="p">,</span>
-<span class="linenos"> 858</span>        <span class="n">predictions</span><span class="o">=</span><span class="n">outputs_numpy</span><span class="p">,</span>
-<span class="linenos"> 859</span>        <span class="n">n_best_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_best_size</span><span class="p">,</span>
-<span class="linenos"> 860</span>        <span class="n">max_answer_length</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_answer_length</span><span class="p">,</span>
-<span class="linenos"> 861</span>        <span class="c1"># output_dir=args.finetuned_model_path,</span>
-<span class="linenos"> 862</span>        <span class="n">prefix</span><span class="o">=</span><span class="n">prefix</span><span class="p">,</span>
-<span class="linenos"> 863</span>    <span class="p">)</span>
-<span class="linenos"> 864</span>
-<span class="linenos"> 865</span>    <span class="n">metric</span> <span class="o">=</span> <span class="n">evaluate</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;squad&quot;</span><span class="p">)</span>
-<span class="linenos"> 866</span>    <span class="n">eval_metric</span> <span class="o">=</span> <span class="n">metric</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span>
-<span class="linenos"> 867</span>        <span class="n">predictions</span><span class="o">=</span><span class="n">prediction</span><span class="o">.</span><span class="n">predictions</span><span class="p">,</span> <span class="n">references</span><span class="o">=</span><span class="n">prediction</span><span class="o">.</span><span class="n">label_ids</span>
-<span class="linenos"> 868</span>    <span class="p">)</span>
-<span class="linenos"> 869</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2"> metrics: </span><span class="si">{</span><span class="n">eval_metric</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="linenos"> 870</span>    <span class="k">return</span> <span class="n">eval_metric</span>
-<span class="linenos"> 871</span>
+<span class="linenos"> 850</span>    <span class="n">outputs_numpy</span> <span class="o">=</span> <span class="p">(</span><span class="n">start_logits_concat</span><span class="p">,</span> <span class="n">end_logits_concat</span><span class="p">)</span>
+<span class="linenos"> 851</span>    <span class="n">prediction</span> <span class="o">=</span> <span class="n">postprocess_qa_predictions</span><span class="p">(</span>
+<span class="linenos"> 852</span>        <span class="n">examples</span><span class="o">=</span><span class="n">eval_examples</span><span class="p">,</span>
+<span class="linenos"> 853</span>        <span class="n">features</span><span class="o">=</span><span class="n">eval_dataset</span><span class="p">,</span>
+<span class="linenos"> 854</span>        <span class="n">predictions</span><span class="o">=</span><span class="n">outputs_numpy</span><span class="p">,</span>
+<span class="linenos"> 855</span>        <span class="n">n_best_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">n_best_size</span><span class="p">,</span>
+<span class="linenos"> 856</span>        <span class="n">max_answer_length</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_answer_length</span><span class="p">,</span>
+<span class="linenos"> 857</span>        <span class="c1"># output_dir=args.finetuned_model_path,</span>
+<span class="linenos"> 858</span>        <span class="n">prefix</span><span class="o">=</span><span class="n">prefix</span><span class="p">,</span>
+<span class="linenos"> 859</span>    <span class="p">)</span>
+<span class="linenos"> 860</span>
+<span class="linenos"> 861</span>    <span class="n">metric</span> <span class="o">=</span> <span class="n">evaluate</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;squad&quot;</span><span class="p">)</span>
+<span class="linenos"> 862</span>    <span class="n">eval_metric</span> <span class="o">=</span> <span class="n">metric</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span>
+<span class="linenos"> 863</span>        <span class="n">predictions</span><span class="o">=</span><span class="n">prediction</span><span class="o">.</span><span class="n">predictions</span><span class="p">,</span> <span class="n">references</span><span class="o">=</span><span class="n">prediction</span><span class="o">.</span><span class="n">label_ids</span>
+<span class="linenos"> 864</span>    <span class="p">)</span>
+<span class="linenos"> 865</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2"> metrics: </span><span class="si">{</span><span class="n">eval_metric</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos"> 866</span>    <span class="k">return</span> <span class="n">eval_metric</span>
+<span class="linenos"> 867</span>
+<span class="linenos"> 868</span>
+<span class="linenos"> 869</span><span class="c1"># Model Optimizer: Define a teacher factory for initializing the distillation model</span>
+<span class="linenos"> 870</span><span class="k">def</span> <span class="nf">teacher_factory</span><span class="p">(</span><span class="n">model_name_or_path</span><span class="p">):</span>
+<span class="linenos"> 871</span>    <span class="k">return</span> <span class="n">AutoModelForQuestionAnswering</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">model_name_or_path</span><span class="p">)</span>
 <span class="linenos"> 872</span>
-<span class="hll"><span class="linenos"> 873</span><span class="c1"># Model Optimizer: Define a teacher factory for initializing the distillation model</span>
-</span><span class="hll"><span class="linenos"> 874</span><span class="k">def</span> <span class="nf">teacher_factory</span><span class="p">(</span><span class="n">model_name_or_path</span><span class="p">):</span>
-</span><span class="hll"><span class="linenos"> 875</span>    <span class="k">return</span> <span class="n">AutoModelForQuestionAnswering</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">model_name_or_path</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos"> 876</span>
-</span><span class="hll"><span class="linenos"> 877</span>
-</span><span class="hll"><span class="linenos"> 878</span><span class="c1"># Model Optimizer: Define a custom distillation loss function that uses start and end logits</span>
-</span><span class="hll"><span class="linenos"> 879</span><span class="k">class</span> <span class="nc">StartEndLogitsDistillationLoss</span><span class="p">(</span><span class="n">mtd</span><span class="o">.</span><span class="n">LogitsDistillationLoss</span><span class="p">):</span>
-</span><span class="hll"><span class="linenos"> 880</span>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">outputs_s</span><span class="p">,</span> <span class="n">outputs_t</span><span class="p">):</span>
-</span><span class="hll"><span class="linenos"> 881</span>        <span class="n">loss_start</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">outputs_s</span><span class="o">.</span><span class="n">start_logits</span><span class="p">,</span> <span class="n">outputs_t</span><span class="o">.</span><span class="n">start_logits</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos"> 882</span>        <span class="n">loss_end</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">outputs_s</span><span class="o">.</span><span class="n">end_logits</span><span class="p">,</span> <span class="n">outputs_t</span><span class="o">.</span><span class="n">end_logits</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos"> 883</span>        <span class="n">loss</span> <span class="o">=</span> <span class="p">(</span><span class="n">loss_start</span> <span class="o">+</span> <span class="n">loss_end</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
-</span><span class="hll"><span class="linenos"> 884</span>
-</span><span class="hll"><span class="linenos"> 885</span>        <span class="k">return</span> <span class="n">loss</span>
-</span><span class="linenos"> 886</span>
-<span class="linenos"> 887</span>
-<span class="linenos"> 888</span><span class="k">def</span> <span class="nf">train_and_evaluate_model</span><span class="p">(</span>
-<span class="linenos"> 889</span>    <span class="n">args</span><span class="p">,</span>
-<span class="linenos"> 890</span>    <span class="n">model</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
-<span class="linenos"> 891</span>    <span class="n">accelerator</span><span class="p">:</span> <span class="n">Accelerator</span><span class="p">,</span>
-<span class="linenos"> 892</span>    <span class="n">examples</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
-<span class="linenos"> 893</span>    <span class="n">dataset</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
-<span class="linenos"> 894</span>    <span class="n">dataloader</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DataLoader</span><span class="p">],</span>
-<span class="linenos"> 895</span>    <span class="n">answer_column_name</span><span class="p">,</span>
-<span class="linenos"> 896</span><span class="p">):</span>
-<span class="linenos"> 897</span>    <span class="c1"># Optimizer</span>
-<span class="linenos"> 898</span>    <span class="c1"># Split weights in two groups, one with weight decay and the other not.</span>
-<span class="linenos"> 899</span>    <span class="n">no_decay</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;bias&quot;</span><span class="p">,</span> <span class="s2">&quot;LayerNorm.weight&quot;</span><span class="p">]</span>
-<span class="linenos"> 900</span>    <span class="n">optimizer_grouped_parameters</span> <span class="o">=</span> <span class="p">[</span>
-<span class="linenos"> 901</span>        <span class="p">{</span>
-<span class="linenos"> 902</span>            <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="p">[</span>
-<span class="linenos"> 903</span>                <span class="n">p</span>
-<span class="linenos"> 904</span>                <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">named_parameters</span><span class="p">()</span>
-<span class="linenos"> 905</span>                <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">requires_grad</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">nd</span> <span class="ow">in</span> <span class="n">n</span> <span class="k">for</span> <span class="n">nd</span> <span class="ow">in</span> <span class="n">no_decay</span><span class="p">)</span>
-<span class="linenos"> 906</span>            <span class="p">],</span>
-<span class="linenos"> 907</span>            <span class="s2">&quot;weight_decay&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">weight_decay</span><span class="p">,</span>
-<span class="linenos"> 908</span>        <span class="p">},</span>
-<span class="linenos"> 909</span>        <span class="p">{</span>
-<span class="linenos"> 910</span>            <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="p">[</span>
-<span class="linenos"> 911</span>                <span class="n">p</span>
-<span class="linenos"> 912</span>                <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">named_parameters</span><span class="p">()</span>
-<span class="linenos"> 913</span>                <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">requires_grad</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="n">nd</span> <span class="ow">in</span> <span class="n">n</span> <span class="k">for</span> <span class="n">nd</span> <span class="ow">in</span> <span class="n">no_decay</span><span class="p">)</span>
-<span class="linenos"> 914</span>            <span class="p">],</span>
-<span class="linenos"> 915</span>            <span class="s2">&quot;weight_decay&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
-<span class="linenos"> 916</span>        <span class="p">},</span>
-<span class="linenos"> 917</span>    <span class="p">]</span>
-<span class="linenos"> 918</span>    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">AdamW</span><span class="p">(</span><span class="n">optimizer_grouped_parameters</span><span class="p">,</span> <span class="n">lr</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">learning_rate</span><span class="p">)</span>
-<span class="linenos"> 919</span>
-<span class="linenos"> 920</span>    <span class="c1"># Scheduler and math around the number of training steps.</span>
-<span class="linenos"> 921</span>    <span class="n">overrode_max_train_steps</span> <span class="o">=</span> <span class="kc">False</span>
-<span class="linenos"> 922</span>    <span class="n">num_update_steps_per_epoch</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span>
-<span class="linenos"> 923</span>        <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span> <span class="o">/</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
-<span class="linenos"> 924</span>    <span class="p">)</span>
-<span class="linenos"> 925</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<span class="linenos"> 926</span>        <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span> <span class="o">*</span> <span class="n">num_update_steps_per_epoch</span><span class="p">)</span>
-<span class="linenos"> 927</span>        <span class="n">overrode_max_train_steps</span> <span class="o">=</span> <span class="kc">True</span>
-<span class="linenos"> 928</span>
-<span class="linenos"> 929</span>    <span class="n">lr_scheduler</span> <span class="o">=</span> <span class="n">get_scheduler</span><span class="p">(</span>
-<span class="linenos"> 930</span>        <span class="n">name</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">lr_scheduler_type</span><span class="p">,</span>
-<span class="linenos"> 931</span>        <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">,</span>
-<span class="linenos"> 932</span>        <span class="n">num_warmup_steps</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">num_warmup_steps</span> <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span>
-<span class="linenos"> 933</span>        <span class="n">num_training_steps</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span>
-<span class="linenos"> 934</span>    <span class="p">)</span>
-<span class="linenos"> 935</span>
-<span class="linenos"> 936</span>    <span class="c1"># Prepare everything with our `accelerator`.</span>
-<span class="linenos"> 937</span>    <span class="n">model</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span> <span class="n">lr_scheduler</span> <span class="o">=</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span>
-<span class="linenos"> 938</span>        <span class="n">model</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span> <span class="n">lr_scheduler</span>
-<span class="linenos"> 939</span>    <span class="p">)</span>
-<span class="linenos"> 940</span>
-<span class="linenos"> 941</span>    <span class="c1"># We need to recalculate our total training steps as the size of the training dataloader may have changed.</span>
-<span class="linenos"> 942</span>    <span class="n">num_update_steps_per_epoch</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span>
-<span class="linenos"> 943</span>        <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span> <span class="o">/</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
-<span class="linenos"> 944</span>    <span class="p">)</span>
-<span class="linenos"> 945</span>    <span class="k">if</span> <span class="n">overrode_max_train_steps</span><span class="p">:</span>
-<span class="linenos"> 946</span>        <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span> <span class="o">*</span> <span class="n">num_update_steps_per_epoch</span><span class="p">)</span>
-<span class="linenos"> 947</span>    <span class="c1"># Afterwards we recalculate our number of training epochs</span>
-<span class="linenos"> 948</span>    <span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">/</span> <span class="n">num_update_steps_per_epoch</span><span class="p">)</span>
-<span class="linenos"> 949</span>
-<span class="linenos"> 950</span>    <span class="c1"># Figure out how many steps we should save the Accelerator states</span>
-<span class="linenos"> 951</span>    <span class="n">checkpointing_steps</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">checkpointing_steps</span>
-<span class="linenos"> 952</span>    <span class="k">if</span> <span class="n">checkpointing_steps</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">checkpointing_steps</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
-<span class="linenos"> 953</span>        <span class="n">checkpointing_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">checkpointing_steps</span><span class="p">)</span>
-<span class="linenos"> 954</span>
-<span class="linenos"> 955</span>    <span class="c1"># We need to initialize the trackers we use, and also store our configuration.</span>
-<span class="linenos"> 956</span>    <span class="c1"># The trackers initializes automatically on the main process.</span>
-<span class="linenos"> 957</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
-<span class="linenos"> 958</span>        <span class="n">experiment_config</span> <span class="o">=</span> <span class="nb">vars</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
-<span class="linenos"> 959</span>        <span class="c1"># TensorBoard cannot log Enums, need the raw value</span>
-<span class="linenos"> 960</span>        <span class="n">experiment_config</span><span class="p">[</span><span class="s2">&quot;lr_scheduler_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">experiment_config</span><span class="p">[</span><span class="s2">&quot;lr_scheduler_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">value</span>
-<span class="linenos"> 961</span>        <span class="n">accelerator</span><span class="o">.</span><span class="n">init_trackers</span><span class="p">(</span><span class="s2">&quot;tensorboard&quot;</span><span class="p">,</span> <span class="n">experiment_config</span><span class="p">)</span>
-<span class="linenos"> 962</span>
-<span class="linenos"> 963</span>    <span class="c1"># Train!</span>
-<span class="linenos"> 964</span>    <span class="n">total_batch_size</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos"> 965</span>        <span class="n">args</span><span class="o">.</span><span class="n">per_device_train_batch_size</span>
-<span class="linenos"> 966</span>        <span class="o">*</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">num_processes</span>
-<span class="linenos"> 967</span>        <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
-<span class="linenos"> 968</span>    <span class="p">)</span>
-<span class="linenos"> 969</span>
-<span class="linenos"> 970</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;***** Running training *****&quot;</span><span class="p">)</span>
-<span class="linenos"> 971</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Num examples = </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;train&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="linenos"> 972</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Num Epochs = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="linenos"> 973</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Instantaneous batch size per device = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">per_device_train_batch_size</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="linenos"> 974</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
-<span class="linenos"> 975</span>        <span class="sa">f</span><span class="s2">&quot;  Total train batch size (w. parallel, distributed &amp; accumulation) = </span><span class="si">{</span><span class="n">total_batch_size</span><span class="si">}</span><span class="s2">&quot;</span>
-<span class="linenos"> 976</span>    <span class="p">)</span>
-<span class="linenos"> 977</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Gradient Accumulation steps = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="linenos"> 978</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Total optimization steps = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="linenos"> 979</span>
-<span class="linenos"> 980</span>    <span class="c1"># Only show the progress bar once on each machine.</span>
-<span class="linenos"> 981</span>    <span class="n">progress_bar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span><span class="p">),</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_local_main_process</span><span class="p">)</span>
-<span class="linenos"> 982</span>    <span class="n">completed_steps</span> <span class="o">=</span> <span class="mi">0</span>
-<span class="linenos"> 983</span>    <span class="n">starting_epoch</span> <span class="o">=</span> <span class="mi">0</span>
-<span class="linenos"> 984</span>    <span class="n">resume_step</span> <span class="o">=</span> <span class="kc">None</span>
-<span class="linenos"> 985</span>
-<span class="linenos"> 986</span>    <span class="c1"># Potentially load in the weights and states from a previous save</span>
-<span class="linenos"> 987</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">resume_from_last_ckpt</span><span class="p">:</span>
-<span class="linenos"> 988</span>        <span class="c1"># Get the most recent checkpoint</span>
-<span class="linenos"> 989</span>        <span class="n">dirs</span> <span class="o">=</span> <span class="p">[</span>
-<span class="linenos"> 990</span>            <span class="n">f</span><span class="o">.</span><span class="n">path</span>
-<span class="linenos"> 991</span>            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">scandir</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">)</span>
-<span class="linenos"> 992</span>            <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="ow">and</span> <span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;epoch_&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;step_&quot;</span><span class="p">))</span>
-<span class="linenos"> 993</span>        <span class="p">]</span>
-<span class="linenos"> 994</span>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">dirs</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<span class="linenos"> 995</span>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
-<span class="linenos"> 996</span>                <span class="sa">f</span><span class="s2">&quot;No checkpoint found in </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="si">}</span><span class="s2">. Training from scratch!&quot;</span>
-<span class="linenos"> 997</span>            <span class="p">)</span>
-<span class="linenos"> 998</span>        <span class="k">else</span><span class="p">:</span>
-<span class="linenos"> 999</span>            <span class="n">latest_dir</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dirs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getctime</span><span class="p">)</span>
-<span class="linenos">1000</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">load_state</span><span class="p">(</span><span class="n">latest_dir</span><span class="p">)</span>
-<span class="linenos">1001</span>
-<span class="linenos">1002</span>            <span class="c1"># Extract `epoch_{i}` or `step_{i}`</span>
-<span class="linenos">1003</span>            <span class="n">latest_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">latest_dir</span><span class="p">)</span>
-<span class="linenos">1004</span>            <span class="k">if</span> <span class="s2">&quot;epoch&quot;</span> <span class="ow">in</span> <span class="n">latest_dir</span><span class="p">:</span>
-<span class="linenos">1005</span>                <span class="n">starting_epoch</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">latest_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;epoch_&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span>
-<span class="linenos">1006</span>                <span class="n">completed_steps</span> <span class="o">=</span> <span class="n">starting_epoch</span> <span class="o">*</span> <span class="n">num_update_steps_per_epoch</span>
-<span class="linenos">1007</span>            <span class="k">else</span><span class="p">:</span>
-<span class="linenos">1008</span>                <span class="c1"># need to multiply `gradient_accumulation_steps` to reflect real steps</span>
-<span class="linenos">1009</span>                <span class="n">resume_step</span> <span class="o">=</span> <span class="p">(</span>
-<span class="linenos">1010</span>                    <span class="nb">int</span><span class="p">(</span><span class="n">latest_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;step_&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span> <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
-<span class="linenos">1011</span>                <span class="p">)</span>
-<span class="linenos">1012</span>                <span class="n">starting_epoch</span> <span class="o">=</span> <span class="n">resume_step</span> <span class="o">//</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span>
-<span class="linenos">1013</span>                <span class="n">completed_steps</span> <span class="o">=</span> <span class="n">resume_step</span> <span class="o">//</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
-<span class="linenos">1014</span>                <span class="n">resume_step</span> <span class="o">-=</span> <span class="n">starting_epoch</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span>
-<span class="linenos">1015</span>
-<span class="linenos">1016</span>    <span class="c1"># update the progress_bar if load from checkpoint</span>
-<span class="linenos">1017</span>    <span class="n">progress_bar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">completed_steps</span><span class="p">)</span>
-<span class="linenos">1018</span>
-<span class="linenos">1019</span>    <span class="c1"># Evaluate before training (e.g. PTQ accuracy before QAT)</span>
-<span class="linenos">1020</span>    <span class="n">eval_metric</span> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span>
-<span class="linenos">1021</span>        <span class="n">args</span><span class="p">,</span>
-<span class="linenos">1022</span>        <span class="n">model</span><span class="p">,</span>
-<span class="linenos">1023</span>        <span class="n">accelerator</span><span class="p">,</span>
-<span class="linenos">1024</span>        <span class="n">examples</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
-<span class="linenos">1025</span>        <span class="n">dataset</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
-<span class="linenos">1026</span>        <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
-<span class="linenos">1027</span>        <span class="n">answer_column_name</span><span class="p">,</span>
-<span class="linenos">1028</span>    <span class="p">)</span>
-<span class="linenos">1029</span>    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">starting_epoch</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span><span class="p">):</span>
-<span class="linenos">1030</span>        <span class="n">model</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
-<span class="linenos">1031</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
-<span class="linenos">1032</span>            <span class="n">total_loss</span> <span class="o">=</span> <span class="mi">0</span>
-<span class="linenos">1033</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">resume_from_last_ckpt</span> <span class="ow">and</span> <span class="n">epoch</span> <span class="o">==</span> <span class="n">starting_epoch</span> <span class="ow">and</span> <span class="n">resume_step</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<span class="linenos">1034</span>            <span class="c1"># We skip the first `n` batches in the dataloader when resuming from a checkpoint</span>
-<span class="linenos">1035</span>            <span class="n">active_dataloader</span> <span class="o">=</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">skip_first_batches</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="n">resume_step</span><span class="p">)</span>
-<span class="linenos">1036</span>        <span class="k">else</span><span class="p">:</span>
-<span class="linenos">1037</span>            <span class="n">active_dataloader</span> <span class="o">=</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">]</span>
-<span class="linenos">1038</span>        <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">active_dataloader</span><span class="p">:</span>
-<span class="linenos">1039</span>            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-<span class="linenos">1040</span>            <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="o">**</span><span class="n">batch</span><span class="p">)</span>
-<span class="linenos">1041</span>
-<span class="hll"><span class="linenos">1042</span>            <span class="c1"># Model Optimizer: If using distillation, we unwrap the model and extract the custom loss function</span>
-</span><span class="hll"><span class="linenos">1043</span>            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_distill</span><span class="p">:</span>
-</span><span class="hll"><span class="linenos">1044</span>                <span class="n">loss</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">compute_kd_loss</span><span class="p">()</span>
-</span><span class="hll"><span class="linenos">1045</span>            <span class="k">else</span><span class="p">:</span>
-</span><span class="hll"><span class="linenos">1046</span>                <span class="n">loss</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">outputs</span><span class="o">.</span><span class="n">to_tuple</span><span class="p">()</span>
+<span class="hll"><span class="linenos"> 873</span>
+</span><span class="hll"><span class="linenos"> 874</span><span class="c1"># Model Optimizer: Define a custom distillation loss function that uses start and end logits</span>
+</span><span class="hll"><span class="linenos"> 875</span><span class="k">class</span> <span class="nc">StartEndLogitsDistillationLoss</span><span class="p">(</span><span class="n">mtd</span><span class="o">.</span><span class="n">LogitsDistillationLoss</span><span class="p">):</span>
+</span><span class="hll"><span class="linenos"> 876</span>    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">outputs_s</span><span class="p">,</span> <span class="n">outputs_t</span><span class="p">):</span>
+</span><span class="hll"><span class="linenos"> 877</span>        <span class="n">loss_start</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">outputs_s</span><span class="o">.</span><span class="n">start_logits</span><span class="p">,</span> <span class="n">outputs_t</span><span class="o">.</span><span class="n">start_logits</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos"> 878</span>        <span class="n">loss_end</span> <span class="o">=</span> <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">outputs_s</span><span class="o">.</span><span class="n">end_logits</span><span class="p">,</span> <span class="n">outputs_t</span><span class="o">.</span><span class="n">end_logits</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos"> 879</span>        <span class="n">loss</span> <span class="o">=</span> <span class="p">(</span><span class="n">loss_start</span> <span class="o">+</span> <span class="n">loss_end</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span>
+</span><span class="hll"><span class="linenos"> 880</span>
+</span><span class="hll"><span class="linenos"> 881</span>        <span class="k">return</span> <span class="n">loss</span>
+</span><span class="hll"><span class="linenos"> 882</span>
+</span><span class="hll"><span class="linenos"> 883</span>
+</span><span class="hll"><span class="linenos"> 884</span><span class="k">def</span> <span class="nf">train_and_evaluate_model</span><span class="p">(</span>
+</span><span class="hll"><span class="linenos"> 885</span>    <span class="n">args</span><span class="p">,</span>
+</span><span class="linenos"> 886</span>    <span class="n">model</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
+<span class="linenos"> 887</span>    <span class="n">accelerator</span><span class="p">:</span> <span class="n">Accelerator</span><span class="p">,</span>
+<span class="linenos"> 888</span>    <span class="n">examples</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+<span class="linenos"> 889</span>    <span class="n">dataset</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+<span class="linenos"> 890</span>    <span class="n">dataloader</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DataLoader</span><span class="p">],</span>
+<span class="linenos"> 891</span>    <span class="n">answer_column_name</span><span class="p">,</span>
+<span class="linenos"> 892</span><span class="p">):</span>
+<span class="linenos"> 893</span>    <span class="c1"># Optimizer</span>
+<span class="linenos"> 894</span>    <span class="c1"># Split weights in two groups, one with weight decay and the other not.</span>
+<span class="linenos"> 895</span>    <span class="n">no_decay</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;bias&quot;</span><span class="p">,</span> <span class="s2">&quot;LayerNorm.weight&quot;</span><span class="p">]</span>
+<span class="linenos"> 896</span>    <span class="n">optimizer_grouped_parameters</span> <span class="o">=</span> <span class="p">[</span>
+<span class="linenos"> 897</span>        <span class="p">{</span>
+<span class="linenos"> 898</span>            <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="p">[</span>
+<span class="linenos"> 899</span>                <span class="n">p</span>
+<span class="linenos"> 900</span>                <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">named_parameters</span><span class="p">()</span>
+<span class="linenos"> 901</span>                <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">requires_grad</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">nd</span> <span class="ow">in</span> <span class="n">n</span> <span class="k">for</span> <span class="n">nd</span> <span class="ow">in</span> <span class="n">no_decay</span><span class="p">)</span>
+<span class="linenos"> 902</span>            <span class="p">],</span>
+<span class="linenos"> 903</span>            <span class="s2">&quot;weight_decay&quot;</span><span class="p">:</span> <span class="n">args</span><span class="o">.</span><span class="n">weight_decay</span><span class="p">,</span>
+<span class="linenos"> 904</span>        <span class="p">},</span>
+<span class="linenos"> 905</span>        <span class="p">{</span>
+<span class="linenos"> 906</span>            <span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="p">[</span>
+<span class="linenos"> 907</span>                <span class="n">p</span>
+<span class="linenos"> 908</span>                <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">named_parameters</span><span class="p">()</span>
+<span class="linenos"> 909</span>                <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">requires_grad</span> <span class="ow">and</span> <span class="nb">any</span><span class="p">(</span><span class="n">nd</span> <span class="ow">in</span> <span class="n">n</span> <span class="k">for</span> <span class="n">nd</span> <span class="ow">in</span> <span class="n">no_decay</span><span class="p">)</span>
+<span class="linenos"> 910</span>            <span class="p">],</span>
+<span class="linenos"> 911</span>            <span class="s2">&quot;weight_decay&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+<span class="linenos"> 912</span>        <span class="p">},</span>
+<span class="linenos"> 913</span>    <span class="p">]</span>
+<span class="linenos"> 914</span>    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">AdamW</span><span class="p">(</span><span class="n">optimizer_grouped_parameters</span><span class="p">,</span> <span class="n">lr</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">learning_rate</span><span class="p">)</span>
+<span class="linenos"> 915</span>
+<span class="linenos"> 916</span>    <span class="c1"># Scheduler and math around the number of training steps.</span>
+<span class="linenos"> 917</span>    <span class="n">overrode_max_train_steps</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="linenos"> 918</span>    <span class="n">num_update_steps_per_epoch</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span>
+<span class="linenos"> 919</span>        <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span> <span class="o">/</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
+<span class="linenos"> 920</span>    <span class="p">)</span>
+<span class="linenos"> 921</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos"> 922</span>        <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span> <span class="o">*</span> <span class="n">num_update_steps_per_epoch</span><span class="p">)</span>
+<span class="linenos"> 923</span>        <span class="n">overrode_max_train_steps</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="linenos"> 924</span>
+<span class="linenos"> 925</span>    <span class="n">lr_scheduler</span> <span class="o">=</span> <span class="n">get_scheduler</span><span class="p">(</span>
+<span class="linenos"> 926</span>        <span class="n">name</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">lr_scheduler_type</span><span class="p">,</span>
+<span class="linenos"> 927</span>        <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">,</span>
+<span class="linenos"> 928</span>        <span class="n">num_warmup_steps</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">num_warmup_steps</span> <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span>
+<span class="linenos"> 929</span>        <span class="n">num_training_steps</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span>
+<span class="linenos"> 930</span>    <span class="p">)</span>
+<span class="linenos"> 931</span>
+<span class="linenos"> 932</span>    <span class="c1"># Prepare everything with our `accelerator`.</span>
+<span class="linenos"> 933</span>    <span class="n">model</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span> <span class="n">lr_scheduler</span> <span class="o">=</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span>
+<span class="linenos"> 934</span>        <span class="n">model</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span> <span class="n">lr_scheduler</span>
+<span class="linenos"> 935</span>    <span class="p">)</span>
+<span class="linenos"> 936</span>
+<span class="linenos"> 937</span>    <span class="c1"># We need to recalculate our total training steps as the size of the training dataloader may have changed.</span>
+<span class="linenos"> 938</span>    <span class="n">num_update_steps_per_epoch</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span>
+<span class="linenos"> 939</span>        <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span> <span class="o">/</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
+<span class="linenos"> 940</span>    <span class="p">)</span>
+<span class="linenos"> 941</span>    <span class="k">if</span> <span class="n">overrode_max_train_steps</span><span class="p">:</span>
+<span class="linenos"> 942</span>        <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span> <span class="o">*</span> <span class="n">num_update_steps_per_epoch</span><span class="p">)</span>
+<span class="linenos"> 943</span>    <span class="c1"># Afterwards we recalculate our number of training epochs</span>
+<span class="linenos"> 944</span>    <span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span> <span class="o">=</span> <span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span> <span class="o">/</span> <span class="n">num_update_steps_per_epoch</span><span class="p">)</span>
+<span class="linenos"> 945</span>
+<span class="linenos"> 946</span>    <span class="c1"># Figure out how many steps we should save the Accelerator states</span>
+<span class="linenos"> 947</span>    <span class="n">checkpointing_steps</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">checkpointing_steps</span>
+<span class="linenos"> 948</span>    <span class="k">if</span> <span class="n">checkpointing_steps</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">checkpointing_steps</span><span class="o">.</span><span class="n">isdigit</span><span class="p">():</span>
+<span class="linenos"> 949</span>        <span class="n">checkpointing_steps</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">checkpointing_steps</span><span class="p">)</span>
+<span class="linenos"> 950</span>
+<span class="linenos"> 951</span>    <span class="c1"># We need to initialize the trackers we use, and also store our configuration.</span>
+<span class="linenos"> 952</span>    <span class="c1"># The trackers initializes automatically on the main process.</span>
+<span class="linenos"> 953</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
+<span class="linenos"> 954</span>        <span class="n">experiment_config</span> <span class="o">=</span> <span class="nb">vars</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+<span class="linenos"> 955</span>        <span class="c1"># TensorBoard cannot log Enums, need the raw value</span>
+<span class="linenos"> 956</span>        <span class="n">experiment_config</span><span class="p">[</span><span class="s2">&quot;lr_scheduler_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">experiment_config</span><span class="p">[</span><span class="s2">&quot;lr_scheduler_type&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">value</span>
+<span class="linenos"> 957</span>        <span class="n">accelerator</span><span class="o">.</span><span class="n">init_trackers</span><span class="p">(</span><span class="s2">&quot;tensorboard&quot;</span><span class="p">,</span> <span class="n">experiment_config</span><span class="p">)</span>
+<span class="linenos"> 958</span>
+<span class="linenos"> 959</span>    <span class="c1"># Train!</span>
+<span class="linenos"> 960</span>    <span class="n">total_batch_size</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos"> 961</span>        <span class="n">args</span><span class="o">.</span><span class="n">per_device_train_batch_size</span>
+<span class="linenos"> 962</span>        <span class="o">*</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">num_processes</span>
+<span class="linenos"> 963</span>        <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
+<span class="linenos"> 964</span>    <span class="p">)</span>
+<span class="linenos"> 965</span>
+<span class="linenos"> 966</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;***** Running training *****&quot;</span><span class="p">)</span>
+<span class="linenos"> 967</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Num examples = </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;train&#39;</span><span class="p">])</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos"> 968</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Num Epochs = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos"> 969</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Instantaneous batch size per device = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">per_device_train_batch_size</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos"> 970</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+<span class="linenos"> 971</span>        <span class="sa">f</span><span class="s2">&quot;  Total train batch size (w. parallel, distributed &amp; accumulation) = </span><span class="si">{</span><span class="n">total_batch_size</span><span class="si">}</span><span class="s2">&quot;</span>
+<span class="linenos"> 972</span>    <span class="p">)</span>
+<span class="linenos"> 973</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Gradient Accumulation steps = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos"> 974</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Total optimization steps = </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos"> 975</span>
+<span class="linenos"> 976</span>    <span class="c1"># Only show the progress bar once on each machine.</span>
+<span class="linenos"> 977</span>    <span class="n">progress_bar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span><span class="p">),</span> <span class="n">disable</span><span class="o">=</span><span class="ow">not</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_local_main_process</span><span class="p">)</span>
+<span class="linenos"> 978</span>    <span class="n">completed_steps</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="linenos"> 979</span>    <span class="n">starting_epoch</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="linenos"> 980</span>    <span class="n">resume_step</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="linenos"> 981</span>
+<span class="linenos"> 982</span>    <span class="c1"># Potentially load in the weights and states from a previous save</span>
+<span class="linenos"> 983</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">resume_from_last_ckpt</span><span class="p">:</span>
+<span class="linenos"> 984</span>        <span class="c1"># Get the most recent checkpoint</span>
+<span class="linenos"> 985</span>        <span class="n">dirs</span> <span class="o">=</span> <span class="p">[</span>
+<span class="linenos"> 986</span>            <span class="n">f</span><span class="o">.</span><span class="n">path</span>
+<span class="linenos"> 987</span>            <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">scandir</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">)</span>
+<span class="linenos"> 988</span>            <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">is_dir</span><span class="p">()</span> <span class="ow">and</span> <span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;epoch_&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="s2">&quot;step_&quot;</span><span class="p">))</span>
+<span class="linenos"> 989</span>        <span class="p">]</span>
+<span class="linenos"> 990</span>        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">dirs</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<span class="linenos"> 991</span>            <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span>
+<span class="linenos"> 992</span>                <span class="sa">f</span><span class="s2">&quot;No checkpoint found in </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="si">}</span><span class="s2">. Training from scratch!&quot;</span>
+<span class="linenos"> 993</span>            <span class="p">)</span>
+<span class="linenos"> 994</span>        <span class="k">else</span><span class="p">:</span>
+<span class="linenos"> 995</span>            <span class="n">latest_dir</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dirs</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">getctime</span><span class="p">)</span>
+<span class="linenos"> 996</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">load_state</span><span class="p">(</span><span class="n">latest_dir</span><span class="p">)</span>
+<span class="linenos"> 997</span>
+<span class="linenos"> 998</span>            <span class="c1"># Extract `epoch_{i}` or `step_{i}`</span>
+<span class="linenos"> 999</span>            <span class="n">latest_dir</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">latest_dir</span><span class="p">)</span>
+<span class="linenos">1000</span>            <span class="k">if</span> <span class="s2">&quot;epoch&quot;</span> <span class="ow">in</span> <span class="n">latest_dir</span><span class="p">:</span>
+<span class="linenos">1001</span>                <span class="n">starting_epoch</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">latest_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;epoch_&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span> <span class="o">+</span> <span class="mi">1</span>
+<span class="linenos">1002</span>                <span class="n">completed_steps</span> <span class="o">=</span> <span class="n">starting_epoch</span> <span class="o">*</span> <span class="n">num_update_steps_per_epoch</span>
+<span class="linenos">1003</span>            <span class="k">else</span><span class="p">:</span>
+<span class="linenos">1004</span>                <span class="c1"># need to multiply `gradient_accumulation_steps` to reflect real steps</span>
+<span class="linenos">1005</span>                <span class="n">resume_step</span> <span class="o">=</span> <span class="p">(</span>
+<span class="linenos">1006</span>                    <span class="nb">int</span><span class="p">(</span><span class="n">latest_dir</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s2">&quot;step_&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">))</span> <span class="o">*</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
+<span class="linenos">1007</span>                <span class="p">)</span>
+<span class="linenos">1008</span>                <span class="n">starting_epoch</span> <span class="o">=</span> <span class="n">resume_step</span> <span class="o">//</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span>
+<span class="linenos">1009</span>                <span class="n">completed_steps</span> <span class="o">=</span> <span class="n">resume_step</span> <span class="o">//</span> <span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span>
+<span class="linenos">1010</span>                <span class="n">resume_step</span> <span class="o">-=</span> <span class="n">starting_epoch</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">])</span>
+<span class="linenos">1011</span>
+<span class="linenos">1012</span>    <span class="c1"># update the progress_bar if load from checkpoint</span>
+<span class="linenos">1013</span>    <span class="n">progress_bar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">completed_steps</span><span class="p">)</span>
+<span class="linenos">1014</span>
+<span class="linenos">1015</span>    <span class="c1"># Evaluate before training (e.g. PTQ accuracy before QAT)</span>
+<span class="linenos">1016</span>    <span class="n">eval_metric</span> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span>
+<span class="linenos">1017</span>        <span class="n">args</span><span class="p">,</span>
+<span class="linenos">1018</span>        <span class="n">model</span><span class="p">,</span>
+<span class="linenos">1019</span>        <span class="n">accelerator</span><span class="p">,</span>
+<span class="linenos">1020</span>        <span class="n">examples</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
+<span class="linenos">1021</span>        <span class="n">dataset</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
+<span class="linenos">1022</span>        <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
+<span class="linenos">1023</span>        <span class="n">answer_column_name</span><span class="p">,</span>
+<span class="linenos">1024</span>    <span class="p">)</span>
+<span class="linenos">1025</span>    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">starting_epoch</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">num_train_epochs</span><span class="p">):</span>
+<span class="linenos">1026</span>        <span class="n">model</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
+<span class="linenos">1027</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
+<span class="linenos">1028</span>            <span class="n">total_loss</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="linenos">1029</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">resume_from_last_ckpt</span> <span class="ow">and</span> <span class="n">epoch</span> <span class="o">==</span> <span class="n">starting_epoch</span> <span class="ow">and</span> <span class="n">resume_step</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos">1030</span>            <span class="c1"># We skip the first `n` batches in the dataloader when resuming from a checkpoint</span>
+<span class="linenos">1031</span>            <span class="n">active_dataloader</span> <span class="o">=</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">skip_first_batches</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span> <span class="n">resume_step</span><span class="p">)</span>
+<span class="linenos">1032</span>        <span class="k">else</span><span class="p">:</span>
+<span class="linenos">1033</span>            <span class="n">active_dataloader</span> <span class="o">=</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">]</span>
+<span class="linenos">1034</span>        <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">active_dataloader</span><span class="p">:</span>
+<span class="linenos">1035</span>            <span class="n">optimizer</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+<span class="linenos">1036</span>            <span class="n">outputs</span> <span class="o">=</span> <span class="n">model</span><span class="p">(</span><span class="o">**</span><span class="n">batch</span><span class="p">)</span>
+<span class="linenos">1037</span>
+<span class="linenos">1038</span>            <span class="c1"># Model Optimizer: If using distillation, we unwrap the model and extract the custom loss function</span>
+<span class="linenos">1039</span>            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_distill</span><span class="p">:</span>
+<span class="linenos">1040</span>                <span class="n">loss</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">compute_kd_loss</span><span class="p">()</span>
+<span class="linenos">1041</span>            <span class="k">else</span><span class="p">:</span>
+<span class="hll"><span class="linenos">1042</span>                <span class="n">loss</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">outputs</span><span class="o">.</span><span class="n">to_tuple</span><span class="p">()</span>
+</span><span class="hll"><span class="linenos">1043</span>
+</span><span class="hll"><span class="linenos">1044</span>            <span class="c1"># We keep track of the loss at each epoch</span>
+</span><span class="hll"><span class="linenos">1045</span>            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
+</span><span class="hll"><span class="linenos">1046</span>                <span class="n">total_loss</span> <span class="o">+=</span> <span class="n">loss</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
 </span><span class="linenos">1047</span>
-<span class="linenos">1048</span>            <span class="c1"># We keep track of the loss at each epoch</span>
-<span class="linenos">1049</span>            <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
-<span class="linenos">1050</span>                <span class="n">total_loss</span> <span class="o">+=</span> <span class="n">loss</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
+<span class="linenos">1048</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">backward</span><span class="p">(</span><span class="n">loss</span><span class="p">)</span>
+<span class="linenos">1049</span>            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+<span class="linenos">1050</span>            <span class="n">lr_scheduler</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
 <span class="linenos">1051</span>
-<span class="linenos">1052</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">backward</span><span class="p">(</span><span class="n">loss</span><span class="p">)</span>
-<span class="linenos">1053</span>            <span class="n">optimizer</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
-<span class="linenos">1054</span>            <span class="n">lr_scheduler</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
-<span class="linenos">1055</span>
-<span class="linenos">1056</span>            <span class="c1"># Checks if the accelerator has performed an optimization step behind the scenes</span>
-<span class="linenos">1057</span>            <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">sync_gradients</span><span class="p">:</span>
-<span class="linenos">1058</span>                <span class="n">progress_bar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-<span class="linenos">1059</span>                <span class="n">completed_steps</span> <span class="o">+=</span> <span class="mi">1</span>
-<span class="linenos">1060</span>
-<span class="linenos">1061</span>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">checkpointing_steps</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">completed_steps</span> <span class="o">%</span> <span class="n">checkpointing_steps</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-<span class="linenos">1062</span>                <span class="n">accelerator</span><span class="o">.</span><span class="n">save_state</span><span class="p">(</span>
-<span class="linenos">1063</span>                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;step_</span><span class="si">{</span><span class="n">completed_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-<span class="linenos">1064</span>                <span class="p">)</span>
-<span class="linenos">1065</span>
-<span class="linenos">1066</span>            <span class="k">if</span> <span class="n">completed_steps</span> <span class="o">&gt;=</span> <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span><span class="p">:</span>
-<span class="linenos">1067</span>                <span class="k">break</span>
-<span class="linenos">1068</span>
-<span class="linenos">1069</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">checkpointing_steps</span> <span class="o">==</span> <span class="s2">&quot;epoch&quot;</span><span class="p">:</span>
-<span class="linenos">1070</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">save_state</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;epoch_</span><span class="si">{</span><span class="n">epoch</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
-<span class="linenos">1071</span>
-<span class="linenos">1072</span>        <span class="n">eval_metric</span> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span>
-<span class="linenos">1073</span>            <span class="n">args</span><span class="p">,</span>
-<span class="linenos">1074</span>            <span class="n">model</span><span class="p">,</span>
-<span class="linenos">1075</span>            <span class="n">accelerator</span><span class="p">,</span>
-<span class="linenos">1076</span>            <span class="n">examples</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
-<span class="linenos">1077</span>            <span class="n">dataset</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
-<span class="linenos">1078</span>            <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
-<span class="linenos">1079</span>            <span class="n">answer_column_name</span><span class="p">,</span>
-<span class="linenos">1080</span>        <span class="p">)</span>
-<span class="linenos">1081</span>
-<span class="linenos">1082</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
-<span class="linenos">1083</span>            <span class="n">log</span> <span class="o">=</span> <span class="p">{</span>
-<span class="linenos">1084</span>                <span class="s2">&quot;squad&quot;</span><span class="p">:</span> <span class="n">eval_metric</span><span class="p">,</span>
-<span class="linenos">1085</span>                <span class="s2">&quot;train_loss&quot;</span><span class="p">:</span> <span class="n">total_loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">]),</span>  <span class="c1"># type: ignore[attr-defined]</span>
-<span class="linenos">1086</span>                <span class="s2">&quot;epoch&quot;</span><span class="p">:</span> <span class="n">epoch</span><span class="p">,</span>
-<span class="linenos">1087</span>                <span class="s2">&quot;step&quot;</span><span class="p">:</span> <span class="n">completed_steps</span><span class="p">,</span>
-<span class="linenos">1088</span>            <span class="p">}</span>
-<span class="linenos">1089</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">completed_steps</span><span class="p">)</span>
-<span class="linenos">1090</span>
-<span class="linenos">1091</span>    <span class="n">accelerator</span><span class="o">.</span><span class="n">wait_for_everyone</span><span class="p">()</span>
-<span class="linenos">1092</span>    <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span> <span class="ow">and</span> <span class="n">eval_metric</span><span class="p">:</span>
-<span class="linenos">1093</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">eval_metric</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>
-<span class="linenos">1094</span>        <span class="c1"># Prefix all keys with prefix + &#39;_&#39;</span>
-<span class="linenos">1095</span>        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">eval_metric</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
-<span class="linenos">1096</span>            <span class="n">eval_metric</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;Eval_</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">eval_metric</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+<span class="linenos">1052</span>            <span class="c1"># Checks if the accelerator has performed an optimization step behind the scenes</span>
+<span class="linenos">1053</span>            <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">sync_gradients</span><span class="p">:</span>
+<span class="linenos">1054</span>                <span class="n">progress_bar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="linenos">1055</span>                <span class="n">completed_steps</span> <span class="o">+=</span> <span class="mi">1</span>
+<span class="linenos">1056</span>
+<span class="linenos">1057</span>            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">checkpointing_steps</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">and</span> <span class="n">completed_steps</span> <span class="o">%</span> <span class="n">checkpointing_steps</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+<span class="linenos">1058</span>                <span class="n">accelerator</span><span class="o">.</span><span class="n">save_state</span><span class="p">(</span>
+<span class="linenos">1059</span>                    <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;step_</span><span class="si">{</span><span class="n">completed_steps</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos">1060</span>                <span class="p">)</span>
+<span class="linenos">1061</span>
+<span class="linenos">1062</span>            <span class="k">if</span> <span class="n">completed_steps</span> <span class="o">&gt;=</span> <span class="n">args</span><span class="o">.</span><span class="n">max_train_steps</span><span class="p">:</span>
+<span class="linenos">1063</span>                <span class="k">break</span>
+<span class="linenos">1064</span>
+<span class="linenos">1065</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">checkpointing_steps</span> <span class="o">==</span> <span class="s2">&quot;epoch&quot;</span><span class="p">:</span>
+<span class="linenos">1066</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">save_state</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;epoch_</span><span class="si">{</span><span class="n">epoch</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">))</span>
+<span class="linenos">1067</span>
+<span class="linenos">1068</span>        <span class="n">eval_metric</span> <span class="o">=</span> <span class="n">evaluate_model</span><span class="p">(</span>
+<span class="linenos">1069</span>            <span class="n">args</span><span class="p">,</span>
+<span class="linenos">1070</span>            <span class="n">model</span><span class="p">,</span>
+<span class="linenos">1071</span>            <span class="n">accelerator</span><span class="p">,</span>
+<span class="linenos">1072</span>            <span class="n">examples</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
+<span class="linenos">1073</span>            <span class="n">dataset</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
+<span class="linenos">1074</span>            <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;eval&quot;</span><span class="p">],</span>
+<span class="linenos">1075</span>            <span class="n">answer_column_name</span><span class="p">,</span>
+<span class="linenos">1076</span>        <span class="p">)</span>
+<span class="linenos">1077</span>
+<span class="linenos">1078</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
+<span class="linenos">1079</span>            <span class="n">log</span> <span class="o">=</span> <span class="p">{</span>
+<span class="linenos">1080</span>                <span class="s2">&quot;squad&quot;</span><span class="p">:</span> <span class="n">eval_metric</span><span class="p">,</span>
+<span class="linenos">1081</span>                <span class="s2">&quot;train_loss&quot;</span><span class="p">:</span> <span class="n">total_loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">]),</span>  <span class="c1"># type: ignore[attr-defined]</span>
+<span class="linenos">1082</span>                <span class="s2">&quot;epoch&quot;</span><span class="p">:</span> <span class="n">epoch</span><span class="p">,</span>
+<span class="linenos">1083</span>                <span class="s2">&quot;step&quot;</span><span class="p">:</span> <span class="n">completed_steps</span><span class="p">,</span>
+<span class="linenos">1084</span>            <span class="p">}</span>
+<span class="linenos">1085</span>            <span class="n">accelerator</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">log</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">completed_steps</span><span class="p">)</span>
+<span class="linenos">1086</span>
+<span class="linenos">1087</span>    <span class="n">accelerator</span><span class="o">.</span><span class="n">wait_for_everyone</span><span class="p">()</span>
+<span class="linenos">1088</span>    <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span> <span class="ow">and</span> <span class="n">eval_metric</span><span class="p">:</span>
+<span class="linenos">1089</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">eval_metric</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">))</span>
+<span class="linenos">1090</span>        <span class="c1"># Prefix all keys with prefix + &#39;_&#39;</span>
+<span class="linenos">1091</span>        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">eval_metric</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
+<span class="linenos">1092</span>            <span class="n">eval_metric</span><span class="p">[</span><span class="sa">f</span><span class="s2">&quot;Eval_</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">eval_metric</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+<span class="linenos">1093</span>
+<span class="linenos">1094</span>        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="s2">&quot;results.json&quot;</span><span class="p">),</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<span class="linenos">1095</span>            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">eval_metric</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="linenos">1096</span>
 <span class="linenos">1097</span>
-<span class="linenos">1098</span>        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="s2">&quot;results.json&quot;</span><span class="p">),</span> <span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-<span class="linenos">1099</span>            <span class="n">json</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">eval_metric</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">4</span><span class="p">)</span>
+<span class="linenos">1098</span><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">input_args</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="linenos">1099</span>    <span class="n">args</span> <span class="o">=</span> <span class="n">parse_args</span><span class="p">(</span><span class="n">input_args</span><span class="p">)</span>
 <span class="linenos">1100</span>
-<span class="linenos">1101</span>
-<span class="linenos">1102</span><span class="k">def</span> <span class="nf">main</span><span class="p">(</span><span class="n">input_args</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="linenos">1103</span>    <span class="n">args</span> <span class="o">=</span> <span class="n">parse_args</span><span class="p">(</span><span class="n">input_args</span><span class="p">)</span>
-<span class="linenos">1104</span>
-<span class="linenos">1105</span>    <span class="c1"># Initialize the accelerator</span>
-<span class="linenos">1106</span>    <span class="n">accelerator_log_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
-<span class="linenos">1107</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
-<span class="linenos">1108</span>        <span class="n">accelerator_log_kwargs</span><span class="p">[</span><span class="s2">&quot;log_with&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;tensorboard&quot;</span>
-<span class="linenos">1109</span>        <span class="n">accelerator_log_kwargs</span><span class="p">[</span><span class="s2">&quot;project_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span>
-<span class="linenos">1110</span>    <span class="n">accelerator</span> <span class="o">=</span> <span class="n">Accelerator</span><span class="p">(</span>
-<span class="linenos">1111</span>        <span class="n">gradient_accumulation_steps</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span> <span class="o">**</span><span class="n">accelerator_log_kwargs</span>
-<span class="linenos">1112</span>    <span class="p">)</span>
-<span class="linenos">1113</span>
-<span class="linenos">1114</span>    <span class="c1"># Setup logging</span>
-<span class="linenos">1115</span>    <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
-<span class="linenos">1116</span>        <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> [</span><span class="si">%(levelname)s</span><span class="s2">] </span><span class="si">%(name)s</span><span class="s2"> - </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
-<span class="linenos">1117</span>        <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %H:%M:%S&quot;</span><span class="p">,</span>
-<span class="linenos">1118</span>        <span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
-<span class="linenos">1119</span>    <span class="p">)</span>
-<span class="linenos">1120</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">state</span><span class="p">,</span> <span class="n">main_process_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<span class="linenos">1121</span>    <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_local_main_process</span><span class="p">:</span>
-<span class="linenos">1122</span>        <span class="n">datasets</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_warning</span><span class="p">()</span>
-<span class="linenos">1123</span>        <span class="n">transformers</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_info</span><span class="p">()</span>
-<span class="linenos">1124</span>    <span class="k">else</span><span class="p">:</span>
-<span class="linenos">1125</span>        <span class="n">datasets</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_error</span><span class="p">()</span>
-<span class="linenos">1126</span>        <span class="n">transformers</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_error</span><span class="p">()</span>
-<span class="linenos">1127</span>
-<span class="linenos">1128</span>    <span class="c1"># Set the training seed</span>
-<span class="linenos">1129</span>    <span class="n">set_seed</span><span class="p">(</span><span class="n">SEED</span><span class="p">)</span>
-<span class="linenos">1130</span>
-<span class="linenos">1131</span>    <span class="n">accelerator</span><span class="o">.</span><span class="n">wait_for_everyone</span><span class="p">()</span>
-<span class="linenos">1132</span>
-<span class="linenos">1133</span>    <span class="c1"># Load pretrained model and tokenizer</span>
-<span class="linenos">1134</span>    <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="p">,</span> <span class="n">use_fast</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">1135</span>    <span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForQuestionAnswering</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="p">)</span>
-<span class="linenos">1136</span>    <span class="n">dummy_input</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">dummy_inputs</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">]</span>
-<span class="linenos">1137</span>
-<span class="linenos">1138</span>    <span class="c1"># Get datasets</span>
-<span class="linenos">1139</span>    <span class="n">examples</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">,</span> <span class="n">answer_column_name</span> <span class="o">=</span> <span class="n">get_datasets_and_dataloaders</span><span class="p">(</span>
-<span class="linenos">1140</span>        <span class="n">args</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">,</span> <span class="n">accelerator</span>
-<span class="linenos">1141</span>    <span class="p">)</span>
-<span class="linenos">1142</span>
-<span class="linenos">1143</span>    <span class="k">def</span> <span class="nf">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">output_path</span><span class="p">):</span>
-<span class="linenos">1144</span>        <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span><span class="p">:</span>
-<span class="linenos">1145</span>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">output_path</span><span class="p">),</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<span class="linenos">1146</span>            <span class="n">model</span> <span class="o">=</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">unwrap_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
-<span class="linenos">1147</span>            <span class="n">model</span><span class="o">.</span><span class="n">save_pretrained</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
-<span class="linenos">1148</span>            <span class="n">tokenizer</span><span class="o">.</span><span class="n">save_pretrained</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
-<span class="linenos">1149</span>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved model and tokenizer to </span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos">1101</span>    <span class="c1"># Initialize the accelerator</span>
+<span class="linenos">1102</span>    <span class="n">accelerator_log_kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="linenos">1103</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">with_tracking</span><span class="p">:</span>
+<span class="linenos">1104</span>        <span class="n">accelerator_log_kwargs</span><span class="p">[</span><span class="s2">&quot;log_with&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;tensorboard&quot;</span>
+<span class="linenos">1105</span>        <span class="n">accelerator_log_kwargs</span><span class="p">[</span><span class="s2">&quot;project_dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span>
+<span class="linenos">1106</span>    <span class="n">accelerator</span> <span class="o">=</span> <span class="n">Accelerator</span><span class="p">(</span>
+<span class="linenos">1107</span>        <span class="n">gradient_accumulation_steps</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">gradient_accumulation_steps</span><span class="p">,</span> <span class="o">**</span><span class="n">accelerator_log_kwargs</span>
+<span class="linenos">1108</span>    <span class="p">)</span>
+<span class="linenos">1109</span>
+<span class="linenos">1110</span>    <span class="c1"># Setup logging</span>
+<span class="linenos">1111</span>    <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span>
+<span class="linenos">1112</span>        <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> [</span><span class="si">%(levelname)s</span><span class="s2">] </span><span class="si">%(name)s</span><span class="s2"> - </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span>
+<span class="linenos">1113</span>        <span class="n">datefmt</span><span class="o">=</span><span class="s2">&quot;%m/</span><span class="si">%d</span><span class="s2">/%Y %H:%M:%S&quot;</span><span class="p">,</span>
+<span class="linenos">1114</span>        <span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">,</span>
+<span class="linenos">1115</span>    <span class="p">)</span>
+<span class="linenos">1116</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">state</span><span class="p">,</span> <span class="n">main_process_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<span class="linenos">1117</span>    <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_local_main_process</span><span class="p">:</span>
+<span class="linenos">1118</span>        <span class="n">datasets</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_warning</span><span class="p">()</span>
+<span class="linenos">1119</span>        <span class="n">transformers</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_info</span><span class="p">()</span>
+<span class="linenos">1120</span>    <span class="k">else</span><span class="p">:</span>
+<span class="linenos">1121</span>        <span class="n">datasets</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_error</span><span class="p">()</span>
+<span class="linenos">1122</span>        <span class="n">transformers</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">logging</span><span class="o">.</span><span class="n">set_verbosity_error</span><span class="p">()</span>
+<span class="linenos">1123</span>
+<span class="linenos">1124</span>    <span class="c1"># Set the training seed</span>
+<span class="linenos">1125</span>    <span class="n">set_seed</span><span class="p">(</span><span class="n">SEED</span><span class="p">)</span>
+<span class="linenos">1126</span>
+<span class="linenos">1127</span>    <span class="n">accelerator</span><span class="o">.</span><span class="n">wait_for_everyone</span><span class="p">()</span>
+<span class="linenos">1128</span>
+<span class="linenos">1129</span>    <span class="c1"># Load pretrained model and tokenizer</span>
+<span class="linenos">1130</span>    <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="p">,</span> <span class="n">use_fast</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="linenos">1131</span>    <span class="n">model</span> <span class="o">=</span> <span class="n">AutoModelForQuestionAnswering</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="p">)</span>
+<span class="linenos">1132</span>    <span class="n">dummy_input</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">dummy_inputs</span><span class="p">[</span><span class="s2">&quot;input_ids&quot;</span><span class="p">]</span>
+<span class="linenos">1133</span>
+<span class="linenos">1134</span>    <span class="c1"># Get datasets</span>
+<span class="linenos">1135</span>    <span class="n">examples</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">,</span> <span class="n">answer_column_name</span> <span class="o">=</span> <span class="n">get_datasets_and_dataloaders</span><span class="p">(</span>
+<span class="linenos">1136</span>        <span class="n">args</span><span class="p">,</span> <span class="n">tokenizer</span><span class="p">,</span> <span class="n">accelerator</span>
+<span class="linenos">1137</span>    <span class="p">)</span>
+<span class="linenos">1138</span>
+<span class="linenos">1139</span>    <span class="k">def</span> <span class="nf">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">output_path</span><span class="p">):</span>
+<span class="linenos">1140</span>        <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span><span class="p">:</span>
+<span class="linenos">1141</span>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">output_path</span><span class="p">),</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="linenos">1142</span>            <span class="n">model</span> <span class="o">=</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">unwrap_model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+<span class="linenos">1143</span>            <span class="n">model</span><span class="o">.</span><span class="n">save_pretrained</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
+<span class="linenos">1144</span>            <span class="n">tokenizer</span><span class="o">.</span><span class="n">save_pretrained</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
+<span class="linenos">1145</span>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Saved model and tokenizer to </span><span class="si">{</span><span class="n">output_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos">1146</span>
+<span class="linenos">1147</span>    <span class="c1"># Model Optimizer: Prune the model to given FLOPS target using GradNAS algorithm</span>
+<span class="linenos">1148</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_prune</span><span class="p">:</span>
+<span class="linenos">1149</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Pruning model to </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">modelopt_prune_flops_percent</span><span class="si">}</span><span class="s2">% FLOPS&quot;</span><span class="p">)</span>
 <span class="linenos">1150</span>
-<span class="hll"><span class="linenos">1151</span>    <span class="c1"># Model Optimizer: Prune the model to given FLOPS target using GradNAS algorithm</span>
-</span><span class="hll"><span class="linenos">1152</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_prune</span><span class="p">:</span>
-</span><span class="hll"><span class="linenos">1153</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Pruning model to </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">modelopt_prune_flops_percent</span><span class="si">}</span><span class="s2">% FLOPS&quot;</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1154</span>
-</span><span class="hll"><span class="linenos">1155</span>        <span class="c1"># NOTE: gradnas does not perform synchronization across data parallel groups</span>
-</span><span class="hll"><span class="linenos">1156</span>        <span class="c1"># Use unwrapped model &amp; non-distributed dataloader for gradnas so that all the processes</span>
-</span><span class="hll"><span class="linenos">1157</span>        <span class="c1"># in the data parallel group have the same gradients for pruning</span>
-</span><span class="hll"><span class="linenos">1158</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1159</span>        <span class="n">dummy_input</span> <span class="o">=</span> <span class="n">dummy_input</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1160</span>
-</span><span class="hll"><span class="linenos">1161</span>        <span class="c1"># Search for the best pruned model</span>
-</span><span class="hll"><span class="linenos">1162</span>        <span class="c1"># To use other NAS algorithms, you can use `mtn.convert` + `mtn.search` here.</span>
-</span><span class="hll"><span class="linenos">1163</span>        <span class="n">model</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">mtp</span><span class="o">.</span><span class="n">prune</span><span class="p">(</span>
-</span><span class="hll"><span class="linenos">1164</span>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
-</span><span class="hll"><span class="linenos">1165</span>            <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;gradnas&quot;</span><span class="p">,</span>
-</span><span class="hll"><span class="linenos">1166</span>            <span class="n">constraints</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;flops&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">modelopt_prune_flops_percent</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">},</span>
-</span><span class="hll"><span class="linenos">1167</span>            <span class="n">dummy_input</span><span class="o">=</span><span class="n">dummy_input</span><span class="p">,</span>
-</span><span class="hll"><span class="linenos">1168</span>            <span class="n">config</span><span class="o">=</span><span class="p">{</span>
-</span><span class="hll"><span class="linenos">1169</span>                <span class="s2">&quot;data_loader&quot;</span><span class="p">:</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span>
-</span><span class="hll"><span class="linenos">1170</span>                <span class="s2">&quot;collect_func&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">batch</span><span class="p">:</span> <span class="p">(</span><span class="n">batch</span><span class="p">,),</span>
-</span><span class="hll"><span class="linenos">1171</span>                <span class="s2">&quot;loss_func&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">output</span><span class="p">,</span> <span class="n">batch</span><span class="p">:</span> <span class="p">(</span>
-</span><span class="hll"><span class="linenos">1172</span>                    <span class="n">output</span><span class="p">[</span><span class="s2">&quot;loss&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">output</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-</span><span class="hll"><span class="linenos">1173</span>                <span class="p">),</span>
-</span><span class="hll"><span class="linenos">1174</span>            <span class="p">},</span>
-</span><span class="hll"><span class="linenos">1175</span>        <span class="p">)</span>
-</span><span class="hll"><span class="linenos">1176</span>        <span class="n">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">pruned_model_path</span><span class="p">)</span>
+<span class="hll"><span class="linenos">1151</span>        <span class="c1"># NOTE: gradnas does not perform synchronization across data parallel groups</span>
+</span><span class="hll"><span class="linenos">1152</span>        <span class="c1"># Use unwrapped model &amp; non-distributed dataloader for gradnas so that all the processes</span>
+</span><span class="hll"><span class="linenos">1153</span>        <span class="c1"># in the data parallel group have the same gradients for pruning</span>
+</span><span class="hll"><span class="linenos">1154</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1155</span>        <span class="n">dummy_input</span> <span class="o">=</span> <span class="n">dummy_input</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1156</span>
+</span><span class="hll"><span class="linenos">1157</span>        <span class="c1"># Search for the best pruned model</span>
+</span><span class="hll"><span class="linenos">1158</span>        <span class="c1"># To use other NAS algorithms, you can use `mtn.convert` + `mtn.search` here.</span>
+</span><span class="hll"><span class="linenos">1159</span>        <span class="n">model</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">mtp</span><span class="o">.</span><span class="n">prune</span><span class="p">(</span>
+</span><span class="hll"><span class="linenos">1160</span>            <span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+</span><span class="hll"><span class="linenos">1161</span>            <span class="n">mode</span><span class="o">=</span><span class="s2">&quot;gradnas&quot;</span><span class="p">,</span>
+</span><span class="hll"><span class="linenos">1162</span>            <span class="n">constraints</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;flops&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">modelopt_prune_flops_percent</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">},</span>
+</span><span class="hll"><span class="linenos">1163</span>            <span class="n">dummy_input</span><span class="o">=</span><span class="n">dummy_input</span><span class="p">,</span>
+</span><span class="hll"><span class="linenos">1164</span>            <span class="n">config</span><span class="o">=</span><span class="p">{</span>
+</span><span class="hll"><span class="linenos">1165</span>                <span class="s2">&quot;data_loader&quot;</span><span class="p">:</span> <span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">],</span>
+</span><span class="hll"><span class="linenos">1166</span>                <span class="s2">&quot;collect_func&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">batch</span><span class="p">:</span> <span class="p">(</span><span class="n">batch</span><span class="p">,),</span>
+</span><span class="hll"><span class="linenos">1167</span>                <span class="s2">&quot;loss_func&quot;</span><span class="p">:</span> <span class="k">lambda</span> <span class="n">output</span><span class="p">,</span> <span class="n">batch</span><span class="p">:</span> <span class="p">(</span>
+</span><span class="hll"><span class="linenos">1168</span>                    <span class="n">output</span><span class="p">[</span><span class="s2">&quot;loss&quot;</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">output</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="k">else</span> <span class="n">output</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+</span><span class="hll"><span class="linenos">1169</span>                <span class="p">),</span>
+</span><span class="hll"><span class="linenos">1170</span>            <span class="p">},</span>
+</span><span class="hll"><span class="linenos">1171</span>        <span class="p">)</span>
+</span><span class="hll"><span class="linenos">1172</span>        <span class="n">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">pruned_model_path</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1173</span>
+</span><span class="hll"><span class="linenos">1174</span>    <span class="c1"># Model Optimizer: Quantize the model to INT8 precision</span>
+</span><span class="hll"><span class="linenos">1175</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">modelopt_quantize_cfg</span><span class="p">:</span>
+</span><span class="hll"><span class="linenos">1176</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Quantizing model with </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">modelopt_quantize_cfg</span><span class="si">}</span><span class="s2"> config&quot;</span><span class="p">)</span>
 </span><span class="linenos">1177</span>
-<span class="hll"><span class="linenos">1178</span>    <span class="c1"># Model Optimizer: Quantize the model to INT8 precision</span>
-</span><span class="hll"><span class="linenos">1179</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">modelopt_quantize_cfg</span><span class="p">:</span>
-</span><span class="hll"><span class="linenos">1180</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Quantizing model with </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">modelopt_quantize_cfg</span><span class="si">}</span><span class="s2"> config&quot;</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1181</span>
-</span><span class="hll"><span class="linenos">1182</span>        <span class="c1"># NOTE: `mtq.quantize` does not perform synchronization across data parallel groups</span>
-</span><span class="hll"><span class="linenos">1183</span>        <span class="c1"># Use unwrapped model &amp; non-distributed dataloader for PTQ calibration so that all the processes</span>
-</span><span class="hll"><span class="linenos">1184</span>        <span class="c1"># in the data parallel group have same calibration statistics</span>
-</span><span class="hll"><span class="linenos">1185</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1186</span>
-</span><span class="hll"><span class="linenos">1187</span>        <span class="k">def</span> <span class="nf">forward_loop</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
-</span><span class="hll"><span class="linenos">1188</span>            <span class="n">num_samples</span> <span class="o">=</span> <span class="mi">256</span>  <span class="c1"># Use only 256 samples for PTQ calibration</span>
-</span><span class="hll"><span class="linenos">1189</span>            <span class="n">num_batches</span> <span class="o">=</span> <span class="n">num_samples</span> <span class="o">//</span> <span class="n">args</span><span class="o">.</span><span class="n">per_device_train_batch_size</span>
-</span><span class="hll"><span class="linenos">1190</span>            <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">enumerate</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">]),</span> <span class="n">total</span><span class="o">=</span><span class="n">num_batches</span><span class="p">):</span>
-</span><span class="hll"><span class="linenos">1191</span>                <span class="n">batch</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">batch</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
-</span><span class="hll"><span class="linenos">1192</span>                <span class="n">model</span><span class="p">(</span><span class="o">**</span><span class="n">batch</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1193</span>                <span class="k">if</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="n">num_batches</span><span class="p">:</span>
-</span><span class="hll"><span class="linenos">1194</span>                    <span class="k">break</span>
+<span class="hll"><span class="linenos">1178</span>        <span class="c1"># NOTE: `mtq.quantize` does not perform synchronization across data parallel groups</span>
+</span><span class="hll"><span class="linenos">1179</span>        <span class="c1"># Use unwrapped model &amp; non-distributed dataloader for PTQ calibration so that all the processes</span>
+</span><span class="hll"><span class="linenos">1180</span>        <span class="c1"># in the data parallel group have same calibration statistics</span>
+</span><span class="hll"><span class="linenos">1181</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1182</span>
+</span><span class="hll"><span class="linenos">1183</span>        <span class="k">def</span> <span class="nf">forward_loop</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
+</span><span class="hll"><span class="linenos">1184</span>            <span class="n">num_samples</span> <span class="o">=</span> <span class="mi">256</span>  <span class="c1"># Use only 256 samples for PTQ calibration</span>
+</span><span class="hll"><span class="linenos">1185</span>            <span class="n">num_batches</span> <span class="o">=</span> <span class="n">num_samples</span> <span class="o">//</span> <span class="n">args</span><span class="o">.</span><span class="n">per_device_train_batch_size</span>
+</span><span class="hll"><span class="linenos">1186</span>            <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="nb">enumerate</span><span class="p">(</span><span class="n">dataloader</span><span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">]),</span> <span class="n">total</span><span class="o">=</span><span class="n">num_batches</span><span class="p">):</span>
+</span><span class="hll"><span class="linenos">1187</span>                <span class="n">batch</span> <span class="o">=</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">batch</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
+</span><span class="hll"><span class="linenos">1188</span>                <span class="n">model</span><span class="p">(</span><span class="o">**</span><span class="n">batch</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1189</span>                <span class="k">if</span> <span class="n">idx</span> <span class="o">&gt;=</span> <span class="n">num_batches</span><span class="p">:</span>
+</span><span class="hll"><span class="linenos">1190</span>                    <span class="k">break</span>
+</span><span class="hll"><span class="linenos">1191</span>
+</span><span class="hll"><span class="linenos">1192</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">mtq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">mtq</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">modelopt_quantize_cfg</span><span class="p">),</span> <span class="n">forward_loop</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1193</span>        <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span>
+</span><span class="hll"><span class="linenos">1194</span>        <span class="n">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">ptq_model_path</span><span class="p">)</span>
 </span><span class="hll"><span class="linenos">1195</span>
-</span><span class="hll"><span class="linenos">1196</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">mtq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">mtq</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">modelopt_quantize_cfg</span><span class="p">),</span> <span class="n">forward_loop</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1197</span>        <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">empty_cache</span><span class="p">()</span>
-</span><span class="hll"><span class="linenos">1198</span>        <span class="n">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">ptq_model_path</span><span class="p">)</span>
-</span><span class="linenos">1199</span>
-<span class="linenos">1200</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_train</span><span class="p">:</span>
-<span class="linenos">1201</span>        <span class="c1"># Handle the finetuned_model_path creation</span>
-<span class="linenos">1202</span>        <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span><span class="p">:</span>
-<span class="linenos">1203</span>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1196</span>    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_train</span><span class="p">:</span>
+</span><span class="hll"><span class="linenos">1197</span>        <span class="c1"># Handle the finetuned_model_path creation</span>
+</span><span class="hll"><span class="linenos">1198</span>        <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span><span class="p">:</span>
+</span><span class="linenos">1199</span>            <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="linenos">1200</span>
+<span class="linenos">1201</span>        <span class="c1"># Model Optimizer: Convert to a DistillationModel containing teacher to train with distillation</span>
+<span class="linenos">1202</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_distill</span><span class="p">:</span>
+<span class="linenos">1203</span>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using distillation with teacher </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 <span class="linenos">1204</span>
-<span class="hll"><span class="linenos">1205</span>        <span class="c1"># Model Optimizer: Convert to a DistillationModel containing teacher to train with distillation</span>
-</span><span class="hll"><span class="linenos">1206</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_distill</span><span class="p">:</span>
-</span><span class="hll"><span class="linenos">1207</span>            <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using distillation with teacher </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-</span><span class="hll"><span class="linenos">1208</span>
-</span><span class="hll"><span class="linenos">1209</span>            <span class="n">kd_config</span> <span class="o">=</span> <span class="p">{</span>
-</span><span class="hll"><span class="linenos">1210</span>                <span class="s2">&quot;teacher_model&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">teacher_factory</span><span class="p">,</span> <span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="p">,),</span> <span class="p">{}),</span>
-</span><span class="hll"><span class="linenos">1211</span>                <span class="s2">&quot;criterion&quot;</span><span class="p">:</span> <span class="n">StartEndLogitsDistillationLoss</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">temperature</span><span class="p">),</span>
-</span><span class="hll"><span class="linenos">1212</span>            <span class="p">}</span>
-</span><span class="hll"><span class="linenos">1213</span>            <span class="n">model</span> <span class="o">=</span> <span class="n">mtd</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="p">[(</span><span class="s2">&quot;kd_loss&quot;</span><span class="p">,</span> <span class="n">kd_config</span><span class="p">)])</span>
+<span class="hll"><span class="linenos">1205</span>            <span class="n">kd_config</span> <span class="o">=</span> <span class="p">{</span>
+</span><span class="hll"><span class="linenos">1206</span>                <span class="s2">&quot;teacher_model&quot;</span><span class="p">:</span> <span class="p">(</span><span class="n">teacher_factory</span><span class="p">,</span> <span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">model_name_or_path</span><span class="p">,),</span> <span class="p">{}),</span>
+</span><span class="hll"><span class="linenos">1207</span>                <span class="s2">&quot;criterion&quot;</span><span class="p">:</span> <span class="n">StartEndLogitsDistillationLoss</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">temperature</span><span class="p">),</span>
+</span><span class="hll"><span class="linenos">1208</span>            <span class="p">}</span>
+</span><span class="hll"><span class="linenos">1209</span>            <span class="n">model</span> <span class="o">=</span> <span class="n">mtd</span><span class="o">.</span><span class="n">convert</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="p">[(</span><span class="s2">&quot;kd_loss&quot;</span><span class="p">,</span> <span class="n">kd_config</span><span class="p">)])</span>
+</span><span class="hll"><span class="linenos">1210</span>
+</span><span class="hll"><span class="linenos">1211</span>        <span class="n">train_and_evaluate_model</span><span class="p">(</span>
+</span><span class="hll"><span class="linenos">1212</span>            <span class="n">args</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">accelerator</span><span class="p">,</span> <span class="n">examples</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">,</span> <span class="n">answer_column_name</span>
+</span><span class="hll"><span class="linenos">1213</span>        <span class="p">)</span>
 </span><span class="linenos">1214</span>
-<span class="linenos">1215</span>        <span class="n">train_and_evaluate_model</span><span class="p">(</span>
-<span class="linenos">1216</span>            <span class="n">args</span><span class="p">,</span> <span class="n">model</span><span class="p">,</span> <span class="n">accelerator</span><span class="p">,</span> <span class="n">examples</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">dataloader</span><span class="p">,</span> <span class="n">answer_column_name</span>
-<span class="linenos">1217</span>        <span class="p">)</span>
+<span class="linenos">1215</span>        <span class="c1"># Model Optimizer: Export the distilled model</span>
+<span class="linenos">1216</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_distill</span><span class="p">:</span>
+<span class="linenos">1217</span>            <span class="n">model</span> <span class="o">=</span> <span class="n">mtd</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 <span class="linenos">1218</span>
-<span class="hll"><span class="linenos">1219</span>        <span class="c1"># Model Optimizer: Export the distilled model</span>
-</span><span class="hll"><span class="linenos">1220</span>        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">do_modelopt_distill</span><span class="p">:</span>
-</span><span class="hll"><span class="linenos">1221</span>            <span class="n">model</span> <span class="o">=</span> <span class="n">mtd</span><span class="o">.</span><span class="n">export</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
-</span><span class="linenos">1222</span>
-<span class="linenos">1223</span>        <span class="n">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">)</span>
-<span class="linenos">1224</span>
-<span class="linenos">1225</span>    <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">onnx_export_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-<span class="linenos">1226</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Exporting ONNX model to </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">onnx_export_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="hll"><span class="linenos">1219</span>        <span class="n">save</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">finetuned_model_path</span><span class="p">)</span>
+</span><span class="hll"><span class="linenos">1220</span>
+</span><span class="hll"><span class="linenos">1221</span>    <span class="k">if</span> <span class="n">accelerator</span><span class="o">.</span><span class="n">is_main_process</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">onnx_export_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+</span><span class="linenos">1222</span>        <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Exporting ONNX model to </span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">onnx_export_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="linenos">1223</span>
+<span class="linenos">1224</span>        <span class="c1"># Move the model and dummy_input to the device</span>
+<span class="linenos">1225</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+<span class="linenos">1226</span>        <span class="n">dummy_input</span> <span class="o">=</span> <span class="n">dummy_input</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
 <span class="linenos">1227</span>
-<span class="linenos">1228</span>        <span class="c1"># Move the model and dummy_input to the device</span>
-<span class="linenos">1229</span>        <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-<span class="linenos">1230</span>        <span class="n">dummy_input</span> <span class="o">=</span> <span class="n">dummy_input</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">accelerator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-<span class="linenos">1231</span>
-<span class="linenos">1232</span>        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">onnx_export_path</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
-<span class="linenos">1233</span>            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">get_onnx_bytes</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">dummy_input</span><span class="p">,</span> <span class="n">onnx_opset</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>
-<span class="linenos">1234</span>
-<span class="linenos">1235</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done!&quot;</span><span class="p">)</span>
-<span class="linenos">1236</span>
-<span class="linenos">1237</span>
-<span class="linenos">1238</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-<span class="linenos">1239</span>    <span class="n">main</span><span class="p">()</span>
+<span class="linenos">1228</span>        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">onnx_export_path</span><span class="p">,</span> <span class="s2">&quot;wb&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+<span class="linenos">1229</span>            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">get_onnx_bytes</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">dummy_input</span><span class="p">,</span> <span class="n">onnx_opset</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>
+<span class="linenos">1230</span>
+<span class="linenos">1231</span>    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Done!&quot;</span><span class="p">)</span>
+<span class="linenos">1232</span>
+<span class="linenos">1233</span>
+<span class="linenos">1234</span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+<span class="linenos">1235</span>    <span class="n">main</span><span class="p">()</span>
 </pre></div>
 </div>
 </div>

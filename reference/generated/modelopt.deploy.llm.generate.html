@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>generate &mdash; Model Optimizer 0.21.0</title>
+  <title>generate &mdash; Model Optimizer 0.21.1</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -147,7 +147,7 @@
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.deploy.llm.generate.LLM" title="modelopt.deploy.llm.generate.LLM"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LLM</span></code></a></p></td>
-<td><p>A wrapper over the <code class="docutils literal notranslate"><span class="pre">tensorrt_llm.hlapi.llm.LLM</span></code> for LLM profiling and validation.</p></td>
+<td><p>A wrapper over the <code class="docutils literal notranslate"><span class="pre">tensorrt_llm.llmapi.llm.LLM</span></code> for LLM profiling and validation.</p></td>
 </tr>
 </tbody>
 </table>
@@ -155,7 +155,7 @@
 <dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">LLM</span></span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">LLM</span></code></p>
-<p>A wrapper over the <code class="docutils literal notranslate"><span class="pre">tensorrt_llm.hlapi.llm.LLM</span></code> for LLM profiling and validation.</p>
+<p>A wrapper over the <code class="docutils literal notranslate"><span class="pre">tensorrt_llm.llmapi.llm.LLM</span></code> for LLM profiling and validation.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM.__init__">
 <span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">engine_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kv_cache_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">medusa_choices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.__init__" title="Link to this definition"></a></dt>
@@ -164,7 +164,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>engine_dir</strong> (<em>str</em><em> | </em><em>Path</em>) – the directory path of the TensorRT-LLM engine.</p></li>
-<li><p><strong>tokenizer</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>tensorrt_llm.hlapi.tokenizer.TokenizerBase</em><em> | </em><em>None</em>) – the tokenizer. For example, a tokenizer from the Huggingface model.</p></li>
+<li><p><strong>tokenizer</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>tensorrt_llm.llmapi.tokenizer.TokenizerBase</em><em> | </em><em>None</em>) – the tokenizer. For example, a tokenizer from the Huggingface model.</p></li>
 <li><p><strong>kv_cache_config</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em> | </em><em>float</em><em>]</em>) – the kv cache config as a dict. Please refer to
 <a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md" rel="noopener noreferrer" target="_blank">https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md</a></p></li>
 <li><p><strong>medusa_choices</strong> (<em>Any</em>) – </p></li>

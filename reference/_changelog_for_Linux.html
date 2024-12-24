@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.21.0</title>
+  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.21.1</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -144,7 +144,7 @@
 <h2>0.21 (2024-12-03)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
-<li><p>Support TensorRT-LLM to 0.14. Examples (e.g. benchmark task in llm_ptq) may not be fully compatible with TensorRT-LLM 0.13.</p></li>
+<li><p>Support TensorRT-LLM to 0.15. Examples may not be fully compatible with TensorRT-LLM 0.14.</p></li>
 <li><p>Remove the deprecated arg <code class="docutils literal notranslate"><span class="pre">export_npz</span></code> from the <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_tensorrt_llm_checkpoint</span></code> API</p></li>
 <li><p>Deprecate <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_to_vllm</span></code> API for <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_hf_checkpoint</span></code></p></li>
 <li><p>Rename decoder type <code class="docutils literal notranslate"><span class="pre">gptnext</span></code> to <code class="docutils literal notranslate"><span class="pre">gpt</span></code> in <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> to align with TensorRT-LLM model definition.</p></li>
@@ -152,6 +152,7 @@
 <p><strong>New Features</strong></p>
 <ul class="simple">
 <li><p>Added new tutorial notebooks for Minitron pruning and distillation in NVIDIA NeMo framework.</p></li>
+<li><p>Added Minitron pruning support for NeMo 2.0 GPT models.</p></li>
 <li><p>New models support in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example: Minitron, Phi3.5 MOE.</p></li>
 <li><p>New models support in the <code class="docutils literal notranslate"><span class="pre">vlm_ptq</span></code> example: Llama3.2(Mllama)</p></li>
 <li><p><code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_tensorrt_llm_checkpoint</span></code> and <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_hf_checkpoint</span></code> no longer requires the <code class="docutils literal notranslate"><span class="pre">dtype</span></code> arg.</p></li>
@@ -159,7 +160,7 @@
 </ul>
 <p><strong>Bug Fixes</strong></p>
 <ul class="simple">
-<li><p>Fix <code class="docutils literal notranslate"><span class="pre">hidden_size</span></code> importance ranking for <code class="docutils literal notranslate"><span class="pre">mcore_gpt_minitron</span></code> pruning.</p></li>
+<li><p>Improve Minitron pruning quality by avoiding possible bf16 overflow in importance calculation and minor change in <code class="docutils literal notranslate"><span class="pre">hidden_size</span></code> importance ranking.</p></li>
 </ul>
 <p><strong>Misc</strong></p>
 <ul class="simple">

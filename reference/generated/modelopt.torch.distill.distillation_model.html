@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>distillation_model &mdash; Model Optimizer 0.21.0</title>
+  <title>distillation_model &mdash; Model Optimizer 0.21.1</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -271,6 +271,18 @@ class. This allows avoiding to save the teacher state unnecessarily during check
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.distill.distillation_model.DistillationModel.only_student_forward">
+<span class="sig-name descname"><span class="pre">only_student_forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">enable</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.distill.distillation_model.DistillationModel.only_student_forward" title="Link to this definition"></a></dt>
+<dd><p>Context manager to temporarily disable forward passes on the student model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.distill.distillation_model.DistillationModel.only_teacher_forward">
+<span class="sig-name descname"><span class="pre">only_teacher_forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">enable</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.distill.distillation_model.DistillationModel.only_teacher_forward" title="Link to this definition"></a></dt>
+<dd><p>Context manager to temporarily disable forward passes on the student model.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.distill.distillation_model.DistillationModel.state_dict">
 <span class="sig-name descname"><span class="pre">state_dict</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.distill.distillation_model.DistillationModel.state_dict" title="Link to this definition"></a></dt>
 <dd><p>Override to potentially return the state without teacher’s.</p>
@@ -285,6 +297,17 @@ class. This allows avoiding to save the teacher state unnecessarily during check
 <dt class="sig sig-object py" id="modelopt.torch.distill.distillation_model.DistillationModel.teacher_model">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">teacher_model</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">ModuleList</span></em><a class="headerlink" href="#modelopt.torch.distill.distillation_model.DistillationModel.teacher_model" title="Link to this definition"></a></dt>
 <dd><p>Fetch the teacher model.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.distill.distillation_model.DistillationModel.train">
+<span class="sig-name descname"><span class="pre">train</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.distill.distillation_model.DistillationModel.train" title="Link to this definition"></a></dt>
+<dd><p>Override to prevent warnings of stored intermediate outputs in future forwards.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>mode</strong> (<em>bool</em>) – </p>
+</dd>
+</dl>
 </dd></dl>
 
 </dd></dl>
