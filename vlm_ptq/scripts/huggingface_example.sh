@@ -74,7 +74,7 @@ else
     BUILD_MAX_OUTPUT_LEN=2560
 fi
 
-BUILD_MAX_BATCH_SIZE=1
+BUILD_MAX_BATCH_SIZE=4
 
 echo "Using the following config: max input $BUILD_MAX_INPUT_LEN max output $BUILD_MAX_OUTPUT_LEN max batch $BUILD_MAX_BATCH_SIZE"
 
@@ -207,10 +207,17 @@ python vlm_visual_engine.py \
 
 echo "Run inference example"
 
+VLM_RUN_ARGS=""
+
+if [ "$MODEL_TYPE" == "vila" ]; then
+    VLM_RUN_ARGS+=" --image_path https://github.com/NVlabs/VILA/blob/6b941da19e31ddfdfaa60160908ccf0978d96615/demo_images/av.png?raw=true"
+fi
+
 python vlm_run.py  \
     --hf_model_dir $MODEL_PATH \
     --visual_engine_dir $VISION_ENCODER_DIR \
     --llm_engine_dir $ENGINE_DIR \
+    $VLM_RUN_ARGS
 
 if [ "${MODEL_TYPE}" = "llava" ]; then
     echo "For Llava model, current transformers version is 4.42.4, higher version transformers may be needed for other model."

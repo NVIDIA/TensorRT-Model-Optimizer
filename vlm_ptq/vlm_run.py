@@ -85,6 +85,24 @@ def parse_arguments():
         action="store_true",
         help="Whether or not to use Python runtime session",
     )
+    parser.add_argument(
+        "--enable_chunked_context",
+        action="store_true",
+        help="Enables chunked context (only available with cpp session).",
+    )
+    parser.add_argument(
+        "--kv_cache_free_gpu_memory_fraction",
+        default=0.2,
+        type=float,
+        help="Specify the free gpu memory fraction.",
+    )
+    parser.add_argument(
+        "--multi_block_mode",
+        type=lambda s: s.lower()
+        in ("yes", "true", "t", "1"),  # custom boolean function to convert input string to boolean
+        default=True,
+        help="Distribute the work across multiple CUDA thread-blocks on the GPU for masked MHA kernel.",
+    )
 
     return parser.parse_args()
 

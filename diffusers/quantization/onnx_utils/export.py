@@ -253,7 +253,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision, model_dtype="B
 
     dynamic_axes = AXES_NAME[model_name]
     do_constant_folding = True
-    opset_version = 17
+    opset_version = 20
 
     # Copied from Huggingface's Optimum
     onnx_export(

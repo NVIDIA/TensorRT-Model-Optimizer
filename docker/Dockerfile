@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.6.1-devel-ubuntu22.04
+FROM nvidia/cuda:12.6.2-devel-ubuntu22.04
 
 WORKDIR /workspace
 
@@ -13,7 +13,7 @@ RUN rm -rf /usr/lib/python3/dist-packages/setuptools*
 RUN pip install setuptools -U
 
 # Install TensorRT-LLM
-ARG TRT_LLM_VERSION=0.14.0
+ARG TRT_LLM_VERSION=0.15.0
 RUN pip install "tensorrt-llm~=$TRT_LLM_VERSION" -U
 RUN git clone --depth 1 --branch "v$TRT_LLM_VERSION" https://github.com/NVIDIA/TensorRT-LLM.git && \
     mkdir tensorrt-llm && \
@@ -26,7 +26,7 @@ ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/tensorrt_llm/libs:$L
 ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # Install TensorRT dev environment
-ARG TENSORRT_URL=https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.4.0/tars/TensorRT-10.4.0.26.Linux.x86_64-gnu.cuda-12.6.tar.gz
+ARG TENSORRT_URL=https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.6.0/tars/TensorRT-10.6.0.26.Linux.x86_64-gnu.cuda-12.6.tar.gz
 RUN wget -q -O tensorrt.tar.gz $TENSORRT_URL && \
     tar -xf tensorrt.tar.gz && \
     cp TensorRT-*/bin/trtexec /usr/local/bin && \

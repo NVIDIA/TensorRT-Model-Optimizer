@@ -841,10 +841,6 @@ def evaluate_model(
             all_start_logits.append(accelerator.gather_for_metrics(start_logits).cpu().numpy())
             all_end_logits.append(accelerator.gather_for_metrics(end_logits).cpu().numpy())
 
-    # Model Optimizer: clear the intermediate states of the distillation model from the forward passes
-    if args.do_modelopt_distill:
-        model.module.compute_kd_loss()
-
     max_len = max([x.shape[1] for x in all_start_logits])  # Get the max_length of the tensor
 
     # concatenate the numpy array
