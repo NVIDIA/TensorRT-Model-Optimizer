@@ -42,9 +42,9 @@ RUN pip install "nvidia-modelopt[all]" -U
 ENV TORCH_CUDA_ARCH_LIST="5.2 6.0 6.1 7.0 7.2 7.5 8.0 8.6 8.7 9.0+PTX"
 RUN python -c "import modelopt.torch.quantization.extensions as ext; ext.precompile()"
 
-# Find and install requirements.txt files for all examples
+# Find and install requirements.txt files for all examples excluding windows
 COPY . TensorRT-Model-Optimizer
-RUN find TensorRT-Model-Optimizer -name "requirements*.txt" | while read req_file; do \
+RUN find TensorRT-Model-Optimizer -name "requirements.txt" | grep -v "windows" | while read req_file; do \
     echo "Installing from $req_file"; \
     pip install -r "$req_file"; \
     done

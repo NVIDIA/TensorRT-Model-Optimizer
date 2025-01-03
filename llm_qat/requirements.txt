@@ -6,5 +6,4 @@ py7zr
 sentencepiece>=0.2.0
 tensorboardX
 torch>=2.1.0
-# fix the version of transformers due to the issue https://github.com/huggingface/transformers/issues/33413
-transformers>=4.44.0,<=4.44.2
+transformers>=4.47.0
