@@ -8,29 +8,35 @@ performance** that can be delivered by Model Optimizer. All performance numbers 
 
 #### 1.1 Performance
 
-Config: H100, nvidia-modelopt v0.15.0, TensorRT-LLM v0.11, latency measured with full batch inference (no inflight batching).
-Memory saving and inference speedup are compared to the FP16 baseline. Speedup is normalized to the GPU count.
+Config: H200, nvidia-modelopt v0.21.1, TensorRT-LLM v0.15, latency measured with [trtllm-bench](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-overview.md#for-non-gh200-systems-1).
+Inference speedup are compared to the BF16 baseline. **Speedup is normalized to the GPU count**.
 
-|            |            |            |     FP8    |         |   |            |  INT4 AWQ  |         |
-|:----------:|:----------:|:----------:|:----------:|:-------:|:-:|:----------:|:----------:|:-------:|
-|    Model   | Batch Size | Mem Saving | Tokens/sec | Speedup |   | Mem Saving | Tokens/sec | Speedup |
-|  Llama3-8B |      1     |    1.63x   |   175.42   |  1.26x  |   |    2.34x   |   213.45   |  1.53x  |
-|            |     32     |    1.62x   |   3399.84  |  1.49x  |   |    1.89x   |   2546.12  |  1.11x  |
-|            |     64     |    1.58x   |   3311.03  |  1.34x  |   |    1.97x   |   3438.08  |  1.39x  |
-| Llama3-70B |      1     |    1.96x   |    32.85   |  1.87x  |   |    3.47x   |    47.49   |  2.70x  |
-|            |     32     |    1.93x   |   462.69   |  1.82x  |   |    2.62x   |   365.06   |  1.44x  |
-|            |     64     |    1.99x   |   449.09   |  1.91x  |   |    2.90x   |   483.51   |  2.05x  |
+> Benchmark scenario: Input tokens 2048, output tokens 128. Real performance may vary based on the target usecases and flags used to build the TensorRT-LLM engine.
+
+> Memory saving is not reported here as TensorRT-LLM occupies all the remaining available GPU memory for KV caching.
+
+> If the GPU memory is the limitation, lower bit quantization may have better GPU-count-normalized throughput gain with fewer TP.
+
+|              |            | BF16 (8B:TP1, 70B:TP2) |   |   FP8 (TP1)  |         |   |INT4 AWQ (TP1)|         |   |W4A8 AWQ (TP1)|         |
+|:------------:|:----------:|:----------------------:|:-:|:------------:|:-------:|:-:|:------------:|:-------:|:-:|:------------:|:-------:|
+|    Model     | Batch Size |       Tokens/sec       |   |  Tokens/sec  | Speedup |   |  Tokens/sec  | Speedup |   |  Tokens/sec  | Speedup |
+|  Llama3.1-8B |      1     |        173.80          |   |    245.03    |  1.41x  |   |   231.75     |  1.33x  |   |   239.70     |  1.38x  |
+|              |      8     |        803.11          |   |   1,051.17   |  1.31x  |   |   599.72     |  0.75x  |   |   801.72     |  1.00x  |
+|              |     64     |       1,679.74         |   |   2,190.93   |  1.30x  |   |  1,392.78    |  0.83x  |   |  1,930.86    |  1.15x  |
+| Llama3.1-70B |      1     |         45.81          |   |     43.46    |  1.90x  |   |    44.10     |  1.93x  |   |    46.31     |  2.02x  |
+|              |      8     |        182.61          |   |    182.07    |  1.99x  |   |    93.98     |  1.03x  |   |   140.02     |  1.53x  |
+|              |     64     |        401.50          |   |    420.64    |  2.10x  |   |   176.68     |  0.88x  |   |   345.43     |  1.72x  |
 
 ### 1.2 Accuracy
 
-The table below shows the MMLU loss in percentage compared to FP16 baseline.
-Config: H100, nvidia-modelopt v0.11.0, TenorR-LLM v0.9.
-Note that typically FP8 or INT4 AWQ is the go-to choices for H100.
+The table below shows the MMLU loss in percentage compared to BF16 baseline.
+Config: H100, nvidia-modelopt v0.21.1, TenorR-LLM v0.15.
+Note that typically FP8 is the go-to choices for H100. 4-bit AWQ methods is recommended when GPU memory is a constraint.
 More benchmark with earlier version of Model Optimizer can be found in this [TensorRT-LLM README](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/blogs/quantization-in-TRT-LLM.md#benchmark).
-|     Model \\ MMLU loss       | FP8  | INT4 AWQ |
-|:----------:|:-------------:|:--------:|
-|  Llama3-8B |     0.46%     |    4.60% |
-| Llama3-70b |     0.51%     |    1.29% |
+| Model                   | MMLU loss FP8 |MMLU loss INT4 AWQ|MMLU loss W4A8 AWQ|
+|:-----------------------:|:-------------:|:----------------:|:----------------:|
+| Llama3.1-8B (instruct)  |     1.50%     |       5.66%      |       6.00%      |
+| Llama3.1-70B (instruct) |     0.38%     |       1.07%      |       1.20%      |
 
 ## 2. PTQ for Stable Diffusion
 
