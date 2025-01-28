@@ -23,9 +23,6 @@ qtensor
    modelopt.torch.quantization.qtensor.nf4_tensor
 
 
-   modelopt.torch.quantization.qtensor.nvfp4_tensor
-
-
 
 
 .. Autodoc anything defined in the module itself

@@ -12,15 +12,15 @@ Latest Model Optimizer (``nvidia-modelopt``) currently has the following system 
 +-------------------------+-----------------------------+
 | Architecture            |  x86_64, aarch64 (SBSA)     |
 +-------------------------+-----------------------------+
-| Python                  |  >=3.8,<3.13                |
+| Python                  |  >=3.9,<3.13                |
 +-------------------------+-----------------------------+
-| CUDA                    |  >=11.8 (Recommended 12.x)  |
+| CUDA                    |  >=12.0                     |
 +-------------------------+-----------------------------+
-| PyTorch (Optional)      |  >=2.0                      |
+| PyTorch (Optional)      |  >=2.1                      |
 +-------------------------+-----------------------------+
-| ONNX Runtime (Optional) |  1.18                       |
+| ONNX Runtime (Optional) |  1.20 (Python>=3.10)        |
 +-------------------------+-----------------------------+
-| TensorRT-LLM (Optional) |  0.14                       |
+| TensorRT-LLM (Optional) |  0.15                       |
 +-------------------------+-----------------------------+
 
 Environment setup
@@ -73,15 +73,9 @@ Environment setup
 
     (Optional) **Install desired PyTorch version**
 
-    By default, the latest PyTorch version (``torch>=2.0``) available on ``pip`` will
+    By default, the latest PyTorch version available on ``pip`` will
     be installed. If you want to install a specific PyTorch version for a specific CUDA version, please first
     follow the instructions to `install your desired PyTorch version <https://pytorch.org/get-started/locally/>`_.
-
-    (Optional) **Install ONNX Runtime**
-
-    If you wish to use ModelOpt's ONNX features, please follow the steps from the `ONNX Runtime documentation <https://onnxruntime.ai/docs/install/>`_
-    to install the recommended ONNX Runtime version correctly for your CUDA version. If ONNX Runtime is not
-    pre-installed, ModelOpt will use the default ONNX Runtime which may not be compatible with your CUDA version.
 
     (Optional) **Install other NVIDIA dependencies**
 

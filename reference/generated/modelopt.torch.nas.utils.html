@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>utils &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -224,7 +222,7 @@ potentially required pre- and post-processing operations are performed correctly
 
 
 <span class="nd">@mtn</span><span class="o">.</span><span class="n">enable_modelopt</span><span class="p">()</span>
-<span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">model</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
 
 
@@ -255,7 +253,7 @@ potentially required pre- and post-processing operations are performed correctly
 <dd class="field-even"><p>A dict of <code class="docutils literal notranslate"><span class="pre">(parameter_name,</span> <span class="pre">choice)</span></code> that specifies an active subnet.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Dict</em>[<em>str</em>, <em>Any</em>]</p>
+<dd class="field-odd"><p><em>dict</em>[<em>str</em>, <em>Any</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -270,11 +268,11 @@ potentially required pre- and post-processing operations are performed correctly
 <li><p><strong>network</strong> (<em>Module</em>) – The PyTorch model.</p></li>
 <li><p><strong>args</strong> – The dummy input as defined in
 <a class="reference internal" href="modelopt.torch.nas.conversion.html#modelopt.torch.nas.conversion.convert" title="modelopt.torch.nas.conversion.convert"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtn.convert()</span></code></a>.</p></li>
-<li><p><strong>data_shape</strong> (<em>Tuple</em><em> | </em><em>None</em>) – The shape of the dummy input if the dummy input is a single tensor. If provided,
+<li><p><strong>data_shape</strong> (<em>tuple</em><em> | </em><em>None</em>) – The shape of the dummy input if the dummy input is a single tensor. If provided,
 <code class="docutils literal notranslate"><span class="pre">args</span></code> must be <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 <li><p><strong>unit</strong> (<em>float</em>) – The unit to return the number of parameters in. Default is 1e6 (million).</p></li>
 <li><p><strong>return_str</strong> (<em>bool</em>) – Whether to return the number of FLOPs as a string.</p></li>
-<li><p><strong>dummy_input</strong> (<em>Any</em><em> | </em><em>Tuple</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>dummy_input</strong> (<em>Any</em><em> | </em><em>tuple</em><em> | </em><em>None</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -314,7 +312,7 @@ For example, you can use this to perform a forward pass without NAS operations.<
 
 
 <span class="nd">@mtn</span><span class="o">.</span><span class="n">no_modelopt</span><span class="p">()</span>
-<span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">inputs</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">model</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span>
 
 
@@ -337,7 +335,7 @@ For example, you can use this to perform a forward pass without NAS operations.<
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – A model that contains DynamicModule(s).</p></li>
-<li><p><strong>skipped_hparams</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – </p></li>
+<li><p><strong>skipped_hparams</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -382,14 +380,14 @@ the model instance or take the model (<code class="docutils literal notranslate"
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – A searchable model that contains one or more DynamicModule(s).</p></li>
-<li><p><strong>sample_func</strong> (<em>Callable</em><em>[</em><em>[</em><em>Sequence</em><em>[</em><em>T</em><em>]</em><em>]</em><em>, </em><em>T</em><em>] </em><em>| </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Callable</em><em>[</em><em>[</em><em>Sequence</em><em>[</em><em>T</em><em>]</em><em>]</em><em>, </em><em>T</em><em>]</em><em>]</em>) – A sampling function for hyperparameters. Default: random sampling.</p></li>
+<li><p><strong>sample_func</strong> (<em>Callable</em><em>[</em><em>[</em><em>Sequence</em><em>[</em><em>T</em><em>]</em><em>]</em><em>, </em><em>T</em><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Callable</em><em>[</em><em>[</em><em>Sequence</em><em>[</em><em>T</em><em>]</em><em>]</em><em>, </em><em>T</em><em>]</em><em>]</em>) – A sampling function for hyperparameters. Default: random sampling.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>A dict of <code class="docutils literal notranslate"><span class="pre">(parameter_name,</span> <span class="pre">choice)</span></code> that specifies an active subnet.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Dict</em>[<em>str</em>, <em>Any</em>]</p>
+<dd class="field-odd"><p><em>dict</em>[<em>str</em>, <em>Any</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -402,7 +400,7 @@ the model instance or take the model (<code class="docutils literal notranslate"
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – A model that contains DynamicModule(s).</p></li>
-<li><p><strong>config</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – Config of the target subnet as returned by
+<li><p><strong>config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – Config of the target subnet as returned by
 <code class="xref py py-meth docutils literal notranslate"><span class="pre">mtn.config()</span></code>
 and <a class="reference internal" href="modelopt.torch.nas.algorithms.html#modelopt.torch.nas.algorithms.search" title="modelopt.torch.nas.algorithms.search"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtn.search()</span></code></a>.</p></li>
 <li><p><strong>strict</strong> (<em>bool</em>) – Raise an error when the config does not contain all necessary keys.</p></li>

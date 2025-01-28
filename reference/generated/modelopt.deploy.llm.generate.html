@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>generate &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>generate &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -165,7 +163,7 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>engine_dir</strong> (<em>str</em><em> | </em><em>Path</em>) – the directory path of the TensorRT-LLM engine.</p></li>
 <li><p><strong>tokenizer</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>tensorrt_llm.llmapi.tokenizer.TokenizerBase</em><em> | </em><em>None</em>) – the tokenizer. For example, a tokenizer from the Huggingface model.</p></li>
-<li><p><strong>kv_cache_config</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em> | </em><em>float</em><em>]</em>) – the kv cache config as a dict. Please refer to
+<li><p><strong>kv_cache_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em> | </em><em>float</em><em>]</em>) – the kv cache config as a dict. Please refer to
 <a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md" rel="noopener noreferrer" target="_blank">https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md</a></p></li>
 <li><p><strong>medusa_choices</strong> (<em>Any</em>) – </p></li>
 </ul>
@@ -180,7 +178,7 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>List</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
+<li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>list</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
 <li><p><strong>temperature</strong> (<em>float</em>) – The sampling temperature.</p></li>
 <li><p><strong>top_p</strong> (<em>float</em>) – The nucleus sampling parameter.</p></li>
 <li><p><strong>keep_input_prompt</strong> – Set to include input prommpts in the outputs.</p></li>
@@ -190,7 +188,7 @@
 <dd class="field-even"><p>a tensor list of the context_logits.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>List</em>[<em>tensor</em>]</p>
+<dd class="field-odd"><p><em>list</em>[<em>tensor</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -202,11 +200,11 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>List</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
+<li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>list</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
 <li><p><strong>max_new_tokens</strong> (<em>int</em>) – The max output token length.</p></li>
 <li><p><strong>temperature</strong> (<em>float</em>) – The sampling temperature</p></li>
 <li><p><strong>keep_input_prompt</strong> (<em>bool</em>) – Set to include input prommpts in the outputs.</p></li>
-<li><p><strong>stop_words</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – A list of words the generate will stop on.</p></li>
+<li><p><strong>stop_words</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – A list of words the generate will stop on.</p></li>
 <li><p><strong>top_p</strong> (<em>float</em>) – </p></li>
 </ul>
 </dd>
@@ -214,7 +212,7 @@
 <dd class="field-even"><p>a list of output text strings if max_beam_width is 1 or a 2D list with shape [batch, beam].</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>List</em>[<em>str</em>] | <em>List</em>[<em>List</em>[<em>str</em>]]</p>
+<dd class="field-odd"><p><em>list</em>[<em>str</em>] | <em>list</em>[<em>list</em>[<em>str</em>]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -226,19 +224,19 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>List</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
+<li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>list</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
 <li><p><strong>max_new_tokens</strong> (<em>int</em>) – The max output token length.</p></li>
 <li><p><strong>temperature</strong> (<em>float</em>) – The sampling temperature.</p></li>
 <li><p><strong>top_p</strong> (<em>float</em>) – The nucleus sampling parameter.</p></li>
 <li><p><strong>keep_input_prompt</strong> (<em>bool</em>) – Set to include input prommpts in the outputs.</p></li>
-<li><p><strong>stop_words</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – A list of words that the generate stops on.</p></li>
+<li><p><strong>stop_words</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – A list of words that the generate stops on.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>a list of output token lists if max_beam_width is 1 or a 3D list with shape [batch, beam, sequence_len].</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>List</em>[<em>List</em>[<em>int</em>]] | <em>List</em>[<em>List</em>[<em>List</em>[<em>int</em>]]]</p>
+<dd class="field-odd"><p><em>list</em>[<em>list</em>[<em>int</em>]] | <em>list</em>[<em>list</em>[<em>list</em>[<em>int</em>]]]</p>
 </dd>
 </dl>
 </dd></dl>

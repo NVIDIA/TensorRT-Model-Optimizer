@@ -68,7 +68,7 @@ If you prefer to use the CUDA EP for calibration, uninstall the existing *onnxru
 
 **5. Setup GPU Acceleration Tool for Quantization**
 
-ModelOpt-Windows utilizes the `cupy <https://cupy.dev//>`_ tool for GPU acceleration during the ONNX quantization process. There are different cupy packages for CUDA 11.x and CUDA 12.x. `Install <https://docs.cupy.dev/en/stable/install.html>`_ the appropriate version of cupy based on your CUDA setup. For installation and troubleshooting, refer to the cupy documentation.
+ModelOpt-Windows utilizes the `cupy-cuda12x <https://cupy.dev//>`_ tool for GPU acceleration during the INT4 ONNX quantization process if you have CUDA 12.x.
 
 **6. Verify Installation**
 

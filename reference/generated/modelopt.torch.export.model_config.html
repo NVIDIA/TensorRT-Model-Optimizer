@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_config &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>model_config &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,13 +30,12 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
     <link rel="next" title="model_config_export" href="modelopt.torch.export.model_config_export.html" />
-    <link rel="prev" title="mcore_config_map" href="modelopt.torch.export.mcore_config_map.html" /> 
+    <link rel="prev" title="mcore_hf_export_map" href="modelopt.torch.export.mcore_hf_export_map.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -103,15 +101,17 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_config_map.html">mcore_config_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_hf_export_map.html">mcore_hf_export_map</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quantization_utils.html">quantization_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quant_utils.html">quant_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html">tensorrt_llm_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.transformer_engine.html">transformer_engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html">unified_export_hf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_megatron.html">unified_export_megatron</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
@@ -339,11 +339,10 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <p>The decoder layer config.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.DecoderLayerConfig.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quantization=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decoder_type=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recurrent=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">post_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pre_feedforward_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">post_feedforward_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_attention_heads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_head_size=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_kv_heads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_position_embeddings=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rotary_pct=1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_alibi=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_decoder_architecture=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel_attention=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_residual_connection_post_layernorm=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_cache=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chatglm_version=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rope_ratio=1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq_length=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qwen_type=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rotary_base=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partial_rotary_factor=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_max_position_embeddings=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_scaling_short_factors=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_scaling_long_factors=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_attn_multiplier=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_embedding_multiplier=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_use_scaling=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_width_multiplier=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_block_size=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_homo_head_pattern=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_num_local_blocks=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_vertical_stride=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dense_attention_every_n_layers=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gegelu_limit=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_short_mscale=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_long_mscale=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_num_experts=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_top_k=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_tp_mode=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_renorm_mode=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alibi_bias_max=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">residual_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">residual_mlp=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rnn_hidden_size=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logits_soft_cap=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">emb_scale_by_sqrt_dim=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_types=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attn_replacing_linear=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_replacing_linear=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_config=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">final_logit_softcapping=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attn_logit_softcapping=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_pre_attn_scalar=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clip_qkv=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_attention=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_attention_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">self_attention=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">self_attention_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rel_attn_max_distance=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rel_attn_num_buckets=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rope_scaling=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_attention_layers=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vision_output_dim=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gate_ffwd=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gate_attn=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sparse_mixer_epsilon=0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.__init__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">decoder_type=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">recurrent=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">post_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pre_feedforward_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">post_feedforward_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_attention_heads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_head_size=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_kv_heads=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_position_embeddings=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rotary_pct=1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_alibi=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">new_decoder_architecture=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">parallel_attention=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">apply_residual_connection_post_layernorm=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_cache=True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">chatglm_version=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rope_ratio=1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq_length=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">qwen_type=''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rotary_base=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">partial_rotary_factor=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">original_max_position_embeddings=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_scaling_short_factors=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_scaling_long_factors=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_attn_multiplier=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_embedding_multiplier=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_use_scaling=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mup_width_multiplier=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_block_size=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_homo_head_pattern=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_num_local_blocks=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">blocksparse_vertical_stride=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dense_attention_every_n_layers=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gegelu_limit=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_short_mscale=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">longrope_long_mscale=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_num_experts=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_top_k=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_tp_mode=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">moe_renorm_mode=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">alibi_bias_max=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">residual_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">residual_mlp=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rnn_hidden_size=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">logits_soft_cap=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">emb_scale_by_sqrt_dim=False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_types=&lt;factory&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attn_replacing_linear=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mlp_replacing_linear=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_config=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">final_logit_softcapping=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attn_logit_softcapping=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">query_pre_attn_scalar=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clip_qkv=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_attention=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_attention_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">self_attention=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">self_attention_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_layernorm=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rel_attn_max_distance=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rel_attn_num_buckets=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rope_scaling=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cross_attention_layers=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">vision_output_dim=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gate_ffwd=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gate_attn=None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sparse_mixer_epsilon=0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.__init__" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>quantization</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
 <li><p><strong>decoder_type</strong> (<em>str</em>) – </p></li>
 <li><p><strong>input_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
 <li><p><strong>mlp_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
@@ -370,8 +369,8 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <li><p><strong>rotary_base</strong> (<em>int</em>) – </p></li>
 <li><p><strong>partial_rotary_factor</strong> (<em>float</em>) – </p></li>
 <li><p><strong>original_max_position_embeddings</strong> (<em>int</em>) – </p></li>
-<li><p><strong>longrope_scaling_short_factors</strong> (<em>List</em><em>[</em><em>float</em><em>]</em>) – </p></li>
-<li><p><strong>longrope_scaling_long_factors</strong> (<em>List</em><em>[</em><em>float</em><em>]</em>) – </p></li>
+<li><p><strong>longrope_scaling_short_factors</strong> (<em>list</em><em>[</em><em>float</em><em>]</em>) – </p></li>
+<li><p><strong>longrope_scaling_long_factors</strong> (<em>list</em><em>[</em><em>float</em><em>]</em>) – </p></li>
 <li><p><strong>mup_attn_multiplier</strong> (<em>float</em>) – </p></li>
 <li><p><strong>mup_embedding_multiplier</strong> (<em>float</em>) – </p></li>
 <li><p><strong>mup_use_scaling</strong> (<em>float</em>) – </p></li>
@@ -394,7 +393,7 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <li><p><strong>rnn_hidden_size</strong> (<em>int</em>) – </p></li>
 <li><p><strong>logits_soft_cap</strong> (<em>float</em>) – </p></li>
 <li><p><strong>emb_scale_by_sqrt_dim</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>layer_types</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – </p></li>
+<li><p><strong>layer_types</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
 <li><p><strong>attn_replacing_linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
 <li><p><strong>mlp_replacing_linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
 <li><p><strong>block_config</strong> (<em>dict</em>) – </p></li>
@@ -562,7 +561,7 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.DecoderLayerConfig.layer_types">
-<span class="sig-name descname"><span class="pre">layer_types</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.layer_types" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">layer_types</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.layer_types" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -577,12 +576,12 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.DecoderLayerConfig.longrope_scaling_long_factors">
-<span class="sig-name descname"><span class="pre">longrope_scaling_long_factors</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.longrope_scaling_long_factors" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">longrope_scaling_long_factors</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.longrope_scaling_long_factors" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.DecoderLayerConfig.longrope_scaling_short_factors">
-<span class="sig-name descname"><span class="pre">longrope_scaling_short_factors</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.longrope_scaling_short_factors" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">longrope_scaling_short_factors</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.longrope_scaling_short_factors" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -696,11 +695,6 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config.DecoderLayerConfig.quantization">
-<span class="sig-name descname"><span class="pre">quantization</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.quantization" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.DecoderLayerConfig.query_pre_attn_scalar">
 <span class="sig-name descname"><span class="pre">query_pre_attn_scalar</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.DecoderLayerConfig.query_pre_attn_scalar" title="Link to this definition"></a></dt>
 <dd></dd></dl>
@@ -804,13 +798,10 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <p>The embedding layer config.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.EmbeddingConfig.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quantization</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.EmbeddingConfig.__init__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.EmbeddingConfig.__init__" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>weight</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>quantization</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
-</ul>
+<dd class="field-odd"><p><strong>weight</strong> (<em>Tensor</em>) – </p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -829,11 +820,6 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">local_vocab_size</span></span><a class="headerlink" href="#modelopt.torch.export.model_config.EmbeddingConfig.local_vocab_size" title="Link to this definition"></a></dt>
 <dd><p>Infers the vocab_size from the embedding layer weights shape.</p>
 </dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config.EmbeddingConfig.quantization">
-<span class="sig-name descname"><span class="pre">quantization</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.EmbeddingConfig.quantization" title="Link to this definition"></a></dt>
-<dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.EmbeddingConfig.weight">
@@ -882,11 +868,10 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <p>The layernorm layer config.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.LayernormConfig.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quantization</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layernorm_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-05</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.LayernormConfig.__init__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layernorm_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'LayerNorm'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-05</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.LayernormConfig.__init__" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>quantization</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
 <li><p><strong>weight</strong> (<em>Tensor</em>) – </p></li>
 <li><p><strong>bias</strong> (<em>Tensor</em>) – </p></li>
 <li><p><strong>layernorm_type</strong> (<em>str</em>) – </p></li>
@@ -911,12 +896,7 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.LayernormConfig.layernorm_type">
-<span class="sig-name descname"><span class="pre">layernorm_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">''</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.LayernormConfig.layernorm_type" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config.LayernormConfig.quantization">
-<span class="sig-name descname"><span class="pre">quantization</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.LayernormConfig.quantization" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">layernorm_type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'LayerNorm'</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.LayernormConfig.layernorm_type" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1041,7 +1021,7 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <p>The MLP layer config.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.MLPConfig.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">proj</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_act</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">merged_fc1_gate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.MLPConfig.__init__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fc</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">proj</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_act</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.MLPConfig.__init__" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
@@ -1049,7 +1029,6 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <li><p><strong>gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
 <li><p><strong>proj</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
 <li><p><strong>hidden_act</strong> (<em>str</em>) – </p></li>
-<li><p><strong>merged_fc1_gate</strong> (<em>bool</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1074,20 +1053,9 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd></dd></dl>
 
 <dl class="py attribute">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config.MLPConfig.merged_fc1_gate">
-<span class="sig-name descname"><span class="pre">merged_fc1_gate</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.MLPConfig.merged_fc1_gate" title="Link to this definition"></a></dt>
-<dd></dd></dl>
-
-<dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.MLPConfig.proj">
 <span class="sig-name descname"><span class="pre">proj</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><span class="pre">LinearConfig</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.MLPConfig.proj" title="Link to this definition"></a></dt>
 <dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config.MLPConfig.quantization">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">quantization</span></span><a class="headerlink" href="#modelopt.torch.export.model_config.MLPConfig.quantization" title="Link to this definition"></a></dt>
-<dd><p>Returns merged gat and fc1 quantization.</p>
-</dd></dl>
 
 </dd></dl>
 
@@ -1098,12 +1066,13 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <p>The Mixture of Expert layer config.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.MOEConfig.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">router</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">experts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_act</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.MOEConfig.__init__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">router</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">experts</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">shared_expert</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_act</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.MOEConfig.__init__" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>router</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
 <li><p><strong>experts</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ExpertConfig" title="modelopt.torch.export.model_config.ExpertConfig"><em>ExpertConfig</em></a>) – </p></li>
+<li><p><strong>shared_expert</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><em>MLPConfig</em></a>) – </p></li>
 <li><p><strong>hidden_act</strong> (<em>str</em>) – </p></li>
 </ul>
 </dd>
@@ -1134,6 +1103,11 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <span class="sig-name descname"><span class="pre">router</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><span class="pre">LinearConfig</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.MOEConfig.router" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
+<dl class="py attribute">
+<dt class="sig sig-object py" id="modelopt.torch.export.model_config.MOEConfig.shared_expert">
+<span class="sig-name descname"><span class="pre">shared_expert</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><span class="pre">MLPConfig</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.MOEConfig.shared_expert" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="py class">
@@ -1147,7 +1121,7 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>medusa_layers</strong> (<em>List</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.LinearActConfig" title="modelopt.torch.export.model_config.LinearActConfig"><em>LinearActConfig</em></a><em>]</em>) – </p></li>
+<li><p><strong>medusa_layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.LinearActConfig" title="modelopt.torch.export.model_config.LinearActConfig"><em>LinearActConfig</em></a><em>]</em>) – </p></li>
 <li><p><strong>lm_head</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
 </ul>
 </dd>
@@ -1164,7 +1138,7 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.MedusaHeadConfig.medusa_layers">
-<span class="sig-name descname"><span class="pre">medusa_layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#modelopt.torch.export.model_config.LinearActConfig" title="modelopt.torch.export.model_config.LinearActConfig"><span class="pre">LinearActConfig</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.MedusaHeadConfig.medusa_layers" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">medusa_layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#modelopt.torch.export.model_config.LinearActConfig" title="modelopt.torch.export.model_config.LinearActConfig"><span class="pre">LinearActConfig</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.MedusaHeadConfig.medusa_layers" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 </dd></dl>
@@ -1193,11 +1167,11 @@ pipeline_parallel &gt; 1 is only supported for TensorRT-LLM checkpoint.</p>
 <li><p><strong>position_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>) – </p></li>
 <li><p><strong>block_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>) – </p></li>
 <li><p><strong>ln_embed</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>layers</strong> (<em>List</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a><em>]</em>) – </p></li>
+<li><p><strong>layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a><em>]</em>) – </p></li>
 <li><p><strong>ln_f</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
 <li><p><strong>lm_head</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
 <li><p><strong>share_embedding_table</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>medusa_heads</strong> (<em>List</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.MedusaHeadConfig" title="modelopt.torch.export.model_config.MedusaHeadConfig"><em>MedusaHeadConfig</em></a><em>]</em>) – </p></li>
+<li><p><strong>medusa_heads</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.MedusaHeadConfig" title="modelopt.torch.export.model_config.MedusaHeadConfig"><em>MedusaHeadConfig</em></a><em>]</em>) – </p></li>
 <li><p><strong>num_medusa_heads</strong> (<em>int</em>) – </p></li>
 <li><p><strong>num_medusa_layers</strong> (<em>int</em>) – </p></li>
 <li><p><strong>enc_dec</strong> (<em>str</em>) – </p></li>
@@ -1261,7 +1235,7 @@ pipeline_parallel &gt; 1 is only supported for TensorRT-LLM checkpoint.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.ModelConfig.layers">
-<span class="sig-name descname"><span class="pre">layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><span class="pre">DecoderLayerConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.export.model_config.ModelConfig.layers" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><span class="pre">DecoderLayerConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.export.model_config.ModelConfig.layers" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1287,7 +1261,7 @@ pipeline_parallel &gt; 1 is only supported for TensorRT-LLM checkpoint.</p>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.ModelConfig.medusa_heads">
-<span class="sig-name descname"><span class="pre">medusa_heads</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#modelopt.torch.export.model_config.MedusaHeadConfig" title="modelopt.torch.export.model_config.MedusaHeadConfig"><span class="pre">MedusaHeadConfig</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.ModelConfig.medusa_heads" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">medusa_heads</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#modelopt.torch.export.model_config.MedusaHeadConfig" title="modelopt.torch.export.model_config.MedusaHeadConfig"><span class="pre">MedusaHeadConfig</span></a><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.ModelConfig.medusa_heads" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py property">
@@ -1418,12 +1392,6 @@ pipeline_parallel &gt; 1 is only supported for TensorRT-LLM checkpoint.</p>
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.QKVConfig.q">
 <span class="sig-name descname"><span class="pre">q</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><span class="pre">LinearConfig</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.export.model_config.QKVConfig.q" title="Link to this definition"></a></dt>
 <dd></dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.export.model_config.QKVConfig.quantization">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">quantization</span></span><a class="headerlink" href="#modelopt.torch.export.model_config.QKVConfig.quantization" title="Link to this definition"></a></dt>
-<dd><p>Returns the quantization format of this QKV layer.</p>
-</dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config.QKVConfig.v">
@@ -1581,7 +1549,7 @@ If the quanitzation is INT8_SQ, the concat value is returned.</p>
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modelopt.torch.export.mcore_config_map.html" class="btn btn-neutral float-left" title="mcore_config_map" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.export.mcore_hf_export_map.html" class="btn btn-neutral float-left" title="mcore_hf_export_map" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="modelopt.torch.export.model_config_export.html" class="btn btn-neutral float-right" title="model_config_export" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

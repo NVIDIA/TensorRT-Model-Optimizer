@@ -1,7 +1,7 @@
 .. _DirectML_Deployment:
 
 ===================
-DirectML Deployment
+DirectML
 ===================
 
 

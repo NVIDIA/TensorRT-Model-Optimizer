@@ -1,7 +1,7 @@
 .. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
 
-quantization\_utils
-===================
+image\_processor
+================
 
 .. List the submodules
 
@@ -17,7 +17,7 @@ quantization\_utils
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.export.quantization_utils
+.. automodule:: modelopt.torch.utils.image_processor
    :members:
    :undoc-members:
 
@@ -28,35 +28,18 @@ quantization\_utils
    .. Overview table of available classes in the module
    
    
+   .. rubric:: Classes
+
+   .. autosummary::
+      :nosignatures:
+   
+      BaseImageProcessor
+      MllamaImageProcessor
+   
    
 
 
    .. Overview table of available functions in the module
    
-   
-   .. rubric:: Functions
-
-   .. autosummary::
-      :nosignatures:
-   
-      adjust_attn_amax_values
-      all_items_same
-      convert_state_dict_amax_to_scales
-      filter_output_quantizer
-      from_quantized_weight
-      get_activation_scaling_factor
-      get_kv_cache_dtype
-      get_kv_cache_scaling_factor
-      get_prequant_scaling_factor
-      get_qkv_and_avg_prequant_scale
-      get_quantization_format
-      get_scaling_factor
-      get_weight_block_size
-      get_weight_scaling_factor
-      get_weight_scaling_factor_2
-      get_weights_scaling_factor_and_amax
-      process_layer_quant_config
-      resmooth_and_get_scale_and_amax
-      to_quantized_weight
    
    

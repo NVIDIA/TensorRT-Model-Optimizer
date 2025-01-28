@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dataset_utils &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>dataset_utils &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -111,6 +109,7 @@
 <li class="toctree-l4 current"><a class="current reference internal" href="#">dataset_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.distributed.html">distributed</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.graph.html">graph</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.image_processor.html">image_processor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.import_utils.html">import_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.list.html">list</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.logging.html">logging</a></li>
@@ -118,6 +117,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.perf.html">perf</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.random.html">random</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.tensor.html">tensor</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.vlm_dataset_utils.html">vlm_dataset_utils</a></li>
 </ul>
 </li>
 </ul>
@@ -170,6 +170,12 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.dataset_utils.get_dataset_dataloader" title="modelopt.torch.utils.dataset_utils.get_dataset_dataloader"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_dataset_dataloader</span></code></a></p></td>
 <td><p>Get a dataloader with the dataset name and toknizer of the target model.</p></td>
 </tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.dataset_utils.get_max_batch_size" title="modelopt.torch.utils.dataset_utils.get_max_batch_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_max_batch_size</span></code></a></p></td>
+<td><p>Get the maximum batch size that can be used for the model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.dataset_utils.get_supported_datasets" title="modelopt.torch.utils.dataset_utils.get_supported_datasets"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_supported_datasets</span></code></a></p></td>
+<td><p>Retrieves a list of datasets supported.</p></td>
+</tr>
 </tbody>
 </table>
 <dl class="py function">
@@ -179,19 +185,28 @@
 <p>This function initializes a forward loop function tailored to process batches of data from the specified dataset
 using the given model and tokenizer. The forward loop function, when called, iterates over the dataset, applies the
 tokenizer to prepare the input data, feeds it into the model, and returns the model’s predictions.</p>
-<p>Parameters:
-- model: The PyTorch model for inference.
-- dataset_name: The name of the dataset to be used.
-- tokenizer: The tokenizer used to preprocess text data into a format suitable
-for the model.
-- batch_size: Batch size of the returned dataloader. If 0 is provided, we auto determine the batch_size.
-- num_samples: Number of samples from the dataset.
-- max_sample_length: Maximum length of a sample.
-- device: Target device for the returned dataloader.
-- include_labels: Whether to include labels in the dataloader.
-- dataloader: If provided, use the provided dataloader instead.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>) – The PyTorch model for inference.</p></li>
+<li><p><strong>dataset_name</strong> (<em>str</em>) – The name of the dataset to be used. Must be one of the datasets in get_supported_datasets().</p></li>
+<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizer</em><em> | </em><em>PreTrainedTokenizerFast</em>) – The tokenizer used to preprocess text data into a format suitable
+for the model.</p></li>
+<li><p><strong>batch_size</strong> (<em>int</em>) – Batch size of the returned dataloader. If 0 is provided, we auto determine the batch_size.</p></li>
+<li><p><strong>num_samples</strong> (<em>int</em>) – Number of samples from the dataset.</p></li>
+<li><p><strong>max_sample_length</strong> (<em>int</em>) – Maximum length of a sample.</p></li>
+<li><p><strong>device</strong> (<em>str</em><em> | </em><em>None</em>) – Target device for the returned dataloader.</p></li>
+<li><p><strong>include_labels</strong> (<em>bool</em>) – Whether to include labels in the dataloader.</p></li>
+<li><p><strong>dataloader</strong> (<em>DataLoader</em>) – If provided, use the provided dataloader instead.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Callable</em></p>
+</dd>
+</dl>
 <p>Example usage for quantization:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.quantization</span> <span class="k">as</span> <span class="nn">mtq</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.quantization</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtq</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_forward_loop</span>
 
 <span class="c1"># Initialize model and tokenizer</span>
 <span class="c1"># ...</span>
@@ -205,12 +220,16 @@ for the model.
 <span class="n">mtq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">quant_cfg</span><span class="p">,</span> <span class="n">forward_loop</span><span class="o">=</span><span class="n">forward_loop</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>Returns:
-- function: A forward loop function that can be called with no arguments. When called, this function iterates over
-the dataset specified by <cite>dataset_name</cite>.</p>
 <dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><dl class="simple">
+<dt>A forward loop function that can be called with no arguments. When called, this function iterates over</dt><dd><p>the dataset specified by <cite>dataset_name</cite>.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – </p></li>
 <li><p><strong>dataset_name</strong> (<em>str</em>) – </p></li>
 <li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizer</em><em> | </em><em>PreTrainedTokenizerFast</em>) – </p></li>
@@ -222,8 +241,8 @@ the dataset specified by <cite>dataset_name</cite>.</p>
 <li><p><strong>dataloader</strong> (<em>DataLoader</em>) – </p></li>
 </ul>
 </dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Callable</em></p>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>Callable</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -251,6 +270,43 @@ the dataset specified by <cite>dataset_name</cite>.</p>
 <dd class="field-odd"><p><em>DataLoader</em></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.utils.dataset_utils.get_max_batch_size">
+<span class="sig-name descname"><span class="pre">get_max_batch_size</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_sample_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_memory_usage_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.dataset_utils.get_max_batch_size" title="Link to this definition"></a></dt>
+<dd><p>Get the maximum batch size that can be used for the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
+<li><p><strong>max_sample_length</strong> (<em>int</em>) – </p></li>
+<li><p><strong>sample_memory_usage_ratio</strong> (<em>float</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.utils.dataset_utils.get_supported_datasets">
+<span class="sig-name descname"><span class="pre">get_supported_datasets</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.dataset_utils.get_supported_datasets" title="Link to this definition"></a></dt>
+<dd><p>Retrieves a list of datasets supported.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A list of strings, where each string is the name of a supported dataset.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>list</em>[<em>str</em>]</p>
+</dd>
+</dl>
+<p>Example usage:</p>
+<blockquote>
+<div><div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_supported_datasets</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Supported datasets:&quot;</span><span class="p">,</span> <span class="n">get_supported_datasets</span><span class="p">())</span>
+</pre></div>
+</div>
+</div></blockquote>
 </dd></dl>
 
 </section>

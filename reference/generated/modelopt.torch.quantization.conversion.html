@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>conversion &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>conversion &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -203,21 +201,21 @@ quantizers at the correct location.</p></li>
 </dd>
 </dl>
 <p>Here is an example of defining a quantized class and registering it:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.quantization</span> <span class="k">as</span> <span class="nn">mtq</span>
-<span class="kn">from</span> <span class="nn">modelopt.torch.quantization.nn</span> <span class="kn">import</span> <span class="n">TensorQuantizer</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.quantization</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtq</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.quantization.nn</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorQuantizer</span>
 
 
-<span class="k">class</span> <span class="nc">QuantLayerNorm</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">LayerNorm</span><span class="p">):</span>
-    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">normalized_shape</span><span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">QuantLayerNorm</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">LayerNorm</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">normalized_shape</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">normalized_shape</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_setup</span><span class="p">()</span>
 
-    <span class="k">def</span> <span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="c1"># Method to setup the quantizers</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">input_quantizer</span> <span class="o">=</span> <span class="n">TensorQuantizer</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">weight_quantizer</span> <span class="o">=</span> <span class="n">TensorQuantizer</span><span class="p">()</span>
 
-    <span class="k">def</span> <span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
         <span class="nb">input</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_quantizer</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
         <span class="n">weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">weight_quantizer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weight</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">layer_norm</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalized_shape</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bias</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
@@ -254,7 +252,7 @@ instances of
 <a class="reference internal" href="modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer" title="modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer"><code class="xref py py-class docutils literal notranslate"><span class="pre">TensorQuantizer</span></code></a>.
 The filter function takes a quantized module name as input and returns <code class="docutils literal notranslate"><span class="pre">True</span></code> if the
 quantizer should be adjusted and <code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.</p></li>
-<li><p><strong>attribute</strong> (<a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>List</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>] </em><em>| </em><em>Dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>List</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>]</em><em>] </em><em>| </em><em>Dict</em><em> | </em><em>List</em><em>[</em><em>Dict</em><em>]</em>) – An instance of <a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizerAttributeConfig</span></code></a> or an equivalent
+<li><p><strong>attribute</strong> (<a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>]</em><em>] </em><em>| </em><em>dict</em><em> | </em><em>list</em><em>[</em><em>dict</em><em>]</em>) – An instance of <a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizerAttributeConfig</span></code></a> or an equivalent
 dictionary or a list of these two types.
 If <code class="docutils literal notranslate"><span class="pre">attribute</span></code> is a list, the matched
 <code class="xref py py-class docutils literal notranslate"><span class="pre">TensorQuantizer</span></code>
@@ -289,7 +287,7 @@ for more details.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>quant_model</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>quant_cfg</strong> (<em>Dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>List</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>] </em><em>| </em><em>Dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>List</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>]</em><em>]</em><em>] </em><em>| </em><em>Dict</em>) – </p></li>
+<li><p><strong>quant_cfg</strong> (<em>dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>]</em><em>]</em><em>] </em><em>| </em><em>dict</em>) – </p></li>
 </ul>
 </dd>
 </dl>
@@ -307,7 +305,7 @@ See <a class="reference internal" href="#modelopt.torch.quantization.conversion.
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>quant_model</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>quant_cfg</strong> (<em>Dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>List</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>] </em><em>| </em><em>Dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>List</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>]</em><em>]</em><em>] </em><em>| </em><em>Dict</em>) – </p></li>
+<li><p><strong>quant_cfg</strong> (<em>dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>] </em><em>| </em><em>dict</em><em>[</em><em>str</em><em> | </em><em>Callable</em><em>, </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig" title="modelopt.torch.quantization.config.QuantizerAttributeConfig"><em>QuantizerAttributeConfig</em></a><em>]</em><em>]</em><em>] </em><em>| </em><em>dict</em>) – </p></li>
 </ul>
 </dd>
 </dl>

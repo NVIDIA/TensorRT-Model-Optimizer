@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quick Start: Quantization &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+  <title>Quick Start: Quantization &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -86,14 +85,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -151,7 +149,7 @@ formats and their use-cases.</p>
 the appropriate quantization configuration, and a forward loop as inputs. Here is a quick example of
 quantizing a model with int8 SmoothQuant using
 <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.quantize" title="modelopt.torch.quantization.model_quant.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.quantize</span></code></a>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.quantization</span> <span class="k">as</span> <span class="nn">mtq</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.quantization</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtq</span>
 
 <span class="c1"># Setup the model</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">get_model</span><span class="p">()</span>
@@ -163,7 +161,7 @@ quantizing a model with int8 SmoothQuant using
 
 <span class="c1"># Define the forward_loop function with the model as input. The data loader should be wrapped</span>
 <span class="c1"># inside the function.</span>
-<span class="k">def</span> <span class="nf">forward_loop</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">forward_loop</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
     <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">data_loader</span><span class="p">:</span>
         <span class="n">model</span><span class="p">(</span><span class="n">batch</span><span class="p">)</span>
 
@@ -178,7 +176,7 @@ quantizing a model with int8 SmoothQuant using
 <h2>Deployment<a class="headerlink" href="#deployment" title="Link to this heading"></a></h2>
 <p>The quantized model is just like a regular Pytorch model and is ready for evaluation or deployment.</p>
 <p>Huggingface or Nemo LLM models can be exported to TensorRT-LLM using ModelOpt.
-Please see the <a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html"><span class="doc">TensorRT-LLM Deployment</span></a> guide for
+Please see the <a class="reference internal" href="../deployment/1_tensorrt_llm.html"><span class="doc">TensorRT-LLM Deployment</span></a> guide for
 more details.</p>
 <p>The model can be also exported to ONNX using
 <a class="reference external" href="https://pytorch.org/docs/stable/onnx_torchscript.html#torch.onnx.export" rel="noopener noreferrer" target="_blank">torch.onnx.export</a>.</p>

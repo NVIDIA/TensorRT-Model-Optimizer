@@ -52,7 +52,6 @@ tensor\_quant
       :nosignatures:
    
       fake_quant_impl
-      quantize_op_abstract
       scaled_e4m3_impl
    
    

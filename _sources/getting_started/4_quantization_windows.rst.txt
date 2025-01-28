@@ -36,7 +36,7 @@ Check :meth:`modelopt.onnx.quantization.quantize_int4 <modelopt.onnx.quantizatio
 
 Refer :ref:`Support_Matrix` for details about supported features and models.
 
-To know more about ONNX PTQ, refer :ref:`ONNX_PTQ_Guide_Windows` and `example script <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/windows/onnx_ptq/>`_.
+To know more about ONNX PTQ, refer :ref:`ONNX_PTQ_Guide_Windows` and `example script <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/>`_.
 
 
 Deployment

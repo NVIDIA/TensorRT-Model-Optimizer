@@ -53,7 +53,7 @@ Sparsity-aware Training (SAT) for PyTorch models
 
 After sparsifying the model, you can save the checkpoint for the sparsified model and use it for
 fine-tuning the sparsified model. Check out the
-`GitHub end-to-end example <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/llm_sparsity>`_
+`GitHub end-to-end example <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_sparsity>`_
 to learn more about SAT.
 
 
@@ -62,5 +62,5 @@ to learn more about SAT.
 **Next Steps**
     * Learn more about sparsity and advanced usage of ModelOpt sparsity in
       :doc:`Sparsity guide <../guides/5_sparsity>`.
-    * Checkout out the `end-to-end example on GitHub <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/llm_sparsity>`_
+    * Checkout out the `end-to-end example on GitHub <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_sparsity>`_
       for PTS and SAT.

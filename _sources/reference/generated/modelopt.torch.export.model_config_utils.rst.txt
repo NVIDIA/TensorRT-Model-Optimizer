@@ -39,7 +39,6 @@ model\_config\_utils
    .. autosummary::
       :nosignatures:
    
-      merge_fc1_gate
       merge_qkv
       model_config_from_dict
       model_config_to_dict

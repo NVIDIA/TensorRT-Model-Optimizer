@@ -43,5 +43,6 @@ export\_onnx
       export_fp8
       export_fp8_mha
       export_int8
+      scaled_dot_product_attention
    
    

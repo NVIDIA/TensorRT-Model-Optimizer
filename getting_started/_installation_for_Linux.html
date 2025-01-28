@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installation for Linux &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+  <title>Installation for Linux &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -91,14 +90,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -150,16 +148,16 @@
 <td><p>x86_64, aarch64 (SBSA)</p></td>
 </tr>
 <tr class="row-odd"><td><p>Python</p></td>
-<td><p>&gt;=3.8,&lt;3.13</p></td>
+<td><p>&gt;=3.9,&lt;3.13</p></td>
 </tr>
 <tr class="row-even"><td><p>CUDA</p></td>
-<td><p>&gt;=11.8 (Recommended 12.x)</p></td>
+<td><p>&gt;=12.0</p></td>
 </tr>
 <tr class="row-odd"><td><p>PyTorch (Optional)</p></td>
-<td><p>&gt;=2.0</p></td>
+<td><p>&gt;=2.1</p></td>
 </tr>
 <tr class="row-even"><td><p>ONNX Runtime (Optional)</p></td>
-<td><p>1.18</p></td>
+<td><p>1.20 (Python&gt;=3.10)</p></td>
 </tr>
 <tr class="row-odd"><td><p>TensorRT-LLM (Optional)</p></td>
 <td><p>0.15</p></td>
@@ -206,13 +204,9 @@ conda<span class="w"> </span>activate<span class="w"> </span>modelopt
 </pre></div>
 </div>
 <p>(Optional) <strong>Install desired PyTorch version</strong></p>
-<p>By default, the latest PyTorch version (<code class="docutils literal notranslate"><span class="pre">torch&gt;=2.0</span></code>) available on <code class="docutils literal notranslate"><span class="pre">pip</span></code> will
+<p>By default, the latest PyTorch version available on <code class="docutils literal notranslate"><span class="pre">pip</span></code> will
 be installed. If you want to install a specific PyTorch version for a specific CUDA version, please first
 follow the instructions to <a class="reference external" href="https://pytorch.org/get-started/locally/" rel="noopener noreferrer" target="_blank">install your desired PyTorch version</a>.</p>
-<p>(Optional) <strong>Install ONNX Runtime</strong></p>
-<p>If you wish to use ModelOpt’s ONNX features, please follow the steps from the <a class="reference external" href="https://onnxruntime.ai/docs/install/" rel="noopener noreferrer" target="_blank">ONNX Runtime documentation</a>
-to install the recommended ONNX Runtime version correctly for your CUDA version. If ONNX Runtime is not
-pre-installed, ModelOpt will use the default ONNX Runtime which may not be compatible with your CUDA version.</p>
 <p>(Optional) <strong>Install other NVIDIA dependencies</strong></p>
 <p>If you wish to use ModelOpt in conjunction with other NVIDIA libraries (e.g. TensorRT-LLM, NeMo, Triton, etc.),
 please make sure to check the ease of installation of these libraries in a local environment. If you face any

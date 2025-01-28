@@ -43,6 +43,7 @@ layer\_utils
       build_conv_config
       build_decoder_config
       build_embedding_config
+      build_fused_linear_config
       build_layernorm_config
       build_linear_config
       build_medusa_heads_config
@@ -55,6 +56,7 @@ layer\_utils
       dup_kv_weight
       get_dtype
       get_experts_linear_names
+      get_experts_list
       get_transformer_layers
       is_attention
       is_decoder_list

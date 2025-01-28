@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DirectML Deployment &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+  <title>DirectML &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -30,13 +30,12 @@
       <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="All GitHub Examples" href="../examples/0_all_examples.html" />
-    <link rel="prev" title="TensorRT-LLM Deployment" href="1_tensorrt_llm_deployment.html" /> 
+    <link rel="next" title="Unified HuggingFace Checkpoint" href="3_unified_hf.html" />
+    <link rel="prev" title="TensorRT-LLM" href="1_tensorrt_llm.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -81,19 +80,18 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">DirectML Deployment</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#id2">ONNX Runtime GenAI</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#id3">ONNX Runtime</a></li>
+<li class="toctree-l1"><a class="reference internal" href="1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">DirectML</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#id1">ONNX Runtime GenAI</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id2">ONNX Runtime</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#collection-of-optimized-onnx-models">Collection of optimized ONNX models</a></li>
 </ul>
 </li>
+<li class="toctree-l1"><a class="reference internal" href="3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -120,9 +118,9 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">DirectML Deployment</li>
+      <li class="breadcrumb-item active">DirectML</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/deployment/2_directml_deployment.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/deployment/2_directml.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -130,11 +128,11 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="directml-deployment">
-<span id="id1"></span><h1>DirectML Deployment<a class="headerlink" href="#directml-deployment" title="Link to this heading"></a></h1>
+  <section id="directml">
+<span id="directml-deployment"></span><h1>DirectML<a class="headerlink" href="#directml" title="Link to this heading"></a></h1>
 <p>Once an ONNX FP16 model is quantized using TensorRT Model Optimizer on Windows, the resulting quantized ONNX model can be deployed on the DirectML backend via the <a class="reference external" href="https://onnxruntime.ai/docs/genai/" rel="noopener noreferrer" target="_blank">ONNX Runtime GenAI</a> or <a class="reference external" href="https://onnxruntime.ai/" rel="noopener noreferrer" target="_blank">ONNX Runtime</a>.</p>
-<section id="id2">
-<h2>ONNX Runtime GenAI<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<section id="id1">
+<h2>ONNX Runtime GenAI<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
 <p>ONNX Runtime GenAI offers a streamlined solution for deploying generative AI models with optimized performance and functionality.</p>
 <p><strong>Key Features</strong>:</p>
 <ul class="simple">
@@ -151,8 +149,8 @@
 <li><p>Follow the <a class="reference external" href="https://onnxruntime.ai/docs/genai/tutorials/" rel="noopener noreferrer" target="_blank">ORT GenAI tutorials</a> for a step-by-step walkthrough of inference with DirectML using the ORT GenAI package (e.g., refer to the Phi3 tutorial).</p></li>
 </ul>
 </section>
-<section id="id3">
-<h2>ONNX Runtime<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
+<section id="id2">
+<h2>ONNX Runtime<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
 <p>Alternatively, the quantized model can be deployed using <a class="reference external" href="https://onnxruntime.ai/" rel="noopener noreferrer" target="_blank">ONNX Runtime</a>. This method requires manual management of model inputs, including KV cache inputs and attention masks, for each iteration within the generation loop.</p>
 <p><strong>Examples and Documentation</strong></p>
 <p>For further details and examples, please refer to the <a class="reference external" href="https://onnxruntime.ai/docs/api/python/" rel="noopener noreferrer" target="_blank">ONNX Runtime documentation</a>.</p>
@@ -167,8 +165,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="1_tensorrt_llm_deployment.html" class="btn btn-neutral float-left" title="TensorRT-LLM Deployment" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="../examples/0_all_examples.html" class="btn btn-neutral float-right" title="All GitHub Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="1_tensorrt_llm.html" class="btn btn-neutral float-left" title="TensorRT-LLM" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="3_unified_hf.html" class="btn btn-neutral float-right" title="Unified HuggingFace Checkpoint" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

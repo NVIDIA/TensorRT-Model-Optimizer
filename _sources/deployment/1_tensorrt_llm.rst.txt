@@ -1,5 +1,5 @@
 ==========================
-TensorRT-LLM Deployment
+TensorRT-LLM
 ==========================
 
 .. note::

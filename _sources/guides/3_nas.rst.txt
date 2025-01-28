@@ -181,6 +181,8 @@ Prerequisites
 During NAS training, you can use your existing training infrastructure. However, we recommend
 you make the following modifications to your training hyperparameters:
 
+For AutoNAS:
+
 #.  Increase the training time (epochs) by 2-3x.
 
 #.  Make sure that the learning rate schedule is adjusted for the longer training time.

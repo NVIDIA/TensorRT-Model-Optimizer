@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ONNX Quantization - Windows &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>ONNX Quantization - Windows &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -75,6 +74,7 @@
 <li class="toctree-l2"><a class="reference internal" href="../_basic_quantization.html">Basic Concepts</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../_choosing_quant_methods.html">Best practices to choose the right quantization methods</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../_pytorch_quantization.html">PyTorch Quantization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../_customized_model_quantization.html">Guides to quantize a customized model from Hugging Face for TensorRT-LLM deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="../_onnx_quantization.html">ONNX Quantization - Linux (Beta)</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">ONNX Quantization - Windows</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#modelopt-windows-quantization">ModelOpt-Windows Quantization</a></li>
@@ -94,14 +94,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -196,7 +195,7 @@
 <span class="c1"># Note that names and shapes of inputs and outputs can vary from model to model, and also between ONNX exporter tools.</span>
 <span class="c1"># So, use following code as reference for preparing calibration data for your model.</span>
 
-<span class="k">def</span> <span class="nf">make_model_input</span><span class="p">(</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">make_model_input</span><span class="p">(</span>
     <span class="n">config</span><span class="p">,</span>
     <span class="n">input_ids_arg</span><span class="p">,</span>
     <span class="n">attention_mask_arg</span><span class="p">,</span>
@@ -262,7 +261,7 @@
     <span class="k">return</span> <span class="n">inputs</span>
 
 
-<span class="k">def</span> <span class="nf">get_calib_inputs</span><span class="p">(</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_calib_inputs</span><span class="p">(</span>
     <span class="n">dataset_name</span><span class="p">,</span>
     <span class="n">model_name</span><span class="p">,</span>
     <span class="n">cache_dir</span><span class="p">,</span>
@@ -275,14 +274,17 @@
     <span class="n">add_past_kv_inputs</span><span class="p">,</span>
     <span class="n">max_calib_rows_to_load</span><span class="p">,</span>
     <span class="n">add_position_ids</span><span class="p">,</span>
+    <span class="n">trust_remote_code</span><span class="p">,</span>
 <span class="p">):</span>
     <span class="c1"># from transformers import LlamaConfig</span>
-    <span class="c1"># config = LlamaConfig.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True)</span>
+    <span class="c1"># config = LlamaConfig.from_pretrained(</span>
+    <span class="c1">#     model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=trust_remote_code</span>
+    <span class="c1"># )</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">AutoConfig</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
-        <span class="n">model_name</span><span class="p">,</span> <span class="n">use_auth_token</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache_dir</span><span class="o">=</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">trust_remote_code</span><span class="o">=</span><span class="kc">True</span>
+        <span class="n">model_name</span><span class="p">,</span> <span class="n">use_auth_token</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache_dir</span><span class="o">=</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">trust_remote_code</span><span class="o">=</span><span class="n">trust_remote_code</span>
     <span class="p">)</span>
     <span class="n">tokenizer</span> <span class="o">=</span> <span class="n">AutoTokenizer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
-        <span class="n">model_name</span><span class="p">,</span> <span class="n">use_auth_token</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache_dir</span><span class="o">=</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">trust_remote_code</span><span class="o">=</span><span class="kc">True</span>
+        <span class="n">model_name</span><span class="p">,</span> <span class="n">use_auth_token</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cache_dir</span><span class="o">=</span><span class="n">cache_dir</span><span class="p">,</span> <span class="n">trust_remote_code</span><span class="o">=</span><span class="n">trust_remote_code</span>
     <span class="p">)</span>
     <span class="n">tokenizer</span><span class="o">.</span><span class="n">add_special_tokens</span><span class="p">({</span><span class="s2">&quot;pad_token&quot;</span><span class="p">:</span> <span class="s2">&quot;[PAD]&quot;</span><span class="p">})</span>
     <span class="n">tokenizer</span><span class="o">.</span><span class="n">pad_token</span> <span class="o">=</span> <span class="n">tokenizer</span><span class="o">.</span><span class="n">eos_token</span>
@@ -339,7 +341,7 @@
 </div>
 <p><strong>Call Quantization API</strong></p>
 <p>The example below demonstrates how to quantize an ONNX model using ModelOpt-Windows with INT4 precision.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">modelopt.onnx.quantization.int4</span> <span class="kn">import</span> <span class="n">quantize</span> <span class="k">as</span> <span class="n">quantize_int4</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.onnx.quantization.int4</span><span class="w"> </span><span class="kn">import</span> <span class="n">quantize</span> <span class="k">as</span> <span class="n">quantize_int4</span>
 <span class="c1"># import other packages as needed</span>
 <span class="n">calib_inputs</span> <span class="o">=</span> <span class="n">get_calib_inputs</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">model_name</span><span class="p">,</span> <span class="n">cache_dir</span><span class="p">,</span> <span class="n">calib_size</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span><span class="o">...</span><span class="p">)</span>
 <span class="n">quantized_onnx_model</span> <span class="o">=</span> <span class="n">quantize_int4</span><span class="p">(</span>
@@ -355,7 +357,7 @@
 <p>ModelOpt-Windows uses ONNX’s <a class="reference external" href="https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html" rel="noopener noreferrer" target="_blank">DequantizeLinear</a> (DQ) nodes, which support INT4 data-type from opset version 21 onward. Ensure the model’s opset version is 21 or higher, for deployment on DirectML backend.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Example steps to check opset</span>
 
-<span class="k">def</span> <span class="nf">get_onnx_opset</span><span class="p">(</span><span class="n">model_path</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_onnx_opset</span><span class="p">(</span><span class="n">model_path</span><span class="p">):</span>
   <span class="c1"># Load the ONNX model</span>
   <span class="n">model</span> <span class="o">=</span> <span class="n">onnx</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">model_path</span><span class="p">)</span>
 
@@ -408,7 +410,7 @@
 </section>
 <section id="deploy-quantized-onnx-model">
 <h2>Deploy Quantized ONNX Model<a class="headerlink" href="#deploy-quantized-onnx-model" title="Link to this heading"></a></h2>
-<p>Inference of the quantized models can be done using tools like <a class="reference external" href="https://github.com/microsoft/onnxruntime-genai/" rel="noopener noreferrer" target="_blank">GenAI</a>, <a class="reference external" href="https://onnxruntime.ai//" rel="noopener noreferrer" target="_blank">OnnxRunTime (ORT)</a>. These APIs can do inference on backends like DML. For details about DirectML deployment, see <a class="reference internal" href="../../deployment/2_directml_deployment.html#directml-deployment"><span class="std std-ref">DirectML Deployment</span></a>.</p>
+<p>Inference of the quantized models can be done using tools like <a class="reference external" href="https://github.com/microsoft/onnxruntime-genai/" rel="noopener noreferrer" target="_blank">GenAI</a>, <a class="reference external" href="https://onnxruntime.ai//" rel="noopener noreferrer" target="_blank">OnnxRunTime (ORT)</a>. These APIs can do inference on backends like DML. For details about DirectML deployment, see <a class="reference internal" href="../../deployment/2_directml.html#directml-deployment"><span class="std std-ref">DirectML</span></a>.</p>
 </section>
 </section>
 

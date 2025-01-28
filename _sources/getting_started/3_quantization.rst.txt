@@ -55,7 +55,7 @@ Deployment
 The quantized model is just like a regular Pytorch model and is ready for evaluation or deployment.
 
 Huggingface or Nemo LLM models can be exported to TensorRT-LLM using ModelOpt.
-Please see the :doc:`TensorRT-LLM Deployment <../deployment/1_tensorrt_llm_deployment>` guide for
+Please see the :doc:`TensorRT-LLM Deployment <../deployment/1_tensorrt_llm>` guide for
 more details.
 
 The model can be also exported to ONNX using

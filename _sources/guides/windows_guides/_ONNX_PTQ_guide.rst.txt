@@ -156,14 +156,17 @@ See the code example below for details.
       add_past_kv_inputs,
       max_calib_rows_to_load,
       add_position_ids,
+      trust_remote_code,
   ):
       # from transformers import LlamaConfig
-      # config = LlamaConfig.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True)
+      # config = LlamaConfig.from_pretrained(
+      #     model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=trust_remote_code
+      # )
       config = AutoConfig.from_pretrained(
-          model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True
+          model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=trust_remote_code
       )
       tokenizer = AutoTokenizer.from_pretrained(
-          model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True
+          model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=trust_remote_code
       )
       tokenizer.add_special_tokens({"pad_token": "[PAD]"})
       tokenizer.pad_token = tokenizer.eos_token

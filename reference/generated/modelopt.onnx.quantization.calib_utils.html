@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>calib_utils &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>calib_utils &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -190,15 +188,24 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>onnx_path</strong> (<em>str</em>) – Path to the ONNX model.</p></li>
-<li><p><strong>calibration_data</strong> (<em>ndarray</em><em> | </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>ndarray</em><em>]</em>) – Numpy data to calibrate the model.
+<li><p><strong>calibration_data</strong> (<em>ndarray</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>ndarray</em><em>]</em>) – Numpy data to calibrate the model.
 Ex. If a model has input shapes like {“sample”: (2, 4, 64, 64), “timestep”: (1,),
 “encoder_hidden_states”: (2, 16, 768)}, the calibration data should have dictionary
 of tensors with shapes like {“sample”: (1024, 4, 64, 64), “timestep”: (512,),
 “encoder_hidden_states”: (1024, 16, 768)} to calibrate with 512 samples.</p></li>
-<li><p><strong>calibration_shapes</strong> (<em>str</em>) – </p></li>
+<li><p><strong>calibration_shapes</strong> (<em>str</em>) – A string representing the shape of each input tensors for one calibration step.
+If the shape is not provided for an input tensor, the shape is inferred from the onnx model directly,
+with all the unknown dims filled with 1.</p></li>
 </ul>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.calib_utils.CalibrationDataProvider.get_first">
+<span class="sig-name descname"><span class="pre">get_first</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.calib_utils.CalibrationDataProvider.get_first" title="Link to this definition"></a></dt>
+<dd><p>Returns the first calibration input from the reader without incrementing the iterator.</p>
+<p>This is useful when doing a test run for the session.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -226,6 +233,13 @@ of tensors with shapes like {“sample”: (1024, 4, 64, 64), “timestep”: (5
 </ul>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.calib_utils.RandomDataProvider.get_first">
+<span class="sig-name descname"><span class="pre">get_first</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.calib_utils.RandomDataProvider.get_first" title="Link to this definition"></a></dt>
+<dd><p>Returns the first calibration input from the reader without incrementing the iterator.</p>
+<p>This is useful when doing a test run for the session.</p>
 </dd></dl>
 
 <dl class="py method">

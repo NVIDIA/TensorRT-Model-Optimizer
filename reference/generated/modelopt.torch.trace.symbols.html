@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>symbols &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>symbols &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -177,7 +175,7 @@
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.trace.symbols.SymInfo.SymDict">
 <span class="sig-name descname"><span class="pre">SymDict</span></span><a class="headerlink" href="#modelopt.torch.trace.symbols.SymInfo.SymDict" title="Link to this definition"></a></dt>
-<dd><p>alias of <code class="xref py py-class docutils literal notranslate"><span class="pre">Dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><code class="xref py py-class docutils literal notranslate"><span class="pre">Symbol</span></code></a>]</p>
+<dd><p>alias of <code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code>[<code class="xref py py-class docutils literal notranslate"><span class="pre">str</span></code>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><code class="xref py py-class docutils literal notranslate"><span class="pre">Symbol</span></code></a>]</p>
 </dd></dl>
 
 <dl class="py method">
@@ -278,7 +276,7 @@
 <dd><p>Return an iterator over the dictionary.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Generator</em>[<em>Tuple</em>[<em>Module</em>, <em>Dict</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>]], <em>None</em>, <em>None</em>]</p>
+<dd class="field-odd"><p><em>Generator</em>[<em>tuple</em>[<em>Module</em>, <em>dict</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>]], <em>None</em>, <em>None</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -289,7 +287,7 @@
 <dd><p>Yield the name (from self._mod_to_name) and the associated module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Generator</em>[<em>Tuple</em>[<em>str</em>, <em>Module</em>], <em>None</em>, <em>None</em>]</p>
+<dd class="field-odd"><p><em>Generator</em>[<em>tuple</em>[<em>str</em>, <em>Module</em>], <em>None</em>, <em>None</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -300,7 +298,7 @@
 <dd><p>Yield the name (from self._mod_to_name) and the associated symbolic module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Generator</em>[<em>Tuple</em>[<em>str</em>, <em>Dict</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>]], <em>None</em>, <em>None</em>]</p>
+<dd class="field-odd"><p><em>Generator</em>[<em>tuple</em>[<em>str</em>, <em>dict</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>]], <em>None</em>, <em>None</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -323,7 +321,7 @@
 <dd class="field-even"><p><em>(name, Symbol)</em> – Tuple containing the name and symbol.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Generator</em>[<em>Tuple</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>], <em>None</em>, <em>None</em>]</p>
+<dd class="field-odd"><p><em>Generator</em>[<em>tuple</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>], <em>None</em>, <em>None</em>]</p>
 </dd>
 </dl>
 <p>Default behavior is to iterate over free, dynamic, searchable, or constant symbols. Set
@@ -342,7 +340,7 @@ iterated over. If either of <code class="docutils literal notranslate"><span cla
 <dd class="field-odd"><p><strong>key</strong> (<em>Module</em>) – </p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Dict</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>]</p>
+<dd class="field-even"><p><em>dict</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -365,7 +363,7 @@ iterated over. If either of <code class="docutils literal notranslate"><span cla
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>nn_cls</strong> (<em>Type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>List</em><em>[</em><em>Type</em><em>[</em><em>Module</em><em>]</em><em>]</em>) – The nn module class for which the function is registered.</p></li>
+<li><p><strong>nn_cls</strong> (<em>type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>list</em><em>[</em><em>type</em><em>[</em><em>Module</em><em>]</em><em>]</em>) – The nn module class for which the function is registered.</p></li>
 <li><p><strong>is_explicit_leaf</strong> (<em>bool</em>) – Whether the module is an explicit leaf, i.e., whether it should be
 treated as leaf during tracing.</p></li>
 </ul>
@@ -379,7 +377,7 @@ treated as leaf during tracing.</p></li>
 </dl>
 <p>An example for registering the symbolic information of a module is shown below:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="nd">@SymMap</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">)</span>
-<span class="k">def</span> <span class="nf">get_linear_sym_info</span><span class="p">(</span><span class="n">mod</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SymInfo</span><span class="p">:</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_linear_sym_info</span><span class="p">(</span><span class="n">mod</span><span class="p">:</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SymInfo</span><span class="p">:</span>
     <span class="n">in_features</span> <span class="o">=</span> <span class="n">Symbol</span><span class="p">(</span><span class="n">cl_type</span><span class="o">=</span><span class="n">Symbol</span><span class="o">.</span><span class="n">CLType</span><span class="o">.</span><span class="n">INCOMING</span><span class="p">,</span> <span class="n">elastic_dims</span><span class="o">=</span><span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">})</span>
     <span class="n">out_features</span> <span class="o">=</span> <span class="n">Symbol</span><span class="p">(</span>
         <span class="n">is_searchable</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">cl_type</span><span class="o">=</span><span class="n">Symbol</span><span class="o">.</span><span class="n">CLType</span><span class="o">.</span><span class="n">OUTGOING</span><span class="p">,</span> <span class="n">elastic_dims</span><span class="o">=</span><span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">}</span>
@@ -414,7 +412,7 @@ treated as leaf during tracing.</p></li>
 <p>It throws a KeyError if the module is not registered.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>nn_cls</strong> (<em>Type</em><em>[</em><em>Module</em><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>nn_cls</strong> (<em>type</em><em>[</em><em>Module</em><em>]</em>) – </p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -474,7 +472,7 @@ treated as leaf during tracing.</p></li>
 <li><p><strong>is_searchable</strong> (<em>bool</em>) – </p></li>
 <li><p><strong>is_sortable</strong> (<em>bool</em>) – </p></li>
 <li><p><strong>cl_type</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol.CLType" title="modelopt.torch.trace.symbols.Symbol.CLType"><em>CLType</em></a>) – </p></li>
-<li><p><strong>elastic_dims</strong> (<em>Set</em><em>[</em><em>int</em><em>] </em><em>| </em><em>None</em>) – </p></li>
+<li><p><strong>elastic_dims</strong> (<em>set</em><em>[</em><em>int</em><em>] </em><em>| </em><em>None</em>) – </p></li>
 </ul>
 </dd>
 </dl>
@@ -493,7 +491,7 @@ treated as leaf during tracing.</p></li>
 <p>After this call, <code class="docutils literal notranslate"><span class="pre">is_constant</span> <span class="pre">==</span> <span class="pre">True</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>_memo</strong> (<em>Set</em><em>[</em><a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>] </em><em>| </em><em>None</em>) – </p>
+<dd class="field-odd"><p><strong>_memo</strong> (<em>set</em><em>[</em><a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>] </em><em>| </em><em>None</em>) – </p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -503,7 +501,7 @@ treated as leaf during tracing.</p></li>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="modelopt.torch.trace.symbols.Symbol.elastic_dims">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">elastic_dims</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Set</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.trace.symbols.Symbol.elastic_dims" title="Link to this definition"></a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">elastic_dims</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.trace.symbols.Symbol.elastic_dims" title="Link to this definition"></a></dt>
 <dd><p>Returns the set of tensor dimensions that refer to this symbol.</p>
 <p>Note that this refers to the dimension of the tensor incoming or outgoing from the layer,
 <strong>not</strong> the parameters of the module. E.g. for a Conv2d layer, this refers to the “C” in

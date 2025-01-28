@@ -26,6 +26,9 @@ utils
    modelopt.torch.utils.graph
 
 
+   modelopt.torch.utils.image_processor
+
+
    modelopt.torch.utils.import_utils
 
 
@@ -45,6 +48,9 @@ utils
 
 
    modelopt.torch.utils.tensor
+
+
+   modelopt.torch.utils.vlm_dataset_utils
 
 
 

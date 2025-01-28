@@ -41,6 +41,7 @@ extensions
    
       get_cuda_ext
       get_cuda_ext_fp8
+      get_cuda_ext_mx
       precompile
    
    

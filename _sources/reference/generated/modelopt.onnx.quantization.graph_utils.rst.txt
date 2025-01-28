@@ -45,11 +45,11 @@ graph\_utils
       convert_fp16_io
       expand_node_names_from_patterns
       filter_quantizable_kgen_heads
-      find_fp8_mha_partitions
       find_mha_partitions
       find_nodes_from_matmul_to_exclude
       find_nodes_from_mha_to_exclude
       find_nodes_to_exclude
+      get_extended_model_outputs
       get_fusible_backbone
       get_tensor_consumer_nodes
       get_tensor_producer_nodes
@@ -58,6 +58,7 @@ graph\_utils
       insert_fp8_mha_casts
       insert_matmul_casts
       is_const_input
+      match_fp8_mha_pattern
       print_stat
       remove_partial_input_qdq
    

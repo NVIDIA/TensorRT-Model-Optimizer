@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>modelopt.onnx.quantization.quantize &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>modelopt.onnx.quantization.quantize &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -166,18 +164,18 @@
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>onnx_path</strong> (<em>str</em>) – Path to the input ONNX model.</p></li>
 <li><p><strong>quantize_mode</strong> (<em>str</em>) – Quantization mode. One of ‘int8’ (default), ‘int4’ and ‘fp8’.</p></li>
-<li><p><strong>calibration_data</strong> (<em>ndarray</em><em> | </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>ndarray</em><em>]</em>) – Calibration data, either a numpy array or list/dict of numpy arrays.</p></li>
+<li><p><strong>calibration_data</strong> (<em>ndarray</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>ndarray</em><em>]</em>) – Calibration data, either a numpy array or list/dict of numpy arrays.</p></li>
 <li><p><strong>calibration_method</strong> (<em>str</em>) – Calibration method choices. Options are int8: ‘entropy’ (default) and ‘max’,
 fp8: ‘max’ (default) and int4: ‘awq_clip’ (default), ‘awq_lite’, ‘awq_full’ and ‘rtn_dq’.</p></li>
 <li><p><strong>calibration_cache_path</strong> (<em>str</em>) – Path to pre-calculated activation tensor ranges, also known as calibration cache.</p></li>
-<li><p><strong>calibration_eps</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – Priority order for the execution providers (EP) to calibrate the model.
+<li><p><strong>calibration_eps</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – Priority order for the execution providers (EP) to calibrate the model.
 Any subset of [‘cuda:x’, ‘dml:x’, ‘cpu’, ‘trt’], where ‘x’ is the device id.</p></li>
-<li><p><strong>op_types_to_quantize</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of op types to quantize. If None (default), all supported operators are quantized.
+<li><p><strong>op_types_to_quantize</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – List of op types to quantize. If None (default), all supported operators are quantized.
 This flag does not support regular expression.</p></li>
-<li><p><strong>op_types_to_exclude</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of op types to exclude from quantization. This flag does not support regular expression.</p></li>
-<li><p><strong>nodes_to_quantize</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of node names to quantize. If None (default), all supported nodes are quantized.
+<li><p><strong>op_types_to_exclude</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – List of op types to exclude from quantization. This flag does not support regular expression.</p></li>
+<li><p><strong>nodes_to_quantize</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – List of node names to quantize. If None (default), all supported nodes are quantized.
 This flag supports regular expression.</p></li>
-<li><p><strong>nodes_to_exclude</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – List of node names to exclude from quantization. This flag supports regular expression.</p></li>
+<li><p><strong>nodes_to_exclude</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – List of node names to exclude from quantization. This flag supports regular expression.</p></li>
 <li><p><strong>use_external_data_format</strong> (<em>bool</em>) – If True, separate data path will be used to store the weights of the quantized model.</p></li>
 <li><p><strong>keep_intermediate_files</strong> (<em>bool</em>) – If True, keep all intermediate files generated during the ONNX model’s conversion/calibration.</p></li>
 <li><p><strong>output_path</strong> (<em>str</em>) – Output filename to save the quantized ONNX model.
@@ -187,7 +185,7 @@ If None, save in the same directory as the original ONNX model with .quant suffi
 For multiple paths, separate them with a semicolon, i.e.: “lib_1.so;lib_2.so”.
 If this is not None or the model has custom ops, TensorrtExecutionProvider becomes the first choice as
 calibration execution provider, meaning that the TensorRT is a requirement.</p></li>
-<li><p><strong>trt_plugins_precision</strong> (<em>List</em><em>[</em><em>str</em><em>]</em>) – A space-separated list indicating the precision for each custom op.
+<li><p><strong>trt_plugins_precision</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – A space-separated list indicating the precision for each custom op.
 Each item should have the format &lt;op_type&gt;:&lt;precision&gt;, where precision can be fp32 (default) or fp16.
 For example: op_type_1:fp16 op_type_2:fp32.</p></li>
 <li><p><strong>high_precision_dtype</strong> (<em>str</em>) – High precision data type, one of [‘fp32’, ‘fp16’]. If high_precision_dtype == ‘fp16’, model’s weight and

@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dynamic &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>dynamic &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -334,10 +332,10 @@ arguments and the module will remain unchanged.</p>
 <dd class="field-odd"><p><strong>configurable</strong> (<em>bool</em><em> | </em><em>None</em>) – Whether to include configurable hparams.</p>
 </dd>
 <dt class="field-even">Yields<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>(name, Hparam)</em> – Tuple containing the name and hparam.</p>
+<dd class="field-even"><p><em>(name, Hparam)</em> – tuple containing the name and hparam.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Iterator</em>[<em>Tuple</em>[<em>str</em>, <a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>]]</p>
+<dd class="field-odd"><p><em>Iterator</em>[<em>tuple</em>[<em>str</em>, <a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>]]</p>
 </dd>
 </dl>
 <p>Default behavior is to iterate over configurable and non-configurable hparams. Set
@@ -348,7 +346,7 @@ arguments and the module will remain unchanged.</p>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="modelopt.torch.opt.dynamic.DynamicModule.original_cls">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">original_cls</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Type</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.dynamic.DynamicModule.original_cls" title="Link to this definition"></a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">original_cls</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.dynamic.DynamicModule.original_cls" title="Link to this definition"></a></dt>
 <dd><p>Return the original class of the dynamic module.</p>
 </dd></dl>
 
@@ -399,7 +397,7 @@ callbacks are re-registered together with the new value.</p>
 <dd class="field-even"><p>A dict of <code class="docutils literal notranslate"><span class="pre">(parameter_name,</span> <span class="pre">choice)</span></code> that specifies an active subnet.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Dict</em>[<em>str</em>, <em>Any</em>]</p>
+<dd class="field-odd"><p><em>dict</em>[<em>str</em>, <em>Any</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -411,7 +409,7 @@ callbacks are re-registered together with the new value.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>rules</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em><em> | </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em><em>]</em><em>] </em><em>| </em><em>None</em>) – A dictionary containing rules for the dynamic modules.</p></li>
+<li><p><strong>rules</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em><em>]</em><em>] </em><em>| </em><em>None</em>) – A dictionary containing rules for the dynamic modules.</p></li>
 <li><p><strong>dm_registry</strong> (<em>_DMRegistryCls</em>) – A registry containing the dynamic modules to be converted to.</p></li>
 </ul>
 </dd>
@@ -420,7 +418,7 @@ callbacks are re-registered together with the new value.</p>
 converted dynamic modules as values.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Dict</em>[<em>str</em>, <em>Module</em>]</p>
+<dd class="field-odd"><p><em>dict</em>[<em>str</em>, <em>Module</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -495,10 +493,10 @@ than one choice.</p>
 <dd><p>Recursively yield the name and instance of <em>all</em> DynamicModules.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Yields<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>(name, DynamicModule)</em> – Tuple containing the name and module.</p>
+<dd class="field-odd"><p><em>(name, DynamicModule)</em> – tuple containing the name and module.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Iterator</em>[<em>Tuple</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.opt.dynamic.DynamicModule" title="modelopt.torch.opt.dynamic.DynamicModule"><em>DynamicModule</em></a>]]</p>
+<dd class="field-even"><p><em>Iterator</em>[<em>tuple</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.opt.dynamic.DynamicModule" title="modelopt.torch.opt.dynamic.DynamicModule"><em>DynamicModule</em></a>]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -512,10 +510,10 @@ than one choice.</p>
 <dd class="field-odd"><p><strong>configurable</strong> (<em>bool</em><em> | </em><em>None</em>) – Whether to include configurable hparams.</p>
 </dd>
 <dt class="field-even">Yields<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>(name, Hparam)</em> – Tuple containing the name and hparam.</p>
+<dd class="field-even"><p><em>(name, Hparam)</em> – tuple containing the name and hparam.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Iterator</em>[<em>Tuple</em>[<em>str</em>, <a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>]]</p>
+<dd class="field-odd"><p><em>Iterator</em>[<em>tuple</em>[<em>str</em>, <a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>]]</p>
 </dd>
 </dl>
 <p>Default behavior is to iterate over all hparams. If <code class="docutils literal notranslate"><span class="pre">configurable</span></code> is set to <code class="docutils literal notranslate"><span class="pre">True</span></code>,
@@ -531,7 +529,7 @@ configurable and non-configurable hparams.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>config</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
+<li><p><strong>config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
 <li><p><strong>strict</strong> (<em>bool</em>) – </p></li>
 </ul>
 </dd>

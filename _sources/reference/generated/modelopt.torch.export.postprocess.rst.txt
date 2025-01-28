@@ -44,5 +44,7 @@ postprocess
       postprocess_model_config
       postprocess_tensors
       update_lm_head_quantization
+      view_as_float8_e4m3fn_if_needed
+      view_as_uint8_if_needed
    
    

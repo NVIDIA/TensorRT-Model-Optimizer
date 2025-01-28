@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>algorithms &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>algorithms &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -181,7 +179,7 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – The model to be profiled. Can be converted or not.</p></li>
-<li><p><strong>dummy_input</strong> (<em>Any</em><em> | </em><em>Tuple</em><em> | </em><em>None</em>) – <p>Arguments of <code class="docutils literal notranslate"><span class="pre">model.forward()</span></code>. This is used for exporting and calculating
+<li><p><strong>dummy_input</strong> (<em>Any</em><em> | </em><em>tuple</em><em> | </em><em>None</em>) – <p>Arguments of <code class="docutils literal notranslate"><span class="pre">model.forward()</span></code>. This is used for exporting and calculating
 inference-based metrics, such as latency/FLOPs. The format of <code class="docutils literal notranslate"><span class="pre">dummy_inputs</span></code> follows
 the convention of the <code class="docutils literal notranslate"><span class="pre">args</span></code> argument in
 <a class="reference external" href="https://pytorch.org/docs/stable/onnx.html#torch.onnx.export" rel="noopener noreferrer" target="_blank">torch.onnx.export</a>.
@@ -224,7 +222,7 @@ for more info.</p>
 <p>Note that if you provide a <code class="docutils literal notranslate"><span class="pre">{arg_name}</span></code> with batch size <code class="docutils literal notranslate"><span class="pre">b</span></code>, the results will be
 computed based on batch size <code class="docutils literal notranslate"><span class="pre">b</span></code>.</p>
 </p></li>
-<li><p><strong>constraints</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em> | </em><em>float</em><em> | </em><em>Dict</em><em> | </em><em>None</em><em>] </em><em>| </em><em>ConstraintsFunc</em><em> | </em><em>None</em>) – <p>The dictionary from constraint name to upper bound the searched model has to satisfy.
+<li><p><strong>constraints</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em> | </em><em>float</em><em> | </em><em>dict</em><em> | </em><em>None</em><em>] </em><em>| </em><em>ConstraintsFunc</em><em> | </em><em>None</em>) – <p>The dictionary from constraint name to upper bound the searched model has to satisfy.
 Currently, we support <code class="docutils literal notranslate"><span class="pre">flops</span></code> and <code class="docutils literal notranslate"><span class="pre">params</span></code> as constraints.
 The constraints dictionary generally takes the following form:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">constraints</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="mf">5.0e6</span><span class="p">,</span> <span class="s2">&quot;flops&quot;</span><span class="p">:</span> <span class="mf">4.5e8</span><span class="p">}</span>
@@ -249,11 +247,11 @@ The constraints dictionary generally takes the following form:</p>
 randomly sampled subnets (instead of the evaluation result from deterministic
 centroid subnet). Set use_centroid to True to use the deterministic centroid for
 profiling.</p></li>
-<li><p><strong>deployment</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em>] </em><em>| </em><em>None</em>) – </p></li>
+<li><p><strong>deployment</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em>] </em><em>| </em><em>None</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Tuple</em>[<em>bool</em>, <em>Dict</em>[<em>str</em>, <em>Dict</em>]]</p>
+<dd class="field-even"><p><em>tuple</em>[<em>bool</em>, <em>dict</em>[<em>str</em>, <em>dict</em>]]</p>
 </dd>
 </dl>
 <dl class="simple">
@@ -275,7 +273,7 @@ size of the search space, number of configurable hparams.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – The converted model to be searched.</p></li>
-<li><p><strong>constraints</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em> | </em><em>float</em><em> | </em><em>Dict</em><em> | </em><em>None</em><em>]</em>) – <p>The dictionary from constraint name to upper bound the searched model has to satisfy.
+<li><p><strong>constraints</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>str</em><em> | </em><em>float</em><em> | </em><em>dict</em><em> | </em><em>None</em><em>]</em>) – <p>The dictionary from constraint name to upper bound the searched model has to satisfy.
 Currently, we support <code class="docutils literal notranslate"><span class="pre">flops</span></code> and <code class="docutils literal notranslate"><span class="pre">params</span></code> as constraints.
 The constraints dictionary generally takes the following form:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">constraints</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;params&quot;</span><span class="p">:</span> <span class="mf">5.0e6</span><span class="p">,</span> <span class="s2">&quot;flops&quot;</span><span class="p">:</span> <span class="mf">4.5e8</span><span class="p">}</span>
@@ -291,7 +289,7 @@ The constraints dictionary generally takes the following form:</p>
 </pre></div>
 </div>
 </p></li>
-<li><p><strong>dummy_input</strong> (<em>Any</em><em> | </em><em>Tuple</em>) – <p>Arguments of <code class="docutils literal notranslate"><span class="pre">model.forward()</span></code>. This is used for exporting and calculating
+<li><p><strong>dummy_input</strong> (<em>Any</em><em> | </em><em>tuple</em>) – <p>Arguments of <code class="docutils literal notranslate"><span class="pre">model.forward()</span></code>. This is used for exporting and calculating
 inference-based metrics, such as latency/FLOPs. The format of <code class="docutils literal notranslate"><span class="pre">dummy_inputs</span></code> follows
 the convention of the <code class="docutils literal notranslate"><span class="pre">args</span></code> argument in
 <a class="reference external" href="https://pytorch.org/docs/stable/onnx.html#torch.onnx.export" rel="noopener noreferrer" target="_blank">torch.onnx.export</a>.
@@ -334,7 +332,7 @@ for more info.</p>
 <p>Note that if you provide a <code class="docutils literal notranslate"><span class="pre">{arg_name}</span></code> with batch size <code class="docutils literal notranslate"><span class="pre">b</span></code>, the results will be
 computed based on batch size <code class="docutils literal notranslate"><span class="pre">b</span></code>.</p>
 </p></li>
-<li><p><strong>config</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – <p>Additional optional arguments to configure the search. Currently, we support:</p>
+<li><p><strong>config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – <p>Additional optional arguments to configure the search. Currently, we support:</p>
 <ul>
 <li><p><code class="docutils literal notranslate"><span class="pre">checkpoint</span></code>: Path to save/restore checkpoint with dictionary containing intermediate
 search state. If provided, the intermediate search state will be automatically
@@ -394,7 +392,7 @@ refer to the documentation of the individual algorithms for more information.</p
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Tuple</em>[<em>Module</em>, <em>Dict</em>[<em>str</em>, <em>Any</em>]]</p>
+<dd class="field-even"><p><em>tuple</em>[<em>Module</em>, <em>dict</em>[<em>str</em>, <em>Any</em>]]</p>
 </dd>
 </dl>
 <dl class="simple">

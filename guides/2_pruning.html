@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pruning &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+  <title>Pruning &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -100,14 +99,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul>
@@ -148,8 +146,8 @@
 <h1>Pruning<a class="headerlink" href="#pruning" title="Link to this heading"></a></h1>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Checkout <a class="reference internal" href="../examples/1_cifar_resnet.html"><span class="doc">ResNet20 on CIFAR-10 Notebook</span></a> and
-<a class="reference internal" href="../examples/2_bert_prune_distill_quantize.html"><span class="doc">HF BERT Prune, Distill &amp; Quantize</span></a>
+<p>Checkout <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/examples/pruning/cifar_resnet.ipynb" rel="noopener noreferrer" target="_blank">ResNet20 on CIFAR-10 Notebook</a> and
+<a class="reference external" href="https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama-3/pruning-distillation" rel="noopener noreferrer" target="_blank">Llama 3.1 NeMo Minitron Pruning</a>
 for an end-to-end example of pruning.</p>
 </div>
 <p>ModelOpt provides three main pruning methods (aka <code class="docutils literal notranslate"><span class="pre">mode</span></code>) - Minitron, FastNAS and GradNAS - via a unified API
@@ -216,8 +214,8 @@ Loss function is used to run some forward and backward passes on the train datal
 </section>
 <section id="perform-pruning">
 <h3>Perform pruning<a class="headerlink" href="#perform-pruning" title="Link to this heading"></a></h3>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.prune</span> <span class="k">as</span> <span class="nn">mtp</span>
-<span class="kn">from</span> <span class="nn">torchvision.models</span> <span class="kn">import</span> <span class="n">resnet50</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.prune</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtp</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torchvision.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">resnet50</span>
 
 <span class="c1"># User-defined model</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">resnet50</span><span class="p">()</span>
@@ -228,7 +226,7 @@ Loss function is used to run some forward and backward passes on the train datal
 
 <span class="c1"># Wrap your original validation function to only take the model as input.</span>
 <span class="c1"># This function acts as the score function to rank models.</span>
-<span class="k">def</span> <span class="nf">score_func</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">score_func</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">validate</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">val_loader</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
 
 
@@ -283,7 +281,7 @@ language models like BERT, GPT-J 6B, and other LLMs.</p>
 <h3>Storing the prune results<a class="headerlink" href="#storing-the-prune-results" title="Link to this heading"></a></h3>
 <p>To store the pruned model for future use you can use
 <a class="reference internal" href="../reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.save" title="modelopt.torch.opt.conversion.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mto.save()</span></code></a>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.opt</span> <span class="k">as</span> <span class="nn">mto</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.opt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mto</span>
 
 <span class="n">mto</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">pruned_model</span><span class="p">,</span> <span class="s2">&quot;modelopt_pruned_model.pth&quot;</span><span class="p">)</span>
 </pre></div>
@@ -301,7 +299,7 @@ about all the available options for saving and restoring.</p>
 You can also specify custom mode configs to have a different search space. See
 <a class="reference internal" href="../reference/generated/modelopt.torch.prune.pruning.html#modelopt.torch.prune.pruning.prune" title="modelopt.torch.prune.pruning.prune"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtp.prune()</span></code></a> documentation for more information. An
 example config is shown below:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.prune</span> <span class="k">as</span> <span class="nn">mtp</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.prune</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtp</span>
 
 <span class="c1"># config to restrict the search space to have a Conv2d out channels as multiple of 64</span>
 <span class="n">ss_config</span> <span class="o">=</span> <span class="n">mtp</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">FastNASConfig</span><span class="p">()</span>
@@ -404,8 +402,8 @@ original training schedule:</p>
 <h3>Load the pruned model<a class="headerlink" href="#load-the-pruned-model" title="Link to this heading"></a></h3>
 <p>You can simply restore your pruned model (weights and architecture) using
 <a class="reference internal" href="../reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.restore" title="modelopt.torch.opt.conversion.restore"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mto.restore()</span></code></a>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.opt</span> <span class="k">as</span> <span class="nn">mto</span>
-<span class="kn">from</span> <span class="nn">torchvision.models</span> <span class="kn">import</span> <span class="n">resnet50</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.opt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mto</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torchvision.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">resnet50</span>
 
 <span class="c1"># Build original model</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">resnet50</span><span class="p">()</span>
@@ -431,8 +429,8 @@ to repeat the pre-training schedule with 0.5x-1x initial learning rate.</p>
 <h3>Deploy<a class="headerlink" href="#deploy" title="Link to this heading"></a></h3>
 <p>The pruned and finetuned model is now ready for downstream tasks like deployment. The model you
 have in hand now should be the best neural network meeting your deployment-aware search constraint.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.opt</span> <span class="k">as</span> <span class="nn">mto</span>
-<span class="kn">from</span> <span class="nn">torchvision.models</span> <span class="kn">import</span> <span class="n">resnet50</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.opt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mto</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torchvision.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">resnet50</span>
 
 <span class="c1"># Build original model</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">resnet50</span><span class="p">()</span>

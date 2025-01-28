@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -81,25 +80,25 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="0_changelog.html">Changelog</a><ul class="current">
 <li class="toctree-l2 current"><a class="current reference internal" href="#">Model Optimizer Changelog (Linux)</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#id1">0.21 (2024-12-03)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id2">0.19 (2024-10-23)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id3">0.17 (2024-09-11)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id4">0.15 (2024-07-25)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id5">0.13 (2024-06-14)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id7">0.11 (2024-05-07)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1">0.23 (2025-01-29)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2">0.21 (2024-12-03)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">0.19 (2024-10-23)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">0.17 (2024-09-11)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">0.15 (2024-07-25)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">0.13 (2024-06-14)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">0.11 (2024-05-07)</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="_changelog_for_Windows.html">Model Optimizer Changelog (Windows)</a></li>
@@ -141,10 +140,31 @@
   <section id="model-optimizer-changelog-linux">
 <h1>Model Optimizer Changelog (Linux)<a class="headerlink" href="#model-optimizer-changelog-linux" title="Link to this heading"></a></h1>
 <section id="id1">
-<h2>0.21 (2024-12-03)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<h2>0.23 (2025-01-29)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
-<li><p>Support TensorRT-LLM to 0.15. Examples may not be fully compatible with TensorRT-LLM 0.14.</p></li>
+<li><p>Nvidia TensorRT Model Optimizer has changed its LICENSE from NVIDIA Proprietary (library wheel) and MIT (examples) to Apache 2.0 in this first full OSS release.</p></li>
+<li><p>Deprecate Python 3.8, Torch 2.0, and Cuda 11.x support.</p></li>
+<li><p>ONNX Runtime dependency upgraded to 1.20 which no longer supports Python 3.9.</p></li>
+<li><p>In the Huggingface examples, the <code class="docutils literal notranslate"><span class="pre">trust_remote_code</span></code> is by default set to false and require users to explicitly turning it on with <code class="docutils literal notranslate"><span class="pre">--trust_remote_code</span></code> flag.</p></li>
+</ul>
+<p><strong>New Features</strong></p>
+<ul class="simple">
+<li><p>Added OCP Microscaling Formats (MX) for fake quantization support, including FP8 (E5M2, E4M3), FP6 (E3M2, E2M3), FP4, INT8.</p></li>
+<li><p>Added NVFP4 quantization support for NVIDIA Blackwell GPUs along with updated examples.</p></li>
+<li><p>Allows export lm_head quantized TensorRT-LLM checkpoint. Quantize lm_head could benefit smaller sized models at a potential cost of additional accuracy loss.</p></li>
+<li><p>TensorRT-LLM now supports Moe FP8 and w4a8_awq inference on SM89 (Ada) GPUs.</p></li>
+<li><p>New models support in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example: Llama 3.3, Phi 4.</p></li>
+<li><p>Added Minitron pruning support for NeMo 2.0 GPT models.</p></li>
+<li><p>Exclude modules in TensorRT-LLM export configs are now wildcards</p></li>
+<li><p>The unified llama3.1 FP8 huggingface checkpoints can be deployed on <a class="reference external" href="https://github.com/sgl-project/sglang/pull/2535" rel="noopener noreferrer" target="_blank">SGLang</a>.</p></li>
+</ul>
+</section>
+<section id="id2">
+<h2>0.21 (2024-12-03)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<p><strong>Backward Breaking Changes</strong></p>
+<ul class="simple">
+<li><p>Support TensorRT-LLM to 0.15. Examples (e.g. benchmark task in llm_ptq) may not be fully compatible with TensorRT-LLM 0.14.</p></li>
 <li><p>Remove the deprecated arg <code class="docutils literal notranslate"><span class="pre">export_npz</span></code> from the <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_tensorrt_llm_checkpoint</span></code> API</p></li>
 <li><p>Deprecate <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_to_vllm</span></code> API for <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_hf_checkpoint</span></code></p></li>
 <li><p>Rename decoder type <code class="docutils literal notranslate"><span class="pre">gptnext</span></code> to <code class="docutils literal notranslate"><span class="pre">gpt</span></code> in <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> to align with TensorRT-LLM model definition.</p></li>
@@ -152,7 +172,6 @@
 <p><strong>New Features</strong></p>
 <ul class="simple">
 <li><p>Added new tutorial notebooks for Minitron pruning and distillation in NVIDIA NeMo framework.</p></li>
-<li><p>Added Minitron pruning support for NeMo 2.0 GPT models.</p></li>
 <li><p>New models support in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example: Minitron, Phi3.5 MOE.</p></li>
 <li><p>New models support in the <code class="docutils literal notranslate"><span class="pre">vlm_ptq</span></code> example: Llama3.2(Mllama)</p></li>
 <li><p><code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_tensorrt_llm_checkpoint</span></code> and <code class="xref py py-meth docutils literal notranslate"><span class="pre">mt.export.export_hf_checkpoint</span></code> no longer requires the <code class="docutils literal notranslate"><span class="pre">dtype</span></code> arg.</p></li>
@@ -167,12 +186,12 @@
 <li><p>Added deprecation warnings for Python 3.8, torch 2.0, and CUDA 11.x. Support will be dropped in the next release.</p></li>
 </ul>
 </section>
-<section id="id2">
-<h2>0.19 (2024-10-23)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<section id="id3">
+<h2>0.19 (2024-10-23)<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Deprecated the summarize task in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example.</p></li>
-<li><p>Deprecated the <code class="docutils literal notranslate"><span class="pre">type</span></code> flag in the <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/llm_ptq/scripts/huggingface_example.sh" rel="noopener noreferrer" target="_blank">huggingface_example.sh</a></p></li>
+<li><p>Deprecated the <code class="docutils literal notranslate"><span class="pre">type</span></code> flag in the <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq/scripts/huggingface_example.sh" rel="noopener noreferrer" target="_blank">huggingface_example.sh</a></p></li>
 <li><p>Deprecated Python plugin support in ONNX.</p></li>
 <li><p>Support TensorRT-LLM 0.13. Examples not compatible with TensorRT-LLM 0.12.</p></li>
 <li><p><a class="reference internal" href="generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize" title="modelopt.torch.quantization.model_quant.auto_quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.auto_quantize</span></code></a> API has been updated. The API now
@@ -196,8 +215,8 @@ quantization for NeMo &amp; MCore models (in addition to HuggingFace models).</p
 <li><p>Add <code class="docutils literal notranslate"><span class="pre">num_layers</span></code> and <code class="docutils literal notranslate"><span class="pre">hidden_size</span></code> pruning support for NeMo / Megatron-core models.</p></li>
 </ul>
 </section>
-<section id="id3">
-<h2>0.17 (2024-09-11)<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
+<section id="id4">
+<h2>0.17 (2024-09-11)<a class="headerlink" href="#id4" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Deprecated <code class="docutils literal notranslate"><span class="pre">torch&lt;2.0</span></code> support.</p></li>
@@ -208,7 +227,7 @@ quantization for NeMo &amp; MCore models (in addition to HuggingFace models).</p
 <li><p>New APIs and examples: <a class="reference internal" href="generated/modelopt.torch.prune.html#module-modelopt.torch.prune" title="modelopt.torch.prune"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.prune</span></code></a> for pruning Conv, Linear, and Attention heads for
 NVIDIA Megatron-core GPT-style models (e.g. Llama 3), PyTorch Computer Vision models, and HuggingFace Bert/GPT-J models.</p></li>
 <li><p>New API: <a class="reference internal" href="generated/modelopt.torch.distill.html#module-modelopt.torch.distill" title="modelopt.torch.distill"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.distill</span></code></a> for knowledge distillation, along with guides and example.</p></li>
-<li><p>New Example: <a class="reference internal" href="../examples/2_bert_prune_distill_quantize.html"><span class="doc">HF BERT Prune, Distill &amp; Quantize</span></a>
+<li><p>New Example: <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/examples/chained_optimizations" rel="noopener noreferrer" target="_blank">HF BERT Prune, Distill &amp; Quantize</a>
 showcasing how to chain pruning, distillation, and quantization to achieve the best performance on a given model.</p></li>
 <li><p>Added INT8/FP8 DQ-only support for ONNX model.</p></li>
 <li><p>New API: <a class="reference internal" href="generated/modelopt.torch.speculative.html#module-modelopt.torch.speculative" title="modelopt.torch.speculative"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.speculative</span></code></a> for end-to-end support of Medusa models.</p></li>
@@ -232,8 +251,8 @@ no longer needed for supporting distributed data and tensor parallelism in quant
 a future release.</p></li>
 </ul>
 </section>
-<section id="id4">
-<h2>0.15 (2024-07-25)<a class="headerlink" href="#id4" title="Link to this heading"></a></h2>
+<section id="id5">
+<h2>0.15 (2024-07-25)<a class="headerlink" href="#id5" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Deprecated <code class="xref py py-class docutils literal notranslate"><span class="pre">QuantDescriptor</span></code>.
@@ -265,17 +284,17 @@ Hugging Face models with namings aligned with its original checkpoints.</p></li>
 <li><p>Added deprecation warning for <code class="docutils literal notranslate"><span class="pre">torch&lt;2.0</span></code>. Support will be dropped in next release.</p></li>
 </ul>
 </section>
-<section id="id5">
-<h2>0.13 (2024-06-14)<a class="headerlink" href="#id5" title="Link to this heading"></a></h2>
+<section id="id6">
+<h2>0.13 (2024-06-14)<a class="headerlink" href="#id6" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
-<li><p><a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/llm_ptq" rel="noopener noreferrer" target="_blank">PTQ examples</a> have been
+<li><p><a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq" rel="noopener noreferrer" target="_blank">PTQ examples</a> have been
 upgraded to use TensorRT-LLM 0.10.</p></li>
 </ul>
 <p><strong>New Features</strong></p>
 <ul class="simple">
 <li><p>Adding TensorRT-LLM checkpoint export support for Medusa decoding (official <code class="docutils literal notranslate"><span class="pre">MedusaModel</span></code> and Megatron Core <code class="docutils literal notranslate"><span class="pre">GPTModel</span></code>).</p></li>
-<li><p>Enable support for mixtral, recurrentgemma, starcoder, qwen in <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/llm_ptq" rel="noopener noreferrer" target="_blank">PTQ examples</a>.</p></li>
+<li><p>Enable support for mixtral, recurrentgemma, starcoder, qwen in <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq" rel="noopener noreferrer" target="_blank">PTQ examples</a>.</p></li>
 <li><p>Adding TensorRT-LLM checkpoint export and engine building support for sparse models.</p></li>
 <li><p>Import scales from TensorRT calibration cache and use them for quantization.</p></li>
 <li><p>(Experimental) Enable low GPU memory FP8 calibration for the Hugging Face models when the original model size does not fit into the GPU memory.</p></li>
@@ -283,8 +302,8 @@ upgraded to use TensorRT-LLM 0.10.</p></li>
 <li><p>(Experimental) Python 3.12 support added.</p></li>
 </ul>
 </section>
-<section id="id7">
-<h2>0.11 (2024-05-07)<a class="headerlink" href="#id7" title="Link to this heading"></a></h2>
+<section id="id8">
+<h2>0.11 (2024-05-07)<a class="headerlink" href="#id8" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>[!!!] The package was renamed from <code class="docutils literal notranslate"><span class="pre">ammo</span></code> to <code class="docutils literal notranslate"><span class="pre">modelopt</span></code>. The new full product

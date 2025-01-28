@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>conversion &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>conversion &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,7 +30,6 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -225,7 +223,7 @@ recall the order of modes!</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em>) – </p></li>
 <li><p><strong>config</strong> (<a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><em>ModeloptBaseConfig</em></a>) – </p></li>
-<li><p><strong>metadata</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
+<li><p><strong>metadata</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -256,7 +254,7 @@ recall the order of modes!</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em>) – </p></li>
-<li><p><strong>config</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
+<li><p><strong>config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -306,7 +304,7 @@ set to True but the module with state is not the root module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>state_dict</strong> (<em>List</em><em>[</em><em>Tuple</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em><em>]</em>) – </p></li>
+<li><p><strong>state_dict</strong> (<em>list</em><em>[</em><em>tuple</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em><em>]</em>) – </p></li>
 <li><p><strong>version</strong> (<em>str</em>) – </p></li>
 </ul>
 </dd>
@@ -322,7 +320,7 @@ set to True but the module with state is not the root module.</p>
 <dd><p>Yield the mode together with the full config and metadata from the state.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Iterator</em>[<em>Tuple</em>[<em>_ModeDescriptor</em>, <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><em>ModeloptBaseConfig</em></a>, <em>Dict</em>[<em>str</em>, <em>Any</em>]]]</p>
+<dd class="field-odd"><p><em>Iterator</em>[<em>tuple</em>[<em>_ModeDescriptor</em>, <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><em>ModeloptBaseConfig</em></a>, <em>dict</em>[<em>str</em>, <em>Any</em>]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -333,7 +331,7 @@ set to True but the module with state is not the root module.</p>
 <dd><p>Return the metadata of the model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>List</em>[<em>Tuple</em>[<em>str</em>, <em>Dict</em>[<em>str</em>, <em>Dict</em>[<em>str</em>, <em>Any</em>]]]]</p>
+<dd class="field-odd"><p><em>list</em>[<em>tuple</em>[<em>str</em>, <em>dict</em>[<em>str</em>, <em>dict</em>[<em>str</em>, <em>Any</em>]]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -398,11 +396,11 @@ set to True but the module with state is not the root module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>Type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>Tuple</em><em> | </em><em>Callable</em>) – A model-like object. Can be an nn.Module, a model class type, or a tuple.
-Tuple must be of the form <code class="docutils literal notranslate"><span class="pre">(model_cls,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args)</span></code> or
+<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>tuple</em><em> | </em><em>Callable</em>) – A model-like object. Can be an nn.Module, a model class type, or a tuple.
+tuple must be of the form <code class="docutils literal notranslate"><span class="pre">(model_cls,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args)</span></code> or
 <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args,</span> <span class="pre">kwargs)</span></code>. Model will be initialized as
 <code class="docutils literal notranslate"><span class="pre">model_cls(*args,</span> <span class="pre">**kwargs)</span></code>.</p></li>
-<li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em><em> | </em><em>List</em><em>[</em><em>_ModeDescriptor</em><em> | </em><em>str</em><em>] </em><em>| </em><em>List</em><em>[</em><em>Tuple</em><em>[</em><em>str</em><em>, </em><em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em>) – A mode, a list of modes or a list of tuples containing the mode and its config. The
+<li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em><em> | </em><em>list</em><em>[</em><em>_ModeDescriptor</em><em> | </em><em>str</em><em>] </em><em>| </em><em>list</em><em>[</em><em>tuple</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em>) – A mode, a list of modes or a list of tuples containing the mode and its config. The
 mode may be specified as a string or as the actual
 <code class="xref py py-class docutils literal notranslate"><span class="pre">_ModeDescriptor</span></code> class such as
 <code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizeModeDescriptor</span></code> class.</p></li>
@@ -430,7 +428,7 @@ error if the model already contains state.</p></li>
 <p>Note that the returned <code class="docutils literal notranslate"><span class="pre">modelopt_state</span></code> does not contain the model parameters such as weights and biases.
 <code class="docutils literal notranslate"><span class="pre">modelopt_state</span></code> is useful for saving and loading various modelopt optimization states separately from the
 model parameters. For example:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.opt</span> <span class="k">as</span> <span class="nn">mto</span>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.opt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mto</span>
 
 <span class="c1"># Save the modelopt state and model weights separately</span>
 <span class="n">torch</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">mto</span><span class="o">.</span><span class="n">modelopt_state</span><span class="p">(</span><span class="n">model</span><span class="p">),</span> <span class="s2">&quot;modelopt_state.pt&quot;</span><span class="p">)</span> <span class="c1"># Save the modelopt state</span>
@@ -447,7 +445,7 @@ model parameters. For example:</p>
 <dd class="field-even"><p>An modelopt state dictionary describing the modifications to the model.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Dict</em>[<em>str</em>, <em>Any</em>]</p>
+<dd class="field-odd"><p><em>dict</em>[<em>str</em>, <em>Any</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -459,8 +457,8 @@ model parameters. For example:</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>Type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>Tuple</em><em> | </em><em>Callable</em>) – A model-like object. Can be an nn.Module, a model class type, or a tuple.
-Tuple must be of the form <code class="docutils literal notranslate"><span class="pre">(model_cls,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args,</span> <span class="pre">kwargs)</span></code>.
+<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>tuple</em><em> | </em><em>Callable</em>) – A model-like object. Can be an nn.Module, a model class type, or a tuple.
+tuple must be of the form <code class="docutils literal notranslate"><span class="pre">(model_cls,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args,</span> <span class="pre">kwargs)</span></code>.
 Model will be initialized as <code class="docutils literal notranslate"><span class="pre">model_cls(*args,</span> <span class="pre">**kwargs)</span></code>.</p></li>
 <li><p><strong>f</strong> (<em>str</em><em> | </em><em>PathLike</em><em> | </em><em>BinaryIO</em>) – Target file location generated by <a class="reference internal" href="#modelopt.torch.opt.conversion.save" title="modelopt.torch.opt.conversion.save"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mto.save()</span></code></a>.</p></li>
 <li><p><strong>**kwargs</strong> – additional args for <code class="docutils literal notranslate"><span class="pre">torch.load()</span></code>.</p></li>
@@ -487,7 +485,7 @@ process. Please wrap the model after the restore process.</p>
 <p>This method does not restore the model parameters such as weights, biases and quantization scales.
 Please load the weights and biases with the original checkpoint loading method after restoring
 modelopt states with <cite>restore_from_modelopt_state</cite>. For example:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span> <span class="nn">modelopt.torch.opt</span> <span class="k">as</span> <span class="nn">mto</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.opt</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mto</span>
 
 <span class="n">model</span> <span class="o">=</span> <span class="o">...</span>  <span class="c1"># Create the model-like object</span>
 
@@ -503,11 +501,11 @@ modelopt states with <cite>restore_from_modelopt_state</cite>. For example:</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>Type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>Tuple</em><em> | </em><em>Callable</em>) – A model-like object. Can be an nn.Module, a model class type, or a tuple.
-Tuple must be of the form <code class="docutils literal notranslate"><span class="pre">(model_cls,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args)</span></code> or
+<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>tuple</em><em> | </em><em>Callable</em>) – A model-like object. Can be an nn.Module, a model class type, or a tuple.
+tuple must be of the form <code class="docutils literal notranslate"><span class="pre">(model_cls,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args)</span></code> or
 <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args,</span> <span class="pre">kwargs)</span></code>. Model will be initialized as
 <code class="docutils literal notranslate"><span class="pre">model_cls(*args,</span> <span class="pre">**kwargs)</span></code>.</p></li>
-<li><p><strong>modelopt_state</strong> (<em>Dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – The modelopt state dict describing the modelopt modifications to the model. The
+<li><p><strong>modelopt_state</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – The modelopt state dict describing the modelopt modifications to the model. The
 <code class="docutils literal notranslate"><span class="pre">modelopt_state</span></code> can be generated via
 <a class="reference internal" href="#modelopt.torch.opt.conversion.modelopt_state" title="modelopt.torch.opt.conversion.modelopt_state"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mto.modelopt_state()</span></code></a>.</p></li>
 </ul>

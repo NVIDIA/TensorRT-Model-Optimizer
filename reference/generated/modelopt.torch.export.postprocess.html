@@ -6,8 +6,8 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>postprocess &mdash; Model Optimizer 0.21.1</title>
-      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=80d5e7a1" />
+  <title>postprocess &mdash; Model Optimizer 0.23.0</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
       <link rel="stylesheet" type="text/css" href="../../_static/tabs.css?v=4c969af8" />
@@ -30,12 +30,11 @@
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
       <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script src="https://cdn.jsdelivr.net/npm/@jupyter-widgets/html-manager@^1.0.1/dist/embed-amd.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="quantization_utils" href="modelopt.torch.export.quantization_utils.html" />
+    <link rel="next" title="quant_utils" href="modelopt.torch.export.quant_utils.html" />
     <link rel="prev" title="model_config_utils" href="modelopt.torch.export.model_config_utils.html" /> 
 </head>
 
@@ -81,14 +80,13 @@
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm_deployment.html">TensorRT-LLM Deployment</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml_deployment.html">DirectML Deployment</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Examples</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../../examples/0_all_examples.html">All GitHub Examples</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/1_cifar_resnet.html">ResNet20 on CIFAR-10: Pruning</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../../examples/2_bert_prune_distill_quantize.html">HF BERT: Prune, Distill &amp; Quantize</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Reference</span></p>
 <ul class="current">
@@ -103,15 +101,17 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_config_map.html">mcore_config_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_hf_export_map.html">mcore_hf_export_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">postprocess</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quantization_utils.html">quantization_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quant_utils.html">quant_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html">tensorrt_llm_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.transformer_engine.html">transformer_engine</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html">unified_export_hf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_megatron.html">unified_export_megatron</a></li>
 </ul>
 </li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
@@ -176,10 +176,16 @@
 <td><p>Postprocesses the model configs with trained tensor parallel to target inference tensor parallel.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.postprocess.postprocess_tensors" title="modelopt.torch.export.postprocess.postprocess_tensors"><code class="xref py py-obj docutils literal notranslate"><span class="pre">postprocess_tensors</span></code></a></p></td>
-<td><p>Make all tensors in the model_config are on CPU, contiguous and own the memory.</p></td>
+<td><p>Make all tensors in the weights to be with the target dtype, on CPU, contiguous and own the memory.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.postprocess.update_lm_head_quantization" title="modelopt.torch.export.postprocess.update_lm_head_quantization"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_lm_head_quantization</span></code></a></p></td>
 <td><p>Update lm_head quantization config for TRT-LLM export.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.postprocess.view_as_float8_e4m3fn_if_needed" title="modelopt.torch.export.postprocess.view_as_float8_e4m3fn_if_needed"><code class="xref py py-obj docutils literal notranslate"><span class="pre">view_as_float8_e4m3fn_if_needed</span></code></a></p></td>
+<td><p>Views uint8 tensor as fp8 tensor after processing using torch operations.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.postprocess.view_as_uint8_if_needed" title="modelopt.torch.export.postprocess.view_as_uint8_if_needed"><code class="xref py py-obj docutils literal notranslate"><span class="pre">view_as_uint8_if_needed</span></code></a></p></td>
+<td><p>Views fp8 tensor as uint8 tensor for processing using torch operations.</p></td>
 </tr>
 </tbody>
 </table>
@@ -232,19 +238,20 @@ The other ranks will return an empty list as we no longer export them.</p>
 </ul>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>List</em>[<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>]</p>
+<dd class="field-odd"><p><em>list</em>[<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>]</p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.postprocess.postprocess_tensors">
-<span class="sig-name descname"><span class="pre">postprocess_tensors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_cpu</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_contiguous</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_non_view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.postprocess.postprocess_tensors" title="Link to this definition"></a></dt>
-<dd><p>Make all tensors in the model_config are on CPU, contiguous and own the memory.</p>
+<span class="sig-name descname"><span class="pre">postprocess_tensors</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weights</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_cpu</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_contiguous</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_non_view</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.postprocess.postprocess_tensors" title="Link to this definition"></a></dt>
+<dd><p>Make all tensors in the weights to be with the target dtype, on CPU, contiguous and own the memory.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>) – </p></li>
+<li><p><strong>weights</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>tensor</em><em>]</em>) – </p></li>
+<li><p><strong>dtype</strong> (<em>dtype</em>) – </p></li>
 <li><p><strong>force_cpu</strong> (<em>bool</em>) – </p></li>
 <li><p><strong>force_contiguous</strong> (<em>bool</em>) – </p></li>
 <li><p><strong>force_non_view</strong> (<em>bool</em>) – </p></li>
@@ -268,6 +275,18 @@ The other ranks will return an empty list as we no longer export them.</p>
 </dl>
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.postprocess.view_as_float8_e4m3fn_if_needed">
+<span class="sig-name descname"><span class="pre">view_as_float8_e4m3fn_if_needed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.postprocess.view_as_float8_e4m3fn_if_needed" title="Link to this definition"></a></dt>
+<dd><p>Views uint8 tensor as fp8 tensor after processing using torch operations.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.postprocess.view_as_uint8_if_needed">
+<span class="sig-name descname"><span class="pre">view_as_uint8_if_needed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.postprocess.view_as_uint8_if_needed" title="Link to this definition"></a></dt>
+<dd><p>Views fp8 tensor as uint8 tensor for processing using torch operations.</p>
+</dd></dl>
+
 </section>
 
 
@@ -275,7 +294,7 @@ The other ranks will return an empty list as we no longer export them.</p>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="modelopt.torch.export.model_config_utils.html" class="btn btn-neutral float-left" title="model_config_utils" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.export.quantization_utils.html" class="btn btn-neutral float-right" title="quantization_utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.export.quant_utils.html" class="btn btn-neutral float-right" title="quant_utils" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

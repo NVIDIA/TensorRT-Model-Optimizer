@@ -41,5 +41,6 @@ fp8
    
       int8_to_fp8
       quantize
+      upgrade_opset_21
    
    

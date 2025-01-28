@@ -26,6 +26,9 @@ export
    modelopt.torch.export.mcore_config_map
 
 
+   modelopt.torch.export.mcore_hf_export_map
+
+
    modelopt.torch.export.model_config
 
 
@@ -38,7 +41,7 @@ export
    modelopt.torch.export.postprocess
 
 
-   modelopt.torch.export.quantization_utils
+   modelopt.torch.export.quant_utils
 
 
    modelopt.torch.export.tensorrt_llm_type
@@ -51,6 +54,9 @@ export
 
 
    modelopt.torch.export.unified_export_hf
+
+
+   modelopt.torch.export.unified_export_megatron
 
 
 
