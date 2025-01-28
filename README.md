@@ -6,13 +6,13 @@
 
 [![Documentation](https://img.shields.io/badge/Documentation-latest-brightgreen.svg?style=flat)](https://nvidia.github.io/TensorRT-Model-Optimizer)
 [![version](https://img.shields.io/pypi/v/nvidia-modelopt?label=Release)](https://pypi.org/project/nvidia-modelopt/)
-[![license](https://img.shields.io/badge/License-MIT-blue)](./LICENSE)
+[![license](https://img.shields.io/badge/License-Apache%202.0-blue)](./LICENSE)
 
 [Examples](#examples) |
 [Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer) |
 [Benchmark Results](#benchmark) |
-[Roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/108) |
-[ModelOpt-Windows](./windows/README.md)
+[Roadmap](#roadmap) |
+[ModelOpt-Windows](./examples/windows/README.md)
 
 </div>
 
@@ -22,8 +22,8 @@
 - \[2024/9/10\] [Post-Training Quantization of LLMs with NVIDIA NeMo and TensorRT Model Optimizer](https://developer.nvidia.com/blog/post-training-quantization-of-llms-with-nvidia-nemo-and-nvidia-tensorrt-model-optimizer/)
 - \[2024/8/28\] [Boosting Llama 3.1 405B Performance up to 44% with TensorRT Model Optimizer on NVIDIA H200 GPUs](https://developer.nvidia.com/blog/boosting-llama-3-1-405b-performance-by-up-to-44-with-nvidia-tensorrt-model-optimizer-on-nvidia-h200-gpus/)
 - \[2024/8/28\] [Up to 1.9X Higher Llama 3.1 Performance with Medusa](https://developer.nvidia.com/blog/low-latency-inference-chapter-1-up-to-1-9x-higher-llama-3-1-performance-with-medusa-on-nvidia-hgx-h200-with-nvlink-switch/)
-- \[2024/08/15\] New features in recent releases: [Cache Diffusion](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/diffusers/cache_diffusion), [QLoRA workflow with NVIDIA NeMo](https://docs.nvidia.com/nemo-framework/user-guide/latest/sft_peft/qlora.html), and more. Check out [our blog](https://developer.nvidia.com/blog/nvidia-tensorrt-model-optimizer-v0-15-boosts-inference-performance-and-expands-model-support/) for details.
-- \[2024/06/03\] Model Optimizer now has an experimental feature to deploy to vLLM as part of our effort to support popular deployment frameworks. Check out the workflow [here](./llm_ptq/README.md#deploy-fp8-quantized-model-using-vllm)
+- \[2024/08/15\] New features in recent releases: [Cache Diffusion](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/diffusers/cache_diffusion), [QLoRA workflow with NVIDIA NeMo](https://docs.nvidia.com/nemo-framework/user-guide/latest/sft_peft/qlora.html), and more. Check out [our blog](https://developer.nvidia.com/blog/nvidia-tensorrt-model-optimizer-v0-15-boosts-inference-performance-and-expands-model-support/) for details.
+- \[2024/06/03\] Model Optimizer now has an experimental feature to deploy to vLLM as part of our effort to support popular deployment frameworks. Check out the workflow [here](./examples/llm_ptq/README.md#deploy-fp8-quantized-model-using-vllm)
 - \[2024/05/08\] [Announcement: Model Optimizer Now Formally Available to Further Accelerate GenAI Inference Performance](https://developer.nvidia.com/blog/accelerate-generative-ai-inference-performance-with-nvidia-tensorrt-model-optimizer-now-publicly-available/)
 - \[2024/03/27\] [Model Optimizer supercharges TensorRT-LLM to set MLPerf LLM inference records](https://developer.nvidia.com/blog/nvidia-h200-tensor-core-gpus-and-nvidia-tensorrt-llm-set-mlperf-llm-inference-records/)
 - \[2024/03/18\] [GTC Session: Optimize Generative AI Inference with Quantization in TensorRT-LLM and TensorRT](https://www.nvidia.com/en-us/on-demand/session/gtc24-s63213/)
@@ -56,11 +56,9 @@ Seamlessly integrated within the NVIDIA AI software ecosystem, the quantized che
 ModelOpt is integrated with [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) and [Megatron-LM](https://github.com/NVIDIA/Megatron-LM) for training-in-the-loop optimization techniques.
 For enterprise users, the 8-bit quantization with Stable Diffusion is also available on [NVIDIA NIM](https://developer.nvidia.com/blog/nvidia-nim-offers-optimized-inference-microservices-for-deploying-ai-models-at-scale/).
 
-Model Optimizer for both Linux and Windows are available for free for all developers on [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/). This repository is for sharing examples and GPU-optimized recipes as well as collecting feedback from the community.
-
 ## Installation / Docker
 
-Easiest way to get started with using Model Optimizer and additional dependencies (e.g. TensorRT-LLM deployment) is to start from our docker image.
+To use Model Optimizer with full dependencies (e.g. TensorRT-LLM deployment), we recommend using the provided docker image.
 
 After installing the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
 please run the following commands to build the Model Optimizer docker container which has all the necessary
@@ -81,6 +79,20 @@ docker run --gpus all -it --shm-size 20g --rm docker.io/library/modelopt_example
 # Check installation (inside the docker container)
 python -c "import modelopt; print(modelopt.__version__)"
 ```
+
+Alternatively, you can install it from [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/) without TRT-LLM etc.
+
+```bash
+pip install "nvidia-modelopt[all]" -U --extra-index-url https://pypi.nvidia.com
+```
+
+To install from source for local development, you can install it as follows:
+
+```bash
+pip install -e ".[all]" --extra-index-url https://pypi.nvidia.com
+```
+
+When installing from source, please make sure to re-run the install command everytime you pull new changes in the repository so dependencies are also updated.
 
 See the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more details on alternate pre-built docker images or installation in a local environment.
 
@@ -107,33 +119,18 @@ Sparsity is a technique to further reduce the memory footprint of deep learning 
 
 ## Examples
 
-- [PTQ for LLMs](./llm_ptq/README.md) covers how to use Post-training quantization (PTQ) and export to [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for deployment for popular pre-trained models from frameworks like
-  - [Hugging Face](https://huggingface.co/docs/hub/en/models-the-hub)
-  - [NVIDIA NeMo](https://github.com/NVIDIA/NeMo)
-  - [NVIDIA Megatron-LM](https://github.com/NVIDIA/Megatron-LM)
-  - [Medusa](https://github.com/FasterDecoding/Medusa)
-- [PTQ for Diffusers](./diffusers/quantization/README.md) walks through how to quantize a diffusion model with FP8 or INT8, export to ONNX, and deploy with [TensorRT](https://github.com/NVIDIA/TensorRT/tree/release/10.0/demo/Diffusion). The Diffusers example in this repo is complementary to the [demoDiffusion example in TensorRT repo](https://github.com/NVIDIA/TensorRT/tree/release/10.0/demo/Diffusion#introduction) and includes FP8 plugins as well as the latest updates on INT8 quantization.
-- [QAT for LLMs](./llm_qat/README.md) demonstrates the recipe and workflow for Quantization-aware Training (QAT), which can further preserve model accuracy at low precisions (e.g., INT4, or 4-bit in [NVIDIA Blackwell platform](https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/)).
-- [Sparsity for LLMs](./llm_sparsity/README.md) shows how to perform Post-training Sparsification and Sparsity-aware fine-tuning on a pre-trained Hugging Face model.
-- [Pruning](./pruning/README.md) demonstrates how to optimally prune Linear and Conv layers, and Transformer attention heads, MLP, and depth using the Model Optimizer for following frameworks:
-  - [NVIDIA NeMo](https://github.com/NVIDIA/NeMo) / [NVIDIA Megatron-LM](https://github.com/NVIDIA/Megatron-LM) GPT-style models (e.g. Llama 3, Mistral NeMo, etc.)
-  - Hugging Face language models like BERT and GPT-J
-  - Computer Vision models like [NVIDIA Tao](https://developer.nvidia.com/tao-toolkit) framework detection models.
-- [ONNX PTQ](./onnx_ptq/README.md) shows how to quantize the ONNX models in INT4 or INT8 quantization mode. The examples also include the deployment of quantized ONNX models using TensorRT.
-- [Distillation for LLMs](./llm_distill/README.md) demonstrates how to use Knowledge Distillation, which can increasing the accuracy and/or convergence speed for finetuning / QAT.
-- [Chained Optimizations](./chained_optimizations/README.md) shows how to chain multiple optimizations together (e.g. Pruning + Distillation + Quantization).
-- [Model Hub](./model_hub/) provides an example to deploy and run quantized Llama 3.1 8B instruct model from Nvidia's Hugging Face model hub on both TensorRT-LLM and vLLM.
+Please see examples [here](./examples/README.md).
 
 ## Model Support Matrix
 
-- For LLM quantization, please refer to this [support matrix](./llm_ptq/README.md#model-support-list).
-- For VLM quantization, please refer to this [support matrix](./vlm_ptq/README.md#model-support-list).
+- For LLM quantization, please refer to this [support matrix](./examples/llm_ptq/README.md#model-support-list).
+- For VLM quantization, please refer to this [support matrix](./examples/vlm_ptq/README.md#model-support-list).
 - For Diffusion, Model Optimizer supports [FLUX](https://huggingface.co/black-forest-labs/FLUX.1-dev), [Stable Diffusion 3](https://huggingface.co/stabilityai/stable-diffusion-3-medium), [Stable Diffusion XL](https://huggingface.co/papers/2307.01952), [SDXL-Turbo](https://huggingface.co/stabilityai/sdxl-turbo), and [Stable Diffusion 2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1).
-- For speculative decoding, please refer to this [support matrix](./speculative_decoding/README.md#model-support-list).
+- For speculative decoding, please refer to this [support matrix](./examples/speculative_decoding/README.md#model-support-list).
 
 ## Benchmark
 
-Please find the benchmarks at [here](./benchmark.md).
+Please find the benchmarks at [here](./examples/benchmark.md).
 
 ## Quantized Checkpoints
 
@@ -149,4 +146,4 @@ Please see Model Optimizer Changelog [here](https://nvidia.github.io/TensorRT-Mo
 
 ## Contributing
 
-At the moment, we are not accepting external contributions. However, this will soon change after we open source our library in early 2025 with a focus on extensibility. We welcome any feedback and feature requests. Please open an issue if you have any suggestions or questions.
+At the moment, we are not accepting external contributions. However, this will soon change with a focus on extensibility. We welcome any feedback and feature requests. Please open an issue if you have any suggestions or questions.

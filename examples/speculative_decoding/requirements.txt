@@ -1,0 +1,6 @@
+flash-attn
+openai
+py7zr
+sentencepiece>=0.2.0
+tensorboardX
+torch>=2.1.0

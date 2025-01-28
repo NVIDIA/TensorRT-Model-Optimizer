@@ -1,6 +1,7 @@
 docker
-**/.git
-llm_ptq/saved_models*
+examples/**/.git
+examples/llm_ptq/saved_models*
+**/experimental
 
 ##### Copied from .gitignore #####
 # Byte-compiled / optimized / DLL files

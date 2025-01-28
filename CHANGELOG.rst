@@ -1,0 +1,208 @@
+Model Optimizer Changelog (Linux)
+=================================
+
+0.23 (2025-01-29)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- Nvidia TensorRT Model Optimizer has changed its LICENSE from NVIDIA Proprietary (library wheel) and MIT (examples) to Apache 2.0 in this first full OSS release.
+- Deprecate Python 3.8, Torch 2.0, and Cuda 11.x support.
+- ONNX Runtime dependency upgraded to 1.20 which no longer supports Python 3.9.
+- In the Huggingface examples, the ``trust_remote_code`` is by default set to false and require users to explicitly turning it on with ``--trust_remote_code`` flag.
+
+**New Features**
+
+- Added OCP Microscaling Formats (MX) for fake quantization support, including FP8 (E5M2, E4M3), FP6 (E3M2, E2M3), FP4, INT8.
+- Added NVFP4 quantization support for NVIDIA Blackwell GPUs along with updated examples.
+- Allows export lm_head quantized TensorRT-LLM checkpoint. Quantize lm_head could benefit smaller sized models at a potential cost of additional accuracy loss.
+- TensorRT-LLM now supports Moe FP8 and w4a8_awq inference on SM89 (Ada) GPUs.
+- New models support in the ``llm_ptq`` example: Llama 3.3, Phi 4.
+- Added Minitron pruning support for NeMo 2.0 GPT models.
+- Exclude modules in TensorRT-LLM export configs are now wildcards
+- The unified llama3.1 FP8 huggingface checkpoints can be deployed on `SGLang <https://github.com/sgl-project/sglang/pull/2535>`_.
+
+0.21 (2024-12-03)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- Support TensorRT-LLM to 0.15. Examples (e.g. benchmark task in llm_ptq) may not be fully compatible with TensorRT-LLM 0.14.
+- Remove the deprecated arg ``export_npz`` from the :meth:`mt.export.export_tensorrt_llm_checkpoint <modelopt.torch.export.export_tensorrt_llm_checkpoint>` API
+- Deprecate :meth:`mt.export.export_to_vllm <modelopt.torch.export.export_to_vllm>` API for :meth:`mt.export.export_hf_checkpoint <modelopt.torch.export.export_hf_checkpoint>`
+- Rename decoder type ``gptnext`` to ``gpt`` in ``llm_ptq`` to align with TensorRT-LLM model definition.
+
+**New Features**
+
+- Added new tutorial notebooks for Minitron pruning and distillation in NVIDIA NeMo framework.
+- New models support in the ``llm_ptq`` example: Minitron, Phi3.5 MOE.
+- New models support in the ``vlm_ptq`` example: Llama3.2(Mllama)
+- :meth:`mt.export.export_tensorrt_llm_checkpoint <modelopt.torch.export.export_tensorrt_llm_checkpoint>` and :meth:`mt.export.export_hf_checkpoint <modelopt.torch.export.export_hf_checkpoint>` no longer requires the ``dtype`` arg.
+- Added an example to deploy and run quantized fp8 llama3.1 8B instruct model from HuggingFace modelopt model hub on both TensorRT and vLLM.
+
+**Bug Fixes**
+
+- Improve Minitron pruning quality by avoiding possible bf16 overflow in importance calculation and minor change in ``hidden_size`` importance ranking.
+
+**Misc**
+
+- Added deprecation warnings for Python 3.8, torch 2.0, and CUDA 11.x. Support will be dropped in the next release.
+
+0.19 (2024-10-23)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- Deprecated the summarize task in the ``llm_ptq`` example.
+- Deprecated the ``type`` flag in the `huggingface_example.sh <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq/scripts/huggingface_example.sh>`_
+- Deprecated Python plugin support in ONNX.
+- Support TensorRT-LLM 0.13. Examples not compatible with TensorRT-LLM 0.12.
+- :meth:`mtq.auto_quantize <modelopt.torch.quantization.model_quant.auto_quantize>` API has been updated. The API now
+  accepts ``forward_step`` and ``forward_backward_step`` as arguments instead of ``loss_func`` and ``collect_func``.
+  Please see the API documentation for more details.
+
+**New Features**
+
+- ModelOpt is compatible for SBSA aarch64 (e.g. GH200) now!
+  Except ONNX PTQ with plugins is not supported.
+- Add ``effective_bits`` as a constraint for :meth:`mtq.auto_qauntize <modelopt.torch.quantization.model_quant.auto_quantize>`.
+- ``lm_evaluation_harness`` is fully integrated to modelopt backed by TensorRT-LLM.
+  ``lm_evaluation_harness`` benchmarks are now available in the examples for LLM accuracy evaluation.
+- A new ``--perf`` flag is introduced in the ``modelopt_to_tensorrt_llm.py`` example to build engines with max perf.
+- Users can choose the execution provider to run the calibration in ONNX quantization.
+- Added automatic detection of custom ops in ONNX models using TensorRT plugins.
+  This requires the ``tensorrt`` python package to be installed.
+- Replaced ``jax`` with ``cupy`` for faster INT4 ONNX quantization.
+- :meth:`mtq.auto_quantize <modelopt.torch.quantization.model_quant.auto_quantize>` now supports search based automatic
+  quantization for NeMo & MCore models (in addition to HuggingFace models).
+- Add ``num_layers`` and ``hidden_size`` pruning support for NeMo / Megatron-core models.
+
+
+0.17 (2024-09-11)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- Deprecated ``torch<2.0`` support.
+- :meth:`modelopt.torch.utils.dataset_utils.get_dataset_dataloader` now returns a key value pair instead of the tensor.
+
+**New Features**
+
+- New APIs and examples: :mod:`modelopt.torch.prune` for pruning Conv, Linear, and Attention heads for
+  NVIDIA Megatron-core GPT-style models (e.g. Llama 3), PyTorch Computer Vision models, and HuggingFace Bert/GPT-J models.
+- New API: :mod:`modelopt.torch.distill` for knowledge distillation, along with guides and example.
+- New Example: `HF BERT Prune, Distill & Quantize <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/examples/chained_optimizations>`_
+  showcasing how to chain pruning, distillation, and quantization to achieve the best performance on a given model.
+- Added INT8/FP8 DQ-only support for ONNX model.
+- New API: :mod:`modelopt.torch.speculative` for end-to-end support of Medusa models.
+- Added Medusa QAT and End-to-end examples.
+- Modelopt now supports automatic save/restore of ``modelopt_state`` with the ``.save_pretrained`` and ``.from_pretrained`` APIs
+  from Huggingface libraries, such as ``transformers`` and ``diffusers``. This feature can be enabled by calling
+  :meth:`mto.enable_huggingface_checkpointing() <modelopt.torch.opt.plugins.huggingface.enable_huggingface_checkpointing>`.
+- ONNX FP8 quantization support with amax calibration.
+- TensorRT-LLM dependency upgraded to 0.12.0. Huggingface tokenizer files are now also stored in the engine dir.
+- The unified model export API :meth:`modelopt.torch.export.export_hf_checkpoint <modelopt.torch.export.unified_export_hf.export_hf_checkpoint>`
+  supports exporting ``fp8`` and ``int4_awq`` quantized checkpoints with packed weights for
+  Hugging Face models with namings aligned with its original checkpoints. The exported ``fp8`` checkpoints can be deployed with both TensorRT-LLM and VLLM.
+- Add int8 and fp8 quantization support for the FLUX.1-dev model.
+- Add a Python-friendly TensorRT inference pipeline for diffusion models.
+
+**Misc**
+
+- Added deprecation warning for :meth:`set_data_parallel_group <modelopt.torch.utils.distributed.set_data_parallel_group>`
+  and :meth:`set_tensor_parallel_group <modelopt.torch.utils.distributed.set_tensor_parallel_group>`. These APIs are
+  no longer needed for supporting distributed data and tensor parallelism in quantization. They will be removed in
+  a future release.
+
+
+0.15 (2024-07-25)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- Deprecated :class:`QuantDescriptor <modelopt.torch.quantization.tensor_quant.QuantDescriptor>`.
+  Use :class:`QuantizerAttributeConfig <modelopt.torch.quantization.config.QuantizerAttributeConfig>` to
+  configure :class:`TensorQuantizer <modelopt.torch.quantization.nn.modules.TensorQuantizer>`.
+  :meth:`set_from_attribute_config <modelopt.torch.quantization.nn.modules.TensorQuantizer.set_from_attribute_config>`
+  can be used to set the quantizer attributes from the config class or attribute dictionary. This change applies only
+  to backend APIs. The change is backward compatible if you are using
+  only the :meth:`mtq.quantize <modelopt.torch.quantization.model_quant.quantize>` API.
+
+**New Features**
+
+- Added quantization support for torch ``RNN, LSTM, GRU`` modules. Only available for ``torch>=2.0``.
+- ``modelopt.torch.quantization`` now supports module class based quantizer attribute setting for
+  :meth:`mtq.quantize <modelopt.torch.quantization.model_quant.quantize>` API.
+- Added new LLM PTQ example for DBRX model.
+- Added new LLM (Gemma 2) PTQ and TensorRT-LLM checkpoint export support.
+- Added new LLM QAT example for NVIDIA NeMo framework.
+- TensorRT-LLM dependency upgraded to 0.11.0.
+- (Experimental): :meth:`mtq.auto_quantize <modelopt.torch.quantization.model_quant.auto_quantize>` API which quantizes a model
+  by searching for the best per-layer quantization formats.
+- (Experimental): Added new LLM QLoRA example with NF4 and INT4_AWQ quantization.
+- (Experimental): ``modelopt.torch.export`` now supports exporting quantized checkpoints with packed weights for
+  Hugging Face models with namings aligned with its original checkpoints.
+- (Experimental) Added support for quantization of ONNX models with TensorRT plugin.
+
+**Misc**
+
+- Added deprecation warning for ``torch<2.0``. Support will be dropped in next release.
+
+
+0.13 (2024-06-14)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- `PTQ examples <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq>`_ have been
+  upgraded to use TensorRT-LLM 0.10.
+
+**New Features**
+
+- Adding TensorRT-LLM checkpoint export support for Medusa decoding (official ``MedusaModel`` and Megatron Core ``GPTModel``).
+- Enable support for mixtral, recurrentgemma, starcoder, qwen in `PTQ examples <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq>`_.
+- Adding TensorRT-LLM checkpoint export and engine building support for sparse models.
+- Import scales from TensorRT calibration cache and use them for quantization.
+- (Experimental) Enable low GPU memory FP8 calibration for the Hugging Face models when the original model size does not fit into the GPU memory.
+- (Experimental) Support exporting FP8 calibrated model to VLLM deployment.
+- (Experimental) Python 3.12 support added.
+
+
+0.11 (2024-05-07)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- [!!!] The package was renamed from ``ammo`` to ``modelopt``. The new full product
+  name is *Nvidia TensorRT Model Optimizer*. PLEASE CHANGE ALL YOUR REFERENCES FROM ``ammo`` to
+  ``modelopt`` including any paths and links!
+- Default installation ``pip install nvidia-modelopt`` will now only install minimal core
+  dependencies. Following optional dependencies are available depending on the features that are
+  being used: ``[deploy], [onnx], [torch], [hf]``. To install all dependencies, use
+  ``pip install "nvidia-modelopt[all]"``.
+- Deprecated ``inference_gpus`` arg in ``modelopt.torch.export.model_config_export.torch_to_tensorrt_llm_checkpoint``. User should use ``inference_tensor_parallel`` instead.
+- Experimental ``modelopt.torch.deploy`` module is now available as ``modelopt.torch._deploy``.
+
+**New Features**
+
+- ``modelopt.torch.sparsity`` now supports sparsity-aware training (SAT). Both SAT and post-training
+  sparsification supports chaining with other modes, e.g. SAT + QAT.
+- ``modelopt.torch.quantization`` natively support distributed data and tensor parallelism while estimating quantization parameters.
+  The data and tensor parallel groups needs to be registered with ``modelopt.torch.utils.distributed.set_data_parallel_group`` and ``modelopt.torch.utils.distributed.set_tensor_parallel_group`` APIs.
+  By default, the data parallel group is set as the default distributed group and the tensor parallel group is disabled.
+- ``modelopt.torch.opt`` now supports chaining multiple optimization techniques that each require
+  modifications to the same model, e.g., you can now sparsify and quantize a model at the same time.
+- ``modelopt.onnx.quantization`` supports FLOAT8 quantization format with Distribution calibration algorithm.
+- Native support of ``modelopt.torch.opt`` with FSDP (Fully Sharded Data Parallel) for ``torch>=2.1``. This includes
+  sparsity, quantization, and any other model modification & optimization.
+- Added FP8 ONNX quantization support in ``modelopt.onnx.quantization``.
+- Added Windows (``win_amd64``) support for ModelOpt released wheels. Currently supported for ``modelopt.onnx`` submodule only.
+
+**Bug Fixes**
+
+- Fixed the compatibility issue of ``modelopt.torch.sparsity`` with FSDP.
+- Fixed an issue in dynamic dim handling in ``modelopt.onnx.quantization`` with random calibration data.
+- Fixed graph node naming issue after opset conversion operation.
+- Fixed an issue in negative dim handling like dynamic dim in ``modelopt.onnx.quantization`` with random calibration data.
+- Fixed allowing to accept ``.pb`` file for input file.
+- Fixed copy extra data to tmp folder issue for ONNX PTQ.

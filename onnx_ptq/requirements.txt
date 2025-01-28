@@ -1,5 +1,0 @@
-cupy-cuda12x
-datasets>=2.14.4
-optimum
-sentencepiece
-timm

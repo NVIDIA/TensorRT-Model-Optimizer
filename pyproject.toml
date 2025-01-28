@@ -1,0 +1,149 @@
+####################################################################################################
+###############################  BUILD CONFIGURATION  ##############################################
+####################################################################################################
+[build-system]
+requires = ["cython", "setuptools>=67.8.0", "setuptools_scm[toml]>=7.1.0"]
+build-backend = "setuptools.build_meta"
+
+
+####################################################################################################
+###############################  LINTING, FORMATTING AND TESTING CONFIGURATION  ####################
+####################################################################################################
+[tool.ruff]
+extend-exclude = ["internal/experimental/*"]
+line-length = 100 # Line length limit for code
+fix = true
+
+[tool.ruff.format]
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+docstring-code-format = true
+# Set the line length limit used when formatting code snippets in docstrings.
+docstring-code-line-length = "dynamic"
+
+[tool.ruff.lint]
+# See available rules at https://docs.astral.sh/ruff/rules/
+# Flake8 is equivalent to pycodestyle + pyflakes + mccabe.
+select = [
+    "D",   # pydocstyle
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8 naming
+    "PLE", # pylint errors
+    "W",   # pycodestyle warnings
+]
+extend-ignore = ["D105", "D417", "N812"]
+
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"examples/*" = ["D"]
+"internal/*" = ["D"]
+"tests/*" = ["D", "E402"]
+"setup.py" = ["D"]
+"*/_[a-zA-Z]*" = ["D"]           # Private packages (_abc/*.py) or modules (_xyz.py)
+"*.ipynb" = ["D", "E501"]        # Ignore missing docstrings or line length for Jupyter notebooks
+
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120 # Line length limit for comments and docstrings
+
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+
+[tool.ruff.lint.isort]
+known-first-party = ["modelopt"]
+split-on-trailing-comma = false
+
+
+[tool.ruff.lint.pylint]
+max-args = 10
+
+
+[tool.mypy]
+files = "."
+install_types = true
+non_interactive = true
+show_error_codes = true
+disable_error_code = [
+    "import",
+    "assignment",
+    "operator",
+    "has-type",
+    "var-annotated",
+    "operator",
+    "call-arg",
+]
+explicit_package_bases = true
+namespace_packages = true
+# strict checks
+strict = true
+disallow_subclassing_any = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+disallow_untyped_defs = false
+warn_return_any = false
+
+
+[[tool.mypy.overrides]]
+module = ["internal.*", "tests.*"]
+ignore_errors = true
+
+
+[tool.pytest.ini_options]
+# Default additional options
+# Show a short test summary info for all except passed tests with -ra flag
+# print execution time for 20 slowest tests and generate coverage reports
+addopts = "-ra --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml --cov-config=pyproject.toml --durations=20"
+pythonpath = ["tests/"]
+markers = ["slow: Only run when --run-slow is given"]
+
+
+[tool.coverage.run]
+# measure branch coverage in addition to statement coverage
+branch = true
+include = ["modelopt/*"]
+omit = ["*/plugins/*", "*/export/*"]
+
+
+[tool.coverage.report]
+fail_under = 65
+skip_covered = true
+ignore_errors = true
+exclude_lines = [
+    "pragma: no cover",
+    # Don't complain about missing debug or verbose code
+    "def __repr__",
+    "if verbose",
+    # Don't complain if tests don't hit defensive exception handling code
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "raise RuntimeError",
+    "raise ValueError",
+    "raise KeyError",
+    "raise AttributeError",
+    "except ImportError",
+    # Don't complain if non-runnable code isn't run
+    "if __name__ == \"__main__\":",
+    "if TYPE_CHECKING:",
+    # Don't complain about abstract methods, they aren't run
+    "@(abc\\.)?abstractmethod",
+]
+
+
+[tool.bandit]
+exclude_dirs = ["docs/", "examples/", "internal/", "tests/", "setup.py"]
+# Do not change `skips`. It should be consistent with NVIDIA's Wheel-CI-CD bandit.yml config.
+# Use of `# nosec BXXX` requires special approval
+skips = [
+    "B101", # assert_used
+    "B110", # try_except_pass
+    "B112", # try_except_continue
+    "B303", # MD2, MD4, MD5, or SHA1
+    "B311", # random
+]

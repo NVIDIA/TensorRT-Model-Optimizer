@@ -1,0 +1,145 @@
+# NOTE: Make sure to update version in dev requirements (setup.py) as well!
+exclude: >
+  (?x)^(
+      experimental/.*|
+  )$
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: requirements-txt-fixer
+      - id: debug-statements
+      - id: check-json
+        exclude: ^.vscode/.*.json # vscode files can take comments
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=500, --enforce-all]
+        exclude: >
+          (?x)^(
+              examples/diffusers/quantization/assets/.*.png|
+              examples/diffusers/cache_diffusion/assets/.*.png|
+          )$
+
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.17
+    hooks:
+      - id: mdformat
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.2
+    hooks:
+      - id: mypy
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v16.0.4
+    hooks:
+      - id: clang-format
+        types_or: [c++, c, c#, cuda, java, javascript, objective-c, proto] # no json!
+        args: ["--style={ColumnLimit: 100}"]
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: rst-backticks
+      - id: rst-directive-colons
+      - id: rst-inline-touching-normal
+
+  - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+    rev: 0.2.3
+    hooks:
+      - id: yamlfmt
+        args: [--mapping=2, --sequence=4, --offset=2, --implicit_start, --implicit_end, --preserve-quotes]
+        exclude: ^.github/workflows/
+
+  # Instructions to change license file if ever needed:
+  # https://github.com/Lucas-C/pre-commit-hooks#removing-old-license-and-replacing-it-with-a-new-one
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.5
+    hooks:
+      # Default hook for Apache 2.0 in core python files
+      - id: insert-license
+        alias: insert-license-py
+        args:
+          - --license-filepath
+          - ./LICENSE
+          - --comment-style
+          - "#"
+          - --allow-past-years
+        types: [python]
+        # NOTE: Exclude files that have copyright or license headers from another company or individual
+        # since we want to keep those above the license header added by this hook.
+        # Instead, we should manually add the license header to those files after the original header.
+        exclude: >
+          (?x)^(
+              modelopt/onnx/quantization/operators.py|
+              modelopt/onnx/quantization/ort_patching.py|
+              modelopt/torch/export/transformer_engine.py|
+              modelopt/torch/quantization/export_onnx.py|
+              modelopt/torch/quantization/plugins/attention.py|
+              modelopt/torch/speculative/plugins/transformers.py|
+              modelopt/torch/speculative/eagle/utils.py|
+              modelopt/torch/_deploy/utils/onnx_utils.py|
+              examples/chained_optimizations/bert_prune_distill_quantize.py|
+              examples/diffusers/quantization/onnx_utils/export.py|
+              examples/diffusers/cache_diffusion/pipeline/models/sdxl.py|
+              examples/llm_eval/gen_model_answer.py|
+              examples/llm_eval/humaneval.py|
+              examples/llm_eval/lm_eval_hf.py|
+              examples/llm_eval/mmlu.py|
+              examples/llm_eval/modeling.py|
+              examples/llm_sparsity/finetune.py|
+              examples/llm_qat/main.py|
+              examples/speculative_decoding/main.py|
+              examples/speculative_decoding/medusa_utils.py|
+              examples/speculative_decoding/vllm_generate.py|
+          )$
+
+      # Default hook for Apache 2.0 in core c/c++/cuda files
+      - id: insert-license
+        alias: insert-license-c
+        args:
+          - --license-filepath
+          - ./LICENSE
+          - --comment-style
+          - "/*| *| */"
+          - --allow-past-years
+        types_or: [c++, cuda, c]
+
+      # Default hook for Apache 2.0 in shell files
+      - id: insert-license
+        alias: insert-license-sh
+        args:
+          - --license-filepath
+          - ./LICENSE
+          - --comment-style
+          - "#"
+          - --allow-past-years
+        types_or: [shell]
+
+  - repo: https://github.com/keith/pre-commit-buildifier
+    rev: 6.4.0
+    hooks:
+      - id: buildifier
+      - id: buildifier-lint
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.9
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml", "-q"]
+        additional_dependencies: ["bandit[toml]"]

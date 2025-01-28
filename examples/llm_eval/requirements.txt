@@ -1,0 +1,6 @@
+fire>=0.5.0
+lm_eval[api]>=0.4.6
+openai>=0.28.1
+peft>=0.5.0
+rwkv>=0.7.3
+tiktoken

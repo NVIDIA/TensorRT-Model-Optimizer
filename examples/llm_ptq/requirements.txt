@@ -1,0 +1,9 @@
+bitsandbytes
+fire
+flash-attn>=2.6.0
+pynvml>=11.5.0
+rouge_score>=0.1.2
+tiktoken
+transformers>=4.45.0
+transformers_stream_generator
+zstandard
