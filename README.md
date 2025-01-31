@@ -18,6 +18,8 @@
 
 ## Latest News
 
+- \[2025/01/28\] Model Optimizer has added support for NVFP4. Check out an example of NVFP4 PTQ [here](./examples/llm_ptq/README.md#model-quantization-and-trt-llm-conversion)
+- \[2025/01/28\] Model Optimizer is now open source!
 - \[2024/10/23\] Quantized FP8 Llama-3.1 Instruct models available on Hugging Face for download: [8B](https://huggingface.co/nvidia/Llama-3.1-8B-Instruct-FP8), [70B](https://huggingface.co/nvidia/Llama-3.1-70B-Instruct-FP8), [405B](https://huggingface.co/nvidia/Llama-3.1-405B-Instruct-FP8)
 - \[2024/9/10\] [Post-Training Quantization of LLMs with NVIDIA NeMo and TensorRT Model Optimizer](https://developer.nvidia.com/blog/post-training-quantization-of-llms-with-nvidia-nemo-and-nvidia-tensorrt-model-optimizer/)
 - \[2024/8/28\] [Boosting Llama 3.1 405B Performance up to 44% with TensorRT Model Optimizer on NVIDIA H200 GPUs](https://developer.nvidia.com/blog/boosting-llama-3-1-405b-performance-by-up-to-44-with-nvidia-tensorrt-model-optimizer-on-nvidia-h200-gpus/)
@@ -146,4 +148,5 @@ Please see Model Optimizer Changelog [here](https://nvidia.github.io/TensorRT-Mo
 
 ## Contributing
 
-At the moment, we are not accepting external contributions. However, this will soon change with a focus on extensibility. We welcome any feedback and feature requests. Please open an issue if you have any suggestions or questions.
+Model-Opt is now open source! We welcome any feedback, feature requests and PRs. We will soon be adding more examples/tutorials/explanations for faster integration!
+Please review our [Contributing](./CONTRIBUTING.md) guidelines before submitting a PR.
