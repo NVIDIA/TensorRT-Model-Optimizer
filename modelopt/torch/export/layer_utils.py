@@ -220,6 +220,11 @@ def is_linear(module: nn.Module) -> bool:
     return any([k in type(module).__name__ for k in ["Linear", "Conv1D", "NormHead"]])
 
 
+def is_conv(module: nn.Module) -> bool:
+    """Returns whether the module is a convolutional layer."""
+    return "Conv" in type(module).__name__
+
+
 def is_embedding(module: nn.Module) -> bool:
     """Returns whether the module is an embedding layer."""
     module_type_name = type(module).__name__
@@ -311,7 +316,9 @@ def is_attention(module: nn.Module) -> bool:
 
 def is_mlp(module: nn.Module) -> bool:
     """Returns whether the module is an MLP layer."""
-    return any([key in type(module).__name__.upper() for key in ("MLP", "T5DENSE")])
+    return any([key in type(module).__name__.upper() for key in ("MLP", "T5DENSE")]) or any(
+        "linear" in type(m).__name__.lower() for m in module.children()
+    )
 
 
 def is_moe(module: nn.Module) -> bool:
@@ -643,6 +650,12 @@ def build_attention_config(
         assert k
         assert v
         qkv_modules = [q, k, v]
+        for layer in qkv_modules:
+            if layer.bias is None and q.bias is not None:
+                layer.bias = torch.nn.Parameter(
+                    torch.zeros(layer.weight.size(1), device=layer.weight.device),
+                    requires_grad=True,
+                )
 
     config.qkv = build_qkv(qkv_modules, model_metadata_config, ext_config, tp_size=tp_size)
 
@@ -1251,6 +1264,17 @@ def build_decoder_config(
             if hasattr(module.self_attention.config, "num_query_groups"):
                 config.num_kv_heads = module.self_attention.config.num_query_groups
 
+    elif hasattr(module, "self_attn"):
+        if hasattr(module.self_attn, "config"):
+            encoder_or_decoder = model_metadata_config.get("enc_dec")
+            if encoder_or_decoder is not None:
+                if encoder_or_decoder == "enc":
+                    config.num_attention_heads = module.self_attn.config.encoder_attention_heads
+                    config.max_position_embeddings = module.self_attn.config.max_source_positions
+                else:
+                    config.num_attention_heads = module.self_attn.config.decoder_attention_heads
+                    config.max_position_embeddings = module.self_attn.config.max_target_positions
+
     # Set all config fields in modelopt from HF config
     _set_layer_config_from_metaconfig(config, model_metadata_config)
 
@@ -1279,7 +1303,7 @@ def build_decoder_config(
         if is_layernorm(layer):
             layernorm_config = build_layernorm_config(layer)
             # Special attributes naming for T5 model (Encoder-Decoder model)
-            if decoder_type in ["t5"]:
+            if decoder_type in ["t5", "whisper"]:
                 _update_encoder_decoder_layernorm_config(
                     model_metadata_config, config, layernorm_config
                 )
@@ -1313,8 +1337,8 @@ def build_decoder_config(
                 attention_config = build_attention_config(
                     layer, model_metadata_config, config, tp_size=tp_size
                 )
-                # For T5 decoder
-                if decoder_type in ["t5"] and model_metadata_config["enc_dec"] == "dec":
+                # For decoder of Encoder-Decoder Models
+                if decoder_type in ["t5", "whisper"] and model_metadata_config["enc_dec"] == "dec":
                     # We assume self_attention should be before the cross_attention in decoder block layout
                     if config.self_attention is None:
                         config.self_attention = attention_config
@@ -1359,6 +1383,13 @@ def build_decoder_config(
 
     config.gate_attn = getattr(module, "cross_attn_attn_gate", None)
     config.gate_ffwd = getattr(module, "cross_attn_mlp_gate", None)
+
+    if decoder_type == "whisper":
+        config.mlp = build_mlp_config(
+            module,
+            decoder_type,
+            hidden_act=model_metadata_config.get("hidden_act", None),
+        )
 
     config = _move_input_layernorm_for_noop_attention(config)
     return config

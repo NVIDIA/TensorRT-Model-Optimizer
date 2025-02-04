@@ -50,6 +50,8 @@ MODEL_NAME_TO_HF_ARCH_MAP = {
     "t5_encoder": "EncoderModel",
     "t5_decoder": "DecoderModel",
     "mllama": "MLLaMAModel",
+    "whisper_encoder": "WhisperEncoder",
+    "whisper_decoder": "DecoderModel",
 }
 
 
@@ -320,14 +322,18 @@ def convert_to_tensorrt_llm_config(
     config_architecture = model_config.architecture
     if not config_architecture:
         config_architecture = MODEL_NAME_TO_HF_ARCH_MAP[decoder_type]
-    # For T5 model
-    if decoder_type in ["t5"]:
+    # Encoder-Decoder Model like T5
+    if decoder_type in ["t5", "whisper"]:
         # For encoder
         if model_config.enc_dec == "enc":
-            config_architecture = MODEL_NAME_TO_HF_ARCH_MAP["t5_encoder"]
+            model_config.architecture = config_architecture = MODEL_NAME_TO_HF_ARCH_MAP[
+                f"{decoder_type}_encoder"
+            ]
         # For decoder
         else:
-            config_architecture = MODEL_NAME_TO_HF_ARCH_MAP["t5_decoder"]
+            model_config.architecture = config_architecture = MODEL_NAME_TO_HF_ARCH_MAP[
+                f"{decoder_type}_decoder"
+            ]
 
     config = {
         "producer": {
@@ -343,7 +349,7 @@ def convert_to_tensorrt_llm_config(
         "hidden_size": model_config.hidden_size,
         "norm_epsilon": (
             first_attention_decoder_config.mlp_layernorm.eps
-            if decoder_type in ["t5"]
+            if decoder_type in ["t5", "whisper"]
             else first_attention_decoder_config.input_layernorm.eps
         ),
         "vocab_size": model_config.vocab_size,
@@ -484,6 +490,44 @@ def convert_to_tensorrt_llm_config(
             config["encoder_head_size"] = model_config.encoder_head_size
             config["skip_cross_kv"] = False
 
+    elif decoder_type == "whisper":
+        config["position_embedding_type"] = "learned_absolute"
+        config["n_mels"] = hf_config.num_mel_bins
+        config["has_position_embedding"] = False if not model_config.position_embedding else True
+
+        if model_config.enc_dec == "dec":
+            config["use_prompt_tuning"] = False
+            layernorm_type = model_config.layers[0].mlp_layernorm.layernorm_type
+            if not layernorm_type:
+                layernorm_type = "RmsNorm"
+            config["layernorm_type"] = layernorm_type_map[layernorm_type]
+            config["has_attention_qkvo_bias"] = (
+                True
+                if (
+                    model_config.layers[0].attention.qkv.bias is not None
+                    if model_config.enc_dec == "enc"
+                    else model_config.layers[0].self_attention.qkv.bias is not None
+                )
+                else False
+            )
+            config["has_mlp_bias"] = (
+                True if model_config.layers[0].mlp.fc.bias is not None else False
+            )
+            config["has_model_final_layernorm"] = True if model_config.ln_f is not None else False
+            config["has_embedding_layernorm"] = True if model_config.ln_embed is not None else False
+            config["has_embedding_scale"] = False
+            config["ffn_hidden_size"] = model_config.layers[0].mlp.fc.weight.shape[0]
+            config["q_scaling"] = 1
+            config["layernorm_position"] = layernorm_position_map["pre_layernorm"]
+            config["relative_attention"] = config["position_embedding_type"] == "relative"
+            config["max_distance"] = model_config.layers[0].rel_attn_max_distance
+            config["num_buckets"] = model_config.layers[0].rel_attn_num_buckets
+            config["rescale_before_lm_head"] = False
+            config["encoder_hidden_size"] = model_config.encoder_hidden_size
+            config["encoder_num_heads"] = model_config.encoder_num_heads
+            config["encoder_head_size"] = model_config.encoder_head_size
+            config["skip_cross_kv"] = False
+
     elif decoder_type == "dbrx":
         config["clip_qkv"] = first_attention_decoder_config.clip_qkv
 
@@ -543,7 +587,7 @@ def convert_to_tensorrt_llm_config(
 def prepare_enc_dec_export_dir(tensorrt_llm_config: dict[str, Any], export_root: Path):
     """Prepare the export directory for encoder-decoder model."""
     # For encoder
-    if tensorrt_llm_config["architecture"] == "EncoderModel":
+    if tensorrt_llm_config["architecture"] in ["EncoderModel", "WhisperEncoder"]:
         export_dir = export_root.joinpath("encoder")
     # For decoder
     else:

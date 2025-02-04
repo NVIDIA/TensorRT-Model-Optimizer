@@ -32,6 +32,7 @@ from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
 from .layer_utils import (
+    build_conv_config,
     build_decoder_config,
     build_embedding_config,
     build_layernorm_config,
@@ -40,6 +41,7 @@ from .layer_utils import (
     check_model_compatibility,
     get_dtype,
     get_transformer_layers,
+    is_conv,
     is_decoder_list,
     is_embedding,
     is_layernorm,
@@ -204,6 +206,10 @@ def torch_to_tensorrt_llm_checkpoint(
         # For T5 model with encoder and decoder, we process the checkpoint separately.
         models = [model.encoder, model.decoder]
 
+    elif decoder_type in ["whisper"]:
+        model_lm_head = model.proj_out
+        models = [model.model.encoder, model.model.decoder]
+
     for model in models:
         transformer_layers = get_transformer_layers(model)
         if training_pipeline_parallel == 1:
@@ -237,6 +243,12 @@ def torch_to_tensorrt_llm_checkpoint(
             else:
                 config.enc_dec = "dec"
                 model_metadata_config["enc_dec"] = "dec"
+        elif decoder_type in ["whisper"]:
+            if type(model).__name__ == "WhisperEncoder":
+                model_metadata_config["enc_dec"] = config.enc_dec = "enc"
+                has_position_embedding = True
+            else:
+                model_metadata_config["enc_dec"] = config.enc_dec = "dec"
 
         # GLM has a different handling of word_embeddings.
         if decoder_type == "glm":
@@ -246,7 +258,9 @@ def torch_to_tensorrt_llm_checkpoint(
         # Build the full model_config dict layer by layer.
         for module in transformer_layers:
             if is_embedding(module):
-                if config.vocab_embedding is None:
+                if config.vocab_embedding is None and not (
+                    decoder_type == "whisper" and model_metadata_config["enc_dec"] == "enc"
+                ):
                     # We assume the first embedding in the list the vocab_embedding.
 
                     normalization_constant = 1
@@ -310,6 +324,8 @@ def torch_to_tensorrt_llm_checkpoint(
                     # This will update lm_head quantization config according to constraints from TRT-LLM
                     update_lm_head_quantization(config, module, inference_pipeline_parallel)
                     config.lm_head = build_linear_config(module, "column")
+            elif is_conv(module):
+                config.feature_extractor.layers.append(build_conv_config(module))
 
         # For decoder of Encoder-Decoder model, it needs some encoder information
         if decoder_type in ["t5"]:
@@ -317,11 +333,17 @@ def torch_to_tensorrt_llm_checkpoint(
                 config.encoder_hidden_size = models[0].config.d_model
                 config.encoder_head_size = models[0].config.d_kv
                 config.encoder_num_heads = models[0].config.num_heads
+        elif decoder_type in ["whisper"]:
+            if model_metadata_config["enc_dec"] == "dec":
+                config.encoder_hidden_size = models[0].config.d_model
+                config.encoder_num_heads = models[0].config.encoder_attention_heads
+                config.encoder_head_size = config.encoder_hidden_size // config.encoder_num_heads
 
         # For the training time PP, not all ranks will have the lm_head layer.
         if config.lm_head is None:
-            if decoder_type in ["t5"]:
-                config.share_embedding_table = False
+            if decoder_type in ["t5", "whisper"]:
+                if decoder_type == "t5":
+                    config.share_embedding_table = False
                 if model_metadata_config["enc_dec"] == "dec":
                     config.lm_head = build_linear_config(model_lm_head, "column")
             elif training_pipeline_parallel == 1:
@@ -457,7 +479,6 @@ def export_tensorrt_llm_checkpoint(
         workspace_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        exclude_modules = set()
         for (
             tensorrt_llm_config,
             weights,
@@ -471,6 +492,7 @@ def export_tensorrt_llm_checkpoint(
             naive_fp8_quantization=naive_fp8_quantization,
             workspace_path=workspace_path,
         ):
+            exclude_modules = set()
             rank = tensorrt_llm_config["rank"]
             world_size = tensorrt_llm_config["mapping"]["world_size"]
             if tensorrt_llm_config["quantization"]:
@@ -480,11 +502,36 @@ def export_tensorrt_llm_checkpoint(
                 if excluded_modules_rank:
                     exclude_modules.update(excluded_modules_rank)
             # For T5 model
-            if decoder_type in ["t5"]:
+            if decoder_type in ["t5", "whisper"]:
                 export_dir = prepare_enc_dec_export_dir(tensorrt_llm_config, export_root)
                 export_dir = Path(export_dir)
                 export_dir.mkdir(parents=True, exist_ok=True)
-
+            if decoder_type in ["whisper"] and tensorrt_llm_config["quantization"].get(
+                "exclude_modules"
+            ):
+                new_exclude_modules = []
+                for module in tensorrt_llm_config["quantization"]["exclude_modules"]:
+                    if tensorrt_llm_config["architecture"] == "WhisperEncoder":
+                        module = module.replace("transformer.layers", "encoder_layers")
+                        module = module.replace(
+                            "transformer.position_embedding", "position_embedding"
+                        )
+                        module = module.replace("transformer.ln_f", "ln_post")
+                        module = module.replace("transformer.feature_extractor.layers.0", "conv1")
+                        module = module.replace("transformer.feature_extractor.layers.1", "conv2")
+                        new_exclude_modules.append(module)
+                    else:
+                        module = module.replace("transformer.layers", "decoder_layers")
+                        module = module.replace(
+                            "transformer.position_embedding", "embedding.position_embedding"
+                        )
+                        module = module.replace(
+                            "transformer.vocab_embedding", "embedding.vocab_embedding"
+                        )
+                        module = module.replace("transformer.ln_f", "final_layernorm")
+                        new_exclude_modules.append(module)
+                tensorrt_llm_config["quantization"]["exclude_modules"] = new_exclude_modules
+                exclude_modules = set(new_exclude_modules)
             if rank == world_size - 1:
                 # We only export the json once across ranks as all jsons should be the same except for the rank.
                 # If auto_quant is used, save per layer quantization information in quant_cfg.json
@@ -534,7 +581,27 @@ def export_tensorrt_llm_checkpoint(
                     new_weights[new_key] = weights[key]
                 weights = new_weights
             # End of hacky implementation for T5 for now
-
+            elif decoder_type == "whisper":
+                for key, value in weights.items():
+                    if tensorrt_llm_config["architecture"] == "WhisperEncoder":
+                        new_key = key.replace("transformer.layers", "encoder_layers")
+                        new_key = new_key.replace(
+                            "transformer.position_embedding", "position_embedding"
+                        )
+                        new_key = new_key.replace("transformer.ln_f", "ln_post")
+                        new_key = new_key.replace("transformer.feature_extractor.layers.0", "conv1")
+                        new_key = new_key.replace("transformer.feature_extractor.layers.1", "conv2")
+                    else:
+                        new_key = key.replace("transformer.layers", "decoder_layers")
+                        new_key = new_key.replace(
+                            "transformer.position_embedding", "embedding.position_embedding"
+                        )
+                        new_key = new_key.replace(
+                            "transformer.vocab_embedding", "embedding.vocab_embedding"
+                        )
+                        new_key = new_key.replace("transformer.ln_f", "final_layernorm")
+                    new_weights[new_key] = value
+                weights = new_weights
             weights_path = export_dir / f"rank{rank}.safetensors"
             save_file(weights, weights_path)
 

@@ -516,6 +516,13 @@ class MedusaHeadConfig:
 
 
 @dataclass
+class FeatureExtractorConfig:
+    """The feature extractor config."""
+
+    layers: list[ConvConfig] = field(default_factory=list)
+
+
+@dataclass
 class ModelConfig:
     """The full LLM model config that includes the full information needed for tensorrt_llm engine building.
 
@@ -557,6 +564,9 @@ class ModelConfig:
     encoder_hidden_size: int = 0
     encoder_num_heads: int = 0
     encoder_head_size: int = 0
+
+    # For decoder of Encoder-Decoder model that has encoder feature extractor
+    feature_extractor: FeatureExtractorConfig = FeatureExtractorConfig()
 
     @property
     def vocab_size_padded(self):
