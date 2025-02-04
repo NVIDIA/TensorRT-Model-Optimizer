@@ -325,7 +325,7 @@ def torch_to_tensorrt_llm_checkpoint(
                     update_lm_head_quantization(config, module, inference_pipeline_parallel)
                     config.lm_head = build_linear_config(module, "column")
             elif is_conv(module):
-                config.feature_extractor.layers.append(build_conv_config(module))
+                config.feature_extractor.append(build_conv_config(module))
 
         # For decoder of Encoder-Decoder model, it needs some encoder information
         if decoder_type in ["t5"]:
@@ -517,8 +517,8 @@ def export_tensorrt_llm_checkpoint(
                             "transformer.position_embedding", "position_embedding"
                         )
                         module = module.replace("transformer.ln_f", "ln_post")
-                        module = module.replace("transformer.feature_extractor.layers.0", "conv1")
-                        module = module.replace("transformer.feature_extractor.layers.1", "conv2")
+                        module = module.replace("transformer.feature_extractor.0", "conv1")
+                        module = module.replace("transformer.feature_extractor.1", "conv2")
                         new_exclude_modules.append(module)
                     else:
                         module = module.replace("transformer.layers", "decoder_layers")
@@ -589,8 +589,8 @@ def export_tensorrt_llm_checkpoint(
                             "transformer.position_embedding", "position_embedding"
                         )
                         new_key = new_key.replace("transformer.ln_f", "ln_post")
-                        new_key = new_key.replace("transformer.feature_extractor.layers.0", "conv1")
-                        new_key = new_key.replace("transformer.feature_extractor.layers.1", "conv2")
+                        new_key = new_key.replace("transformer.feature_extractor.0", "conv1")
+                        new_key = new_key.replace("transformer.feature_extractor.1", "conv2")
                     else:
                         new_key = key.replace("transformer.layers", "decoder_layers")
                         new_key = new_key.replace(
