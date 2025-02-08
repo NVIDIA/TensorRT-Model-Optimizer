@@ -6,6 +6,7 @@ Model Optimizer Changelog (Linux)
 
 **Backward Breaking Changes**
 
+- Support TensorRT-LLM to 0.17. Examples (e.g. benchmark task in llm_ptq) may not be fully compatible with TensorRT-LLM 0.15.
 - Nvidia TensorRT Model Optimizer has changed its LICENSE from NVIDIA Proprietary (library wheel) and MIT (examples) to Apache 2.0 in this first full OSS release.
 - Deprecate Python 3.8, Torch 2.0, and Cuda 11.x support.
 - ONNX Runtime dependency upgraded to 1.20 which no longer supports Python 3.9.
