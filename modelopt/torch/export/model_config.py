@@ -558,6 +558,9 @@ class ModelConfig:
     encoder_num_heads: int = 0
     encoder_head_size: int = 0
 
+    # For decoder of Encoder-Decoder model that has encoder feature extractor
+    feature_extractor: list[ConvConfig] = field(default_factory=list)
+
     @property
     def vocab_size_padded(self):
         """Returns the padded vocab_size of the model rounds to the tensor_parallel."""
