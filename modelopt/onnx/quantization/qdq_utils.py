@@ -441,10 +441,20 @@ def qdq_to_dq(
         cast_indices = []
 
         tensor_consumers = get_tensor_consumer_nodes(graph)
+        output_names = [output.name for output in graph.output]
 
         # find all Cast node with same input and output type
         for node_idx, node in enumerate(graph.node):
             if node.op_type != "Cast":
+                continue
+
+            last_node = False
+            for node_output_name in node.output:
+                if node_output_name in output_names:
+                    last_node = True
+                    break
+
+            if last_node:
                 continue
 
             # if input type matches attribute "to", this is a useless Cast node
