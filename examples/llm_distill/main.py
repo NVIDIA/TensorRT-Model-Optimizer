@@ -197,7 +197,7 @@ def train():
             if not os.path.isfile(modelopt_state_path):
                 raise FileNotFoundError("`modelopt_state.pt` not found with checkpoint.")
             logger.info(f"Loading modelopt state from {modelopt_state_path}")
-            modelopt_state = torch.load(modelopt_state_path)
+            modelopt_state = torch.load(modelopt_state_path, weights_only=False)
             mto.restore_from_modelopt_state(model, modelopt_state)
 
         logger.info("Beginning training...")

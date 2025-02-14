@@ -70,7 +70,9 @@ def _new_load_adapter(self, model_id, adapter_name, *args, **kwargs):
         assert (
             adapter_name in self.peft_config
         ), f"ModelOpt modified model should have adapter_name={adapter_name} in peft_config"
-        restore_from_modelopt_state(self, torch.load(modelopt_state_path, map_location="cpu"))
+        restore_from_modelopt_state(
+            self, torch.load(modelopt_state_path, map_location="cpu", weights_only=False)
+        )
 
     # The adapter state_dictionary does not contain the quantizer weights for the layers which are not LoraLinear
     # However this is okay since the quantizer weights have been loaded from the quantizer_state_dict.pth in
@@ -83,7 +85,7 @@ def _new_load_adapter(self, model_id, adapter_name, *args, **kwargs):
         from modelopt.torch.quantization.nn import TensorQuantizer
 
         quantizer_state_dict = torch.load(
-            _get_quantizer_state_save_path(model_id), map_location="cpu"
+            _get_quantizer_state_save_path(model_id), map_location="cpu", weights_only=False
         )
         for name, module in self.named_modules():
             if isinstance(module, TensorQuantizer):

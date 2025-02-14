@@ -60,7 +60,7 @@ def _patch_model_init_for_modelopt(cls, model_path):
         modelopt_state_path = _get_modelopt_state_path(self, model_path)
         cls._original__init__(self, *args, **kwargs)
         if os.path.isfile(modelopt_state_path):
-            modelopt_state = torch.load(modelopt_state_path, map_location="cpu")
+            modelopt_state = torch.load(modelopt_state_path, map_location="cpu", weights_only=False)
             if not has_nas_modelopt_state(modelopt_state):
                 restore_from_modelopt_state(self, modelopt_state)
                 print_rank_0(f"Restored ModelOpt state from {modelopt_state_path}")
@@ -113,7 +113,9 @@ def _new__load_pretrained_model(
     """
     modelopt_state_path = _get_modelopt_state_path(model, pretrained_model_name_or_path)
     if os.path.isfile(modelopt_state_path) and not ModeloptStateManager.is_converted(model):
-        modelopt_state_dict = torch.load(modelopt_state_path, map_location="cpu")
+        modelopt_state_dict = torch.load(
+            modelopt_state_path, map_location="cpu", weights_only=False
+        )
         restore_from_modelopt_state(model, modelopt_state_dict)
         print_rank_0(f"Restored ModelOpt state after init from {modelopt_state_path}")
 

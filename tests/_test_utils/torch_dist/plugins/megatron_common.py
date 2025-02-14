@@ -207,7 +207,13 @@ def run_mcore_gpt_inference(
     )
     wrapped_model = GPTInferenceWrapper(model, inference_wrapper_config)
     wrapped_model.prep_model_for_inference(prompt_tokens)
-    inference_input = wrapped_model.get_batch_for_context_window(0, model.max_sequence_length)
+    if Version(mcore_version) >= Version("0.10"):
+        inference_input = wrapped_model.prep_inference_input(prompt_tokens)
+        inference_input = wrapped_model.get_batch_for_context_window(
+            inference_input, 0, model.max_sequence_length
+        )
+    else:
+        inference_input = wrapped_model.get_batch_for_context_window(0, model.max_sequence_length)
 
     # Note: This is returned in all TP ranks or last PP stage in PP models
     logits = wrapped_model.run_one_forward_step(inference_input)

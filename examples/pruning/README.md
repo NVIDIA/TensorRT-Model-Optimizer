@@ -10,7 +10,7 @@ Model Optimizer can be used in one of the following complementary pruning modes 
 
 ## Documentation
 
-Checkout the [Quick Start: Pruning](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/4_pruning.html) and the detailed [Optimization Guide](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_pruning.html) in the Model Optimizer documentation for more information on how to use the above pruning algorithms in Model Optimizer.
+Checkout the [Quick Start: Pruning](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/5_pruning.html) and the detailed [Optimization Guide](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_pruning.html) in the Model Optimizer documentation for more information on how to use the above pruning algorithms in Model Optimizer.
 
 ## Algorithms
 

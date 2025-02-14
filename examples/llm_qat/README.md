@@ -61,7 +61,7 @@ torch.save(mto.modelopt_state(model), "modelopt_quantizer_states.pt")
 
 # To resume training from a checkpoint or load the final QAT model for evaluation,
 # load the quantizer states before loading the model weights
-# mto.restore_from_modelopt_state(model, torch.load("modelopt_quantizer_states.pt"))
+# mto.restore_from_modelopt_state(model, torch.load("modelopt_quantizer_states.pt", weights_only=False))
 # After loading the quantizer states, load the model weights
 # model.load_state_dict(state_dict_from_last_checkpoint)
 

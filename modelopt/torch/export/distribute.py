@@ -91,7 +91,7 @@ class NFSWorkspace:
             raise ValueError("NFSWorkspace is not initialized!")
         state_path = self._get_state_path(target_rank)
         if state_path.exists():
-            state = torch.load(state_path, map_location="cpu")
+            state = torch.load(state_path, map_location="cpu", weights_only=False)
             return state["config"], state["weight"]
         else:
             return None, None

@@ -822,8 +822,8 @@ def build_mlp_config(
                 # for Int8 SQ case, we split the weight scaling factor into two parts.
                 weight_scaling_factors = torch.chunk(weight_scaling_factor, 2, dim=0)
 
-            config.fc = build_linear_config(fc_linear)
-            config.gate = build_linear_config(fc_linear)
+            config.fc = build_linear_config(fc_linear, LINEAR_COLUMN)
+            config.gate = build_linear_config(fc_linear, LINEAR_COLUMN)
             config.fc.weight = weights[0]
             config.gate.weight = weights[1]
             if weight_scaling_factors is not None:

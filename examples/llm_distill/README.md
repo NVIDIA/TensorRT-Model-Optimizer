@@ -6,7 +6,7 @@ In this tutorial, we demonstrate how to use Model Optimizer to perform teacher-s
 
 Checkout the stand-along distillation example in the [NVIDIA NeMo repository](https://github.com/NVIDIA/NeMo/tree/main/examples/nlp/language_modeling/megatron_gpt_distillation.py).
 
-You can also look at the tutorial notebooks [here](https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama-3/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Llama 3.1 8B step-by-step in NeMo framework.
+You can also look at the tutorial notebooks [here](https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Llama 3.1 8B step-by-step in NeMo framework.
 
 ## Knowledge Distillation (KD) for HuggingFace Models
 

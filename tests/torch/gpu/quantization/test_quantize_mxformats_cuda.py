@@ -20,7 +20,7 @@ from modelopt.torch.quantization.extensions import get_cuda_ext_mx
 from modelopt.torch.quantization.tensor_quant import mx_format_map
 
 if get_cuda_ext_mx() is None:
-    pytest.skip("cuda_ext_mx is not available")
+    pytest.skip("cuda_ext_mx is not available", allow_module_level=True)
 
 cuda_ext_mx = get_cuda_ext_mx()
 

@@ -488,7 +488,7 @@ def restore_from_modelopt_state(model: ModelLike, modelopt_state: dict[str, Any]
 
         # Restore the previously saved modelopt state followed by model weights
         mto.restore_from_modelopt_state(
-            model, torch.load("modelopt_state.pt")
+            model, torch.load("modelopt_state.pt", weights_only=False)
         )  # Restore modelopt state
         model.load_state_dict(torch.load("model_weights.pt"), ...)  # Load the model weights
 
@@ -561,6 +561,7 @@ def restore(model: ModelLike, f: Union[str, os.PathLike, BinaryIO], **kwargs) ->
 
     # load checkpoint
     kwargs.setdefault("map_location", "cpu")
+    kwargs.setdefault("weights_only", False)
     objs = torch.load(f, **kwargs)
 
     # restore model architecture

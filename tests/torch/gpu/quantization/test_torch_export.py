@@ -67,7 +67,7 @@ def test_export_torch_mode(config):
 
         output_pyt = model(input_tensor)
         with export_torch_mode():
-            export_program = torch.export.export(model, (input_tensor,))
+            export_program = torch.export.export(model, (input_tensor,), strict=False)
             outputs_ep = export_program.module()(input_tensor)
 
             print(f"output_pyt: {output_pyt}, outputs_ep: {outputs_ep}")

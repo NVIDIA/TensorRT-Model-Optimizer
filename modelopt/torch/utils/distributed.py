@@ -88,7 +88,7 @@ def _deserialize(tensor: torch.Tensor, size: Optional[int] = None) -> Any:
     buffer = tensor.numpy().tobytes()
     if size is not None:
         buffer = buffer[:size]
-    obj = torch.load(io.BytesIO(buffer))
+    obj = torch.load(io.BytesIO(buffer), weights_only=False)
     return obj
 
 

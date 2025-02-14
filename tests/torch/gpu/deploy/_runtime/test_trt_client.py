@@ -24,10 +24,11 @@ from _test_utils.torch_model.deploy_models import (
     LeNet5TwoOutputs,
 )
 
+skip_if_no_trtexec()
+
+
 from modelopt.torch._deploy._runtime.trt_client import TRTLocalClient
 from modelopt.torch._deploy.compilation import compile
-
-skip_if_no_trtexec()
 
 deployment = {
     "runtime": "TRT",

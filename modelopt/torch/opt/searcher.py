@@ -245,7 +245,7 @@ class BaseSearcher(ABC):
 
         # iterate through state dict and load keys
         print(f"Loading searcher state from {checkpoint}...")
-        state_dict = torch.load(checkpoint)
+        state_dict = torch.load(checkpoint, weights_only=False)
         assert state_dict.keys() == self.state_dict().keys(), "Keys in checkpoint don't match!"
         for key, state in state_dict.items():
             setattr(self, key, state)
