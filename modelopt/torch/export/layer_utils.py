@@ -957,7 +957,7 @@ def build_stacked_experts(
     """Builds the experts_weight_1 and experts_weight_2 configs for the experts."""
     # Resmooth all experts
     preprocess_linear_fusion(
-        [expert_getter(experts, i, linear_names[2]) for i in range(num_experts)],
+        [expert_getter(experts, i, linear_names[1]) for i in range(num_experts)],
         resmooth_only=True,
     )
 

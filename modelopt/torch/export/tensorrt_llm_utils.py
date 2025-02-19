@@ -415,7 +415,9 @@ def convert_to_tensorrt_llm_config(
     layernorm_type_map = {i.name: i.value for i in LayerNormType}
     layernorm_position_map = {i.name: i.value for i in LayerNormPositionType}
 
-    if decoder_type == "mpt":
+    if decoder_type in ["gpt", "gemma", "llama"]:
+        pass
+    elif decoder_type == "mpt":
         config.update(
             {
                 "clip_qkv": first_attention_config.clip_qkv,
@@ -506,7 +508,7 @@ def convert_to_tensorrt_llm_config(
         config["vision_output_dim"] = vision_output_dim if vision_output_dim != 0 else 7680
     else:
         raise NotImplementedError(
-            f"Cannot export tensorrt_llm checkpoint for model {config_architecture}. "
+            f"Cannot export tensorrt_llm checkpoint for model {decoder_type}: {config_architecture}. "
             "It's not supported by TensorRT-LLM yet."
         )
 
