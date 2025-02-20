@@ -300,7 +300,6 @@ def create_forward_loop(
     """
     if dataloader is None:
         if batch_size == 0:
-            # We let the system to determine the max data batch for each forward.
             batch_size = get_max_batch_size(model, max_sample_length)
             print(f"Update calib batch {batch_size}")
 
@@ -316,28 +315,38 @@ def create_forward_loop(
 
     def forward_loop(model):
         with torch.no_grad():
-            low_mem_mode = False
+            safe_factor = 1  # Worst-case split factor needed so far
             is_enc_dec = model_type_is_enc_dec(model)
             infer_method = model.generate if is_enc_dec else model.forward
-            for _, data in enumerate(tqdm(dataloader)):
+
+            def run_splits(data, factor: int):
                 batch_size = data[list(data.keys())[0]].shape[0]
-                if batch_size == 1:
-                    infer_method(**data)
-                elif not low_mem_mode:
-                    # Try running the forward once.
-                    # If output memory, we try running inference with split input tensors
+                l_of_indices = torch.chunk(torch.arange(batch_size), chunks=factor)
+                for idxs in l_of_indices:
+                    infer_method(**{k: v[idxs] for k, v in data.items()})
+
+            for idx, data in enumerate(tqdm(dataloader)):
+                batch_size = data[list(data.keys())[0]].shape[0]
+                factor = min(safe_factor, batch_size)
+                while True:  # until inference is successful
                     try:
-                        infer_method(**data)
+                        if factor == 1:
+                            infer_method(**data)
+                        else:
+                            run_splits(data, factor)
+                        break  # Inference successful, break out of the loop
                     except torch.cuda.OutOfMemoryError:
-                        warn("torch.OutOfMemoryError detected, try reducing the batch size...")
-                        low_mem_mode = True
-
-                if low_mem_mode:
-                    split_data_1 = {key: data[key][: batch_size // 2, ...] for key in data}
-                    infer_method(**split_data_1)
-
-                    split_data_2 = {key: data[key][batch_size // 2 :, ...] for key in data}
-                    infer_method(**split_data_2)
+                        warn(
+                            f"torch.OutOfMemoryError with batch size {batch_size} split into {safe_factor}. "
+                            "Trying higher splits..."
+                        )
+                        factor *= 2  # Increase the split factor
+                        if factor >= batch_size:
+                            raise RuntimeError(
+                                f"Forward loop failed on batch {idx}: "
+                                " even processing one example at a time causes torch.OutOfMemoryError."
+                            )
+                safe_factor = max(safe_factor, factor)
 
     return forward_loop
 
