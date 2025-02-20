@@ -302,7 +302,6 @@ def create_forward_loop(
         if batch_size == 0:
             batch_size = get_max_batch_size(model, max_sample_length)
             print(f"Update calib batch {batch_size}")
-
         dataloader = get_dataset_dataloader(
             dataset_name=dataset_name,
             tokenizer=tokenizer,
