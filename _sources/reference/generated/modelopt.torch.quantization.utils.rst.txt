@@ -1,5 +1,3 @@
-.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
 utils
 =====
 
@@ -46,7 +44,6 @@ utils
       is_quantized_row_parallel_linear
       replace_function
       export_torch_mode
-      is_torch_library_supported
       get_parallel_state
    
    

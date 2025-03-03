@@ -1,5 +1,3 @@
-.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
 qtensor
 =======
 
@@ -15,6 +13,9 @@ qtensor
 
 
    modelopt.torch.quantization.qtensor.base_qtensor
+
+
+   modelopt.torch.quantization.qtensor.fp8_tensor
 
 
    modelopt.torch.quantization.qtensor.int4_tensor

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>clip &mdash; Model Optimizer 0.23.0</title>
+  <title>bias &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -34,8 +34,8 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="quant_activations" href="modelopt.torch.quantization.nn.modules.quant_activations.html" />
-    <link rel="prev" title="modules" href="modelopt.torch.quantization.nn.modules.html" /> 
+    <link rel="next" title="calibrator" href="modelopt.torch.quantization.calib.calibrator.html" />
+    <link rel="prev" title="calib" href="modelopt.torch.quantization.calib.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -101,7 +101,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
+<li class="toctree-l4 current"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.export_onnx.html">export_onnx</a></li>
@@ -109,7 +109,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.mode.html">mode</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_calib.html">model_calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_quant.html">model_quant</a></li>
-<li class="toctree-l4 current"><a class="reference internal" href="modelopt.torch.quantization.nn.html">nn</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.nn.html">nn</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.optim.html">optim</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.plugins.html">plugins</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.qtensor.html">qtensor</a></li>
@@ -150,11 +150,10 @@
           <li class="breadcrumb-item"><a href="../1_modelopt_api.html">modelopt API</a></li>
           <li class="breadcrumb-item"><a href="modelopt.torch.html">torch</a></li>
           <li class="breadcrumb-item"><a href="modelopt.torch.quantization.html">quantization</a></li>
-          <li class="breadcrumb-item"><a href="modelopt.torch.quantization.nn.html">nn</a></li>
-          <li class="breadcrumb-item"><a href="modelopt.torch.quantization.nn.modules.html">modules</a></li>
-      <li class="breadcrumb-item active">clip</li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.quantization.calib.html">calib</a></li>
+      <li class="breadcrumb-item active">bias</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../../_sources/reference/generated/modelopt.torch.quantization.nn.modules.clip.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../../_sources/reference/generated/modelopt.torch.quantization.calib.bias.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -162,45 +161,51 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="clip">
-<h1>clip<a class="headerlink" href="#clip" title="Link to this heading"></a></h1>
-<p id="module-modelopt.torch.quantization.nn.modules.clip">Implement a clip module as pytorch only has a simple clamp function.</p>
+  <section id="bias">
+<h1>bias<a class="headerlink" href="#bias" title="Link to this heading"></a></h1>
+<p id="module-modelopt.torch.quantization.calib.bias">Calibrator that returns the bias of all collected tensors.</p>
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.nn.modules.clip.Clip" title="modelopt.torch.quantization.nn.modules.clip.Clip"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Clip</span></code></a></p></td>
-<td><p>Clip tensor.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.calib.bias.BiasCalibrator" title="modelopt.torch.quantization.calib.bias.BiasCalibrator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BiasCalibrator</span></code></a></p></td>
+<td><p>Bias calibrator, tracks the bias of all tensors collected.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.clip.Clip">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">Clip</span></span><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.clip.Clip" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>Clip tensor.</p>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.calib.bias.BiasCalibrator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">BiasCalibrator</span></span><a class="headerlink" href="#modelopt.torch.quantization.calib.bias.BiasCalibrator" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_Calibrator</span></code></p>
+<p>Bias calibrator, tracks the bias of all tensors collected.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.calib.bias.BiasCalibrator.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'mean'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.calib.bias.BiasCalibrator.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>clip_value_min</strong> – A number or tensor of lower bound to clip</p></li>
-<li><p><strong>clip_value_max</strong> – A number of tensor of upper bound to clip</p></li>
-<li><p><strong>learn_min</strong> – A boolean. If True, learn min. clip_value_min will be used to initialize. Default False</p></li>
-<li><p><strong>learn_max</strong> – A boolean. Similar as learn_min but for max.</p></li>
+<li><p><strong>method</strong> (<em>str</em>) – </p></li>
+<li><p><strong>axis</strong> (<em>int</em><em> | </em><em>Tuple</em><em>[</em><em>int</em><em>, </em><em>...</em><em>] </em><em>| </em><em>None</em>) – </p></li>
 </ul>
 </dd>
-<dt class="field-even">Raises<span class="colon">:</span></dt>
-<dd class="field-even"><p><strong>ValueError</strong> – </p>
-</dd>
 </dl>
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.clip.Clip.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">clip_value_min</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">clip_value_max</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">learn_min</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">learn_max</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.clip.Clip.__init__" title="Link to this definition"></a></dt>
-<dd><p>Initialize.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.clip.Clip.forward">
-<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.clip.Clip.forward" title="Link to this definition"></a></dt>
-<dd><p>Clip input tensor.</p>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.calib.bias.BiasCalibrator.collect_calib_bias">
+<span class="sig-name descname"><span class="pre">collect_calib_bias</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.calib.bias.BiasCalibrator.collect_calib_bias" title="Link to this definition"></a></dt>
+<dd><p>Compute bias of input tensor along axis.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>x</strong> (<em>Tensor</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.calib.bias.BiasCalibrator.compute_calib_bias">
+<span class="sig-name descname"><span class="pre">compute_calib_bias</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.calib.bias.BiasCalibrator.compute_calib_bias" title="Link to this definition"></a></dt>
+<dd><p>Return the bias of all tensors collected.</p>
 </dd></dl>
 
 </dd></dl>
@@ -211,14 +216,14 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modelopt.torch.quantization.nn.modules.html" class="btn btn-neutral float-left" title="modules" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.quantization.nn.modules.quant_activations.html" class="btn btn-neutral float-right" title="quant_activations" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.quantization.calib.html" class="btn btn-neutral float-left" title="calib" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.quantization.calib.calibrator.html" class="btn btn-neutral float-right" title="calibrator" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

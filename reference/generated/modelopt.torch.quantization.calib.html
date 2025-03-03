@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>calib &mdash; Model Optimizer 0.23.0</title>
+  <title>calib &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -34,7 +34,7 @@
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="calibrator" href="modelopt.torch.quantization.calib.calibrator.html" />
+    <link rel="next" title="bias" href="modelopt.torch.quantization.calib.bias.html" />
     <link rel="prev" title="quantization" href="modelopt.torch.quantization.html" /> 
 </head>
 
@@ -165,13 +165,16 @@
 <p class="rubric">Modules</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.quantization.calib.calibrator.html#module-modelopt.torch.quantization.calib.calibrator" title="modelopt.torch.quantization.calib.calibrator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.quantization.calib.calibrator</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.quantization.calib.bias.html#module-modelopt.torch.quantization.calib.bias" title="modelopt.torch.quantization.calib.bias"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.quantization.calib.bias</span></code></a></p></td>
+<td><p>Calibrator that returns the bias of all collected tensors.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.quantization.calib.calibrator.html#module-modelopt.torch.quantization.calib.calibrator" title="modelopt.torch.quantization.calib.calibrator"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.quantization.calib.calibrator</span></code></a></p></td>
 <td><p>Abstract base class for calibrators.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.quantization.calib.histogram.html#module-modelopt.torch.quantization.calib.histogram" title="modelopt.torch.quantization.calib.histogram"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.quantization.calib.histogram</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.quantization.calib.histogram.html#module-modelopt.torch.quantization.calib.histogram" title="modelopt.torch.quantization.calib.histogram"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.quantization.calib.histogram</span></code></a></p></td>
 <td><p>Histogram based calibrators.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.quantization.calib.max.html#module-modelopt.torch.quantization.calib.max" title="modelopt.torch.quantization.calib.max"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.quantization.calib.max</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.quantization.calib.max.html#module-modelopt.torch.quantization.calib.max" title="modelopt.torch.quantization.calib.max"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.quantization.calib.max</span></code></a></p></td>
 <td><p>Calibrator that returns the absolute max of all collected tensors.</p></td>
 </tr>
 </tbody>
@@ -186,13 +189,13 @@ collect data statistics and determine modelopt.torch.quantization parameters.</p
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="modelopt.torch.quantization.html" class="btn btn-neutral float-left" title="quantization" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.quantization.calib.calibrator.html" class="btn btn-neutral float-right" title="calibrator" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.quantization.calib.bias.html" class="btn btn-neutral float-right" title="bias" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

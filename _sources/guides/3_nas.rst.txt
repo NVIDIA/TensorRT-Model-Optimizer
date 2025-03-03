@@ -494,7 +494,7 @@ Overview
       - The process of finding an optimal subnet within a trained search space.
     * - `Subnet fine-tuning`_
       - The process of training the selected subnet in isolation for improved final accuracy.
-    * - `Pruning <pruning-concepts>`_
+    * - :ref:`Pruning <pruning-concepts>`
       - The process of removing redundant components from a neural network for a given task.
 
 

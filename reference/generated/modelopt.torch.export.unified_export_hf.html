@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>unified_export_hf &mdash; Model Optimizer 0.23.0</title>
+  <title>unified_export_hf &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -173,7 +173,7 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.unified_export_hf.export_hf_checkpoint">
-<span class="sig-name descname"><span class="pre">export_hf_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.unified_export_hf.export_hf_checkpoint" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">export_hf_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_modelopt_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.unified_export_hf.export_hf_checkpoint" title="Link to this definition"></a></dt>
 <dd><p>Exports the torch model to unified checkpoint and saves to export_dir.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -181,6 +181,7 @@
 <li><p><strong>model</strong> (<em>Module</em>) – the torch model.</p></li>
 <li><p><strong>dtype</strong> (<em>dtype</em><em> | </em><em>None</em>) – the weights data type to export the unquantized layers or the default model data type if None.</p></li>
 <li><p><strong>export_dir</strong> (<em>Path</em><em> | </em><em>str</em>) – the target export path.</p></li>
+<li><p><strong>save_modelopt_state</strong> (<em>bool</em>) – whether to save the modelopt state_dict.</p></li>
 </ul>
 </dd>
 </dl>
@@ -199,7 +200,7 @@
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

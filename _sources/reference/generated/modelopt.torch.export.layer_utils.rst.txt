@@ -1,5 +1,3 @@
-.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
 layer\_utils
 ============
 
@@ -55,6 +53,9 @@ layer\_utils
       check_model_compatibility
       dup_kv_weight
       get_dtype
+      get_enc_dec_models
+      get_enc_dec_token_ids
+      get_encoder_config
       get_experts_linear_names
       get_experts_list
       get_transformer_layers
@@ -67,6 +68,7 @@ layer\_utils
       is_moe
       is_quantlinear
       is_recurrent
+      model_type_is_enc_dec
       update_experts_avg_prequant_scale
    
    

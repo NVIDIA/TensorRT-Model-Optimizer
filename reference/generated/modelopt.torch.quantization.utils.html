@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.23.0</title>
+  <title>utils &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -187,10 +187,7 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.export_torch_mode" title="modelopt.torch.quantization.utils.export_torch_mode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_torch_mode</span></code></a></p></td>
 <td><p>Context manager enabling the export mode.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.is_torch_library_supported" title="modelopt.torch.quantization.utils.is_torch_library_supported"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_torch_library_supported</span></code></a></p></td>
-<td><p>Check if the installed PyTorch version meets or exceeds a specified version.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.get_parallel_state" title="modelopt.torch.quantization.utils.get_parallel_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_parallel_state</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.get_parallel_state" title="modelopt.torch.quantization.utils.get_parallel_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_parallel_state</span></code></a></p></td>
 <td><p>Get the parallel state.</p></td>
 </tr>
 </tbody>
@@ -244,14 +241,8 @@ the parallel state of the model is returned.</p></li>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.utils.is_torch_library_supported">
-<span class="sig-name descname"><span class="pre">is_torch_library_supported</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.utils.is_torch_library_supported" title="Link to this definition"></a></dt>
-<dd><p>Check if the installed PyTorch version meets or exceeds a specified version.</p>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.utils.reduce_amax">
-<span class="sig-name descname"><span class="pre">reduce_amax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keepdims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.utils.reduce_amax" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">reduce_amax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">axis</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keepdims</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">squeeze_scalar</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.utils.reduce_amax" title="Link to this definition"></a></dt>
 <dd><p>Compute the absolute maximum value of a tensor.</p>
 <p>Reduces input_tensor along the dimensions given in axis. Unless keepdims is true,
 the rank of the tensor is reduced by 1 for each entry in axis. If keepdims is true,
@@ -301,7 +292,7 @@ reduces all dimensions. Must be in the range [-rank(input_tensor), rank(input_te
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

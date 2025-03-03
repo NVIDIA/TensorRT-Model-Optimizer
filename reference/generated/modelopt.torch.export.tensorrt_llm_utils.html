@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tensorrt_llm_utils &mdash; Model Optimizer 0.23.0</title>
+  <title>tensorrt_llm_utils &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -173,11 +173,11 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.tensorrt_llm_utils.is_tensorrt_llm_0_8_or_9" title="modelopt.torch.export.tensorrt_llm_utils.is_tensorrt_llm_0_8_or_9"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_tensorrt_llm_0_8_or_9</span></code></a></p></td>
 <td><p>Returns true if tensorrt_llm version is 0.8 or 0.9.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_decoder_layer" title="modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_decoder_layer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_enc_dec_decoder_layer</span></code></a></p></td>
-<td><p>Prepare the config for each decoder layer of encoder-decoder model.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_export_dir" title="modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_export_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_enc_dec_export_dir</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_export_dir" title="modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_export_dir"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_enc_dec_export_dir</span></code></a></p></td>
 <td><p>Prepare the export directory for encoder-decoder model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.tensorrt_llm_utils.prepare_t5_decoder_layer" title="modelopt.torch.export.tensorrt_llm_utils.prepare_t5_decoder_layer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">prepare_t5_decoder_layer</span></code></a></p></td>
+<td><p>Prepare the config for each decoder layer of encoder-decoder model.</p></td>
 </tr>
 </tbody>
 </table>
@@ -204,22 +204,6 @@ If provided, we try to use the TensorRT-LLM’s export method if available.</p><
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_decoder_layer">
-<span class="sig-name descname"><span class="pre">prepare_enc_dec_decoder_layer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enc_dec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_decoder_layer" title="Link to this definition"></a></dt>
-<dd><p>Prepare the config for each decoder layer of encoder-decoder model.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>layer_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a>) – </p></li>
-<li><p><strong>model_config</strong> (<em>T5Config</em>) – </p></li>
-<li><p><strong>enc_dec</strong> (<em>str</em>) – </p></li>
-<li><p><strong>layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a><em>]</em>) – </p></li>
-</ul>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_export_dir">
 <span class="sig-name descname"><span class="pre">prepare_enc_dec_export_dir</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensorrt_llm_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_root</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.tensorrt_llm_utils.prepare_enc_dec_export_dir" title="Link to this definition"></a></dt>
 <dd><p>Prepare the export directory for encoder-decoder model.</p>
@@ -228,6 +212,22 @@ If provided, we try to use the TensorRT-LLM’s export method if available.</p><
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>tensorrt_llm_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
 <li><p><strong>export_root</strong> (<em>Path</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.tensorrt_llm_utils.prepare_t5_decoder_layer">
+<span class="sig-name descname"><span class="pre">prepare_t5_decoder_layer</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">layer_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">enc_dec</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layers</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.tensorrt_llm_utils.prepare_t5_decoder_layer" title="Link to this definition"></a></dt>
+<dd><p>Prepare the config for each decoder layer of encoder-decoder model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>layer_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a>) – </p></li>
+<li><p><strong>model_config</strong> (<em>T5Config</em>) – </p></li>
+<li><p><strong>enc_dec</strong> (<em>str</em>) – </p></li>
+<li><p><strong>layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a><em>]</em>) – </p></li>
 </ul>
 </dd>
 </dl>
@@ -246,7 +246,7 @@ If provided, we try to use the TensorRT-LLM’s export method if available.</p><
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

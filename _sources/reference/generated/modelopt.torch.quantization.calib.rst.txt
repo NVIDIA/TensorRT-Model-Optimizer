@@ -1,5 +1,3 @@
-.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
 calib
 =====
 
@@ -12,6 +10,9 @@ calib
 .. autosummary::
    :toctree:
    :recursive:
+
+
+   modelopt.torch.quantization.calib.bias
 
 
    modelopt.torch.quantization.calib.calibrator

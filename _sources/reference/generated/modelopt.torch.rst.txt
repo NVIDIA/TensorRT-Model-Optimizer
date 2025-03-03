@@ -1,6 +1,4 @@
-﻿.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
-torch
+﻿torch
 =====
 
 .. List the submodules

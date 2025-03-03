@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>layer_utils &mdash; Model Optimizer 0.23.0</title>
+  <title>layer_utils &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -215,41 +215,53 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_dtype" title="modelopt.torch.export.layer_utils.get_dtype"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_dtype</span></code></a></p></td>
 <td><p>Returns the default dtype of the model.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_linear_names" title="modelopt.torch.export.layer_utils.get_experts_linear_names"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_linear_names</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_enc_dec_models" title="modelopt.torch.export.layer_utils.get_enc_dec_models"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_enc_dec_models</span></code></a></p></td>
+<td><p>Get the correct encoder, decoder from hf model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_enc_dec_token_ids" title="modelopt.torch.export.layer_utils.get_enc_dec_token_ids"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_enc_dec_token_ids</span></code></a></p></td>
+<td><p>Parse decoder model token info.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_encoder_config" title="modelopt.torch.export.layer_utils.get_encoder_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_encoder_config</span></code></a></p></td>
+<td><p>Get the encoder information for decoder model in enc-dec model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_linear_names" title="modelopt.torch.export.layer_utils.get_experts_linear_names"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_linear_names</span></code></a></p></td>
 <td><p>Returns linear layer names based on decoder type for MoE models.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_list" title="modelopt.torch.export.layer_utils.get_experts_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_list</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_list" title="modelopt.torch.export.layer_utils.get_experts_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_list</span></code></a></p></td>
 <td><p>Returns list of grouped experts by linear name for given module.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_transformer_layers" title="modelopt.torch.export.layer_utils.get_transformer_layers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_transformer_layers</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_transformer_layers" title="modelopt.torch.export.layer_utils.get_transformer_layers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_transformer_layers</span></code></a></p></td>
 <td><p>Returns the root module of the transformer model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_attention" title="modelopt.torch.export.layer_utils.is_attention"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_attention</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_attention" title="modelopt.torch.export.layer_utils.is_attention"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_attention</span></code></a></p></td>
 <td><p>Returns whether the module is an attention layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_decoder_list" title="modelopt.torch.export.layer_utils.is_decoder_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_decoder_list</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_decoder_list" title="modelopt.torch.export.layer_utils.is_decoder_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_decoder_list</span></code></a></p></td>
 <td><p>Returns whether the module is a decoder list.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_embedding" title="modelopt.torch.export.layer_utils.is_embedding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_embedding</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_embedding" title="modelopt.torch.export.layer_utils.is_embedding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_embedding</span></code></a></p></td>
 <td><p>Returns whether the module is an embedding layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_layernorm" title="modelopt.torch.export.layer_utils.is_layernorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_layernorm</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_layernorm" title="modelopt.torch.export.layer_utils.is_layernorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_layernorm</span></code></a></p></td>
 <td><p>Returns whether the module is a layernorm layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_linear" title="modelopt.torch.export.layer_utils.is_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_linear" title="modelopt.torch.export.layer_utils.is_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear</span></code></a></p></td>
 <td><p>Returns whether the module is a linear layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_mlp" title="modelopt.torch.export.layer_utils.is_mlp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_mlp</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_mlp" title="modelopt.torch.export.layer_utils.is_mlp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_mlp</span></code></a></p></td>
 <td><p>Returns whether the module is an MLP layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_moe" title="modelopt.torch.export.layer_utils.is_moe"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_moe</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_moe" title="modelopt.torch.export.layer_utils.is_moe"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_moe</span></code></a></p></td>
 <td><p>Returns whether the module is an MOE layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_quantlinear" title="modelopt.torch.export.layer_utils.is_quantlinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantlinear</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_quantlinear" title="modelopt.torch.export.layer_utils.is_quantlinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantlinear</span></code></a></p></td>
 <td><p>Returns whether the module is a quantized linear layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_recurrent" title="modelopt.torch.export.layer_utils.is_recurrent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_recurrent" title="modelopt.torch.export.layer_utils.is_recurrent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent</span></code></a></p></td>
 <td><p>Returns whether the module is a recurrent layer.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="modelopt.torch.export.layer_utils.model_type_is_enc_dec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_type_is_enc_dec</span></code></a></p></td>
+<td><p>Check if model_type is a enc-dec model.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale" title="modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_experts_avg_prequant_scale</span></code></a></p></td>
 <td><p>Registers experts_pre_quant_scale attribute of each expert with average pre_quant_scale amongst experts.</p></td>
@@ -510,6 +522,24 @@ Otherwise it will not be supported.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.get_enc_dec_models">
+<span class="sig-name descname"><span class="pre">get_enc_dec_models</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hf_model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.get_enc_dec_models" title="Link to this definition"></a></dt>
+<dd><p>Get the correct encoder, decoder from hf model.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.get_enc_dec_token_ids">
+<span class="sig-name descname"><span class="pre">get_enc_dec_token_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">decoder_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.get_enc_dec_token_ids" title="Link to this definition"></a></dt>
+<dd><p>Parse decoder model token info.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.get_encoder_config">
+<span class="sig-name descname"><span class="pre">get_encoder_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">encoder_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.get_encoder_config" title="Link to this definition"></a></dt>
+<dd><p>Get the encoder information for decoder model in enc-dec model.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.get_experts_linear_names">
 <span class="sig-name descname"><span class="pre">get_experts_linear_names</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.get_experts_linear_names" title="Link to this definition"></a></dt>
 <dd><p>Returns linear layer names based on decoder type for MoE models.</p>
@@ -675,6 +705,12 @@ Otherwise it will not be supported.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.model_type_is_enc_dec">
+<span class="sig-name descname"><span class="pre">model_type_is_enc_dec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="Link to this definition"></a></dt>
+<dd><p>Check if model_type is a enc-dec model.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale">
 <span class="sig-name descname"><span class="pre">update_experts_avg_prequant_scale</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">experts</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale" title="Link to this definition"></a></dt>
 <dd><p>Registers experts_pre_quant_scale attribute of each expert with average pre_quant_scale amongst experts.</p>
@@ -698,7 +734,7 @@ Otherwise it will not be supported.</p>
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

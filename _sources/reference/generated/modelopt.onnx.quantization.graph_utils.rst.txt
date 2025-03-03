@@ -1,5 +1,3 @@
-.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
 graph\_utils
 ============
 
@@ -51,6 +49,7 @@ graph\_utils
       find_nodes_to_exclude
       get_extended_model_outputs
       get_fusible_backbone
+      get_resize_scales
       get_tensor_consumer_nodes
       get_tensor_producer_nodes
       has_const_input
@@ -61,5 +60,6 @@ graph\_utils
       match_fp8_mha_pattern
       print_stat
       remove_partial_input_qdq
+      replace_resize_scales
    
    

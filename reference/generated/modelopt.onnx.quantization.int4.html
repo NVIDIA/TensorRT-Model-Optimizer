@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>int4 &mdash; Model Optimizer 0.23.0</title>
+  <title>int4 &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -166,7 +166,7 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.int4.quantize">
-<span class="sig-name descname"><span class="pre">quantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'awq_lite'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_data_reader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['cuda:0',</span> <span class="pre">'dml:0',</span> <span class="pre">'cpu']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_zero_point</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes_to_exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['/lm_head']</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.int4.quantize" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">quantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'awq_lite'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_data_reader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['cpu']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_zero_point</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes_to_exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['/lm_head']</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.int4.quantize" title="Link to this definition"></a></dt>
 <dd><p>Applies INT4 Weight-Only-Quantization (WoQ) to an ONNX model.</p>
 <p>Currently, only <code class="docutils literal notranslate"><span class="pre">MatMul</span></code> nodes quantization is supported.</p>
 <dl class="field-list simple">
@@ -249,7 +249,7 @@ with their dependencies.</p>
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

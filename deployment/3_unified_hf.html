@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Unified HuggingFace Checkpoint &mdash; Model Optimizer 0.23.0</title>
+  <title>Unified HuggingFace Checkpoint &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -132,7 +132,7 @@
 <p>We support exporting modelopt-optimized Huggingface models and Megatron Core models to a unified checkpoint format that can be deployed in various inference frameworks such as TensorRT-LLM, vLLM, and SGLang.</p>
 <p>The workflow is as follows:</p>
 <ol class="arabic simple">
-<li><p>Load the Huggingface models or Megatron Core models, optimize/quantize with modelopt, and export to the unified checkpoint format, where the layer structures and tensor names are aligned with the original checkpoint.</p></li>
+<li><p>Load the Huggingface models or Megatron Core models, <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq#ptq-post-training-quantization" rel="noopener noreferrer" target="_blank">quantize with modelopt</a> , and export to the unified checkpoint format, where the layer structures and tensor names are aligned with the original checkpoint.</p></li>
 <li><p>Load the unified checkpoint in the supported inference framework for accelerated inference.</p></li>
 </ol>
 <section id="export-quantized-model">
@@ -260,7 +260,7 @@
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

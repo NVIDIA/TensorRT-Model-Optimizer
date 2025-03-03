@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_config_export &mdash; Model Optimizer 0.23.0</title>
+  <title>model_config_export &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -176,7 +176,7 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config_export.export_tensorrt_llm_checkpoint">
-<span class="sig-name descname"><span class="pre">export_tensorrt_llm_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decoder_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_tensor_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_pipeline_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">naive_fp8_quantization</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_nfs_workspace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_export.export_tensorrt_llm_checkpoint" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">export_tensorrt_llm_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decoder_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_tensor_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_pipeline_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_nfs_workspace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_export.export_tensorrt_llm_checkpoint" title="Link to this definition"></a></dt>
 <dd><p>Exports the torch model to the TensorRT-LLM checkpoint and save to the export_dir.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -192,8 +192,6 @@ Default is 0, meaning using the calibration without manual config merge or split
 We will merge or split the calibration pipeline parallelism to inference.
 Default is 1, meaning no pipeline parallelism.</p></li>
 <li><p><strong>inference_pipeline_parallel</strong> – The target inference time pipeline parallel.</p></li>
-<li><p><strong>naive_fp8_quantization</strong> (<em>bool</em>) – Quantize the model naively to FP8 without calibration.
-All scaling factors are set to 1.</p></li>
 <li><p><strong>use_nfs_workspace</strong> (<em>bool</em>) – if True, the an NFS workspace will be created under the export_dir and
 used as a shared memory for cross process/node communication.</p></li>
 </ul>
@@ -215,7 +213,7 @@ We will save the model_config as two files:</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.model_config_export.torch_to_tensorrt_llm_checkpoint">
-<span class="sig-name descname"><span class="pre">torch_to_tensorrt_llm_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decoder_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_tensor_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_pipeline_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">naive_fp8_quantization</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">workspace_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_export.torch_to_tensorrt_llm_checkpoint" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">torch_to_tensorrt_llm_checkpoint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">decoder_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_tensor_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inference_pipeline_parallel</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">workspace_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config_export.torch_to_tensorrt_llm_checkpoint" title="Link to this definition"></a></dt>
 <dd><p>Converts the torch model to the TensorRT-LLM checkpoint per GPU rank.</p>
 <p>TensorRT-LLM checkpoint is the LLM model format that can be used by the TensorRT-LLM build API.
 for the engine building process.
@@ -232,8 +230,6 @@ Default is 0, meaning using the calibration without manual config merge or split
 <li><p><strong>inference_pipeline_parallel</strong> (<em>int</em>) – The target inference time pipeline parallel.
 We will merge or split the calibration pipeline parallelism to inference.
 Default is 1, meaning no pipeline parallelism.</p></li>
-<li><p><strong>naive_fp8_quantization</strong> (<em>bool</em>) – Quantize the model naively to FP8 without calibration.
-All scaling factors are set to 1.</p></li>
 <li><p><strong>workspace_path</strong> (<em>Path</em><em> | </em><em>str</em><em> | </em><em>None</em>) – the path to the NFS directory for postprocess cross rank communication.</p></li>
 </ul>
 </dd>
@@ -266,7 +262,7 @@ for mixed_precision, empty dictionary otherwise.</p>
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

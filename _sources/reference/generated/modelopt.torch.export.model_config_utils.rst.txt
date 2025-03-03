@@ -1,5 +1,3 @@
-.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
 model\_config\_utils
 ====================
 
@@ -42,7 +40,6 @@ model\_config\_utils
       merge_qkv
       model_config_from_dict
       model_config_to_dict
-      naive_quantization
       pack_linear_weights
       pad_weights
       restore_model_config

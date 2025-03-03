@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>generate &mdash; Model Optimizer 0.23.0</title>
+  <title>generate &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -156,19 +156,28 @@
 <p>A wrapper over the <code class="docutils literal notranslate"><span class="pre">tensorrt_llm.llmapi.llm.LLM</span></code> for LLM profiling and validation.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">engine_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kv_cache_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">medusa_choices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.__init__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">checkpoint_dir</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">kv_cache_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{}</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">medusa_choices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tp</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trust_remote_code</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.__init__" title="Link to this definition"></a></dt>
 <dd><p>Initializes the LLM runner class.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>engine_dir</strong> (<em>str</em><em> | </em><em>Path</em>) – the directory path of the TensorRT-LLM engine.</p></li>
+<li><p><strong>engine_dir</strong> – the directory path of the TensorRT-LLM engine.</p></li>
 <li><p><strong>tokenizer</strong> (<em>str</em><em> | </em><em>Path</em><em> | </em><em>tensorrt_llm.llmapi.tokenizer.TokenizerBase</em><em> | </em><em>None</em>) – the tokenizer. For example, a tokenizer from the Huggingface model.</p></li>
 <li><p><strong>kv_cache_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>int</em><em> | </em><em>float</em><em>]</em>) – the kv cache config as a dict. Please refer to
-<a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md" rel="noopener noreferrer" target="_blank">https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md</a></p></li>
-<li><p><strong>medusa_choices</strong> (<em>Any</em>) – </p></li>
+<a class="reference external" href="https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/" rel="noopener noreferrer" target="_blank">https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/</a></p></li>
+<li><p><strong>medusa_choices</strong> (<em>Any</em>) – The medusa choices for the decoding config.</p></li>
+<li><p><strong>tp</strong> (<em>int</em>) – the tensor parallel size (for the torch backend). If 0, it will be set to the number of GPUs.</p></li>
+<li><p><strong>trust_remote_code</strong> (<em>bool</em>) – whether to trust the remote code (for the torch backend).</p></li>
+<li><p><strong>checkpoint_dir</strong> (<em>str</em><em> | </em><em>Path</em>) – </p></li>
 </ul>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM.gather_context_logits">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">gather_context_logits</span></span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.gather_context_logits" title="Link to this definition"></a></dt>
+<dd><p>Returns whether the context_logits can be returned from the LLM instance.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -181,7 +190,6 @@
 <li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>list</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
 <li><p><strong>temperature</strong> (<em>float</em>) – The sampling temperature.</p></li>
 <li><p><strong>top_p</strong> (<em>float</em>) – The nucleus sampling parameter.</p></li>
-<li><p><strong>keep_input_prompt</strong> – Set to include input prommpts in the outputs.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -195,7 +203,7 @@
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM.generate_text">
-<span class="sig-name descname"><span class="pre">generate_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prompts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_new_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_input_prompt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_words</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.generate_text" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">generate_text</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prompts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_new_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_words</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.generate_text" title="Link to this definition"></a></dt>
 <dd><p>Generates the text based on the input prompts.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -203,7 +211,6 @@
 <li><p><strong>prompts</strong> (<em>Iterable</em><em>[</em><em>str</em><em>] </em><em>| </em><em>Iterable</em><em>[</em><em>list</em><em>[</em><em>int</em><em>]</em><em>]</em>) – The input prompts. Could be a list of strings or token lists.</p></li>
 <li><p><strong>max_new_tokens</strong> (<em>int</em>) – The max output token length.</p></li>
 <li><p><strong>temperature</strong> (<em>float</em>) – The sampling temperature</p></li>
-<li><p><strong>keep_input_prompt</strong> (<em>bool</em>) – Set to include input prommpts in the outputs.</p></li>
 <li><p><strong>stop_words</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – A list of words the generate will stop on.</p></li>
 <li><p><strong>top_p</strong> (<em>float</em>) – </p></li>
 </ul>
@@ -219,7 +226,7 @@
 
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM.generate_tokens">
-<span class="sig-name descname"><span class="pre">generate_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prompts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_new_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">keep_input_prompt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_words</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.generate_tokens" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">generate_tokens</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prompts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_new_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">temperature</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">top_p</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_words</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.generate_tokens" title="Link to this definition"></a></dt>
 <dd><p>Generates the tokens based on the input prompts.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -228,7 +235,6 @@
 <li><p><strong>max_new_tokens</strong> (<em>int</em>) – The max output token length.</p></li>
 <li><p><strong>temperature</strong> (<em>float</em>) – The sampling temperature.</p></li>
 <li><p><strong>top_p</strong> (<em>float</em>) – The nucleus sampling parameter.</p></li>
-<li><p><strong>keep_input_prompt</strong> (<em>bool</em>) – Set to include input prommpts in the outputs.</p></li>
 <li><p><strong>stop_words</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – A list of words that the generate stops on.</p></li>
 </ul>
 </dd>
@@ -248,9 +254,9 @@
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM.max_input_len">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">max_input_len</span></span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.max_input_len" title="Link to this definition"></a></dt>
-<dd><p>Get the max input length from the LLM instance.</p>
+<dt class="sig sig-object py" id="modelopt.deploy.llm.generate.LLM.max_seq_len">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">max_seq_len</span></span><a class="headerlink" href="#modelopt.deploy.llm.generate.LLM.max_seq_len" title="Link to this definition"></a></dt>
+<dd><p>Get the max sequence length from the LLM instance.</p>
 </dd></dl>
 
 </dd></dl>
@@ -268,7 +274,7 @@
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

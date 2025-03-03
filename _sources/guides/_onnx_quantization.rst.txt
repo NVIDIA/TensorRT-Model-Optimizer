@@ -18,9 +18,19 @@ Currently ONNX quantization supports FP8, INT4 and INT8 quantization.
 Requirements
 ============
 
-#. TensorRT >= 8.6 ( >= 10.0 preferred). Please refer to `TensorRT 10.0 download link <https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.0.1/tars/TensorRT-10.0.1.6.Linux.x86_64-gnu.cuda-12.4.tar.gz>`_.
+.. list-table::
+   :widths: 25 50
+   :header-rows: 1
 
-
+   * - Execution Provider
+     - Requirements
+   * - CPU
+     - * Default
+   * - CUDA
+     - * Add ``libcudnn*.so*`` path to ``LD_LIBRARY_PATH`` (check required cuDNN version `here <https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements>`_)
+   * - TensorRT
+     - * Same requirement as CUDA EP
+       * TensorRT >= 10.0 (add TensorRT ``lib/`` path to ``LD_LIBRARY_PATH`` and  install python wheel). Please refer to `TensorRT 10.0 download link <https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.0.1/tars/TensorRT-10.0.1.6.Linux.x86_64-gnu.cuda-12.4.tar.gz>`_.
 
 Apply Post Training Quantization (PTQ)
 ======================================
@@ -71,6 +81,7 @@ Alternatively, you can call PTQ function in command line:
         --output_path /path/to/the/quantized/onnx/output \
         --quantize_mode int8
 
+If the model contains custom ops, enable calibration with the TensorRT Execution Provider backend with CUDA and CPU fallback (``--calibration_eps trt cuda:0 cpu``) and, if relevant, provide the location of the TensorRT plugin in ``.so`` format via the ``--trt_plugins`` flag.
 
 By default, after running the calibration, the quantization tool will insert the QDQ nodes by following TensorRT friendly QDQ insertion algorithm. Users can change the default quantization behavior by tweaking the API params like op_types_to_quantize, op_types_to_exclude etc. See the :meth:`modelopt.onnx.quantization.quantize() <modelopt.onnx.quantization.quantize>` for details.
 

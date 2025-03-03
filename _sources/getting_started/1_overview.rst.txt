@@ -23,22 +23,10 @@ Quantization
 ^^^^^^^^^^^^
 Quantization is an effective model optimization technique for large models. Quantization with Model Optimizer can compress
 model size by 2x-4x, speeding up inference while preserving model quality. Model Optimizer enables highly performant
-quantization formats including FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, and
+quantization formats including NVFP4, FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, and
 Double Quantization with easy-to-use Python APIs. Both Post-training quantization (PTQ) and Quantization-aware training (QAT)
 are supported. Visit :meth:`Quantization Format page <modelopt.torch.quantization.config>`
 for list of formats supported.
-
-Sparsity
-^^^^^^^^
-Sparsity is a technique to further reduce the memory footprint of deep learning models and accelerate the inference.
-Model Optimizer provides the Python API :meth:`mts.sparsify() <modelopt.torch.sparsity.sparsification.sparsify>` to
-automatically apply weight sparsity to a given model. The
-:meth:`mts.sparsify() <modelopt.torch.sparsity.sparsification.sparsify>` API supports
-`NVIDIA 2:4 <https://arxiv.org/pdf/2104.0837>`_ sparsity pattern and various sparsification methods,
-such as `NVIDIA ASP <https://github.com/NVIDIA/apex/tree/master/apex/contrib/sparsity>`_ and
-`SparseGPT <https://arxiv.org/abs/2301.00774>`_. It supports both post-training sparsity (PTS) and
-sparsity-aware training (SAT). The latter workflow is recommended to minimize accuracy
-degradation.
 
 Distillation
 ^^^^^^^^^^^^
@@ -54,3 +42,24 @@ Pruning
 Pruning is a technique to reduce the model size and accelerate the inference by removing unnecessary weights.
 Model Optimizer provides the Python API :meth:`mtp.prune() <modelopt.torch.prune.pruning.prune>` to prune Linear and
 Conv layers, and Transformer attention heads, MLP, and depth through various different state of the art algorithms.
+
+Speculative Decoding
+^^^^^^^^^^^^^^^^^^^^
+
+Speculative Decoding enables your model to generate multiple tokens in each generate step by using a draft model to
+predict tokens that are then validated by the original model in a single forward pass.
+This can be useful for reducing the latency of your model and speeding up inference.
+Model Optimizer provides the Python API :meth:`mtsp.convert() <modelopt.torch.speculative.speculative_decoding.convert>` to
+add speculative decoding module to your model.
+
+Sparsity
+^^^^^^^^
+Sparsity is a technique to further reduce the memory footprint of deep learning models and accelerate the inference.
+Model Optimizer provides the Python API :meth:`mts.sparsify() <modelopt.torch.sparsity.sparsification.sparsify>` to
+automatically apply weight sparsity to a given model. The
+:meth:`mts.sparsify() <modelopt.torch.sparsity.sparsification.sparsify>` API supports
+`NVIDIA 2:4 <https://arxiv.org/pdf/2104.08378>`_ sparsity pattern and various sparsification methods,
+such as `NVIDIA ASP <https://github.com/NVIDIA/apex/tree/master/apex/contrib/sparsity>`_ and
+`SparseGPT <https://arxiv.org/abs/2301.00774>`_. It supports both post-training sparsity (PTS) and
+sparsity-aware training (SAT). The latter workflow is recommended to minimize accuracy
+degradation.

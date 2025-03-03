@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Overview &mdash; Model Optimizer 0.23.0</title>
+  <title>Overview &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -63,9 +63,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#nvidia-tensorrt-model-optimizer"><strong>NVIDIA TensorRT Model Optimizer</strong></a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#techniques">Techniques</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#quantization">Quantization</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#sparsity">Sparsity</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#distillation">Distillation</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#pruning">Pruning</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#speculative-decoding">Speculative Decoding</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#sparsity">Sparsity</a></li>
 </ul>
 </li>
 </ul>
@@ -153,22 +154,10 @@ example scripts and recipes optimized for NVIDIA GPUs.</p>
 <h4>Quantization<a class="headerlink" href="#quantization" title="Link to this heading"></a></h4>
 <p>Quantization is an effective model optimization technique for large models. Quantization with Model Optimizer can compress
 model size by 2x-4x, speeding up inference while preserving model quality. Model Optimizer enables highly performant
-quantization formats including FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, and
+quantization formats including NVFP4, FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, and
 Double Quantization with easy-to-use Python APIs. Both Post-training quantization (PTQ) and Quantization-aware training (QAT)
 are supported. Visit <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.config.html#module-modelopt.torch.quantization.config" title="modelopt.torch.quantization.config"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Quantization</span> <span class="pre">Format</span> <span class="pre">page</span></code></a>
 for list of formats supported.</p>
-</section>
-<section id="sparsity">
-<h4>Sparsity<a class="headerlink" href="#sparsity" title="Link to this heading"></a></h4>
-<p>Sparsity is a technique to further reduce the memory footprint of deep learning models and accelerate the inference.
-Model Optimizer provides the Python API <a class="reference internal" href="../reference/generated/modelopt.torch.sparsity.sparsification.html#modelopt.torch.sparsity.sparsification.sparsify" title="modelopt.torch.sparsity.sparsification.sparsify"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mts.sparsify()</span></code></a> to
-automatically apply weight sparsity to a given model. The
-<a class="reference internal" href="../reference/generated/modelopt.torch.sparsity.sparsification.html#modelopt.torch.sparsity.sparsification.sparsify" title="modelopt.torch.sparsity.sparsification.sparsify"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mts.sparsify()</span></code></a> API supports
-<a class="reference external" href="https://arxiv.org/pdf/2104.0837" rel="noopener noreferrer" target="_blank">NVIDIA 2:4</a> sparsity pattern and various sparsification methods,
-such as <a class="reference external" href="https://github.com/NVIDIA/apex/tree/master/apex/contrib/sparsity" rel="noopener noreferrer" target="_blank">NVIDIA ASP</a> and
-<a class="reference external" href="https://arxiv.org/abs/2301.00774" rel="noopener noreferrer" target="_blank">SparseGPT</a>. It supports both post-training sparsity (PTS) and
-sparsity-aware training (SAT). The latter workflow is recommended to minimize accuracy
-degradation.</p>
 </section>
 <section id="distillation">
 <h4>Distillation<a class="headerlink" href="#distillation" title="Link to this heading"></a></h4>
@@ -183,6 +172,26 @@ using the <a class="reference internal" href="../reference/generated/modelopt.to
 <p>Pruning is a technique to reduce the model size and accelerate the inference by removing unnecessary weights.
 Model Optimizer provides the Python API <a class="reference internal" href="../reference/generated/modelopt.torch.prune.pruning.html#modelopt.torch.prune.pruning.prune" title="modelopt.torch.prune.pruning.prune"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtp.prune()</span></code></a> to prune Linear and
 Conv layers, and Transformer attention heads, MLP, and depth through various different state of the art algorithms.</p>
+</section>
+<section id="speculative-decoding">
+<h4>Speculative Decoding<a class="headerlink" href="#speculative-decoding" title="Link to this heading"></a></h4>
+<p>Speculative Decoding enables your model to generate multiple tokens in each generate step by using a draft model to
+predict tokens that are then validated by the original model in a single forward pass.
+This can be useful for reducing the latency of your model and speeding up inference.
+Model Optimizer provides the Python API <a class="reference internal" href="../reference/generated/modelopt.torch.speculative.speculative_decoding.html#modelopt.torch.speculative.speculative_decoding.convert" title="modelopt.torch.speculative.speculative_decoding.convert"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtsp.convert()</span></code></a> to
+add speculative decoding module to your model.</p>
+</section>
+<section id="sparsity">
+<h4>Sparsity<a class="headerlink" href="#sparsity" title="Link to this heading"></a></h4>
+<p>Sparsity is a technique to further reduce the memory footprint of deep learning models and accelerate the inference.
+Model Optimizer provides the Python API <a class="reference internal" href="../reference/generated/modelopt.torch.sparsity.sparsification.html#modelopt.torch.sparsity.sparsification.sparsify" title="modelopt.torch.sparsity.sparsification.sparsify"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mts.sparsify()</span></code></a> to
+automatically apply weight sparsity to a given model. The
+<a class="reference internal" href="../reference/generated/modelopt.torch.sparsity.sparsification.html#modelopt.torch.sparsity.sparsification.sparsify" title="modelopt.torch.sparsity.sparsification.sparsify"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mts.sparsify()</span></code></a> API supports
+<a class="reference external" href="https://arxiv.org/pdf/2104.08378" rel="noopener noreferrer" target="_blank">NVIDIA 2:4</a> sparsity pattern and various sparsification methods,
+such as <a class="reference external" href="https://github.com/NVIDIA/apex/tree/master/apex/contrib/sparsity" rel="noopener noreferrer" target="_blank">NVIDIA ASP</a> and
+<a class="reference external" href="https://arxiv.org/abs/2301.00774" rel="noopener noreferrer" target="_blank">SparseGPT</a>. It supports both post-training sparsity (PTS) and
+sparsity-aware training (SAT). The latter workflow is recommended to minimize accuracy
+degradation.</p>
 </section>
 </section>
 </section>
@@ -199,7 +208,7 @@ Conv layers, and Transformer attention heads, MLP, and depth through various dif
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

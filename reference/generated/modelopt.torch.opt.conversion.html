@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>conversion &mdash; Model Optimizer 0.23.0</title>
+  <title>conversion &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -491,7 +491,7 @@ modelopt states with <cite>restore_from_modelopt_state</cite>. For example:</p>
 
 <span class="c1"># Restore the previously saved modelopt state followed by model weights</span>
 <span class="n">mto</span><span class="o">.</span><span class="n">restore_from_modelopt_state</span><span class="p">(</span>
-    <span class="n">model</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;modelopt_state.pt&quot;</span><span class="p">)</span>
+    <span class="n">model</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;modelopt_state.pt&quot;</span><span class="p">,</span> <span class="n">weights_only</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 <span class="p">)</span>  <span class="c1"># Restore modelopt state</span>
 <span class="n">model</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;model_weights.pt&quot;</span><span class="p">),</span> <span class="o">...</span><span class="p">)</span>  <span class="c1"># Load the model weights</span>
 </pre></div>
@@ -560,7 +560,7 @@ process. Please wrap the model after the restore process.</p>
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

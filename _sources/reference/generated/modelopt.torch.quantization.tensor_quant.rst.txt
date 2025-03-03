@@ -1,5 +1,3 @@
-.. From https://github.com/sphinx-doc/sphinx/blob/5.x/sphinx/ext/autosummary/templates/autosummary/module.rst
-
 tensor\_quant
 =============
 
@@ -38,6 +36,7 @@ tensor\_quant
       FakeTensorQuantFunction
       LegacyFakeTensorQuantFunction
       ScaledE4M3Function
+      StaticBlockQuantizationFunction
       TensorQuantFunction
    
    

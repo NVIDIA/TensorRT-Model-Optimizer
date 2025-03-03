@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>functional &mdash; Model Optimizer 0.23.0</title>
+  <title>functional &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -170,6 +170,17 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.nn.functional.ClipFunction" title="modelopt.torch.quantization.nn.functional.ClipFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ClipFunction</span></code></a></p></td>
 <td><p>An universal tensor clip function.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.nn.functional.FastHadamardTransform" title="modelopt.torch.quantization.nn.functional.FastHadamardTransform"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FastHadamardTransform</span></code></a></p></td>
+<td><p>The fast Hadamard transform.</p></td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.nn.functional.normalized_hadamard_transform" title="modelopt.torch.quantization.nn.functional.normalized_hadamard_transform"><code class="xref py py-obj docutils literal notranslate"><span class="pre">normalized_hadamard_transform</span></code></a></p></td>
+<td><p>Normalized fast hadamard transform.</p></td>
+</tr>
 </tbody>
 </table>
 <dl class="py class">
@@ -194,6 +205,32 @@ also the behavior of Tensorflow’s clip_by_value()</p>
 
 </dd></dl>
 
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.functional.FastHadamardTransform">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">FastHadamardTransform</span></span><a class="headerlink" href="#modelopt.torch.quantization.nn.functional.FastHadamardTransform" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
+<p>The fast Hadamard transform.</p>
+<p>This only works for inputs.shape[-1] == power of 2.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.functional.FastHadamardTransform.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.nn.functional.FastHadamardTransform.backward" title="Link to this definition"></a></dt>
+<dd><p>Hadamard backward.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.functional.FastHadamardTransform.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.nn.functional.FastHadamardTransform.forward" title="Link to this definition"></a></dt>
+<dd><p>Hadamard forward.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.functional.normalized_hadamard_transform">
+<span class="sig-name descname"><span class="pre">normalized_hadamard_transform</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.nn.functional.normalized_hadamard_transform" title="Link to this definition"></a></dt>
+<dd><p>Normalized fast hadamard transform.</p>
+</dd></dl>
+
 </section>
 
 
@@ -207,7 +244,7 @@ also the behavior of Tensorflow’s clip_by_value()</p>
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

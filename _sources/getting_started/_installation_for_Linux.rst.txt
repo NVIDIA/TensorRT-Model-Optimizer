@@ -16,11 +16,13 @@ Latest Model Optimizer (``nvidia-modelopt``) currently has the following system 
 +-------------------------+-----------------------------+
 | CUDA                    |  >=12.0                     |
 +-------------------------+-----------------------------+
-| PyTorch (Optional)      |  >=2.1                      |
+| PyTorch (Optional)      |  >=2.2                      |
++-------------------------+-----------------------------+
+| TensorRT-LLM (Optional) |  0.17                       |
 +-------------------------+-----------------------------+
 | ONNX Runtime (Optional) |  1.20 (Python>=3.10)        |
 +-------------------------+-----------------------------+
-| TensorRT-LLM (Optional) |  0.15                       |
+| TensorRT (Optional)     |  >=10.0                     |
 +-------------------------+-----------------------------+
 
 Environment setup
@@ -79,7 +81,7 @@ Environment setup
 
     (Optional) **Install other NVIDIA dependencies**
 
-    If you wish to use ModelOpt in conjunction with other NVIDIA libraries (e.g. TensorRT-LLM, NeMo, Triton, etc.),
+    If you wish to use ModelOpt in conjunction with other NVIDIA libraries (e.g. TensorRT, TensorRT-LLM, NeMo, Triton, etc.),
     please make sure to check the ease of installation of these libraries in a local environment. If you face any
     issues, we recommend using a docker image for a seamless experience. For example, `TensorRT-LLM documentation <https://nvidia.github.io/TensorRT-LLM/>`_.
     requires installing in a docker image. You may still choose to use other ModelOpt's features locally for example,

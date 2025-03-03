@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tensor_quant &mdash; Model Optimizer 0.23.0</title>
+  <title>tensor_quant &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -181,7 +181,10 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function" title="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ScaledE4M3Function</span></code></a></p></td>
 <td><p>E4M3fy input with scale.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.TensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TensorQuantFunction</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction" title="modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">StaticBlockQuantizationFunction</span></code></a></p></td>
+<td><p>Static block quantization functional.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.TensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TensorQuantFunction</span></code></a></p></td>
 <td><p>A universal tensor quantization function.</p></td>
 </tr>
 </tbody>
@@ -348,6 +351,25 @@ for experimental purpose.</p>
 </dd></dl>
 
 <dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">StaticBlockQuantizationFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction"><code class="xref py py-class docutils literal notranslate"><span class="pre">FakeTensorQuantFunction</span></code></a></p>
+<p>Static block quantization functional.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction.backward" title="Link to this definition"></a></dt>
+<dd><p>Implements straight through estimation with clipping.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Float'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward method.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.TensorQuantFunction">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">TensorQuantFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
@@ -468,7 +490,7 @@ scale: A Tensor of type float32. outputs / scale will dequantize outputs tensor.
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a

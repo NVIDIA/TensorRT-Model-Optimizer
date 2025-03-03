@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.23.0</title>
+  <title>utils &mdash; Model Optimizer 0.25.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -113,6 +113,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.import_utils.html">import_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.list.html">list</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.logging.html">logging</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.memory_monitor.html">memory_monitor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.network.html">network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.perf.html">perf</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.random.html">random</a></li>
@@ -186,19 +187,22 @@
 <tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.utils.logging.html#module-modelopt.torch.utils.logging" title="modelopt.torch.utils.logging"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.logging</span></code></a></p></td>
 <td><p>Utility functions for logging.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.utils.network.html#module-modelopt.torch.utils.network" title="modelopt.torch.utils.network"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.network</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.utils.memory_monitor.html#module-modelopt.torch.utils.memory_monitor" title="modelopt.torch.utils.memory_monitor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.memory_monitor</span></code></a></p></td>
+<td><p>GPU Memory Monitoring Utilities.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.utils.network.html#module-modelopt.torch.utils.network" title="modelopt.torch.utils.network"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.network</span></code></a></p></td>
 <td><p>Utility functions for PyTorch models.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.utils.perf.html#module-modelopt.torch.utils.perf" title="modelopt.torch.utils.perf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.perf</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.utils.perf.html#module-modelopt.torch.utils.perf" title="modelopt.torch.utils.perf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.perf</span></code></a></p></td>
 <td><p>Utility functions for performance measurement.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.utils.random.html#module-modelopt.torch.utils.random" title="modelopt.torch.utils.random"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.random</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.utils.random.html#module-modelopt.torch.utils.random" title="modelopt.torch.utils.random"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.random</span></code></a></p></td>
 <td><p>Random number generator with a deterministic, synchronized seed for sampling.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.utils.tensor.html#module-modelopt.torch.utils.tensor" title="modelopt.torch.utils.tensor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.tensor</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.utils.tensor.html#module-modelopt.torch.utils.tensor" title="modelopt.torch.utils.tensor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.tensor</span></code></a></p></td>
 <td><p>Utility functions for PyTorch tensors.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.utils.vlm_dataset_utils.html#module-modelopt.torch.utils.vlm_dataset_utils" title="modelopt.torch.utils.vlm_dataset_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.vlm_dataset_utils</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.utils.vlm_dataset_utils.html#module-modelopt.torch.utils.vlm_dataset_utils" title="modelopt.torch.utils.vlm_dataset_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.utils.vlm_dataset_utils</span></code></a></p></td>
 <td><p>Utility functions for getting samples and forward loop function for different vlm datasets.</p></td>
 </tr>
 </tbody>
@@ -217,7 +221,7 @@
   <hr/>
 
   <div role="contentinfo">
-    <p>&#169; Copyright 2023-2024, NVIDIA Corporation.</p>
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
   </div>
 
   Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
