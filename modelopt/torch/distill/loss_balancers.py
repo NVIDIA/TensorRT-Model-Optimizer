@@ -126,9 +126,9 @@ class StaticLossBalancer(DistillationLossBalancer):
         else:
             output_loss = None
 
-        assert len(kd_loss_dict) == len(
-            self._kd_loss_weight
-        ), "Number of `kd_loss_weight` does not correspond to number of kd losses computed."
+        assert len(kd_loss_dict) == len(self._kd_loss_weight), (
+            "Number of `kd_loss_weight` does not correspond to number of kd losses computed."
+        )
 
         aggregate_loss = sum(
             loss * weight for loss, weight in zip(kd_loss_dict.values(), self._kd_loss_weight)

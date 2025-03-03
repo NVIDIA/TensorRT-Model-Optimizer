@@ -36,7 +36,7 @@ from .model_config import (
     QUANTIZATION_W4A8_AWQ,
 )
 from .quant_utils import (
-    _fuse_prequant_layernorm,
+    fuse_prequant_layernorm,
     get_activation_scaling_factor,
     get_kv_cache_dtype,
     get_quantization_format,
@@ -93,22 +93,30 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             handles.append(handle)
 
     with torch.no_grad():
-        fake_input = torch.ones([1, 1], dtype=torch.long).to(model.device)
+        fake_input = torch.ones([1, 2], dtype=torch.long).to(model.device)
         # Run forward pass so that all modules sharing the same input are collected using forward hook.
         model(fake_input)
+
         for handle in handles:
             handle.remove()
 
     for tensor, modules in input_to_linear.items():
         quantization_format = get_quantization_format(modules[0])
-        if len(modules) > 1 and quantization_format not in [QUANTIZATION_FP8, QUANTIZATION_NONE]:
+        if len(modules) > 1 and quantization_format not in [
+            QUANTIZATION_FP8,
+            QUANTIZATION_NONE,
+        ]:
             # Fuse modules that have the same input
             preprocess_linear_fusion(modules)
 
         # Fuse layernorms
-        if tensor in output_to_layernorm.keys() and "awq" in get_quantization_format(modules[0]):
+        if (
+            quantization_format is not QUANTIZATION_NONE
+            and "awq" in quantization_format
+            and tensor in output_to_layernorm.keys()
+        ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
-            _fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+            fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
 
 
 def _export_hf_checkpoint(
@@ -213,20 +221,26 @@ def _export_hf_checkpoint(
                 # Register weight_scale_2
                 sub_module.register_buffer(
                     "weight_scale_2",
-                    get_weight_scaling_factor_2(sub_module).reshape(1),
+                    get_weight_scaling_factor_2(sub_module).squeeze(),
                 )
 
             if quantization_format not in [QUANTIZATION_FP8, QUANTIZATION_NONE]:
                 # Register weight_scale and input_scale
                 sub_module.register_buffer("weight_scale", get_weight_scaling_factor(sub_module))
-                sub_module.register_buffer("input_scale", get_activation_scaling_factor(sub_module))
+
+                if hasattr(sub_module, "input_quantizer") and "disabled" not in repr(
+                    sub_module.input_quantizer
+                ):
+                    sub_module.register_buffer(
+                        "input_scale", get_activation_scaling_factor(sub_module).squeeze()
+                    )
 
             # Check if quantization format is None, to support auto_quant
             if quantization_format != QUANTIZATION_NONE:
                 quantized_weight = to_quantized_weight(
                     sub_module.weight.to(dtype),
                     sub_module.weight_scale,
-                    quantization_format,  # type:ignore [arg-type]
+                    quantization_format,
                     sub_module.weight_scale_2 if hasattr(sub_module, "weight_scale_2") else None,
                     block_size,
                 )
@@ -236,9 +250,9 @@ def _export_hf_checkpoint(
             if kv_cache_format == QUANTIZATION_NONE:
                 kv_cache_format = get_kv_cache_dtype(sub_module)
             else:
-                assert kv_cache_format == get_kv_cache_dtype(
-                    sub_module
-                ), "Do not support mixed precision kv cache quantization"
+                assert kv_cache_format == get_kv_cache_dtype(sub_module), (
+                    "Do not support mixed precision kv cache quantization"
+                )
             if kv_cache_format != QUANTIZATION_NONE:
                 kv_cache_max_bound = sub_module.output_quantizer.maxbound
 
@@ -314,6 +328,7 @@ def export_hf_checkpoint(
     model: nn.Module,
     dtype: Optional[torch.dtype] = None,
     export_dir: Union[Path, str] = tempfile.gettempdir(),
+    save_modelopt_state: bool = False,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -321,6 +336,7 @@ def export_hf_checkpoint(
         model: the torch model.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
+        save_modelopt_state: whether to save the modelopt state_dict.
     """
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -350,6 +366,8 @@ def export_hf_checkpoint(
             json.dump(hf_quant_config, file, indent=4)
 
         # Save model
+        if not save_modelopt_state:
+            model._disable_modelopt_save = True
         model.save_pretrained(export_dir, state_dict=post_state_dict)
 
     except Exception as e:

@@ -13,13 +13,13 @@ This repository provides scripts, popular third-party benchmarks, and instructio
 
 ## Prerequisites
 
-| **Category**              | **Details**                                                                                                 |
+| **Category** | **Details** |
 |:--------------------------|-------------------------------------------------------------------------------------------------------------|
-| **Operating System**      | Windows 10 or later                                                                                        |
-| **Python**                | - For ORT-DML GenAI, use Python 3.11. <br> - For TensorRT-LLM, use Python 3.10. <br> - All other backends are compatible with both Python 3.10 and 3.11. |
-| **Package Manager**       | pip                                                                                                        |
+| **Operating System** | Windows 10 or later |
+| **Python** | - For ORT-DML GenAI, use Python 3.11. <br> - For TensorRT-LLM, use Python 3.10. <br> - All other backends are compatible with both Python 3.10 and 3.11. |
+| **Package Manager** | pip |
 | **Compatible Hardware and Drivers** | - Ensure necessary hardware (e.g., CUDA-compatible GPU) and drivers are installed, depending on the evaluation method: <br> - DirectML for DirectML-based evaluation <br> - CUDA for TensorRT |
-| **Additional Tools**      | - **cmd**: Recommended for running the provided commands. <br> - **Tar Utility**: Included in Windows 10 and later via PowerShell. <br> - **Curl**: Included in Windows 10 and later via PowerShell. |
+| **Additional Tools** | - **cmd**: Recommended for running the provided commands. <br> - **Tar Utility**: Included in Windows 10 and later via PowerShell. <br> - **Curl**: Included in Windows 10 and later via PowerShell. |
 
 # Accuracy Benchmarks
 
@@ -31,14 +31,14 @@ The MMLU benchmark assesses LLM performance across a wide range of tasks, produc
 
 The table below lists the setup steps to prepare your environment for evaluating LLMs using the MMLU benchmark.
 
-| **Step**                               | **Command** or **Description**                                                                                                                                                           |
+| **Step** | **Command** or **Description** |
 |----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Open PowerShell as Administrator**   | -                                                                                                                                                                                         |
-| **Create and Activate a Virtual Environment** <br> _(Optional but Recommended)_ | `python -m venv llm_env` <br> `.\llm_env\Scripts\Activate.ps1`                                                                                                                       |
-| **Install PyTorch and Related Packages** | `pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124`                                                                     |
-| **Install ONNX Runtime Packages**       | `pip install onnxruntime-directml==1.20` <br> `pip install onnxruntime-genai-directml==0.4.0`                                                                                       |
-| **Install Benchmark Requirements**      | `pip install -r requirements.txt`                                                                                                                                                      |
-| **Download MMLU Data**                  | `mkdir data` <br> `curl -o .\data\mmlu.tar https://people.eecs.berkeley.edu/~hendrycks/data.tar` <br> `tar -xf .\data\mmlu.tar -C .\data` <br> `Move-Item .\data\data .\data\mmlu` |
+| **Open PowerShell as Administrator** | - |
+| **Create and Activate a Virtual Environment** <br> _(Optional but Recommended)_ | `python -m venv llm_env` <br> `.\llm_env\Scripts\Activate.ps1` |
+| **Install PyTorch and Related Packages** | `pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124` |
+| **Install ONNX Runtime Packages** | `pip install onnxruntime-directml==1.20` <br> `pip install onnxruntime-genai-directml==0.4.0` |
+| **Install Benchmark Requirements** | `pip install -r requirements.txt` |
+| **Download MMLU Data** | `mkdir data` <br> `curl -o .\data\mmlu.tar https://people.eecs.berkeley.edu/~hendrycks/data.tar` <br> `tar -xf .\data\mmlu.tar -C .\data` <br> `Move-Item .\data\data .\data\mmlu` |
 
 ### Evaluation Methods
 

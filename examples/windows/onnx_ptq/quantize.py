@@ -102,7 +102,14 @@ def make_model_input(
 
 
 def get_initial_inputs(
-    config, tokenizer, prompt, device, use_fp16, use_buffer_share, add_past_kv_inputs
+    config,
+    tokenizer,
+    prompt,
+    device,
+    use_fp16,
+    use_buffer_share,
+    add_past_kv_inputs,
+    add_position_ids,
 ):
     """
     Get initial inputs for the model for inference.
@@ -115,6 +122,8 @@ def get_initial_inputs(
         device: Device used to run the inference.
         use_fp16: Flag to select the float16 dtype in torch.
         use_buffer_share: True when --use_gqa is passed during the onnx export process
+        add_past_kv_inputs: True when we want to also pass past_key_values input to model
+        add_position_ids: True when we want to also pass position_ids input to model
     """
     # tokenizer.pad_token = "[PAD]"
     tokenizer.pad_token = tokenizer.eos_token
@@ -131,25 +140,8 @@ def get_initial_inputs(
         device,
         use_fp16,
         use_buffer_share,
+        add_position_ids,
     )
-
-
-def get_calib_inputs_0(
-    model_name, cache_dir, calib_size, batch_size, block_size, device, use_fp16, use_buffer_share
-):
-    dataset = load_dataset("cnn_dailymail", name="3.0.0", split="train")
-    prompt = dataset["article"][:calib_size]
-
-    config = AutoConfig.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir)
-    tokenizer = AutoTokenizer.from_pretrained(model_name, use_auth_token=True, cache_dir=cache_dir)
-    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-    tokenizer.pad_token = tokenizer.eos_token
-
-    inputs = get_initial_inputs(config, tokenizer, prompt, device, use_fp16, use_buffer_share)
-
-    logging.info(f"\n --vishal --cnn-- calib_size={calib_size}\n")
-    inputs = {input_name: torch_tensor.cpu().numpy() for input_name, torch_tensor in inputs.items()}
-    return inputs
 
 
 def get_calib_inputs(
@@ -180,9 +172,9 @@ def get_calib_inputs(
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
     tokenizer.pad_token = tokenizer.eos_token
 
-    assert (
-        calib_size <= max_calib_rows_to_load
-    ), "calib size should be no more than max_calib_rows_to_load"
+    assert calib_size <= max_calib_rows_to_load, (
+        "calib size should be no more than max_calib_rows_to_load"
+    )
 
     if "cnn" in dataset_name:
         dataset2 = load_dataset("cnn_dailymail", name="3.0.0", split="train").select(

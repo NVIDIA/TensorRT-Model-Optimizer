@@ -122,8 +122,7 @@ def _setup_grad_manager_hf_attention(
             head_mask = _modelopt_mask
         else:
             # head_mask shape: 1 x num_attention_heads x 1 x 1
-            # https://github.com/huggingface/transformers/blob/8f796960f6bb6e68c673a2f682d5ac911f671ed8/
-            # src/transformers/modeling_utils.py#L841
+            # https://github.com/huggingface/transformers/blob/8f7969/src/transformers/modeling_utils.py#L841
             head_mask = head_mask * _modelopt_mask
 
         if head_mask_in_kwargs or not head_mark_in_args:
@@ -149,8 +148,8 @@ def _setup_grad_manager_hf_attention(
 def _setup_grad_manager_bert_attention(
     module: "_DynamicBertAttention",
 ) -> tuple[GradientDataManager, RemovableHandle]:
-    # See forward signature here: https://github.com/huggingface/transformers/blob/
-    # b8648290d2d97e7c7dbccd2d4a6a4f44e70d3b63/src/transformers/models/bert/modeling_bert.py#L415-L424
+    # See forward signature here:
+    # https://github.com/huggingface/transformers/blob/b86482/src/transformers/models/bert/modeling_bert.py#L415-L424
 
     return _setup_grad_manager_hf_attention(module, head_mask_idx=2)
 
@@ -158,8 +157,8 @@ def _setup_grad_manager_bert_attention(
 def _setup_grad_manager_gptj_attention(
     module: "_DynamicGPTJAttention",
 ) -> tuple[GradientDataManager, RemovableHandle]:
-    # See forward signature here: https://github.com/huggingface/transformers/blob/
-    # 0ea42ef0f9f71deba7775ead33afa0e493823d60/src/transformers/models/gptj/modeling_gptj.py#L194-L202
+    # See forward signature here:
+    # https://github.com/huggingface/transformers/blob/0ea42e/src/transformers/models/gptj/modeling_gptj.py#L194-L202
 
     return _setup_grad_manager_hf_attention(module, head_mask_idx=4)
 

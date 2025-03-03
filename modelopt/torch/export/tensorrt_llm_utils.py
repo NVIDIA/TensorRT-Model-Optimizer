@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator, Iterable, Optional
 from warnings import warn
 
+from .layer_utils import model_type_is_enc_dec
 from .tensorrt_llm_type import LayerNormPositionType, LayerNormType, MLPType
 
 if TYPE_CHECKING:
@@ -47,8 +48,8 @@ MODEL_NAME_TO_HF_ARCH_MAP = {
     "llama": "LlamaForCausalLM",
     "gemma": "GemmaForCausalLM",
     "gpt": "GPTForCausalLM",
-    "t5_encoder": "EncoderModel",
-    "t5_decoder": "DecoderModel",
+    "enc": "EncoderModel",
+    "dec": "DecoderModel",
     "mllama": "MLLaMAModel",
 }
 
@@ -258,9 +259,7 @@ def _get_quant_config(
         exclude_modules = _detect_exclude_modules(weight_keys)
         # In TRT LLM, the embedding table is shared for the following models, so lm_head quantization format
         # won't be automatically detected in the excluded_modules. We need to manually add it to the exclusions.
-        share_embedding_table = (
-            True if (model_config.lm_head is None and pp_size == 1) else False,
-        )
+        share_embedding_table = model_config.lm_head is None and pp_size == 1
         if share_embedding_table:
             exclude_modules.append("lm_head")
         quantization["exclude_modules"] = exclude_modules
@@ -302,9 +301,9 @@ def convert_to_tensorrt_llm_config(
             first_attention_decoder_config = decoder_layer
             break
 
-    assert (
-        first_attention_config is not None and first_attention_decoder_config is not None
-    ), "Model must have at least one attention block"
+    assert first_attention_config is not None and first_attention_decoder_config is not None, (
+        "Model must have at least one attention block"
+    )
 
     mapping = {
         "world_size": tp_size * pp_size,
@@ -320,14 +319,15 @@ def convert_to_tensorrt_llm_config(
     config_architecture = model_config.architecture
     if not config_architecture:
         config_architecture = MODEL_NAME_TO_HF_ARCH_MAP[decoder_type]
-    # For T5 model
-    if decoder_type in ["t5"]:
+    # For Encoder-Decoder model
+    is_enc_dec = model_type_is_enc_dec(decoder_type)
+    if is_enc_dec:
         # For encoder
         if model_config.enc_dec == "enc":
-            config_architecture = MODEL_NAME_TO_HF_ARCH_MAP["t5_encoder"]
+            config_architecture = MODEL_NAME_TO_HF_ARCH_MAP["enc"]
         # For decoder
         else:
-            config_architecture = MODEL_NAME_TO_HF_ARCH_MAP["t5_decoder"]
+            config_architecture = MODEL_NAME_TO_HF_ARCH_MAP["dec"]
 
     config = {
         "producer": {
@@ -343,7 +343,7 @@ def convert_to_tensorrt_llm_config(
         "hidden_size": model_config.hidden_size,
         "norm_epsilon": (
             first_attention_decoder_config.mlp_layernorm.eps
-            if decoder_type in ["t5"]
+            if is_enc_dec
             else first_attention_decoder_config.input_layernorm.eps
         ),
         "vocab_size": model_config.vocab_size,
@@ -354,7 +354,13 @@ def convert_to_tensorrt_llm_config(
         "head_size": first_attention_decoder_config.attention_head_size,
         "intermediate_size": first_attention_decoder_config.ffn_hidden_size_local * tp_size,
         "position_embedding_type": (
-            "alibi" if first_attention_decoder_config.use_alibi else "rope_gpt_neox"
+            "alibi"
+            if first_attention_decoder_config.use_alibi
+            else (
+                first_attention_decoder_config.position_embedding_type
+                if first_attention_decoder_config.position_embedding_type
+                else "rope_gpt_neox"
+            )
         ),
         "share_embedding_table": True if (model_config.lm_head is None and pp_size == 1) else False,
         "residual_mlp": first_attention_decoder_config.residual_mlp is not None,
@@ -433,8 +439,12 @@ def convert_to_tensorrt_llm_config(
         config["logits_soft_cap"] = model_config.layers[0].logits_soft_cap
         config["emb_scale_by_sqrt_dim"] = model_config.layers[0].emb_scale_by_sqrt_dim
         config["layer_types"] = model_config.layers[0].layer_types
-    elif decoder_type == "t5":
-        config["position_embedding_type"] = "relative"
+    elif is_enc_dec:
+        # T5 models use relative position embedding
+        # Bart models use learned_absolute position embedding
+        config["position_embedding_type"] = (
+            "relative" if decoder_type == "t5" else "learned_absolute"
+        )
         config["share_embedding_table"] = getattr(model_config, "share_embedding_table")
         config["has_position_embedding"] = (
             False if not getattr(model_config, "position_embedding") else True
@@ -445,15 +455,15 @@ def convert_to_tensorrt_llm_config(
             layernorm_type = "RmsNorm"
         config["layernorm_type"] = layernorm_type_map[layernorm_type]
         config["has_attention_qkvo_bias"] = (
-            False
-            if not (
-                model_config.layers[0].attention.qkv.bias
+            True
+            if (
+                model_config.layers[0].attention.qkv.bias is not None
                 if model_config.enc_dec == "enc"
-                else model_config.layers[0].self_attention.qkv.bias
+                else model_config.layers[0].self_attention.qkv.bias is not None
             )
-            else True
+            else False
         )
-        config["has_mlp_bias"] = False if not model_config.layers[0].mlp.fc.bias else True
+        config["has_mlp_bias"] = False if model_config.layers[0].mlp.fc.bias is None else True
         config["has_model_final_layernorm"] = True if model_config.ln_f else False
 
         mlp_type_map = {i.name: i.value for i in MLPType}
@@ -471,12 +481,17 @@ def convert_to_tensorrt_llm_config(
         config["has_embedding_layernorm"] = False if not model_config.ln_embed else True
         config["has_embedding_scale"] = False
         config["ffn_hidden_size"] = model_config.layers[0].mlp.fc.weight.shape[0]
-        config["q_scaling"] = 1 / config["head_size"] ** 0.5
-        config["layernorm_position"] = layernorm_position_map["pre_layernorm"]
+        # T5 uses q_scaling to offset attention scaling effect. Bart does not.
+        config["q_scaling"] = 1 / config["head_size"] ** 0.5 if decoder_type == "t5" else 1.0
+        config["layernorm_position"] = (
+            layernorm_position_map["post_layernorm"]
+            if decoder_type == "bart"
+            else layernorm_position_map["pre_layernorm"]
+        )
         config["relative_attention"] = config["position_embedding_type"] == "relative"
         config["max_distance"] = model_config.layers[0].rel_attn_max_distance
         config["num_buckets"] = model_config.layers[0].rel_attn_num_buckets
-        config["model_type"] = "t5"
+        config["model_type"] = decoder_type
         config["use_parallel_embedding"] = True
         config["use_implicit_relative_attention"] = False
         if model_config.enc_dec == "dec":
@@ -484,7 +499,10 @@ def convert_to_tensorrt_llm_config(
             config["encoder_hidden_size"] = model_config.encoder_hidden_size
             config["encoder_num_heads"] = model_config.encoder_num_heads
             config["encoder_head_size"] = model_config.encoder_head_size
-            config["skip_cross_kv"] = False
+            config["decoder_start_token_id"] = model_config.decoder_start_token_id
+            config["eos_token_id"] = model_config.eos_token_id
+            config["bos_token_id"] = model_config.bos_token_id
+            config["pad_token_id"] = model_config.pad_token_id
 
     elif decoder_type == "dbrx":
         config["clip_qkv"] = first_attention_decoder_config.clip_qkv
@@ -553,7 +571,7 @@ def prepare_enc_dec_export_dir(tensorrt_llm_config: dict[str, Any], export_root:
     return export_dir
 
 
-def prepare_enc_dec_decoder_layer(
+def prepare_t5_decoder_layer(
     layer_config: DecoderLayerConfig,
     model_config: "T5Config",
     enc_dec: str,

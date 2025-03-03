@@ -291,7 +291,6 @@ def get_model_answers(
                             max_new_tokens=max_new_token,
                             temperature=temperature,
                             top_p=top_p,
-                            keep_input_prompt=False,
                         )[0]
 
                     # be consistent with the template's stop_token_ids

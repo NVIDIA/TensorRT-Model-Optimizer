@@ -24,7 +24,6 @@ from _test_utils.torch_quantization.tensor_quant_common import (
     FakeTensorQuantTester,
     TensorQuantTester,
 )
-from pydantic import ValidationError
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.config import QuantizerAttributeConfig
@@ -45,23 +44,16 @@ class TestFakeAffineTensorQuantCPU(FakeAffineTensorQuantTester):
 
 class TestQuantizerAttributeConfig:
     def test_scaled_mode(self):
-        num_bits = np.random.randint(0, 16)
+        num_bits = np.random.randint(1, 16)
 
         test_quant_attr_cfg = QuantizerAttributeConfig(num_bits=num_bits)
         assert test_quant_attr_cfg.num_bits == num_bits
         assert test_quant_attr_cfg.axis is None
-        assert not test_quant_attr_cfg.learn_amax
 
         axis = (0, 1, 3)
         test_quant_attr_cfg = QuantizerAttributeConfig(axis=axis)
         assert test_quant_attr_cfg.num_bits == 8  # default value
         assert test_quant_attr_cfg.axis == axis
-
-        test_quant_attr_cfg = QuantizerAttributeConfig(learn_amax=True)
-        assert test_quant_attr_cfg.learn_amax
-
-        with pytest.raises(ValidationError):
-            QuantizerAttributeConfig(num_bits="oops", learn_amax=True)
 
     def test_from_to_dict(self, verbose):
         quant_attr_cfg_1 = QuantizerAttributeConfig(
@@ -75,6 +67,37 @@ class TestQuantizerAttributeConfig:
         quant_attr_cfg_1 = QuantizerAttributeConfig(num_bits=2, unsigned=True)
         quant_attr_cfg_2 = QuantizerAttributeConfig(**quant_attr_cfg_1.dict())
         assert quant_attr_cfg_1 == quant_attr_cfg_2
+
+    def test_num_bits(self):
+        """Test num_bits for both integer and tuple cases."""
+
+        with pytest.raises(
+            ValueError,
+            match="Invalid quantizer config: Cannot specify only {'enable': True}. "
+            "Additional parameters are required when enabling quantization.",
+        ):
+            QuantizerAttributeConfig(enable=True)
+
+        with pytest.raises(
+            ValueError, match="num_bits must be a positive integer or a tuple of positive integers."
+        ):
+            QuantizerAttributeConfig(enable=True, num_bits=0)
+
+        with pytest.raises(
+            ValueError, match="num_bits must be a positive integer or a tuple of positive integers."
+        ):
+            QuantizerAttributeConfig(enable=True, num_bits=-1)
+
+        # # Test positive tuple validation
+        with pytest.raises(
+            ValueError, match="num_bits must be a positive integer or a tuple of positive integers."
+        ):
+            QuantizerAttributeConfig(enable=True, num_bits=(0, 3))
+
+        with pytest.raises(
+            ValueError, match="num_bits must be a positive integer or a tuple of positive integers."
+        ):
+            QuantizerAttributeConfig(enable=True, num_bits=(-1, 2))
 
 
 WINT4INT8_CFG = {

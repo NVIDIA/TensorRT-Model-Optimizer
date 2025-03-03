@@ -241,7 +241,7 @@ torch::Tensor NF4_quantize_cuda(torch::Tensor input, torch::Tensor scales, int b
   CUDA_KERNEL_ASSERT(device.index() == scales.device().index() &&
                      device.index() == output.device().index());
   CUDA_KERNEL_ASSERT(block_size % 2 == 0);
-  CUDA_KERNEL_ASSERT(numel % (2 * block_size) == 0);
+  CUDA_KERNEL_ASSERT(numel % block_size == 0);
 
   const int blocks = numel / block_size;
   cudaSetDevice(device.index());
@@ -348,7 +348,7 @@ torch::Tensor INT4_quantize_cuda(torch::Tensor input, torch::Tensor scales, int 
   CUDA_KERNEL_ASSERT(device.index() == scales.device().index() &&
                      device.index() == output.device().index());
   CUDA_KERNEL_ASSERT(block_size % 2 == 0);
-  CUDA_KERNEL_ASSERT(numel % (2 * block_size) == 0);
+  CUDA_KERNEL_ASSERT(numel % block_size == 0);
 
   const int blocks = numel / block_size;
   cudaSetDevice(device.index());

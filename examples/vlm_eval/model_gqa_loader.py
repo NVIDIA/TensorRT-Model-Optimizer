@@ -87,7 +87,7 @@ def quantize_model(model, args, tokenizer):
         if isinstance(weight_quantizer, list):
             weight_quantizer = weight_quantizer[0]
     enable_quant_kv_cache = args.quant_cfg not in ["INT8_SMOOTHQUANT_CFG"]
-    print(f'{"Enable" if enable_quant_kv_cache else "Disable"} KV cache quantization')
+    print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
     quant_cfg["quant_cfg"]["*output_quantizer"] = {
         "num_bits": 8 if args.quant_cfg == "INT8_SMOOTHQUANT_CFG" else (4, 3),
         "axis": None,

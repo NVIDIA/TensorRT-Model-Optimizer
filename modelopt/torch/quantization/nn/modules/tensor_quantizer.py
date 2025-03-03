@@ -31,11 +31,19 @@ from modelopt.torch.utils.distributed import DistributedProcessGroup
 
 from ... import calib
 from ... import utils as quant_utils
+from ...calib.bias import add_bias, compute_bias, subtract_bias
 from ...config import QuantizerAttributeConfig
-from ...qtensor import BaseQuantizedTensor, INT4QTensor, NF4QTensor, NVFP4QTensor, QTensorWrapper
-from ...tensor_quant import dynamic_block_quant, fake_tensor_quant, scaled_e4m3
+from ...qtensor import (
+    BaseQuantizedTensor,
+    FP8QTensor,
+    INT4QTensor,
+    NF4QTensor,
+    NVFP4QTensor,
+    QTensorWrapper,
+)
+from ...tensor_quant import dynamic_block_quant, fake_tensor_quant, scaled_e4m3, static_block_quant
 from ...utils import is_torch_export_mode
-from .clip import Clip
+from ..functional import normalized_hadamard_transform
 
 __all__ = ["TensorQuantizer", "SequentialQuantizer"]
 
@@ -60,7 +68,6 @@ class TensorQuantizer(nn.Module):
             :class:`QuantizerAttributeConfig <modelopt.torch.quantization.config.QuantizerAttributeConfig>` or None.
             If None, default values are used.
         if_quant: A boolean. If True, quantization is enabled in the forward path.
-        if_clip: A boolean. If True, clipping (with ``_learn_amax``) is enabled in the forward path.
         if_calib: A boolean. If True, calibration is enabled in the forward path.
         amax: None or an array like object such as list, tuple, numpy array, scalar
             which can be used to construct amax tensor.
@@ -70,7 +77,6 @@ class TensorQuantizer(nn.Module):
         self,
         quant_attribute_cfg=None,
         if_quant=True,
-        if_clip=False,
         if_calib=False,
         amax=None,
     ):
@@ -85,11 +91,13 @@ class TensorQuantizer(nn.Module):
         self.set_from_attribute_config(quant_attribute_cfg)
 
         self._if_quant = if_quant
-        self._if_clip = if_clip
         self._if_calib = if_calib
         self._enable_pre_quant_scale = True
         self._dequantize = False
         self._input_dtype = None
+
+        # Lazy initialize the bias calibrator for KV cache quantization
+        self._bias_calibrator = None
 
     def set_from_attribute_config(self, attribute_cfg: Union[QuantizerAttributeConfig, dict]):
         """Set quantizer attributes from attribute_dict.
@@ -115,19 +123,13 @@ class TensorQuantizer(nn.Module):
         }
 
         for attribute, val in attribute_cfg.items():
-            assert (
-                attribute in QuantizerAttributeConfig.model_fields
-            ), f"{attribute} is not a valid `TensorQuantizer` attribute"
+            assert attribute in QuantizerAttributeConfig.model_fields, (
+                f"{attribute} is not a valid `TensorQuantizer` attribute"
+            )
             _tq_attribute_name, _setter = _custom_setters.get(
                 attribute, (f"_{attribute}", lambda v: v)
             )
             setattr(self, _tq_attribute_name, _setter(val))
-
-        # Clip module consumes a lot of memory, so only create it if learn_amax is True
-        if "learn_amax" in attribute_cfg and self._learn_amax:
-            init_amax = self.amax if hasattr(self, "_amax") else 1.0
-            self.clip = Clip(-init_amax, init_amax, learn_min=True, learn_max=True)
-            self.enable_clip()
 
     def dequantize(self, qtensor: BaseQuantizedTensor):
         """De-quantize a real quantized tensor to a given dtype."""
@@ -178,9 +180,9 @@ class TensorQuantizer(nn.Module):
     @pre_quant_scale.setter
     def pre_quant_scale(self, value):
         assert value is not None, "pre_quant_scale cannot be set to None."
-        assert (
-            self._enable_pre_quant_scale
-        ), "pre_quant_scale cannot be set when forward_with_pre_quant_scale is False."
+        assert self._enable_pre_quant_scale, (
+            "pre_quant_scale cannot be set when forward_with_pre_quant_scale is False."
+        )
         if not isinstance(value, torch.Tensor):
             value = torch.tensor(value)
         if not hasattr(self, "_pre_quant_scale"):
@@ -226,9 +228,9 @@ class TensorQuantizer(nn.Module):
         if not hasattr(self, "_amax"):
             warnings.warn("step_size is undefined under dynamic amax mode!")
             return None
-        assert isinstance(
-            self._num_bits, int
-        ), "Step size is not defined for non-integer quantization."
+        assert isinstance(self._num_bits, int), (
+            "Step size is not defined for non-integer quantization."
+        )
         return self._amax / (2.0 ** (self._num_bits - 1 + int(self._unsigned)) - 1.0)
 
     @property
@@ -252,9 +254,88 @@ class TensorQuantizer(nn.Module):
         self._block_sizes = value
 
     @property
+    def bias(self):
+        """Return bias for quantization."""
+        if not hasattr(self, "_bias"):
+            return None
+        return self._bias
+
+    @property
+    def bias_axis(self):
+        """Return bias_axis for quantization."""
+        if not hasattr(self, "_bias_axis"):
+            return None
+        return self._bias_axis
+
+    @bias_axis.setter
+    def bias_axis(self, value):
+        assert value is not None, "bias_axis cannot be set to None."
+        assert isinstance(value, (tuple, list)), "bias_axis must be a tuple or a list."
+        self._bias_axis = value
+
+    @property
+    def bias_method(self):
+        """Return bias_method for quantization."""
+        if self._bias is None:
+            return None
+        return self._bias.get("method", "mean")
+
+    @property
+    def bias_type(self):
+        """Return bias_type for quantization."""
+        if self._bias is None:
+            return None
+        return self._bias.get("type", "static")
+
+    @bias_type.setter
+    def bias_type(self, value):
+        assert value in ["static", "dynamic"], "bias_type must be either 'static' or 'dynamic'."
+        self._bias["type"] = value
+
+    @property
+    def bias_value(self):
+        """Return bias for quantization."""
+        if not hasattr(self, "_bias_value"):
+            return None
+        return self._bias_value
+
+    @bias_value.setter
+    def bias_value(self, value):
+        assert value is not None, "bias cannot be set to None."
+
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor(value)
+
+        if not hasattr(self, "_bias_value"):
+            self.register_buffer("_bias_value", value.clone().detach())
+        else:
+            if self._bias_value.shape != value.shape:
+                raise RuntimeError("Changing shape when setting bias is not allowed.")
+            self._bias_value.data.copy_(value.clone().detach().to(self._bias_value.device))
+
+    @property
+    def bias_calibrator(self):
+        """Return bias_calibrator for quantization."""
+        # Get reduce_axis from bias config
+        # Bias calibration supports per-channel and per-token quantization
+        if self._bias_calibrator is None and self.bias is not None:
+            self.bias_axis = tuple(k for k in self.bias.keys() if isinstance(k, int))
+            if self._bias is not None:
+                self._bias_calibrator = calib.BiasCalibrator(
+                    method=self.bias_method,
+                    axis=self.bias_axis,
+                )
+
+        return self._bias_calibrator
+
+    @property
     def fake_quant(self):
         """Return True if fake quantization is used."""
         return self._fake_quant
+
+    @fake_quant.setter
+    def fake_quant(self, value):
+        self._fake_quant = value
 
     @property
     def narrow_range(self):
@@ -298,20 +379,6 @@ class TensorQuantizer(nn.Module):
             and self.block_sizes.get("type", None) == "dynamic"
             and self.block_sizes.get("scale_bits", None) == (8, 0)
         )
-
-    def disable_clip(self):
-        """Disable clip stage."""
-        self._if_clip = False
-        self.clip.clip_value_min.requires_grad = False
-        self.clip.clip_value_max.requires_grad = False
-
-    def enable_clip(self):
-        """Enable clip stage."""
-        if not self._learn_amax:
-            raise ValueError("learn_amax is False. Cannot enable clip.")
-        self.clip.clip_value_min.requires_grad = True
-        self.clip.clip_value_max.requires_grad = True
-        self._if_clip = True
 
     def disable_calib(self):
         """Disable calibration."""
@@ -367,18 +434,19 @@ class TensorQuantizer(nn.Module):
         else:
             self._amax.data.copy_(calib_amax.clone().detach())
 
-    def init_learn_amax(self):
-        """Initialize learned amax from fixed amax."""
-        if self._learn_amax is False:
-            raise RuntimeError("Called init_learn_amax with learn_amax=False.")
+    def load_calib_bias(self, *args, **kwargs):
+        """Load affine bias for quantization."""
+        assert not self._dynamic, "Dynamic quantization does not need calibration."
+        calib_bias = self.bias_calibrator.compute_calib_bias(*args, **kwargs)
+        if calib_bias is None:
+            raise RuntimeError(
+                "Calibrator returned None. This usually happens when calibrator hasn't seen any tensor."
+            )
 
-        if self._amax.numel() != 1:
-            warnings.warn("Per channel learned amax not supported. Initializing with max(amax).")
-            init_amax = torch.max(self._amax)
+        if not hasattr(self, "_bias_value"):
+            self.register_buffer("_bias_value", calib_bias.clone().detach())
         else:
-            init_amax = self._amax
-        self.clip.clip_value_min.data.copy_(-init_amax.clone().detach())
-        self.clip.clip_value_max.data.copy_(init_amax.clone().detach())
+            self._bias_value.data.copy_(calib_bias.clone().detach())
 
     def _get_amax(self, inputs):
         """Get amax from buffer or compute it dynamically."""
@@ -402,17 +470,31 @@ class TensorQuantizer(nn.Module):
     def _validate_amax(self, amax):
         # Dynamic control flow is not supported by torch dynamo
         if not is_torch_export_mode():
-            assert torch.all(amax >= 0) and not torch.any(
-                torch.isinf(amax)
-            ), f"Got invalid amax: {amax}"
+            assert torch.all(amax >= 0) and not torch.any(torch.isinf(amax)), (
+                f"Got invalid amax: {amax}"
+            )
+
+    def _is_real_quantize_support(self):
+        """Check if real quantization is supported for this quant config."""
+        if (
+            (self._num_bits == 4 and self._block_sizes)  # NF4 and Int4
+            or (self._num_bits == (2, 1) and self._block_sizes)  # NVFP4
+            or (self._num_bits == (4, 3))  # FP8
+        ):
+            return True
+        return False
 
     def _real_quantize(self, inputs):
-        assert (
-            self._num_bits == 4 or self._num_bits == (2, 1)
-        ) and self._block_sizes, "Real quantization not supported for this format."
+        assert self._is_real_quantize_support(), "Real quantization not supported for this format."
 
         buffer_to_register = {}
-        if self._block_sizes.get("scale_bits", 0) == 8 and self._block_sizes.get(
+        if self._num_bits == (4, 3):
+            # FP8 quantization
+            outputs, _scale = FP8QTensor.quantize(
+                inputs, axis=self._axis, block_sizes=self._block_sizes
+            )
+            buffer_to_register["_scale"] = _scale
+        elif self._block_sizes.get("scale_bits", 0) == 8 and self._block_sizes.get(
             "scale_block_sizes", None
         ):
             # NF4 double quantization
@@ -443,40 +525,105 @@ class TensorQuantizer(nn.Module):
 
         return outputs
 
+    def _compute_dynamic_bias(self, inputs):
+        """Compute dynamic bias based on current inputs."""
+        if self.bias_method == "mean":
+            # mean = (max + min) / 2
+            return compute_bias(inputs, self.bias_axis, method="mean")
+        elif self.bias_method == "max_min":
+            # mean = average(all tokens)
+            return compute_bias(inputs, self.bias_axis, method="max_min")
+        else:
+            raise ValueError(f"Unknown bias method: {self.bias_method}")
+
+    def _validate_static_bias(self):
+        """Validate static bias exists."""
+        assert self.bias_value is not None, "Bias is not set for static bias quantization."
+
+    def _handle_bias_before_quantization(self, inputs, bias_type):
+        """Handle bias subtraction for quantization."""
+        # Compute/validate bias
+        if bias_type == "dynamic":
+            # Compute bias and subtract it from input tensor in dynamic affine quantization
+            self.bias_value = self._compute_dynamic_bias(inputs)
+        elif bias_type == "static":
+            self._validate_static_bias()
+        else:
+            raise ValueError(f"Unknown bias type: {bias_type}")
+
+        # Subtract bias from input tensor in dynamic/static affine quantization
+        inputs = subtract_bias(inputs, self.bias_value)
+        return inputs
+
+    def _handle_bias_after_quantization(self, inputs, bias_type):
+        """Handle bias addition for quantization."""
+        # Add bias back to output tensor in affine quantization
+        if bias_type == "dynamic" or bias_type == "static":
+            inputs = add_bias(inputs, self.bias_value)
+        return inputs
+
     def _quant_forward(self, inputs):
         """Quantized forward pass."""
         amax = None
         if not self._dequantize and not self.is_mx_format:
-            if self._learn_amax:
-                inputs = self.clip(inputs)
-                amax = torch.max(-self.clip.clip_value_min, self.clip.clip_value_max).detach()
-            else:
-                amax = self._get_amax(inputs)
-
+            amax = self._get_amax(inputs)
             self._validate_amax(amax)
 
         if self._fake_quant:
-            if self.block_sizes is not None and self.block_sizes.get("type", None) == "dynamic":
+            if self.block_sizes is not None:
+                # Block quantization, including dynamic and static block quantization
                 block_size = self.block_sizes.get(-1, None) or self.block_sizes.get(
                     inputs.dim() - 1, None
                 )
-                assert block_size is not None, "block size for dynamic quantization not found."
-                outputs = dynamic_block_quant(
-                    inputs,
-                    block_size,
-                    amax,
-                    self._num_bits,
-                    self.block_sizes.get("scale_bits", None),
-                    getattr(self, "_trt_high_precision_dtype", None),
-                    getattr(self, "_onnx_quantizer_type", None),
-                )
+                # Subtract bias from input tensor in affine quantization
+                if self.bias_calibrator is not None:
+                    inputs = self._handle_bias_before_quantization(inputs, self.bias_type)
 
+                if self.block_sizes.get("type", "static") == "dynamic":
+                    # Dynamic block quantization, e.g., NVFP4
+                    # Double quantization is supported
+                    assert block_size is not None, "block size for dynamic quantization not found."
+
+                    outputs = dynamic_block_quant(
+                        inputs,
+                        block_size,
+                        amax,
+                        self._num_bits,
+                        self.block_sizes.get("scale_bits", None),
+                        getattr(self, "_trt_high_precision_dtype", None),
+                        getattr(self, "_onnx_quantizer_type", None),
+                    )
+                else:
+                    # Static block quantization, e.g., INT4_BLOCKWISE
+                    # Double quantization is not supported
+                    outputs = static_block_quant(
+                        inputs,
+                        amax,
+                        self._num_bits,
+                        self._unsigned,
+                        self._narrow_range,
+                    )
+
+                # Add bias back to output tensor in affine quantization
+                if self.bias_calibrator is not None:
+                    outputs = self._handle_bias_after_quantization(outputs, self.bias_type)
             elif isinstance(self._num_bits, tuple):
+                # Float-point quantization, e.g., FP8
                 E, M = self._num_bits  # noqa: N806
+
+                # Subtract bias from input tensor in affine quantization
+                if self.bias_calibrator is not None:
+                    inputs = self._handle_bias_before_quantization(inputs, self.bias_type)
+
                 outputs = scaled_e4m3(
                     inputs, self._get_amax(inputs), E, M, self._trt_high_precision_dtype
                 )
+
+                # Add bias back to output tensor in affine quantization
+                if self.bias_calibrator is not None:
+                    outputs = self._handle_bias_after_quantization(outputs, self.bias_type)
             else:
+                # Integer quantization, e.g., INT8
                 outputs = fake_tensor_quant(
                     inputs,
                     amax,
@@ -494,10 +641,11 @@ class TensorQuantizer(nn.Module):
                 # De-quantize
                 if isinstance(inputs, QTensorWrapper):
                     inputs = inputs.get_qtensor()
-                assert isinstance(
-                    inputs, BaseQuantizedTensor
-                ), "Expected input as real quantized tensors."
+                assert isinstance(inputs, BaseQuantizedTensor), (
+                    "Expected input as real quantized tensors."
+                )
                 return self.dequantize(inputs)
+
         return outputs
 
     def _check_onnx_readiness(self, inputs):
@@ -612,6 +760,32 @@ class TensorQuantizer(nn.Module):
             outputs = outputs[self._slices]
         return outputs
 
+    def _block_sizes_to_axis(self, x: torch.Tensor):
+        """Convert block_sizes to axis in per-channel/tensor quantization.
+
+        For example, for input tensor with shape (B, T, H),
+        {"block_sizes": {-1: None, -3: None}} equals to {axis: (-2)}, amax shape: (1, T, 1),
+        {"block_sizes": {-1: None, -2: None, -3: None}} equals to {axis: None}, amax shape: (1, T, 1)
+        """
+        block_sizes = self._block_sizes
+        if block_sizes is None:
+            return
+
+        def _check_per_channel_block_sizes(block_sizes):
+            # Check per-channel/block quant
+            return all(v is None for k, v in block_sizes.items() if isinstance(k, int))
+
+        if _check_per_channel_block_sizes(block_sizes):
+            # Convert block_sizes to axis
+            assert self.axis is None, "Axis and block_sizes are both set."
+            axis = tuple(
+                k if k >= 0 else k + x.dim() for k in block_sizes.keys() if isinstance(k, int)
+            )
+            self.axis = tuple(i for i in range(x.dim()) if i not in axis) or None
+
+            # remove block_sizes
+            self._block_sizes = None
+
     def export_amax(self) -> Optional[torch.Tensor]:
         """Export correctly formatted/shaped amax."""
         if self.block_sizes is not None and self.block_sizes.get("type", None) == "dynamic":
@@ -625,6 +799,7 @@ class TensorQuantizer(nn.Module):
         else:
             amax = self.amax.reshape(self._amax_shape_for_export)
         amax[amax == 0] = self.maxbound
+        amax = torch.nan_to_num(amax, nan=self.maxbound)
         clamp_min, clamp_max = torch.finfo(amax.dtype).tiny, torch.finfo(amax.dtype).max
         amax = amax.clamp(min=clamp_min, max=clamp_max)
 
@@ -665,6 +840,10 @@ class TensorQuantizer(nn.Module):
         if self.pre_quant_scale is not None:
             inputs = inputs * self.pre_quant_scale
 
+        # Rotating the input
+        if self._rotate:
+            inputs = normalized_hadamard_transform(inputs)
+
         if self._disabled:
             # if quantizer is disabled, we still need to track the input dtype for saving the model
             # TODO: This is a temporary solution and needs to be removed once megatron supports
@@ -677,27 +856,39 @@ class TensorQuantizer(nn.Module):
             if GLOBALS.in_onnx_export:
                 self._check_onnx_readiness(inputs)
 
+        if self.block_sizes is not None and self._fake_quant:
+            # To support the new block_sizes representation for per-channel quantization,
+            # convert the dim dict in block_sizes to axis.
+            # The axis attribute is still preserved for backward compatibility.
+            self._block_sizes_to_axis(inputs)
+
         if (
             self.block_sizes is not None
             and not self.block_sizes.get("type", None) == "dynamic"
             and self._fake_quant
         ):
-            # Dynamic block quantization is handled seperately by the quantization kernels
+            # Tensor reshaping is required for static block quantization
+            # Tensor shapes are handled seperately by the quantization kernels for dynamic block quantization
             self._setup_for_blockquant(inputs)
             inputs = self._process_for_blockquant(inputs)
 
         outputs = inputs
 
+        block_size = None
         if self._if_calib and not self._dynamic:
             if self._calibrator is None:
                 raise RuntimeError("Calibrator was not created.")
             # Shape is only known when it sees the first tensor
-            self._calibrator.collect(inputs)
+            if self.block_sizes is not None and self.block_sizes.get("type", None) == "dynamic":
+                block_size = self.block_sizes.get(-1, None) or self.block_sizes.get(
+                    inputs.dim() - 1, None
+                )
+                assert block_size is not None, "block size for dynamic quantization not found."
 
-        if self._if_clip:
-            if not self._learn_amax:
-                raise RuntimeError("Clip without learning amax is not implemented.")
-            outputs = self.clip(inputs)
+            # Collect calibration data for bias
+            if self.bias_calibrator is not None and self.bias_type == "static":
+                self.bias_calibrator.collect_calib_bias(inputs)
+            self._calibrator.collect(inputs)
 
         if self._if_quant:
             outputs = self._quant_forward(inputs)
@@ -747,14 +938,16 @@ class TensorQuantizer(nn.Module):
             s += f" axis={self._axis}" if self._axis is not None else " per-tensor"
         s += f" amax={self._short_amax()}"
         s += " pre_quant_scale" if self.pre_quant_scale is not None else ""
-        s += " learned" if (self._learn_amax) else ""
+        s += " rotated" if self._rotate else ""
         s += (
             f" calibrator={self._calibrator.__class__.__name__}"
             if (self._calibrator is not None)
             else ""
         )
+        if self._bias:
+            s += f" bias={self._bias}"
+
         s += " quant" if (self._if_quant) else ""
-        s += " clip" if (self._if_clip) else ""
         s += " calib" if (self._if_calib) else ""
         return s
 
@@ -802,7 +995,13 @@ class TensorQuantizer(nn.Module):
         super(TensorQuantizer, self)._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def _get_skip_properties_for_modelopt_state(self):
-        return {"clip", "_calibrator", "_original_shape", "_block_reshape_size", "_padding"}
+        return {
+            "_calibrator",
+            "_bias_calibrator",
+            "_original_shape",
+            "_block_reshape_size",
+            "_padding",
+        }
 
     def _get_properties_for_modelopt_state(self):
         return (
@@ -830,9 +1029,6 @@ class TensorQuantizer(nn.Module):
         if hasattr(self, "_pre_quant_scale"):
             modelopt_state["_has_pre_quant_scale"] = True
 
-        if hasattr(self, "clip"):
-            modelopt_state["_init_clip"] = True
-
         return modelopt_state
 
     def set_from_modelopt_state(self, modelopt_state, prefix=""):
@@ -845,10 +1041,6 @@ class TensorQuantizer(nn.Module):
         # TODO: This might not be sufficient for the custom calibrators - however there is no use-case for it yet
         for key in ["_num_bits", "_axis", "_unsigned"]:
             setattr(self._calibrator, key, getattr(self, key))
-
-        if "_init_clip" in modelopt_state:
-            # clip min and max parameters will be loaded from checkpoint
-            self.clip = Clip(-1.0, 1.0, learn_min=True, learn_max=True)
 
         # Create a temporary variable to indicate if the quantizer had amax in the checkpoint
         if "_has_amax" in modelopt_state or "_amax" in modelopt_state:
@@ -908,10 +1100,15 @@ class SequentialQuantizer(nn.Sequential):
 
     def __init__(self, *quantizers: TensorQuantizer):  # noqa: N803
         """Initialize SequentialQuantizer module."""
-        assert not any(
-            not isinstance(q, TensorQuantizer) for q in quantizers
-        ), "All quantizers must be a TensorQuantizer."
+        assert not any(not isinstance(q, TensorQuantizer) for q in quantizers), (
+            "All quantizers must be a TensorQuantizer."
+        )
         super().__init__(*quantizers)
+
+    @property
+    def fake_quant(self):
+        """Return True if only fake quantization is used."""
+        return all(q.fake_quant for q in self)
 
     def get_modelopt_state(self) -> dict[str, Any]:
         """Get meta state to be saved in checkpoint."""
@@ -936,9 +1133,9 @@ class SequentialQuantizer(nn.Sequential):
     ):
         """Set the attributes of contained quantizers from a list of attribute_dicts."""
         if not isinstance(attributes, (list, tuple)):
-            assert isinstance(
-                attributes, (dict, QuantizerAttributeConfig)
-            ), "attributes must be a list or a dict."
+            assert isinstance(attributes, (dict, QuantizerAttributeConfig)), (
+                "attributes must be a list or a dict."
+            )
             attributes = [attributes] * len(self)
 
         for attribute, quantizer in zip(attributes, self):

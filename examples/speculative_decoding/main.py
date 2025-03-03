@@ -128,10 +128,12 @@ def train():
         checkpoint = last_checkpoint
 
     if checkpoint:
-        model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint)
+        model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype="auto")
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
-        model = transformers.AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_args.model_name_or_path, torch_dtype="auto"
+        )
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             model_max_length=training_args.model_max_length,
@@ -179,9 +181,9 @@ def train():
     # Manually enable this to return loss in eval
     trainer.can_return_loss = True
     # Make sure label_smoother is None
-    assert (
-        trainer.label_smoother is None
-    ), "label_smoother is not supported in speculative decoding!"
+    assert trainer.label_smoother is None, (
+        "label_smoother is not supported in speculative decoding!"
+    )
 
     print_rank_0("Start training...")
     trainer.train(resume_from_checkpoint=checkpoint)

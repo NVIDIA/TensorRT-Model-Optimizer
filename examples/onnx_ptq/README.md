@@ -3,6 +3,7 @@
 This ONNX PTQ Toolkit provides a comprehensive suite of tools designed to optimize ONNX (Open Neural Network Exchange) models through quantization. Our toolkit is aimed at developers looking to enhance performance, reduce model size, and accelerate inference times without compromising the accuracy of their neural networks when deployed with TensorRT.
 
 Quantization is a technique that converts a model from using floating-point numbers to lower-precision formats like integers, which are computationally less expensive. This process can significantly speed up execution on compatible hardware and reduce memory and bandwidth requirements.
+To learn more about the quantization feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html).
 
 Note that this example is for ONNX model quantization. For end to end quantization examples with Large Language models, please refer to: [llm_ptq](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq)
 
@@ -74,7 +75,7 @@ Inference latency of the model is <X> ms
 
 ## Quantize an ONNX model with custom op
 
-This feature requires TensorRT 10+ and `ORT>=1.20`. For proper usage, please make sure that the path to `libcudnn*.so` is in the `PATH` or `LD_LIBRARY_PATH` variables and that the `tensorrt` python package is installed.
+This feature requires TensorRT 10+ and `ORT>=1.20`. For proper usage, please make sure that the paths to `libcudnn*.so` and TensorRT `lib/` are in the `LD_LIBRARY_PATH` env variable and that the `tensorrt` python package is installed.
 
 Please see the sample example below.
 

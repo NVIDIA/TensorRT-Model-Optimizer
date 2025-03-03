@@ -67,9 +67,9 @@ def _new_load_adapter(self, model_id, adapter_name, *args, **kwargs):
     modelopt_state_path = _get_modelopt_state_path(self, model_id)
 
     if os.path.isfile(modelopt_state_path):
-        assert (
-            adapter_name in self.peft_config
-        ), f"ModelOpt modified model should have adapter_name={adapter_name} in peft_config"
+        assert adapter_name in self.peft_config, (
+            f"ModelOpt modified model should have adapter_name={adapter_name} in peft_config"
+        )
         restore_from_modelopt_state(
             self, torch.load(modelopt_state_path, map_location="cpu", weights_only=False)
         )

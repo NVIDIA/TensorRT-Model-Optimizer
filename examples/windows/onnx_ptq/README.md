@@ -39,22 +39,22 @@ python quantize.py --model_name=meta-llama/Meta-Llama-3-8B \
 
 The table below lists key command-line arguments of the ONNX PTQ example script.
 
-| **Argument**              | **Supported Values**                                 | **Description**                                             |
+| **Argument** | **Supported Values** | **Description** |
 |---------------------------|------------------------------------------------------|-------------------------------------------------------------|
-| `--calib_size`            | 32 (default), 64, 128                                | Specifies the calibration size.                             |
-| `--dataset`               | cnn (default), pilevel                               | Choose calibration dataset: cnn_dailymail or pile-val.                         |
-| `--algo`                  | awq_lite (default), awq_clip                         | Select the quantization algorithm.                          |
-| `--onnx_path`             | input .onnx file path                                | Path to the input ONNX model.                               |
-| `--output_path`           | output .onnx file path                               | Path to save the quantized ONNX model.                      |
-| `--use_zero_point`        | True, False (default)                                | Enable zero-point based quantization.                       |
-| `--block-size`            | 32, 64, 128 (default)                                | Block size for AWQ.                                         |
-| `--awqlite_alpha_step`    | 0.1 (default)                                        | Step-size for AWQ scale search, user-defined                |
-| `--awqlite_run_per_subgraph` | True, False (default)                             | If True, runs AWQ scale search at the subgraph level        |
-| `--awqlite_fuse_nodes`    | True (default), False                                | If True, fuses input scales in parent nodes.                |
-| `--awqclip_alpha_step`    | 0.05 (default)                                       | Step-size for AWQ weight clipping, user-defined             |
-| `--awqclip_alpha_min`     | 0.5 (default)                                        | Minimum AWQ weight-clipping threshold, user-defined         |
-| `--awqclip_bsz_col`       | 1024 (default)                                       | Chunk size in columns during weight clipping, user-defined  |
-| `--calibration_eps`       | dml, cuda, cpu (default: \[dml,cpu\])                  | List of calibration endpoints.                              |
+| `--calib_size` | 32 (default), 64, 128 | Specifies the calibration size. |
+| `--dataset` | cnn (default), pilevel | Choose calibration dataset: cnn_dailymail or pile-val. |
+| `--algo` | awq_lite (default), awq_clip | Select the quantization algorithm. |
+| `--onnx_path` | input .onnx file path | Path to the input ONNX model. |
+| `--output_path` | output .onnx file path | Path to save the quantized ONNX model. |
+| `--use_zero_point` | True, False (default) | Enable zero-point based quantization. |
+| `--block-size` | 32, 64, 128 (default) | Block size for AWQ. |
+| `--awqlite_alpha_step` | 0.1 (default) | Step-size for AWQ scale search, user-defined |
+| `--awqlite_run_per_subgraph` | True, False (default) | If True, runs AWQ scale search at the subgraph level |
+| `--awqlite_fuse_nodes` | True (default), False | If True, fuses input scales in parent nodes. |
+| `--awqclip_alpha_step` | 0.05 (default) | Step-size for AWQ weight clipping, user-defined |
+| `--awqclip_alpha_min` | 0.5 (default) | Minimum AWQ weight-clipping threshold, user-defined |
+| `--awqclip_bsz_col` | 1024 (default) | Chunk size in columns during weight clipping, user-defined |
+| `--calibration_eps` | dml, cuda, cpu (default: [dml,cpu]) | List of calibration endpoints. |
 
 Run the following command to view all available parameters in the script:
 
@@ -86,7 +86,7 @@ Phi3.5-mini-Instruct | Yes
 Mistral-7B-Instruct-v0.3 | Yes
 Llama3.2-3B-Instruct| Yes
 Gemma-2b-it | Yes
-Nemotron Mini 4B Instruct  | Yes
+Nemotron Mini 4B Instruct | Yes
 
 ### Troubleshoot
 

@@ -84,4 +84,6 @@ def load_cpp_extension(
             raise RuntimeError(fail_msg)
         else:
             warnings.warn(fail_msg)
+    else:
+        print(f"Loaded extension {name}")
     return ext

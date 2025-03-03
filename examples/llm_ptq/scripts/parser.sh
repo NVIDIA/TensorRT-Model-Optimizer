@@ -21,6 +21,7 @@ parse_options() {
     MODEL_TYPE=""
     MODEL_PATH=""
     QFORMAT=""
+    DISABLE_KV_CACHE_QUANT="False"
     TP=1
     CALIB_TP=
     PP=1
@@ -29,19 +30,21 @@ parse_options() {
     EXPORT_FORMAT="tensorrt_llm"
     LM_EVAL_TASKS="mmlu,gsm8k"
     LM_EVAL_LIMIT=
+    SIMPLE_EVAL_TASKS="mmlu"
 
     TASKS="build"
 
     TRUST_REMOTE_CODE=false
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,trust_remote_code" -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,disable_kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code" -n "$0" -- "$@")
   eval set -- "$ARGS"
   while true; do
     case "$1" in
       --type ) MODEL_TYPE="$2"; shift 2;;
       --model ) MODEL_PATH="$2"; shift 2;;
       --quant ) QFORMAT="$2"; shift 2;;
+      --disable_kv_cache_quant ) DISABLE_KV_CACHE_QUANT="$2"; shift 2;;
       --tp ) TP="$2"; shift 2;;
       --calib_tp ) CALIB_TP="$2"; shift 2;;
       --pp ) PP="$2"; shift 2;;
@@ -57,6 +60,7 @@ parse_options() {
       --export_fmt ) EXPORT_FORMAT="$2"; shift 2;;
       --lm_eval_tasks ) LM_EVAL_TASKS="$2"; shift 2;;
       --lm_eval_limit ) LM_EVAL_LIMIT="$2"; shift 2;;
+      --simple_eval_tasks ) SIMPLE_EVAL_TASKS="$2"; shift 2;;
       --num_samples ) NUM_SAMPLES="$2"; shift 2;;
       --trust_remote_code ) TRUST_REMOTE_CODE=true; shift;;
       -- ) shift; break ;;
@@ -66,9 +70,9 @@ parse_options() {
 
   DEFAULT_CALIB_SIZE=512
   DEFAULT_CALIB_BATCH_SIZE=0
-  DEFAULT_BUILD_MAX_INPUT_LEN=2048
-  DEFAULT_BUILD_MAX_OUTPUT_LEN=512
-  DEFAULT_BUILD_MAX_BATCH_SIZE=4
+  DEFAULT_BUILD_MAX_INPUT_LEN=3072
+  DEFAULT_BUILD_MAX_OUTPUT_LEN=1024
+  DEFAULT_BUILD_MAX_BATCH_SIZE=2
 
   if [ -z "$CALIB_SIZE" ]; then
     CALIB_SIZE=$DEFAULT_CALIB_SIZE
@@ -97,7 +101,7 @@ parse_options() {
     exit 1
   fi
 
-  VALID_TASKS=("build" "mmlu" "humaneval" "mtbench" "benchmark" "lm_eval" "gqa")
+  VALID_TASKS=("build" "mmlu" "mtbench" "benchmark" "lm_eval" "gqa" "livecodebench" "simple_eval")
 
   for task in $(echo $TASKS | tr ',' ' '); do
     if [[ ! " ${VALID_TASKS[@]} " =~ " $task " ]]; then
@@ -139,6 +143,7 @@ parse_options() {
   echo "export_fmt: $EXPORT_FORMAT"
   echo "lm_eval_tasks: $LM_EVAL_TASKS"
   echo "lm_eval_limit: $LM_EVAL_LIMIT"
+  echo "simple_eval_tasks: $SIMPLE_EVAL_TASKS"
   echo "num_sample: $NUM_SAMPLES"
   echo "================="
 }

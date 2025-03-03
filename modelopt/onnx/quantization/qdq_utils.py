@@ -394,9 +394,9 @@ def replace_scale_values(graph: onnx.onnx_ml_pb2.GraphProto, act_scales_dict: di
             scale_input_name = node.input[1]
             if scale_input_name in act_scales_dict:
                 idx = initializer_indices.get(scale_input_name, None)
-                assert (
-                    idx is not None
-                ), f"Expected '{scale_input_name}' to be found in 'graph.initializer', but it was not present."
+                assert idx is not None, (
+                    f"Expected '{scale_input_name}' to be found in 'graph.initializer', but it was not present."
+                )
                 scale = onnx.numpy_helper.from_array(
                     np.float32(act_scales_dict[scale_input_name]), scale_input_name
                 )
@@ -405,9 +405,9 @@ def replace_scale_values(graph: onnx.onnx_ml_pb2.GraphProto, act_scales_dict: di
                 # If the scale is not present in the act_scales_dict
                 # then the current node must be an weight quantizer and
                 # the weight should be available in the graph initializer
-                assert (
-                    initializer_indices.get(node.input[0], None) is not None
-                ), f"Tensor {node.input[0]} not found in initializers."
+                assert initializer_indices.get(node.input[0], None) is not None, (
+                    f"Tensor {node.input[0]} not found in initializers."
+                )
 
 
 def qdq_to_dq(
@@ -497,9 +497,9 @@ def qdq_to_dq(
             logging.info(f"Processing {node.name}")
 
         idx1 = initializer_indices.get(node.input[0], None)
-        assert (
-            idx1 is not None
-        ), f"Expected '{node.input[0]}' to be found in 'graph.initializer', but it was not present."
+        assert idx1 is not None, (
+            f"Expected '{node.input[0]}' to be found in 'graph.initializer', but it was not present."
+        )
         w = initializers[idx1]
 
         w32 = onnx.numpy_helper.to_array(w)
@@ -626,12 +626,12 @@ def replace_fp4qdq_with_2dq(
             graph.initializer.append(initializer)
 
     def _add_input_value_info(graph, tensor_proto):
-        assert (
-            tensor_proto.name not in graph_inputs
-        ), f"{tensor_proto.name} already in graph inputs."
-        assert (
-            tensor_proto.name not in value_info_map
-        ), f"{tensor_proto.name} already in value info."
+        assert tensor_proto.name not in graph_inputs, (
+            f"{tensor_proto.name} already in graph inputs."
+        )
+        assert tensor_proto.name not in value_info_map, (
+            f"{tensor_proto.name} already in value info."
+        )
 
         value_info = onnx.helper.make_tensor_value_info(
             tensor_proto.name, tensor_proto.data_type, tensor_proto.dims

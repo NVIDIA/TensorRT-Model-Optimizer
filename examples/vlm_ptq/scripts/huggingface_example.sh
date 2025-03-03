@@ -58,10 +58,10 @@ case $SPARSITY_FMT in
 esac
 
 case $QFORMAT in
-    fp8|fp8_naive|int8_sq|int4_awq|w4a8_awq|fp16|bf16)
+    fp8|int8_sq|int4_awq|w4a8_awq|fp16|bf16)
         ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, fp8_naive, int8_sq, int4_awq, w4a8_awq, fp16, bf16]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, int8_sq, int4_awq, w4a8_awq, fp16, bf16]" >&2
         exit 1
 esac
 
@@ -123,10 +123,6 @@ if [ "${REMOVE_EXISTING_MODEL_CONFIG,,}" = "true" ]; then
 fi
 
 PTQ_ARGS=""
-if [ $QFORMAT == "fp8_naive" ]; then
-    QFORMAT=fp8
-    PTQ_ARGS+=" --naive_quantization "
-fi
 
 if [ -n "$AUTO_QUANTIZE_BITS" ]; then
     PTQ_ARGS+=" --auto_quantize_bits $AUTO_QUANTIZE_BITS "
@@ -154,7 +150,7 @@ case "${MODEL_TYPE}" in
         VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
         ;;
     "mllama")
-        VLM_ARGS=" --max_encoder_input_len=4100 "
+        VLM_ARGS=" --max_encoder_input_len=4100 --skip_run"
         ;;
 esac
 
@@ -195,11 +191,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
 
     if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
         echo "Please continue deployment with $EXPORT_FORMAT. Checkpoint export_path: $SAVE_PATH"
-        exit 0
-    fi
-
-    if [ $MODEL_TYPE == "mllama" ]; then
-        echo "Please continue deployment with the latest TensorRT-LLM main branch. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
 
@@ -244,12 +235,19 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$VISION_ENCODER_DIR" ]] || [[ ! $(ls -A $
         $VISUAL_ARGS
 fi
 
+VLM_RUN_ARGS=""
+case "${MODEL_TYPE}" in
+    "mllama")
+        VLM_RUN_ARGS+=" --visual_engine_name visual_encoder.engine --image_path https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit.jpg --input_text \"<|image|><|begin_of_text|>If I had to write a haiku for this one\" --max_new_tokens 50 --batch_size 2 "
+        ;;
+esac
 echo "Run inference example"
 
 python vlm_run.py  \
     --hf_model_dir $MODEL_PATH \
     --visual_engine_dir $VISION_ENCODER_DIR \
-    --llm_engine_dir $ENGINE_DIR
+    --llm_engine_dir $ENGINE_DIR \
+    $VLM_RUN_ARGS
 
 if [[ $TASKS =~ "gqa" ]]; then
     echo "Evaluating the TensorRT engine of the quantized model using GQA benchmark."

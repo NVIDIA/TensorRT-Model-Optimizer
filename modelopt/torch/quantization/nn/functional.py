@@ -20,6 +20,8 @@ import warnings
 import torch
 from torch.autograd import Function
 
+from .. import utils
+
 
 class ClipFunction(Function):
     """An universal tensor clip function.
@@ -70,3 +72,41 @@ class ClipFunction(Function):
 
 
 clip = ClipFunction.apply
+
+
+class FastHadamardTransform(Function):
+    """The fast Hadamard transform.
+
+    This only works for inputs.shape[-1] == power of 2.
+    """
+
+    @staticmethod
+    def forward(ctx, inputs):
+        """Hadamard forward."""
+        assert utils.is_pow2(inputs.shape[-1]), (
+            "Fast hadamard only works for inputs.shape[-1] == power of 2."
+        )
+        return fast_hadamard_transform.hadamard_transform(inputs)  # type: ignore[name-defined]
+
+    @staticmethod
+    def backward(ctx, grad_outputs):
+        """Hadamard backward."""
+        return fast_hadamard_transform.hadamard_transform(grad_outputs)  # type: ignore[name-defined]
+
+
+def normalized_hadamard_transform(inputs):
+    """Normalized fast hadamard transform."""
+    global fast_hadamard_transform
+    try:
+        import fast_hadamard_transform
+    except ModuleNotFoundError:
+        raise ModuleNotFoundError(
+            (
+                "Package `fast_hadamard_transform` not found, please install it using "
+                "`pip install git+https://github.com/Dao-AILab/fast-hadamard-transform.git`"
+            )
+        )
+
+    return FastHadamardTransform.apply(inputs) / torch.sqrt(
+        torch.tensor(inputs.shape[-1], dtype=torch.float32)
+    )

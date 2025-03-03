@@ -44,6 +44,7 @@ from .model_config import (
     LINEAR_ROW,
     QUANTIZATION_FP8,
     QUANTIZATION_NONE,
+    QUANTIZATION_NVFP4,
     AttentionConfig,
     ConvConfig,
     DecoderLayerConfig,
@@ -316,13 +317,13 @@ def is_mlp(module: nn.Module) -> bool:
 
 def is_moe(module: nn.Module) -> bool:
     """Returns whether the module is an MOE layer."""
-    return type(module).__name__ in [
-        "MixtralSparseMoeBlock",
-        "ArcticMoE",
-        "DbrxFFN",
-        "MoELayer",
-        "PhiMoESparseMoeBlock",
-        "DeepseekMoE",
+    return type(module).__name__.lower() in [
+        "MixtralSparseMoeBlock".lower(),
+        "ArcticMoE".lower(),
+        "DbrxFFN".lower(),
+        "MoELayer".lower(),
+        "PhimoeSparseMoeBlock".lower(),
+        "DeepseekMoE".lower(),
     ]
 
 
@@ -781,8 +782,15 @@ def build_mlp_config(
             elif any([keyword == name for keyword in proj_keywords]):
                 proj_linear = layer
 
-    if merge_gate_fc:
-        assert gate_linear is not None and fc_linear is not None
+    # TensorRT-LLM may choose to merge gate and fc during engine building.
+    if (
+        gate_linear is not None
+        and fc_linear is not None
+        and (
+            merge_gate_fc
+            or get_quantization_format(module) in [QUANTIZATION_FP8, QUANTIZATION_NVFP4]
+        )
+    ):
         preprocess_linear_fusion([fc_linear, gate_linear])
 
     if fc_linear is not None:
@@ -860,8 +868,12 @@ def build_mlp_config(
                     hidden_act = _get_hidden_act(getattr(module, act)).split("_")[0]
                     break
 
-        if hidden_act is None:
-            raise NotImplementedError(f"{module} not supported.")
+    if hidden_act is None and decoder_type == "qwen":
+        # for v1 qwen versions, activation is not explicitly defined as part of the layer's implementation
+        hidden_act = "silu"
+
+    if hidden_act is None:
+        raise NotImplementedError(f"{module} not supported.")
 
     config.hidden_act = hidden_act
     return config
@@ -1178,6 +1190,10 @@ def _set_layer_config_from_metaconfig(layer_config, metaconfig):
             if k in metaconfig:
                 setattr(layer_config, name, metaconfig[k])
 
+    # MCore / NeMo use "rope" as an alias for "rope_gpt_neox"
+    if layer_config.position_embedding_type == "rope":
+        layer_config.position_embedding_type = "rope_gpt_neox"
+
     # 2048 is the default TRT LLM max_position_embeddings
     if layer_config.max_position_embeddings == 0:
         layer_config.max_position_embeddings = 2048
@@ -1198,11 +1214,11 @@ def _set_layer_config_from_metaconfig(layer_config, metaconfig):
     if "model_type" in metaconfig:
         if metaconfig["model_type"] == "RefinedWeb":
             # Case 1. Falcon-40B / Falcon-40B-instruct
-            # https://huggingface.co/tiiuae/falcon-40b/blob/main/layer_config.json
+            # https://huggingface.co/tiiuae/falcon-40b/blob/main/config.json
             layer_config.new_decoder_architecture = True
         elif metaconfig["model_type"] == "RefinedWebModel":
             # Case 2. Falcon-7B / Falcon-7B-instruct
-            # https://huggingface.co/tiiuae/falcon-7b/blob/main/layer_config.json
+            # https://huggingface.co/tiiuae/falcon-7b/blob/main/config.json
             layer_config.new_decoder_architecture = False
 
     # For Falcon variants, they might not specify the number of kv heads with MQA models, e.g., 7b
@@ -1268,6 +1284,21 @@ def build_decoder_config(
             for layer in sub_module.children():
                 combined_module.append(layer)
         module_layers = dict(combined_module.named_children())
+    elif decoder_type in ["bart"]:
+        # BartEncoderLayer, BartDecoderLayer have MLP component with no Module wrapper.
+        # creating a dummy module so that is_mlp may catch it.
+        bart_mlp_submodule_names = ["fc1", "fc2", "activation_fn"]
+        module_layers = dict(module.named_children())
+
+        class BartMLP(nn.Module):
+            def __init__(self):
+                super().__init__()
+
+        bart_mlp_module = BartMLP()
+        for submodule_name in bart_mlp_submodule_names:
+            setattr(bart_mlp_module, submodule_name, getattr(module, submodule_name))
+            module_layers.pop(submodule_name)
+        module_layers.update({"MLP": bart_mlp_module})
     else:
         module_layers = dict(module.named_children())
         if decoder_type in ["exaone"]:
@@ -1278,8 +1309,8 @@ def build_decoder_config(
         # and residual_layernorm could be after post_layernorm
         if is_layernorm(layer):
             layernorm_config = build_layernorm_config(layer)
-            # Special attributes naming for T5 model (Encoder-Decoder model)
-            if decoder_type in ["t5"]:
+            # Special attributes naming for Encoder-Decoder models
+            if model_type_is_enc_dec(decoder_type):
                 _update_encoder_decoder_layernorm_config(
                     model_metadata_config, config, layernorm_config
                 )
@@ -1298,23 +1329,26 @@ def build_decoder_config(
                 elif config.post_layernorm is None:
                     config.post_layernorm = layernorm_config
                 else:
-                    assert model_metadata_config[
-                        "parallel_attn_mlp_res"
-                    ], "Unexpected layernorm in a layer"
+                    assert model_metadata_config["parallel_attn_mlp_res"], (
+                        "Unexpected layernorm in a layer"
+                    )
                     config.residual_layernorm = layernorm_config
 
         elif is_attention(layer):
             # For models where a linear may replace the attention/MLP module (e.g. Deci models)
             if is_linear(layer):
-                config.attn_replacing_linear = build_linear_config(layer.linear_attn, "column")
+                config.attn_replacing_linear = build_linear_config(layer.linear_attn, LINEAR_COLUMN)
             else:
                 if decoder_type in ["bloom", "falcon", "phi3small", "internlm"]:
                     model_metadata_config["head_is_first_dim"] = True
                 attention_config = build_attention_config(
                     layer, model_metadata_config, config, tp_size=tp_size
                 )
-                # For T5 decoder
-                if decoder_type in ["t5"] and model_metadata_config["enc_dec"] == "dec":
+                # For decoder of Encoder-Decoder model with self, cross attention
+                if (
+                    model_type_is_enc_dec(decoder_type)
+                    and model_metadata_config["enc_dec"] == "dec"
+                ):
                     # We assume self_attention should be before the cross_attention in decoder block layout
                     if config.self_attention is None:
                         config.self_attention = attention_config
@@ -1342,7 +1376,9 @@ def build_decoder_config(
             if config.mlp is None:
                 # For models where a linear may replace the attention/MLP module (e.g. Deci models)
                 if is_linear(layer):
-                    config.mlp_replacing_linear = build_linear_config(layer.linear_mlp, "column")
+                    config.mlp_replacing_linear = build_linear_config(
+                        layer.linear_mlp, LINEAR_COLUMN
+                    )
                 else:
                     config.mlp = build_mlp_config(
                         layer,
@@ -1447,9 +1483,9 @@ def _split_fused_qkv_weight_and_scaling(
     qkv_in = weight.shape[-1] if weight_dim > 1 else 1
 
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
-    assert (
-        num_heads % num_kv_heads == 0
-    ), f"num_heads({num_heads}) must be divisible by num_kv_heads({num_kv_heads}))."
+    assert num_heads % num_kv_heads == 0, (
+        f"num_heads({num_heads}) must be divisible by num_kv_heads({num_kv_heads}))."
+    )
 
     # The number of attention heads per group: N q head + 1 k head + 1 v head.
     num_group_heads = num_heads // num_kv_heads + 2
@@ -1515,9 +1551,9 @@ def _move_input_layernorm_for_noop_attention(
             complete_decoder_config.recurrent,
         ]
     ):
-        assert (
-            complete_decoder_config.post_layernorm is None
-        ), "Should not have 2 layer norms with no attention"
+        assert complete_decoder_config.post_layernorm is None, (
+            "Should not have 2 layer norms with no attention"
+        )
         complete_decoder_config.post_layernorm = complete_decoder_config.input_layernorm
         complete_decoder_config.input_layernorm = None
 
@@ -1541,9 +1577,9 @@ def update_experts_avg_prequant_scale(experts: nn.Module):
 
     for linear_name in experts_linear_names:
         # Check if pre_quant_scale exists
-        assert hasattr(
-            get_func(experts, 0, linear_name).input_quantizer, "pre_quant_scale"
-        ), "Layer does not have attribute pre_quant_scale"
+        assert hasattr(get_func(experts, 0, linear_name).input_quantizer, "pre_quant_scale"), (
+            "Layer does not have attribute pre_quant_scale"
+        )
         experts_avg_pre_quant_scale = torch.mean(
             torch.stack(
                 [
@@ -1568,3 +1604,46 @@ def get_experts_linear_names(model: torch.nn.Module):
         return ["w1_linear", "w2_linear", "v1_linear"]
     else:
         raise NotImplementedError("MoE model not supported")
+
+
+def model_type_is_enc_dec(model_type):
+    """Check if model_type is a enc-dec model."""
+    return model_type in ["t5", "bart"]
+
+
+def get_enc_dec_models(hf_model, model_type):
+    """Get the correct encoder, decoder from hf model."""
+    assert model_type_is_enc_dec(model_type), "This encoder decoder model is not supported"
+    if model_type in "bart":
+        return [("enc", hf_model.model.encoder), ("dec", hf_model.model.decoder)]
+    else:
+        return [("enc", hf_model.encoder), ("dec", hf_model.decoder)]
+
+
+def get_encoder_config(encoder_config):
+    """Get the encoder information for decoder model in enc-dec model."""
+    encoder_hidden_size = encoder_config.d_model
+    encoder_num_heads = (
+        encoder_config.encoder_attention_heads
+        if hasattr(encoder_config, "encoder_attention_heads")
+        else encoder_config.num_heads
+    )
+    encoder_head_size = (
+        encoder_config.d_kv
+        if hasattr(encoder_config, "d_kv")
+        else encoder_hidden_size // encoder_num_heads
+    )
+    return encoder_hidden_size, encoder_num_heads, encoder_head_size
+
+
+def get_enc_dec_token_ids(decoder_config):
+    """Parse decoder model token info."""
+    decoder_start_token_id = (
+        decoder_config.decoder_start_token_id
+        if hasattr(decoder_config, "decoder_start_token_id")
+        else None
+    )
+    eos_token_id = decoder_config.eos_token_id if hasattr(decoder_config, "eos_token_id") else None
+    bos_token_id = decoder_config.bos_token_id if hasattr(decoder_config, "bos_token_id") else None
+    pad_token_id = decoder_config.pad_token_id if hasattr(decoder_config, "pad_token_id") else None
+    return decoder_start_token_id, eos_token_id, bos_token_id, pad_token_id

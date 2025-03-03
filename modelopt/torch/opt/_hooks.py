@@ -20,6 +20,7 @@ from typing import Union
 
 import torch
 import torch.nn as nn
+from packaging.version import Version
 
 # Older versions have torch.distributed.fsdp.flat_param module but without `_safe_setattr_tensor_or_param`
 from torch.distributed.fsdp import _flat_param
@@ -64,3 +65,40 @@ def _writeback_orig_param(self: FlatParamHandle):
 
 FlatParamHandle._writeback_orig_params_original = FlatParamHandle._writeback_orig_params
 FlatParamHandle._writeback_orig_params = _writeback_orig_param
+
+
+# patch for FSDP2, which is only valid for torch_version >= 2.4
+if Version(torch.__version__) >= Version("2.4"):
+    if Version(torch.__version__) >= Version("2.6"):
+        from torch.distributed.fsdp._fully_shard import _fsdp_param
+        from torch.distributed.fsdp._fully_shard._fsdp_param import FSDPParam
+    else:
+        from torch.distributed._composable.fsdp import _fsdp_param
+        from torch.distributed._composable.fsdp._fsdp_param import FSDPParam
+
+    def _unsafe_setattr_param_with_dm_check(
+        module: nn.Module, param_name: str, param: nn.Parameter
+    ):
+        """A batched version of unsafe_setattr_param ensuring compatibility with DMs."""
+        with (
+            module.reset_dynamic_attributes()
+            if isinstance(module, DynamicModule)
+            else nullcontext()
+        ):
+            return _fsdp_param._unsafe_setattr_param_original(module, param_name, param)
+
+    def reset_sharded_param_with_dm_check(self: FSDPParam):
+        """A batched version of FSDPParam.reset_sharded_param ensuring compatibility with DMs."""
+        module = self._module_info.module
+        with (
+            module.reset_dynamic_attributes()
+            if isinstance(module, DynamicModule)
+            else nullcontext()
+        ):
+            self._reset_sharded_param_original()
+
+    _fsdp_param._unsafe_setattr_param_original = _fsdp_param.unsafe_setattr_param
+    _fsdp_param.unsafe_setattr_param = _unsafe_setattr_param_with_dm_check
+
+    FSDPParam._reset_sharded_param_original = FSDPParam.reset_sharded_param
+    FSDPParam.reset_sharded_param = reset_sharded_param_with_dm_check

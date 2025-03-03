@@ -149,6 +149,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             $AUTO_QUANTIZE_ARGS \
             quantization.awq_block_size=$(($AWQ_BLOCK_SIZE)) \
             quantization.num_calib_size=$(($CALIB_SIZE)) \
+            quantization.disable_kv_cache_quant=$DISABLE_KV_CACHE_QUANT \
             inference.batch_size=$(($CALIB_BATCH_SIZE)) \
             export.path=$SAVE_PATH \
             export.decoder_type=$MODEL_TYPE \
@@ -205,37 +206,6 @@ if [[ $TASKS =~ "mmlu" ]]; then
         --engine_dir $ENGINE_DIR \
         --vocab_file $TOKENIZER_CONFIG \
         --data_dir $MMLU_DATA_PATH | tee $MMLU_RESULT
-    popd
-
-fi
-
-if [[ $TASKS =~ "humaneval" ]]; then
-
-    HUMANEVAL_RESULT=${ENGINE_DIR}/humaneval.txt
-    echo "Evaluating humaneval, result saved to $HUMANEVAL_RESULT..."
-
-    pushd ../llm_eval/
-
-    pip install -r requirements.txt
-
-    if [ -z "$HUMANEVAL_CODE_PATH" ]; then
-        HUMANEVAL_CODE_PATH=human_eval
-    fi
-    if [[ ! -d "$HUMANEVAL_CODE_PATH" ]] || [[ ! $(ls -A $HUMANEVAL_CODE_PATH) ]]; then
-        echo "Preparing the human eval tests"
-        wget https://github.com/declare-lab/instruct-eval/archive/refs/heads/main.zip -O /tmp/instruct-eval.zip
-        unzip /tmp/instruct-eval.zip "instruct-eval-main/human_eval/*" -d /tmp/
-        cp -r /tmp/instruct-eval-main/human_eval .
-    fi
-
-    python humaneval.py \
-        --model_name causal \
-        --engine_dir $ENGINE_DIR \
-        --vocab_file $TOKENIZER_CONFIG \
-        --n_sample 1 | tee $HUMANEVAL_RESULT
-
-    mv *.jsonl $ENGINE_DIR/
-
     popd
 
 fi

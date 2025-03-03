@@ -116,7 +116,8 @@ def cuassert(cuda_ret):
     err = cuda_ret[0]
     if err != cudart.cudaError_t.cudaSuccess:
         raise RuntimeError(
-            f"CUDA ERROR: {err}, error code reference: https://nvidia.github.io/cuda-python/module/cudart.html#cuda.cudart.cudaError_t"
+            f"CUDA ERROR: {err}, error code reference: "
+            "https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__ERROR.html"
         )
     if len(cuda_ret) > 1:
         return cuda_ret[1]

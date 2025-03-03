@@ -49,9 +49,9 @@ class BaseSparseSearcher(BaseSearcher):
 
         # sanity check of sparsity format
         is_nm_prune, n, m = asp.get_nmprune_info(config_sanitized["pattern"])
-        assert (
-            is_nm_prune and n == 2 and m == 4
-        ), f"Unsupported pattern {self.config['pattern']} for sparsity"
+        assert is_nm_prune and n == 2 and m == 4, (
+            f"Unsupported pattern {self.config['pattern']} for sparsity"
+        )
 
         return config_sanitized
 

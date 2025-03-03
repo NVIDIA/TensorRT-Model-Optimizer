@@ -34,12 +34,7 @@ def get_calib_dataloader(
     data="cnn_dailymail", tokenizer=None, batch_size=1, calib_size=512, block_size=512, device=None
 ):
     print("Loading calibration dataset")
-    if data == "pileval":
-        dataset = load_dataset(
-            "json", data_files="https://the-eye.eu/public/AI/pile/val.jsonl.zst", split="train"
-        )
-        dataset = dataset["text"][:calib_size]
-    elif data == "cnn_dailymail":
+    if data == "cnn_dailymail":
         dataset = load_dataset("cnn_dailymail", name="3.0.0", split="train")
         dataset = dataset["article"][:calib_size]
     else:
@@ -190,7 +185,6 @@ if __name__ == "__main__":
         type=int,
         default=1,
     )
-    parser.add_argument("--naive_quantization", default=False, action="store_true")
     parser.add_argument(
         "--trust_remote_code",
         help="Set trust_remote_code for Huggingface models and tokenizers",

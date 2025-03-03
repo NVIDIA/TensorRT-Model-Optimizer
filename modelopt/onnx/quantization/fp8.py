@@ -34,9 +34,11 @@ from modelopt.onnx.quantization.graph_utils import (
     convert_fp16_io,
     expand_node_names_from_patterns,
     find_nodes_to_exclude,
+    get_resize_scales,
     get_tensor_producer_nodes,
     insert_fp8_mha_casts,
     remove_partial_input_qdq,
+    replace_resize_scales,
 )
 from modelopt.onnx.quantization.ort_patching import _quantize_static as quantize_static
 from modelopt.onnx.quantization.ort_utils import configure_ort
@@ -59,9 +61,9 @@ def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
     for node in graph.nodes:
         if node.op == "Conv":
             weight = node.inputs[1]
-            assert (
-                3 <= len(weight.shape) <= 5
-            ), f"Invalid weight shape {weight.shape}. Only 1D, 2D, and 3D convolutions are supported."
+            assert 3 <= len(weight.shape) <= 5, (
+                f"Invalid weight shape {weight.shape}. Only 1D, 2D, and 3D convolutions are supported."
+            )
             output_channel = weight.shape[0]
             input_channel = weight.shape[1]
             if output_channel % 16 != input_channel % 16:
@@ -126,9 +128,9 @@ def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.onnx_pb.ModelProt
 
         if zero_point_name not in processed_tensor:
             zero_point_idx = initializer_indices.get(zero_point_name, None)
-            assert (
-                zero_point_idx is not None
-            ), f"Expected '{zero_point_name}' to be found in 'graph.initializer', but it was not present."
+            assert zero_point_idx is not None, (
+                f"Expected '{zero_point_name}' to be found in 'graph.initializer', but it was not present."
+            )
             zero_point = initializers[zero_point_idx]
             dtype = onnx.helper.tensor_dtype_to_np_dtype(zero_point.data_type)
             vals = np.array(zero_point.int32_data, dtype=dtype).tolist()
@@ -185,7 +187,7 @@ def quantize(
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cuda:0", "cpu", "trt"],
+    calibration_eps: list[str] = ["cpu"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -195,7 +197,8 @@ def quantize(
     verbose: bool = False,
     trt_extra_plugin_lib_paths: str = None,
     high_precision_dtype: str = "fp16",
-    mha_accumulation_dtype: str = "fp32",
+    mha_accumulation_dtype: str = "fp16",
+    **kwargs,
 ) -> onnx.onnx_pb.ModelProto:
     """Applies FP8 GEMM only quantization to an ONNX file.
 
@@ -224,8 +227,7 @@ def quantize(
         list(op_types), op_types_to_quantize, trt_extra_plugin_lib_paths, calibration_eps
     )
     logging.info(
-        "Quantizable op types in the model:"
-        f" {[t for t in op_types_to_quantize if t in op_types]}"
+        f"Quantizable op types in the model: {[t for t in op_types_to_quantize if t in op_types]}"
     )
 
     # Collect node names to include in quantization
@@ -290,13 +292,26 @@ def quantize(
         graph = gs.import_onnx(onnx_model)
         convert_fp16_io(graph)
         onnx_model = gs.export_onnx(graph)
-        onnx_model = convert_float_to_float16(
-            onnx_model, keep_io_types=True, disable_shape_infer=True
-        )
 
-        # We need to convert the ONNX model to opset 21 since FP8 QuantizeLinear/DequantizeLinear ops do not support
-        # FP16 scaling factors until opset 21.
-        onnx_model = upgrade_opset_21(onnx_model)
+        # Record the old fp32 scale value of Resize node.
+        resize_scale_inits = get_resize_scales(onnx_model)
+        # Convert to fp16 model.
+        onnx_model = convert_float_to_float16(
+            onnx_model,
+            keep_io_types=True,
+            disable_shape_infer=True,
+            op_block_list=["Resize"],
+        )
+        # Replace the fp16 scale with old fp32 scale.
+        onnx_model = replace_resize_scales(onnx_model, resize_scale_inits)
+
+        current_opsets = {opset.domain: opset.version for opset in onnx_model.opset_import}
+        opset_of_default_onnx_domain = current_opsets.get("", 0)
+        if opset_of_default_onnx_domain < 19:
+            # We need to convert the ONNX model to opset 19+ since FP8 QuantizeLinear/DequantizeLinear ops do not
+            # support FP16 scaling factors until opset 19. So, converting here to opset-21 (19+).
+            onnx_model = upgrade_opset_21(onnx_model)
+            logging.warning("Model's ONNX opset is updated to 21.\n")
 
         if mha_accumulation_dtype == "fp32":
             # Insert Cast nodes in MHA's BMM1 and BMM2's input and output tensors because

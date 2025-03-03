@@ -641,9 +641,9 @@ def run_awq_scale_search_per_node(
         output_dicts = {}
 
         if enable_fast_path_using_high_sysram:
-            assert (
-                len(output_data) > 0
-            ), "fast-path is enabled but node-inputs are not pre-determined before grid search"
+            assert len(output_data) > 0, (
+                "fast-path is enabled but node-inputs are not pre-determined before grid search"
+            )
             node_inputs = []
             for j in range(len(output_data)):
                 node_inputs.append(np.asarray(output_data[j][i]))
@@ -1072,9 +1072,9 @@ def _quantize_awq_lite(
 
         w_scaled = w * awq_lite[i].best_scale[:, np.newaxis]
         alpha = clip_alphas.get(weight_tensor.name, 1)
-        assert enable_weight_clipping or (
-            alpha == 1
-        ), "clip range enabled without enabling weight-clipping param"
+        assert enable_weight_clipping or (alpha == 1), (
+            "clip range enabled without enabling weight-clipping param"
+        )
         qw, scale, zp = quant_tensor(w_scaled, block_size, alpha, use_zero_point=use_zero_point)
         assert use_zero_point is True or zp is None, "zp is not according to use-zero-point setting"
         if do_transpose:
@@ -1213,7 +1213,7 @@ def quantize(
     onnx_path: Union[str, onnx.onnx_pb.ModelProto],
     calibration_method: str = "awq_lite",
     calibration_data_reader: CalibrationDataReader = None,
-    calibration_eps: list[str] = ["cuda:0", "dml:0", "cpu"],
+    calibration_eps: list[str] = ["cpu"],
     use_external_data_format: bool = True,
     use_zero_point: bool = False,
     block_size: Optional[int] = None,

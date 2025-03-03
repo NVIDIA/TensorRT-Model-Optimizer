@@ -19,7 +19,7 @@ import setuptools
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-version = "0.23.1"
+version = "0.25.0"
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -62,9 +62,10 @@ optional_deps = {
         "pulp",
         "regex",
         "safetensors",
-        "torch>=2.1",
+        "torch>=2.2",
         "torchprofile>=0.0.4",
         "torchvision",
+        "pynvml",
     ],
     "hf": [
         "accelerate>=0.27.2",
@@ -77,9 +78,9 @@ optional_deps = {
     # linter tools
     "dev-lint": [
         "bandit[toml]==1.7.9",  # security/compliance checks
-        "mypy==1.11.2",
-        "pre-commit==4.0.1",
-        "ruff==0.6.4",
+        "mypy==1.14.1",
+        "pre-commit==4.1.0",
+        "ruff==0.9.4",
     ],
     # testing
     "dev-test": [

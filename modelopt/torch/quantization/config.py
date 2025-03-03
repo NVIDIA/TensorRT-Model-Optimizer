@@ -221,16 +221,19 @@ the layer named ``lm_head``,  you can create a custom config and quantize your m
 
 """
 
-from typing import Callable, Optional, Union
+from fnmatch import fnmatch
+from typing import Callable, Dict, Literal, Optional, Tuple, Union
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
 from modelopt.core.torch.quantization.config import (  # noqa: F401
+    NVFP4_AFFINE_KV_CFG,
     NVFP4_AWQ_CLIP_CFG,
     NVFP4_AWQ_FULL_CFG,
     NVFP4_AWQ_LITE_CFG,
     NVFP4_DEFAULT_CFG,
     NVFP4_REAL_QUANT_CFG,
+    NVFP4_WA_NVFP4_KV_ROTATE_CFG,
 )
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 from modelopt.torch.utils.network import ConstructorLike
@@ -287,6 +290,56 @@ FP8_DEFAULT_CFG = {
     "algorithm": "max",
 }
 
+FP8_PER_TENSOR_REAL_QUANT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": (4, 3), "axis": None, "fake_quant": False},
+        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*lm_head*": {"enable": False},
+        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*router*": {"enable": False},  # Skip the MOE router
+        "*output_layer*": {"enable": False},
+        "output.*": {"enable": False},
+        **_default_disabled_quantizer_cfg,
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+FP8_PER_CHANNEL_REAL_QUANT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": (4, 3), "axis": -1, "fake_quant": False},
+        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*lm_head*": {"enable": False},
+        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*router*": {"enable": False},  # Skip the MOE router
+        "*output_layer*": {"enable": False},
+        "output.*": {"enable": False},
+        **_default_disabled_quantizer_cfg,
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+FP8_BLOCKWISE_REAL_QUANT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (4, 3),
+            "block_sizes": {-1: 128, -2: 128},
+            "fake_quant": False,
+        },
+        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*lm_head*": {"enable": False},
+        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*router*": {"enable": False},  # Skip the MOE router
+        "*output_layer*": {"enable": False},
+        "output.*": {"enable": False},
+        **_default_disabled_quantizer_cfg,
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+
 FP8_PER_CHANNEL_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": 0},
@@ -309,7 +362,7 @@ FP8_WA_FP8_KV_CFG = {
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
-        "*bmm_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*[kv]_bmm_quantizer": {"num_bits": (4, 3), "axis": None},
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
@@ -349,7 +402,7 @@ NF4_REAL_QUANT_CFG = {
         "output.*": {"enable": False},
         "default": {"enable": False},
     },
-    "algorithm": {"method": "real_quantize"},
+    "algorithm": "max",
 }
 
 INT4_AWQ_REAL_QUANT_CFG = {
@@ -369,10 +422,7 @@ INT4_AWQ_REAL_QUANT_CFG = {
         **_default_disabled_quantizer_cfg,
         "default": {"enable": False},
     },
-    "algorithm": {
-        "method": "real_quantize",
-        "additional_algorithm": {"method": "awq_lite", "alpha_step": 0.1},
-    },
+    "algorithm": {"method": "awq_lite", "alpha_step": 0.1},
 }
 
 INT4_AWQ_CFG = {
@@ -416,6 +466,48 @@ W4A8_AWQ_BETA_CFG = {
     "algorithm": "awq_lite",
 }
 
+MXFP8_DEFAULT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (4, 3),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (4, 3),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        "*lm_head*": {"enable": False},
+        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*router*": {"enable": False},  # Skip the MOE router
+        "*output_layer*": {"enable": False},
+        "output.*": {"enable": False},
+        **_default_disabled_quantizer_cfg,
+        "default": {"enable": False},
+    },
+    "algorithm": None,
+}
+
+FP8_AFFINE_KV_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"enable": False},
+        "*input_quantizer": {"enable": False},
+        "*lm_head*": {"enable": False},
+        "*[kv]_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+            "bias": {-2: None, -4: None, "type": "static"},
+        },
+        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*router*": {"enable": False},  # Skip the MOE router
+        "*output_layer*": {"enable": False},
+        "output.*": {"enable": False},
+        **_default_disabled_quantizer_cfg,
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
 
 choices: set[str] = {
     "INT8_DEFAULT_CFG",
@@ -428,10 +520,21 @@ choices: set[str] = {
     "NVFP4_AWQ_LITE_CFG",
     "NVFP4_AWQ_CLIP_CFG",
     "NVFP4_AWQ_FULL_CFG",
+    "NVFP4_WA_NVFP4_KV_ROTATE_CFG",
     "NF4_REAL_QUANT_CFG",
     "NVFP4_REAL_QUANT_CFG",
     "INT4_AWQ_REAL_QUANT_CFG",
+    "FP8_PER_TENSOR_REAL_QUANT_CFG",
+    "FP8_PER_CHANNEL_REAL_QUANT_CFG",
+    "FP8_BLOCKWISE_REAL_QUANT_CFG",
+    "FP8_AFFINE_KV_CFG",
+    "NVFP4_AFFINE_KV_CFG",
+    "MXFP8_DEFAULT_CFG",
 }
+
+
+BiasType = Literal["static", "dynamic"]
+BiasMethod = Literal["mean", "max_min"]
 
 
 class QuantizerAttributeConfig(ModeloptBaseConfig):
@@ -456,12 +559,45 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
             of mantissa bits. Supported FPx quantization formats: FP8 (E4M3, E5M2), FP6(E3M2, E2M3), FP4(E2M1).""",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def validate_config(cls, values):
+        """Validate quantizer config."""
+
+        def _validate_recursive(value):
+            """Recursively validate config structure."""
+            if value is None:
+                return
+
+            if isinstance(value, list):
+                for item in value:
+                    _validate_recursive(item)
+            elif isinstance(value, dict):
+                if len(value) == 1 and "enable" in value and value["enable"] is True:
+                    raise ValueError(
+                        "Invalid quantizer config: Cannot specify only {'enable': True}. "
+                        "Additional parameters are required when enabling quantization."
+                    )
+                # Recurse into nested dicts
+                for v in value.values():
+                    _validate_recursive(v)
+
+        _validate_recursive(values)
+        return values
+
     @model_validator(mode="after")
     def validate_num_bits(self):
         """Validate `num_bits`."""
         num_bits = self.num_bits
+
+        if isinstance(num_bits, int) and num_bits < 1:
+            raise ValueError("num_bits must be a positive integer or a tuple of positive integers.")
+
         if not isinstance(num_bits, tuple):
             return self
+
+        if not all(x > 0 for x in num_bits):
+            raise ValueError("num_bits must be a positive integer or a tuple of positive integers.")
 
         block_sizes = self.block_sizes
         if num_bits not in [
@@ -515,12 +651,6 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         description="""If True, enable narrow range quantization. Used only for integer quantization.""",
     )
 
-    learn_amax: bool = ModeloptField(
-        default=False,
-        title="Enable learning amax.",
-        description="""If True, enable learning amax.""",
-    )
-
     type: str = ModeloptField(
         default="static",
         title="""Specify whether the quantization is static or dynamic.""",
@@ -530,16 +660,8 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         pattern=r"^static$|^dynamic$",
     )
 
-    @field_validator("type")
-    @classmethod
-    def validate_type(cls, v, info: ValidationInfo):
-        """Validate type."""
-        if v == "dynamic":
-            assert info.data["learn_amax"] is False
-        return v
-
     block_sizes: Optional[
-        dict[Union[int, str], Union[int, tuple[int, int], str, dict[int, int]]]
+        dict[Union[int, str], Optional[Union[int, tuple[int, int], str, dict[int, int]]]]
     ] = ModeloptField(
         default=None,
         title="Optional dictionary specifying block quantization parameters.",
@@ -567,6 +689,24 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         """,
     )
 
+    bias: Optional[
+        Dict[Union[int, str], Union[BiasType, BiasMethod, Optional[Tuple[int, ...]], bool, int]]
+    ] = ModeloptField(
+        default=None,
+        title="Bias configuration.",
+        description="""Configuration for bias handling in quantization. The keys are:
+            - "enable": Boolean to enable/disable bias handling, default is False
+            - "type": Specify the type of bias ["static", "dynamic"], default is "static"
+            - "method": Specify the method of bias calibration ["mean", "max_min"], default is "mean"
+            - "axis": Tuple of integers specifying axes for bias computation, default is None
+
+            Examples:
+            bias = {"enable": True}
+            bias = {"enable": True, "type": "static", "axis": -1}
+            bias = {"enable": True, "type": "dynamic", "axis": (-1, -3)}
+        """,
+    )
+
     @staticmethod
     def _get_block_quant_axes_and_sizes(block_sizes):
         if block_sizes is None:
@@ -585,14 +725,42 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
             return v
         assert info.data["axis"] is None, "axis must be None when block_sizes is not None."
         if v.get("type", None) == "dynamic":
-            assert (
-                len(cls._get_block_quant_axes_and_sizes(v)) == 1
-            ), "Dynamic block quantization only supports quantization last axis."
+            assert len(cls._get_block_quant_axes_and_sizes(v)) == 1, (
+                "Dynamic block quantization only supports quantization last axis."
+            )
         for _k, _v in v.items():
             if isinstance(_k, str):
                 assert _k in ["type", "scale_bits", "scale_block_sizes"]
             else:
-                assert isinstance(_k, int) and isinstance(_v, int)
+                assert isinstance(_k, int) and (_v is None or isinstance(_v, int))
+        return v
+
+    @field_validator("bias")
+    @classmethod
+    def validate_bias(cls, v):
+        """Validate bias."""
+        if v is None:
+            return v
+
+        if "type" in v:
+            if v["type"] not in ["static", "dynamic"]:
+                raise ValueError(f"Invalid bias type: {v['type']}, expected 'static' or 'dynamic'")
+
+        if "method" in v:
+            if v["method"] not in ["mean", "max_min"]:
+                raise ValueError(
+                    f"Invalid bias method: {v['method']}, expected 'mean' or 'max_min'"
+                )
+
+        axis = []
+        for k in v.keys():
+            if k not in ["type", "method"]:
+                axis.append(k)
+        assert len(axis) > 0, "The axis for bias computation is not specified."
+        for x in axis:
+            if not isinstance(x, int):
+                raise ValueError(f"Invalid axis type {type(axis)}, expected int")
+
         return v
 
     trt_high_precision_dtype: str = ModeloptField(
@@ -620,6 +788,17 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         if isinstance(v, str):
             assert v in ["max", "histogram"]
         return v
+
+    rotate: bool = ModeloptField(
+        default=False,
+        title="""If rotate the input before quantization.""",
+        description=""""If true, the input of the quantizer will be rotated with a hadamard matrix
+        given by scipy.linalg.hadamard, i.e.
+        ``input = input @ scipy.linalg.hadamard(input.shape[-1]) / sqrt(input.shape[-1])``.
+
+        This can be used for ratation based PTQ methods, e.g. QuaRot or SpinQuant.
+        See https://arxiv.org/abs/2404.00456 for example.""",
+    )
 
 
 class QuantizeAlgorithmConfig(ModeloptBaseConfig):
@@ -804,7 +983,23 @@ class QuantizeConfig(ModeloptBaseConfig):
     def validate_calibrator(cls, v, info: ValidationInfo):
         """Validate algorithm."""
         if isinstance(v, str):
-            assert v in ["max", "smoothquant", "awq_lite", "awq_clip", "awq_full", "real_quantize"]
+            assert v in ["max", "smoothquant", "awq_lite", "awq_clip", "awq_full"]
+        return v
+
+    @field_validator("quant_cfg")
+    @classmethod
+    def validate_quant_cfg(cls, v, info: ValidationInfo):
+        """Validate algorithm."""
+        q_rotate_enabled = False
+        k_rotate_enabled = False
+        for key, value in v.items():
+            if fnmatch(".q_bmm_quantizer", key):
+                q_rotate_enabled = value.get("rotate", False)
+            if fnmatch(".k_bmm_quantizer", key):
+                k_rotate_enabled = value.get("rotate", False)
+        assert q_rotate_enabled == k_rotate_enabled, (
+            "Query and Key rotation must be enabled or disabled at the same time."
+        )
         return v
 
 

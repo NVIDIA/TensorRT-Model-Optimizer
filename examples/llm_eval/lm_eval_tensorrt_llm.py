@@ -16,6 +16,10 @@
 import copy
 import gc
 import logging
+import os
+import signal
+import threading
+import time
 from typing import Any, Iterable, Optional, Union
 
 import torch
@@ -39,12 +43,13 @@ class TRTLLM(TemplateAPI):
         tokenizer: str,
         engine_dir: str,
         batch_size: int = 1,
-        max_gen_toks: int = 256,
         **kwargs,
     ):
         assert isinstance(tokenizer, str)
         super().__init__(
-            tokenizer=tokenizer, batch_size=int(batch_size), max_gen_toks=max_gen_toks, **kwargs
+            tokenizer=tokenizer,
+            batch_size=int(batch_size),
+            **kwargs,
         )
 
         if self.tokenizer.pad_token_id is None:
@@ -52,26 +57,9 @@ class TRTLLM(TemplateAPI):
 
         assert isinstance(engine_dir, str)
 
-        self.llm = LLM(engine_dir=engine_dir, tokenizer=self.tokenizer)
+        self.llm = LLM(checkpoint_dir=engine_dir, tokenizer=self.tokenizer)
+        self.max_length = self.llm.max_seq_len - 1
         logger.info("Loaded TRT-LLM engine")
-
-    def _generate(
-        self,
-        input_tokens,
-        max_tokens: int,
-        **generation_kwargs: dict,
-    ) -> dict:
-        with torch.no_grad():
-            outputs = self.runner.generate(
-                batch_input_ids=input_tokens,
-                max_new_tokens=max_tokens,
-                end_id=self.tokenizer.eos_token_id,
-                pad_id=self.tokenizer.pad_token_id,
-                return_dict=True,
-                **generation_kwargs,
-            )
-        torch.cuda.synchronize()
-        return outputs
 
     def model_call(
         self,
@@ -86,28 +74,40 @@ class TRTLLM(TemplateAPI):
 
         assert isinstance(messages, Iterable), "Expect the messages to be Iterable[list[int]]"
         first_element = next(iter(messages))
-        assert isinstance(first_element, list) and isinstance(
-            first_element[0], int
-        ), "Expect the messages to be Iterable[list[int]]"
+        assert isinstance(first_element, list) and isinstance(first_element[0], int), (
+            "Expect the messages to be Iterable[list[int]]"
+        )
 
         if not generate:
             return self.llm.generate_context_logits(prompts=messages)
 
         llm_kwargs = {}
+        max_new_tokens = self._max_gen_toks
+        stop_words = []
         if gen_kwargs:
             if "until" in gen_kwargs:
-                llm_kwargs["stop_words"] = gen_kwargs.pop("until")
+                stop_words = gen_kwargs.pop("until")
+                llm_kwargs["stop_words"] = stop_words
             if "temperature" in gen_kwargs:
                 llm_kwargs["temperature"] = gen_kwargs.pop("temperature")
             if "top_p" in gen_kwargs:
                 llm_kwargs["top_p"] = gen_kwargs.pop("top_p")
+            if "max_gen_toks" in gen_kwargs:
+                max_new_tokens = gen_kwargs.pop("max_gen_toks")
 
-        output_texts = self.llm.generate_text(
+        output_texts: list[str] = self.llm.generate_text(
             prompts=messages,
-            max_new_tokens=self._max_gen_toks,
-            keep_input_prompt=False,
-            **llm_kwargs,
+            max_new_tokens=max_new_tokens,
+            **llm_kwargs,  # type: ignore[arg-type]
         )
+
+        # Manually filter out keyword if not supported by llm.
+        for i, text in enumerate(output_texts):
+            for word in stop_words:
+                word_index = text.find(word)
+                if word_index >= 0:
+                    text = text[:word_index]
+            output_texts[i] = text
 
         return output_texts
 
@@ -189,3 +189,11 @@ if __name__ == "__main__":
     cli_evaluate()
     # Force clean up the LLM instance and void hanging.
     gc.collect()
+
+    # Force terminate in case gc.collect() is not enough.
+    def _terminate():
+        time.sleep(10)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    termination_thread = threading.Thread(target=_terminate, daemon=True)
+    termination_thread.start()

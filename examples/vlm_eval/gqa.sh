@@ -104,11 +104,11 @@ fi
 # Check if TRT engine is provided
 if [ -z "$VISUAL_ENGINE_DIR" ] || [ -z "$LLM_ENGINE_DIR" ]; then
     echo "Either --visual_engine or --llm_engine not provided, evalluation will be based on Pytorch."
-    if [ -z "QUANT_CFG" ]; then
+    if [ -z "$QUANT_CFG" ]; then
         ANSWER_DIR="$script_dir/gqa/$MODEL_NAME/llava_gqa_testdev_balanced/answers"
         ANSWERS_FILE="$ANSWER_DIR/merge.jsonl"
     else
-        ANSWER_DIR="$script_dir/gqa/$MODEL_NAME_$QUANT_CFG/llava_gqa_testdev_balanced/answers"
+        ANSWER_DIR="$script_dir/gqa/${MODEL_NAME}_${QUANT_CFG}/llava_gqa_testdev_balanced/answers"
         ANSWERS_FILE="$ANSWER_DIR/merge.jsonl"
     fi
 else

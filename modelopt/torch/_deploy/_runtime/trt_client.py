@@ -176,18 +176,18 @@ class TRTLocalClient(RuntimeClient):
                         tensor_name,
                         output_tensors[idx - len(input_tensors)].data_ptr(),
                     )
-            assert (
-                self.execution_context.all_shape_inputs_specified
-            ), "Not all shape inputs are specified."
+            assert self.execution_context.all_shape_inputs_specified, (
+                "Not all shape inputs are specified."
+            )
 
             # Set selected profile idx
             self.execution_context.set_optimization_profile_async(0, self.stream.cuda_stream)
 
             # Assertion: to ensure all the shapes can be inferred when user does not provide them
             if self.io_shapes == {}:
-                assert (
-                    len(self.execution_context.infer_shapes()) == 0
-                ), "Shapes of all the bindings cannot be inferred."
+                assert len(self.execution_context.infer_shapes()) == 0, (
+                    "Shapes of all the bindings cannot be inferred."
+                )
 
             return input_tensors, output_tensors
 

@@ -71,7 +71,7 @@ class BaseQuantizedTensor:
         """
         raise NotImplementedError("This method must be implemented by subclasses.")
 
-    def dequantize(self, dtype=None, **kwarg):
+    def dequantize(self, dtype: torch.Tensor = None, **kwarg):
         """Converts the quantized tensor back to a standard torch.Tensor.
 
         Returns:
@@ -154,9 +154,9 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
             ):
                 if force_quantize:
                     m.weight_quantizer._dequantize = False
-                assert (
-                    not m.weight.is_meta
-                ), "Real quantization does not support tensors on meta device."
+                assert not m.weight.is_meta, (
+                    "Real quantization does not support tensors on meta device."
+                )
                 real_quant_tensor = m.weight_quantizer(m.weight)
                 m.weight = QTensorWrapper(real_quant_tensor)
                 dynamically_update_state_methods(m)

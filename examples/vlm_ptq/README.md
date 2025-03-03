@@ -1,14 +1,16 @@
-# Post-training quantization (PTQ)
+# Post-training quantization (PTQ) for Vision Language Models
 
 ## What's This Example Folder About?
 
-This example demonstrates how the Model Optimizer does PTQ quantization on the LLM part of a VLM (visual language model) and deploys the VLM with TensorRT and TensorRT-LLM..
+This example demonstrates how the Model Optimizer does PTQ quantization on the LLM part of a VLM (Vision Language Model) and deploys the VLM with TensorRT or TensorRT-LLM.
+
+To learn more about the quantization feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html).
 
 ## Model Quantization and TRT LLM Conversion
 
 ### All-in-one Scripts for Quantization and Building
 
-Please refer to the  [llm_ptq/README.md](../llm_ptq/README.md) about the details of model quantization.
+Please refer to the [llm_ptq/README.md](../llm_ptq/README.md) about the details of model quantization.
 
 The following scripts provide an all-in-one and step-by-step model quantization example for Llava, VILA and Phi-3-vision models. The quantization format and the number of GPUs will be supplied as inputs to these scripts. By default, we build the engine for the fp8 format and 1 GPU.
 
@@ -51,4 +53,4 @@ Phi-3-vision | phi | Yes | Yes | Yes | Yes
 
 > *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty.*
 
-> *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](./hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*
+> *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](../llm_ptq/hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*

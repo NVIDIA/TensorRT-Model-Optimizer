@@ -10,7 +10,7 @@ ENV PIP_NO_CACHE_DIR=off
 
 # Install the latest setuptools using pip
 RUN rm -rf /usr/lib/python3/dist-packages/setuptools*
-RUN pip install setuptools -U
+RUN pip install --upgrade pip setuptools
 
 # Install TensorRT-LLM
 ARG TRT_LLM_VERSION=0.17.0

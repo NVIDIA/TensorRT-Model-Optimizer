@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import pytest
-from _test_utils.import_helper import skip_if_no_trtexec
+from _test_utils.import_helper import skip_if_no_tensorrt, skip_if_no_trtexec
 from _test_utils.torch_misc import compare_outputs
 from _test_utils.torch_model.benchmark_models import _process_model_and_inputs, get_benchmark_models
 from _test_utils.torch_model.deploy_models import (
@@ -24,6 +24,7 @@ from _test_utils.torch_model.deploy_models import (
     LeNet5TwoOutputs,
 )
 
+skip_if_no_tensorrt()
 skip_if_no_trtexec()
 
 
@@ -70,9 +71,9 @@ def test_compile_and_profile_benchmark_models(get_model_and_input):
 
 def _compile_and_profile(model, args, kwargs):
     device_model = compile(model, (*args, kwargs), deployment)
-    assert isinstance(
-        device_model.client, TRTLocalClient
-    ), "device model client is not an instance of TRTLocalClient"
+    assert isinstance(device_model.client, TRTLocalClient), (
+        "device model client is not an instance of TRTLocalClient"
+    )
     latency, detailed_results = device_model.profile()
     device_model_outputs = device_model(*args, **kwargs)
     torch_model_ouptuts = model(*args, **kwargs)

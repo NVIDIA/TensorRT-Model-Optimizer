@@ -69,11 +69,15 @@ def parse_args():
     argparser.add_argument(
         "--calibration_eps",
         type=str,
-        default=["cuda:0", "cpu", "trt"],
+        default=["cpu"],
         nargs="+",
         help=(
             "Priority order for the execution providers (EP) to calibrate the model. "
-            "Any subset of ['cuda:x', dml:x, 'cpu', 'trt'], where 'x' is the device id."
+            "Any subset of ['trt', 'cuda:x', dml:x, 'cpu'], where 'x' is the device id."
+            "Note that the order of EPs should follow the fallback logic. For example, to allow the model to run with "
+            "CUDA or CPU, the EP list should be ['cuda:0', 'cpu'], as layers that can't run in CUDA can fall back to "
+            "CPU, but not the other way. If TensorRT should also be enabled, then the EP list should be "
+            "['trt', 'cuda:0', 'cpu']."
         ),
     )
     argparser.add_argument(
@@ -164,7 +168,7 @@ def parse_args():
     argparser.add_argument(
         "--mha_accumulation_dtype",
         type=str,
-        default="fp32",
+        default="fp16",
         help=(
             "Accumulation dtype of MHA. This flag will only take effect when mha_accumulation_dtype == 'fp32' "
             "and quantize_mode == 'fp8'. One of ['fp32', 'fp16']"

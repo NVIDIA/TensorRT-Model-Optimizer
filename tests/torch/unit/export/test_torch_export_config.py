@@ -766,6 +766,6 @@ def test_torch_export_exclude_modules(weight_keys, expected):
     for e in expected_set:
         print(f"In expected: {e}")
 
-    assert (
-        only_actual == only_expected
-    ), f"Only in actual: {only_actual}. Only in expected: {only_expected}"
+    assert only_actual == only_expected, (
+        f"Only in actual: {only_actual}. Only in expected: {only_expected}"
+    )

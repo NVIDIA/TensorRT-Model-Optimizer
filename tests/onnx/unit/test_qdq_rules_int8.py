@@ -33,9 +33,9 @@ def _assert_nodes_are_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable) and node.i(inp_idx).op != "Identity":
-                assert (
-                    node.i(inp_idx).op == "DequantizeLinear"
-                ), f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                assert node.i(inp_idx).op == "DequantizeLinear", (
+                    f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                )
     return True
 
 
@@ -43,9 +43,9 @@ def _assert_nodes_are_not_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable):
-                assert (
-                    node.i(inp_idx).op != "DequantizeLinear"
-                ), f"Input '{inp.name}' of node '{node.name}' is quantized but shouldn't be!"
+                assert node.i(inp_idx).op != "DequantizeLinear", (
+                    f"Input '{inp.name}' of node '{node.name}' is quantized but shouldn't be!"
+                )
     return True
 
 
@@ -98,9 +98,9 @@ def _check_resnet_residual_connection(onnx_path):
     #   In this case, this means that the inputs of Add should be DequantizeLinear and Conv.
     add_node = [n for n in graph.nodes if n.op == "Add"][0]
     add_input_ops = [inp.inputs[0].op for inp in add_node.inputs]
-    assert np.isin(
-        add_input_ops, ["Conv", "DequantizeLinear"]
-    ).all(), f"Add node {add_node.name} was not quantized correctly!"
+    assert np.isin(add_input_ops, ["Conv", "DequantizeLinear"]).all(), (
+        f"Add node {add_node.name} was not quantized correctly!"
+    )
 
     #   Check that all other nodes are not quantized
     other_nodes = [

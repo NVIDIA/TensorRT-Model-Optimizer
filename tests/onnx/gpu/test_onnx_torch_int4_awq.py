@@ -20,7 +20,9 @@ import os
 import sys
 from functools import partial
 
+import pytest
 import torch
+from _test_utils.import_helper import skip_if_no_libcudnn
 from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_onnx, find_init
 
 import modelopt.onnx.quantization.int4 as int4
@@ -113,3 +115,28 @@ def test_int4_awq(tmpdir):
 
         assert np.allclose(wq_torch_awq_lite.detach(), wq_onnx_awq_lite.T, atol=1e-3)
         assert np.allclose(wq_torch_awq_clip.detach(), wq_onnx_awq_clip.T, atol=1e-3)
+
+
+@pytest.mark.skipif(
+    skip_if_no_libcudnn(), reason="Requires cuDNN to run with CUDA Execution Provider."
+)
+def test_int4_awq_cuda(tmpdir):
+    block_size = 128
+
+    model_torch = SimpleMLP().cuda()
+    input_tensor = torch.randn(2, 16, 16).cuda()
+
+    onnx_path = os.path.join(tmpdir, f"{sys._getframe().f_code.co_name}.onnx")
+    onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
+
+    onnx_model = quantize_int4(
+        onnx_path,
+        "awq_lite",
+        calibration_data_reader=None,
+        block_size=block_size,
+        use_external_data_format=False,
+        awqlite_fuse_nodes=False,
+        calibration_eps=["cuda:0", "cpu"],
+    )
+
+    assert onnx_model is not None

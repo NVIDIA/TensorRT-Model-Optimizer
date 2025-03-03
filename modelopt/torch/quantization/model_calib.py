@@ -31,7 +31,6 @@ from modelopt.torch.utils.distributed import ParallelState
 
 from .conversion import set_quantizer_by_cfg_context
 from .nn import SequentialQuantizer, TensorQuantizer
-from .qtensor import QTensorWrapper, pack_real_quantize_weight
 from .utils import (
     get_parallel_state,
     is_quantized_column_parallel_linear,
@@ -40,7 +39,7 @@ from .utils import (
     is_quantized_row_parallel_linear,
 )
 
-__all__ = ["max_calibrate", "real_quantize", "awq", "smoothquant"]
+__all__ = ["max_calibrate", "awq", "smoothquant"]
 
 
 @torch.no_grad()
@@ -170,82 +169,23 @@ def finish_stats_collection(model: nn.Module, method: Optional[str] = None):
                         module.load_calib_amax(method)
                 elif module._calibrator.compute_amax() is not None:
                     module.load_calib_amax()
+            if module.bias_calibrator is not None and module.bias_type == "static":
+                module.load_calib_bias()
 
             module.enable_quant()
             module.disable_calib()
-
-
-def real_quantize(
-    model: nn.Module,
-    forward_loop: Optional[ForwardLoop] = None,
-    **kwargs,
-):
-    """Calibrate the model if given additonal_algorithm and then apply real quantization."""
-    # calibrate the model before real quantization
-    # Import here to avoid circular import
-
-    additional_algorithm = (
-        kwargs["additional_algorithm"] if "additional_algorithm" in kwargs else None
-    )
-    if additional_algorithm and "method" in additional_algorithm:
-        calib_algo = additional_algorithm["method"]
-        with set_quantizer_by_cfg_context(model, {"*weight_quantizer": {"fake_quant": True}}):
-            if "awq" in calib_algo:
-                awq(model, calib_algo, forward_loop, **kwargs)
-
-    # Apply real quantize to the model if needed
-    real_quantize_weight(model)
-
-
-def real_quantize_weight(model):
-    """Applies real weight-only quantization to the given model using the provided configuration.
-
-    This function first applies a quantization mode to the model using the provided configuration.
-    It then recursively traverses the model to apply real quantization to the weights of any modules
-    that have a `weight_quantizer` attribute enabled. The quantized weights are wrapped in a
-    `QTensorWrapper` to make them compatible with PyTorch's `torch.nn.Parameter`.
-
-    Args:
-        module (nn.Module): The neural network model to be quantized.
-
-    Note:
-        This function modifies the input model in-place.
-    """
-    # Real quantize the weights. If the weight quantizer is a `SequentialQuantizer`,
-    # we only need to real-quantize the first weight quantizer.
-    with SequentialQuantizer.replace_sequential_quantizer_with_single_quantizer(model):
-        pack_real_quantize_weight(model)
-
-    # TODO: remove this warnning once the real quantization feature is mature
-    def _has_qtensorwrapper(module):
-        if hasattr(module, "weight") and isinstance(module.weight, QTensorWrapper):
-            return True
-        for _, submodule in module.named_children():
-            if _has_qtensorwrapper(submodule):
-                return True
-        return False
-
-    if _has_qtensorwrapper(model):
-        warnings.warn(
-            "Real quantization has been applied to the model. This feature is still "
-            "experimental, and some functionalities may not be supported. For example, "
-            "converting the model back to its original state or saving and restoring "
-            "the quantized model may not be available."
-        )
-
-    return model
 
 
 @torch.no_grad()
 def disable_pre_quant_scale_and_resmooth(linear: nn.Module, delete_pre_quant_scale: bool = False):
     """Disable pre_quant_scale and resmooth the quantized linear weights."""
     assert is_quantized_linear(linear), "Only quantized linear modules are supported"
-    assert (
-        linear.input_quantizer._enable_pre_quant_scale
-    ), "pre_quant_scale should be enabled first!"
-    assert hasattr(
-        linear.input_quantizer, "_pre_quant_scale"
-    ), "pre_quant_scale should be available"
+    assert linear.input_quantizer._enable_pre_quant_scale, (
+        "pre_quant_scale should be enabled first!"
+    )
+    assert hasattr(linear.input_quantizer, "_pre_quant_scale"), (
+        "pre_quant_scale should be available"
+    )
 
     pre_quant_scale = linear.input_quantizer._pre_quant_scale.to(torch.float32)
 
@@ -378,9 +318,9 @@ def smoothquant(model: nn.Module, forward_loop: Optional[ForwardLoop] = None, al
                 print(f"Warning: only per-channel smoothing is supported, skip {name}")
                 continue
 
-            assert (
-                module.input_quantizer._amax.numel() > 1
-            ), f"Error: {name} has only one channel to smooth"
+            assert module.input_quantizer._amax.numel() > 1, (
+                f"Error: {name} has only one channel to smooth"
+            )
 
             # It is important to keep scaling math in fp32 to be numerically safe
             act_amax = module.input_quantizer.amax.float()

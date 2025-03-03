@@ -29,6 +29,9 @@ import modelopt.torch.quantization as mtq
     [
         mtq.NF4_REAL_QUANT_CFG,
         mtq.INT4_AWQ_REAL_QUANT_CFG,
+        mtq.FP8_PER_TENSOR_REAL_QUANT_CFG,
+        mtq.FP8_PER_CHANNEL_REAL_QUANT_CFG,
+        mtq.FP8_BLOCKWISE_REAL_QUANT_CFG,
     ],
 )
 def test_real_quantize(model_cls, config):
@@ -41,8 +44,6 @@ def test_real_quantize(model_cls, config):
             "scale_bits": 8,
             "scale_block_sizes": {-1: 16},
         }
-    if config == mtq.INT4_AWQ_REAL_QUANT_CFG:
-        config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {-1: 16}
 
     # PTQ
     model = model_cls().cuda()
@@ -59,7 +60,8 @@ def test_real_quantize(model_cls, config):
     real_quant_mem = get_model_size(model)
 
     # check memory usage
-    assert fake_quant_mem > real_quant_mem, "Memory after real quantization is not reduced."
+    if config != mtq.FP8_BLOCKWISE_REAL_QUANT_CFG:  # FP8 block may pad the weights
+        assert fake_quant_mem > real_quant_mem, "Memory after real quantization is not reduced."
 
     # test forward
     calib_data = [model.get_input().cuda() for _ in range(8)]
@@ -78,6 +80,9 @@ def test_real_quantize(model_cls, config):
     [
         mtq.NF4_REAL_QUANT_CFG,
         mtq.INT4_AWQ_REAL_QUANT_CFG,
+        mtq.FP8_PER_TENSOR_REAL_QUANT_CFG,
+        mtq.FP8_PER_CHANNEL_REAL_QUANT_CFG,
+        mtq.FP8_BLOCKWISE_REAL_QUANT_CFG,
     ],
 )
 def test_save_restore(model_cls, config):
@@ -89,6 +94,5 @@ def test_save_restore(model_cls, config):
             "scale_bits": 8,
             "scale_block_sizes": {-1: 16},
         }
-    if config == mtq.INT4_AWQ_REAL_QUANT_CFG:
-        config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {-1: 16}
+
     save_restore_test(model_cls, "cuda", config)

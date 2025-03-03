@@ -160,9 +160,9 @@ def export_int8(
 
     input_type = inputs.type().scalarType()
 
-    assert (
-        trt_high_precision_dtype == input_type or trt_high_precision_dtype == "Float"
-    ), "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
+    assert trt_high_precision_dtype == input_type or trt_high_precision_dtype == "Float", (
+        "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
+    )
 
     # custom ops, so cast the input if needed.
     if trt_high_precision_dtype != input_type:
@@ -191,9 +191,9 @@ def _fp8_quantize(
     # TRT StronglyType only supports FP16 QDQs
     # custom ops, so cast the input if needed.
     input_type = inputs.type().scalarType()
-    assert (
-        trt_high_precision_dtype == input_type or trt_high_precision_dtype == "Float"
-    ), "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
+    assert trt_high_precision_dtype == input_type or trt_high_precision_dtype == "Float", (
+        "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
+    )
     if trt_high_precision_dtype != input_type:
         inputs = g.op("Cast", inputs, to_i=onnx_dtype_map[trt_high_precision_dtype])
 
@@ -216,9 +216,9 @@ def _fp8_dequantize(
 ):
     """Helper Function for Dequantization."""
     output_shape = sym_help._get_tensor_sizes(inputs)
-    assert (
-        trt_high_precision_dtype == otype or trt_high_precision_dtype == "Float"
-    ), "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
+    assert trt_high_precision_dtype == otype or trt_high_precision_dtype == "Float", (
+        "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
+    )
     scale = g.op(
         "Constant",
         value_t=torch.tensor(scale_inv, dtype=torch_dtype_map[otype]),
@@ -262,12 +262,12 @@ def scaled_dot_product_attention(
     enable_gqa: bool = False,
 ):
     """Perform scaled dot product attention."""
-    assert (not is_causal) or (
-        is_causal and symbolic_helper._is_none(attn_mask)
-    ), "is_causal and attn_mask cannot be set at the same time"
-    assert (
-        not enable_gqa
-    ), "conversion of scaled_dot_product_attention not implemented if enable_gqa is True"
+    assert (not is_causal) or (is_causal and symbolic_helper._is_none(attn_mask)), (
+        "is_causal and attn_mask cannot be set at the same time"
+    )
+    assert not enable_gqa, (
+        "conversion of scaled_dot_product_attention not implemented if enable_gqa is True"
+    )
 
     if symbolic_helper._is_none(scale):
         scale = _attention_scale(g, query)
@@ -366,9 +366,9 @@ def export_fp8_mha(
     from torch.onnx.symbolic_opset14 import _attention_scale, _causal_attention_mask
 
     # Pass all arguments, including x, to the custom ONNX operator
-    assert (not is_causal) or (
-        is_causal and sym_help._is_none(attn_mask)
-    ), "is_causal and attn_mask cannot be set at the same time"
+    assert (not is_causal) or (is_causal and sym_help._is_none(attn_mask)), (
+        "is_causal and attn_mask cannot be set at the same time"
+    )
 
     scale = sym_help._maybe_get_const(scale, "f")
     if sym_help._is_none(scale):

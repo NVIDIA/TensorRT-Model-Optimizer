@@ -18,16 +18,25 @@ from typing import Any, Callable, Optional
 
 import torch
 import torch.nn as nn
+from packaging.version import Version
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP  # noqa: N817
+
+if Version(torch.__version__) >= Version("2.6"):
+    from torch.distributed.fsdp import fully_shard
+elif Version(torch.__version__) >= Version("2.4"):
+    from torch.distributed._composable.fsdp.fully_shard import fully_shard
 
 from modelopt.torch.opt.dynamic import DynamicModule, _pytorch_managed
 
 
-def _run_optimizer_step(model: nn.Module, out: torch.Tensor):
+def _run_optimizer_step(model: nn.Module, input: torch.Tensor):
+    # Always init the optimizer before the first forward.
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
+    out = model(input)
     out.sum().backward()
     optimizer.step()
     optimizer.zero_grad()
+    return out
 
 
 def run_fsdp_test(
@@ -56,11 +65,8 @@ def run_fsdp_test(
     # get a model copy
     model_copy = copy.deepcopy(model)
 
-    # run a forward pass for comparison
-    out_model = model(dummy_input)
-
-    # run a optimizer step with the gathered input to simulate FSDP
-    _run_optimizer_step(model, out_model)
+    # run a forward and a backward pass
+    out_model = _run_optimizer_step(model, dummy_input)
 
     # store this for later...
     with torch.no_grad():
@@ -103,13 +109,68 @@ def run_fsdp_test(
     # here we back to the fsdp+dm managed weight
     _check_weight_and_output(is_summoned=False)
 
-    # forward with FSDP and comparison
-    out_fsdp: torch.Tensor = fsdp_model(dummy_input)
+    # forward and backward with FSDP and comparison
+    out_fsdp: torch.Tensor = _run_optimizer_step(fsdp_model, dummy_input)
     assert torch.allclose(out_model, out_fsdp)
-
-    # try an optimizer step
-    _run_optimizer_step(fsdp_model, out_fsdp)
 
     # check the 2nd output now after the optimizer step
     out2_fsdp = fsdp_model(dummy_input)
+    assert torch.allclose(out2_model, out2_fsdp)
+
+
+def run_fsdp2_test(
+    get_test_case: Callable[[], tuple[nn.Module, Any]],
+    dm_key: str,
+    sample_subnet: Callable[[DynamicModule], None],
+    rank: int,
+    world_size: int,
+):
+    # init test case
+    model, dummy_input = get_test_case()
+
+    # remember raw weight
+    weight_raw = model.get_submodule(dm_key)._parameters["weight"].detach().clone()
+
+    # sample subnet according to provided function
+    sample_subnet(model)
+    model_copy = copy.deepcopy(model)
+
+    # remember dynamic weight
+    weight_dynamic = model.get_submodule(dm_key).weight.detach().clone()
+
+    # check that raw weight and dynamic weight differ, otherwise the test is pointless
+    assert not torch.equal(weight_raw, weight_dynamic)
+
+    # run a optimizer step with the gathered input to simulate FSDP
+    out_model = _run_optimizer_step(model, dummy_input)
+
+    # store this for later...
+    with torch.no_grad():
+        out2_model = model(dummy_input)
+
+    # check the output is different (non-trivial test...)
+    assert not torch.allclose(out_model, out2_model)
+
+    # create FSDP model
+    fsdp_model = fully_shard(model_copy)
+
+    # # retrieve the dynamic module
+    dm_mod = fsdp_model.get_submodule(dm_key)
+    assert isinstance(dm_mod, DynamicModule)
+
+    # parameter comparison, fsdp2 use DTensor.full_tensor to get original tensor
+    raw_val = dm_mod._dm_attribute_manager.get_da_value("weight")
+    assert raw_val is _pytorch_managed
+    if raw_val is _pytorch_managed:
+        raw_val = dm_mod._parameters["weight"]
+    assert torch.equal(raw_val.full_tensor(), weight_raw)
+    assert torch.equal(dm_mod.weight.full_tensor(), weight_dynamic)
+
+    # forward with FSDP and comparison
+    out_fsdp = _run_optimizer_step(fsdp_model, dummy_input)
+    assert torch.allclose(out_model, out_fsdp)
+
+    # check the 2nd output now after the optimizer step
+    out2_fsdp = fsdp_model(dummy_input)
+
     assert torch.allclose(out2_model, out2_fsdp)

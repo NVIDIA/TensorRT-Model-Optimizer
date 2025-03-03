@@ -1,6 +1,7 @@
 # Quantization Aware Training (QAT)
 
 QAT helps to improve the model accuracy beyond post training quantization (PTQ).
+To learn more about the QAT feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_pytorch_quantization.html#quantization-aware-training-qat).
 
 In this example, QAT workflow is demonstrated for NVIDIA NeMo and Huggingface text generation model for supervised fine-tuning (SFT).
 
@@ -123,7 +124,7 @@ import modelopt.torch.quantization as mtq
 help(mtq.config)
 ```
 
-> **_NOTE:_**  QAT requires higher memory than the full-precision fine-tuning. A solution to avoid this extra memory usage is to use [activation checkpointing](https://pytorch.org/docs/stable/checkpoint.html) or gradient checkpointing. Activation checkpointing can be enabled easily with training frameworks such as Huggingface by adding an additional argument `gradient_checkpointing True`. Learn more [here](https://huggingface.co/docs/transformers/v4.20.1/en/perf_train_gpu_one#gradient-checkpointing). Activation checkpointing or gradient checkpointing is enabled by default in this example.
+> **_NOTE:_** QAT requires higher memory than the full-precision fine-tuning. A solution to avoid this extra memory usage is to use [activation checkpointing](https://pytorch.org/docs/stable/checkpoint.html) or gradient checkpointing. Activation checkpointing can be enabled easily with training frameworks such as Huggingface by adding an additional argument `gradient_checkpointing True`. Learn more [here](https://huggingface.co/docs/transformers/v4.20.1/en/perf_train_gpu_one#gradient-checkpointing). Activation checkpointing or gradient checkpointing is enabled by default in this example.
 
 > **_NOTE:_** Like any other model training, the QAT model accuracy can be further improved by optimizing the training
 > hyper-parameters such as learning rate, training duration etc.
@@ -132,11 +133,30 @@ help(mtq.config)
 
 The result from performing the above experiments is tabulated below (You could get slightly different numbers). As we can see below, QAT has improved the validation perplexity and MMLU over PTQ (lower perplexity & higher MMLU are better).
 
-|                 |  Validation perplexity on `Samsung/samsum` dataset |
+| | Validation perplexity on `Samsung/samsum` dataset |
 |-----------------|--------------------|
-| Fine-tuned BF16 (No quantization) | 2.71  |
-| PTQ with INT4 weights & INT8 activations on the Fine-tuned BF16 model    | 188.48  |
-| QAT with INT4 weights & INT8 activations on Fine-tuned BF16 model         | 4.90  |
+| Fine-tuned BF16 (No quantization) | 2.71 |
+| PTQ with INT4 weights & INT8 activations on the Fine-tuned BF16 model | 188.48 |
+| QAT with INT4 weights & INT8 activations on Fine-tuned BF16 model | 4.90 |
+
+To illustrate the efficiency of QAT, we share another experiment of [`meta-llama/Meta-Llama-3-8B`](https://huggingface.co/meta-llama/Meta-Llama-3-8B) with [`nvidia/Daring-Anteater`](https://huggingface.co/datasets/nvidia/Daring-Anteater) dataset and `NVFP4` format. The result is as below:
+
+| | Validation perplexity on `nvidia/Daring-Anteater` dataset |
+|-----------------|--------------------|
+| Fine-tuned BF16 (No quantization) (1 stage) | 1.56 |
+| Fine-tuned BF16 (No quantization) (2 stages) | 1.53 |
+| PTQ with NVFP4 weights & NVFP4 activations on the Fine-tuned BF16 model (2 stages) | 1.62 |
+| QAT with NVFP4 weights & NVFP4 activations | 1.58 |
+
+To fairly compare the PTQ and QAT, the fine-tuning in this experiment also has two stages so that the training steps are consistent between PTQ and QAT, the detailed recipe is:
+
+- Finetuning (1 stage): "1000 steps fine-tuning with `lr = 1e-5`"
+- Finetuning (2 stages): "1000 steps fine-tuning with `lr = 1e-5`" + "1000 steps fine-tuning with `lr = 3e-6`"
+- QAT: "1000 steps fine-tuning with `lr = 1e-5`" + "1000 steps QAT with `lr = 3e-6`"
+
+> **_NOTE:_** From our experience, the QAT performs better with a larger batch size, so we recommend using a larger batch size if your hardware allows it.
+
+> **_NOTE:_** If you only use part of the dataset for fine-tuning/QAT, we recommend to use different data samples for fine-tuning and QAT, otherwise there may appear overfitting issues during the QAT stage.
 
 #### Deployment
 
@@ -146,7 +166,7 @@ The final model after QAT is similar in architecture to that of PTQ model. QAT m
 
 ### End-to-end QLoRA with Real Quantization
 
-[QLoRA](https://arxiv.org/pdf/2305.14314) is a technique mainly intended for further reducing the training memory requirement of LoRA. In QLoRA, the LoRA backbone weights are quantized to reduce the model footprint. Unlike QAT which uses simulated quantization, QLoRA requires real quantization. Currently, only NF4_REAL_QUANT_CFG and INT4_AWQ_REAL_QUANT_CFG are supported.
+[QLoRA](https://arxiv.org/pdf/2305.14314) is a technique mainly intended for further reducing the training memory requirement of LoRA. In QLoRA, the LoRA backbone weights are quantized to reduce the model footprint. Unlike QAT which uses simulated quantization, QLoRA requires real quantization. Currently, we support NF4, FP8, FP4, and INT4. Please check `modelopt.torch.quantization.config.choices` for pre-defined configs.
 
 In this example, the model is trained on [Samsung/samsum](https://huggingface.co/datasets/Samsung/samsum) dataset.
 
@@ -156,7 +176,7 @@ To evaluate QLoRA quantized model before training, run:
 # Load the HF checkpoint, quantize the model and evaluate without additional training
 ./launch.sh --model meta-llama/Llama-2-7b-hf \
    --do_train False \
-   --quant_cfg 'NF4_REAL_QUANT_CFG'
+   --quant_cfg 'NVFP4_REAL_QUANT_CFG'
 ```
 
 To perform QLoRA training, run:
@@ -167,8 +187,8 @@ To perform QLoRA training, run:
    --num_epochs 0.5 \
    --lr 1e-3 \
    --do_train True \
-   --output_dir llama2-nf4-qlora \
-   --quant_cfg 'NF4_REAL_QUANT_CFG' \
+   --output_dir llama2-fp4-qlora \
+   --quant_cfg 'NVFP4_REAL_QUANT_CFG' \
    --lora True
 ```
 
@@ -179,8 +199,8 @@ To perform QLoRA training, run:
 The result from performing the above experiments is tabulated below (You could get slightly different numbers). As we can see below, QLoRA achieves
 similar validation perplexity as that of BF16 finetuning while consuming significantly lower GPU memory.
 
-|                 |  Validation perplexity on `Samsung/samsum` dataset |
+| | Validation perplexity on `Samsung/samsum` dataset |
 |-----------------|--------------------|
-| Fine-tuned BF16 (No quantization) | 2.71  |
-| NF4 quantization    | 4.28  |
-| NF4 QLoRA after training    | 2.90  |
+| Fine-tuned BF16 (No quantization) | 2.71 |
+| NF4 quantization | 4.28 |
+| NF4 QLoRA after training | 2.90 |

@@ -1,6 +1,28 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.25 (2025-03-03)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- Deprecate Torch 2.1 support.
+- Deprecate ``humaneval`` benchmark in ``llm_eval`` examples. Please use the newly added ``simple_eval`` instead.
+- Deprecate ``fp8_naive`` quantization format in ``llm_ptq`` examples. Please use ``fp8`` instead.
+
+**New Features**
+
+- Support fast hadamard transform in :class:`TensorQuantizer <modelopt.torch.quantization.nn.modules.TensorQuantizer>`.
+  It can be used for rotation based quantization methods, e.g. QuaRot. Users need to install the package `fast_hadamard_transfrom <https://github.com/Dao-AILab/fast-hadamard-transform>`_ to use this feature.
+- Add affine quantization support for the KV cache, resolving the low accuracy issue in models such as Qwen2.5 and Phi-3/3.5.
+- Add FSDP2 support. FSDP2 can now be used for QAT.
+- Add `LiveCodeBench <https://livecodebench.github.io/>`_  and `Simple Evals <https://github.com/openai/simple-evals>`_ to the ``llm_eval`` examples.
+- Disabled saving modelopt state in unified hf export APIs by default, i.e., added ``save_modelopt_state`` flag in ``export_hf_checkpoint`` API and by default set to False.
+- Add FP8 and NVFP4 real quantization support with LLM QLoRA example.
+- The :class:`modelopt.deploy.llm.LLM` now support use the :class:`tensorrt_llm._torch.LLM` backend for the quantized HuggingFace checkpoints.
+- Add `NVFP4 PTQ example for DeepSeek-R1 <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/deepseek>`_.
+- Add end-to-end `AutoDeploy example for AutoQuant LLM models <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_autodeploy>`_.
+
 0.23 (2025-01-29)
 ^^^^^^^^^^^^^^^^^
 

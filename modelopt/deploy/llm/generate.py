@@ -22,9 +22,10 @@ from typing import Any, Iterable, Optional, Union
 import tensorrt_llm
 import torch
 from packaging.version import parse
+from tensorrt_llm import SamplingParams
+from tensorrt_llm._torch.pyexecutor.config import PyTorchConfig
 from tensorrt_llm.bindings.executor import DecodingConfig
 from tensorrt_llm.llmapi import KvCacheConfig as TRT_KvCacheConfig
-from tensorrt_llm.llmapi import SamplingParams
 from tensorrt_llm.llmapi.llm import LLM as TRT_LLM
 from tensorrt_llm.llmapi.tokenizer import TokenizerBase, TransformersTokenizer
 
@@ -47,31 +48,12 @@ def _sanitize_temperature_and_top_p(temperature, top_p):
 class LLM(TRT_LLM):
     """A wrapper over the ``tensorrt_llm.llmapi.llm.LLM`` for LLM profiling and validation."""
 
-    def __init__(
-        self,
-        engine_dir: Union[str, Path],
-        tokenizer: Optional[Union[str, Path, TokenizerBase]] = None,
-        kv_cache_config: dict[str, Union[int, float]] = {},
-        medusa_choices: Any = None,
+    def _build_trt_llm_from_config(
+        self, config, engine_dir, tokenizer, kv_cache_config, medusa_choices
     ):
-        """Initializes the LLM runner class.
-
-        Args:
-            engine_dir: the directory path of the TensorRT-LLM engine.
-            tokenizer: the tokenizer. For example, a tokenizer from the Huggingface model.
-            kv_cache_config: the kv cache config as a dict. Please refer to
-                https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-best-practices.md
-        """
-        assert parse(tensorrt_llm.__version__) >= parse("0.15.0")
-
-        with open(Path(engine_dir) / "config.json", "r") as engine_config_file:
-            engine_config = json.load(engine_config_file)
-            build_config = engine_config["build_config"]
-            world_size = (
-                engine_config.get("pretrained_config", {}).get("mapping", {}).get("world_size", 1)
-            )
-            max_tokens_kv_cache = build_config["max_seq_len"] * build_config["max_batch_size"]
-            self.gather_context_logits = build_config.get("gather_context_logits", False)
+        build_config = config["build_config"]
+        world_size = config.get("pretrained_config", {}).get("mapping", {}).get("world_size", 1)
+        max_tokens_kv_cache = build_config["max_seq_len"] * build_config["max_batch_size"]
 
         trt_kv_cache_config = TRT_KvCacheConfig(enable_block_reuse=False)
 
@@ -105,15 +87,113 @@ class LLM(TRT_LLM):
             **kwargs,
         )
 
+    def _build_torch_llm_from_config(self, checkpoint_dir, tokenizer, tp, trust_remote_code):
+        pytorch_config = PyTorchConfig(use_cuda_graph=True)
+
+        kwargs = {}
+        if tokenizer is not None:
+            kwargs["tokenizer"] = tokenizer
+
+        if tp < 1:
+            tp = torch.cuda.device_count()
+
+        # Sometimes 90% of the GPU memory is not enough for the TRT LLM torch engine.
+        trt_kv_cache_config = TRT_KvCacheConfig(
+            enable_block_reuse=False, free_gpu_memory_fraction=0.85
+        )
+
+        super().__init__(
+            backend="pytorch",
+            model=checkpoint_dir,
+            tensor_parallel_size=tp,
+            trust_remote_code=trust_remote_code,
+            enable_chunked_prefill=True,
+            pytorch_backend_config=pytorch_config,
+            kv_cache_config=trt_kv_cache_config,
+            **kwargs,
+        )
+
+    def __init__(
+        self,
+        checkpoint_dir: Union[str, Path],
+        tokenizer: Optional[Union[str, Path, TokenizerBase]] = None,
+        kv_cache_config: dict[str, Union[int, float]] = {},
+        medusa_choices: Any = None,
+        tp: int = 0,
+        trust_remote_code: bool = False,
+    ):
+        """Initializes the LLM runner class.
+
+        Args:
+            engine_dir: the directory path of the TensorRT-LLM engine.
+            tokenizer: the tokenizer. For example, a tokenizer from the Huggingface model.
+            kv_cache_config: the kv cache config as a dict. Please refer to
+                https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/
+            medusa_choices: The medusa choices for the decoding config.
+            tp: the tensor parallel size (for the torch backend). If 0, it will be set to the number of GPUs.
+            trust_remote_code: whether to trust the remote code (for the torch backend).
+        """
+        assert parse(tensorrt_llm.__version__) >= parse("0.17.0")
+
+        with open(Path(checkpoint_dir) / "config.json", "r") as config_file:
+            config = json.load(config_file)
+
+            if "build_config" in config:
+                self._build_trt_llm_from_config(
+                    config, checkpoint_dir, tokenizer, kv_cache_config, medusa_choices
+                )
+
+                self._is_torch = False
+                self._max_seq_len = self.args.build_config.max_seq_len
+                self._max_beam_width = self.args.build_config.max_beam_width
+                self._gather_context_logits = self.args.build_config.gather_context_logits
+            else:
+                assert medusa_choices is None, (
+                    "medusa_choices is not supported with the torch llmapi"
+                )
+
+                self._build_torch_llm_from_config(checkpoint_dir, tokenizer, tp, trust_remote_code)
+                self._is_torch = True
+                self._max_seq_len = config["max_position_embeddings"]
+                self._max_beam_width = 1
+                self._gather_context_logits = False
+
     @property
-    def max_input_len(self):
-        """Get the max input length from the LLM instance."""
-        return self.args.build_config.max_input_len
+    def max_seq_len(self):
+        """Get the max sequence length from the LLM instance."""
+        return self._max_seq_len
 
     @property
     def max_beam_width(self):
         """Get the max beam width from the LLM instance."""
-        return self.args.build_config.max_beam_width
+        return self._max_beam_width
+
+    @property
+    def gather_context_logits(self):
+        """Returns whether the context_logits can be returned from the LLM instance."""
+        return self._gather_context_logits
+
+    def _generate(
+        self,
+        prompts: Union[Iterable[str], Iterable[list[int]]],
+        max_new_tokens: int,
+        temperature: float = 1.0,
+        top_p: float = None,
+        stop_words: list[str] = None,
+    ):
+        assert temperature >= 0.0, "Temperature must be greater than 0.0."
+
+        # TODO: Remove this once torch backend supports stop words
+        if self._is_torch:
+            stop_words = None
+
+        beam_width = self.max_beam_width
+        kwargs = _sanitize_temperature_and_top_p(temperature, top_p)
+        sampling_config = SamplingParams(
+            max_tokens=max_new_tokens, beam_width=beam_width, stop=stop_words, **kwargs
+        )
+
+        return self.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
 
     def generate_tokens(
         self,
@@ -121,7 +201,6 @@ class LLM(TRT_LLM):
         max_new_tokens: int,
         temperature: float = 1.0,
         top_p: float = None,
-        keep_input_prompt: bool = True,
         stop_words: list[str] = None,
     ) -> Union[list[list[int]], list[list[list[int]]]]:
         """Generates the tokens based on the input prompts.
@@ -131,55 +210,27 @@ class LLM(TRT_LLM):
             max_new_tokens: The max output token length.
             temperature: The sampling temperature.
             top_p: The nucleus sampling parameter.
-            keep_input_prompt: Set to include input prommpts in the outputs.
             stop_words: A list of words that the generate stops on.
 
         Returns:
             a list of output token lists if max_beam_width is 1 or a 3D list with shape [batch, beam, sequence_len].
         """
-        assert temperature >= 0.0, "Temperature must be greater than 0.0."
+        outputs = self._generate(prompts, max_new_tokens, temperature, top_p, stop_words)
+        output_tokens = []
 
         beam_width = self.max_beam_width
-        kwargs = _sanitize_temperature_and_top_p(temperature, top_p)
-        sampling_config = SamplingParams(
-            max_tokens=max_new_tokens, beam_width=beam_width, stop=stop_words, **kwargs
-        )
-
-        prompt_ids = [
-            self.tokenizer.encode(prompt) if isinstance(prompt, str) else prompt
-            for prompt in prompts
-        ]
-        outputs = self.generate(prompt_ids, sampling_params=sampling_config, use_tqdm=False)
-
-        def _process_output_token_id(output_token_id, prompt_id, with_input, keep_input_prompt):
-            if with_input == keep_input_prompt:
-                return output_token_id
-
-            elif with_input:  # and not keep_input_prompt
-                return output_token_id[len(prompt_id) :]
-
-            else:  # not with_input and keep_input_prompt:
-                return prompt_id + output_token_id
-
-        with_input = False
-        output_tokens = []
-        for prompt_id, output in zip(prompt_ids, outputs):
-            output_token_ids = [out.token_ids for out in output.outputs]
-
-            for output_token_id in output_token_ids:
-                output_tokens.append(
-                    _process_output_token_id(
-                        output_token_id, prompt_id, with_input, keep_input_prompt
-                    )
-                )
-
-        return (
-            output_tokens
-            if beam_width == 1
-            else [
-                output_tokens[i : i + beam_width] for i in range(0, len(output_tokens), beam_width)
+        for request_output in outputs:
+            token_ids = [
+                completion_output.token_ids for completion_output in request_output.outputs
             ]
-        )
+            if beam_width == 1:
+                # each output_text is a single list of tokens.
+                output_tokens += token_ids
+            else:
+                # each output_text is a list of beam searched token lists.
+                output_tokens.append(token_ids)
+
+        return output_tokens
 
     def generate_text(
         self,
@@ -187,7 +238,6 @@ class LLM(TRT_LLM):
         max_new_tokens: int,
         temperature: float = 1.0,
         top_p: float = None,
-        keep_input_prompt: bool = True,
         stop_words: list[str] = None,
     ) -> Union[list[str], list[list[str]]]:
         """Generates the text based on the input prompts.
@@ -196,28 +246,25 @@ class LLM(TRT_LLM):
             prompts: The input prompts. Could be a list of strings or token lists.
             max_new_tokens: The max output token length.
             temperature: The sampling temperature
-            keep_input_prompt: Set to include input prommpts in the outputs.
             stop_words: A list of words the generate will stop on.
 
         Returns:
             a list of output text strings if max_beam_width is 1 or a 2D list with shape [batch, beam].
         """
+        outputs = self._generate(prompts, max_new_tokens, temperature, top_p, stop_words)
+        output_texts = []
+
         beam_width = self.max_beam_width
-        output_tokens = self.generate_tokens(
-            prompts,
-            max_new_tokens,
-            temperature,
-            keep_input_prompt=keep_input_prompt,
-            top_p=top_p,
-            stop_words=stop_words,
-        )
-        if beam_width == 1:
-            output_text = [self.tokenizer.decode(batch) for batch in output_tokens]
-        else:
-            output_text = [
-                [self.tokenizer.decode(beam) for beam in batch] for batch in output_tokens
-            ]
-        return output_text
+        for request_output in outputs:
+            texts = [completion_output.text for completion_output in request_output.outputs]
+            if beam_width == 1:
+                # each output_text is a single text string.
+                output_texts += texts
+            else:
+                # each output_text is a list of beam searched texts
+                output_texts.append(texts)
+
+        return output_texts
 
     def generate_context_logits(
         self,
@@ -231,14 +278,13 @@ class LLM(TRT_LLM):
             prompts: The input prompts. Could be a list of strings or token lists.
             temperature: The sampling temperature.
             top_p: The nucleus sampling parameter.
-            keep_input_prompt: Set to include input prommpts in the outputs.
 
         Returns:
             a tensor list of the context_logits.
         """
-        assert (
-            self.gather_context_logits
-        ), "Please enable gather_context_logits flag when building the engine."
+        assert self.gather_context_logits, (
+            "Please enable gather_context_logits flag when building the engine."
+        )
         assert temperature >= 0.0, "Temperature must be greater than 0.0."
 
         kwargs = _sanitize_temperature_and_top_p(temperature, top_p)
@@ -246,10 +292,6 @@ class LLM(TRT_LLM):
 
         sampling_config = SamplingParams(max_tokens=1, beam_width=1, **kwargs)
 
-        prompt_ids = [
-            self.tokenizer.encode(prompt) if isinstance(prompt, str) else prompt
-            for prompt in prompts
-        ]
-        outputs = self.generate(prompt_ids, sampling_params=sampling_config, use_tqdm=False)
+        outputs = self.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
 
         return [output.context_logits for output in outputs]

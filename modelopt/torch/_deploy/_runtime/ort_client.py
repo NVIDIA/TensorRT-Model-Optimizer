@@ -182,7 +182,9 @@ class ORTLocalClient(RuntimeClient):
             ort_outputs = _run_session_once()
             iter += 1
         total_time += time.time()
-        print(f"ORT: {iter} iterations in {total_time:.3f} seconds ({total_time/iter:.3f} s/iter)")
+        print(
+            f"ORT: {iter} iterations in {total_time:.3f} seconds ({total_time / iter:.3f} s/iter)"
+        )
 
         ort_outputs = [torch.tensor(out) for out in ort_outputs]
 

@@ -61,48 +61,133 @@ class TestQTensor:
         assert torch.allclose(deq_x, x, rtol=1e-1, atol=1e-1)
 
     # Validate the result is consistent with reference implementation
-    # Note: range of quantize scale is -127 to 127 instead of -128 to 127
     @pytest.mark.parametrize(
-        "num_bits, block_sizes, test_input, test_output",
+        "num_bits, block_sizes, axis, test_input, test_output",
         [
             # NF4
             (
                 4,
                 {-1: 2, "scale_bits": 8, "scale_block_sizes": {-1: 4}},
+                None,
                 torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=torch.bfloat16),
                 torch.tensor(
                     [[0.0000, 1.0156, 2.1719, 3.0156, 3.6094, 5.0000, 5.0625, 7.0000]],
                     dtype=torch.bfloat16,
                 ),
             ),
+            # NF4 w/ input padding
+            (
+                4,
+                {-1: 2, "scale_bits": 8, "scale_block_sizes": {-1: 4}},
+                None,
+                torch.tensor([[0, 1, 2, 3, 4, 5, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 1.0156, 2.1719, 3.0156, 3.6094, 5.0000, 7.0000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
             # INT4
+            # Note: range of quantize scale is -127 to 127 instead of -128 to 127
             (
                 4,
                 {-1: 4},
+                None,
                 torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=torch.bfloat16),
                 torch.tensor(
                     [[0.0000, 0.8516, 2.1406, 2.9844, 4.0000, 5.0000, 6.0000, 7.0000]],
                     dtype=torch.bfloat16,
                 ),
             ),
+            # INT4 w/ input padding
+            (
+                4,
+                {-1: 4},
+                None,
+                torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7, 3]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 0.8516, 2.1406, 2.9844, 4.0000, 5.0000, 6.0000, 7.0000, 2.9844]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
+            # FP8, 2D block scales
+            (
+                (4, 3),
+                {-1: 2, -2: 2},
+                None,
+                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 0.9844, 2.0000, 3.0000], [3.9375, 5.0000, 6.0000, 7.0000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
+            # FP8, 2D block scales w/ input padding
+            (
+                (4, 3),
+                {-1: 2, -2: 2},
+                None,
+                torch.tensor([[0, 1, 3], [4, 5, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 0.9844, 3.0000], [3.9375, 5.0000, 7.0000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
+            # FP8, 1D block
+            (
+                (4, 3),
+                {-1: 2},
+                None,
+                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 1.0000, 1.9219, 3.0000], [3.9375, 5.0000, 6.0000, 7.0000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
+            # FP8, per-channel quantization
+            (
+                (4, 3),
+                None,
+                0,
+                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 0.9844, 1.9219, 3.0000], [4.0000, 5.0000, 6.0000, 7.000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
+            # FP8, per-channel quantization
+            (
+                (4, 3),
+                None,
+                1,
+                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 0.9609, 1.9219, 3.0000], [4.0000, 5.0000, 6.0000, 7.0000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
+            # FP8, per-tensor quantization
+            (
+                (4, 3),
+                None,
+                None,
+                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
+                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
+            ),
         ],
     )
     @pytest.mark.parametrize("device", ["cpu", "cuda"])
-    def test_qtensor_accuracy(self, num_bits, block_sizes, test_input, test_output, device):
-        nf4_attr_cfg = QuantizerAttributeConfig(
-            num_bits=num_bits,
-            block_sizes=block_sizes,
-            fake_quant=False,
+    def test_qtensor_accuracy(self, num_bits, axis, block_sizes, test_input, test_output, device):
+        quant_attr_cfg = QuantizerAttributeConfig(
+            num_bits=num_bits, block_sizes=block_sizes, fake_quant=False, axis=axis
         )
-        nf4_quantizer = TensorQuantizer(nf4_attr_cfg).to(device)
+        quantizer = TensorQuantizer(quant_attr_cfg).to(device)
 
         x = test_input.to(device)
 
         # Quantize
-        nf4_x = nf4_quantizer(x)
+        q_x = quantizer(x)
 
         # De-quantize to origin dtype
-        deq_x = nf4_quantizer(nf4_x)
+        deq_x = quantizer(q_x)
         assert torch.allclose(deq_x, test_output.to(device))
 
     @pytest.mark.parametrize("device", ["cuda", "cpu"])

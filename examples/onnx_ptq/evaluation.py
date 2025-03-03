@@ -152,9 +152,13 @@ def evaluate(
             DEVICE_MODEL: {},
             TORCH_MODEL: {},
         }
-        results[DEVICE_MODEL][ACCURACY] = evaluate_accuracy(device_model, val_loader, num_examples)
+        results[DEVICE_MODEL][ACCURACY] = evaluate_accuracy(
+            device_model, val_loader, num_examples, batch_size
+        )
         if evaluate_torch:
-            results[TORCH_MODEL][ACCURACY] = evaluate_accuracy(model, val_loader, num_examples)
+            results[TORCH_MODEL][ACCURACY] = evaluate_accuracy(
+                model, val_loader, num_examples, batch_size
+            )
         return results
     return {}
 

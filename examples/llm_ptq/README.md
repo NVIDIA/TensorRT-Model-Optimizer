@@ -3,6 +3,8 @@
 ## What's This Example Folder About?
 
 This folder demonstrates how the Model Optimizer does PTQ quantization on an LLM and deploys the quantized LLM with TensorRT-LLM.
+To learn more about the quantization feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html).
+Users can also choose to export the quantized models in a unified format that is deployable on vLLM and SGLang, in addition to TensorRT-LLM. For details please refer to its [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/deployment/3_unified_hf.html).
 
 This document introduces:
 
@@ -50,7 +52,7 @@ scripts/huggingface_example.sh --model $HF_PATH --quant [fp8|nvfp4|int8_sq|int4_
 
 > *FP8 calibration over a large model with limited GPU memory is not recommended but possible with the [accelerate](https://huggingface.co/docs/accelerate/en/usage_guides/big_modeling) package. Please tune the device_map setting in [`example_utils.py`](./example_utils.py) if needed for model loading and the calibration process can be slow.*
 
-> *Huggingface models trained with `modelopt.torch.speculative` can be used as regular Huggingface models in PTQ.*
+> *Huggingface models trained with `modelopt.torch.speculative` can be used as regular Huggingface models in PTQ. Note: there is a known issue with Huggingface models loaded across multiple GPUs for inference (i.e., "Expected all tensors to be on the same device, but found at least two devices..."). When encountered this error in PTQ of speculative decoding models, try reducing the number of GPUs used.*
 
 > *Calibration by default uses left padding_side for the Huggingface tokenizer as it usually leads to lower accuracy loss. The exported tokenizer files restores the default padding_side.*
 
@@ -78,7 +80,7 @@ Megatron-LM framework PTQ and TensorRT-LLM deployment examples are maintained in
 
 > *If GPU out-of-memory error is reported running the scripts, please try editing the scripts and reducing the max batch size of the TensorRT-LLM engine to save GPU memory.*
 
-The example scripts above also have an additional flag `--tasks`, where the actual tasks run in the script can be customized. The allowed tasks are `build,mmlu,humaneval,benchmark,lm_eval` specified in the script [parser](./scripts/parser.sh). The tasks combo can be specified with a comma-separated task list. Some tasks like mmlu, humaneval can take a long time to run. To run lm_eval tasks, please also specify the `--lm_eval_tasks` flag with comma separated lm_eval tasks [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks).
+The example scripts above also have an additional flag `--tasks`, where the actual tasks run in the script can be customized. The allowed tasks are `build,mmlu,benchmark,lm_eval,livecodebench` specified in the script [parser](./scripts/parser.sh). The tasks combo can be specified with a comma-separated task list. Some tasks like mmlu can take a long time to run. To run lm_eval tasks, please also specify the `--lm_eval_tasks` flag with comma separated lm_eval tasks [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks).
 
 Please refer to the `Technical Details` section below about the stage executed inside the script and the outputs per stage.
 
@@ -202,10 +204,10 @@ Quantization requires running the model in original precision (fp16/bf16). Below
 
 | Minimum number of GPUs | 24GB (4090, A5000, L40) | 48GB (A6000, L40s) | 80GB (A100, H100) |
 |------------------------|-------------------------|--------------------|-------------------|
-| Llama2 7B              |                       1 |                  1 |                 1 |
-| Llama2 13B             |                       2 |                  1 |                 1 |
-| Llama2 70B             |                       8 |                  4 |                 2 |
-| Falcon 180B            | Not supported           | Not supported      |                 8 |
+| Llama2 7B | 1 | 1 | 1 |
+| Llama2 13B | 2 | 1 | 1 |
+| Llama2 70B | 8 | 4 | 2 |
+| Falcon 180B | Not supported | Not supported | 8 |
 
 ### Post-training Sparsification
 
@@ -223,9 +225,9 @@ The script [`modelopt_to_tensorrt_llm.py`](modelopt_to_tensorrt_llm.py) construc
 
 ### TensorRT-LLM Engine Validation
 
-A list of accuracy validation benchmarks are provided in the [llm_eval](../llm_eval/README.md) directory. Right now MMLU, HumanEval and MTbench are supported in this example by specifying the `--tasks` flag running the scripts mentioned above. For MTBench, the task only runs the answer generation stage. Please follow [fastchat](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to get the evaluation judge score.
+A list of accuracy validation benchmarks are provided in the [llm_eval](../llm_eval/README.md) directory. Right now MMLU, and MTbench are supported in this example by specifying the `--tasks` flag running the scripts mentioned above. For MTBench, the task only runs the answer generation stage. Please follow [fastchat](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to get the evaluation judge score.
 
-The [`benchmark_suite.py`](benchmarks/benchmark_suite.py) script is used as a fast performance benchmark. For details, please refer to the [TensorRT-LLM documentation](https://github.com/NVIDIA/TensorRT-LLM/blob/main/benchmarks/Suite.md)
+The [`benchmark_suite.py`](benchmarks/benchmark_suite.py) script is used as a fast performance benchmark. For details, please refer to the [TensorRT-LLM documentation](https://github.com/NVIDIA/TensorRT-LLM/blob/main/benchmarks/)
 
 This example also covers the [lm_evaluation_harness](https://github.com/EleutherAI/lm-evaluation-harness), MMLU and the human eval accuracy benchmarks, whose details can be found [here](../llm_eval/README.md). The supported lm_eval evaluation tasks are listed [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks)
 

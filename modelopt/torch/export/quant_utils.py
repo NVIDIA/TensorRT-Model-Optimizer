@@ -92,9 +92,9 @@ def resmooth_and_get_scale(
     if new_pre_quant_scale is None:
         new_pre_quant_scale = torch.stack(pre_quant_scales).mean(dim=0)
 
-    assert (
-        len(pre_quant_scales) > 0 and new_pre_quant_scale.numel() == merged_weights.shape[1]
-    ), "Shape of pre_quant_scales and weights do not match."
+    assert len(pre_quant_scales) > 0 and new_pre_quant_scale.numel() == merged_weights.shape[1], (
+        "Shape of pre_quant_scales and weights do not match."
+    )
     weights = torch.chunk(merged_weights, ranks, dim=0)
 
     scales = []
@@ -223,9 +223,9 @@ def get_weight_scaling_factor_2(module: nn.Module) -> torch.Tensor:
         or not module.weight_quantizer[-1].is_enabled
     ):
         return None
-    assert (
-        len(module.weight_quantizer) == 2
-    ), "modelopt only supports 2 sequential quantization layers for now"
+    assert len(module.weight_quantizer) == 2, (
+        "modelopt only supports 2 sequential quantization layers for now"
+    )
     return get_scaling_factor(module.weight_quantizer[-1])
 
 
@@ -239,9 +239,9 @@ def get_prequant_scaling_factor(module: nn.Module) -> torch.Tensor:
     )
 
     if prequant_scaling_factor is not None:
-        assert torch.all(
-            prequant_scaling_factor > 0
-        ), f"prequant scaling factor {prequant_scaling_factor} not positive."
+        assert torch.all(prequant_scaling_factor > 0), (
+            f"prequant scaling factor {prequant_scaling_factor} not positive."
+        )
     return prequant_scaling_factor
 
 
@@ -340,40 +340,48 @@ def get_quantization_format(module) -> Optional[str]:
     def _get_quantization_from_linear_layer(layer):
         if not hasattr(layer, "weight_quantizer") or not _is_enabled(layer.weight_quantizer):
             return QUANTIZATION_NONE
+
         w_quantizer = layer.weight_quantizer
+
+        # Handle SequentialQuantizer
         if isinstance(w_quantizer, SequentialQuantizer):
             assert (
                 len(w_quantizer) == 2
                 and w_quantizer[0].num_bits == 4
                 and w_quantizer[1].num_bits == (4, 3)
-            ), "Unsupported quantizer"
+            ), "Unsupported SequentialQuantizer configuration"
             assert (
                 w_quantizer[0].block_sizes
                 and len(w_quantizer[0].block_sizes) > 0
                 and w_quantizer[0].block_sizes[-1] > 0
-            ), "Invalid block_sizes"
+            ), "Invalid block_sizes for SequentialQuantizer"
+
             return QUANTIZATION_W4A8_AWQ
+
+        # Handle individual num_bits cases
         if w_quantizer.num_bits == 4:
-            assert (
-                len(w_quantizer.block_sizes) > 0 and w_quantizer.block_sizes[-1] > 0
-            ), "Invalid block_sizes"
-            return QUANTIZATION_INT4_AWQ
-        elif w_quantizer.num_bits == 8:
-            return QUANTIZATION_INT8_SQ
-        elif w_quantizer.num_bits == (4, 3):
-            return QUANTIZATION_FP8
-        elif (
-            w_quantizer.num_bits == (2, 1)
-            and hasattr(layer, "input_quantizer")
-            and hasattr(layer.input_quantizer, "_pre_quant_scale")
-        ):
-            return QUANTIZATION_NVFP4_AWQ
-        elif w_quantizer.num_bits == (2, 1):
-            return QUANTIZATION_NVFP4
-        else:
-            raise NotImplementedError(
-                f"Unsupported quantizer with num_bits: {w_quantizer.num_bits}"
+            assert len(w_quantizer.block_sizes) > 0 and w_quantizer.block_sizes[-1] > 0, (
+                "Invalid block_sizes for INT4 quantizer"
             )
+            return QUANTIZATION_INT4_AWQ
+
+        if w_quantizer.num_bits == 8:
+            return QUANTIZATION_INT8_SQ
+
+        if w_quantizer.num_bits == (4, 3):
+            return QUANTIZATION_FP8
+
+        if w_quantizer.num_bits == (2, 1):
+            if hasattr(layer, "input_quantizer") and hasattr(
+                layer.input_quantizer, "_pre_quant_scale"
+            ):
+                return QUANTIZATION_NVFP4_AWQ
+            if getattr(layer, "fused_with_layernorm", False):
+                return QUANTIZATION_NVFP4_AWQ
+            return QUANTIZATION_NVFP4
+
+        # Raise error for unsupported num_bits
+        raise NotImplementedError(f"Unsupported quantizer with num_bits: {w_quantizer.num_bits}")
 
     if is_quantized_linear(module):
         return _get_quantization_from_linear_layer(module)
@@ -475,9 +483,9 @@ def to_quantized_weight(
 
     if quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
         out_dim = weight.shape[-2]
-        assert (
-            out_dim % 2 == 0
-        ), f"Cannot pack weight. Out dimension {out_dim} is not an even number."
+        assert out_dim % 2 == 0, (
+            f"Cannot pack weight. Out dimension {out_dim} is not an even number."
+        )
         in_dim = weight.shape[-1]
         block_size = weight.shape[-1] // weights_scaling_factor.shape[-1]
         int8_tensor = (
@@ -507,9 +515,9 @@ def to_quantized_weight(
 
     if quantization in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ]:
         assert block_size is not None, "Block size not passed. Unable to quantize to NVFP4 format."
-        assert (
-            weights_scaling_factor2 is not None
-        ), "Weights scaling factor 2 not passed. Unable to quantize to NVFP4 format"
+        assert weights_scaling_factor2 is not None, (
+            "Weights scaling factor 2 not passed. Unable to quantize to NVFP4 format"
+        )
         # If MoE reshape weights_scaling_factor2 to enable quantize operations
         return NVFP4QTensor.quantize(
             weight,
@@ -567,7 +575,11 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Opti
 
     for key, value in state_dict.items():
         # Skip keys not related to quantizers
-        if "output_quantizer" not in key and "_amax" not in key:
+        if (
+            "output_quantizer" not in key
+            and "_amax" not in key
+            and "input_quantizer._pre_quant_scale" not in key
+        ):
             post_state_dict[key] = value
             continue
 
@@ -579,7 +591,7 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Opti
 
                 prefix = key[: -len(old_suffix)]
                 if "_amax" in key:
-                    value = value / maxbound
+                    value = value.float() / maxbound
 
                     # Warn if scale exceeds threshold
                     if value.item() > 0.5:
@@ -607,7 +619,7 @@ def all_items_same(item_list):
     return all(x == item_list[0] for x in item_list)
 
 
-def _fuse_prequant_layernorm(
+def fuse_prequant_layernorm(
     layernorm_module: torch.nn.Module,
     modules: list[torch.Tensor],
 ):
@@ -618,6 +630,7 @@ def _fuse_prequant_layernorm(
     # Pre_quant_scales of modules must not be exported, since they have been fused with layernorm
     for module in modules:
         delattr(module.input_quantizer, "_pre_quant_scale")
+        setattr(module, "fused_with_layernorm", True)
 
 
 def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False):
@@ -656,9 +669,9 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
             return
 
         if modules[0].input_quantizer.is_enabled:
-            assert (
-                modules[0].input_quantizer.amax.numel() == 1
-            ), "Only support scalar input quant amax"
+            assert modules[0].input_quantizer.amax.numel() == 1, (
+                "Only support scalar input quant amax"
+            )
 
             input_amax = torch.max(torch.stack([module.input_quantizer.amax for module in modules]))
             for module in modules:

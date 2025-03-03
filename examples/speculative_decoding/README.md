@@ -2,6 +2,8 @@
 
 Large Language Models (LLMs) have demonstrated remarkable capabilities and are increasingly applied in various domains. However, their text generation process is costly and slow. This inefficiency is attributed to the nature of auto-regressive decoding: each token generation necessitates a forward pass, requiring access to the entire parameter set of the LLM. This results in a memory-bound limitation for auto-regressive decoding. To accelerate auto-regressive decoding, speculative decoding methods use a draft model (either a smaller model or the LLM itself) to guess the next γ tokens through standard auto-regressive generation. Subsequently, the original LLM validates these guessed tokens, necessitating only a single forward pass for verification. If the draft model accurately predicts α tokens, a single forward pass of the original LLM can generate α+1 tokens.
 
+To learn more about the speculative decoding feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/7_speculative_decoding.html).
+
 In this example, the end-to-end workflow of speculative decoding is demonstrated for a pretrained HF text generation model.
 
 ## End-to-end Speculative Decoding Fine-tuning

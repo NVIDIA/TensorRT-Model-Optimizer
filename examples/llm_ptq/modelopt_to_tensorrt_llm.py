@@ -25,7 +25,6 @@ import tensorrt_llm
 import torch
 from packaging.version import parse
 from tensorrt_llm.llmapi import BuildConfig
-from tensorrt_llm.llmapi.llm import LLM
 from tensorrt_llm.models import PretrainedConfig
 from transformers import AutoTokenizer
 
@@ -64,8 +63,6 @@ def build_tensorrt_llm(
     max_prompt_embedding_table_size: int = BuildConfig.max_prompt_embedding_table_size,
     max_encoder_input_len: int = BuildConfig.max_encoder_input_len,
     perf_mode: bool = False,
-    checkpoint_format: str = "tensorrt_llm",
-    tp: int = 1,
 ):
     """The API to convert the TensorRT-LLM checkpoint to engines.
 
@@ -85,7 +82,7 @@ def build_tensorrt_llm(
             when inflight batching is enabled.
             Higher max_num_tokens means more GPU memory will be used for resource allocation.
             If not specified the max_num_tokens will be set to the max bound.
-            Details: https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/perf_best_practices.md
+            Details: https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/tuning-max-batch-size-and-max-num-tokens.html
         num_build_workers: The number of workers to use for the building process.
             If build time is a concern, you can increase this worker count to num of GPUs.
             At a lost of higer CPU memory usage footprint.
@@ -119,121 +116,100 @@ def build_tensorrt_llm(
         # tensorrt-llm recommends max max_num_tokens to be 16384
         max_num_tokens = min(max_batch_size * max_input_len, 16384)
 
-    # We use llmapi to build the HF checkpoints while trtllm-build the tensorrt_llm checkpoints.
-    if checkpoint_format == "hf":
-        build_config = BuildConfig(
-            max_input_len=max_input_len,
-            max_seq_len=max_input_len + max_output_len,
-            max_batch_size=max_batch_size,
-            max_num_tokens=max_num_tokens,
-            max_prompt_embedding_table_size=max_prompt_embedding_table_size,
-            gather_context_logits=not perf_mode,
-            input_timing_cache=str(timing_cache_path),
-            output_timing_cache=str(timing_cache_path),
-            max_encoder_input_len=max_encoder_input_len,
-        )
-        print(f"trtllm build_config:\n{build_config}")
-        llm = LLM(ckpt_dir, tensor_parallel_size=tp, build_config=build_config)
-        llm.save(engine_dir)
+    config = PretrainedConfig.from_json_file(pretrained_config_path)
 
-    elif checkpoint_format == "tensorrt_llm":
-        config = PretrainedConfig.from_json_file(pretrained_config_path)
+    log_level = "warning"
 
-        log_level = "warning"
+    use_paged_context_fmha = config.quantization.quant_algo in [
+        "FP8",
+        "W4A8_AWQ",
+        "NVFP4",
+        None,
+    ]
 
-        use_paged_context_fmha = config.quantization.quant_algo in [
-            "FP8",
-            "W4A8_AWQ",
-            "NVFP4",
-            None,
+    use_fused_mlp = "RecurrentGemma" not in config.architecture
+    if config.quantization.exclude_modules:
+        for module_name in config.quantization.exclude_modules:
+            # fp8_context_fhma requires all attention.dense to be quantized
+            if "attention.dense" in module_name:
+                use_paged_context_fmha = False
+            # For AutoQuant, fc and gate might not be quantized at the same time
+            # TODO: relax this limitation on the TRT-LLM side
+            if "gate" in module_name or "fc" in module_name:
+                use_fused_mlp = False
+
+    quant_algo = config.quantization.quant_algo
+    use_qdq = quant_algo in ["FP8", "W8A8_SQ_PER_CHANNEL"]
+
+    speculative_decoding_mode = "medusa" if "Medusa" in config.architecture else None
+
+    if num_build_workers > torch.cuda.device_count():
+        num_build_workers = torch.cuda.device_count()
+        print(f"Cap num_build_workers to num gpus: ${num_build_workers}")
+
+    build_cmd = "trtllm-build "
+    build_cmd += f"--checkpoint_dir {ckpt_dir} "
+    build_cmd += f"--input_timing_cache {timing_cache_path} "
+    build_cmd += f"--output_timing_cache {timing_cache_path} "
+    build_cmd += f"--log_level {log_level} "
+    build_cmd += f"--output_dir {engine_dir} "
+    build_cmd += f"--workers {num_build_workers} "
+    build_cmd += f"--max_batch_size {max_batch_size} "
+    build_cmd += f"--max_input_len {max_input_len} "
+    build_cmd += f"--max_seq_len {max_output_len + max_input_len} "
+    build_cmd += f"--max_beam_width {max_beam_width} "
+    build_cmd += f"--max_prompt_embedding_table_size {max_prompt_embedding_table_size} "
+    build_cmd += f"--max_encoder_input_len {max_encoder_input_len} "
+    build_cmd += (
+        "--reduce_fusion enable "
+        if config.mapping.pp_size == 1
+        and config.architecture
+        not in [
+            "DbrxForCausalLM",
+            "BaichuanForCausalLM",
+            "QWenForCausalLM",
+            "GPTForCausalLM",
         ]
+        else ""
+    )
 
-        use_fused_mlp = "RecurrentGemma" not in config.architecture
-        if config.quantization.exclude_modules:
-            for module_name in config.quantization.exclude_modules:
-                # fp8_context_fhma requires all attention.dense to be quantized
-                if "attention.dense" in module_name:
-                    use_paged_context_fmha = False
-                # For AutoQuant, fc and gate might not be quantized at the same time
-                # TODO: relax this limitation on the TRT-LLM side
-                if "gate" in module_name or "fc" in module_name:
-                    use_fused_mlp = False
-
-        quant_algo = config.quantization.quant_algo
-        use_qdq = quant_algo in ["FP8", "W8A8_SQ_PER_CHANNEL"]
-
-        speculative_decoding_mode = "medusa" if "Medusa" in config.architecture else None
-
-        if num_build_workers > torch.cuda.device_count():
-            num_build_workers = torch.cuda.device_count()
-            print(f"Cap num_build_workers to num gpus: ${num_build_workers}")
-
-        build_cmd = "trtllm-build "
-        build_cmd += f"--checkpoint_dir {ckpt_dir} "
-        build_cmd += f"--input_timing_cache {timing_cache_path} "
-        build_cmd += f"--output_timing_cache {timing_cache_path} "
-        build_cmd += f"--log_level {log_level} "
-        build_cmd += f"--output_dir {engine_dir} "
-        build_cmd += f"--workers {num_build_workers} "
-        build_cmd += f"--max_batch_size {max_batch_size} "
-        build_cmd += f"--max_input_len {max_input_len} "
-        build_cmd += f"--max_seq_len {max_output_len + max_input_len} "
-        build_cmd += f"--max_beam_width {max_beam_width} "
-        build_cmd += f"--max_prompt_embedding_table_size {max_prompt_embedding_table_size} "
-        build_cmd += f"--max_encoder_input_len {max_encoder_input_len} "
-        build_cmd += (
-            "--reduce_fusion enable "
-            if config.mapping.pp_size == 1
-            and config.architecture
-            not in [
-                "DbrxForCausalLM",
-                "BaichuanForCausalLM",
-                "QWenForCausalLM",
-                "GPTForCausalLM",
-            ]
-            else ""
-        )
-
-        if use_fused_mlp:
-            build_cmd += "--use_fused_mlp enable "
-        else:
-            build_cmd += "--use_fused_mlp disable "
-
-        if enable_sparsity:
-            build_cmd += "--weight_sparsity "
-
-        # Low batch size scenario
-        if max_batch_size <= 4 and quant_algo == "FP8":
-            build_cmd += "--gemm_plugin fp8 "
-        if quant_algo == "NVFP4":
-            build_cmd += "--gemm_plugin nvfp4 "
-        elif not use_qdq:
-            build_cmd += "--gemm_plugin auto "
-
-        build_cmd += f"--max_num_tokens {max_num_tokens} "
-
-        if speculative_decoding_mode:
-            build_cmd += f"--speculative_decoding_mode {speculative_decoding_mode} "
-
-        if use_paged_context_fmha:
-            build_cmd += "--use_paged_context_fmha enable "
-
-        if perf_mode:
-            build_cmd += "--multiple_profiles enable"
-        elif not speculative_decoding_mode:
-            build_cmd += "--gather_context_logits "  # for evaluation benchmarking purpose
-
-        print(f"trtllm-build command:\n{build_cmd}")
-
-        assert parse(tensorrt_llm.__version__) >= parse(MIN_TENSORRT_LLM_VERSION), (
-            f"Detected lower version of tensorrt_llm installed instead of {MIN_TENSORRT_LLM_VERSION}. "
-            f"Please build the tensorrt_llm engines with tensorrt_llm version {MIN_TENSORRT_LLM_VERSION} "
-            " or higher instead.\n\n Build command: {build_cmd}"
-        )
-        subprocess.run(build_cmd, shell=True, check=True)
-
+    if use_fused_mlp:
+        build_cmd += "--use_fused_mlp enable "
     else:
-        raise NotImplementedError(f"checkpoint_format: {checkpoint_format} not supported")
+        build_cmd += "--use_fused_mlp disable "
+
+    if enable_sparsity:
+        build_cmd += "--weight_sparsity "
+
+    # Low batch size scenario
+    if max_batch_size <= 4 and quant_algo == "FP8":
+        build_cmd += "--gemm_plugin fp8 "
+    if quant_algo == "NVFP4":
+        build_cmd += "--gemm_plugin nvfp4 "
+    elif not use_qdq:
+        build_cmd += "--gemm_plugin auto "
+
+    build_cmd += f"--max_num_tokens {max_num_tokens} "
+
+    if speculative_decoding_mode:
+        build_cmd += f"--speculative_decoding_mode {speculative_decoding_mode} "
+
+    if use_paged_context_fmha:
+        build_cmd += "--use_paged_context_fmha enable "
+
+    if perf_mode:
+        build_cmd += "--multiple_profiles enable"
+    elif not speculative_decoding_mode:
+        build_cmd += "--gather_context_logits "  # for evaluation benchmarking purpose
+
+    print(f"trtllm-build command:\n{build_cmd}")
+
+    assert parse(tensorrt_llm.__version__) >= parse(MIN_TENSORRT_LLM_VERSION), (
+        f"Detected lower version of tensorrt_llm installed instead of {MIN_TENSORRT_LLM_VERSION}. "
+        f"Please build the tensorrt_llm engines with tensorrt_llm version {MIN_TENSORRT_LLM_VERSION} "
+        " or higher instead.\n\n Build command: {build_cmd}"
+    )
+    subprocess.run(build_cmd, shell=True, check=True)
 
     try:
         tokenizer = AutoTokenizer.from_pretrained(ckpt_dir)
@@ -281,21 +257,14 @@ def parse_arguments():
         help="Maximum encoder input length for enc-dec models.",
     )
     parser.add_argument(
-        "--checkpoint_format",
-        type=str,
-        help="The exported checkpoint format.",
-        choices=["tensorrt_llm", "hf"],
-        default="tensorrt_llm",
-    )
-    parser.add_argument(
-        "--tp",
-        type=int,
-        default=1,
-        help="The tensor_parallel_size for the HuggingFace checkpoint engine build.",
-    )
-    parser.add_argument(
         "--trust_remote_code",
         help="Set trust_remote_code for Huggingface models and tokenizers",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--skip_run",
+        help="Skip the inference run",
         default=False,
         action="store_true",
     )
@@ -316,8 +285,6 @@ def main(args):
         max_prompt_embedding_table_size=args.max_prompt_embedding_table_size,
         max_encoder_input_len=args.max_encoder_input_len,
         perf_mode=args.perf,
-        checkpoint_format=args.checkpoint_format,
-        tp=args.tp,
     )
 
     if (
@@ -328,7 +295,8 @@ def main(args):
         # Reduce output_len for the inference run example.
         args.max_output_len = 100
 
-        run(args)
+        if not args.skip_run:
+            run(args)
 
 
 if __name__ == "__main__":

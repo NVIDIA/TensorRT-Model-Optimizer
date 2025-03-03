@@ -190,9 +190,9 @@ def _create_inference_session_with_ep_config(calibrator, **kwargs):
 
     if trt_extra_plugin_lib_paths is not None:
         # Assert supported configuration
-        assert (
-            ort.__version__ >= "1.18"
-        ), "Plugin support is only available with ORT 1.18, which only supports TRT 10."
+        assert ort.__version__ >= "1.18", (
+            "Plugin support is only available with ORT 1.18, which only supports TRT 10."
+        )
         if "TensorrtExecutionProvider" not in ort.get_available_providers():
             raise RuntimeError(
                 "Could not find `TensorrtExecutionProvider`, only {}".format(

@@ -100,9 +100,9 @@ class _MegatronParallelLinear(_ParallelLinear):
         if not isinstance(self.weight_quantizer, SequentialQuantizer):
             self.weight_quantizer = SequentialQuantizer(self.weight_quantizer, TensorQuantizer())
         else:
-            assert (
-                len(self.weight_quantizer) == 2
-            ), f"Invalid weight_quantizer: {self.weight_quantizer}"
+            assert len(self.weight_quantizer) == 2, (
+                f"Invalid weight_quantizer: {self.weight_quantizer}"
+            )
 
         for name, module in self.named_modules():
             # lm_head or output_layer has no weight (reusing the embeddings)

@@ -21,4 +21,5 @@
 MCORE_CONFIG_MAP = [
     (["moe_router_topk"], "moe_top_k"),
     (["num_moe_experts"], "moe_num_experts"),
+    (["position_embedding_type"], "position_embedding_type"),
 ]

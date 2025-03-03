@@ -65,6 +65,25 @@ def view_as_float8_e4m3fn_if_needed(tensor):
     return tensor.view(torch.float8_e4m3fn) if is_uint8 else tensor
 
 
+def _shallow_copy_with_field_instantiation(obj):
+    """Creates a shallow copy of the given object, recursively instantiating its fields.
+
+    Unlike `copy.copy(obj)`, which only creates a new instance of the object without
+    instantiating its fields (fields in the new object still reference the original object),
+    this function ensures that fields are also instantiated recursively, breaking shared
+    references with the original object.
+    """
+    cloned_instance = copy.copy(obj)
+
+    # Iterate over all fields of the instance and clone them if they are instances of dataclasses
+    for field in fields(obj):
+        field_value = getattr(obj, field.name)
+        if hasattr(field_value, "__dataclass_fields__"):
+            setattr(cloned_instance, field.name, copy.copy(field_value))
+
+    return cloned_instance
+
+
 def _split_model_config_for_tp(merged_config, split_factor):
     """This method splits the tensor fields for linear config so the config can be used with more GPUs.
 
@@ -94,7 +113,10 @@ def _split_model_config_for_tp(merged_config, split_factor):
     elif isinstance(merged_config, ExpertConfig):
         assert merged_config.proj.linear_type != LINEAR_COLUMN  # row
         assert merged_config.fc.linear_type == LINEAR_COLUMN  # column
-        configs = [copy.deepcopy(merged_config) for _ in range(split_factor)]
+        # Avoid deepcopy and instantiate expert configs manually to avoid OOM
+        configs = [
+            _shallow_copy_with_field_instantiation(merged_config) for _ in range(split_factor)
+        ]
         weights = torch.chunk(
             pad_weights(merged_config.proj.weight, split_factor), split_factor, dim=2
         )
@@ -173,9 +195,9 @@ def _split_model_config_for_tp(merged_config, split_factor):
 
         # For INT4 AWQ reference implemention: please check examples/llama/weight.py in the tekit repo
         # For normal linear layers, we split the column linear on the dim 0 and row on the dim 1
-        assert (
-            merged_config.linear_type != LINEAR_GROUP
-        ), "Do not support group linear TP merge or split"
+        assert merged_config.linear_type != LINEAR_GROUP, (
+            "Do not support group linear TP merge or split"
+        )
 
         split_axis = 0 if merged_config.linear_type == LINEAR_COLUMN else 1
         if merged_config.linear_type == LINEAR_COLUMN:
@@ -389,9 +411,9 @@ def _merge_model_configs_to_first_tp(config, ranks: list[int], group=None):
                                     )
                                 )
                         else:
-                            assert _same_tensor(
-                                p_scaling_factors
-                            ), f"Failed to merge config {config} with others"
+                            assert _same_tensor(p_scaling_factors), (
+                                f"Failed to merge config {config} with others"
+                            )
         else:
             if config.weights_scaling_factor is not None:
                 with get_tensors_parallel(
@@ -576,9 +598,9 @@ def postprocess_model_config(
     tp_world_size = dist.size() // training_pipeline_parallel
     if inference_tensor_parallel < tp_world_size:
         # Merge the model_configs to target inference tensor parallel.
-        assert (
-            tp_world_size % inference_tensor_parallel == 0
-        ), f"Cannot merge {tp_world_size} configs to {inference_tensor_parallel}"
+        assert tp_world_size % inference_tensor_parallel == 0, (
+            f"Cannot merge {tp_world_size} configs to {inference_tensor_parallel}"
+        )
 
         num_configs_per_group = tp_world_size // inference_tensor_parallel
         local_tp_group_id = tp_rank // num_configs_per_group
@@ -603,9 +625,9 @@ def postprocess_model_config(
             return []
 
     elif inference_tensor_parallel > tp_world_size:
-        assert (
-            tp_world_size == 1
-        ), "We only support splitting a single model config to multiple GPUs"
+        assert tp_world_size == 1, (
+            "We only support splitting a single model config to multiple GPUs"
+        )
         split_factor = inference_tensor_parallel // tp_world_size
         splitted_model_configs = _split_model_config_for_tp(
             model_config,
@@ -737,9 +759,9 @@ def check_weight_shape_valid(config, inference_tensor_parallel=1, training_tenso
     """
 
     def _check_merged_weight(merged_k):
-        assert (
-            merged_k % inference_tensor_parallel == 0
-        ), f"Weights cannot be split into {inference_tensor_parallel} ranks."
+        assert merged_k % inference_tensor_parallel == 0, (
+            f"Weights cannot be split into {inference_tensor_parallel} ranks."
+        )
 
     def _check_merged_weight_scaling_factor(merged_k, awq_block_size):
         if awq_block_size > 0 and (merged_k // inference_tensor_parallel) % awq_block_size != 0:
@@ -799,7 +821,13 @@ def postprocess_tensors(
         if (
             any(
                 k.endswith(suffix)
-                for suffix in ["weight", "bias", "prequant_scaling_factor", "recurrent_param"]
+                for suffix in [
+                    "weight",
+                    "bias",
+                    "prequant_scaling_factor",
+                    "recurrent_param",
+                    "rel_attn_table",
+                ]
             )
             and "router" not in k
             and v.dtype

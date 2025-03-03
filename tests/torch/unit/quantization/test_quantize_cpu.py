@@ -15,6 +15,8 @@
 
 """High-level tests for quantization."""
 
+import copy
+
 import pytest
 import torch
 from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
@@ -171,7 +173,7 @@ def test_class_wise_config():
             "nn.Linear": {"*": {"num_bits": 4, "axis": -1, "enable": True}},
             "nn.Conv2d": {"*": {"num_bits": 8, "enable": True}},
             "nn.BatchNorm2d": {"*": {"enable": False}},
-            "*output_quantizer": {"enable": True},
+            "*output_quantizer": {"num_bits": 8, "enable": True},
         },
         "algorithm": "max",
     }
@@ -215,3 +217,52 @@ def test_static_weight_dynamic_activations():
     for name, module in model.named_modules():
         if name.endswith("weight_quantizer"):
             assert module.amax is not None
+
+
+def test_block_sizes_axis_model():
+    REF_QUANT_CFG = {  # noqa: N806
+        "quant_cfg": {
+            "*weight_quantizer": {
+                "num_bits": 8,
+                "axis": 0,
+            },
+            "*input_quantizer": {
+                "num_bits": 8,
+                "axis": None,
+                "type": "dynamic",
+            },
+            "default": {"enable": False},
+        },
+        "algorithm": "max",
+    }
+    QUANT_CFG = {  # noqa: N806
+        "quant_cfg": {
+            "*weight_quantizer": {
+                "num_bits": 8,
+                "block_sizes": {1: None},
+            },
+            "*input_quantizer": {
+                "num_bits": 8,
+                "block_sizes": {0: None, 1: None},
+                "type": "dynamic",
+            },
+            "default": {"enable": False},
+        },
+        "algorithm": "max",
+    }
+    model_ref = SimpleLinear()
+    model = copy.deepcopy(model_ref)
+    inputs = model_ref.get_input()
+
+    mtq.quantize(model_ref, REF_QUANT_CFG, lambda model: model(inputs))
+    mtq.quantize(model, QUANT_CFG, lambda model: model(inputs))
+
+    assert torch.allclose(model_ref(inputs), model(inputs))
+
+    # compare the calibrated amax of all quantizers
+    for (name_ref, module_ref), (name, module) in zip(
+        model_ref.named_modules(), model.named_modules()
+    ):
+        if hasattr(module, "weight_quantizer"):
+            assert name_ref == name
+            assert torch.allclose(module_ref.weight_quantizer.amax, module.weight_quantizer.amax)

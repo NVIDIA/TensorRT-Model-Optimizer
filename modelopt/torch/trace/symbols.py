@@ -191,9 +191,9 @@ class Symbol:
     @property
     def cl_type(self) -> CLType:
         """Return the cross-layer type of the symbol."""
-        assert self.is_cross_layer == bool(
-            self._elastic_dims
-        ), "Cross-layer symbols need elastic dims and elastic dim only defined for cross-layer!"
+        assert self.is_cross_layer == bool(self._elastic_dims), (
+            "Cross-layer symbols need elastic dims and elastic dim only defined for cross-layer!"
+        )
         return self._cl_type
 
     @property

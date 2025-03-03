@@ -207,7 +207,7 @@ def run_mcore_gpt_inference(
     )
     wrapped_model = GPTInferenceWrapper(model, inference_wrapper_config)
     wrapped_model.prep_model_for_inference(prompt_tokens)
-    if Version(mcore_version) >= Version("0.10"):
+    if Version(mcore_version) >= Version("0.11"):
         inference_input = wrapped_model.prep_inference_input(prompt_tokens)
         inference_input = wrapped_model.get_batch_for_context_window(
             inference_input, 0, model.max_sequence_length

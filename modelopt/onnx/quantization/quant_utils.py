@@ -139,9 +139,9 @@ def get_weights_scaling_factor(
     [n, k] = input.shape
     assert block_size != 0, "Block size is zero. Cannot return per_block amax for given input."
 
-    assert (
-        k % block_size == 0
-    ), "Weight shape is not divisible for block size for block quantiation."
+    assert k % block_size == 0, (
+        "Weight shape is not divisible for block size for block quantiation."
+    )
 
     input = input.reshape(n, k // block_size, block_size)
     # Get per block amax

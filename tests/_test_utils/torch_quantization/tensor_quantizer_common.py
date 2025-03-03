@@ -59,37 +59,6 @@ class TensorQuantizerTester:
         module_quant_x = quantizer(x)
         assert torch.allclose(module_quant_x, quant_x_ref, rtol=1e-2)
 
-    def test_learn_amax(self):
-        """Test the clip implied by learn_amax"""
-        x = torch.randn(31).to(self.device)
-        amax = 0.5
-        quant_x_ref = quant(torch.clamp(x, -amax, amax), amax, fake=True)
-        quantizer = TensorQuantizer(
-            QuantizerAttributeConfig(num_bits=8, learn_amax=True), amax=amax
-        ).to(self.device)
-        assert hasattr(quantizer, "clip")
-        module_quant_x = quantizer(x)
-        assert torch.allclose(module_quant_x, quant_x_ref)
-
-        # Test set after init
-        quantizer = TensorQuantizer(QuantizerAttributeConfig(num_bits=8), amax=amax).to(self.device)
-        quantizer.set_from_attribute_config({"learn_amax": True})
-        assert hasattr(quantizer, "clip")
-        module_quant_x = quantizer(x)
-        assert torch.allclose(module_quant_x, quant_x_ref)
-
-    def test_clip_mode(self):
-        """Test the clip stage only"""
-        x = torch.randn(31).to(self.device)
-        amax = 0.5
-        clip_x_ref = torch.clip(x, -amax, amax)
-        quantizer = TensorQuantizer(
-            QuantizerAttributeConfig(learn_amax=True), if_quant=False, if_clip=True, amax=amax
-        ).to(self.device)
-        assert hasattr(quantizer, "clip")
-        module_clip_x = quantizer(x)
-        assert torch.allclose(module_clip_x, clip_x_ref)
-
     def test_disable(self):
         x = torch.randn(3, 7).to(self.device)
         torch.max(torch.abs(x))
@@ -170,27 +139,6 @@ class TensorQuantizerTester:
         assert torch.allclose(
             quantizer1.amax,
             global_amax,
-            atol=0,
-            rtol=0,
-        )
-
-        quant_attr_cfg2 = QuantizerAttributeConfig(learn_amax=True)
-        quantizer2 = TensorQuantizer(quant_attr_cfg2).to(self.device)
-        quantizer2.enable_calib()
-        quantizer2(x_1)
-        quantizer2(x_2)
-
-        quantizer2.load_calib_amax()
-        quantizer2.init_learn_amax()
-        assert torch.allclose(
-            quantizer2.clip.clip_value_min,
-            -torch.max(global_amax),
-            atol=0,
-            rtol=0,
-        )
-        assert torch.allclose(
-            quantizer2.clip.clip_value_max,
-            torch.max(global_amax),
             atol=0,
             rtol=0,
         )
@@ -355,6 +303,39 @@ class TensorQuantizerTester:
         x = torch.randn(3, 7, requires_grad=True).to(self.device)
         tq = TensorQuantizer()
         tq(x).sum().backward()
+
+    def test_block_sizes_axis(self):
+        # Initialize TensorQuantizer with block_sizes
+        test_weight_quantizer = TensorQuantizer(
+            QuantizerAttributeConfig(
+                num_bits=8,
+                block_sizes={1: None},
+            )
+        )
+        ref_weight_quantizer = TensorQuantizer(
+            QuantizerAttributeConfig(
+                num_bits=8,
+                axis=0,
+            )
+        )
+
+        input_quantizer = TensorQuantizer(
+            QuantizerAttributeConfig(
+                num_bits=8,
+                block_sizes={0: None, 1: None},
+            )
+        )
+        ref_input_quantizer = TensorQuantizer(QuantizerAttributeConfig(num_bits=8, axis=-1))
+
+        # Create a dummy tensor
+        input_tensor = torch.randn(1, 2, 3)
+        weight_tensor = torch.randn(3, 3)
+
+        # Test TensorQuantizer with block_sizes and axis
+        assert torch.allclose(
+            test_weight_quantizer(weight_tensor), ref_weight_quantizer(weight_tensor)
+        )
+        assert torch.allclose(input_quantizer(input_tensor), ref_input_quantizer(input_tensor))
 
 
 class BlockQuantTester:

@@ -87,9 +87,9 @@ class PatchManager(ABC):
     def patch(self) -> None:
         """Patch model in-place to be compatible with subsequent Model Optimizer tasks."""
         # sanity check that there is no patch data in another submodule
-        assert (
-            self._modelopt_name is None
-        ), f"Model Optimizer patch detected in {self._modelopt_name}."
+        assert self._modelopt_name is None, (
+            f"Model Optimizer patch detected in {self._modelopt_name}."
+        )
 
         # initialize patch data
         setattr(self._model, self._patch_data_key, self._get_default_patch_data())
@@ -112,9 +112,9 @@ class PatchManager(ABC):
             model.forward(x)  # no patched (auto-) operations will be executed anymore.
         """
         # sanity check that there is patch data
-        assert (
-            self._modelopt_name is not None
-        ), f"No Model Optimizer patch detected in {self._model}."
+        assert self._modelopt_name is not None, (
+            f"No Model Optimizer patch detected in {self._model}."
+        )
 
         # remove patch-related artifacts
         delattr(self._modelopt_module, self._patch_data_key)

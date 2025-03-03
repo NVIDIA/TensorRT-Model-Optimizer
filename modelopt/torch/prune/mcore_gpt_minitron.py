@@ -71,9 +71,9 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
     def sanitize_search_config(self, config: Optional[SearchConfig]) -> SearchConfig:
         """Sanitize the search config dict."""
         config = super().sanitize_search_config(config)
-        assert (
-            config["data_loader"] or config["forward_loop"]
-        ), "Data loader or forward loop must be provided for importance estimation!"
+        assert config["data_loader"] or config["forward_loop"], (
+            "Data loader or forward loop must be provided for importance estimation!"
+        )
         return config
 
     def before_search(self) -> None:
@@ -81,15 +81,15 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
         super().before_search()
 
         # Check that the constraint is valid
-        assert self.constraints.keys() == {
-            "export_config"
-        }, "Only `export_config` constraint is supported for pruning!"
+        assert self.constraints.keys() == {"export_config"}, (
+            "Only `export_config` constraint is supported for pruning!"
+        )
 
         export_config = self.constraints["export_config"]
         assert isinstance(export_config, dict)  # to keep mypy happy
-        assert (
-            export_config.keys() <= SUPPORTED_HPARAMS
-        ), f"Only {SUPPORTED_HPARAMS} are supported for pruning!"
+        assert export_config.keys() <= SUPPORTED_HPARAMS, (
+            f"Only {SUPPORTED_HPARAMS} are supported for pruning!"
+        )
 
         assert ("num_attention_heads" in export_config and "num_query_groups" in export_config) or (
             "num_attention_heads" not in export_config and "num_query_groups" not in export_config
@@ -110,9 +110,9 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
         for n, hp in named_hparams(self.model, configurable=True):
             hp_name = n.split(".")[-1]
             if hp_name in export_config:
-                assert (
-                    export_config[hp_name] in hp.choices
-                ), f"Invalid choice for {hp_name}! Available choices: {hp.choices}"
+                assert export_config[hp_name] in hp.choices, (
+                    f"Invalid choice for {hp_name}! Available choices: {hp.choices}"
+                )
 
     def run_search(self) -> None:
         """Run actual search."""

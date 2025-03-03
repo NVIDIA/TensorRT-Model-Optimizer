@@ -18,7 +18,7 @@
 from contextlib import ExitStack, contextmanager
 
 import torch
-from packaging.version import Version
+import torch.nn.functional as F
 
 from modelopt.torch.utils.distributed import ParallelState
 
@@ -31,12 +31,93 @@ __all__ = [
     "replace_function",
     "EXPORT_MODE",
     "export_torch_mode",
-    "is_torch_library_supported",
     "get_parallel_state",
 ]
 
 
-def reduce_amax(input, axis=None, keepdims=True):
+def reduce_block_amax(input_tensor: torch.Tensor, block_sizes: dict):
+    """Computes the amax of the input tensor using block-based reduction for each dimension.
+
+    Args:
+        input_tensor (torch.Tensor): The input tensor.
+        block_sizes (dict): A dictionary specifying the block size for each dimension.
+                            Example: `{-1: 128, -2: 128}` reduces over 2D blocks.
+
+    Returns:
+        torch.Tensor: The reduced tensor with amax computed per block.
+
+    Example:
+        Input Shape: [256, 512]
+        Block Sizes: {-1: 128, -2: 128}
+        Process:
+            - Block along last dim → Shape [256, 4, 128]
+            - Compute block-wise amax → Shape [256, 4]
+            - Block along second-to-last dim → Shape [2, 128, 4]
+            - Compute block-wise amax → Shape [2, 4]
+    """
+    with torch.no_grad():
+        amax = input_tensor.clone()
+
+        for dim, block_size in block_sizes.items():
+            # Convert negative dimensions to positive
+            dim = dim if dim >= 0 else len(amax.shape) + dim
+            assert amax.shape[dim] % block_size == 0, (
+                f"Tensor dimension {amax.shape[dim]}, {amax.shape[dim]} is not divisible by {block_size}"
+            )
+
+            # Compute new shape for blocking
+            outer_dim = amax.shape[dim] // block_size
+            new_shape = (
+                list(amax.shape[:dim]) + [outer_dim, block_size] + list(amax.shape[dim + 1 :])
+            )
+
+            # Reshape into blocks
+            amax = amax.reshape(new_shape)
+
+            # Reduce along the newly created block dimension
+            # Shift by 1 because we added an extra dimension
+            amax = reduce_amax(amax, dim + 1, keepdims=False, squeeze_scalar=False)
+
+        return amax
+
+
+def reduce_block_padding(input: torch.Tensor, block_sizes: dict, pad_value: float = 0):
+    """Padding the input using block-based reduction for each dimension.
+
+    Args:
+        input_tensor (torch.Tensor): The input tensor.
+        block_sizes (dict): A dictionary specifying the block size for padding each dimension.
+                            Example: `{-1: 128, -2: 128}` pads the input over 2D blocks.
+    """
+    with torch.no_grad():
+        padded_tensor = input
+        num_dims = padded_tensor.dim()
+
+        # Process each specified dimension independently
+        for dim, block in block_sizes.items():
+            # Convert negative dimension to positive index
+            pos_dim = dim if dim >= 0 else num_dims + dim
+
+            # Calculate how many elements are missing along that dimension
+            current_size = padded_tensor.size(pos_dim)
+            remainder = current_size % block
+            pad_amt = 0 if remainder == 0 else block - remainder
+
+            if pad_amt > 0:
+                # F.pad expects a pad tuple of length 2*num_dims.
+                pad = [0] * (2 * num_dims)
+                # For dimension pos_dim, the right padding is at index: (num_dims - 1 - pos_dim)*2 + 1.
+                pad_index = (num_dims - 1 - pos_dim) * 2
+                pad[pad_index + 1] = (
+                    pad_amt  # Set padding on the right side of the target dimension
+                )
+
+                padded_tensor = F.pad(padded_tensor, pad, value=pad_value)
+
+        return padded_tensor
+
+
+def reduce_amax(input, axis=None, keepdims=True, squeeze_scalar=True):
     """Compute the absolute maximum value of a tensor.
 
     Reduces input_tensor along the dimensions given in axis. Unless keepdims is true,
@@ -72,7 +153,7 @@ def reduce_amax(input, axis=None, keepdims=True):
             max_val = torch.amax(input, dim=axis, keepdim=keepdims)
             min_val = torch.amin(input, dim=axis, keepdim=keepdims)
             output = torch.maximum(torch.abs(max_val), torch.abs(min_val))
-            if output.numel() == 1:
+            if squeeze_scalar and output.numel() == 1:
                 output.squeeze_()
         return output
 
@@ -150,21 +231,6 @@ def is_torch_export_mode():
     return EXPORT_MODE
 
 
-def is_torch_library_supported():
-    """Check if the installed PyTorch version meets or exceeds a specified version."""
-    # Require torch version >= 2.2.0
-    # Adding checks for `impl` and `impl_abstract` as they are experimental features
-    return (
-        Version(torch.__version__) >= Version("2.2.0")
-        and hasattr(torch.library, "impl")
-        and hasattr(torch.library, "impl_abstract")
-    ) or (
-        Version(torch.__version__) >= Version("2.4.0")
-        and hasattr(torch.library, "impl")
-        and hasattr(torch.library, "register_fake")
-    )
-
-
 def get_parallel_state(model, name=None) -> ParallelState:
     """Get the parallel state.
 
@@ -182,3 +248,8 @@ def get_parallel_state(model, name=None) -> ParallelState:
         return module._parallel_state
     parent_module = model.get_submodule(name.rpartition(".")[0])
     return getattr(parent_module, "_parallel_state", ParallelState())
+
+
+def is_pow2(n):
+    """Check if a number is the power of 2."""
+    return (n != 0) and (n & (n - 1) == 0)

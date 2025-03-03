@@ -329,14 +329,14 @@ class IterativeSearcher(BaseSearcher, ABC):
 
                 pbar.update()
                 info = _recursive_format(info, fmt="{:.4g}")
-                pbar.set_description(f'[num_satisfied] = {info["num_satisfied"]}')
+                pbar.set_description(f"[num_satisfied] = {info['num_satisfied']}")
 
             if self.early_stop():
                 break
 
         if verbose:
             pbar.close()
-            print(f'[best_subnet_constraints] = {info["best_subnet_constraints"]}')
+            print(f"[best_subnet_constraints] = {info['best_subnet_constraints']}")
 
     def after_search(self) -> None:
         """Select best model."""

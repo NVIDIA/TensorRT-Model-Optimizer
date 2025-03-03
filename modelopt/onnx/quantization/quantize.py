@@ -71,6 +71,7 @@ def _preprocess_onnx(
     onnx_path: str,
     use_external_data_format: bool,
     output_path: str,
+    enable_shared_constants_duplication: bool,
     trt_plugins: Optional[str],
     trt_plugins_precision: Optional[list[str]],
 ) -> tuple[str, list[str], bool]:
@@ -91,11 +92,11 @@ def _preprocess_onnx(
         intermediate_generated_files.append(onnx_path)
     elif platform.system() != "Windows":
         logging.warning(
-            "No custom ops found. If that's not correct, please make sure that the 'tensorrt' python "
-            "is correctly installed and that the path to 'libcudnn*.so' is in PATH or LD_LIBRARY_PATH. If the "
-            "custom op is not directly available as a plugin in TensorRT, please also make sure that "
-            "the path to the compiled '.so' TensorRT plugin is also being given via the "
-            "'--trt_plugins' flag (requires TRT 10+)."
+            "No custom ops found. If that's not correct, please make sure that the 'tensorrt' python package"
+            " is correctly installed and that the paths to 'libcudnn*.so' and TensorRT 'lib/' are in"
+            " 'LD_LIBRARY_PATH'. If the custom op is not directly available as a plugin in TensorRT, please"
+            " also make sure that the path to the compiled '.so' TensorRT plugin is also being given via the "
+            " '--trt_plugins' flag (requires TRT 10+)."
         )
 
     # Check if there's a custom TensorRT op in the ONNX model
@@ -123,7 +124,11 @@ def _preprocess_onnx(
     # This tool depends on those names, so we assign names if needed
     graph = onnx_model.graph
     is_named = name_onnx_nodes(graph)
-    onnx_model, is_duplicated_constant = duplicate_shared_constants(onnx_model)  # FasterViT-0, eef
+    is_duplicated_constant = False
+    if enable_shared_constants_duplication:
+        onnx_model, is_duplicated_constant = duplicate_shared_constants(
+            onnx_model
+        )  # FasterViT-0, eef
 
     if is_named or is_duplicated_constant:
         onnx_path = os.path.join(output_dir, f"{model_name}_named.onnx")
@@ -157,7 +162,7 @@ def quantize(
     calibration_method: str = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cuda:0", "cpu", "trt"],
+    calibration_eps: list[str] = ["cpu"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -169,7 +174,7 @@ def quantize(
     trt_plugins: str = None,
     trt_plugins_precision: list[str] = None,
     high_precision_dtype: str = None,
-    mha_accumulation_dtype: str = "fp32",
+    mha_accumulation_dtype: str = "fp16",
     disable_mha_qdq: bool = False,
     dq_only: bool = True,
     block_size: Optional[int] = None,
@@ -192,7 +197,13 @@ def quantize(
             Path to pre-calculated activation tensor ranges, also known as calibration cache.
         calibration_eps:
             Priority order for the execution providers (EP) to calibrate the model.
-            Any subset of ['cuda:x', 'dml:x', 'cpu', 'trt'], where 'x' is the device id.
+            Any subset of ['trt', 'cuda:x', 'dml:x', 'cpu'], where 'x' is the device id.
+
+            .. note::
+                The order of EPs should follow the fallback logic. For example, to allow the model to run with CUDA
+                or CPU, the EP list should be ['cuda:0', 'cpu'], as layers that can't run in CUDA can fall back to
+                CPU, but not the other way. If TensorRT should also be enabled, then the EP list should be
+                ['trt', 'cuda:0', 'cpu'].
         op_types_to_quantize:
             List of op types to quantize. If None (default), all supported operators are quantized.
             This flag does not support regular expression.
@@ -225,8 +236,8 @@ def quantize(
             High precision data type, one of ['fp32', 'fp16']. If high_precision_dtype == 'fp16', model's weight and
             activation will be converted to fp16.
         mha_accumulation_dtype:
-            MHA accumulation dtype. One of ['fp32', 'fp16']. 'fp32' by default.
-            If quantize_mode == 'fp8' and high_precision_dtype == 'fp32', Cast nodes will be added to
+            MHA accumulation dtype. One of ['fp32', 'fp16']. 'fp16' by default.
+            If quantize_mode == 'fp8' and mha_accumulation_dtype == 'fp32', Cast nodes will be added to
             MHA's bmm1 and bmm2's input and output tensors.
         disable_mha_qdq:
             Don't add Q/DQ layers to MatMuls in MHA pattern.
@@ -269,15 +280,32 @@ def quantize(
         output_dir = os.path.dirname(onnx_path)
         output_path = os.path.join(output_dir, f"{model_name}.quant.onnx")
         logging.info(f"No output path specified, save quantized model to {output_path}")
+    else:
+        if os.path.isabs(output_path):
+            output_dir = os.path.dirname(output_path)
+        else:
+            output_dir = os.path.dirname(os.path.join(os.getcwd(), output_path))
+        assert os.path.exists(output_dir), f'output directory "{output_dir}" does not exist'
 
     # We need to preprocess the model with naming, weight duplication etc.
+    enable_shared_constants_duplication = kwargs.get("enable_shared_constants_duplication", True)
     onnx_path, intermediate_generated_files, has_custom_op = _preprocess_onnx(
-        onnx_path, use_external_data_format, output_path, trt_plugins, trt_plugins_precision
+        onnx_path,
+        use_external_data_format,
+        output_path,
+        enable_shared_constants_duplication,
+        trt_plugins,
+        trt_plugins_precision,
     )
-    # If the model has a custom op and no plugin path was given, assume that this custom op is being implemented
-    # by a TRT native plugin. In order to enable the TRT EP, 'trt_extra_plugin_lib_paths' needs to be != None.
-    if has_custom_op and not trt_plugins:
-        trt_plugins = ""
+    if has_custom_op:
+        # Ensure that TRT EP is enabled for models with custom ops.
+        if "trt" not in calibration_eps:
+            calibration_eps.insert(0, "trt")
+
+        # If the model has a custom op and no plugin path was given, assume that this custom op is being implemented
+        # by a TRT native plugin. In order to enable the TRT EP, 'trt_extra_plugin_lib_paths' needs to be != None.
+        if not trt_plugins:
+            trt_plugins = ""
 
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
@@ -293,7 +321,7 @@ def quantize(
     # (1) If disable_mha_qdq is set, don't add Q/DQ layers to MatMuls in MHA pattern.
     # (2) else when quantize_mode == "int8", if seq_len > 512, don't add Q/DQ layers to
     # MatMuls in MHA pattern.
-    # (2) else when quantize_mode == "fp8", if head_size > 256 or head_size % 16 != 0
+    # (2) else when quantize_mode == "fp8", if head_size > 256 or head_size <= 8
     # or mha doesn't meet fp8 fMHA v2 pattern, don't add Q/DQ layers to MatMuls in MHA pattern.
     nodes_to_exclude = find_nodes_from_mha_to_exclude(
         onnx_path,
@@ -327,6 +355,7 @@ def quantize(
             trt_extra_plugin_lib_paths=trt_plugins,
             high_precision_dtype=high_precision_dtype,
             mha_accumulation_dtype=mha_accumulation_dtype,
+            **kwargs,
         )
     elif "int4" in quantize_mode:
         onnx_model = quantize_int4(

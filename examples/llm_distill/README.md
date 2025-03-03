@@ -1,10 +1,11 @@
 # Knowledge Distillation
 
 In this tutorial, we demonstrate how to use Model Optimizer to perform teacher-student distillation.
+To learn more about the distillation feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/4_distillation.html).
 
 ## Knowledge Distillation (KD) for NVIDIA NeMo Models
 
-Checkout the stand-along distillation example in the [NVIDIA NeMo repository](https://github.com/NVIDIA/NeMo/tree/main/examples/nlp/language_modeling/megatron_gpt_distillation.py).
+Checkout the stand-alone distillation script in the [NVIDIA NeMo repository](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/distillation/distillation.html).
 
 You can also look at the tutorial notebooks [here](https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Llama 3.1 8B step-by-step in NeMo framework.
 

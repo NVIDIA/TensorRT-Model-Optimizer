@@ -109,9 +109,9 @@ class KDLossConfig(ModeloptBaseConfig):
 
         # Cannot have multiple loss layers without LossBalancer.
         if self.loss_balancer is not None:
-            assert (
-                len(tuple(self.loss_balancer.parameters())) == 0
-            ), "Loss Balancer cannot have parameters."
+            assert len(tuple(self.loss_balancer.parameters())) == 0, (
+                "Loss Balancer cannot have parameters."
+            )
         else:
             if len(self.criterion) == 0:  # type: ignore[arg-type]
                 warnings.warn(

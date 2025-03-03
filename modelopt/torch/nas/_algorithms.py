@@ -254,7 +254,7 @@ class ConstraintsFunc:
                 ss = _SearchSpaceUnwrapped(self.model)
                 config = ss.config()
                 ss.sample(random.original)
-                orig_value = self.constraint_eval_funcs[k]()
+                orig_value = self.constraint_eval_funcs[k]()  # type: ignore[call-arg]
                 ss.select(config)
 
                 lim = orig_value * fraction_value

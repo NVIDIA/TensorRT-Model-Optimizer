@@ -222,7 +222,14 @@ def get_max_batch_size(
         )
         * sample_memory_usage_ratio
     )
-    target_data_batch = max(int(free_mem_before / mem_diff_per_data_batch), 1)
+    if mem_diff_per_data_batch <= 0:
+        print(
+            "Warning: No measurable memory usage found for a single batch. "
+            "Falling back to batch_size=1."
+        )
+        target_data_batch = 1
+    else:
+        target_data_batch = max(int(free_mem_before / mem_diff_per_data_batch), 1)
 
     # For some models on multi GPU, we observe the memory per batch is not a constant.
     # So we just test the target batch size and make sure we do not go OOM.
@@ -248,15 +255,15 @@ def get_max_batch_size(
 
 
 def create_forward_loop(
-    model: torch.nn.Module = None,
+    model: Optional[torch.nn.Module] = None,
     dataset_name: str = "cnn_dailymail",
-    tokenizer: Union["PreTrainedTokenizer", "PreTrainedTokenizerFast"] = None,
+    tokenizer: Optional[Union["PreTrainedTokenizer", "PreTrainedTokenizerFast"]] = None,
     batch_size: int = 1,
     num_samples: int = 512,
     max_sample_length: int = 512,
     device: Optional[str] = None,
     include_labels: bool = False,
-    dataloader: DataLoader = None,
+    dataloader: Optional[DataLoader] = None,
 ) -> Callable:
     """Creates and returns a forward loop function configured for a specific model, dataset, and tokenizer.
 

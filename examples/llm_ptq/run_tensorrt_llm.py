@@ -75,8 +75,10 @@ def run(args):
     print(
         f"Use GPU memory: {(free_memory_before[0] - free_memory_after[0]) / 1024 / 1024 / 1024} GB"
     )
-
     print(f"Generated outputs: {outputs}")
+
+    outputs = llm.generate_tokens(input_texts, args.max_output_len)
+    print(f"Generated tokens: {outputs}")
 
     if llm.gather_context_logits:
         logits = llm.generate_context_logits(input_texts)

@@ -38,6 +38,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       NUM_EPOCHS="${1#*=}"
       ;;
+    --max_steps*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      MAX_STEPS="${1#*=}"
+      ;;
     --save_steps*)
       if [[ "$1" != *=* ]]; then shift; fi
       SAVE_STEPS="${1#*=}"
@@ -98,18 +102,18 @@ CALIB_SIZE=${CALIB_SIZE:-512}
 TRAIN_BS=${TRAIN_BS:-4}
 EVAL_BS=${EVAL_BS:-4}
 DO_TRAIN=${DO_TRAIN:-True}
+LORA=${LORA:-"False"}
 
 
 if [ -z $QUANT_CFG ]; then
-    QUANT_ARGS=""
+  QUANT_ARGS=""
 else
-    QUANT_ARGS="--quant_cfg $QUANT_CFG --calib_size $CALIB_SIZE"
+  QUANT_ARGS="--quant_cfg $QUANT_CFG --calib_size $CALIB_SIZE"
 fi
 
-if [ -z $LORA ]; then
-    LORA="False"
-else
-    LORA="$LORA"
+OPTIONAL_ARGS=""
+if [ ! -z $MAX_STEPS ]; then
+  OPTIONAL_ARGS="$OPTIONAL_ARGS --max_steps $MAX_STEPS"
 fi
 
 FSDP_ARGS="--fsdp 'full_shard auto_wrap' --fsdp_transformer_layer_cls_to_wrap 'LlamaDecoderLayer'"
@@ -148,7 +152,7 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --report_to tensorboard \
     --tf32 True \
     --lora $LORA \
-    $FSDP_ARGS $QUANT_ARGS
+    $FSDP_ARGS $QUANT_ARGS $OPTIONAL_ARGS
 "
 
 start_time=$(date +%s)

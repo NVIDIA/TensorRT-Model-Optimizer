@@ -24,8 +24,10 @@ from transformers import GPT2Tokenizer, PreTrainedTokenizer, T5Tokenizer
 
 try:
     from nemo.collections.common.tokenizers.sentencepiece_tokenizer import SentencePieceTokenizer
+
+    sentence_piece_tokenizer_available = True
 except Exception:
-    warnings.warn("Cannot import nemo package, falling back to PreTrainedTokenizer!")
+    sentence_piece_tokenizer_available = False
     SentencePieceTokenizer = PreTrainedTokenizer
 
 
@@ -74,9 +76,9 @@ class CustomSentencePieceTokenizer(SentencePieceTokenizer):
                 output = [x[:max_length] for x in output]
         if return_tensors == "pt":
             # Only plain text input is supported since for list of strings some padding needs to be introduced
-            assert isinstance(
-                text, str
-            ), "Returning 'pt' tensors is only supported for simple text input"
+            assert isinstance(text, str), (
+                "Returning 'pt' tensors is only supported for simple text input"
+            )
             output = torch.LongTensor(output).reshape((1, -1))
         return output
 
@@ -110,7 +112,7 @@ def _build_tokenizer(tokenizer_config: dict):
     elif "GPT2" in tokenizer_config["type"]:
         tokenizer = GPT2Tokenizer(tokenizer_config["vocab_file"], tokenizer_config["merge_file"])
     else:
-        raise ValueError(f'Tokenizer type {tokenizer_config["library"]} not handled')
+        raise ValueError(f"Tokenizer type {tokenizer_config['library']} not handled")
 
     if tokenizer.bos_token_id is None:
         tokenizer.add_special_tokens({"bos_token": "<s>"})
@@ -171,6 +173,8 @@ def get_nemo_tokenizer(tokenizer_cfg_path: str):
         tokenizer = tokenizer.tokenizer
     elif library == "sentencepiece":
         print(f"Getting SentencePiece with model: {tokenizer_cfg.model}")
+        if not sentence_piece_tokenizer_available:
+            warnings.warn("Cannot import nemo package, falling back to HF PreTrainedTokenizer!")
         tokenizer = CustomSentencePieceTokenizer(model_path=tokenizer_cfg.model, legacy=legacy)
     else:
         raise NotImplementedError(

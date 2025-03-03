@@ -23,7 +23,6 @@ import numpy as np
 import torch
 
 from .model_config import (
-    KV_CACHE_FP8,
     QUANTIZATION_FP8,
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_NVFP4,
@@ -55,7 +54,17 @@ def _numpy_to_torch(x):
 def model_config_to_dict(model_config: ModelConfig) -> dict:
     """Converts the instance to a python dict."""
     assert model_config is not None, "model_config is None"
-    return dataclasses.asdict(model_config)
+
+    def _to_dict(obj):
+        if dataclasses.is_dataclass(obj):
+            return {k: _to_dict(v) for k, v in vars(obj).items()}
+        elif isinstance(obj, dict):
+            return {k: _to_dict(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [_to_dict(v) for v in obj]
+        return obj
+
+    return _to_dict(model_config)
 
 
 def split_config_and_weights(
@@ -83,6 +92,9 @@ def split_config_and_weights(
             elif k == "medusa_heads":
                 # medusa_heads is not part of the transformer
                 array_key = k
+            elif "rel_attn_table" in prefix:
+                # rel_attn_table is treated as a weight for quantize loop whereas in TRTLLM it is a Tensor
+                array_key = prefix
             else:
                 array_key = f"{prefix}.{k}"
 
@@ -336,66 +348,3 @@ def pack_linear_weights(model_config: ModelConfig):
     # lm_head can be quantized by AutoQuant
     if model_config.lm_head is not None:
         _linear_layer_to_quantized_weight([model_config.lm_head])
-
-
-def naive_quantization(config: ModelConfig):
-    """Generates a constant scaling factor (1) with target quantization.
-
-    This is for debugging and performance measurement only.
-    """
-    if isinstance(config.layers[0], DecoderLayerConfig):
-        assert (
-            config.layers[0].decoder_type != "mixtral"
-        ), "Mixtral native quantization is not supported."
-
-    config.quantization = QUANTIZATION_FP8
-    default_scaling_factor = torch.tensor([1], dtype=torch.float32)
-
-    for layer in config.layers:
-        if layer.attention:
-            linear_layers = [
-                layer.attention.dense,
-            ]
-
-            if isinstance(layer.attention.qkv, QKVConfig):
-                linear_layers += [
-                    layer.attention.qkv.q,
-                    layer.attention.qkv.k,
-                    layer.attention.qkv.v,
-                ]
-            elif isinstance(layer.attention.qkv, LinearConfig):
-                linear_layers += [layer.attention.qkv]
-
-        elif layer.recurrent:
-            linear_layers = [
-                layer.recurrent.linear_x,
-                layer.recurrent.linear_y,
-                layer.recurrent.linear_out,
-            ]
-        else:
-            linear_layers = []
-
-        moe_layers = []
-        if isinstance(layer.mlp, MOEConfig):
-            moe_layers.append(layer.mlp.experts.fc)
-            moe_layers.append(layer.mlp.experts.proj)
-        else:
-            linear_layers.append(layer.mlp.fc)
-            linear_layers.append(layer.mlp.proj)
-            linear_layers.append(layer.mlp.gate)
-
-        for linear_layer in linear_layers:
-            if linear_layer:
-                linear_layer.activation_scaling_factor = default_scaling_factor
-                linear_layer.weights_scaling_factor = default_scaling_factor
-
-        for moe_layer in moe_layers:
-            if moe_layer:
-                num_expert = moe_layer.weight.shape[0]
-                # The moe plugin only supports a single activation scaling factor for all experts
-                moe_layer.activation_scaling_factor = default_scaling_factor
-                moe_layer.weights_scaling_factor = default_scaling_factor.expand(num_expert, 1)
-
-        if layer.attention:
-            layer.attention.kv_cache_dtype = KV_CACHE_FP8
-            layer.attention.kv_cache_scaling_factor = torch.tensor([1.0], dtype=torch.float)

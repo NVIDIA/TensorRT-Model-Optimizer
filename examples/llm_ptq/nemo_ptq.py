@@ -42,12 +42,7 @@ mp.set_start_method("spawn", force=True)
 
 
 def get_dataset(data="cnn_dailymail"):
-    if data == "pileval":
-        dataset = load_dataset(
-            "json", data_files="https://the-eye.eu/public/AI/pile/val.jsonl.zst", split="train"
-        )
-        text_column = "text"
-    elif data == "wikitext":
+    if data == "wikitext":
         dataset = load_dataset("wikitext", "wikitext-103-v1", split="train")
         text_column = "text"
     elif data == "cnn_dailymail":
@@ -120,9 +115,9 @@ def main(cfg) -> None:
 
     # dtype is used for non-quantized layers
     supported_dtype = ["fp16", "bf16"]
-    assert (
-        cfg.export.dtype in supported_dtype
-    ), f"{cfg.export.dtype} not supported. Supported dtypes are {supported_dtype}"
+    assert cfg.export.dtype in supported_dtype, (
+        f"{cfg.export.dtype} not supported. Supported dtypes are {supported_dtype}"
+    )
     torch_dtype = torch.bfloat16 if cfg.export.dtype == "bf16" else torch.float16
 
     model_cfg = load_config(cfg.model_file)
@@ -212,17 +207,19 @@ def main(cfg) -> None:
         # For int8_sq, we do not quantize kv cache to preserve accuracy.
         # TODO: Investigate why enabling FP8 kv cache will cause accuracy regressions for nemotron.
         enable_quant_kv_cache = (
-            "int8" not in cfg.quantization.algorithm and cfg.export.decoder_type != "gpt"
+            "int8" not in cfg.quantization.algorithm
+            and cfg.export.decoder_type != "gpt"
+            and not cfg.quantization.disable_kv_cache
         )
-        print(f'{"Enable" if enable_quant_kv_cache else "Disable"} KV cache quantization')
+        print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
 
         start_time = time.time()
         if cfg.quantization.auto_quantize_bits is not None:
             # Check if list of quantization formats provided for auto quantize search are supported
             qformat_list = cfg.quantization.algorithm.split(",")
-            assert all(
-                qformat in QUANT_CFG_CHOICES.keys() for qformat in qformat_list
-            ), "One or more quantization formats provided for auto quantize search are not supported"
+            assert all(qformat in QUANT_CFG_CHOICES.keys() for qformat in qformat_list), (
+                "One or more quantization formats provided for auto quantize search are not supported"
+            )
 
             dataloader = get_dataloader_for_fwd_bwd(
                 cfg.quantization.calib_dataset,
@@ -267,9 +264,9 @@ def main(cfg) -> None:
 
         else:
             # Check if quantization.algorithm is in QUANT_CFG_CHOICES
-            assert (
-                cfg.quantization.algorithm in QUANT_CFG_CHOICES
-            ), f"Quantization format {cfg.quantization.algorithm} not supported"
+            assert cfg.quantization.algorithm in QUANT_CFG_CHOICES, (
+                f"Quantization format {cfg.quantization.algorithm} not supported"
+            )
             atq_config = getattr(mtq, QUANT_CFG_CHOICES[cfg.quantization.algorithm])
 
             if "awq" in cfg.quantization.algorithm:

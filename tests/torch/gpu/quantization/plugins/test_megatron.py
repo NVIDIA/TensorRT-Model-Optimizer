@@ -22,6 +22,7 @@ from _test_utils.import_helper import skip_if_mcore_dist_ckpt_is_not_supported, 
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_misc import set_seed
 from _test_utils.torch_quantization.models import RegularQuantModelForTP
+from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     tensor_parallel_test_helper,
@@ -243,3 +244,31 @@ def _test_auto_quantize_helper(rank, size):
 
 def test_auto_quantize(need_2_gpus):
     spawn_multiprocess_job(size=2, job=_test_auto_quantize_helper, backend="nccl")
+
+
+def test_fp8_real_quantize(distributed_setup_size_1):
+    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=SEED)
+    hidden_size = 256
+    config = mtq.FP8_BLOCKWISE_REAL_QUANT_CFG
+
+    model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    def forward_fn(model):
+        return run_mcore_gpt_inference(model, prompt_tokens)
+
+    # ref ouptut
+    logits_ref = forward_fn(model)
+
+    # real quant the model
+    cur_mem = get_model_size(model)
+    real_quant_model = mtq.quantize(model, config, forward_fn)
+    real_quant_mem = get_model_size(model)
+
+    assert real_quant_mem < cur_mem / 2, "Memory after real quantization is not reduced."
+
+    # output with real quant
+    logits_real_quant = forward_fn(real_quant_model)
+    torch.allclose(logits_ref, logits_real_quant)
+
+    assert real_quant_mem < cur_mem

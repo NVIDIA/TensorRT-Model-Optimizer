@@ -15,7 +15,11 @@
 
 """Basic tensor quantization functions."""
 
+import warnings
+from typing import Optional
+
 import torch
+import torch.nn.functional as F
 from packaging.version import Version
 from torch.autograd import Function
 from torch.onnx import symbolic_helper
@@ -23,7 +27,6 @@ from torch.onnx import symbolic_helper
 from .config import QuantizerAttributeConfig
 from .export_onnx import export_fp4, export_fp8, export_int8
 from .extensions import get_cuda_ext, get_cuda_ext_fp8, get_cuda_ext_mx
-from .utils import is_torch_library_supported
 
 mx_format_map = {
     (4, 3): "E4M3",
@@ -213,40 +216,39 @@ dynamic_block_quantize_op = _dynamic_block_quantize_impl
 # 1. quantize_op: Applies static quantization to the input tensor using a specified amax.
 # 2. dynamic_block_quantize_op: Performs blockwise double quantization with dynamically
 #    determined scales, governed by the given quantization format (scale_num_bits, scale_exponent_bits).
-if is_torch_library_supported():
-    try:
-        torch.library.define(
-            "tensorrt::quantize_op",
-            "(Tensor input, Tensor amax, int num_bits, int exponent_bits, "
-            "bool unsigned, bool narrow_range) -> Tensor",
+try:
+    torch.library.define(
+        "tensorrt::quantize_op",
+        "(Tensor input, Tensor amax, int num_bits, int exponent_bits, "
+        "bool unsigned, bool narrow_range) -> Tensor",
+    )
+    torch.library.define(
+        "tensorrt::dynamic_block_quantize_op",
+        "(Tensor input, int block_size, Tensor amax, int num_bits, int exponent_bits, "
+        "int scale_num_bits, int scale_exponent_bits) -> Tensor",
+    )
+    torch.library.impl("tensorrt::quantize_op", ["cpu", "cuda"])(_quantize_impl)
+    torch.library.impl("tensorrt::dynamic_block_quantize_op", ["cpu", "cuda"])(
+        _dynamic_block_quantize_impl
+    )
+    if Version(torch.__version__) < Version("2.4.0"):
+        torch.library.impl_abstract("tensorrt::quantize_op")(_quantize_impl_abstract)
+        torch.library.impl_abstract("tensorrt::dynamic_block_quantize_op")(
+            _dynamic_block_quantize_impl_abstract
         )
-        torch.library.define(
-            "tensorrt::dynamic_block_quantize_op",
-            "(Tensor input, int block_size, Tensor amax, int num_bits, int exponent_bits, "
-            "int scale_num_bits, int scale_exponent_bits) -> Tensor",
+    else:
+        torch.library.register_fake("tensorrt::quantize_op")(_quantize_impl_abstract)
+        torch.library.register_fake("tensorrt::dynamic_block_quantize_op")(
+            _dynamic_block_quantize_impl_abstract
         )
-        torch.library.impl("tensorrt::quantize_op", ["cpu", "cuda"])(_quantize_impl)
-        torch.library.impl("tensorrt::dynamic_block_quantize_op", ["cpu", "cuda"])(
-            _dynamic_block_quantize_impl
-        )
-        if Version(torch.__version__) < Version("2.4.0"):
-            torch.library.impl_abstract("tensorrt::quantize_op")(_quantize_impl_abstract)
-            torch.library.impl_abstract("tensorrt::dynamic_block_quantize_op")(
-                _dynamic_block_quantize_impl_abstract
-            )
-        else:
-            torch.library.register_fake("tensorrt::quantize_op")(_quantize_impl_abstract)
-            torch.library.register_fake("tensorrt::dynamic_block_quantize_op")(
-                _dynamic_block_quantize_impl_abstract
-            )
-        quantize_op = torch.ops.tensorrt.quantize_op
-        dynamic_block_quantize_op = torch.ops.tensorrt.dynamic_block_quantize_op
-    except (AttributeError, RuntimeError):
-        # torch.library is an experiemental feature, the function signatures may change overtime.
-        print(
-            "Unable to register operators with torch.library. Exporting quantized models with"
-            " torch.export will not be supported."
-        )
+    quantize_op = torch.ops.tensorrt.quantize_op
+    dynamic_block_quantize_op = torch.ops.tensorrt.dynamic_block_quantize_op
+except (AttributeError, RuntimeError) as e:
+    # torch.library is an experiemental feature, the function signatures may change overtime.
+    warnings.warn(
+        "Unable to register operators with torch.library. Exporting quantized models with"
+        f" torch.export will not be supported.\n{e}"
+    )
 
 # Predefined descriptors
 QUANT_DESC_8BIT_PER_TENSOR = QuantizerAttributeConfig(num_bits=8)
@@ -261,7 +263,11 @@ QUANT_DESC_8BIT_CONVTRANSPOSE3D_WEIGHT_PER_CHANNEL = QuantizerAttributeConfig(nu
 
 
 @torch.jit.script
-def _fake_tensor_quant_backward(inputs, amax, grad_outputs):
+def _fake_tensor_quant_backward(inputs, amax: Optional[torch.Tensor], grad_outputs):
+    # Skip clip for MX formats
+    if amax is None:
+        return grad_outputs
+
     zero = grad_outputs.new_zeros(1)
     grad_inputs = torch.where(inputs.abs() <= amax, grad_outputs, zero)
     return grad_inputs
@@ -431,6 +437,70 @@ class DynamicBlockQuantizationFunction(Function):
             None,
             None,
         )
+
+
+class StaticBlockQuantizationFunction(FakeTensorQuantFunction):
+    """Static block quantization functional."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        inputs,
+        amax,
+        num_bits=8,
+        unsigned=False,
+        narrow_range=True,
+        trt_high_precision_dtype="Float",
+        block_size=None,
+    ):
+        """Forward method."""
+        ctx.save_for_backward(inputs, amax)
+
+        def legacy_quant_func():
+            # The LegacyFakeTensorQuantFunction support cpu and amax with any shape that can be broadcasted to inputs.
+            outputs, scale = _tensor_quant(inputs, amax, num_bits, unsigned, narrow_range)
+            return outputs / scale.to(inputs.dtype)
+
+        def _pad_to_block_size(x, block_size):
+            """Pad the input tensor to a multiple of block_size."""
+            pad_size = (block_size - x.shape[-1] % block_size, 0)
+            return F.pad(inputs, pad_size, "constant", 0)
+
+        # reshape the input tensor to [..., block_size]
+        original_shape = inputs.shape
+        if block_size is not None and inputs.shape[-1] != block_size:
+            if inputs.shape[-1] % block_size != 0:
+                inputs = _pad_to_block_size(inputs, block_size)
+            inputs = inputs.reshape(-1, block_size)
+
+        if not inputs.is_cuda:
+            outputs = legacy_quant_func()
+        else:
+            try:
+                outputs = quantize_op(
+                    inputs,
+                    amax,
+                    num_bits=num_bits,
+                    exponent_bits=0,
+                    unsigned=unsigned,
+                    narrow_range=narrow_range,
+                )
+            except (AttributeError, ValueError):
+                # AttributeError: cuda_ext is not imported, possibly due to CPU only installation
+                # ValueError: cuda_ext is installed, but trying to perform multidimensional quantization (amax dim > 1)
+                outputs = legacy_quant_func()
+
+        # restore the original shape
+        if block_size is not None and original_shape != outputs.shape:
+            outputs = outputs.reshape(original_shape)
+
+        return outputs
+
+    @staticmethod
+    def backward(ctx, grad_outputs):
+        """Implements straight through estimation with clipping."""
+        inputs, amax = ctx.saved_tensors
+        return _fake_tensor_quant_backward(inputs, amax, grad_outputs), None, None, None, None, None
 
 
 class TensorQuantFunction(Function):
@@ -651,3 +721,4 @@ fake_tensor_quant = FakeTensorQuantFunction.apply
 fake_affine_tensor_quant = FakeAffineTensorQuantFunction.apply
 scaled_e4m3 = ScaledE4M3Function.apply
 dynamic_block_quant = DynamicBlockQuantizationFunction.apply
+static_block_quant = StaticBlockQuantizationFunction.apply

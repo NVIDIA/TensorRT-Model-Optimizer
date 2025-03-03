@@ -25,7 +25,7 @@ try:
 except ImportError as e:
     raise ImportError(f"{e}\nPlease install optional ``[torch]`` dependencies.")
 
-if _Version(_torch_version) < _Version("2.2"):
+if _Version(_torch_version) < _Version("2.3"):
     _warnings.warn(
-        "nvidia-modelopt will drop torch 2.1 support in a future release.", DeprecationWarning
+        "nvidia-modelopt will drop torch<2.3 support in a future release.", DeprecationWarning
     )

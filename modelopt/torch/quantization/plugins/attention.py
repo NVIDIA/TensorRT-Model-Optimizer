@@ -58,8 +58,6 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
         return (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            # and isinstance(node.func.value, ast.Name)
-            # and node.func.value.id == "torch"
             and node.func.attr in bmm_ops
         )
 
@@ -114,7 +112,7 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
                     keywords=[],
                 )
 
-    def patch_binop(node, quantizer_names):
+    def patch_binop(node, quantizer_names, transpose=False):
         assert len(quantizer_names) == 2
         if quantizer_names[0] is not None:
             node.left = ast.Call(
@@ -127,15 +125,37 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
                 keywords=[],
             )
         if quantizer_names[1] is not None:
-            node.right = ast.Call(
+            arg = node.right
+            if transpose:
+                arg = ast.Call(
+                    func=ast.Attribute(
+                        ast.Name(id="torch", ctx=ast.Load()),
+                        attr="transpose",
+                        ctx=ast.Load(),
+                    ),
+                    args=[arg, ast.Constant(value=-1), ast.Constant(value=-2)],
+                    keywords=[],
+                )
+            quant_arg = ast.Call(
                 func=ast.Attribute(
                     value=ast.Name(id="self", ctx=ast.Load()),
                     attr=quantizer_names[1],
                     ctx=ast.Load(),
                 ),
-                args=[node.right],
+                args=[arg],
                 keywords=[],
             )
+            if transpose:
+                quant_arg = ast.Call(
+                    func=ast.Attribute(
+                        ast.Name(id="torch", ctx=ast.Load()),
+                        attr="transpose",
+                        ctx=ast.Load(),
+                    ),
+                    args=[quant_arg, ast.Constant(value=-1), ast.Constant(value=-2)],
+                    keywords=[],
+                )
+            node.right = quant_arg
 
     nodes = list(ast.walk(head))
     org_class_name = nodes[1].name  # type: ignore[attr-defined]
@@ -151,7 +171,6 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
             sdpa_nodes.append(node)
         if is_bin_matmul(node):
             bin_matmul_nodes.append(node)
-
     if len(bmm_nodes) != 2 and len(sdpa_nodes) != 1 and len(bin_matmul_nodes) != 2:
         print(f"Expect 2 bmm/matmul op in the {org_class_name}, found {len(bmm_nodes)}")
         print(f"Or expect 1 sdpa op in the {org_class_name}, found {len(sdpa_nodes)}")
@@ -167,15 +186,21 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
         # self.k_bmm_quantizer(key_states.transpose(-1, -2).transpose(-1, -2)).transpose(-1, -2)
         # removing the additional tranpose is doable but not trivial
         patch(bmm_nodes[0], quantizer_names=(None, "v_bmm_quantizer"))
-        patch(bmm_nodes[1], quantizer_names=(None, "k_bmm_quantizer"), transpose=True)
+        patch(bmm_nodes[1], quantizer_names=("q_bmm_quantizer", "k_bmm_quantizer"), transpose=True)
         print("Patching 2 BMM/Matmul operators with quantizers")
     if len(bin_matmul_nodes) == 2:
-        patch_binop(bin_matmul_nodes[0], quantizer_names=(None, "k_bmm_quantizer"))
-        patch_binop(bin_matmul_nodes[1], quantizer_names=(None, "v_bmm_quantizer"))
+        patch_binop(
+            bin_matmul_nodes[1],
+            quantizer_names=("q_bmm_quantizer", "k_bmm_quantizer"),
+            transpose=True,
+        )
+        patch_binop(bin_matmul_nodes[0], quantizer_names=(None, "v_bmm_quantizer"))
         print("Patching 2 @ operators with quantizers")
 
     if len(sdpa_nodes) == 1:
-        patch(sdpa_nodes[0], quantizer_names=(None, "k_bmm_quantizer", "v_bmm_quantizer"))
+        patch(
+            sdpa_nodes[0], quantizer_names=("q_bmm_quantizer", "k_bmm_quantizer", "v_bmm_quantizer")
+        )
         print("Patching 1 scaled_dot_product_attention operator with quantizers")
 
     head = ast.fix_missing_locations(head)
@@ -215,6 +240,121 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
         )
 
     def setup_method(self):
+        self.q_bmm_quantizer = TensorQuantizer()
+        self.k_bmm_quantizer = TensorQuantizer()
+        self.v_bmm_quantizer = TensorQuantizer()
+
+    assert "_setup" not in new_methods, "Method _setup already exists"
+    new_methods["_setup"] = setup_method
+
+    # Create a new subclass on the fly
+    quant_class = type(new_class_name, (org_class,), new_methods)
+
+    register(original_cls=org_class, quantized_cls=quant_class)
+    print(f"Successfully registered {org_class_name} for quantization")
+    return True
+
+
+def register_hf_attention_for_kv_quant(attention_cls: type) -> bool:
+    """Register attention layer for quantization of KV Cache, specifically for attention_interface.
+
+    Generate a quantized version of the attention class on the fly,
+    and register it with the original class for quantization.
+    """
+    source_code = inspect.getsource(attention_cls)
+    model_module = inspect.getmodule(attention_cls)
+    head = ast.parse(source_code)
+
+    def is_attention_interface_call(node):
+        return (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "attention_interface"
+        )
+
+    nodes = list(ast.walk(head))
+    org_class_name = nodes[1].name  # type: ignore[attr-defined]
+    new_class_name = nodes[1].name = "_Quant" + nodes[1].name  # type: ignore[attr-defined]
+
+    attention_calls = []
+    for node in ast.walk(head):
+        if is_attention_interface_call(node):
+            attention_calls.append(node)
+
+    if len(attention_calls) != 1:
+        print(
+            f"Expect 1 attention_interface call in {org_class_name}, found {len(attention_calls)}"
+        )
+        print("Auto quantization of KV Cache fails")
+        return False
+
+    # Patch the attention_interface call arguments
+    call_node: ast.Call = attention_calls[0]
+    if len(call_node.args) < 4:  # self, query, key, value
+        print("attention_interface call must have at least 4 arguments")
+        return False
+
+    # Add quantization to key and value arguments (args[2] and args[3])
+    query_arg = call_node.args[1]
+    key_arg = call_node.args[2]
+    value_arg = call_node.args[3]
+
+    # Wrap query, key, and value with quantizers
+    call_node.args[1] = ast.Call(
+        func=ast.Attribute(
+            value=ast.Name(id="self", ctx=ast.Load()),
+            attr="q_bmm_quantizer",
+            ctx=ast.Load(),
+        ),
+        args=[query_arg],
+        keywords=[],
+    )
+    call_node.args[2] = ast.Call(
+        func=ast.Attribute(
+            value=ast.Name(id="self", ctx=ast.Load()),
+            attr="k_bmm_quantizer",
+            ctx=ast.Load(),
+        ),
+        args=[key_arg],
+        keywords=[],
+    )
+    call_node.args[3] = ast.Call(
+        func=ast.Attribute(
+            value=ast.Name(id="self", ctx=ast.Load()),
+            attr="v_bmm_quantizer",
+            ctx=ast.Load(),
+        ),
+        args=[value_arg],
+        keywords=[],
+    )
+
+    head = ast.fix_missing_locations(head)
+    org_class = model_module.__dict__[org_class_name]
+
+    module_code_str = ast.unparse(head)
+    with tempfile.NamedTemporaryFile(prefix="modelopt_", suffix=".py", delete=False) as temp_file:
+        temp_file.write(module_code_str.encode())
+        print(f"Definition of {new_class_name} saved to {temp_file.name}")
+
+    # Extract the bytecode and create a new class on the fly
+    module_code = compile(head, filename="modelopt_generated", mode="exec")
+    class_code = module_code.co_consts[0]
+    assert class_code.co_name == new_class_name
+    method_codes = [const for const in class_code.co_consts if isinstance(const, types.CodeType)]
+
+    new_methods = {}
+    for method_code in method_codes:
+        method_name = method_code.co_name
+        original_method = getattr(org_class, method_name, None)
+        if not isinstance(original_method, types.FunctionType):
+            continue
+        # Create a new class method from bytecode
+        new_methods[method_name] = types.FunctionType(
+            method_code, globals=original_method.__globals__, closure=original_method.__closure__
+        )
+
+    def setup_method(self):
+        self.q_bmm_quantizer = TensorQuantizer()
         self.k_bmm_quantizer = TensorQuantizer()
         self.v_bmm_quantizer = TensorQuantizer()
 

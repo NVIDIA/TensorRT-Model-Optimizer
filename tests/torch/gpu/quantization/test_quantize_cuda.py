@@ -44,6 +44,8 @@ from modelopt.torch.quantization.extensions import get_cuda_ext_mx
         mtq.NVFP4_AWQ_LITE_CFG,
         mtq.NVFP4_AWQ_CLIP_CFG,
         mtq.NVFP4_AWQ_FULL_CFG,
+        mtq.MXFP8_DEFAULT_CFG,
+        mtq.NVFP4_WA_NVFP4_KV_ROTATE_CFG,
     ],
 )
 def test_quantize(model_cls, config):
@@ -53,6 +55,8 @@ def test_quantize(model_cls, config):
         mtq.NVFP4_AWQ_LITE_CFG,
         mtq.NVFP4_AWQ_CLIP_CFG,
         mtq.NVFP4_AWQ_FULL_CFG,
+        mtq.MXFP8_DEFAULT_CFG,
+        mtq.NVFP4_WA_NVFP4_KV_ROTATE_CFG,
     ]:
         if get_cuda_ext_mx() is None:
             pytest.skip("cuda_ext_mx is not available")

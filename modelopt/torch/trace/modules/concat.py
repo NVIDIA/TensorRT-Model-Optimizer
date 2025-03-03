@@ -120,9 +120,9 @@ class ConcatSymbol(Symbol):
         """Initializes Symbol from input symbols."""
         super().__init__(cl_type=cl_type, elastic_dims=elastic_dims)
         assert len(symbols) > 0, "ConcatSymbol must have at least one input."
-        assert all(
-            isinstance(sym, (ConcatSymbol.Input, ConcatSymbol)) for sym in symbols
-        ), "All syms must be ConcatSymbol.Inputs."
+        assert all(isinstance(sym, (ConcatSymbol.Input, ConcatSymbol)) for sym in symbols), (
+            "All syms must be ConcatSymbol.Inputs."
+        )
 
         # assign reference of self to each input symbol and store list of input symbols
         for sym in symbols:

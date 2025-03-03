@@ -192,7 +192,7 @@ def evaluate(args, subject, model: Union[EvalModel, LLM], dev_df, test_df):
             if isinstance(model, EvalModel):
                 return model.check_valid_length(prompt)
             else:
-                return len(model.tokenizer.encode(prompt)) <= model.max_input_len
+                return len(model.tokenizer.encode(prompt)) < model.max_seq_len
 
         while not check_valid_length(model, prompt) and k > 0:
             k -= 1
@@ -203,7 +203,7 @@ def evaluate(args, subject, model: Union[EvalModel, LLM], dev_df, test_df):
         if isinstance(model, EvalModel):
             pred = model.run(prompt)
         elif isinstance(model, LLM):
-            pred = model.generate_text([prompt], 2, keep_input_prompt=False)[0]
+            pred = model.generate_text([prompt], 2)[0]
 
         probs = [0 for _ in get_choices()]
         cor = pred.strip().startswith(label)
@@ -268,7 +268,7 @@ def main(
         assert LLM is not None, "tensorrt_llm APIs could not be imported."
         medusa_choices = kwargs.get("medusa_choices", None)
         model = LLM(
-            engine_dir=kwargs["engine_dir"], tokenizer=tokenizer, medusa_choices=medusa_choices
+            checkpoint_dir=kwargs["engine_dir"], tokenizer=tokenizer, medusa_choices=medusa_choices
         )
     else:
         model = select_model(

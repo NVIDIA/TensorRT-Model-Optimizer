@@ -132,7 +132,9 @@ def _new__load_pretrained_model(
 
 def _new_save_pretrained(self, save_directory, *args, **kwargs):
     self._modelopt_cache["save_pretrained"](self, save_directory, *args, **kwargs)
-    if ModeloptStateManager.is_converted(self):
+    if ModeloptStateManager.is_converted(self) and not getattr(
+        self, "_disable_modelopt_save", False
+    ):
         path = _get_modelopt_state_path(self, save_directory)
         torch.save(modelopt_state(self), path)
         print_rank_0(f"Saved ModelOpt state to {path}")

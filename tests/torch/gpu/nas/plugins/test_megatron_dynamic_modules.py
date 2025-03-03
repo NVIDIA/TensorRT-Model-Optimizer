@@ -260,7 +260,7 @@ def test_megatron_self_attention_head_sorting(distributed_setup_size_1):
 
     # Set importance and slice order
     hp_num_heads_per_group._get_importance = lambda: torch.tensor(
-        [2.0, 0.0, 1.0, 2.0, 3.0, 2.0, 0.0, 1.0]
+        [2.2, 0.1, 1.1, 2.1, 3.0, 2.0, 0.0, 1.0]
     )
     hp_num_query_groups._get_importance = lambda: torch.tensor([0.0, 3.0])
     hp_num_heads_per_group.enforce_order(

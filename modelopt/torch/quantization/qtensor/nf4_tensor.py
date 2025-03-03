@@ -15,11 +15,12 @@
 
 """Implements NF4 quantization for efficient tensor storage and computation."""
 
+import numpy as np
 import torch
 
 from ..extensions import get_cuda_ext
 from ..qtensor.base_qtensor import BaseQuantizedTensor
-from ..utils import reduce_amax
+from ..utils import reduce_amax, reduce_block_padding
 
 nf4_table = torch.tensor(
     [
@@ -52,9 +53,9 @@ def _dequantize_scalers(scales, double_scale, scale_zeros, dtype):
 
 def _quantize_to_nearest_lut(flatten_tensor: torch.Tensor, lut: torch.Tensor) -> torch.Tensor:
     """Quantize a float16 tensor to nearest value and return the indices of the look-up table."""
-    assert (
-        flatten_tensor.dim() == 1
-    ), f"Expect flatten tensor but got input with {flatten_tensor.dim()} dimensions."
+    assert flatten_tensor.dim() == 1, (
+        f"Expect flatten tensor but got input with {flatten_tensor.dim()} dimensions."
+    )
     diff = (flatten_tensor[:, None] - lut).abs()  # Shape: (numel, 16)
     indices = diff.argmin(dim=-1)
     return indices
@@ -86,10 +87,11 @@ class NF4QTensor(BaseQuantizedTensor):
         """
         cuda_ext = get_cuda_ext()
 
+        # pad the input if needed
+        original_input = input
+        input = reduce_block_padding(input.view(-1), block_sizes={-1: block_size})
+
         # get scales for each block
-        assert (
-            input.numel() % block_size == 0
-        ), "Number of input elements is not divisible by the block size."
         block_input = input.view(-1, block_size)
         scales = reduce_amax(block_input, -1)
 
@@ -114,7 +116,7 @@ class NF4QTensor(BaseQuantizedTensor):
             #               | byte  | byte  | byte  |
             packed_output_uint8 = quantized_output_uint8[::2] << 4 | quantized_output_uint8[1::2]
 
-        return cls(input.shape, input.dtype, packed_output_uint8), scales
+        return cls(original_input.shape, original_input.dtype, packed_output_uint8), scales
 
     @classmethod
     def double_quantization(cls, scales: torch.Tensor, scale_block_size: int, num_scale_bits: int):
@@ -124,9 +126,9 @@ class NF4QTensor(BaseQuantizedTensor):
         int8 to further reduce memory usage of scales.
         """
         # Double quantization for the scales, int8 per-block quantization
-        assert (
-            scales.numel() % scale_block_size == 0
-        ), "Number of scales elements is not divisible by the scale block size."
+        assert scales.numel() % scale_block_size == 0, (
+            "Number of scales elements is not divisible by the scale block size."
+        )
         scale_quant_maxbound = 2 ** (num_scale_bits - 1) - 1
         block_scales = scales.view(-1, scale_block_size)
         num_scale_blocks = block_scales.shape[0]
@@ -161,7 +163,11 @@ class NF4QTensor(BaseQuantizedTensor):
             # with a custom cuda kernel
             scales = _dequantize_scalers(scales, double_scale, scale_zeros, dtype).flatten()
             output = cuda_ext.NF4_dequantize(self._quantized_data, scales, block_sizes[-1])
-            return output.reshape(self.metadata["shape"]).to(dtype)
+            return (
+                output.view(-1)[: np.prod(self.metadata["shape"])]  # handle padding
+                .reshape(self.metadata["shape"])
+                .to(dtype)
+            )
         else:
             # de-qauntize scales
             scales = _dequantize_scalers(scales, double_scale, scale_zeros, dtype).flatten()
@@ -180,6 +186,7 @@ class NF4QTensor(BaseQuantizedTensor):
             second_half = second_half.flatten().unsqueeze(-1).transpose(0, 1)
             return (
                 torch.stack([first_half, second_half], dim=-1)
+                .view(-1)[: np.prod(self.metadata["shape"])]  # handle padding
                 .reshape(self.metadata["shape"])
                 .to(dtype)
             )

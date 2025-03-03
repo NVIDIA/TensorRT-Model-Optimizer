@@ -117,7 +117,7 @@ def quantize(
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cuda:0", "cpu", "trt"],
+    calibration_eps: list[str] = ["cpu"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -148,8 +148,7 @@ def quantize(
         list(op_types), op_types_to_quantize, trt_extra_plugin_lib_paths, calibration_eps
     )
     logging.info(
-        "Quantizable op types in the model:"
-        f" {[t for t in quantizable_op_types if t in op_types]}"
+        f"Quantizable op types in the model: {[t for t in quantizable_op_types if t in op_types]}"
     )
 
     # Collect node names to include in quantization
@@ -186,18 +185,20 @@ def quantize(
         )
         nodes_to_quantize = list(set(nodes_to_quantize).intersection(iq_quantized_nodes))
 
-    # Either of m or n in matmul is 1, this matmul cannot utilize TensorCores.
-    # The perf of adding Q/DQ layers is not good in TRT. Thus, in this case,
-    # do not add Q/DQ layers to this matmul.
-    matmul_nodes_to_exclude = find_nodes_from_matmul_to_exclude(
-        onnx_path,
-        use_external_data_format,
-        intermediate_generated_files,
-        calibration_data_reader,
-        calibration_eps,
-        verbose,
-    )
-    nodes_to_exclude.extend(matmul_nodes_to_exclude)
+    enable_gemv_detection_for_trt = kwargs.get("enable_gemv_detection_for_trt", True)
+    if enable_gemv_detection_for_trt:
+        # Either of m or n in matmul is 1, this matmul cannot utilize TensorCores.
+        # The perf of adding Q/DQ layers is not good in TRT. Thus, in this case,
+        # do not add Q/DQ layers to this matmul.
+        matmul_nodes_to_exclude = find_nodes_from_matmul_to_exclude(
+            onnx_path,
+            use_external_data_format,
+            intermediate_generated_files,
+            calibration_data_reader,
+            calibration_eps,
+            verbose,
+        )
+        nodes_to_exclude.extend(matmul_nodes_to_exclude)
 
     # Collect node names to exclude from quantization
     nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)
@@ -214,7 +215,7 @@ def quantize(
         )
         return
     elif verbose:
-        logging.info(f"Selected nodes to quantize: {nodes_to_quantize}")
+        logging.info(f"Selected {len(nodes_to_quantize)} nodes to quantize: {nodes_to_quantize}")
 
     # Create a temp file for intermediate model
     tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")

@@ -2,6 +2,8 @@
 
 In this tutorial, we demonstrate how to use Nvidia TensorRT Model Optimizer to perform Post-Training Sparsification (PTS) and Sparsity Aware Training (SAT) on a HuggingFace [Llama2-7B](https://huggingface.co/meta-llama/Llama-2-7b-hf) model.
 
+To learn more about the sparsity feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/5_sparsity.html).
+
 ## Post-Training Sparsification (PTS) for HuggingFace Models
 
 Post-training sparsification (PTS) is a technique used to sparsify a pretrained model without additional retraining.
@@ -29,12 +31,12 @@ python hf_pts.py --model_name_or_path meta-llama/Llama-2-7b-hf \
 ```
 
 The above command will sparsify the Llama2-7B model and save the sparsified model to `saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1` directory.
-The saved checkpoint, e.g. `pts_modelopt_state.pth`,  can be loaded using `modelopt.torch.opt.restore()` for inference.
+The saved checkpoint, e.g. `pts_modelopt_state.pth`, can be loaded using `modelopt.torch.opt.restore()` for inference.
 
 ## Sparsity Aware Training (SAT)
 
 Sparsity-aware training (SAT) is a training method that allows the model to learn accommodating the sparsity patterns
-introduced by PTS. SAT is used to recover the accuracy loss incurred after PTS.  To carry out the following SAT example,
+introduced by PTS. SAT is used to recover the accuracy loss incurred after PTS. To carry out the following SAT example,
 the user must first complete the prerequisite PTS step above and generate a PTS model checkpoint.
 
 ### System Requirements
@@ -64,7 +66,7 @@ bash launch_finetune.sh --model meta-llama/Llama-2-7b-hf \
     --output_dir saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/finetuned
 ```
 
-The saved checkpoint, e.g. `finetuned_modelopt_state.pth`,  can be loaded using `modelopt.torch.opt.restore()` for inference.
+The saved checkpoint, e.g. `finetuned_modelopt_state.pth`, can be loaded using `modelopt.torch.opt.restore()` for inference.
 
 > *The above commands are for demonstration purposes only. Users are encouraged to modify the hyperparameters based on their use case. Sparsity aware training is computationally expensive and may require a large number of GPUs to train the model in a reasonable amount of time. The default setting is 3 epochs, which typically yields optimal performance. Users are encouraged to increase the number of epochs to achieve better performance or decrease it to reduce training time. For example, you can replace `--num_epochs 3` with `--max_steps 1000` to train the model for 1000 iterations.*
 

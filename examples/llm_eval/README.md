@@ -43,13 +43,15 @@ accelerate launch --multi_gpu --num_processes <num_copies_of_your_model> \
 Multi-GPU evaluation without data-parallelism:
 
 ```sh
-# MODELOPT_QUANT_CFG: Choose from [INT8_SMOOTHQUANT_CFG|FP8_DEFAULT_CFG|NVFP4_DEFAULT_CFG|INT4_AWQ_CFG|W4A8_AWQ_BETA_CFG]
+# MODELOPT_QUANT_CFG: Choose from [INT8_SMOOTHQUANT_CFG|FP8_DEFAULT_CFG|NVFP4_DEFAULT_CFG|INT4_AWQ_CFG|W4A8_AWQ_BETA_CFG|MXFP8_DEFAULT_CFG]
 python lm_eval_hf.py --model hf \
     --tasks <comma separated tasks> \
     --model_args pretrained=<HF model folder or model card>,parallelize=True \
     --quant_cfg <MODELOPT_QUANT_CFG> \
     --batch_size 4
 ```
+
+> **_NOTE:_** `MXFP8_DEFAULT_CFG` is one the [OCP Microscaling Formats (MX Formats)](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) family which defines a set of block-wise dynamic quantization formats. The specifications can be found in the [offical documentation](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf). Currently we support all MX formats for simulated quantization, including `MXFP8 (E5M2, E4M3), MXFP6 (E3M2, E2M3), MXFP4, MXINT8`. However, only `MXFP8 (E4M3)` is in our example configurations, users can create their own configurations for other MX formats by simply modifying the `num_bits` field in the `MXFP8_DEFAULT_CFG`.
 
 For data-parallel evaluation, launch with `accelerate launch --multi_gpu --num_processes <num_copies_of_your_model>` (as shown earlier).
 
@@ -80,7 +82,7 @@ For data-parallel evaluation, launch with `accelerate launch --multi_gpu --num_p
   - use `--model hf-seq2seq` instead.
 
 ```sh
-# MODELOPT_QUANT_CFG: Choose from [INT8_SMOOTHQUANT_CFG|FP8_DEFAULT_CFG|NVFP4_DEFAULT_CFG|INT4_AWQ_CFG|W4A8_AWQ_BETA_CFG]
+# MODELOPT_QUANT_CFG: Choose from [INT8_SMOOTHQUANT_CFG|FP8_DEFAULT_CFG|NVFP4_DEFAULT_CFG|INT4_AWQ_CFG|W4A8_AWQ_BETA_CFG|MXFP8_DEFAULT_CFG]
 python lm_eval_hf.py --model hf-seq2seq --model_args pretrained=t5-small --quant_cfg=<MODELOPT_QUANT_CFG> --tasks <comma separated tasks> --batch_size 4
 ```
 
@@ -116,7 +118,7 @@ python mmlu.py --model_name causal --model_path <HF model folder or model card>
 ### Quantized (simulated)
 
 ```bash
-# MODELOPT_QUANT_CFG: Choose from [INT8_SMOOTHQUANT_CFG|FP8_DEFAULT_CFG|NVFP4_DEFAULT_CFG|INT4_AWQ_CFG|W4A8_AWQ_BETA_CFG]
+# MODELOPT_QUANT_CFG: Choose from [INT8_SMOOTHQUANT_CFG|FP8_DEFAULT_CFG|NVFP4_DEFAULT_CFG|INT4_AWQ_CFG|W4A8_AWQ_BETA_CFG|MXFP8_DEFAULT_CFG]
 python mmlu.py --model_name causal --model_path <HF model folder or model card> --quant_cfg MODELOPT_QUANT_CFG
 ```
 
@@ -137,35 +139,6 @@ python mmlu.py --model_name causal --model_path <HF model folder or model card> 
 
 ```bash
 python mmlu.py --model_name causal --model_path <HF model folder or model card> --engine_dir <built TensorRT-LLM folder>
-```
-
-## Human-eval
-
-[HumanEval](https://arxiv.org/abs/2107.03374). A score (0-1, higher is better) will be printed at the end of the benchmark.
-
-> *Due to various prompt and generation postprocessing methods, the final score might be different compared with the published numbers from the model developer.*
-
-### Setup
-
-Clone [Instruct-eval](https://github.com/declare-lab/instruct-eval/tree/main) and add a softlink to folder [human_eval](https://github.com/declare-lab/instruct-eval/tree/main/human_eval) from `instruct_eval/`
-
-### Baseline
-
-```sh
-python humaneval.py --model_name causal --model_path <HF model folder or model card> --n_sample 1
-```
-
-### Quantized (simulated)
-
-```sh
-# MODELOPT_QUANT_CFG: Choose from [INT8_SMOOTHQUANT_CFG|FP8_DEFAULT_CFG|NVFP4_DEFAULT_CFG|INT4_AWQ_CFG|W4A8_AWQ_BETA_CFG]
-python humaneval.py --model_name causal --model_path <HF model folder or model card> --n_sample 1 --quant_cfg MODELOPT_QUANT_CFG
-```
-
-### Evaluate the TRT-LLM engine
-
-```sh
-python humaneval.py --model_name causal --model_path <HF model folder or model card> --engine_dir <built TensorRT-LLM folder> --n_sample 1
 ```
 
 ## MT-Bench
@@ -195,3 +168,23 @@ bash run_fastchat.sh -h <HF model folder or model card> <built TensorRT-LLM fold
 
 The responses to questions from MT Bench will be stored under `data/mt_bench/model_answer`.
 The quality of the responses can be judged using [llm_judge](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) from the FastChat repository. Please refer to the [llm_judge](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to compute the final MT-Bench score.
+
+## LiveCodeBench
+
+[LiveCodeBench](https://livecodebench.github.io/) is a holistic and contamination-free evaluation benchmark of LLMs for code that continuously collects new problems over time.
+
+We support running LiveCodeBench against a local running OpenAI API compatible server. For example, quantized TensorRT-LLM checkpoint or engine can be loaded using [trtllm-serve](https://nvidia.github.io/TensorRT-LLM/commands/trtllm-serve.html) command. Once the local server is up, the following command can be used to run the LiveCodeBench:
+
+```bash
+bash run_livecodebench.sh <custom defined model name> <prompt batch size in parallel> <max output tokens> <local model server port>
+```
+
+## Simple Evals
+
+[Simple Evals](https://github.com/openai/simple-evals) is a lightweight library for evaluating language models published from OpenAI. This eval includes "simpleqa", "mmlu", "math", "gpqa", "mgsm", "drop" and "humaneval" benchmarks.
+
+Similarly, we support running simple evals against a local running OpenAI API compatible server. Once the local server is up, the following command can be used to run the Simple Evals:
+
+```bash
+bash run_simple_eval.sh <custom defined model name> <comma separated eval names> <max output tokens> <local model server port>
+```

@@ -118,9 +118,9 @@ class ModeloptStateManager:
 
         # check if mod with state is root module if desired
         if is_converted:
-            assert (
-                not is_root or mods_with_state[0] == ""
-            ), "Model has modelopt state but not the root!"
+            assert not is_root or mods_with_state[0] == "", (
+                "Model has modelopt state but not the root!"
+            )
 
         return is_converted
 
@@ -232,9 +232,9 @@ class ModeloptStateManager:
         # check for export mode compatibility
         export_stack = self._export_stack
         if mode_d.is_export_mode:
-            assert (
-                export_stack and str(mode_d) == export_stack[-1][1]
-            ), f"Cannot add {mode_d} according to the current export stack: {export_stack}."
+            assert export_stack and str(mode_d) == export_stack[-1][1], (
+                f"Cannot add {mode_d} according to the current export stack: {export_stack}."
+            )
 
         # sanity checks for next mode incompatibilities according to the current last mode
         last_mode = self.last_mode

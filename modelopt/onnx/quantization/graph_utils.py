@@ -703,7 +703,7 @@ def find_nodes_from_mha_to_exclude(
     """Find MatMul nodes in MHA pattern to exclude.
 
     If disable_mha_qdq is set, don't add Q/DQ layers to MatMuls in MHA pattern.
-    else when quantize_mode == "fp8", if head_size > 256 or head_size % 16 != 0 or
+    else when quantize_mode == "fp8", if head_size > 256 or head_size <= 8 or
     mha doesn't meet fp8 fMHA v2 pattern, don't add Q/DQ layers to MatMuls in MHA pattern.
     else when quantize_mode == "int8", if seq_len > 512, don't add Q/DQ layers
     to MatMuls in MHA pattern.
@@ -762,7 +762,7 @@ def find_nodes_from_mha_to_exclude(
 
         # For each MHA block,
         # In quantize_mode == int8, if seq_len > 512, add bmm to nodes_to_exclude.
-        # In quantize_mode == fp8, if head_size > 256 or head_size % 16 != 0, add its bmm to nodes_to_exclude.
+        # In quantize_mode == fp8, if head_size > 256 or head_size <= 8, add its bmm to nodes_to_exclude.
         for mha_partition in mha_partitions:
             bmm1_node = mha_partition[0]
             softmax_node = mha_partition[1]
@@ -775,7 +775,7 @@ def find_nodes_from_mha_to_exclude(
                 if seq_len > 512:
                     enable_mha_qdq = False
             elif quantize_mode == "fp8":
-                if head_size > 256 or head_size % 16 != 0:
+                if head_size > 256 or head_size <= 8:
                     enable_mha_qdq = False
                 else:
                     fp8_fmha_v2_pattern = match_fp8_mha_pattern(graph, softmax_node, False)
@@ -1096,3 +1096,39 @@ def convert_fp16_io(graph):
             if output_tensor.dtype in convertible_dtypes
             else output_tensor.dtype
         )
+
+
+def get_resize_scales(onnx_model):
+    r"""Record Resize op's old scale value before converting to fp16.
+
+    Because low precision scale will lead to wrong shape. For example, if 7 is
+    resized to 6, fp32 scale should be 6/7 = 0.85714. After converting to fp16,
+    it becomes 0.85693 but 7 * 0.85693 = 5.9985 < 6.
+    """
+    resize_scale_inits = {}
+    for node in onnx_model.graph.node:
+        if node.op_type == "Resize" and len(node.input) > 2 and node.input[2] is not None:
+            for init in onnx_model.graph.initializer:
+                if init.name == node.input[2] and init.data_type == onnx.TensorProto.FLOAT:
+                    resize_scale_inits[node.name] = (init.data_type, init.raw_data)
+                    break
+    return resize_scale_inits
+
+
+def replace_resize_scales(onnx_model, resize_scale_inits):
+    """Replace Resize op's fp16 scale value with old fp32 scale."""
+    if len(resize_scale_inits) == 0:
+        return onnx_model
+
+    graph = gs.import_onnx(onnx_model)
+    for node in graph.nodes:
+        if node.op == "Resize":
+            if node.name in resize_scale_inits.keys():
+                cast_node = node.inputs[2].inputs[0]
+                scale = cast_node.inputs[0]
+                for new_init in onnx_model.graph.initializer:
+                    if new_init.name == scale.name:
+                        old_data_type, old_raw_data = resize_scale_inits[node.name]
+                        new_init.data_type = old_data_type
+                        new_init.raw_data = old_raw_data
+    return onnx_model

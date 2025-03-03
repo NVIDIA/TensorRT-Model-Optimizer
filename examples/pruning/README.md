@@ -2,6 +2,8 @@
 
 The Model Optimizer's `modelopt.torch.prune` module provides advanced state-of-the-art pruning algorithms that enable you to search for the best subnet architecture from your provided base model.
 
+To learn more about the pruning feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_pruning.html).
+
 Model Optimizer can be used in one of the following complementary pruning modes to create a search space for optimizing the model:
 
 1. [Minitron](https://arxiv.org/pdf/2408.11796): A pruning method developed by NVIDIA Research for pruning GPT-style models in NVIDIA NeMo or Megatron-LM framework that are using Pipeline or Tensor Parallelisms. It uses the activation magnitudes to prune the mlp, attention heads, GQA query groups, embedding hidden size and number of layers of the model.
@@ -16,9 +18,9 @@ Checkout the [Quick Start: Pruning](https://nvidia.github.io/TensorRT-Model-Opti
 
 ### Minitron Pruning for NVIDIA NeMo / Megatron-LM LLMs (e.g. Llama 3)
 
-Checkout the Minitron pruning example in the [NVIDIA NeMo repository](https://github.com/NVIDIA/NeMo/tree/main/examples/nlp/language_modeling/megatron_gpt_prune.py) which showcases the usage of the powerful Minitron pruning algorithm developed by NVIDIA Research for pruning LLMs like Llama 3.1 8B or Mistral NeMo 12B.
+Checkout the Minitron pruning example in the [NVIDIA NeMo repository](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/pruning/pruning.html) which showcases the usage of the powerful Minitron pruning algorithm developed by NVIDIA Research for pruning LLMs like Llama 3.1 8B or Mistral NeMo 12B.
 
-You can also look at the tutorial notebooks [here](https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama-3/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Llama 3.1 8B step-by-step in NeMo framework.
+You can also look at the tutorial notebooks [here](https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Llama 3.1 8B step-by-step in NeMo framework.
 
 NOTE: If you wish to use this algorithm for pruning Hugging Face LLMs, you can first use the HF to NeMo converters, then use Minitron pruning, optionally followed by distillation in NeMo framework and then convert back to Hugging Face format.
 You can use the converter scripts in the [NeMo repository](https://github.com/NVIDIA/NeMo/tree/main/scripts/checkpoint_converters/).

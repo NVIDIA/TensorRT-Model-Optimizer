@@ -64,9 +64,9 @@ class CalibrationDataProvider(CalibrationDataReader):
             assert len(input_names) == 1, "Calibration data has only one tensor."
             calibration_data = {input_names[0]: calibration_data}
         elif isinstance(calibration_data, dict):
-            assert len(input_names) == len(
-                calibration_data
-            ), "Model input count and calibration data doesn't match."
+            assert len(input_names) == len(calibration_data), (
+                "Model input count and calibration data doesn't match."
+            )
             for input_name in input_names:
                 assert input_name in calibration_data
         else:

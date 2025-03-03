@@ -142,9 +142,9 @@ class QKVConfig:
         The Q, K, V bias are concat together to fit the TensorRT-LLM QKV linear layer.
         """
         if self.q.bias is None:
-            assert (
-                self.k.bias is None and self.v.bias is None
-            ), "K and V should have valid bias as Q"
+            assert self.k.bias is None and self.v.bias is None, (
+                "K and V should have valid bias as Q"
+            )
             return None
         return torch.cat((self.q.bias, self.k.bias, self.v.bias))
 
@@ -266,17 +266,17 @@ class QKVConfig:
 
         assert torch.equal(
             self.q.prequant_scaling_factor, self.k.prequant_scaling_factor
-        ) and torch.equal(
-            self.k.prequant_scaling_factor, self.v.prequant_scaling_factor
-        ), "Prequant scaling factors of Q, K and V should be the same"
+        ) and torch.equal(self.k.prequant_scaling_factor, self.v.prequant_scaling_factor), (
+            "Prequant scaling factors of Q, K and V should be the same"
+        )
         return self.q.prequant_scaling_factor
 
     @property
     def awq_block_size(self):
         """Returns the awq_block_size of this QKV layer."""
-        assert (
-            self.q.awq_block_size == self.k.awq_block_size == self.v.awq_block_size
-        ), "awq_block_size of QKV should be the same."
+        assert self.q.awq_block_size == self.k.awq_block_size == self.v.awq_block_size, (
+            "awq_block_size of QKV should be the same."
+        )
         return self.q.awq_block_size
 
 
@@ -479,6 +479,9 @@ class DecoderLayerConfig:
     # Phi3.5 MOE
     sparse_mixer_epsilon: float = 0
 
+    # Mcore
+    position_embedding_type: str = None
+
     @property
     def hidden_size(self):
         """Returns the hidden size of the transformer model."""
@@ -557,6 +560,10 @@ class ModelConfig:
     encoder_hidden_size: int = 0
     encoder_num_heads: int = 0
     encoder_head_size: int = 0
+    decoder_start_token_id: int = None
+    eos_token_id: int = None
+    bos_token_id: int = None
+    pad_token_id: int = None
 
     @property
     def vocab_size_padded(self):

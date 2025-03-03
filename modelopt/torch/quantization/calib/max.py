@@ -59,6 +59,9 @@ class MaxCalibrator(_Calibrator):
         Raises:
             RuntimeError: If amax shape changes
         """
+        # Skip meta device during calibration
+        if x.device.type == "meta":
+            return
         # Swap axis to reduce.
         axis = self._axis if isinstance(self._axis, (list, tuple)) else [self._axis]
         # Handle negative axis.
@@ -68,6 +71,19 @@ class MaxCalibrator(_Calibrator):
             if i not in axis:
                 reduce_axis.append(i)
         local_amax = quant_utils.reduce_amax(x, axis=reduce_axis).detach()
+        assert torch.all(local_amax >= 0), (
+            "detected negative values after abs, could be torch or cuda bug"
+        )
+        assert not torch.any(torch.isinf(local_amax)), (
+            "detected inf values in amax. inf in original tensor: {}".format(
+                torch.any(torch.isinf(x))
+            )
+        )
+        assert not torch.any(torch.isnan(local_amax)), (
+            "detected nan values in amax. nan in original tensor: {}".format(
+                torch.any(torch.isnan(x))
+            )
+        )
         if self._calib_amax is None:
             self._calib_amax = local_amax
         else:

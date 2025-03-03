@@ -197,9 +197,9 @@ class Hparam:
         for estimator in self._importance_estimators or []:
             imp = estimator()
             if imp is not None:
-                assert (
-                    not self._strict_len or len(imp) == self.max
-                ), "Length of importance must be equal to max choice!"
+                assert not self._strict_len or len(imp) == self.max, (
+                    "Length of importance must be equal to max choice!"
+                )
                 imp = imp / (imp.max() + 1e-9)  # normalize importance
                 imps_all.append(imp)
 

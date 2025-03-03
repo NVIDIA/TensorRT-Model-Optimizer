@@ -39,17 +39,20 @@ from .layer_utils import (
     build_medusa_heads_config,
     check_model_compatibility,
     get_dtype,
+    get_enc_dec_models,
+    get_enc_dec_token_ids,
+    get_encoder_config,
     get_transformer_layers,
     is_decoder_list,
     is_embedding,
     is_layernorm,
     is_linear,
+    model_type_is_enc_dec,
 )
 from .model_config import QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ, ModelConfig
 from .model_config_utils import (
     merge_qkv,
     model_config_to_dict,
-    naive_quantization,
     pack_linear_weights,
     split_config_and_weights,
 )
@@ -64,8 +67,8 @@ from .quant_utils import get_quantization_format, process_layer_quant_config
 from .tensorrt_llm_utils import (
     convert_to_tensorrt_llm_config,
     is_tensorrt_llm_0_8_or_9,
-    prepare_enc_dec_decoder_layer,
     prepare_enc_dec_export_dir,
+    prepare_t5_decoder_layer,
 )
 
 has_mcore = False
@@ -84,7 +87,6 @@ def torch_to_tensorrt_llm_checkpoint(
     dtype: Optional[torch.dtype] = None,
     inference_tensor_parallel: int = 0,
     inference_pipeline_parallel: int = 1,
-    naive_fp8_quantization: bool = False,
     workspace_path: Optional[Union[Path, str]] = None,
 ) -> Iterator[tuple[dict[str, Any], dict[str, torch.Tensor], dict[str, Any]]]:
     """Converts the torch model to the TensorRT-LLM checkpoint per GPU rank.
@@ -103,8 +105,6 @@ def torch_to_tensorrt_llm_checkpoint(
         inference_pipeline_parallel: The target inference time pipeline parallel.
             We will merge or split the calibration pipeline parallelism to inference.
             Default is 1, meaning no pipeline parallelism.
-        naive_fp8_quantization: Quantize the model naively to FP8 without calibration.
-            All scaling factors are set to 1.
         workspace_path: the path to the NFS directory for postprocess cross rank communication.
 
     Yields:
@@ -198,13 +198,14 @@ def torch_to_tensorrt_llm_checkpoint(
             f" {training_tensor_parallel}."
         )
 
-    models = [model]
-    if decoder_type in ["t5"]:
+    models = [("decoder", model)]
+    is_enc_dec = model_type_is_enc_dec(decoder_type)
+    if is_enc_dec:
         model_lm_head = model.lm_head
-        # For T5 model with encoder and decoder, we process the checkpoint separately.
-        models = [model.encoder, model.decoder]
+        # For Encoder-Decoder models, we process the checkpoint separately.
+        models = get_enc_dec_models(model, decoder_type)
 
-    for model in models:
+    for component_name, model in models:
         transformer_layers = get_transformer_layers(model)
         if training_pipeline_parallel == 1:
             compatible, has_position_embedding, has_embedding_layernorm = check_model_compatibility(
@@ -229,14 +230,14 @@ def torch_to_tensorrt_llm_checkpoint(
             vocab_size=vocab_size,
         )
 
-        # For Encoder-Decoder Model like T5
-        if decoder_type in ["t5"]:
-            if model.is_decoder is False:
-                config.enc_dec = "enc"
-                model_metadata_config["enc_dec"] = "enc"
-            else:
-                config.enc_dec = "dec"
-                model_metadata_config["enc_dec"] = "dec"
+        # For Encoder-Decoder Model
+        if is_enc_dec:
+            config.enc_dec = component_name
+            model_metadata_config["enc_dec"] = component_name
+
+            if decoder_type == "bart":
+                # bart does not have final layernorm but has embedding layernorm.
+                has_embedding_layernorm = True
 
         # GLM has a different handling of word_embeddings.
         if decoder_type == "glm":
@@ -261,6 +262,10 @@ def torch_to_tensorrt_llm_checkpoint(
                     )
                 elif has_position_embedding and config.position_embedding is None:
                     config.position_embedding = build_embedding_config(module)
+                    if decoder_type in ["bart"]:
+                        # Special handling for TRTLLM bart model
+                        # Huggingface bart-large-cnn offsets embedding ids by 2 (see modeling_bart.py)
+                        config.position_embedding.weight = config.position_embedding.weight[2:]
                 elif decoder_type == "glm":
                     config.block_embedding = build_embedding_config(module)
             elif is_decoder_list(module):
@@ -280,7 +285,7 @@ def torch_to_tensorrt_llm_checkpoint(
                         layer_config.block_config = asdict(block_config)
                     # Special process for each decoder layer of Encoder-Decoder Model
                     if decoder_type in ["t5"]:
-                        prepare_enc_dec_decoder_layer(
+                        prepare_t5_decoder_layer(
                             layer_config,
                             model.config,
                             model_metadata_config["enc_dec"],
@@ -312,15 +317,21 @@ def torch_to_tensorrt_llm_checkpoint(
                     config.lm_head = build_linear_config(module, "column")
 
         # For decoder of Encoder-Decoder model, it needs some encoder information
-        if decoder_type in ["t5"]:
+        if is_enc_dec:
             if model_metadata_config["enc_dec"] == "dec":
-                config.encoder_hidden_size = models[0].config.d_model
-                config.encoder_head_size = models[0].config.d_kv
-                config.encoder_num_heads = models[0].config.num_heads
+                config.encoder_hidden_size, config.encoder_num_heads, config.encoder_head_size = (
+                    get_encoder_config(models[0][1].config)
+                )
+                (
+                    config.decoder_start_token_id,
+                    config.eos_token_id,
+                    config.bos_token_id,
+                    config.pad_token_id,
+                ) = get_enc_dec_token_ids(models[1][1].config)
 
         # For the training time PP, not all ranks will have the lm_head layer.
         if config.lm_head is None:
-            if decoder_type in ["t5"]:
+            if is_enc_dec:
                 config.share_embedding_table = False
                 if model_metadata_config["enc_dec"] == "dec":
                     config.lm_head = build_linear_config(model_lm_head, "column")
@@ -332,6 +343,8 @@ def torch_to_tensorrt_llm_checkpoint(
                     "gemma",
                     "gemma2",
                     "glm",
+                    "llama",
+                    "mllama",
                 ], f"lm_head not available for decoder {decoder_type}"
                 config.share_embedding_table = True
 
@@ -344,9 +357,9 @@ def torch_to_tensorrt_llm_checkpoint(
         if config.quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
             if config.vocab_size % 64 != 0:
                 # TODO: Check if this works for Mixtral
-                assert (
-                    training_tensor_parallel == 1
-                ), "We do not support padding for training time TP"
+                assert training_tensor_parallel == 1, (
+                    "We do not support padding for training time TP"
+                )
                 print("Padding vocab_embedding and lm_head for AWQ weights export")
                 pad_embedding_lm_head(config)
                 if hf_config is not None:
@@ -377,9 +390,6 @@ def torch_to_tensorrt_llm_checkpoint(
 
         for model_config in model_configs:
             assert model_config.rank >= 0, "Invalid model_config, postprocess_model_config fails."
-
-            if not model_config.quantization and naive_fp8_quantization:
-                naive_quantization(model_config)
 
             merge_qkv(model_config)
             pack_linear_weights(model_config)
@@ -418,7 +428,6 @@ def export_tensorrt_llm_checkpoint(
     export_dir: Union[Path, str] = tempfile.gettempdir(),
     inference_tensor_parallel: int = 0,
     inference_pipeline_parallel: int = 1,
-    naive_fp8_quantization: bool = False,
     use_nfs_workspace: bool = False,
 ):
     """Exports the torch model to the TensorRT-LLM checkpoint and save to the export_dir.
@@ -435,8 +444,6 @@ def export_tensorrt_llm_checkpoint(
             We will merge or split the calibration pipeline parallelism to inference.
             Default is 1, meaning no pipeline parallelism.
         inference_pipeline_parallel: The target inference time pipeline parallel.
-        naive_fp8_quantization: Quantize the model naively to FP8 without calibration.
-            All scaling factors are set to 1.
         use_nfs_workspace: if True, the an NFS workspace will be created under the export_dir and
             used as a shared memory for cross process/node communication.
 
@@ -468,7 +475,6 @@ def export_tensorrt_llm_checkpoint(
             dtype=dtype,
             inference_tensor_parallel=inference_tensor_parallel,
             inference_pipeline_parallel=inference_pipeline_parallel,
-            naive_fp8_quantization=naive_fp8_quantization,
             workspace_path=workspace_path,
         ):
             rank = tensorrt_llm_config["rank"]
@@ -479,8 +485,9 @@ def export_tensorrt_llm_checkpoint(
                 )
                 if excluded_modules_rank:
                     exclude_modules.update(excluded_modules_rank)
-            # For T5 model
-            if decoder_type in ["t5"]:
+            # For Encoder-Decoder model
+            is_enc_dec = model_type_is_enc_dec(tensorrt_llm_config["decoder"])
+            if is_enc_dec:
                 export_dir = prepare_enc_dec_export_dir(tensorrt_llm_config, export_root)
                 export_dir = Path(export_dir)
                 export_dir.mkdir(parents=True, exist_ok=True)
@@ -509,31 +516,17 @@ def export_tensorrt_llm_checkpoint(
                 with open(export_dir / "config.json", "w") as f:
                     json.dump(tensorrt_llm_config, f, indent=4)
 
-            # Hacky implementation for T5 for now
-            new_weights = {}
-            if decoder_type == "t5":
+            # Hacky implementation for Encoder-Decoder for now
+            if is_enc_dec:
+                new_weights = {}
                 for key in weights.keys():
-                    if key == "transformer.vocab_embedding.weight":
-                        new_key = "embedding.vocab_embedding.weight"
-                    elif key.startswith("transformer.layers"):
-                        # For encoder
-                        if tensorrt_llm_config["architecture"] == "EncoderModel":
-                            new_key = key.replace("transformer.layers", "encoder_layers")
-                        # For decoder
-                        else:
-                            new_key = key.replace("transformer.layers", "decoder_layers")
-                    elif key == "transformer.ln_f.weight":
-                        new_key = "final_layernorm.weight"
-                    elif key == "lm_head.weight":
-                        new_key = key
-                    if key.endswith("rel_attn_table.weight"):
-                        new_key = new_key.replace("rel_attn_table.weight", "rel_attn_table")
-                        if key.find(".0.") > 0:
-                            # stores additional the relative attention for pre-compute feature in TRTLLM
-                            new_weights["rel_attn_table"] = weights[key].clone()
+                    new_key = key
+                    if key.endswith("rel_attn_table") and key.find(".0.") > 0:
+                        # stores additional the relative attention for pre-compute feature in TRTLLM
+                        new_weights["rel_attn_table"] = weights[key].clone()
                     new_weights[new_key] = weights[key]
                 weights = new_weights
-            # End of hacky implementation for T5 for now
+            # End of hacky implementation for Encoder-Decoder for now
 
             weights_path = export_dir / f"rank{rank}.safetensors"
             save_file(weights, weights_path)

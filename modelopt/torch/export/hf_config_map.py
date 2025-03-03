@@ -19,7 +19,10 @@
 # first element: a list of possible fields on HF
 # second element: a name of the layer config field inside modelopt
 HF_CONFIG_MAP = [
-    (["n_head", "num_attention_heads", "n_heads", "num_heads"], "num_attention_heads"),
+    (
+        ["n_head", "num_attention_heads", "n_heads", "num_heads", "decoder_attention_heads"],
+        "num_attention_heads",
+    ),
     (
         [
             "num_key_value_heads",

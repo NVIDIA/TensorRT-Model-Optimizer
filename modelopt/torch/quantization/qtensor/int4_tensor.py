@@ -15,11 +15,12 @@
 
 """Implements INT4 quantization for efficient tensor storage and computation."""
 
+import numpy as np
 import torch
 
 from ..extensions import get_cuda_ext
 from ..qtensor.base_qtensor import BaseQuantizedTensor
-from ..utils import reduce_amax
+from ..utils import reduce_amax, reduce_block_padding
 
 __all__ = ["INT4QTensor"]
 
@@ -50,10 +51,11 @@ class INT4QTensor(BaseQuantizedTensor):
 
         scale_quant_maxbound = cls._get_quant_maxbound(num_bits=4)
 
+        # pad the input if needed
+        original_input = input
+        input = reduce_block_padding(input.view(-1), block_sizes={-1: block_size})
+
         # get scales for each block
-        assert (
-            input.numel() % block_size == 0
-        ), "Number of input elements is not divisible by the block size."
         block_input = input.view(-1, block_size)
         scales = scale_quant_maxbound / reduce_amax(block_input, -1)
         # expand scalers to match shape of input
@@ -79,7 +81,7 @@ class INT4QTensor(BaseQuantizedTensor):
             #               | byte  | byte  | byte  |
             packed_output_uint8 = flattened[::2] << 4 | flattened[1::2]
 
-        return cls(input.shape, input.dtype, packed_output_uint8), scales
+        return cls(original_input.shape, input.dtype, packed_output_uint8), scales
 
     def dequantize(self, dtype: torch.dtype = None, **kwarg):
         """Dequantze INT4 packed tensor to a target dtype."""
@@ -95,7 +97,11 @@ class INT4QTensor(BaseQuantizedTensor):
         if cuda_ext and self._quantized_data.is_cuda:
             # use a custom cuda kernel if available
             output = cuda_ext.INT4_dequantize(self._quantized_data, scales, block_sizes[-1])
-            return output.view(self.metadata["shape"]).to(dtype)
+            return (
+                output.view(-1)[: np.prod(self.metadata["shape"])]  # handle padding
+                .view(self.metadata["shape"])
+                .to(dtype)
+            )
         else:
             # indexing in torch required long dtype, we may need to optimize this with customized kernels
             # convert (0, 15) -> (-8, 7)
@@ -111,6 +117,7 @@ class INT4QTensor(BaseQuantizedTensor):
             second_half = second_half.flatten().unsqueeze(-1).transpose(0, 1)
             return (
                 torch.stack([first_half, second_half], dim=-1)
+                .view(-1)[: np.prod(self.metadata["shape"])]  # handle padding
                 .reshape(self.metadata["shape"])
                 .to(dtype)
             )

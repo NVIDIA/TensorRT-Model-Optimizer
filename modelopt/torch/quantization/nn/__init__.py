@@ -15,7 +15,6 @@
 
 """Modules with quantization support."""
 
-from .modules.clip import *
 from .modules.quant_activations import *
 from .modules.quant_batchnorm import *
 from .modules.quant_conv import *

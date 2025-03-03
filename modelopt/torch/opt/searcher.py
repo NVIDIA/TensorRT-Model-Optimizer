@@ -94,9 +94,9 @@ class BaseSearcher(ABC):
         config["verbose"] = config["verbose"] and self.default_search_config["verbose"]
 
         # sanity checks
-        assert (
-            config.keys() == self.default_search_config.keys()
-        ), f"Unexpected config keys: {config.keys() - self.default_search_config.keys()}"
+        assert config.keys() == self.default_search_config.keys(), (
+            f"Unexpected config keys: {config.keys() - self.default_search_config.keys()}"
+        )
 
         return config
 

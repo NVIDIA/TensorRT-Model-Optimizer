@@ -83,6 +83,6 @@ def device_model_tester(model: BaseDeployModel, deployment: dict[str, str]):
             mock_defaults.return_value = {"iterations": 1, "warm_up": 0.0, "duration": 0.0}
             latency, detailed_results = device_model.profile()
         assert latency > 0.0, "Latency must be positive"
-        assert (
-            isinstance(detailed_results, dict) and len(detailed_results) > 0
-        ), "Detailed results must be a non-empty dict"
+        assert isinstance(detailed_results, dict) and len(detailed_results) > 0, (
+            "Detailed results must be a non-empty dict"
+        )

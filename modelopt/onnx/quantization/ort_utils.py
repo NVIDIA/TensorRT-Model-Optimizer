@@ -15,14 +15,63 @@
 
 """Provides basic ORT inference utils, shoule be replaced by modelopt.torch.ort_client."""
 
+import glob
+import logging
+import os
+import platform
 from typing import Union
 
 import onnxruntime as ort
 from onnxruntime.quantization.operators.qdq_base_operator import QDQOperatorBase
 from onnxruntime.quantization.registry import QDQRegistry, QLinearOpsRegistry
+from packaging.version import Version
 
 from modelopt.onnx.quantization.operators import QDQConvTranspose, QDQNormalization
 from modelopt.onnx.quantization.ort_patching import patch_ort_modules
+
+
+def _check_for_tensorrt(min_version: str = "10.0"):
+    """Check if the `tensorrt` python package is installed and that it's >= min_version."""
+    try:
+        import tensorrt
+
+        assert Version(tensorrt.__version__) >= Version(min_version)
+        logging.info(
+            f"Successfully imported the `tensorrt` python package with version {tensorrt.__version__}."
+        )
+    except (AssertionError, ImportError):
+        raise ImportError(
+            f"Could not import the `tensorrt` python package. Please install `tensorrt>={min_version}`"
+            " to use ORT's TensorRT Execution Provider. For more information on version compatibility,"
+            " please check https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements."
+        )
+
+
+def _check_for_libcudnn():
+    lib_pattern = "*cudnn*.dll" if platform.system() == "Windows" else "libcudnn*.so*"
+    env_variable = "PATH" if platform.system() == "Windows" else "LD_LIBRARY_PATH"
+    ld_library_path = os.environ.get(env_variable, "").split(os.pathsep)
+
+    def _check_lib_in_ld_library_path(lib_pattern):
+        for directory in ld_library_path:
+            matches = glob.glob(os.path.join(directory, lib_pattern))
+            if matches:
+                return True, matches[0]
+        return False, None
+
+    found, lib_path = _check_lib_in_ld_library_path(lib_pattern)
+    if found:
+        logging.info(
+            f"{lib_pattern} is accessible in {lib_path}! Please check that this is the correct version needed"
+            f" for your ORT version at https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements."
+        )
+    else:
+        raise FileNotFoundError(
+            f"{lib_pattern} is not accessible in {env_variable}! Please make sure that the path to that library"
+            f" is in the env var to use the CUDA or TensorRT EP and ensure that the correct version is available."
+            f" Versioning compatibility can be checked at https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements."
+        )
+    return found
 
 
 def _prepare_ep_list(calibration_eps: list[str]):
@@ -32,13 +81,24 @@ def _prepare_ep_list(calibration_eps: list[str]):
         if "cuda" in ep:
             device_id = int(ep.split(":")[1]) if ":" in ep else 0
             providers.append(("CUDAExecutionProvider", {"device_id": device_id}))
-        if "dml" in ep:
+        elif "dml" in ep:
             device_id = int(ep.split(":")[1]) if ":" in ep else 0
             providers.append(("DmlExecutionProvider", {"device_id": device_id}))
-        if "cpu" in ep:
+        elif "cpu" in ep:
             providers.append("CPUExecutionProvider")
-        if "trt" in ep:
+        elif "trt" in ep:
             providers.append("TensorrtExecutionProvider")
+            _check_for_tensorrt()
+        else:
+            raise NotImplementedError(f"Execution Provider {ep} not recognized!")
+
+    # Check if `libcudnn*.so*` is available for CUDA and TRT EPs
+    eps_to_check = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
+    if any(
+        item in eps_to_check if isinstance(item, str) else item[0] in eps_to_check
+        for item in providers
+    ):
+        _check_for_libcudnn()
 
     return providers
 
@@ -100,6 +160,7 @@ def configure_ort(
         "Pad",
         "Relu",
         "Reshape",
+        "Slice",
         "Sigmoid",
         "Softmax",
         "Split",

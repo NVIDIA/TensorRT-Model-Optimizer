@@ -76,6 +76,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP="${1#*=}"
       ;;
+    --num_gpu*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      NUM_GPU="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument\n"
       exit 1
@@ -102,6 +106,7 @@ EAGLE_NUM_LAYERS=${EAGLE_NUM_LAYERS:-1}
 REDRAFTER_TOKENS=${REDRAFTER_TOKENS:-1}
 REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
+NUM_GPU=${NUM_GPU:-1}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
@@ -114,7 +119,15 @@ else
   exit 1
 fi
 
-CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
+if [[ "$NUM_GPU" == 1 ]]; then
+  FSDP_ARGS=""
+  MULTI_GPU=""
+else
+  FSDP_ARGS="--fsdp 'full_shard auto_wrap' --fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
+  MULTI_GPU="--multi_gpu"
+fi
+
+CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --mode $MODE \
     --model_name_or_path $MODEL \
     --model_max_length 2048 \
@@ -133,10 +146,9 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --warmup_steps 100 \
     --lr_scheduler_type linear \
     --logging_steps 1 \
-    --fsdp 'full_shard auto_wrap' \
-    --fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP \
     --tf32 True \
     --data_path $DATA \
+    $FSDP_ARGS \
     $SPECULATIVE_ARGS
 "
 

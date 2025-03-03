@@ -27,7 +27,7 @@ from modelopt.torch.opt.dynamic import DynamicModule
 
 from ..nn import QuantModuleRegistry
 from ..nn.modules.quant_linear import _QuantLinear
-from .attention import register_attention_for_kv_quant
+from .attention import register_attention_for_kv_quant, register_hf_attention_for_kv_quant
 
 __all__ = ["register_hf_attentions_on_the_fly"]
 
@@ -199,7 +199,12 @@ def register_hf_attentions_on_the_fly(model):
         if type(module).__name__.endswith("Attention"):
             attention_cls[type(module)] = type(module).__name__
 
-    success = any([register_attention_for_kv_quant(cls) for cls in attention_cls])
+    if transformers.__version__ >= "4.48.0":
+        success = any([register_hf_attention_for_kv_quant(cls) for cls in attention_cls])
+    else:
+        print(f"transformers.__version__: {transformers.__version__} is lower than 4.48.0")
+        print("Legacy attention quantization method will soon be deprecated")
+        success = any([register_attention_for_kv_quant(cls) for cls in attention_cls])
     if not success:
         raise RuntimeError("No Attention class found for KV Cache quantization.")
 

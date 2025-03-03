@@ -47,6 +47,7 @@ MODEL_NAME_PATTERN_MAP = {
     "StarCoder": "gpt",
     "Dbrx": "dbrx",
     "T5": "t5",
+    "Bart": "bart",
     "GLM": "glm",
     "InternLM2ForCausalLM": "internlm",
     "ExaoneForCausalLM": "exaone",
@@ -171,6 +172,13 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8, trust_remote_cod
             model = AutoModelForSeq2SeqLM.from_pretrained(
                 ckpt_path, device_map=device_map, **model_kwargs
             )
+        elif hf_config.model_type == "bart":
+            from transformers import AutoModelForSeq2SeqLM
+
+            # device_map "auto" and "cuda" triggers error regarding meta tensor from safetensors
+            model = AutoModelForSeq2SeqLM.from_pretrained(
+                ckpt_path, device_map=None, **model_kwargs
+            ).to(device)
         elif hf_config.model_type == "glm":
             from transformers import AutoModelForSeq2SeqLM
 

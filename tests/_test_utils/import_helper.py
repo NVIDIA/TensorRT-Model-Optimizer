@@ -19,11 +19,28 @@ import pytest
 import torch
 from packaging.version import Version
 
+from modelopt.onnx.quantization.ort_utils import _check_for_libcudnn, _check_for_tensorrt
+
+
+def skip_if_no_tensorrt():
+    try:
+        _check_for_tensorrt()
+    except (AssertionError, ImportError) as e:
+        pytest.skip(f"{e}", allow_module_level=True)
+
 
 def skip_if_no_trtexec():
-    pytest.importorskip("tensorrt")
     if not shutil.which("trtexec"):
         pytest.skip("trtexec cmdline tool is not available", allow_module_level=True)
+
+
+def skip_if_no_libcudnn():
+    try:
+        found = _check_for_libcudnn()
+        return not found
+    except FileNotFoundError as e:
+        pytest.skip(f"{e}!", allow_module_level=True)
+        return True
 
 
 def skip_if_no_megatron(apex_or_te_required: bool = False):

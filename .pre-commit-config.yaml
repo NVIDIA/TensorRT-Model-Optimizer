@@ -6,20 +6,8 @@ exclude: >
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v5.0.0
     hooks:
-      - id: trailing-whitespace
-      - id: mixed-line-ending
-        args: [--fix=lf]
-      - id: end-of-file-fixer
-      - id: check-merge-conflict
-      - id: requirements-txt-fixer
-      - id: debug-statements
-      - id: check-json
-        exclude: ^.vscode/.*.json # vscode files can take comments
-      - id: check-yaml
-        args: [--allow-multiple-documents]
-      - id: check-toml
       - id: check-added-large-files
         args: [--maxkb=500, --enforce-all]
         exclude: >
@@ -27,21 +15,34 @@ repos:
               examples/diffusers/quantization/assets/.*.png|
               examples/diffusers/cache_diffusion/assets/.*.png|
           )$
+      - id: check-json
+        exclude: ^.vscode/.*.json # vscode files can take comments
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: requirements-txt-fixer
+      - id: trailing-whitespace
 
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.17
+    rev: 0.7.21
     hooks:
       - id: mdformat
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.4
+    rev: v0.9.4
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+    rev: v1.14.1
     hooks:
       - id: mypy
 
@@ -88,25 +89,27 @@ repos:
           (?x)^(
               modelopt/onnx/quantization/operators.py|
               modelopt/onnx/quantization/ort_patching.py|
+              modelopt/torch/_deploy/utils/onnx_utils.py|
               modelopt/torch/export/transformer_engine.py|
               modelopt/torch/quantization/export_onnx.py|
               modelopt/torch/quantization/plugins/attention.py|
-              modelopt/torch/speculative/plugins/transformers.py|
               modelopt/torch/speculative/eagle/utils.py|
-              modelopt/torch/_deploy/utils/onnx_utils.py|
+              modelopt/torch/speculative/plugins/transformers.py|
               examples/chained_optimizations/bert_prune_distill_quantize.py|
-              examples/diffusers/quantization/onnx_utils/export.py|
               examples/diffusers/cache_diffusion/pipeline/models/sdxl.py|
+              examples/diffusers/quantization/onnx_utils/export.py|
               examples/llm_eval/gen_model_answer.py|
               examples/llm_eval/humaneval.py|
               examples/llm_eval/lm_eval_hf.py|
               examples/llm_eval/mmlu.py|
               examples/llm_eval/modeling.py|
-              examples/llm_sparsity/finetune.py|
               examples/llm_qat/main.py|
+              examples/llm_sparsity/finetune.py|
               examples/speculative_decoding/main.py|
               examples/speculative_decoding/medusa_utils.py|
               examples/speculative_decoding/vllm_generate.py|
+              examples/deepseek/quantize_to_nvfp4.py|
+              examples/deepseek/ptq.py|
           )$
 
       # Default hook for Apache 2.0 in core c/c++/cuda files
@@ -132,7 +135,7 @@ repos:
         types_or: [shell]
 
   - repo: https://github.com/keith/pre-commit-buildifier
-    rev: 6.4.0
+    rev: 8.0.1
     hooks:
       - id: buildifier
       - id: buildifier-lint
@@ -143,3 +146,12 @@ repos:
       - id: bandit
         args: ["-c", "pyproject.toml", "-q"]
         additional_dependencies: ["bandit[toml]"]
+
+  # Link checker
+  - repo: https://github.com/lycheeverse/lychee.git
+    rev: v0.15.1
+    hooks:
+      - id: lychee
+        args: ["--no-progress", "--exclude-loopback"]
+        stages: [manual] # Only run with `pre-commit run --all-files --hook-stage manual lychee`
+        exclude: internal/

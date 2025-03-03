@@ -127,7 +127,6 @@ def main(args):
             export_dir=args.output_dir,
             inference_tensor_parallel=args.inference_tensor_parallel,
             inference_pipeline_parallel=args.inference_pipeline_parallel,
-            naive_fp8_quantization=args.naive_quantization,
         )
 
 
@@ -162,7 +161,6 @@ if __name__ == "__main__":
         type=int,
         default=1,
     )
-    parser.add_argument("--naive_quantization", default=False, action="store_true")
     parser.add_argument(
         "--trust_remote_code",
         help="Set trust_remote_code for Huggingface models and tokenizers",

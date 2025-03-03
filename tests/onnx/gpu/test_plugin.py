@@ -20,13 +20,14 @@ import onnx
 import onnx_graphsurgeon as gs
 import onnxruntime
 import pytest
-from _test_utils.import_helper import skip_if_no_trtexec
+from _test_utils.import_helper import skip_if_no_libcudnn, skip_if_no_tensorrt
 from packaging.version import Version
 
 from modelopt.onnx.quantization.quantize import quantize
 from modelopt.onnx.quantization.trt_utils import load_onnx_model
 
-skip_if_no_trtexec()
+skip_if_no_libcudnn()
+skip_if_no_tensorrt()
 
 
 def _create_test_model_trt():
@@ -86,9 +87,9 @@ def _assert_nodes_are_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable):
-                assert (
-                    node.i(inp_idx).op == "DequantizeLinear"
-                ), f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                assert node.i(inp_idx).op == "DequantizeLinear", (
+                    f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                )
     return True
 
 
@@ -105,7 +106,7 @@ def test_trt_plugin(tmpdir):
         assert has_custom_op and custom_ops == ["CustomSkipLayerNormPluginDynamic"]
 
         # Quantize model
-        quantize(f.name)
+        quantize(f.name, calibration_eps=["trt", "cuda:0", "cpu"])
 
         # Output model should be produced in the same tmpdir
         output_onnx_path = f.name.replace(".onnx", ".quant.onnx")

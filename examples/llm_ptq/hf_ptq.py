@@ -42,6 +42,7 @@ from modelopt.torch.utils.dataset_utils import (
     get_max_batch_size,
 )
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
+from modelopt.torch.utils.memory_monitor import launch_memory_monitor
 from modelopt.torch.utils.vlm_dataset_utils import get_vlm_dataset_dataloader
 
 RAND_SEED = 1234
@@ -66,8 +67,11 @@ def auto_quantize(
     # Check if all provided quantization formats are supported
     if args.export_fmt == "hf":
         assert all(
-            qformat in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq"] for qformat in qformat_list
-        ), "One or more quantization formats provided are not supported for unified checkpoint export"
+            qformat in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq", "w4a8_awq"]
+            for qformat in qformat_list
+        ), (
+            "One or more quantization formats provided are not supported for unified checkpoint export"
+        )
     else:
         assert all(
             qformat in ["fp8", "int8_sq", "int4_awq", "w4a8_awq", "nvfp4", "nvfp4_awq"]
@@ -91,7 +95,8 @@ def auto_quantize(
     )
 
     # We need to explicitly calibrate for kv cache quantization
-    enable_kv_cache_quantization = "int8" not in args.qformat
+    enable_kv_cache_quantization = "int8" not in args.qformat and not args.disable_kv_cache_quant
+    print(f"{'Enable' if enable_kv_cache_quantization else 'Disable'} KV cache quantization")
     if enable_kv_cache_quantization:
         mtq.set_quantizer_by_cfg(
             model,
@@ -127,9 +132,9 @@ def quantize_model(model, quant_cfg, args, calib_dataloader=None):
 
     calibrate_loop = create_forward_loop(dataloader=calib_dataloader)
 
-    assert not (
-        args.auto_quantize_bits and args.inference_pipeline_parallel > 1
-    ), "Auto Quantization is not supported for pipeline parallel size > 1"
+    assert not (args.auto_quantize_bits and args.inference_pipeline_parallel > 1), (
+        "Auto Quantization is not supported for pipeline parallel size > 1"
+    )
 
     print("Starting quantization...")
     start_time = time.time()
@@ -156,17 +161,20 @@ def main(args):
     random.seed(RAND_SEED)
     np.random.seed(RAND_SEED)
 
+    # launch a memory monitor to read the currently used GPU memory.
+    launch_memory_monitor()
+
     # Check that only one quantization format is provided for non auto_quant case
     if not args.auto_quantize_bits:
-        assert (
-            len(args.qformat.split(",")) == 1
-        ), "Quantization supports only one quantization format."
+        assert len(args.qformat.split(",")) == 1, (
+            "Quantization supports only one quantization format."
+        )
 
     # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
     if args.export_fmt == "hf":
-        assert (
-            args.sparsity_fmt == "dense"
-        ), f"Sparsity format {args.sparsity_fmt} not supported by unified export api."
+        assert args.sparsity_fmt == "dense", (
+            f"Sparsity format {args.sparsity_fmt} not supported by unified export api."
+        )
 
         if not args.auto_quantize_bits:
             assert args.qformat in [
@@ -237,7 +245,6 @@ def main(args):
     if (
         not args.auto_quantize_bits
         and args.qformat in ["fp8", "int8_sq", "int4_awq", "w4a8_awq", "nvfp4", "nvfp4_awq"]
-        and not args.naive_quantization
     ) or args.auto_quantize_bits:
         # If any qformat provided is not fp8, assert model is on GPU
         if args.qformat not in ["fp8", "nvfp4"]:
@@ -254,9 +261,9 @@ def main(args):
 
         if args.batch_size == 0:
             # TODO: Enable auto-batch size calculation for AutoQuantize
-            assert (
-                args.auto_quantize_bits is None
-            ), "AutoQuantize requires batch_size to be specified, please specify batch_size."
+            assert args.auto_quantize_bits is None, (
+                "AutoQuantize requires batch_size to be specified, please specify batch_size."
+            )
             # Calibration/sparsification will actually take much more memory than regular inference
             # due to intermediate tensors for fake quantization. Setting sample_memory_usage_ratio
             # to 2 to avoid OOM for AWQ/SmoothQuant fake quantization as it will take more memory than inference.
@@ -271,9 +278,9 @@ def main(args):
 
         calib_dataloader = None
         if model_type == "mllama":
-            assert processor is not None and isinstance(
-                processor, MllamaImageProcessor
-            ), "The MllamaImageProcessor must be set."
+            assert processor is not None and isinstance(processor, MllamaImageProcessor), (
+                "The MllamaImageProcessor must be set."
+            )
             calib_dataloader = get_vlm_dataset_dataloader(
                 dataset_name=args.dataset,
                 processor=processor,
@@ -316,7 +323,10 @@ def main(args):
             # Always turn on FP8 kv cache to save memory footprint.
             # For int8_sq, we do not quantize kv cache to preserve accuracy.
             # We turn off FP8 kv cache for unified_hf checkpoint
-            enable_quant_kv_cache = "int8_sq" not in args.qformat
+            enable_quant_kv_cache = (
+                "int8_sq" not in args.qformat and not args.disable_kv_cache_quant
+            )
+
             print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
             quant_cfg["quant_cfg"]["*output_quantizer"] = {
                 "num_bits": 8 if args.qformat == "int8_sq" else (4, 3),
@@ -404,7 +414,6 @@ def main(args):
                 export_dir=export_path,
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
-                naive_fp8_quantization=args.naive_quantization,
             )
         elif args.export_fmt == "hf":
             export_hf_checkpoint(
@@ -461,7 +470,6 @@ if __name__ == "__main__":
         default="dense",
         choices=["dense", "sparsegpt"],
     )
-    parser.add_argument("--naive_quantization", default=False, action="store_true")
     parser.add_argument(
         "--auto_quantize_bits",
         default=None,
@@ -470,6 +478,12 @@ if __name__ == "__main__":
             "Effective bits constraint for AutoQuantize. If not set, "
             "regular quantization without AutoQuantize search will be applied."
         ),
+    )
+    parser.add_argument(
+        "--disable_kv_cache_quant",
+        type=lambda x: x.lower() == "true",
+        choices=[True, False],
+        help="Disable KV cache quantization (True/False)",
     )
     parser.add_argument(
         "--vlm",

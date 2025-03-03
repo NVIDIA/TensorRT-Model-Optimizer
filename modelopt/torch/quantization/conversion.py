@@ -169,9 +169,9 @@ def set_quantizer_by_cfg(quant_model: nn.Module, quant_cfg: Union[QuantizeQuantC
     for pattern, cfg in quant_cfg.items():
         if str(pattern) in QuantModuleRegistry:
             parent_class = QuantModuleRegistry[str(pattern)]
-            assert isinstance(
-                cfg, dict
-            ), f"Expected a dictionary for quantizer configuration for child tensor quantizers of {parent_class}."
+            assert isinstance(cfg, dict), (
+                f"Expected a dictionary for quantizer configuration for child tensor quantizers of {parent_class}."
+            )
             for sub_pattern, sub_cfg in cfg.items():
                 set_quantizer_attribute(quant_model, sub_pattern, sub_cfg, parent_class)
             continue
@@ -251,9 +251,9 @@ def set_quantizer_by_cfg_context(
     Use this context manager with caution. Changing certain attributes of the quantizer such as
     `calibrator` can lead to unexpected behavior.
     """
-    assert not any(
-        cfg for cfg in quant_cfg.values() if isinstance(cfg, (list, tuple))
-    ), "list of config not support."
+    assert not any(cfg for cfg in quant_cfg.values() if isinstance(cfg, (list, tuple))), (
+        "list of config not support."
+    )
 
     original_attributes = {}
     for name, module in quant_model.named_modules():
@@ -304,9 +304,9 @@ def register(original_cls: nn.Module, quantized_cls: nn.Module):
         mtq.register(original_cls=nn.LayerNorm, quantized_cls=QuantLayerNorm)
 
     """
-    assert hasattr(
-        quantized_cls, "_setup"
-    ), "Quantized class must have a _setup method which initializes various quantizers."
+    assert hasattr(quantized_cls, "_setup"), (
+        "Quantized class must have a _setup method which initializes various quantizers."
+    )
 
     quantized_dm_cls = type(
         quantized_cls.__name__, (quantized_cls, DynamicModule, original_cls), {}

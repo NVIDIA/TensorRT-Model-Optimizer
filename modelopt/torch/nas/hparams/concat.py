@@ -104,7 +104,7 @@ class ConcatTracedHp(TracedHp):
                 sum_to_combo[s] = combo_full
         return sum_to_combo
 
-    @property  # type: ignore[override]
+    @property
     def active(self) -> int:
         """Return the sum of active values of all hparams."""
         active = 0
@@ -165,7 +165,7 @@ class ConcatTracedHp(TracedHp):
         imps_split = torch.tensor_split(imp_total, self._hp_start_idx[1:-1])
 
         # Added splitted imps
-        imps = [imp + imp_cat.to(imp) for imp, imp_cat in zip(imps_split, imps_cat)]
+        imps = [imp + imp_cat.to(imp) for imp, imp_cat in zip(imps_split, imps_cat)]  # type: ignore[union-attr]
 
         # We need to aggregate between split importances when the come from the same hparam!
         imps = [

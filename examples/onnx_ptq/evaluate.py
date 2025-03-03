@@ -83,7 +83,7 @@ def main():
     # Compile the TRT model
     compiled_model = client.ir_to_compiled(onnx_bytes)
 
-    print(f"Size of the TensorRT engine: {len(compiled_model)/(1024**2)} MB")
+    print(f"Size of the TensorRT engine: {len(compiled_model) / (1024**2)} MB")
 
     # Create the device model
     device_model = DeviceModel(client, compiled_model, metadata={})

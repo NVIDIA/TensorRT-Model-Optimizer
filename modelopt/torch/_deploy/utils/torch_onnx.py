@@ -453,9 +453,9 @@ def create_onnx_model_dict(
             onnx_graph = onnx.load(onnx_model_file_path)
             onnx_input_names = [input.name for input in onnx_graph.graph.input]
             torch_input_names = model_dict["tree_spec_input"].names
-            assert set(onnx_input_names).issubset(
-                set(torch_input_names)
-            ), "One or more inputs in the onnx model are not present in the torch model."
+            assert set(onnx_input_names).issubset(set(torch_input_names)), (
+                "One or more inputs in the onnx model are not present in the torch model."
+            )
     onnx_model_dict["onnx_model"] = onnx_model
     if model_metadata is None:
         model_metadata = create_model_metadata(

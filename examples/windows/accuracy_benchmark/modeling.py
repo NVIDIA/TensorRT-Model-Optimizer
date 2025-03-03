@@ -19,7 +19,7 @@ import torch
 import torch.nn as nn
 from fire import Fire
 from peft import PeftModel
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForSeq2SeqLM,
@@ -46,7 +46,9 @@ except ImportError:
     AutoAWQForCausalLM = None
 
 
-class EvalModel(BaseModel, arbitrary_types_allowed=True):
+class EvalModel(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     model_path: str
     max_input_length: int = 512
     max_output_length: int = 512

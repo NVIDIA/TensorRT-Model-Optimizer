@@ -69,13 +69,10 @@ install_types = true
 non_interactive = true
 show_error_codes = true
 disable_error_code = [
-    "import",
     "assignment",
     "operator",
     "has-type",
     "var-annotated",
-    "operator",
-    "call-arg",
 ]
 explicit_package_bases = true
 namespace_packages = true
