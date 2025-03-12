@@ -23,7 +23,7 @@ import torch
 import torch.nn as nn
 
 from modelopt.torch.quantization.model_calib import enable_stats_collection, finish_stats_collection
-from modelopt.torch.quantization.qtensor import NVFP4QTensor
+from modelopt.torch.quantization.qtensor import FP8QTensor, NVFP4QTensor
 from modelopt.torch.quantization.utils import is_quantized_linear
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
@@ -31,6 +31,8 @@ from .model_config import (
     KV_CACHE_FP8,
     KV_CACHE_INT8,
     QUANTIZATION_FP8,
+    QUANTIZATION_FP8_PB_REAL,
+    QUANTIZATION_FP8_PB_WO,
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_INT8_SQ,
     QUANTIZATION_NONE,
@@ -245,25 +247,19 @@ def get_prequant_scaling_factor(module: nn.Module) -> torch.Tensor:
     return prequant_scaling_factor
 
 
-def get_kv_cache_scaling_factor(qkv_modules: list[nn.Module]) -> torch.Tensor:
+def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
     """Returns the kv_cache scaling factor if output quantizer is set. Else returns None by default."""
-    scaling_factors = [
-        get_scaling_factor(module.output_quantizer)
-        for module in qkv_modules
-        if hasattr(module, "output_quantizer")
-    ]
+    scaling_factor = (
+        get_scaling_factor(kv_module.output_quantizer)
+        if hasattr(kv_module, "output_quantizer")
+        else None
+    )
 
-    scaling_factors = [
-        scaling_factor for scaling_factor in scaling_factors if scaling_factor is not None
-    ]
-
-    if not scaling_factors:
+    if not scaling_factor:
         return None
 
-    scaling_factor = torch.stack(scaling_factors).max(dim=0).values
-
     # For FP8, we recommend default kv cache scaling factor to be 1.
-    if get_kv_cache_dtype(qkv_modules) == KV_CACHE_FP8:
+    if get_kv_cache_dtype(kv_module) == KV_CACHE_FP8:
         if scaling_factor.item() > 0.5:
             warn(
                 f"!!!!\nWarning: Large KV activations detected: {scaling_factor.item()}, "
@@ -369,6 +365,11 @@ def get_quantization_format(module) -> Optional[str]:
             return QUANTIZATION_INT8_SQ
 
         if w_quantizer.num_bits == (4, 3):
+            if w_quantizer.block_sizes:
+                assert w_quantizer.block_sizes[-1] > 0, "Invalid block_sizes for FP8 quantizer"
+                if _is_enabled(layer.input_quantizer):
+                    return QUANTIZATION_FP8_PB_REAL
+                return QUANTIZATION_FP8_PB_WO
             return QUANTIZATION_FP8
 
         if w_quantizer.num_bits == (2, 1):
@@ -458,6 +459,50 @@ def process_layer_quant_config(layer_config_dict):
     return per_layer_config
 
 
+def pack_int4_in_uint8(weight, weights_scaling_factor):
+    """Packs the INT4 weights into uint8 tensor."""
+    out_dim = weight.shape[-2]
+    assert out_dim % 2 == 0, f"Cannot pack weight. Out dimension {out_dim} is not an even number."
+    in_dim = weight.shape[-1]
+    block_size = weight.shape[-1] // weights_scaling_factor.shape[-1]
+
+    # Scale, round, and clamp to the signed 4-bit range [-8..7].
+    int8_tensor = (
+        (weight / weights_scaling_factor[..., :, torch.arange(in_dim) // block_size])
+        .round()
+        .clamp(-8, 7)
+        .to(torch.int8)
+    )
+
+    # -- Handle the MoE (3D) case vs. the 2D case --
+    if int8_tensor.dim() == 3:
+        # Dimensions might be (experts, out_dim, in_dim)
+        transpose = int8_tensor.permute(0, 2, 1)  # -> (experts, in_dim, out_dim)
+        # Reshape to group two output channels (out_dim // 2) and keep an extra dimension of size 2
+        transpose = transpose.reshape(-1, in_dim, out_dim // 2, 2)  # (E, in_dim, out_dim//2, 2)
+
+        # Pack two 4-bit values (val0,val1) into a single byte:
+        val0 = transpose[..., 0] & 0x0F
+        val1 = transpose[..., 1] & 0x0F
+        packed_byte = val0 | (val1 << 4)
+
+        # Transpose back to the shape (experts, out_dim // 2, in_dim)
+        return packed_byte.permute(0, 2, 1).contiguous().view(torch.uint8)
+
+    else:
+        # 2D weights: shape typically (out_dim, in_dim)
+        # Transpose to (in_dim, out_dim)
+        reshaped = int8_tensor.T.reshape(in_dim, out_dim // 2, 2)
+
+        # Pack two 4-bit values into one byte
+        val0 = reshaped[..., 0] & 0x0F
+        val1 = reshaped[..., 1] & 0x0F
+        packed_byte = val0 | (val1 << 4)
+
+        # Return shape (out_dim // 2, in_dim)
+        return packed_byte.T.contiguous().view(torch.uint8)
+
+
 def to_quantized_weight(
     weight: torch.Tensor,
     weights_scaling_factor: torch.Tensor,
@@ -481,37 +526,16 @@ def to_quantized_weight(
     if quantization == QUANTIZATION_INT8_SQ:
         return (weight / weights_scaling_factor[:, None]).round().clamp(-128, 127).to(torch.int8)
 
+    if quantization == QUANTIZATION_FP8_PB_WO:
+        return FP8QTensor.quantize(
+            weight, weights_scaling_factor.squeeze(), block_sizes={-1: block_size, -2: block_size}
+        )[0]._quantized_data
+
+    if quantization == QUANTIZATION_FP8_PB_REAL:
+        return weight.data
+
     if quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
-        out_dim = weight.shape[-2]
-        assert out_dim % 2 == 0, (
-            f"Cannot pack weight. Out dimension {out_dim} is not an even number."
-        )
-        in_dim = weight.shape[-1]
-        block_size = weight.shape[-1] // weights_scaling_factor.shape[-1]
-        int8_tensor = (
-            (weight / weights_scaling_factor[..., :, torch.arange(in_dim) // block_size])
-            .round()
-            .clamp(-8, 7)
-            .to(torch.int8)
-        )
-
-        if int8_tensor.dim() == 3:
-            # Case of MoE, where weights are stacked
-            transpose = int8_tensor.permute(0, 2, 1)  # (experts, in_dim, out_dim)
-            int8_tensor = transpose.reshape(
-                -1,
-                in_dim,
-                out_dim // 2,
-                2,
-            )
-            int4x2_tensor = (int8_tensor[..., 0] & 0x0F) | (int8_tensor[..., 1] << 4)
-            # The shape of the returned weight is (experts, out_dim // 2, in_dim)
-            return int4x2_tensor.permute(0, 2, 1).contiguous()
-
-        int8_tensor = int8_tensor.T.reshape(in_dim, out_dim // 2, 2)  # (in_dim, out_dim)
-        int4x2_tensor = (int8_tensor[..., 0] & 0x0F) | (int8_tensor[..., 1] << 4)
-        # The shape of the returned weight is (out_dim // 2, in_dim)
-        return int4x2_tensor.T.contiguous()
+        return pack_int4_in_uint8(weight, weights_scaling_factor)
 
     if quantization in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ]:
         assert block_size is not None, "Block size not passed. Unable to quantize to NVFP4 format."

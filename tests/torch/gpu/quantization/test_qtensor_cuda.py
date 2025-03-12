@@ -371,3 +371,39 @@ class TestQTensor:
         after_quantize = _get_gpu_mem_used()
 
         assert after_quantize - before_quantize < input_size * 10
+
+    @pytest.mark.parametrize(
+        "num_bits, block_sizes, axis, input_shape, expected_output_shape",
+        [
+            # FP8, 2D block
+            (
+                (4, 3),
+                {-1: 128, -2: 128},
+                None,
+                (128, 576),
+                (128, 576),
+            ),
+            # FP8, 2D block
+            (
+                (4, 3),
+                {-1: 128, -2: 128},
+                None,
+                (576, 128),
+                (576, 128),
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("device", ["cpu", "cuda"])
+    def test_quantized_data_shape(
+        self, num_bits, axis, block_sizes, input_shape, expected_output_shape, device
+    ):
+        quant_attr_cfg = QuantizerAttributeConfig(
+            num_bits=num_bits, block_sizes=block_sizes, fake_quant=False, axis=axis
+        )
+        quantizer = TensorQuantizer(quant_attr_cfg).to(device)
+        test_input = torch.rand(input_shape, device=device)
+
+        x = test_input.to(device)
+        q_x = quantizer(x)
+
+        assert q_x._quantized_data.shape == expected_output_shape

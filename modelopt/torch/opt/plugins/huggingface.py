@@ -25,12 +25,7 @@ import torch
 
 from modelopt.torch.utils import print_rank_0
 
-from ..conversion import (
-    ModeloptStateManager,
-    has_nas_modelopt_state,
-    modelopt_state,
-    restore_from_modelopt_state,
-)
+from ..conversion import ModeloptStateManager, modelopt_state, restore_from_modelopt_state
 
 __all__ = ["enable_huggingface_checkpointing"]
 
@@ -61,7 +56,7 @@ def _patch_model_init_for_modelopt(cls, model_path):
         cls._original__init__(self, *args, **kwargs)
         if os.path.isfile(modelopt_state_path):
             modelopt_state = torch.load(modelopt_state_path, map_location="cpu", weights_only=False)
-            if not has_nas_modelopt_state(modelopt_state):
+            if not ModeloptStateManager.has_state_for_mode_type("nas", state=modelopt_state):
                 restore_from_modelopt_state(self, modelopt_state)
                 print_rank_0(f"Restored ModelOpt state from {modelopt_state_path}")
 

@@ -44,12 +44,12 @@
 - [Model Optimizer Overview](#model-optimizer-overview)
 - [Installation](#installation--docker)
 - [Techniques](#techniques)
-  - [Quantization](#quantization)
+  - [Quantization](#quantization-examples-docs)
     - [Quantized Checkpoints](#quantized-checkpoints)
-  - [Pruning](#pruning)
-  - [Distillation](#distillation)
-  - [Speculative Decoding](#speculative-decoding)
-  - [Sparsity](#sparsity)
+  - [Pruning](#pruning-examples-docs)
+  - [Distillation](#distillation-examples-docs)
+  - [Speculative Decoding](#speculative-decoding-examples-docs)
+  - [Sparsity](#sparsity-examples-docs)
 - [Examples](#examples)
 - [Support Matrix](#model-support-matrix)
 - [Benchmark](#benchmark)
@@ -158,7 +158,7 @@ Please find the [detailed performance benchmarks](./examples/benchmark.md).
 
 ## Roadmap
 
-Please see our [product roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/108).
+Please see our [product roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/146).
 
 ## Release Notes
 

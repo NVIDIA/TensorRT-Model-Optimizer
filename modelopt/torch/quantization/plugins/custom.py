@@ -86,6 +86,7 @@ class _ParallelLinear(_QuantFunctionalMixin):
     _parallel_state: ParallelState
     _is_column_parallel = False
     _is_row_parallel = False
+    _quantized_linear_fn: Callable = _QuantLinear.quantized_linear_fn
 
     @property
     def functionals_to_replace(self) -> Iterator[tuple[ModuleType, str, Callable]]:
@@ -93,7 +94,10 @@ class _ParallelLinear(_QuantFunctionalMixin):
             if not hasattr(package, func_name):
                 continue
             quantized_func = partial(
-                _QuantLinear.quantized_linear_fn, package, "_" + func_name, self
+                self.__class__._quantized_linear_fn,
+                package,
+                "_" + func_name,
+                self,
             )
             if hasattr(getattr(package, func_name), "__dict__"):
                 quantized_func.__dict__.update(getattr(package, func_name).__dict__)

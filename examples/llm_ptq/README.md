@@ -115,6 +115,7 @@ InternLM2 | Yes | No | Yes | Yes<sup>3</sup> | -
 Exaone | Yes | Yes | Yes | Yes | -
 Minitron | Yes | Yes | Yes | Yes<sup>2</sup> | Yes
 T5 | Yes | Yes | Yes | Yes | -
+Whisper | Yes | No | No | No | -
 
 > *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty.*
 

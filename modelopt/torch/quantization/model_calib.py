@@ -43,7 +43,9 @@ __all__ = ["max_calibrate", "awq", "smoothquant"]
 
 
 @torch.no_grad()
-def max_calibrate(model: nn.Module, forward_loop: Optional[ForwardLoop] = None):
+def max_calibrate(
+    model: nn.Module, forward_loop: Optional[ForwardLoop] = None, distributed_sync=True
+):
     """Calibrate the model using max."""
     enable_stats_collection(model)
     if forward_loop is None:
@@ -59,6 +61,9 @@ def max_calibrate(model: nn.Module, forward_loop: Optional[ForwardLoop] = None):
 
     forward_loop(model)
     finish_stats_collection(model)
+
+    if not distributed_sync:
+        return
 
     for name, module in model.named_modules():
         if isinstance(module, TensorQuantizer) and module.amax is not None:

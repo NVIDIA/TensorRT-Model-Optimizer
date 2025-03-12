@@ -23,6 +23,7 @@ from typing import Any, Optional, Union
 
 import torch
 from megatron.core import dist_checkpointing, mpu
+from megatron.core.dist_checkpointing.serialization import get_default_load_sharded_strategy
 from megatron.core.models.gpt import GPTModel
 from megatron.core.models.mamba import MambaModel
 from megatron.core.parallel_state import (
@@ -155,45 +156,35 @@ def restore_modelopt_state_metadata(sharded_modelopt_state: dict[str, Any]) -> d
     return {"modelopt_state_dict": modelopt_state_dict, "modelopt_version": modelopt_version}
 
 
-def _get_gpt_sharded_modelopt_state(
-    num_layers: int = -1,
+def _get_gpt_mamba_sharded_modelopt_state(
+    model: torch.nn.Module,
+    prefix: str = "",
     num_medusa_heads: int = 0,
     num_eagle_layers: int = 0,
-    model: Optional[torch.nn.Module] = None,
-    prefix: str = "",
+    num_mtp_module: int = 0,
 ) -> dict[str, Any]:
-    """Return the sharded modelopt_state for a GPTModel.
-
-    If a GPTModel is not provided, then the sharded modelopt_state will still return a
-    dictionary of ShardedObject. This is used to load the sharded modelopt_state before
-    the initialization of a GPTModel.
+    """Return the sharded modelopt_state for a GPTModel or MambaModel.
 
     Args:
-        num_layers: number of decoder layers in the GPTModel
-        num_medusa_heads: number of Medusa heads in the GPTModel
-        num_eagle_layers: number of Eagle layers in the GPTModel
-        model: optionally provide a GPTModel instance
+        model: a GPTModel or MambaModel instance
         prefix: the prefix to add to the modelopt_state keys
+        num_medusa_heads: number of Medusa heads in the model
+        num_eagle_layers: number of Eagle layers in the model
+        num_mtp_module: number of MTP in the model
     """
-    if model is not None:
-        num_layers = model.config.num_layers
-        if hasattr(model, "medusa_heads") and model.medusa_heads is not None:
-            num_medusa_heads = len(model.medusa_heads)
-        if hasattr(model, "eagle_module") and model.eagle_module is not None:
-            num_eagle_layers = len(model.eagle_module.decoder.layers)
-    elif num_layers < 0:
-        raise ValueError("Either num_layers or a model instance must be provided!")
+    if hasattr(model, "medusa_heads") and model.medusa_heads is not None:
+        num_medusa_heads = len(model.medusa_heads)
+    if hasattr(model, "eagle_module") and model.eagle_module is not None:
+        num_eagle_layers = len(model.eagle_module.decoder.layers)
+    if hasattr(model, "mtp") and model.mtp is not None:
+        num_mtp_module = len(model.mtp)
 
-    modelopt_state = {} if model is None else copy.deepcopy(mto.modelopt_state(model))
+    modelopt_state = copy.deepcopy(mto.modelopt_state(model))
     quantizer_state, subnet_config = remove_modelopt_state_metadata(modelopt_state)
 
     # The sharded modelopt_state remains the part that is shared across all DP, TP, PP ranks.
     sharded_modelopt_state = modelopt_state
     sharded_offsets = []
-
-    # Compute per pp rank num_layers and global_layer_offset
-    local_num_layers = num_layers // get_pipeline_model_parallel_world_size()
-    global_layer_offset = local_num_layers * get_pipeline_model_parallel_rank()
 
     # First pp stage
     if get_pipeline_model_parallel_rank() == 0:
@@ -221,24 +212,39 @@ def _get_gpt_sharded_modelopt_state(
             sharded_offsets,
         )
 
-        local_key = "medusa_heads"
-        global_key = f"{prefix}medusa_heads"
-        local_state = {}
-        _remap_quantizer_state_with_prefix(local_state, local_key, quantizer_state)
-        _remap_sparsity_state_with_prefix(local_state, local_key, subnet_config)
+        # Medusa heads
         if num_medusa_heads > 0:
+            local_key = "medusa_heads"
+            global_key = f"{prefix}medusa_heads"
+            local_state = {}
+            _remap_quantizer_state_with_prefix(local_state, local_key, quantizer_state)
+            _remap_sparsity_state_with_prefix(local_state, local_key, subnet_config)
             sharded_modelopt_state[local_key] = make_sharded_object_for_checkpoint(
                 local_state,
                 global_key,
                 sharded_offsets,
             )
 
-        local_key = "eagle_module"
-        global_key = f"{prefix}eagle_module"
-        local_state = {}
-        _remap_quantizer_state_with_prefix(local_state, local_key, quantizer_state)
-        _remap_sparsity_state_with_prefix(local_state, local_key, subnet_config)
+        # Eagle module
         if num_eagle_layers > 0:
+            local_key = "eagle_module"
+            global_key = f"{prefix}eagle_module"
+            local_state = {}
+            _remap_quantizer_state_with_prefix(local_state, local_key, quantizer_state)
+            _remap_sparsity_state_with_prefix(local_state, local_key, subnet_config)
+            sharded_modelopt_state[local_key] = make_sharded_object_for_checkpoint(
+                local_state,
+                global_key,
+                sharded_offsets,
+            )
+
+        # MTP module
+        if num_mtp_module > 0:
+            local_key = "mtp"
+            global_key = f"{prefix}mtp"
+            local_state = {}
+            _remap_quantizer_state_with_prefix(local_state, local_key, quantizer_state)
+            _remap_sparsity_state_with_prefix(local_state, local_key, subnet_config)
             sharded_modelopt_state[local_key] = make_sharded_object_for_checkpoint(
                 local_state,
                 global_key,
@@ -246,8 +252,8 @@ def _get_gpt_sharded_modelopt_state(
             )
 
     # Each pp rank owns some stages
-    for local_layer_id in range(local_num_layers):
-        global_layer_id = global_layer_offset + local_layer_id
+    for local_layer_id, layer in enumerate(model.decoder.layers):
+        global_layer_id = layer.layer_number - 1
         local_key = f"decoder.layers.{local_layer_id}"
         global_key = f"{prefix}decoder.layers.{global_layer_id}"
         local_state = {}
@@ -263,11 +269,11 @@ def _get_gpt_sharded_modelopt_state(
 
 
 def get_sharded_modelopt_state(
-    num_layers: int,
     model: torch.nn.Module,
     prefix: str = "",
     num_medusa_heads: int = 0,
     num_eagle_layers: int = 0,
+    num_mtp_module: int = 0,
 ) -> dict[str, Any]:
     """Return the sharded modelopt_state.
 
@@ -294,19 +300,19 @@ def get_sharded_modelopt_state(
     To restore the metadata, we simply revert the process.
 
     Args:
-        num_layers: number of decoder layers in the MCore model
         model: a MCore model instance
         prefix: the prefix to add to the modelopt_state keys ("model." for NeMo)
         num_medusa_heads: number of Medusa heads
+        num_eagle_layers: number of Eagle layers
+        num_mtp_module: number of MTP modules
     """
-    support_list = SUPPORTED_MODELS
-
-    if any([isinstance(model, arch) for arch in support_list]):
-        return _get_gpt_sharded_modelopt_state(
-            num_layers=num_layers,
+    if any([isinstance(model, arch) for arch in SUPPORTED_MODELS]):
+        return _get_gpt_mamba_sharded_modelopt_state(
             model=model,
             prefix=prefix,
             num_medusa_heads=num_medusa_heads,
+            num_eagle_layers=num_eagle_layers,
+            num_mtp_module=num_mtp_module,
         )
     else:
         raise ValueError(
@@ -382,9 +388,7 @@ def save_sharded_modelopt_state(
         os.makedirs(modelopt_checkpoint_name, exist_ok=True)
 
     dist_checkpointing.save(
-        get_sharded_modelopt_state(-1, model[0], prefix),
-        modelopt_checkpoint_name,
-        sharded_strategy,
+        get_sharded_modelopt_state(model[0], prefix), modelopt_checkpoint_name, sharded_strategy
     )
 
 
@@ -403,10 +407,10 @@ def restore_sharded_modelopt_state(
         if len(model) > 1:
             raise ValueError("sharded_modelopt_state does not support virtual pipeline parallel!")
         if not mto.ModeloptStateManager.is_converted(model[0]):
-            modelopt_state = restore_modelopt_state_metadata(
-                dist_checkpointing.load(
-                    get_sharded_modelopt_state(-1, model[0], prefix),
-                    modelopt_checkpoint_name,
-                )
+            sharded_modelopt_state = dist_checkpointing.load(
+                get_sharded_modelopt_state(model[0], prefix),
+                modelopt_checkpoint_name,
+                get_default_load_sharded_strategy(modelopt_checkpoint_name),
             )
+            modelopt_state = restore_modelopt_state_metadata(sharded_modelopt_state)
             model[0] = mto.restore_from_modelopt_state(model[0], modelopt_state)

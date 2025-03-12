@@ -25,6 +25,7 @@ write your own one. Currently, we support plugins for
 - :meth:`nemo<modelopt.torch.quantization.plugins.nemo>`
 - :meth:`fairscale<modelopt.torch.quantization.plugins.fairscale>`
 - :meth:`peft<modelopt.torch.quantization.plugins.peft>`
+- :meth:`transformer_engine<modelopt.torch.quantization.plugins.transformer_engine>`
 """
 
 from modelopt.torch.utils import import_plugin
@@ -49,3 +50,6 @@ with import_plugin("fairscale"):
 
 with import_plugin("peft"):
     from .peft import *
+
+with import_plugin("transformer_engine"):
+    from .transformer_engine import *

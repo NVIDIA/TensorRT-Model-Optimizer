@@ -98,6 +98,17 @@ def split_config_and_weights(
             else:
                 array_key = f"{prefix}.{k}"
 
+            # TensorRT-LLM 0.17 uses the kv_cache_scaling_factor,
+            # the following code will be deprecated after the 0.18 upgrade.
+            if "v_cache_scaling_factor" in array_key:
+                k_cache_scaling_factor_key = array_key.replace(
+                    "v_cache_scaling_factor", "k_cache_scaling_factor"
+                )
+                if k_cache_scaling_factor_key in weights:
+                    weights[
+                        array_key.replace("v_cache_scaling_factor", "kv_cache_scaling_factor")
+                    ] = torch.maximum(v, weights[k_cache_scaling_factor_key])
+
             # Construct per_layer quantization dictionary, with block size information
             if array_key != "transformer.quantization" and (
                 "quantization" in array_key or "awq_block_size" in array_key

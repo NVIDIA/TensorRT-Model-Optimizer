@@ -87,7 +87,10 @@ class FP8QTensor(BaseQuantizedTensor):
         # Quantization
         quantized_data = (input / expanded_scales).to(torch.float8_e4m3fn)
 
-        return cls(original_input.shape, original_input.dtype, quantized_data), scales
+        # handle padded tensors
+        slices = tuple(slice(0, dim) for dim in original_input.shape)
+
+        return cls(original_input.shape, original_input.dtype, quantized_data[slices]), scales
 
     def dequantize(self, dtype: torch.dtype = None, **kwarg):
         """Dequantze FP8 packed tensor to a target dtype."""
@@ -99,8 +102,12 @@ class FP8QTensor(BaseQuantizedTensor):
         scales = kwarg["scale"]
         block_sizes = kwarg.get("block_sizes", None)
 
-        shape = self._quantized_data.shape
+        quantized_data = self._quantized_data
         if block_sizes:
+            # pad the weight if needed
+            quantized_data = reduce_block_padding(quantized_data, block_sizes)
+            shape = quantized_data.shape
+
             # Compute expanded shape for broadcasting scales
             expanded_shape = list(shape)
             for dim, block_size in block_sizes.items():
@@ -120,4 +127,4 @@ class FP8QTensor(BaseQuantizedTensor):
         # handle padded tensors
         slices = tuple(slice(0, dim) for dim in self.metadata["shape"])
 
-        return (self._quantized_data.view(torch.float8_e4m3fn).to(dtype) * scales.to(dtype))[slices]
+        return (quantized_data.to(dtype) * scales.to(dtype))[slices]

@@ -31,7 +31,7 @@ import modelopt.torch.quantization as mtq
         mtq.INT4_AWQ_REAL_QUANT_CFG,
         mtq.FP8_PER_TENSOR_REAL_QUANT_CFG,
         mtq.FP8_PER_CHANNEL_REAL_QUANT_CFG,
-        mtq.FP8_BLOCKWISE_REAL_QUANT_CFG,
+        mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG,
     ],
 )
 def test_real_quantize(model_cls, config):
@@ -60,7 +60,7 @@ def test_real_quantize(model_cls, config):
     real_quant_mem = get_model_size(model)
 
     # check memory usage
-    if config != mtq.FP8_BLOCKWISE_REAL_QUANT_CFG:  # FP8 block may pad the weights
+    if config != mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG:  # FP8 block may pad the weights
         assert fake_quant_mem > real_quant_mem, "Memory after real quantization is not reduced."
 
     # test forward
@@ -82,7 +82,7 @@ def test_real_quantize(model_cls, config):
         mtq.INT4_AWQ_REAL_QUANT_CFG,
         mtq.FP8_PER_TENSOR_REAL_QUANT_CFG,
         mtq.FP8_PER_CHANNEL_REAL_QUANT_CFG,
-        mtq.FP8_BLOCKWISE_REAL_QUANT_CFG,
+        mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG,
     ],
 )
 def test_save_restore(model_cls, config):

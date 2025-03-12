@@ -53,6 +53,7 @@ MODEL_NAME_PATTERN_MAP = {
     "ExaoneForCausalLM": "exaone",
     "Nemotron": "gpt",
     "Deepseek": "deepseek",
+    "Whisper": "whisper",
 }
 
 
@@ -106,20 +107,36 @@ def get_tokenizer(ckpt_path, trust_remote_code=False, **kwargs):
     return tokenizer
 
 
-def get_processor(ckpt_path, device=None, trust_remote_code=False):
+def get_processor(ckpt_path, model_type, device=None, trust_remote_code=False):
     """
     Returns a :class:`modelopt.torch.utils.image_processor.MllamaImageProcessor` object.
     """
-    processor = AutoProcessor.from_pretrained(
-        ckpt_path,
-        padding_side="left",
-        trust_remote_code=trust_remote_code,
-    )
-    if processor.tokenizer.pad_token is None:
-        processor.tokenizer.pad_token = processor.tokenizer.eos_token
-    assert processor.tokenizer.pad_token is not None, f"Pad token for {ckpt_path} cannot be set!"
+    if model_type == "whisper":
+        processor = AutoProcessor.from_pretrained(
+            ckpt_path,
+            padding_side="left",
+            trust_remote_code=trust_remote_code,
+        )
+        if processor.tokenizer.pad_token is None:
+            processor.tokenizer.pad_token = processor.tokenizer.eos_token
+        assert processor.tokenizer.pad_token is not None, (
+            f"Pad token for {ckpt_path} cannot be set!"
+        )
 
-    return MllamaImageProcessor(processor, device)
+        return processor
+    elif model_type == "mllama":
+        processor = AutoProcessor.from_pretrained(
+            ckpt_path,
+            padding_side="left",
+            trust_remote_code=trust_remote_code,
+        )
+        if processor.tokenizer.pad_token is None:
+            processor.tokenizer.pad_token = processor.tokenizer.eos_token
+        assert processor.tokenizer.pad_token is not None, (
+            f"Pad token for {ckpt_path} cannot be set!"
+        )
+
+        return MllamaImageProcessor(processor, device)
 
 
 def get_dtype(dtype):
@@ -179,6 +196,12 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8, trust_remote_cod
             model = AutoModelForSeq2SeqLM.from_pretrained(
                 ckpt_path, device_map=None, **model_kwargs
             ).to(device)
+        elif hf_config.model_type == "whisper":
+            from transformers import WhisperForConditionalGeneration
+
+            model = WhisperForConditionalGeneration.from_pretrained(
+                ckpt_path, device_map=device_map, **model_kwargs
+            )
         elif hf_config.model_type == "glm":
             from transformers import AutoModelForSeq2SeqLM
 
@@ -246,4 +269,4 @@ def is_model_on_gpu(model) -> bool:
 
 def is_enc_dec(model_type) -> bool:
     """Return if the model is a encoder-decoder model."""
-    return model_type in ["t5", "bart"]
+    return model_type in ["t5", "bart", "whisper"]

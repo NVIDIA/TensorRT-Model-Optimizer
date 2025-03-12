@@ -594,15 +594,27 @@ class TensorQuantizer(nn.Module):
                         getattr(self, "_onnx_quantizer_type", None),
                     )
                 else:
-                    # Static block quantization, e.g., INT4_BLOCKWISE
+                    # Static block quantization,
                     # Double quantization is not supported
-                    outputs = static_block_quant(
-                        inputs,
-                        amax,
-                        self._num_bits,
-                        self._unsigned,
-                        self._narrow_range,
-                    )
+                    assert amax is not None, "amax is required for static quantization."
+                    if isinstance(self._num_bits, tuple):
+                        # Float-point static quantization, e.g., FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG
+                        E, M = self._num_bits  # noqa: N806
+                        # assert all the block sizes are valid numbers
+                        assert all(
+                            isinstance(v, int) and v > 0 for v in self.block_sizes.values()
+                        ), "Invalid block sizes for static block quantization."
+
+                        outputs = scaled_e4m3(inputs, amax, E, M, self._trt_high_precision_dtype)
+                    else:
+                        # Integer static quantization, e.g., INT4_BLOCKWISE
+                        outputs = static_block_quant(
+                            inputs,
+                            amax,
+                            self._num_bits,
+                            self._unsigned,
+                            self._narrow_range,
+                        )
 
                 # Add bias back to output tensor in affine quantization
                 if self.bias_calibrator is not None:
@@ -891,6 +903,10 @@ class TensorQuantizer(nn.Module):
             self._calibrator.collect(inputs)
 
         if self._if_quant:
+            # Check if the input tensor is contiguous
+            # Non-contiguous tensors will generate incorrect FP4 quantization results
+            if hasattr(inputs, "is_contiguous") and not inputs.is_contiguous():
+                inputs.data = inputs.data.contiguous()
             outputs = self._quant_forward(inputs)
 
         if (

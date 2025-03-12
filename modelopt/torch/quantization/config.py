@@ -280,6 +280,7 @@ FP8_DEFAULT_CFG = {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*lm_head*": {"enable": False},
+        "*proj_out*": {"enable": False},  # In Whisper model, lm_head has key name proj_out
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
@@ -320,7 +321,28 @@ FP8_PER_CHANNEL_REAL_QUANT_CFG = {
     "algorithm": "max",
 }
 
-FP8_BLOCKWISE_REAL_QUANT_CFG = {
+# FP8 2D blockwise fake quantization config for deepseek models
+FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (4, 3),
+            "block_sizes": {-1: 128, -2: 128},
+            "enable": True,
+        },
+        "*input_quantizer": {"enable": False},
+        "*lm_head*": {"enable": False},
+        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*router*": {"enable": False},  # Skip the MOE router
+        "*output_layer*": {"enable": False},
+        "output.*": {"enable": False},
+        **_default_disabled_quantizer_cfg,
+        "default": {"enable": False},
+    },
+    "algorithm": {"method": "max"},
+}
+
+# FP8 2D blockwise real quantization config for deepseek models
+FP8_2D_BLOCKWISE_REAL_QUANT_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {
             "num_bits": (4, 3),
@@ -338,7 +360,6 @@ FP8_BLOCKWISE_REAL_QUANT_CFG = {
     },
     "algorithm": "max",
 }
-
 
 FP8_PER_CHANNEL_CFG = {
     "quant_cfg": {
@@ -526,7 +547,8 @@ choices: set[str] = {
     "INT4_AWQ_REAL_QUANT_CFG",
     "FP8_PER_TENSOR_REAL_QUANT_CFG",
     "FP8_PER_CHANNEL_REAL_QUANT_CFG",
-    "FP8_BLOCKWISE_REAL_QUANT_CFG",
+    "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
+    "FP8_2D_BLOCKWISE_REAL_QUANT_CFG",
     "FP8_AFFINE_KV_CFG",
     "NVFP4_AFFINE_KV_CFG",
     "MXFP8_DEFAULT_CFG",

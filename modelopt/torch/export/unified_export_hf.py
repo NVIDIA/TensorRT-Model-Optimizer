@@ -30,6 +30,7 @@ from modelopt import __version__
 from .layer_utils import get_experts_list, is_layernorm, is_moe, is_quantlinear
 from .model_config import (
     QUANTIZATION_FP8,
+    QUANTIZATION_FP8_PB_REAL,
     QUANTIZATION_NONE,
     QUANTIZATION_NVFP4,
     QUANTIZATION_NVFP4_AWQ,
@@ -105,6 +106,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         if len(modules) > 1 and quantization_format not in [
             QUANTIZATION_FP8,
             QUANTIZATION_NONE,
+            QUANTIZATION_FP8_PB_REAL,
         ]:
             # Fuse modules that have the same input
             preprocess_linear_fusion(modules)
@@ -226,7 +228,18 @@ def _export_hf_checkpoint(
 
             if quantization_format not in [QUANTIZATION_FP8, QUANTIZATION_NONE]:
                 # Register weight_scale and input_scale
-                sub_module.register_buffer("weight_scale", get_weight_scaling_factor(sub_module))
+                if quantization_format == QUANTIZATION_FP8_PB_REAL:
+                    sub_module.register_buffer(
+                        "weight_scale",
+                        sub_module.weight_quantizer._scale.to(torch.float32),
+                    )
+                    del sub_module.weight_quantizer._scale
+                else:
+                    sub_module.register_buffer(
+                        "weight_scale", get_weight_scaling_factor(sub_module)
+                    )
+                    # Remove size-1 dimensions for blocked fp8 scales
+                    sub_module.weight_scale.squeeze()
 
                 if hasattr(sub_module, "input_quantizer") and "disabled" not in repr(
                     sub_module.input_quantizer

@@ -276,7 +276,7 @@ def sharded_state_dict_test_helper(tmpdir, model_ref, model_test, forward_fn):
     assert state_dict.keys() == state_dict_after_distributed_save.keys()
     for k, v in state_dict.items():
         assert not isinstance(v, torch.Tensor) or torch.allclose(
-            v, state_dict_after_distributed_save[k]
+            v.to(torch.float32), state_dict_after_distributed_save[k].to(torch.float32)
         )
     logits_ref_after_distributed_save = forward_fn(model_ref)
     assert torch.allclose(logits_ref, logits_ref_after_distributed_save)
@@ -290,7 +290,9 @@ def sharded_state_dict_test_helper(tmpdir, model_ref, model_test, forward_fn):
     state_dict_test = model_test.state_dict()
     assert state_dict.keys() == state_dict_test.keys()
     for k, v in state_dict.items():
-        assert not isinstance(v, torch.Tensor) or torch.allclose(v, state_dict_test[k])
+        assert not isinstance(v, torch.Tensor) or torch.allclose(
+            v.to(torch.float32), state_dict_test[k].to(torch.float32)
+        ), k
 
     logits_test = forward_fn(model_test)
     assert torch.allclose(logits_ref, logits_test)

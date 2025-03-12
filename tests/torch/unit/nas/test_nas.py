@@ -486,6 +486,10 @@ def test_save_restore_whole(
         manager = mto.ModeloptStateManager(model.get_submodule(submodule))
         manager2 = mto.ModeloptStateManager(model2.get_submodule(submodule))
         assert manager.state_dict() == manager2.state_dict()
+        assert mto.ModeloptStateManager.has_state_for_mode_type("nas", state=modelopt_state)
+        assert mto.ModeloptStateManager.has_state_for_mode_type(
+            "nas", model=model2.get_submodule(submodule)
+        )
 
     # run comparison in eval mode since there might be model randomization in train mode
     model.eval()

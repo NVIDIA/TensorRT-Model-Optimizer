@@ -1,6 +1,15 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.27 (2025-04-02)
+^^^^^^^^^^^^^^^^^
+
+**New Features**
+
+- New model support in the ``llm_ptq`` example: OpenAI Whisper.
+- Blockwise FP8 quantization support in unified model export.
+- Add quantization support to the Transformer Engine Linear module.
+
 0.25 (2025-03-03)
 ^^^^^^^^^^^^^^^^^
 

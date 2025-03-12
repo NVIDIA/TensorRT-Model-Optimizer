@@ -22,10 +22,18 @@ from torch.nn.parallel import DistributedDataParallel
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.nn import TensorQuantizer
 from modelopt.torch.utils import unwrap_model
+from modelopt.torch.utils.distributed import ParallelState
 
 
 def _test_data_parallel_helper(rank, size):
+    # Temporary fix for unittest untill a proper fix in [OMNIML-2116]
+    def assign_parallel_group(module):
+        if isinstance(module, torch.nn.Linear):
+            # Assign the default process group as dp; None is the pytorch default process group
+            module._parallel_state = ParallelState(data_parallel_group=None)
+
     model = DistributedDataParallel(SimpleLinear())
+    model.apply(assign_parallel_group)
     unwrapped_model = unwrap_model(model)
     calib_data = [unwrapped_model.get_input() for _ in range(2)]
 

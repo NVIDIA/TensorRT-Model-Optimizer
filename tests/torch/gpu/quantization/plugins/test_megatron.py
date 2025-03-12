@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import copy
 from functools import partial
 
@@ -27,6 +26,7 @@ from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     tensor_parallel_test_helper,
 )
+from packaging.version import Version
 
 skip_if_no_megatron()
 
@@ -44,6 +44,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_group,
 )
 
+import modelopt
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.nn import QuantModuleRegistry
@@ -117,7 +118,7 @@ def test_tensor_parallel(need_2_gpus, config):
     )
 
 
-def _gpt_model_provider(tp_size: int, hidden_size=256):
+def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64):
     """Build the model."""
     gpt_model = get_mcore_gpt_model(
         tensor_model_parallel_size=tp_size,
@@ -127,15 +128,19 @@ def _gpt_model_provider(tp_size: int, hidden_size=256):
         activation_func="squared_relu",
         transformer_impl="local",
         hidden_size=hidden_size,
+        vocab_size=vocab_size,
     )
     return gpt_model.cuda().eval()
 
 
-def _test_sharded_state_dict(tmpdir, config, hidden_size, rank, size):
+def _test_sharded_state_dict(tmpdir, config, hidden_size, modelopt_version, rank, size):
+    mto.conversion.__version__ = modelopt_version
+    modelopt.torch.quantization.plugins.megatron.__version__ = modelopt_version
+
     initialize_for_megatron(tensor_model_parallel_size=size, seed=SEED)
 
-    model_ref = _gpt_model_provider(size, hidden_size)
-    model_test = _gpt_model_provider(size, hidden_size)
+    model_ref = _gpt_model_provider(size, hidden_size, vocab_size=256)
+    model_test = _gpt_model_provider(size, hidden_size, vocab_size=256)
     prompt_tokens = torch.randint(
         0, model_ref.vocab_size, (2, model_ref.max_sequence_length)
     ).cuda()
@@ -173,15 +178,29 @@ mixed_precision_config["quant_cfg"].update(
     }
 )
 
+
 mixed_block_size_config = copy.deepcopy(mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG)
 mixed_block_size_config["quant_cfg"].update(
     {
         "*.1.*": {"enable": False},
-        "*.2.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 256}, "enable": True},
+        "*.2.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 64}, "enable": True},
         "*.2.*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*.3.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
         "*.3.*input_quantizer": {"num_bits": 8, "axis": None},
     }
+)
+
+block2d_quant_config = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128, -2: 128}},
+        "input_quantizer": {"num_bits": 8, "axis": None},
+    },
+    "algorithm": "max",
+}
+
+mixed_block2d_quant_config = copy.deepcopy(mixed_block_size_config)
+mixed_block2d_quant_config["quant_cfg"].update(
+    {"*.0.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 64, -2: 128}}}
 )
 
 
@@ -197,13 +216,29 @@ mixed_block_size_config["quant_cfg"].update(
         partial_quant_config,
         mixed_precision_config,
         mixed_block_size_config,
+        block2d_quant_config,
+        mixed_block2d_quant_config,
     ],
 )
 @pytest.mark.parametrize("hidden_size", [256, 320])
-def test_sharded_state_dict(need_2_gpus, tmpdir, config, hidden_size):
+@pytest.mark.parametrize("modelopt_version", ["0.25", "0.29"])
+def test_sharded_state_dict(need_2_gpus, tmpdir, config, hidden_size, modelopt_version):
+    if Version(modelopt_version) >= Version("0.29") and hidden_size == 320:
+        pytest.skip(
+            "ModelOpt version 0.29 does not support sharded state dict for padded quantization."
+        )
+
+    if Version(modelopt_version) < Version("0.29"):
+        if config in [block2d_quant_config, mixed_block2d_quant_config]:
+            pytest.skip("Block2D quantization requires ModelOpt version 0.29 or later")
+        if config == mixed_block_size_config:
+            pytest.skip("Mixed blocksize quantization requires ModelOpt version 0.29 or later")
+
     skip_if_mcore_dist_ckpt_is_not_supported()
     spawn_multiprocess_job(
-        size=2, job=partial(_test_sharded_state_dict, tmpdir, config, hidden_size), backend="nccl"
+        size=2,
+        job=partial(_test_sharded_state_dict, tmpdir, config, hidden_size, modelopt_version),
+        backend="nccl",
     )
 
 
@@ -228,6 +263,9 @@ def test_regular_state_dict(distributed_setup_size_1, hidden_size):
     mto.restore_from_modelopt_state(model_test, mto.modelopt_state(model_ref))
     model_test.load_state_dict(model_ref.state_dict())
 
+    for k, v in model_ref.state_dict().items():
+        assert not isinstance(v, torch.Tensor) or torch.allclose(v, model_test.state_dict()[k]), k
+
     logits_ref = forward_fn(model_ref)
     logits_test = forward_fn(model_test)
     assert torch.allclose(logits_ref, logits_test)
@@ -246,10 +284,12 @@ def test_auto_quantize(need_2_gpus):
     spawn_multiprocess_job(size=2, job=_test_auto_quantize_helper, backend="nccl")
 
 
-def test_fp8_real_quantize(distributed_setup_size_1):
-    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=SEED)
+def _test_fp8_real_quantize_helper(rank, size):
+    initialize_for_megatron(
+        tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED
+    )
     hidden_size = 256
-    config = mtq.FP8_BLOCKWISE_REAL_QUANT_CFG
+    config = mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG
 
     model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
@@ -257,8 +297,7 @@ def test_fp8_real_quantize(distributed_setup_size_1):
     def forward_fn(model):
         return run_mcore_gpt_inference(model, prompt_tokens)
 
-    # ref ouptut
-    logits_ref = forward_fn(model)
+    forward_fn(model)
 
     # real quant the model
     cur_mem = get_model_size(model)
@@ -267,8 +306,22 @@ def test_fp8_real_quantize(distributed_setup_size_1):
 
     assert real_quant_mem < cur_mem / 2, "Memory after real quantization is not reduced."
 
-    # output with real quant
-    logits_real_quant = forward_fn(real_quant_model)
-    torch.allclose(logits_ref, logits_real_quant)
+    # check forward works after real quantization
+    forward_fn(real_quant_model)
 
     assert real_quant_mem < cur_mem
+
+
+def test_fp8_real_quantize(need_2_gpus):
+    spawn_multiprocess_job(size=2, job=_test_fp8_real_quantize_helper, backend="nccl")
+
+
+def test_real_quantize_sharded_state_dict(need_2_gpus, distributed_setup_size_1, tmpdir):
+    config = mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG
+    skip_if_mcore_dist_ckpt_is_not_supported()
+
+    spawn_multiprocess_job(
+        size=2,
+        job=partial(_test_sharded_state_dict, tmpdir, config, 256, modelopt.__version__),
+        backend="nccl",
+    )

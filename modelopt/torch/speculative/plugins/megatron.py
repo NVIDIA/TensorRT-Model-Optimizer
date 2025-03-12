@@ -25,13 +25,18 @@ import torch.nn.functional as F
 from megatron.core import InferenceParams, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
+from megatron.core.extensions.transformer_engine import TENorm
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.models.gpt import GPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.parallel_state import get_data_parallel_rank, get_tensor_model_parallel_rank
-from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
+from megatron.core.tensor_parallel.mappings import (
+    gather_from_sequence_parallel_region,
+    gather_from_tensor_model_parallel_region,
+)
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_block import TransformerBlock
+from megatron.core.transformer.transformer_layer import TransformerLayer
 from megatron.core.transformer.utils import sharded_state_dict_default
 from megatron.core.utils import make_tp_sharded_tensor_for_checkpoint
 from packaging.version import Version
@@ -40,11 +45,22 @@ from ..eagle.conversion import EagleDMRegistry
 from ..eagle.eagle_model import EagleModel
 from ..medusa.conversion import MedusaDMRegistry
 from ..medusa.medusa_model import MedusaModel
+from ..mtp.conversion import MTPDMRegistry
+from ..mtp.mtp_model import MTPModel
 
 
 def mcore_version_higher_than(target_version: str):
     """Check if megatron-core is least this version."""
     return Version(megatron.core.__version__) > Version(target_version)
+
+
+def logits_kld_loss(logits, gt_logits):
+    """KL Divergence loss using ground truth logits."""
+    gathered_logits = gather_from_tensor_model_parallel_region(logits)
+    gathered_gt_logits = gather_from_tensor_model_parallel_region(gt_logits)
+    loss = torch.nn.Softmax(dim=2)(gathered_gt_logits) * torch.nn.LogSoftmax(dim=2)(gathered_logits)
+    loss = -torch.sum(loss, 2)
+    return loss
 
 
 class MedusaLayer(MegatronModule):
@@ -364,7 +380,15 @@ class EagleModule(MegatronModule):
     EagleModule consists of an FC projection and additional decoder layers.
     """
 
-    def __init__(self, config, num_layers: int, transformer_layer_spec, use_last_layernorm):
+    def __init__(
+        self,
+        config,
+        num_layers: int,
+        transformer_layer_spec,
+        use_last_layernorm,
+        use_mtp_layernorm=False,
+        bias=True,
+    ):
         """Constructor.
 
         EagleModule is essentially a GPTModel except that it only exists in
@@ -379,24 +403,45 @@ class EagleModule(MegatronModule):
         """
         super().__init__(config=config)
 
+        self._use_mtp_layernorm = use_mtp_layernorm
+
         eagle_config = copy.deepcopy(config)
         eagle_config.num_layers = num_layers
         eagle_config.pipeline_model_parallel_size = 1
-        self.fc = tensor_parallel.ColumnParallelLinear(
+
+        # If heterogenous layers (e.g. DeepSeek), transformer_layer_spec is a
+        # TransformerBlockSubmodules instead. We use the last layer_specs.
+        if "TransformerBlockSubmodules" in str(type(transformer_layer_spec)):
+            eagle_transformer_layer_spec = transformer_layer_spec.layer_specs[-1]
+        else:
+            eagle_transformer_layer_spec = transformer_layer_spec
+
+        # Force TransformerLayer in case RealQuantTransformerLayer was used.
+        eagle_transformer_layer_spec.module = TransformerLayer
+
+        if self._use_mtp_layernorm:
+            self.enorm = TENorm(
+                eagle_config, eagle_config.hidden_size, eagle_config.layernorm_epsilon
+            )
+            self.hnorm = TENorm(
+                eagle_config, eagle_config.hidden_size, eagle_config.layernorm_epsilon
+            )
+
+        # This linear was previously a ColumnParallelLinear. We changed it to a normal linear
+        # since ColumnParallelLinear will have try to gather the input sequence when sequence
+        # parallel is used and does not allow gathering the outputs.
+        self.fc = torch.nn.Linear(
             config.hidden_size * 2,
             config.hidden_size,
-            config=eagle_config,
-            init_method=config.init_method,
-            bias=False,
-            skip_bias_add=False,
-            gather_output=True,
-            skip_weight_param_allocation=False,
+            bias=bias,
+            dtype=eagle_config.params_dtype,
         )
+
         # Eagle does not use the final_layernorm in decoder. It distills the base model
         # final_layernorm to eagle_module hidden_states directly.
         self.decoder = EagleTransformerBlock(
             config=eagle_config,
-            spec=transformer_layer_spec,
+            spec=eagle_transformer_layer_spec,
             post_layer_norm=use_last_layernorm,
             pre_process=True,
             post_process=True,
@@ -404,7 +449,8 @@ class EagleModule(MegatronModule):
 
     def forward(
         self,
-        decoder_input: torch.Tensor,
+        embeddings: torch.Tensor,
+        hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         rotary_pos_emb: torch.Tensor,
         inference_params: InferenceParams = None,
@@ -412,7 +458,12 @@ class EagleModule(MegatronModule):
         extra_block_kwargs: dict = None,
     ) -> torch.Tensor:
         """Forward function."""
-        decoder_input, _ = self.fc(decoder_input)
+        if self._use_mtp_layernorm:
+            embeddings = self.enorm(embeddings)
+            hidden_states = self.hnorm(hidden_states)
+
+        decoder_input = torch.cat((embeddings, hidden_states), dim=-1)
+        decoder_input = self.fc(decoder_input)
 
         decoder_input_list = [decoder_input]
         self.decoder.set_input_tensor(decoder_input_list[0])
@@ -433,7 +484,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
     def _setup(self):
         super()._setup()
-        self._register_temp_attribute("eagle_self_logit_distillation", False)
+        self._register_temp_attribute("eagle_self_logit_distillation", True)
         self._register_temp_attribute("eagle_freeze_base_model", True)
         self._register_temp_attribute("calibration_mode", False)
 
@@ -442,7 +493,8 @@ class _DynamicEagleGPTModel(EagleModel):
         eagle_num_layers=0,
         use_input_layernorm_in_first_layer=True,
         use_last_layernorm=False,
-        eagle_self_logit_distillation=False,
+        use_mtp_layernorm=False,
+        eagle_self_logit_distillation=True,
         eagle_freeze_base_model=True,
         eagle_report_acc=True,
     ):
@@ -459,9 +511,6 @@ class _DynamicEagleGPTModel(EagleModel):
         self.eagle_report_acc = eagle_report_acc
         self.eagle_self_logit_distillation = eagle_self_logit_distillation
         self.eagle_freeze_base_model = eagle_freeze_base_model
-
-        if self.share_embeddings_and_output_weights:
-            raise ValueError("For EAGLE, args.share_embeddings_and_output_weights must be False")
 
         if self.position_embedding_type != "rope":
             raise ValueError("For EAGLE, only rotary embedding is supported")
@@ -487,11 +536,12 @@ class _DynamicEagleGPTModel(EagleModel):
                 self.eagle_num_layers,
                 self.transformer_layer_spec,
                 self.use_last_layernorm,
+                use_mtp_layernorm=use_mtp_layernorm,
             )
 
         # Eagle loss functions
         self.eagle_loss = torch.nn.SmoothL1Loss(reduction="none")
-        # self.kld = LogitsKLLoss()
+        self.kld = logits_kld_loss
 
     def forward(
         self,
@@ -519,14 +569,19 @@ class _DynamicEagleGPTModel(EagleModel):
             extra_kwargs = {"packed_seq_params": None}
         else:
             extra_kwargs = {}
-        rotary_seq_len = self.rotary_pos_emb.get_rotary_seq_len(
-            inference_params,
-            self.decoder,
-            decoder_input,
-            self.config,
-            **extra_kwargs,
-        )
-        rotary_pos_emb = self.rotary_pos_emb(rotary_seq_len)
+
+        if self.config.multi_latent_attention:
+            # For MLA, rotary_pos_emb is computed per attention.
+            rotary_pos_emb = None
+        else:
+            rotary_seq_len = self.rotary_pos_emb.get_rotary_seq_len(
+                inference_params,
+                self.decoder,
+                decoder_input,
+                self.config,
+                **extra_kwargs,
+            )
+            rotary_pos_emb = self.rotary_pos_emb(rotary_seq_len)
 
         # Run base modeld decoder forward.
         hidden_states = self.decoder(
@@ -542,41 +597,89 @@ class _DynamicEagleGPTModel(EagleModel):
         if not self.post_process:
             return hidden_states
 
-        logits_sbh, _ = self.output_layer(hidden_states, weight=None)
+        output_weight = None
+        if self.share_embeddings_and_output_weights:
+            output_weight = self.shared_embedding_or_output_weight()
+        logits_sbh, _ = self.output_layer(hidden_states, weight=output_weight)
 
         if inference_params is None or self.calibration_mode:
-            # EAGLE needs to know the newly generated token logits[-1, :, :]
-            logits_bsh = logits_sbh[:-1, :, :].transpose(0, 1)
+            logits_bsh = logits_sbh.transpose(0, 1)
             gathered_logits_bsh = gather_from_tensor_model_parallel_region(logits_bsh)
             prob_bsh = torch.softmax(gathered_logits_bsh, dim=-1)
             eager_ids = prob_bsh.argmax(dim=-1)
 
             eagle_embeddings = self.embedding(
                 input_ids=eager_ids,
-                position_ids=position_ids[:, 1:],
+                position_ids=torch.cat(
+                    (
+                        position_ids[:, 1:],
+                        torch.zeros(
+                            position_ids.shape[0],
+                            1,
+                            dtype=position_ids.dtype,
+                            device=position_ids.device,
+                        ),
+                    ),
+                    dim=-1,
+                ),
             )
-            # cat([s - 1, b, h], [s - 1, b, h], dim-1) = [s - 1, b, 2h]
-            eagle_decoder_input = torch.cat((eagle_embeddings, hidden_states[:-1, :, :]), dim=-1)
+
+            # pos_id        0 1 2 3 4 5 6 7
+            # tokens        x x x x x x x x
+            # hidden       [x x x x x x x -] ->
+            # logits       [x x x x x x x -] -> torch.cat(hidden, emb(logits.argmax(dim=-1))) inputs to eagle_input
+            # labels        x[x x x x x x x]
+            #
+            # eagle_input     x x x x x x x x
+            # eagle_mask      1 1 1 1 1 1 1 0
+            # eagle_hidden   [x x x x x x x]x
+            # eagle_logits   [x x x x x x x]x
+            eagle_attention_mask = attention_mask.clone().detach()
+            eagle_attention_mask[:, :, :-1, :-1] = attention_mask[:, :, 1:, 1:]
+            eagle_attention_mask[:, :, -1, :] = False
+            eagle_attention_mask[:, :, :, -1] = False
+
+            if rotary_pos_emb is not None:
+                padding_zeros = torch.zeros(
+                    1,
+                    rotary_pos_emb.shape[1],
+                    rotary_pos_emb.shape[2],
+                    rotary_pos_emb.shape[3],
+                    dtype=rotary_pos_emb.dtype,
+                    device=rotary_pos_emb.device,
+                )
+                rotary_pos_emb = torch.cat((rotary_pos_emb[1:, :, :, :], padding_zeros), dim=0)
+
             eagle_hidden_states = self.eagle_module(
-                eagle_decoder_input,
-                attention_mask[:, :, 1:, 1:],  # TODO (chenhany): this may needs some fix
-                rotary_pos_emb=rotary_pos_emb[1:, :, :, :],
+                eagle_embeddings,
+                hidden_states,
+                eagle_attention_mask,
+                rotary_pos_emb=rotary_pos_emb,
                 inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
                 **(extra_block_kwargs or {}),
             )
-            eagle_logits, _ = self.output_layer(eagle_hidden_states)
+            eagle_logits, _ = self.output_layer(eagle_hidden_states, weight=output_weight)
+            eagle_logits = eagle_logits[:-1, :, :]
 
         # If labels are not provided, return the original logits. We only return after
         # all eagle weights have been exercised for quantization calibration purpose.
         if labels is None:
             return logits_sbh.transpose(0, 1).contiguous()
 
+        if self.config.sequence_parallel:
+            # [s, b, h] = gather([s/TP, b, h])
+            gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
+            gathered_eagle_hidden_states = gather_from_sequence_parallel_region(eagle_hidden_states)
+        else:
+            gathered_hidden_states = hidden_states
+            gathered_eagle_hidden_states = eagle_hidden_states
+
         # Compute hidden state regression loss
         regression_loss = (
             self.eagle_loss(
-                eagle_hidden_states,
-                hidden_states[1:, :, :],
+                gathered_eagle_hidden_states[:-1, :, :],
+                gathered_hidden_states[1:, :, :],
             )
             .mean(dim=-1)
             .transpose(0, 1)
@@ -683,20 +786,16 @@ class _DynamicEagleGPTModel(EagleModel):
             ]
             eagle_rotary_pos_emb = rotary_pos_emb[1 : 1 + eagle_ids.shape[-1], :, :, :]
 
-            eagle_decoder_input = self.embedding(
+            eagle_embeddings = self.embedding(
                 input_ids=eagle_ids,
                 position_ids=eagle_position_ids,
             )
-            eagle_decoder_input, _ = self.eagle_linear_proj(
-                torch.cat((eagle_decoder_input, eagle_hidden_states), dim=-1)
-            )
 
-            new_hidden_states = self.eagle_decoder(
-                hidden_states=eagle_decoder_input,
-                attention_mask=eagle_attn_mask,
-                inference_params=None,
+            new_hidden_states = self.eagle_module(
+                eagle_embeddings,
+                eagle_hidden_states,
+                eagle_attn_mask,
                 rotary_pos_emb=eagle_rotary_pos_emb,
-                packed_seq_params=None,
             )
 
             eagle_logits, _ = self.output_layer(new_hidden_states)
@@ -720,3 +819,250 @@ class _DynamicEagleGPTModel(EagleModel):
                     )
 
         return new_tokens
+
+
+@MTPDMRegistry.register({GPTModel: "megatron.core.models.gpt.GPTModel"})
+class _DynamicMTPGPTModel(MTPModel):
+    """A ``megatron.core.models.gpt.GPTModel`` model with dynamic hyperparams."""
+
+    def _setup(self):
+        super()._setup()
+        self._register_temp_attribute("mtp_self_logit_distillation", True)
+        self._register_temp_attribute("mtp_freeze_base_model", True)
+        self._register_temp_attribute("calibration_mode", False)
+
+    def modify(
+        self,
+        mtp_num_layers=0,
+        mtp_num_module=0,
+        mtp_freeze_list=[],
+        use_last_layernorm=False,
+        mtp_self_logit_distillation=True,
+        mtp_freeze_base_model=True,
+        mtp_report_acc=True,
+    ):
+        if self.config.pipeline_model_parallel_size > 1:
+            warnings.warn(
+                "Pipeline parallelism detected! _DynamicMTPGPTModel only supports "
+                "pipeline parallelism during TensorRT-LLM checkpoint export."
+            )
+        super().modify(
+            mtp_num_layers=mtp_num_layers,
+            mtp_num_module=mtp_num_module,
+            mtp_freeze_list=mtp_freeze_list,
+            use_last_layernorm=use_last_layernorm,
+        )
+        self.mtp_report_acc = mtp_report_acc
+        self.mtp_self_logit_distillation = mtp_self_logit_distillation
+        self.mtp_freeze_base_model = mtp_freeze_base_model
+
+        if self.position_embedding_type != "rope":
+            raise ValueError("For MTP, only rotary embedding is supported")
+
+        if not self.pre_process and self.post_process:
+            self.embedding = EagleLanguageModelEmbedding(
+                config=self.config,
+                vocab_size=self.vocab_size,
+                max_sequence_length=self.max_sequence_length,
+                position_embedding_type=self.position_embedding_type,
+            )
+
+        # Freeze all parameters
+        if self.mtp_freeze_base_model:
+            for name, param in self.named_parameters():
+                param.requires_grad = False
+
+        # Only the last PP stage has the additional projection and decoder layer.
+        # This is to simplify the export.
+        if self.post_process:
+            self.mtp = torch.nn.ModuleList()
+            for i in range(self.mtp_num_module):
+                mtp = EagleModule(
+                    self.config,
+                    self.mtp_num_layers,
+                    self.transformer_layer_spec,
+                    self.use_last_layernorm,
+                    use_mtp_layernorm=True,
+                    bias=False,
+                )
+                if i in self.mtp_freeze_list:
+                    for name, param in mtp.named_parameters():
+                        param.requires_grad = False
+                self.mtp.append(mtp)
+
+        self.kld = logits_kld_loss
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        position_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        decoder_input: torch.Tensor = None,
+        labels: torch.Tensor = None,
+        inference_params: InferenceParams = None,
+        packed_seq_params: PackedSeqParams = None,
+        extra_block_kwargs: dict = None,
+        **kwargs,
+    ) -> torch.Tensor:
+        # Word and rotary positional embeddings
+        if decoder_input is not None:
+            pass
+        elif self.pre_process:
+            decoder_input = self.embedding(input_ids=input_ids, position_ids=position_ids)
+        else:
+            # intermediate stage of pipeline
+            # decoder will get hidden_states from decoder.input_tensor
+            decoder_input = None
+
+        if mcore_version_higher_than("0.9.0"):
+            extra_kwargs = {"packed_seq_params": None}
+        else:
+            extra_kwargs = {}
+
+        if self.config.multi_latent_attention:
+            # For MLA, rotary_pos_emb is computed per attention.
+            rotary_pos_emb = None
+        else:
+            rotary_seq_len = self.rotary_pos_emb.get_rotary_seq_len(
+                inference_params,
+                self.decoder,
+                decoder_input,
+                self.config,
+                **extra_kwargs,
+            )
+            rotary_pos_emb = self.rotary_pos_emb(rotary_seq_len)
+
+        # Run base modeld decoder forward.
+        hidden_states = self.decoder(
+            hidden_states=decoder_input,
+            attention_mask=attention_mask,
+            inference_params=inference_params,
+            rotary_pos_emb=rotary_pos_emb,
+            packed_seq_params=packed_seq_params,
+            **(extra_block_kwargs or {}),
+        )
+
+        # Typically, this is only the case when PP > 1.
+        if not self.post_process:
+            return hidden_states
+
+        output_weight = None
+        if self.share_embeddings_and_output_weights:
+            output_weight = self.shared_embedding_or_output_weight()
+        logits_sbh, _ = self.output_layer(hidden_states, weight=output_weight)
+
+        if inference_params is None or self.calibration_mode:
+            if labels is not None:
+                mtp_loss = []
+            mtp_logits = logits_sbh
+            for i in range(self.mtp_num_module):
+                logits_bsh = mtp_logits.transpose(0, 1)
+                gathered_logits_bsh = gather_from_tensor_model_parallel_region(logits_bsh)
+                prob_bsh = torch.softmax(gathered_logits_bsh, dim=-1)
+                mtp_ids = prob_bsh.argmax(dim=-1)
+
+                padding_zeros = torch.zeros(
+                    position_ids.shape[0],
+                    1 + i,
+                    dtype=position_ids.dtype,
+                    device=position_ids.device,
+                )
+                mtp_embeddings = self.embedding(
+                    input_ids=mtp_ids,
+                    position_ids=torch.cat((position_ids[:, 1 + i :], padding_zeros), dim=1),
+                )
+
+                mtp_attention_mask = attention_mask.clone().detach()
+                mtp_attention_mask[:, :, : -(1 + i), : -(1 + i)] = attention_mask[
+                    :, :, 1 + i :, 1 + i :
+                ]
+                mtp_attention_mask[:, :, -(1 + i) :, :] = False
+                mtp_attention_mask[:, :, :, -(1 + i) :] = False
+
+                if rotary_pos_emb is not None:
+                    padding_zeros = torch.zeros(
+                        1,
+                        rotary_pos_emb.shape[1],
+                        rotary_pos_emb.shape[2],
+                        rotary_pos_emb.shape[3],
+                        dtype=rotary_pos_emb.dtype,
+                        device=rotary_pos_emb.device,
+                    )
+                    rotary_pos_emb = torch.cat((rotary_pos_emb[1:, :, :, :], padding_zeros), dim=0)
+                hidden_states = self.mtp[i](
+                    mtp_embeddings,
+                    hidden_states,
+                    mtp_attention_mask,  # TODO (chenhany): this may needs some fix
+                    rotary_pos_emb=rotary_pos_emb,
+                    inference_params=inference_params,
+                    packed_seq_params=packed_seq_params,
+                    **(extra_block_kwargs or {}),
+                )
+                mtp_logits, _ = self.output_layer(hidden_states)
+
+                if labels is not None:
+                    # Compute lm loss (classification loss) or KLDivergence
+                    if self.mtp_self_logit_distillation:
+                        mtp_loss.append(
+                            self.kld(
+                                mtp_logits[: -(1 + i), :, :],
+                                logits_sbh[1 + i :, :, :],
+                            )
+                        )
+                    else:
+                        mtp_loss.append(
+                            self.compute_language_model_loss(
+                                labels[:, 1 + i :], mtp_logits[: -(1 + i), :, :]
+                            )
+                        )
+
+                    acc = []
+                    if self.mtp_report_acc:
+                        with torch.no_grad():
+                            gathered_logits = gather_from_tensor_model_parallel_region(mtp_logits)
+                            mtp_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                            mtp_top1 = mtp_top1[:, : -(1 + i)]
+                            top1_p = torch.eq(labels[:, 1 + i :], mtp_top1).sum() / mtp_top1.numel()
+                            acc.append(top1_p)
+
+                        if get_tensor_model_parallel_rank() == 0:
+                            print("MTP_{} Training Accuracy: {}".format(i, acc))
+
+        # If labels are not provided, return the original logits. We only return after
+        # all mtp weights have been exercised for quantization calibration purpose.
+        if labels is None:
+            return logits_sbh.transpose(0, 1).contiguous()
+
+        mtp_loss = torch.cat(mtp_loss, dim=0)
+        return mtp_loss
+
+    def sharded_state_dict(
+        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict = None
+    ) -> ShardedStateDict:
+        """Override the shared_state_dict to take care mtp."""
+        assert not sharded_offsets, "Unexpected sharded offsets"
+
+        sharded_state_dict = GPTModel.sharded_state_dict(self, prefix, sharded_offsets, metadata)
+
+        if not hasattr(self, "mtp") or self.mtp is None:
+            return sharded_state_dict
+
+        # This is a remedy for nn.ModuleList. GPTModel.sharded_state_dict() is calling into
+        # MegatronModule.sharded_state_dict() which requires all children to implement
+        # sharded_state_dict(). mtp is an nn.ModuleList which only has state_dict()
+        # implemented. As a result, all the submodules will not be sharded.
+        #
+        # The remedy is to pop all mtp* out and call the EagleModule sharded_state_dict()
+        # again to populate the correct sharded_staet_dict.
+        extra_keys = []
+        for key, val in sharded_state_dict.items():
+            if "mtp" in key:
+                extra_keys += [key]
+        for key in extra_keys:
+            sharded_state_dict.pop(key, None)
+
+        layer_prefix = f"{prefix}mtp."
+        for i, layer in enumerate(self.mtp):
+            layer_sharded_state_dict = layer.sharded_state_dict(f"{layer_prefix}{i}.", [], metadata)
+            sharded_state_dict.update(layer_sharded_state_dict)
+        return sharded_state_dict

@@ -42,7 +42,7 @@ from .config import AutoNASConfig, ExportConfig
 
 __all__ = ["AutoNASModeDescriptor", "ExportModeDescriptor"]
 
-NASModeRegistry = _ModeRegistryCls()
+NASModeRegistry = _ModeRegistryCls("nas")
 
 
 @NASModeRegistry.register_mode

@@ -13,23 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Handles plugins for third-party modules."""
+"""Eagle Optimization Method."""
 
-from modelopt.torch.utils import import_plugin
-
-from .huggingface import *
-
-with import_plugin("megatron core dist checkpointing"):
-    from .mcore_dist_checkpointing import *
-
-with import_plugin("transformers"):
-    from .transformers import *
-
-with import_plugin("diffusers"):
-    from .diffusers import *
-
-with import_plugin("peft"):
-    from .peft import *
-
-with import_plugin("megatron"):
-    from .megatron import *
+from .conversion import *
+from .mtp_model import *

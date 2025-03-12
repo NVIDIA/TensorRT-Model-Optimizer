@@ -232,7 +232,7 @@ class DistributedProcessGroup:
 class ParallelState:
     """A class to manage various parallel groups such as data parallel, tensor parallel etc."""
 
-    def __init__(self, data_parallel_group=None, tensor_parallel_group=-1):
+    def __init__(self, data_parallel_group=-1, tensor_parallel_group=-1):
         self.data_parallel_group = DistributedProcessGroup(data_parallel_group)
         self.tensor_parallel_group = DistributedProcessGroup(tensor_parallel_group)
 
