@@ -324,6 +324,7 @@ def is_moe(module: nn.Module) -> bool:
         "MoELayer".lower(),
         "PhimoeSparseMoeBlock".lower(),
         "DeepseekMoE".lower(),
+        "Qwen2MoeSparseMoeBlock".lower(),
     ]
 
 
@@ -1051,7 +1052,7 @@ def build_stacked_experts(
 def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
     """Builds the MOE config for the module."""
     assert is_moe(module)
-    assert decoder_type in ["llama", "dbrx", "phi3", "deepseek"]
+    assert decoder_type in ["llama", "dbrx", "phi3", "deepseek", "qwen"]
 
     config = MOEConfig()
 
@@ -1075,6 +1076,12 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
         config.shared_expert = build_mlp_config(
             module.shared_experts, decoder_type, merge_gate_fc=True
         )
+    elif decoder_type == "qwen":
+        config.router = build_linear_config(module.gate, LINEAR_ROW)
+        # Add shared config
+        preprocess_linear_fusion([module.shared_expert.gate_proj, module.shared_expert.up_proj])
+        config.shared_expert = build_mlp_config(module.shared_expert, decoder_type, merge_gate_fc=True)  
+        config.shared_expert_gate = build_linear_config(module.shared_expert_gate, LINEAR_COLUMN)
     else:
         raise NotImplementedError(f"{decoder_type} not supported")
 
@@ -1116,6 +1123,13 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
             _get_dbrx_expert,
         )
     elif decoder_type == "deepseek":
+        experts.fc, experts.proj = build_stacked_experts(
+            module.experts,
+            ["gate_proj", "down_proj", "up_proj"],
+            len(module.experts),
+            _get_mixtral_expert,
+        )
+    elif decoder_type == "qwen":
         experts.fc, experts.proj = build_stacked_experts(
             module.experts,
             ["gate_proj", "down_proj", "up_proj"],

@@ -355,7 +355,8 @@ class MOEConfig:
 
     router: LinearConfig = None
     experts: ExpertConfig = None
-    shared_expert: MLPConfig = None  # Deepseek MOE
+    shared_expert: MLPConfig = None  # Deepseek MOE, Qwen MOE
+    shared_expert_gate: LinearConfig = None  # Qwen MOE
     hidden_act: str = ""
 
     @property

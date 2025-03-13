@@ -124,6 +124,8 @@ quantization formats such as FP8, INT8, INT4, etc.:
         "*input_quantizer": {"num_bits": 8, "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "default": {"enable": False},
         },
@@ -136,6 +138,8 @@ quantization formats such as FP8, INT8, INT4, etc.:
         "*input_quantizer": {"num_bits": 8, "axis": -1},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "nn.Conv2d": {
             "*weight_quantizer": {"num_bits": 8, "axis": 0},
@@ -151,6 +155,8 @@ quantization formats such as FP8, INT8, INT4, etc.:
         "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "default": {"enable": False},
         },
@@ -163,6 +169,8 @@ quantization formats such as FP8, INT8, INT4, etc.:
         "*input_quantizer": {"enable": False},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "default": {"enable": False},
         },
@@ -175,6 +183,8 @@ quantization formats such as FP8, INT8, INT4, etc.:
         "*input_quantizer": {"enable": False},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "default": {"enable": False},
         },
@@ -192,6 +202,8 @@ quantization formats such as FP8, INT8, INT4, etc.:
         "*input_quantizer": {"num_bits": (4, 3), "axis": None, "enable": True},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "default": {"enable": False},
     },
@@ -251,6 +263,8 @@ INT8_DEFAULT_CFG = {
         "*input_quantizer": {"num_bits": 8, "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -266,6 +280,8 @@ INT8_SMOOTHQUANT_CFG = {
         "*input_quantizer": {"num_bits": 8, "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -281,6 +297,8 @@ FP8_DEFAULT_CFG = {
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -296,6 +314,8 @@ FP8_PER_TENSOR_REAL_QUANT_CFG = {
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -311,6 +331,8 @@ FP8_PER_CHANNEL_REAL_QUANT_CFG = {
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -330,6 +352,8 @@ FP8_BLOCKWISE_REAL_QUANT_CFG = {
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -346,6 +370,8 @@ FP8_PER_CHANNEL_CFG = {
         "*input_quantizer": {"num_bits": (4, 3), "axis": -1, "type": "dynamic"},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -361,6 +387,8 @@ FP8_WA_FP8_KV_CFG = {
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*[kv]_bmm_quantizer": {"num_bits": (4, 3), "axis": None},
         "*output_layer*": {"enable": False},
@@ -377,6 +405,8 @@ INT4_BLOCKWISE_WEIGHT_ONLY_CFG = {
         "*input_quantizer": {"enable": False},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -397,6 +427,8 @@ NF4_REAL_QUANT_CFG = {
         "*input_quantizer": {"enable": False},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -416,6 +448,8 @@ INT4_AWQ_REAL_QUANT_CFG = {
         "*input_quantizer": {"enable": False},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -435,6 +469,8 @@ INT4_AWQ_CFG = {
         "*input_quantizer": {"enable": False},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -457,6 +493,8 @@ W4A8_AWQ_BETA_CFG = {
         "*input_quantizer": {"num_bits": (4, 3), "axis": None, "enable": True},
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -480,6 +518,8 @@ MXFP8_DEFAULT_CFG = {
         },
         "*lm_head*": {"enable": False},
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
@@ -500,6 +540,8 @@ FP8_AFFINE_KV_CFG = {
             "bias": {-2: None, -4: None, "type": "static"},
         },
         "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+        "*shared_expert_gate*": {"enable": False},  # Skip the MOE router
+        "*mlp.gate.*": {"enable": False},  # Skip the MOE router
         "*router*": {"enable": False},  # Skip the MOE router
         "*output_layer*": {"enable": False},
         "output.*": {"enable": False},
