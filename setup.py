@@ -27,7 +27,7 @@ setup_kwargs = {}
 
 # Required and optional dependencies ###############################################################
 required_deps = [
-    f"nvidia-modelopt-core=={version}",
+    f"nvidia-modelopt-core==0.25.0",
     "cloudpickle>=1.6.0",
     "ninja",  # for faster building of C++ / CUDA extensions
     "numpy<2",  # Temporarily disable NumPy 2 until we have a fix
