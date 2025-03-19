@@ -13,70 +13,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
-import torch
+import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-import modelopt.torch.opt as mto
+import pytest
+from _test_utils.torch_model.transformers_models import (
+    create_tiny_llama_dir,
+    tf_modelopt_state_and_output_tester,
+)
+from transformers import AutoModelForCausalLM, LlamaForCausalLM
+
 import modelopt.torch.quantization as mtq
 
-transformers = pytest.importorskip("transformers")
 
-from _transformers_helper import create_base_model
-from transformers import AutoModelForCausalLM
-from transformers.models.llama.modeling_llama import LlamaForCausalLM
+@pytest.mark.parametrize(
+    "model_cls,fold_weight", [(LlamaForCausalLM, True), (AutoModelForCausalLM, False)]
+)
+def test_transformers_save_restore(tmp_path, model_cls, fold_weight):
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
+    model_ref = model_cls.from_pretrained(tiny_llama_dir)
+    mtq.quantize(model_ref, mtq.INT8_DEFAULT_CFG, lambda model: model(**model.dummy_inputs))
+    if fold_weight:
+        mtq.fold_weight(model_ref)
+    model_ref.save_pretrained(tiny_llama_dir / "modelopt_model")
+
+    model_test = model_cls.from_pretrained(tiny_llama_dir / "modelopt_model")
+    tf_modelopt_state_and_output_tester(model_ref, model_test)
 
 
 @pytest.mark.parametrize("model_cls", [LlamaForCausalLM, AutoModelForCausalLM])
-def test_transformers_save_restore(tmpdir, model_cls):
-    mto.enable_huggingface_checkpointing()
+def test_transformers_load_with_multi_thread(tmp_path, model_cls):
+    """Multi-threaded test for save/restore functionality"""
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
+    workers = 2
+    exceptions = []
 
-    model_ref = model_cls.from_pretrained(create_base_model(tmpdir))
-    mtq.quantize(model_ref, mtq.INT8_DEFAULT_CFG, lambda model: model(**model.dummy_inputs))
-    model_ref.save_pretrained(tmpdir + "/modelopt_model")
+    def worker_func(worker_id):
+        try:
+            _ = model_cls.from_pretrained(tiny_llama_dir)
+        except Exception as e:
+            traceback.print_exc()
+            return e
 
-    model_test = model_cls.from_pretrained(tmpdir + "/modelopt_model")
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(worker_func, i) for i in range(workers)]
 
-    # Huggingface adds a _is_hf_initialized attribute to the model's modules
-    for name, module in model_test.named_modules():
-        if hasattr(module, "_is_hf_initialized"):
-            delattr(module, "_is_hf_initialized")
+        for future in as_completed(futures):
+            result = future.result()
+            if isinstance(result, Exception):
+                exceptions.append(result)
 
-    model_ref_state = mto.modelopt_state(model_ref)
-    model_test_state = mto.modelopt_state(model_test)
-
-    assert model_ref_state == model_test_state
-
-    inputs = model_ref.dummy_inputs
-    model_ref.eval()
-    model_test.eval()
-    output_ref = model_ref(**inputs).logits
-    output_test = model_test(**inputs).logits
-    assert torch.allclose(output_ref, output_test)
-
-
-def test_transformers_save_restore_fold_weight(tmpdir):
-    mto.enable_huggingface_checkpointing()
-
-    model_ref = AutoModelForCausalLM.from_pretrained(create_base_model(tmpdir))
-    mtq.quantize(model_ref, mtq.INT8_DEFAULT_CFG, lambda model: model(**model.dummy_inputs))
-    mtq.fold_weight(model_ref)
-    model_ref.save_pretrained(tmpdir + "/modelopt_model")
-
-    model_test = AutoModelForCausalLM.from_pretrained(tmpdir + "/modelopt_model")
-
-    # Huggingface adds a _is_hf_initialized attribute to the model's modules
-    for name, module in model_test.named_modules():
-        if hasattr(module, "_is_hf_initialized"):
-            delattr(module, "_is_hf_initialized")
-
-    model_ref_state = mto.modelopt_state(model_ref)
-    model_test_state = mto.modelopt_state(model_test)
-
-    assert model_ref_state == model_test_state
-
-    inputs = model_ref.dummy_inputs
-    model_ref.eval()
-    model_test.eval()
-    output_ref = model_ref(**inputs).logits
-    output_test = model_test(**inputs).logits
-    assert torch.allclose(output_ref, output_test)
+    assert len(exceptions) == 0, "Parallel model loading tests failed, check error log"

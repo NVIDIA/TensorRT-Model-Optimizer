@@ -18,10 +18,7 @@ import os
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-import onnxruntime
-import pytest
 from _test_utils.import_helper import skip_if_no_libcudnn, skip_if_no_tensorrt
-from packaging.version import Version
 
 from modelopt.onnx.quantization.quantize import quantize
 from modelopt.onnx.quantization.trt_utils import load_onnx_model
@@ -93,12 +90,9 @@ def _assert_nodes_are_quantized(nodes):
     return True
 
 
-@pytest.mark.skipif(
-    Version(onnxruntime.__version__) < Version("1.18.0"), reason="Requires onnxruntime 1.18.0+"
-)
-def test_trt_plugin(tmpdir):
+def test_trt_plugin(tmp_path):
     model = _create_test_model_trt()
-    with open(os.path.join(tmpdir, "model_with_trt_plugin.onnx"), "w") as f:
+    with open(os.path.join(tmp_path, "model_with_trt_plugin.onnx"), "w") as f:
         onnx.save_model(model, f.name)
 
         # Check that the model contains TRT custom op
@@ -108,7 +102,7 @@ def test_trt_plugin(tmpdir):
         # Quantize model
         quantize(f.name, calibration_eps=["trt", "cuda:0", "cpu"])
 
-        # Output model should be produced in the same tmpdir
+        # Output model should be produced in the same tmp_path
         output_onnx_path = f.name.replace(".onnx", ".quant.onnx")
 
         # Check that quantized explicit model is generated

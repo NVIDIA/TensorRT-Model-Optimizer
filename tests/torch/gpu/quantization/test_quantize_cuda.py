@@ -46,6 +46,7 @@ from modelopt.torch.quantization.extensions import get_cuda_ext_mx
         mtq.NVFP4_AWQ_FULL_CFG,
         mtq.MXFP8_DEFAULT_CFG,
         mtq.NVFP4_WA_NVFP4_KV_ROTATE_CFG,
+        mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     ],
 )
 def test_quantize(model_cls, config):
@@ -57,11 +58,16 @@ def test_quantize(model_cls, config):
         mtq.NVFP4_AWQ_FULL_CFG,
         mtq.MXFP8_DEFAULT_CFG,
         mtq.NVFP4_WA_NVFP4_KV_ROTATE_CFG,
+        mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     ]:
         if get_cuda_ext_mx() is None:
             pytest.skip("cuda_ext_mx is not available")
         if model_cls in [SimpleConv, SimpleConvLinear]:
             pytest.skip("Conv weight quantization will fail as the kernel_size < FP4 blocksize")
+
+    if config == mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG:
+        # reduce block sizes for simple testing models
+        config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {-1: 8, -2: 8}
     model = model_cls().cuda()
     calib_data = [model.get_input().cuda() for _ in range(8)]
     quantize_model_and_forward(model, config, calib_data)

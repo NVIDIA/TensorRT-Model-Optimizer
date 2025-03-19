@@ -37,7 +37,7 @@ from pathlib import Path
 import onnx
 import onnx_graphsurgeon as gs
 import torch
-from onnxmltools.utils.float16_converter import convert_float_to_float16
+from onnxconverter_common import convert_float_to_float16
 from torch.onnx import export as onnx_export
 
 from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
@@ -59,26 +59,6 @@ AXES_NAME = {
         "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
         "text_embeds": {0: "batch_size"},
         "time_ids": {0: "batch_size"},
-        "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-    },
-    # SD 1.5 has been removed from HF, but we’re keeping the ONNX export
-    # logic in case anyone is looking to quantize a similar model.
-    "sd1.5": {
-        "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-        "timestep": {0: "steps"},
-        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
-        "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-    },
-    "sd2.1": {
-        "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-        "timestep": {0: "steps"},
-        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
-        "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-    },
-    "sd2.1-base": {
-        "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-        "timestep": {0: "steps"},
-        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
         "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
     },
     "sd3-medium": {
@@ -147,16 +127,6 @@ def generate_dummy_inputs(model_id, device, model_dtype="BFloat16"):
         dummy_input["timestep"] = torch.ones(2).to(device).half()
         dummy_input["encoder_hidden_states"] = torch.ones(2, 333, 4096).to(device).half()
         dummy_input["pooled_projections"] = torch.ones(2, 2048).to(device).half()
-        dummy_input["return_dict"] = False
-    elif model_id == "sd2.1":
-        dummy_input["sample"] = torch.ones(2, 4, 96, 96).to(device).half()
-        dummy_input["timestep"] = torch.ones(1).to(device).half()
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 1024).to(device).half()
-        dummy_input["return_dict"] = False
-    elif model_id == "sd2.1-base":
-        dummy_input["sample"] = torch.ones(2, 4, 64, 64).to(device).half()
-        dummy_input["timestep"] = torch.ones(1).to(device).half()
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 1024).to(device).half()
         dummy_input["return_dict"] = False
     elif model_id == "flux-dev":
         text_maxlen = 512

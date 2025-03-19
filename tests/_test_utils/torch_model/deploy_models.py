@@ -736,11 +736,12 @@ class LeNet5(nn.Module):
         out = self.fc2(out)
         return out
 
-    def gen_input(self, batch_size: int = 1):
+    @staticmethod
+    def gen_input(batch_size: int = 1):
         return torch.randn([batch_size, 3, 32, 32])
 
     def to_onnx_bytes(self, batch_size: int = 1):
-        onnx_bytes, _ = get_onnx_bytes_and_metadata(self, self.gen_input(batch_size))
+        onnx_bytes, _ = get_onnx_bytes_and_metadata(self, LeNet5.gen_input(batch_size))
         onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
         return onnx_bytes_obj.onnx_model["LeNet5.onnx"]
 
@@ -757,14 +758,16 @@ class LeNet5TwoInputs(torch.nn.Module):
         y2 = self.model.relu1(self.conv1(x1))
         return y, y2
 
-    def gen_input(self, input_id, batch_size: int = 1):
+    @staticmethod
+    def gen_input(input_id, batch_size: int = 1):
         if input_id == 0:
             return torch.randn([batch_size, 3, 32, 32])
         return torch.randn([batch_size, 5, 64, 64])
 
     def to_onnx_bytes(self, batch_size: int = 1):
         onnx_bytes, _ = get_onnx_bytes_and_metadata(
-            self, (self.gen_input(0, batch_size), self.gen_input(1, batch_size))
+            self,
+            (LeNet5TwoInputs.gen_input(0, batch_size), LeNet5TwoInputs.gen_input(1, batch_size)),
         )
         onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
         return onnx_bytes_obj.onnx_model["LeNet5TwoInputs.onnx"]
@@ -780,11 +783,12 @@ class LeNet5TwoOutputs(torch.nn.Module):
         y2 = self.model.relu1(x)
         return y, y2
 
-    def gen_input(self, batch_size: int = 1):
+    @staticmethod
+    def gen_input(batch_size: int = 1):
         return torch.randn([batch_size, 3, 32, 32])
 
     def to_onnx_bytes(self, batch_size: int = 1):
-        onnx_bytes, _ = get_onnx_bytes_and_metadata(self, self.gen_input(batch_size))
+        onnx_bytes, _ = get_onnx_bytes_and_metadata(self, LeNet5TwoOutputs.gen_input(batch_size))
         onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
         return onnx_bytes_obj.onnx_model["LeNet5TwoOutputs.onnx"]
 
@@ -801,14 +805,16 @@ class LeNet5Ooo(torch.nn.Module):
         y1 = self.model.relu1(self.conv1(x1))
         return {"y2": y2, "y1": y1}
 
-    def gen_input(self, input_id, batch_size: int = 1):
+    @staticmethod
+    def gen_input(input_id, batch_size: int = 1):
         if input_id == 0:
             return torch.randn([batch_size, 3, 32, 32])
         return torch.randn([batch_size, 5, 64, 64])
 
     def to_onnx_bytes(self, batch_size: int = 1):
         onnx_bytes, _ = get_onnx_bytes_and_metadata(
-            self, (self.gen_input(0, batch_size), self.gen_input(1, batch_size))
+            self,
+            (LeNet5Ooo.gen_input(0, batch_size), LeNet5Ooo.gen_input(1, batch_size)),
         )
         onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
         return onnx_bytes_obj.onnx_model["LeNet5Ooo.onnx"]

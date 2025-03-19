@@ -61,3 +61,26 @@ class RedrafterConfig(ModeloptBaseConfig):
         default=1,
         description=("The number of ResBlocks used in lm head."),
     )
+
+
+class MTPConfig(ModeloptBaseConfig):
+    """MTP config."""
+
+    mtp_num_layers: int = ModeloptField(
+        default=1,
+        description=("The number of decoder used in the mtp model."),
+    )
+
+    mtp_num_module: int = ModeloptField(
+        default=1,
+        description=("The number of mtp used in the model."),
+    )
+
+    mtp_freeze_list: list = ModeloptField(
+        default=[],
+        description=("The list of mtp module to freeze."),
+    )
+
+    use_last_layernorm: bool = ModeloptField(
+        default=False, description=("Whether to use a final layernorm before lm_head.")
+    )

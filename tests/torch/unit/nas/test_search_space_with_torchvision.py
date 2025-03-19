@@ -17,27 +17,27 @@ import copy
 
 import pytest
 import torch
-import torchvision.models as models
+from _test_utils.torch_model.vision_models import (
+    get_tiny_mobilenet_and_input,
+    get_tiny_resnet_and_input,
+)
+from torchvision.models.detection.mask_rcnn import MaskRCNNPredictor
 
 from modelopt.torch.nas.search_space import generate_search_space
 from modelopt.torch.utils import random
 
 
-def _get_test_cases():
-    return [
-        (models.resnet18(), 3),
-        (models.mobilenet_v2().features, 3),
-        (models.vgg16().features, 3),
-        (models.detection.maskrcnn_resnet50_fpn().roi_heads.mask_predictor, 256),
-    ]
+@pytest.mark.parametrize(
+    "get_model_and_input",
+    [
+        get_tiny_resnet_and_input,
+        get_tiny_mobilenet_and_input,
+        lambda: (MaskRCNNPredictor(3, 32, 10), (torch.randn(2, 3, 32, 32),), {}),
+    ],
+)
+def test_forward(get_model_and_input) -> None:
+    model, args, kwargs = get_model_and_input()
 
-
-def _get_rand_input(in_channels):
-    return torch.randn(2, in_channels, 32, 32)
-
-
-@pytest.mark.parametrize("model, in_channels", _get_test_cases())
-def test_forward(model, in_channels) -> None:
     # set a manual seed
     torch.manual_seed(1)
 
@@ -50,20 +50,17 @@ def test_forward(model, in_channels) -> None:
     # check that max subnet is the same as original
     assert search_space.sample(max) == search_space.sample(random.original)
 
-    # get some random input
-    inputs = _get_rand_input(in_channels)
-
     # set deterministic seed
     random._set_deterministic_seed()
 
     for sample_func in [min, random.choice, max]:
         # sample configurations and do a forward pass
         search_space.sample(sample_func)
-        out_ss = search_space.model(inputs)
+        out_ss = search_space.model(*args, **kwargs)
 
         # export configuration and do a forward pass
         subnet = copy.deepcopy(search_space).export()
-        out_sub = subnet(inputs)
+        out_sub = subnet(*args, **kwargs)
 
         # compare outputs
         assert torch.allclose(out_sub, out_ss), "output did not match"

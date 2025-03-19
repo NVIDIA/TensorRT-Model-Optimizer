@@ -162,7 +162,7 @@ def quantize(
     calibration_method: str = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cpu"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -200,10 +200,7 @@ def quantize(
             Any subset of ['trt', 'cuda:x', 'dml:x', 'cpu'], where 'x' is the device id.
 
             .. note::
-                The order of EPs should follow the fallback logic. For example, to allow the model to run with CUDA
-                or CPU, the EP list should be ['cuda:0', 'cpu'], as layers that can't run in CUDA can fall back to
-                CPU, but not the other way. If TensorRT should also be enabled, then the EP list should be
-                ['trt', 'cuda:0', 'cpu'].
+                If a custom op is detected in the model, 'trt' will automatically be added to the EP list.
         op_types_to_quantize:
             List of op types to quantize. If None (default), all supported operators are quantized.
             This flag does not support regular expression.
@@ -299,8 +296,10 @@ def quantize(
     )
     if has_custom_op:
         # Ensure that TRT EP is enabled for models with custom ops.
-        if "trt" not in calibration_eps:
-            calibration_eps.insert(0, "trt")
+        # If it's already enabled, ensure that it's the first EP in the list of EPs to mitigate fallback issues.
+        if "trt" in calibration_eps:
+            calibration_eps.remove("trt")
+        calibration_eps.insert(0, "trt")
 
         # If the model has a custom op and no plugin path was given, assume that this custom op is being implemented
         # by a TRT native plugin. In order to enable the TRT EP, 'trt_extra_plugin_lib_paths' needs to be != None.

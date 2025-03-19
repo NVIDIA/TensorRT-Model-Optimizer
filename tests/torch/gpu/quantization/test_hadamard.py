@@ -18,6 +18,8 @@ import pytest
 import torch
 import torch.nn as nn
 
+pytest.importorskip("fast_hadamard_transform")
+
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.conversion import (
     set_quantizer_by_cfg,

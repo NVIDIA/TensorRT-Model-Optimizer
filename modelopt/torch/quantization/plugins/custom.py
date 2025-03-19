@@ -27,7 +27,11 @@ from ..nn.modules.quant_linear import _QuantLinear
 from ..utils import multi_context, replace_function
 
 try:
-    from .huggingface import register_dbrx_moe_on_the_fly, register_falcon_linears_on_the_fly
+    from .huggingface import (
+        register_dbrx_moe_on_the_fly,
+        register_falcon_linears_on_the_fly,
+        register_hf_attentions_on_the_fly,
+    )
 except ImportError:
 
     def _dummy_register(model):
@@ -35,6 +39,7 @@ except ImportError:
 
     register_falcon_linears_on_the_fly = _dummy_register
     register_dbrx_moe_on_the_fly = _dummy_register
+    register_hf_attentions_on_the_fly = _dummy_register
 
 
 # TODO: This is a temporary solution
@@ -43,6 +48,7 @@ def register_custom_model_plugins_on_the_fly(model):
     """Registers custom modules as QUANT_MODULE on the fly."""
     register_falcon_linears_on_the_fly(model)
     register_dbrx_moe_on_the_fly(model)
+    register_hf_attentions_on_the_fly(model)
 
 
 class _QuantFunctionalMixin(DynamicModule):
@@ -86,6 +92,7 @@ class _ParallelLinear(_QuantFunctionalMixin):
     _parallel_state: ParallelState
     _is_column_parallel = False
     _is_row_parallel = False
+    _quantized_linear_fn: Callable = _QuantLinear.quantized_linear_fn
 
     @property
     def functionals_to_replace(self) -> Iterator[tuple[ModuleType, str, Callable]]:
@@ -93,7 +100,10 @@ class _ParallelLinear(_QuantFunctionalMixin):
             if not hasattr(package, func_name):
                 continue
             quantized_func = partial(
-                _QuantLinear.quantized_linear_fn, package, "_" + func_name, self
+                self.__class__._quantized_linear_fn,
+                package,
+                "_" + func_name,
+                self,
             )
             if hasattr(getattr(package, func_name), "__dict__"):
                 quantized_func.__dict__.update(getattr(package, func_name).__dict__)

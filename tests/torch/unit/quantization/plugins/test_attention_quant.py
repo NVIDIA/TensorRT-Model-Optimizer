@@ -17,9 +17,10 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from _test_utils.torch_model.transformers_models import get_tiny_llama
+from packaging.version import Version
 
 import modelopt.torch.quantization as mtq
-from modelopt.torch.quantization.plugins.attention import register_attention_for_kv_quant
 
 transformers = pytest.importorskip("transformers")
 
@@ -30,6 +31,9 @@ class MatmulAttention(nn.Module):
         a = torch.softmax(torch.matmul(q, k.transpose(-2, -1)), dim=-1)
         return torch.matmul(a, v)
 
+    def get_input(self):
+        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
+
 
 class BMMAttention(nn.Module):
     def forward(self, x):
@@ -37,11 +41,17 @@ class BMMAttention(nn.Module):
         a = torch.softmax(torch.bmm(q, k.transpose(-2, -1)), dim=-1)
         return torch.bmm(a, v)
 
+    def get_input(self):
+        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
+
 
 class BinMatmulAttention(nn.Module):
     def forward(self, x):
         q, k, v = x
         return torch.softmax(q @ k.transpose(-2, -1), dim=-1) @ v
+
+    def get_input(self):
+        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
 
 
 class SDPAAttention(nn.Module):
@@ -49,26 +59,46 @@ class SDPAAttention(nn.Module):
         q, k, v = x
         return F.scaled_dot_product_attention(q, k, v)
 
+    def get_input(self):
+        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
 
+
+@pytest.mark.skipif(
+    Version(transformers.__version__) >= Version("4.48.0"),
+    reason="Legacy K/V cache quantization requires transformers < 4.48.0",
+)
 @pytest.mark.parametrize(
     "attn_cls", [MatmulAttention, BMMAttention, BinMatmulAttention, SDPAAttention]
 )
-def test_convert_conv1d(attn_cls):
-    register_attention_for_kv_quant(attn_cls)
+def test_kv_quant(attn_cls):
+    model_test = get_tiny_llama()
 
-    model_test = nn.Sequential(
-        attn_cls(),
-    )
-
-    q = torch.randn(1, 4, 8)
-    k = torch.randn(1, 4, 8)
-    v = torch.randn(1, 4, 8)
+    mtq.plugins.register_attention_for_kv_quant(attn_cls)
     mtq.replace_quant_module(model_test)
-    for name, module in model_test.named_modules():
+    for module in model_test.modules():
         if isinstance(module, attn_cls):
             assert hasattr(module, "k_bmm_quantizer")
             assert hasattr(module, "v_bmm_quantizer")
 
-    model_test((q, k, v))
+    input_ids = torch.randint(0, 1, (1, 4))
+    model_test(input_ids)
 
     mtq.unregister(attn_cls)
+
+
+@pytest.mark.skipif(
+    Version(transformers.__version__) < Version("4.48.0"),
+    reason="K/V cache quantization for attention_interface requires transformers >= 4.48.0",
+)
+def test_kv_quant_hf():
+    model_test = get_tiny_llama()
+    attn_cls = model_test.model.layers[0].self_attn.__class__
+
+    mtq.replace_quant_module(model_test)
+    for module in model_test.modules():
+        if isinstance(module, attn_cls):
+            assert hasattr(module, "k_bmm_quantizer")
+            assert hasattr(module, "v_bmm_quantizer")
+
+    input_ids = torch.randint(0, 1, (1, 4))
+    model_test(input_ids)

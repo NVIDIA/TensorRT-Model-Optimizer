@@ -35,7 +35,7 @@ from .conversion import (
     update_quantize_metadata,
 )
 
-QuantizeModeRegistry = _ModeRegistryCls()
+QuantizeModeRegistry = _ModeRegistryCls("quantization")
 
 
 # TODO: OMNIML-717 Reuse search infra for quantization calibration algorithms

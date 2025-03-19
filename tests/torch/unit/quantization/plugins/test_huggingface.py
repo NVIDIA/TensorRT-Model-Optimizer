@@ -20,16 +20,21 @@ import pytest
 import torch
 import torch.nn as nn
 from _test_utils.torch_misc import set_seed
+from _test_utils.torch_model.transformers_models import (
+    create_tiny_llama_dir,
+    get_tiny_llama,
+    tf_modelopt_state_and_output_tester,
+)
 
-import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.nn import QuantLinear, QuantModuleRegistry
 
-transformers = pytest.importorskip("transformers")
+pytest.importorskip("transformers")
 
-from transformers import AutoModelForCausalLM
-from transformers.models.llama.configuration_llama import LlamaConfig
-from transformers.models.llama.modeling_llama import LlamaForCausalLM
+import transformers
+from transformers import AutoModelForCausalLM, LlamaForCausalLM
+from transformers.models.dbrx.configuration_dbrx import DbrxConfig, DbrxFFNConfig
+from transformers.models.dbrx.modeling_dbrx import DbrxExpertGLU, DbrxExperts, DbrxFFN
 
 
 class HFModel(nn.Module):
@@ -92,11 +97,7 @@ def test_convert_conv1d():
     assert torch.allclose(out_1, out_2)
 
 
-@pytest.mark.skipif(not hasattr(transformers.models, "dbrx"), reason="DBRX is not available")
 def test_dbrx():
-    from transformers.models.dbrx.configuration_dbrx import DbrxConfig, DbrxFFNConfig
-    from transformers.models.dbrx.modeling_dbrx import DbrxExpertGLU, DbrxExperts, DbrxFFN
-
     assert DbrxExperts in QuantModuleRegistry
     assert DbrxExpertGLU in QuantModuleRegistry
 
@@ -136,16 +137,8 @@ def test_dbrx():
 
 
 def test_autoquantize_huggingface():
-    model = transformers.LlamaForCausalLM(
-        transformers.LlamaConfig(
-            vocab_size=128,
-            hidden_size=64,
-            intermediate_size=64,
-            num_hidden_layers=2,
-            num_attention_heads=2,
-        )
-    )
-    input_ids = torch.randint(0, 128, (1, 4))
+    model = get_tiny_llama()
+    input_ids = model.dummy_inputs["input_ids"]
 
     warnings.filterwarnings(
         "error", message="AutoQuantize: Error enabling gradient checkpointing for huggingface model"
@@ -168,15 +161,15 @@ def test_autoquantize_huggingface():
         )
 
 
-@pytest.mark.parametrize("model_cls", [LlamaForCausalLM, AutoModelForCausalLM])
 @pytest.mark.parametrize(
-    "quant_config",
+    "model_cls,quant_config",
     [
-        mtq.NF4_REAL_QUANT_CFG,
-        mtq.INT4_AWQ_REAL_QUANT_CFG,
+        (LlamaForCausalLM, mtq.NF4_REAL_QUANT_CFG),
+        (AutoModelForCausalLM, mtq.INT4_AWQ_REAL_QUANT_CFG),
     ],
 )
-def test_quantized_transformers_save_restore(tmpdir, model_cls, quant_config):
+def test_quantized_transformers_save_restore(tmp_path, model_cls, quant_config):
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
     # update config to fit test cases
     if quant_config == mtq.NF4_REAL_QUANT_CFG:
         # reduce block sizes for simple testing models
@@ -185,45 +178,15 @@ def test_quantized_transformers_save_restore(tmpdir, model_cls, quant_config):
             "scale_bits": 8,
             "scale_block_sizes": {-1: 16},
         }
-    if quant_config == mtq.INT4_AWQ_REAL_QUANT_CFG:
+    elif quant_config == mtq.INT4_AWQ_REAL_QUANT_CFG:
         quant_config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {-1: 16}
+    else:
+        raise ValueError(f"Unsupported quant_config: {quant_config}")
 
-    def create_base_model():
-        base_model_path = tmpdir + "/base_model"
-        model = LlamaForCausalLM(
-            LlamaConfig(
-                vocab_size=128,
-                hidden_size=64,
-                intermediate_size=64,
-                num_hidden_layers=2,
-                num_attention_heads=2,
-            )
-        )
-        model.save_pretrained(base_model_path)
-        return base_model_path
-
-    mto.enable_huggingface_checkpointing()
-
-    model_ref = model_cls.from_pretrained(create_base_model())
+    model_ref = model_cls.from_pretrained(tiny_llama_dir)
     mtq.quantize(model_ref, quant_config, lambda model: model(**model.dummy_inputs))
-    model_ref.save_pretrained(tmpdir + "/modelopt_model")
-    assert os.path.exists(tmpdir + "/modelopt_model/modelopt_state.pth")
+    model_ref.save_pretrained(tiny_llama_dir / "modelopt_model")
+    assert os.path.exists(tiny_llama_dir / "modelopt_model/modelopt_state.pth")
 
-    model_test = model_cls.from_pretrained(tmpdir + "/modelopt_model")
-
-    # Huggingface adds a _is_hf_initialized attribute to the model's modules
-    for module in model_test.modules():
-        if hasattr(module, "_is_hf_initialized"):
-            delattr(module, "_is_hf_initialized")
-
-    model_ref_state = mto.modelopt_state(model_ref)
-    model_test_state = mto.modelopt_state(model_test)
-
-    assert model_ref_state == model_test_state
-
-    inputs = model_ref.dummy_inputs
-    model_ref.eval()
-    model_test.eval()
-    output_ref = model_ref(**inputs).logits
-    output_test = model_test(**inputs).logits
-    assert torch.allclose(output_ref, output_test)
+    model_test = model_cls.from_pretrained(tiny_llama_dir / "modelopt_model")
+    tf_modelopt_state_and_output_tester(model_ref, model_test)

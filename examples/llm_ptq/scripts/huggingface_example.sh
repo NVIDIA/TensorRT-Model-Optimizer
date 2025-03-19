@@ -331,7 +331,7 @@ if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     HASH=$(echo -n "$ENGINE_DIR" | md5sum | awk '{print $1}')
     PORT=$((10000 + (0x${HASH:0:4} % 50001)))
     echo "Starting trtllm-serve on $PORT"
-    trtllm-serve $ENGINE_DIR --port $PORT > $ENGINE_DIR/serve.txt 2>&1 &
+    trtllm-serve $ENGINE_DIR --host 0.0.0.0 --port $PORT > $ENGINE_DIR/serve.txt 2>&1 &
     SERVE_PID=$!
 
     tail -f $ENGINE_DIR/serve.txt | while read line; do

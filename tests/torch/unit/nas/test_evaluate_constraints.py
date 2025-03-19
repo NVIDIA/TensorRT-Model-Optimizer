@@ -14,12 +14,14 @@
 # limitations under the License.
 
 import pytest
-import torch
+from _test_utils.torch_model.vision_models import (
+    get_tiny_mobilenet_and_input,
+    get_tiny_resnet_and_input,
+)
 from torchprofile import profile_macs
-from torchvision.models import mobilenet_v2, resnet18
 
 from modelopt.torch.nas._algorithms import ConstraintsFunc
-from modelopt.torch.utils import get_module_device, param_num, remove_bn
+from modelopt.torch.utils import param_num, remove_bn
 
 try:
     from _test_utils.torch_deploy.runtime import FAKE_DEPLOYMENT, fake_latency
@@ -29,22 +31,23 @@ except ImportError:
     SKIP_LATENCY_TEST = True
 
 
-@pytest.mark.parametrize("model_cls", [mobilenet_v2, resnet18])
-def test_evaluate_constraints(model_cls):
-    model = model_cls().eval()
+@pytest.mark.parametrize(
+    "model_and_input_func", [get_tiny_resnet_and_input, get_tiny_mobilenet_and_input]
+)
+def test_evaluate_constraints(model_and_input_func):
+    model, args, kwargs = model_and_input_func()
+    assert not kwargs
 
     constraints = {"flops": float("inf"), "params": float("inf")}
-    dummy_input = torch.randn(1, 3, 224, 224)
-    cf = ConstraintsFunc(model, constraints=constraints, dummy_input=dummy_input)
+    cf = ConstraintsFunc(model, constraints=constraints, dummy_input=args)
     _, actual_results = cf()
 
     remove_bn(model)
-    args_profile = (torch.zeros(dummy_input.shape, device=get_module_device(model)),)
     expected_results = {
         # NOTE: using param_num here instead of param_num_from_forward to check
         # correctness of the function.
         "params": param_num(model, unit=1.0),
-        "flops": profile_macs(model, args=args_profile) / 1.0,
+        "flops": profile_macs(model, args) / 1.0,
     }
 
     assert actual_results == expected_results
@@ -52,37 +55,35 @@ def test_evaluate_constraints(model_cls):
 
 @pytest.mark.skipif(SKIP_LATENCY_TEST, reason="modelopt.torch._deploy dependencies not available")
 def test_evaluate_latency_constraints():
-    model = resnet18().eval()
-    dummy_input = torch.randn(1, 3, 224, 224)
+    model, args, kwargs = get_tiny_resnet_and_input()
+    assert not kwargs
 
     with fake_latency(100):
         cf = ConstraintsFunc(
             model,
             constraints={"latency": 200},
-            dummy_input=dummy_input,
+            dummy_input=args,
             deployment=FAKE_DEPLOYMENT,
         )
         is_satisfied, _vals = cf()
         assert is_satisfied is True
 
         cf = ConstraintsFunc(
-            model, constraints={"latency": 50}, dummy_input=dummy_input, deployment=FAKE_DEPLOYMENT
+            model, constraints={"latency": 50}, dummy_input=args, deployment=FAKE_DEPLOYMENT
         )
         is_satisfied, _vals = cf()
         assert is_satisfied is False
 
 
-@pytest.mark.parametrize("model_cls", [resnet18])
-def test_percent_limits(model_cls):
-    model = model_cls().eval()
+def test_percent_limits():
+    model, args, kwargs = get_tiny_resnet_and_input()
+    assert not kwargs
 
     constraints = {"flops": "80%", "params": "40%"}
-    dummy_input = torch.randn(1, 3, 224, 224)
-    cf = ConstraintsFunc(model, constraints=constraints, dummy_input=dummy_input)
+    cf = ConstraintsFunc(model, constraints=constraints, dummy_input=args)
 
     remove_bn(model)
-    args_profile = (torch.zeros(dummy_input.shape, device=get_module_device(model)),)
-    max_flops = profile_macs(model, args=args_profile)
+    max_flops = profile_macs(model, args)
     max_params = param_num(model, unit=1.0)
     expected_results = {
         # NOTE: using trainable_param_num here instead of trainable_param_num_from_forward to check
@@ -100,7 +101,7 @@ def test_percent_limits(model_cls):
     with fake_latency(max_latency):
         constraints = {"flops": "80%", "params": "40%", "latency": "20%"}
         cf = ConstraintsFunc(
-            model, constraints=constraints, dummy_input=dummy_input, deployment=FAKE_DEPLOYMENT
+            model, constraints=constraints, dummy_input=args, deployment=FAKE_DEPLOYMENT
         )
 
         assert cf.limits["latency"] == pytest.approx((0, max_latency * 0.2))

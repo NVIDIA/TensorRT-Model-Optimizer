@@ -44,6 +44,7 @@ from modelopt.torch.export.quant_utils import (
     adjust_attn_amax_values,
     all_items_same,
     get_kv_cache_dtype,
+    get_quant_config,
     get_quantization_format,
     get_scaling_factor,
     get_scaling_factor_from_weight,
@@ -98,10 +99,7 @@ def test_get_quantization_format(config, expected):
                 "quant_algo": "MIXED_PRECISION",
                 "kv_cache_quant_algo": None,
                 "quantized_layers": {
-                    "layer1": {
-                        "quant_algo": "NVFP4",
-                        "group_size": 16,
-                    },
+                    "layer1": {"quant_algo": "NVFP4", "group_size": 16},
                     "layer3": {
                         "quant_algo": "W4A16_AWQ",
                         "group_size": 8,
@@ -117,7 +115,6 @@ def test_get_quantization_format(config, expected):
                     "layer5": {"quant_algo": "W8A8_SQ_PER_CHANNEL"},
                     "layer6": {"quant_algo": "FP8"},
                     "layer7": {"quant_algo": "xyz"},
-                    "layer8": {"quant_algo": None},
                 },
             },
         ),
@@ -129,7 +126,12 @@ def test_get_quantization_format(config, expected):
                 "layer2.awq_block_size": 16,
                 "layer8.quantization": None,
             },
-            {},
+            {
+                "quant_algo": "NVFP4",
+                "kv_cache_quant_algo": None,
+                "group_size": 16,
+                "exclude_modules": ["layer8"],
+            },
         ),
     ],
 )
@@ -372,3 +374,81 @@ def test_get_scaling_factor(
                 atol=1e-3,
             )
             expected_amax.pop(0)
+
+
+@pytest.mark.parametrize(
+    "config, expected",
+    [
+        (
+            partial_fp8_config,
+            {
+                "exclude_modules": ["linears.0", "linears.2"],
+                "kv_cache_quant_algo": None,
+                "quant_algo": "FP8",
+            },
+        ),
+        (
+            partial_w4a8_config,
+            {
+                "exclude_modules": ["linears.0", "linears.1"],
+                "group_size": 128,
+                "has_zero_point": False,
+                "kv_cache_quant_algo": None,
+                "pre_quant_scale": True,
+                "quant_algo": "W4A8_AWQ",
+            },
+        ),
+        (
+            partial_nvfp4_config,
+            {
+                "exclude_modules": ["linears.0", "linears.2"],
+                "group_size": 16,
+                "kv_cache_quant_algo": None,
+                "quant_algo": "NVFP4",
+            },
+        ),
+        (
+            partial_nvfp4_awq_config,
+            {
+                "exclude_modules": ["linears.0", "linears.1"],
+                "group_size": 16,
+                "has_zero_point": False,
+                "pre_quant_scale": True,
+                "kv_cache_quant_algo": None,
+                "quant_algo": "NVFP4_AWQ",
+            },
+        ),
+        (
+            partial_int4_awq_config,
+            {
+                "exclude_modules": ["linears.0", "linears.1"],
+                "group_size": 128,
+                "has_zero_point": False,
+                "kv_cache_quant_algo": None,
+                "pre_quant_scale": True,
+                "quant_algo": "W4A16_AWQ",
+            },
+        ),
+        (
+            partial_fp8_kv_cache_config,
+            {
+                "exclude_modules": ["linears.0", "linears.2"],
+                "quant_algo": "FP8",
+                "kv_cache_quant_algo": "FP8",
+            },
+        ),
+        (
+            partial_int8_kv_cache_config,
+            {
+                "exclude_modules": ["linears.0", "linears.2"],
+                "quant_algo": "FP8",
+                "kv_cache_quant_algo": "INT8",
+            },
+        ),
+    ],
+)
+def test_get_quant_config(config, expected):
+    model = ToyModel().to("cuda")
+    mtq.quantize(model, config, lambda x: x(torch.randn(1, 4, 10, device="cuda")))
+    quant_config = get_quant_config(model.named_modules())
+    assert quant_config["quantization"] == expected

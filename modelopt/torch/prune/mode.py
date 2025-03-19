@@ -41,7 +41,7 @@ from .fastnas import (
 from .gradnas import GradientBinarySearcher
 from .mcore_gpt_minitron import MCoreGPTMinitronSearcher
 
-PruneModeRegistry = _ModeRegistryCls()
+PruneModeRegistry = _ModeRegistryCls("prune")
 
 
 @NASModeRegistry.register_mode

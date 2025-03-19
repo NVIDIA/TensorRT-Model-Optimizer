@@ -16,43 +16,54 @@
 import copy
 import math
 from contextlib import nullcontext
-from itertools import product
 from typing import Union
 
 import pytest
 import torch.nn as nn
-from _test_utils.torch_model.benchmark_models import get_benchmark_models
+from _test_utils.torch_model.vision_models import (
+    get_tiny_mobilenet_and_input,
+    get_tiny_resnet_and_input,
+)
 
 import modelopt.torch.nas as mtn
 from modelopt.torch.nas._algorithms import ConstraintsFunc
 from modelopt.torch.opt.utils import named_hparams
 from modelopt.torch.utils import random
 
-tv_test_cases = {k: v for k, v in get_benchmark_models().items() if k.startswith("torchvision/")}
-resnet_test_cases = {k: v for k, v in tv_test_cases.items() if k.startswith("torchvision/resnet18")}
 
-
-def _initialize_test_case(get_model_and_input, ver):
-    model, args, kwargs = get_model_and_input()
-    dummy_input = (*args, kwargs)
-    mode = ["autonas", "fastnas", "autonas"]
-    model = mtn.convert(model, mode=mode[ver])
-    _, stats = mtn.profile(model, dummy_input, use_centroid=True)
-
-    constraints = [
-        {"flops": stats["max"]["flops"], "params": stats["max"]["params"]},
-        {"flops": stats["max"]["flops"]},
-        {"flops": 0, "params": 0},
-    ]
-    satisfiable = [True, True, False]
-
-    return model, dummy_input, constraints[ver].keys(), constraints[ver], satisfiable[ver]
-
-
-@pytest.mark.parametrize("variant", tuple(range(3)))
-@pytest.mark.parametrize("get_model_and_input", tv_test_cases.values(), ids=tv_test_cases.keys())
+@pytest.mark.parametrize(
+    "get_model_and_input,variant",
+    [
+        (get_tiny_mobilenet_and_input, 0),
+        (get_tiny_resnet_and_input, 1),
+        (get_tiny_resnet_and_input, 2),
+    ],
+)
 def test_searched_model_constraints(get_model_and_input, variant):
-    """tests to see if subnets found satisfy constraints specified"""
+    """Tests to see if subnets found satisfy constraints specified"""
+
+    def _initialize_test_case(get_model_and_input, variant):
+        model, args, kwargs = get_model_and_input()
+        dummy_input = (*args, kwargs)
+        mode = ["autonas", "fastnas", "autonas"]
+        model = mtn.convert(model, mode=mode[variant])
+        _, stats = mtn.profile(model, dummy_input, use_centroid=True)
+
+        constraints = [
+            {"flops": stats["max"]["flops"], "params": stats["max"]["params"]},
+            {"flops": stats["max"]["flops"]},
+            {"flops": 0, "params": 0},
+        ]
+        satisfiable = [True, True, False]
+
+        return (
+            model,
+            dummy_input,
+            constraints[variant].keys(),
+            constraints[variant],
+            satisfiable[variant],
+        )
+
     model, dummy_input, interp_keys, constraints, satisfiable = _initialize_test_case(
         get_model_and_input, variant
     )
@@ -92,53 +103,22 @@ def test_searched_model_constraints(get_model_and_input, variant):
                 assert check_constraint(subnet_stat, limits)
 
 
-def _get_fake_latency(coeff_params=0.75):
+@pytest.mark.parametrize("flops_only", [True, False])
+@pytest.mark.parametrize("bounded_latency", [True, False])
+def test_search_constraints(flops_only: bool, bounded_latency: bool):
     def _fake_latency(self, model, precomputed=None):
+        coeff_params = 0.00 if flops_only else 0.75
         if not hasattr(_fake_latency, "call_counter"):
             _fake_latency.call_counter = 0
         _fake_latency.call_counter += 1  # counter to keep track of how often it is called
         print("Calling fake latency")
         return (1.8 * self._get_flops(model) + coeff_params * self._get_params(model)) / 1.0e6
 
-    return _fake_latency
-
-
-test_cases2 = {
-    f"{name}_{version}": (get_model_and_input, version)
-    for name, get_model_and_input in get_benchmark_models().items()
-    if name == "torchvision/resnet18"
-    for version in range(5)
-}
-
-
-def _initialize_test_case2(get_model_and_input, ver):
-    model, args, kwargs = get_model_and_input()
-    dummy_input = (*args, kwargs)
-    model = mtn.convert(model, mode="autonas")
-
-    # different variants
-    flops_only_interp_keys_bounded_latency = [
-        (True, True),
-        (False, False),
-        (False, True),
-        (True, False),
-    ]
-
-    return model, dummy_input, *flops_only_interp_keys_bounded_latency[ver]
-
-
-@pytest.mark.parametrize("flops_only, bounded_latency", tuple(product([True, False], repeat=2)))
-@pytest.mark.parametrize(
-    "get_model_and_input", resnet_test_cases.values(), ids=resnet_test_cases.keys()
-)
-def test_search_constraints(get_model_and_input, flops_only: bool, bounded_latency: bool):
-    # intialize test case
-    model, args, kwargs = get_model_and_input()
+    model, args, kwargs = get_tiny_resnet_and_input()
     dummy_input = (*args, kwargs)
     model = mtn.convert(model, mode="autonas")
 
     # get fake latency and spoof ConstraintsFunc class
-    _fake_latency = _get_fake_latency(0.00 if flops_only else 0.75)
     ConstraintsFunc._get_true_latency = _fake_latency
 
     # now setup constraints functor
@@ -196,21 +176,23 @@ def test_search_constraints(get_model_and_input, flops_only: bool, bounded_laten
     assert current_counter == _fake_latency.call_counter
 
 
-def _initialize_test_case_profile(get_model_and_input):
-    model, args, kwargs = get_model_and_input()
-    dummy_input = (*args, kwargs)
-    return (
-        model,
-        dummy_input,
-        ["flops", "params"],
-        {"full"},
-        {"min", "centroid", "max", "max/min ratio"},
-    )
-
-
-@pytest.mark.parametrize("get_model_and_input", tv_test_cases.values(), ids=tv_test_cases.keys())
+@pytest.mark.parametrize(
+    "get_model_and_input", [get_tiny_resnet_and_input, get_tiny_mobilenet_and_input]
+)
 def test_profile_same_max(get_model_and_input):
     """checks if the max/original subnet of the profiled model is the same as the original model."""
+
+    def _initialize_test_case_profile(get_model_and_input):
+        model, args, kwargs = get_model_and_input()
+        dummy_input = (*args, kwargs)
+        return (
+            model,
+            dummy_input,
+            ["flops", "params"],
+            {"full"},
+            {"min", "centroid", "max", "max/min ratio"},
+        )
+
     model_og, dummy_input, interp_keys, keys_og, keys_converted = _initialize_test_case_profile(
         get_model_and_input
     )
@@ -242,21 +224,19 @@ def test_profile_same_max(get_model_and_input):
         assert stats_original["full"][key] == stats_converted["max"][key]
 
 
-def _initialize_test_case_search_space(get_model_and_input, mode):
+@pytest.mark.parametrize(
+    "get_model_and_input,mode",
+    [
+        (get_tiny_resnet_and_input, "autonas"),
+        (get_tiny_mobilenet_and_input, "fastnas"),
+    ],
+)
+def test_profile_search_space(get_model_and_input, mode):
+    """checks if the search space found by nas.profile is consistent."""
     model, args, kwargs = get_model_and_input()
     dummy_input = (*args, kwargs)
     model = mtn.convert(model, mode=mode)
-    ss_size = math.prod([len(hp.choices) for _, hp in named_hparams(model, True)])
+    search_space_size = math.prod([len(hp.choices) for _, hp in named_hparams(model, True)])
 
-    return model, dummy_input, ss_size
-
-
-@pytest.mark.parametrize("mode", ("autonas", "fastnas"))
-@pytest.mark.parametrize("get_model_and_input", tv_test_cases.values(), ids=tv_test_cases.keys())
-def test_profile_search_space(get_model_and_input, mode):
-    """checks if the search space found by nas.profile is consistent."""
-    model, dummy_input, search_space_size = _initialize_test_case_search_space(
-        get_model_and_input, mode
-    )
     _, stats = mtn.profile(model, dummy_input, use_centroid=True)
     assert stats["search space size"] == search_space_size

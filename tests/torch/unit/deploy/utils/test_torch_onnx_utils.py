@@ -24,8 +24,9 @@ import pytest
 import torch
 import torch.nn as nn
 from _test_utils.torch_model.deploy_models import BaseDeployModel, get_deploy_models
+from _test_utils.torch_model.vision_models import get_tiny_resnet_and_input
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
-from torchvision import models
+from packaging.version import Version
 
 from modelopt.onnx.utils import (
     get_batch_size_from_bytes,
@@ -53,7 +54,8 @@ deploy_benchmark_dynamo = get_deploy_models(dynamic_control_flow=False)
     "model", deploy_benchmark_dynamo.values(), ids=deploy_benchmark_dynamo.keys()
 )
 @pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="torch.compile is not yet supported for Python 3.12+"
+    sys.version_info >= (3, 12) and Version(torch.__version__) < Version("2.4"),
+    reason="torch.compile is not supported for Python 3.12+ with torch < 2.4",
 )
 def test_onnx_dynamo_export(model: BaseDeployModel):
     # try it for all potential numeric types
@@ -227,16 +229,16 @@ def _get_avg_var_of_weights(model):
 
 
 def test_random_onnx_weights():
-    model = models.resnet50()
-    input = torch.ones((1, 3, 224, 224))
+    model, args, kwargs = get_tiny_resnet_and_input()
+    assert not kwargs
 
-    onnx_bytes = get_onnx_bytes(model, input)
+    onnx_bytes = get_onnx_bytes(model, args)
     original_avg_var_dict = _get_avg_var_of_weights(onnx.load_from_string(onnx_bytes))
     original_model_size = len(onnx_bytes)
 
     onnx_bytes = remove_weights_data(onnx_bytes)
-    # Removed model weights should be greater than 40 MB
-    assert original_model_size - len(onnx_bytes) > 4e7
+    # Removed model weights should be greater than 18 MB
+    assert original_model_size - len(onnx_bytes) > 18e6
 
     # After assigning random weights, model size should be slightly greater than the the original
     # size due to some extra metadata
@@ -249,10 +251,10 @@ def test_random_onnx_weights():
 
 
 def test_reproducible_random_weights():
-    model = models.resnet50()
-    input = torch.ones((1, 3, 224, 224))
+    model, args, kwargs = get_tiny_resnet_and_input()
+    assert not kwargs
 
-    original_onnx_bytes = get_onnx_bytes(model, input)
+    original_onnx_bytes = get_onnx_bytes(model, args)
     onnx_bytes_wo_weights = remove_weights_data(original_onnx_bytes)
 
     # Check if the randomization produces the same weights

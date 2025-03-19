@@ -28,6 +28,6 @@ def test_validate_onnx(onnx_bytes):
     assert not validate_onnx(onnx_bytes)
 
 
-def test_save_onnx(tmpdir):
-    save_onnx_bytes_to_dir(b"test_onnx_bytes", tmpdir, "test")
-    assert os.path.exists(os.path.join(tmpdir, "test.onnx"))
+def test_save_onnx(tmp_path):
+    save_onnx_bytes_to_dir(b"test_onnx_bytes", tmp_path, "test")
+    assert os.path.exists(os.path.join(tmp_path, "test.onnx"))

@@ -15,22 +15,19 @@
 
 from functools import partial
 
-from _test_utils.import_helper import skip_if_mcore_dist_ckpt_is_not_supported, skip_if_no_megatron
+from _test_utils.import_helper import skip_if_mcore_dist_ckpt_is_not_supported
+from _test_utils.sparsity_utils import sample_subnet_with_sparsity
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_model.utils import sample_subnet_with_sparsity
-
-from modelopt.torch.opt.conversion import apply_mode
-
-skip_if_no_megatron()
-
 from _test_utils.torch_dist.plugins.megatron_common import (
     MegatronModel,
     initialize_for_megatron,
     sharded_state_dict_test_helper,
 )
 
+from modelopt.torch.opt.conversion import apply_mode
 
-def _test_sharded_state_dict(tmpdir, rank, size):
+
+def _test_sharded_state_dict(tmp_path, rank, size):
     initialize_for_megatron()
 
     model_ref = MegatronModel(size).cuda()
@@ -41,9 +38,9 @@ def _test_sharded_state_dict(tmpdir, rank, size):
 
     model_test = MegatronModel(size).cuda()
 
-    sharded_state_dict_test_helper(tmpdir, model_ref, model_test, lambda model: model(input))
+    sharded_state_dict_test_helper(tmp_path, model_ref, model_test, lambda model: model(input))
 
 
-def test_sharded_state_dict(tmpdir):
+def test_sharded_state_dict(tmp_path):
     skip_if_mcore_dist_ckpt_is_not_supported()
-    spawn_multiprocess_job(size=1, job=partial(_test_sharded_state_dict, tmpdir), backend="nccl")
+    spawn_multiprocess_job(size=1, job=partial(_test_sharded_state_dict, tmp_path), backend="nccl")

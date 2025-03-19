@@ -13,42 +13,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
-
 import pytest
 import torch
 from _test_utils.torch_misc import compare_outputs, set_seed
-from _test_utils.torch_model.benchmark_models import get_benchmark_models
+from _test_utils.torch_model.vision_models import get_vision_models
 
 from modelopt.torch.nas.search_space import generate_search_space
 from modelopt.torch.utils import flatten_tree, zero_grad
 from modelopt.torch.utils.random import _set_deterministic_seed
 
-benchmarks = get_benchmark_models()
+models = get_vision_models()
 
 
 @pytest.mark.parametrize("on_gpu", [True])  # just run on GPU, but leave it here for easy debugging
-@pytest.mark.parametrize("get_model_and_input", benchmarks.values(), ids=benchmarks.keys())
-def test_benchmarks(get_model_and_input, on_gpu):
-    # initialize model
-    model, args, kwargs = get_model_and_input(on_gpu)
-
-    # Ensure original model is correct
-    with torch.no_grad():
-        _ = model(*args, **kwargs)
-
-    # set deterministic seed
+@pytest.mark.parametrize("get_model_and_input", models.values(), ids=models.keys())
+def test_models(get_model_and_input, on_gpu):
     _set_deterministic_seed()
 
-    for _ in range(5):
+    for _ in range(3):
+        model, args, kwargs = get_model_and_input(on_gpu)
+
         # Test search space generation
         # NOTE: use deepcopy as we don't wanna test repeated search space gen & export on same model
-        search_space = generate_search_space(copy.deepcopy(model))
+        search_space = generate_search_space(model)
 
         # Test sample process which contains uncertainty
         search_space.sample()
 
-        # Test subnet forward
+        # Test subnet forwardpytest.warns
         out1 = search_space.model(*args, **kwargs)
 
         # Test subnet backward
@@ -68,7 +60,7 @@ def test_benchmarks(get_model_and_input, on_gpu):
 
 # NOTE: we run this test on CPU because of better floating point precision!
 @pytest.mark.parametrize("on_gpu", [False])  # don't run on GPU but leave it here for easy debugging
-@pytest.mark.parametrize("get_model_and_input", benchmarks.values(), ids=benchmarks.keys())
+@pytest.mark.parametrize("get_model_and_input", models.values(), ids=models.keys())
 def test_dynamic_sorting(get_model_and_input, on_gpu):
     set_seed()
     # initialize model

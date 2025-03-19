@@ -16,13 +16,13 @@
 import pytest
 from _test_utils.import_helper import skip_if_no_tensorrt, skip_if_no_trtexec
 from _test_utils.torch_misc import compare_outputs
-from _test_utils.torch_model.benchmark_models import _process_model_and_inputs, get_benchmark_models
 from _test_utils.torch_model.deploy_models import (
     LeNet5,
     LeNet5Ooo,
     LeNet5TwoInputs,
     LeNet5TwoOutputs,
 )
+from _test_utils.torch_model.vision_models import get_vision_models, process_model_and_inputs
 
 skip_if_no_tensorrt()
 skip_if_no_trtexec()
@@ -39,31 +39,29 @@ deployment = {
     "onnx_opset": "14",
 }
 
-benchmarks = get_benchmark_models()
+vision_models = get_vision_models()
 
 
 @pytest.mark.parametrize(
-    "model, model_inputs",
+    "model, args, kwargs",
     [
-        (LeNet5(), {"args": (LeNet5().gen_input(),), "kwargs": {}}),
+        (LeNet5(), (LeNet5.gen_input(),), {}),
         (
             LeNet5TwoInputs(),
-            {
-                "args": (LeNet5TwoInputs().gen_input(0), LeNet5TwoInputs().gen_input(1)),
-                "kwargs": {},
-            },
+            (LeNet5TwoInputs.gen_input(0), LeNet5TwoInputs.gen_input(1)),
+            {},
         ),
-        (LeNet5TwoOutputs(), {"args": (LeNet5TwoOutputs().gen_input(),), "kwargs": {}}),
-        (LeNet5Ooo(), {"args": (LeNet5Ooo().gen_input(0), LeNet5Ooo().gen_input(1)), "kwargs": {}}),
+        (LeNet5TwoOutputs(), (LeNet5TwoOutputs.gen_input(),), {}),
+        (LeNet5Ooo(), (LeNet5Ooo.gen_input(0), LeNet5Ooo.gen_input(1)), {}),
     ],
 )
-def test_compile_and_profile_lenet5(model, model_inputs):
-    model, args, kwargs = _process_model_and_inputs(model, model_inputs, on_gpu=True)
+def test_compile_and_profile_lenet5(model, args, kwargs):
+    model, args, kwargs = process_model_and_inputs(model, args, kwargs, on_gpu=True)
     _compile_and_profile(model, args, kwargs)
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("get_model_and_input", benchmarks.values(), ids=benchmarks.keys())
+@pytest.mark.parametrize("get_model_and_input", vision_models.values(), ids=vision_models.keys())
 def test_compile_and_profile_benchmark_models(get_model_and_input):
     model, args, kwargs = get_model_and_input(on_gpu=True)
     _compile_and_profile(model, args, kwargs)
@@ -71,9 +69,7 @@ def test_compile_and_profile_benchmark_models(get_model_and_input):
 
 def _compile_and_profile(model, args, kwargs):
     device_model = compile(model, (*args, kwargs), deployment)
-    assert isinstance(device_model.client, TRTLocalClient), (
-        "device model client is not an instance of TRTLocalClient"
-    )
+    assert isinstance(device_model.client, TRTLocalClient)
     latency, detailed_results = device_model.profile()
     device_model_outputs = device_model(*args, **kwargs)
     torch_model_ouptuts = model(*args, **kwargs)

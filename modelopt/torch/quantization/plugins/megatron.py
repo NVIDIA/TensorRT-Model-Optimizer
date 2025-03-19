@@ -15,18 +15,20 @@
 
 """Support quantization for megatron linear layers."""
 
-import math
 import warnings
 from contextlib import contextmanager
+from itertools import product
 
 import megatron.core.tensor_parallel.layers as megatron_parallel
+import megatron.core.transformer.mlp as megatron_mlp
 import torch
-import torch.nn.functional as F
 from megatron.core.parallel_state import get_data_parallel_group, get_tensor_model_parallel_group
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from packaging.version import Version
+from torch.nn import functional as F
 
 from modelopt import __version__
+from modelopt.torch.opt.plugins.megatron import _MegatronMLP
 from modelopt.torch.utils.distributed import ParallelState
 
 from ..nn import QuantModuleRegistry, SequentialQuantizer, TensorQuantizer
@@ -41,7 +43,7 @@ class _MegatronParallelLinear(_ParallelLinear):
         (megatron_parallel, "linear_with_frozen_weight"),
     ]
 
-    _QUANT_MIN_BLOCK_SIZE = 128
+    _QUANT_MIN_BLOCK_SIZE = 16
 
     def initialize_parallel_state(self):
         self._parallel_state = ParallelState(
@@ -70,8 +72,100 @@ class _MegatronParallelLinear(_ParallelLinear):
     def _get_shard_axis_dict(self):
         raise NotImplementedError
 
+    def _get_args_for_w_amax_checkpoint(self, amax: torch.Tensor, wq: TensorQuantizer):
+        cout, cin = self.weight.shape
+
+        if amax.numel() == 1:
+            b0, b1 = cout, cin
+        elif amax.ndim == 2 or amax.ndim == 4:
+            if (
+                wq.block_sizes is None
+            ):  # Per-channel quantization: amax: [cout, 1]; b0 = 1, b1 = Cin
+                b0, b1 = 1, cin
+            else:
+                # 1D Per-block quantization: amax: [cout * cin // b1, 1]; b0 = 1
+                # 2D Per-block quantization: amax: [cout // b0, 1, cin // b1, 1];
+                b1 = wq.block_sizes.get(-1, wq.block_sizes.get(1, 1))
+                b0 = wq.block_sizes.get(-2, wq.block_sizes.get(0, 1))
+
+            amax = amax.view(cout, -1) if amax.ndim == 2 else amax.view(amax.shape[0], -1)
+            if cin % b1 != 0:
+                cin = amax.shape[1] * b1
+            if cout % b0 != 0:
+                cout = amax.shape[0] * b0
+        else:
+            raise NotImplementedError(f"Invalid amax shape: {amax.shape}")
+        return cout, b0, cin, b1
+
+    @torch.no_grad()
+    def _get_w_amax_for_save(self, amax: torch.Tensor, wq: TensorQuantizer):
+        cout, b0, cin, b1 = self._get_args_for_w_amax_checkpoint(amax, wq)
+        amax = (
+            amax.reshape(cout // b0, 1, cin // b1, 1)
+            .expand(cout // b0, b0, cin // b1, b1)
+            .reshape(cout, cin)
+        )
+
+        if self.is_version_less_than("0.27"):
+            assert wq.block_sizes is None or b1 >= 128
+            shrink_factor = 128  # Backward compatibility
+            if cin % shrink_factor != 0:
+                amax = F.pad(
+                    amax, (0, shrink_factor - cin % shrink_factor), mode="constant", value=0
+                )
+                warnings.warn(
+                    "Padded block-quantization along input dimension. "
+                    "Sharded checkpointing could fail if the tensor parallelism is changed!"
+                )
+        else:
+            assert self.weight.shape == (cout, cin), (
+                "Padded quantization! Sharded checkpointing does not support this! "
+                "Please save and load the model with regular Pytorch `state_dict` or "
+                "pad the weights manually and quantize again."
+            )
+            shrink_factor = (
+                self._QUANT_MIN_BLOCK_SIZE if cin % self._QUANT_MIN_BLOCK_SIZE == 0 else 1
+            )
+            if wq.block_sizes is not None and wq.block_sizes.get("type", "static") == "static":
+                assert shrink_factor >= self._QUANT_MIN_BLOCK_SIZE
+        return amax.reshape(cout, -1, shrink_factor)[:, :, 0].clone()
+
+    @torch.no_grad()
+    def _get_w_amax_for_load(
+        self, amax: torch.Tensor, broad_amax: torch.Tensor, wq: TensorQuantizer
+    ):
+        cout, b0, cin, b1 = self._get_args_for_w_amax_checkpoint(amax, wq)
+
+        if self.is_version_less_than("0.27"):
+            shrink_factor = 128
+        else:
+            shrink_factor = (
+                self._QUANT_MIN_BLOCK_SIZE if cin % self._QUANT_MIN_BLOCK_SIZE == 0 else 1
+            )
+
+        broad_amax = (
+            broad_amax.reshape(cout, -1, 1).expand(cout, -1, shrink_factor).reshape(cout, -1)
+        )
+        broad_amax = broad_amax[:, :cin]  # Slicing to remove padding
+        reduced_amax = broad_amax.reshape(cout // b0, b0, cin // b1, b1)[:, 0, :, 0]
+        return reduced_amax.reshape(amax.shape)
+
+    def _process_real_quantizer_scale(self, k, v, quantizer_state_dict):
+        wq = self.weight_quantizer[0]
+        if (
+            wq.block_sizes is not None
+            and wq.block_sizes.get(-1, None)
+            and wq.block_sizes.get(-2, None)
+        ):
+            v = v[:, None, :, None]  # Aligning scale shape with fake quantizer amax
+        cout, b0, cin, b1 = self._get_args_for_w_amax_checkpoint(v, self.weight_quantizer[0])
+        assert self.weight.shape == (cout, cin), (
+            "Sharded checkpointing does not allow padded quantization!"
+        )
+        quantizer_state_dict[k] = v.reshape(cout // b0, cin // b1)
+
     @contextmanager
-    def _get_quantizer_states_for_sharded_state_dict(self):
+    def _quantizer_states_for_homogenous_sharded_state_dict(self):
         """Get the quantizer states for sharded state_dict.
 
         This is a workaround to support MCore distributed checkpointing. MCore distributed checkpointing
@@ -83,16 +177,17 @@ class _MegatronParallelLinear(_ParallelLinear):
         be disabled and `weight_quantizer.amax` could be None.
 
         MCore uses `shared_state_dict` to get the state_dict of the Linear layers.
-        So lets call `sharded_state_dict` from this context. We will temporarily insert dummy states for the quantizers
-        with the maximum size. We will store the original quantizer state if it exists in the dummy states.
-        After the `sharded_state_dict` is called, we will restore the original quantizer states.
-        This will ensure that the quantizer states `shared_state_dict` are uniform across the entire model.
+        So lets call `sharded_state_dict` from this context.
+        This context:
+            1. Inserts amax, _pre_quant_scale buffers to the quantizers if they are not present.
+            2. Creates a new amax by correctly broadcasting amax to weight.
+        At exist, this context restores the original state of the quantizers.
         """
-        if self.adapt_for_old_ckpt:
+        if self.is_version_less_than("0.20") or self.weight is None:
             yield
             return
 
-        original_quantizer_states = {}
+        original_qs = {}
 
         _is_original_weight_quantizer_sequential = isinstance(
             self.weight_quantizer, SequentialQuantizer
@@ -105,103 +200,74 @@ class _MegatronParallelLinear(_ParallelLinear):
             )
 
         for name, module in self.named_modules():
-            # lm_head or output_layer has no weight (reusing the embeddings)
-            if self.weight is None:
-                continue
             if not isinstance(module, TensorQuantizer):
                 continue
+            original_qs[module] = module.state_dict()
 
-            original_quantizer_states[module] = {
-                "_amax": getattr(module, "_amax", None),
-                "_pre_quant_scale": getattr(module, "_pre_quant_scale", None),
-            }
+            amax = torch.zeros(1, device=self.weight.device, dtype=self.weight.dtype)
             if "weight_quantizer" in name:
-                weight_shape = self.weight.shape
-                dummy_tensor_shape = (
-                    weight_shape[0],
-                    # if dim % block_size != 0, then we will pad the dim, so we need ceil here
-                    math.ceil(weight_shape[1] / self._QUANT_MIN_BLOCK_SIZE),
+                amax = self._get_w_amax_for_save(
+                    module.amax if module.amax is not None else amax, module
                 )
-                if hasattr(module, "_amax"):
-                    assert module._amax.ndim in [0, 2], "Invalid amax"
-                    if module._amax.ndim == 2:
-                        dummy_tensor = module._amax.view(weight_shape[0], -1)
-                        if dummy_tensor.shape[-1] == 1:
-                            # Per-Channel quantization
-                            dummy_tensor = module._amax.repeat(1, dummy_tensor_shape[-1])
-                        else:
-                            # Per-block quantization
-                            cur_amax_dim = dummy_tensor.shape[-1]
-                            # if block_size > 128, padding the amax to max possible shape
-                            if cur_amax_dim < dummy_tensor_shape[-1]:
-                                dummy_tensor = F.pad(
-                                    dummy_tensor, (0, dummy_tensor_shape[1] - cur_amax_dim)
-                                )
-                            elif cur_amax_dim > dummy_tensor_shape[-1]:
-                                raise ValueError(
-                                    "Expecting the block_size >= 128 for static block-wise quantization!"
-                                )
-                    elif module._amax.ndim == 0:
-                        # Per-tensor quantization
-                        dummy_tensor = (
-                            torch.ones(
-                                dummy_tensor_shape,
-                                device=module._amax.device,
-                                dtype=module._amax.dtype,
-                            )
-                            * module._amax
-                        )
-                    else:
-                        raise ValueError("Invalid amax")
-                    delattr(module, "_amax")
-                else:
-                    dummy_tensor = torch.zeros(
-                        dummy_tensor_shape, device=self.weight.device, dtype=self.weight.dtype
-                    )
-            else:
-                if hasattr(module, "_amax"):
-                    assert module._amax.numel() == 1, "Invalid amax"
-                    dummy_tensor = module._amax.view(-1)
-                    delattr(module, "_amax")
-                else:
-                    dummy_tensor = torch.zeros(
-                        1, device=self.weight.device, dtype=self.weight.dtype
-                    )
-            module.register_buffer("_amax", dummy_tensor)
+            elif module.amax is not None:
+                assert module.amax.numel() == 1, (
+                    f"Invalid amax shape: {module.amax.shape} for {name}"
+                )
+                amax = module.amax
+
+            if hasattr(module, "_amax"):
+                delattr(module, "_amax")
+            module.register_buffer("_amax", amax)
+
             if "input_quantizer" in name:
+                pqs = torch.zeros(
+                    self.weight.shape[1], device=self.weight.device, dtype=self.weight.dtype
+                )
                 if hasattr(module, "_pre_quant_scale"):
-                    dummy_tensor = module._pre_quant_scale.view(-1)
+                    pqs = module._pre_quant_scale.view(-1)
                     delattr(module, "_pre_quant_scale")
-                else:
-                    dummy_tensor = torch.zeros(
-                        self.weight.shape[1], device=self.weight.device, dtype=self.weight.dtype
-                    )
-                module.register_buffer("_pre_quant_scale", dummy_tensor)
+                module.register_buffer("_pre_quant_scale", pqs)
 
         yield
 
-        for module, original_state in original_quantizer_states.items():
-            for k, v in original_state.items():
-                if hasattr(module, k):
-                    delattr(module, k)
-                if v is not None:
-                    module.register_buffer(k, v)
+        for module, k in product(original_qs.keys(), ["_amax", "_pre_quant_scale"]):
+            if hasattr(module, k):
+                delattr(module, k)
+            if k in original_qs[module]:
+                module.register_buffer(k, original_qs[module][k])
 
         if not _is_original_weight_quantizer_sequential:
             self.weight_quantizer = self.weight_quantizer[0]
 
     def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
-        with self._get_quantizer_states_for_sharded_state_dict():
+        # [WAR]: although we disable output_layer quantization by default but it will
+        # still be picked up by mtq.quantize since it is a ColumnParallelLinear. We need
+        # to further ensure that its sharded state_dict has no scalars or amax since
+        # 1) NeMo-MCore's vocabulary padding may change but we didn't support this feature
+        # 2) When embedding and output_layer are sharing weights, PP>1 will have
+        #    output_layer.input_quantizer._amax but TP-only does not. This lead to
+        #    state_dict mismatch.
+        if prefix.endswith("output_layer."):
+            # assert not any("_quantizer" in k for k in self.state_dict()), "quantized output_layer"
+            return super().sharded_state_dict(prefix, sharded_offsets)
+
+        with self._quantizer_states_for_homogenous_sharded_state_dict():
             sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets)
             # TODO: Clean this up; We dont need all the custom handling here
             quantizer_state_dict, sharded_axis_dict = {}, self._get_shard_axis_dict()
             for k, v in self.state_dict(prefix="", keep_vars=True).items():
                 if "weight_quantizer" in k and "_amax" in k:
                     self._process_weight_quantizer_amax(k, v, quantizer_state_dict)
+                elif "weight_quantizer" in k and "._scale" in k:
+                    # real quantizer scale. homogenous checkpointing with real mixed-precision
+                    # quantization is not supported and will throw an error.
+                    self._process_real_quantizer_scale(k, v, quantizer_state_dict)
                 elif ("input_quantizer" in k or "output_quantizer" in k) and k.endswith("._amax"):
                     self._process_activation_quantizer_amax(k, v, quantizer_state_dict)
                 elif k == "input_quantizer._pre_quant_scale":
                     self._process_activation_quantizer_pre_quant_scale(k, v, quantizer_state_dict)
+                elif "quantizer" in k:
+                    raise NotImplementedError(f"Unsupported quantizer state: {k}")
 
             sharded_state_dict.update(
                 **make_sharded_tensors_for_checkpoint(
@@ -215,27 +281,32 @@ class _MegatronParallelLinear(_ParallelLinear):
             not isinstance(self.weight_quantizer, SequentialQuantizer)
             and (prefix + "weight_quantizer.0._amax") in state_dict
         ):
-            # state_dict generated from sharded_state_dict which temporarily SequentialQuantizer
-            state_dict[prefix + "weight_quantizer._amax"] = state_dict.pop(
-                prefix + "weight_quantizer.0._amax"
-            )
-            state_dict.pop(prefix + "weight_quantizer.1._amax")
+            # state_dict generated for sharded_state_dict which temporarily inserted SequentialQuantizer
+            for k, v in list(state_dict.items()):
+                if "weight_quantizer.0" in k:
+                    state_dict[k.replace("weight_quantizer.0", "weight_quantizer")] = v
+                    state_dict.pop(k)
+                    state_dict.pop(k.replace("weight_quantizer.0", "weight_quantizer.1"), None)
 
         for k in list(state_dict.keys()):
-            if not any(
-                k.startswith(prefix + name)
-                for name in ["weight_quantizer", "input_quantizer", "output_quantizer"]
-            ):
+            if not any(qt + "_quantizer" in k for qt in ["weight", "input", "output"]):
                 continue
 
-            name = k.split(prefix)[-1]
+            name = k.split(prefix)[-1] if prefix else k
             if name not in self.state_dict():
                 state_dict.pop(k)
                 continue
 
-            if "weight_quantizer" in name and self.state_dict()[name].ndim == 2:
-                num_cols_to_crop = self.state_dict()[name].view(self.weight.shape[0], -1).shape[-1]
-                state_dict[k] = state_dict[k][..., :num_cols_to_crop].reshape(-1, 1)
+            if "weight_quantizer" in k:
+                if "_amax" in k and state_dict[k].numel() != self.state_dict()[name].numel():
+                    # Sharded state dict
+                    state_dict[k] = self._get_w_amax_for_load(
+                        self.state_dict()[name],
+                        state_dict[k],
+                        self.get_submodule(name.split("._amax")[0]),
+                    )
+                else:  # Regular state dict
+                    state_dict[k] = state_dict[k].view_as(self.state_dict()[name])
             elif "_amax" in name:
                 state_dict[k] = state_dict[k].view(-1)[0].view_as(self.state_dict()[name])
 
@@ -245,14 +316,16 @@ class _MegatronParallelLinear(_ParallelLinear):
         super()._setup()
         self._modelopt_load_version = __version__  # Will get overwritten by `replace_quant_module`
 
-    @property
-    def adapt_for_old_ckpt(self) -> bool:
+    def is_version_less_than(self, version: str) -> bool:
         if (
             self._modelopt_load_version
-            and Version(self._modelopt_load_version) < Version("0.20")
+            and Version(self._modelopt_load_version) < Version(version)
             and Version(self._modelopt_load_version) != Version("0.0.0")
         ):  # version in NeMo container is 0.0.0 if installed from source without history
-            warnings.warn("Old checkpoint detected. Please re-save model to avoid this warning.")
+            warnings.warn(
+                f"Checkpoint version {self._modelopt_load_version} is less than {version}. "
+                "Please re-save model to avoid this warning."
+            )
             return True
         return False
 
@@ -266,7 +339,7 @@ class _MegatronColumnParallelLinear(_MegatronParallelLinear):
     def _get_shard_axis_dict(self):
         shard_axis_dict = {}
         for k, v in self.state_dict().items():
-            if "weight_quantizer" in k and "_amax" in k:
+            if "weight_quantizer" in k:
                 shard_axis_dict[k] = 0
         return shard_axis_dict
 
@@ -276,15 +349,11 @@ class _MegatronRowParallelLinear(_MegatronParallelLinear):
     _is_row_parallel = True
 
     def _get_shard_axis_dict(self):
-        if self.adapt_for_old_ckpt:
-            shard_weight_for_block_wise_quant_only = True
-        else:
-            shard_weight_for_block_wise_quant_only = False
-
         shard_axis_dict = {}
         for k, v in self.state_dict().items():
-            if "weight_quantizer" in k and "_amax" in k:
-                if shard_weight_for_block_wise_quant_only:
+            if "weight_quantizer" in k:
+                if self.is_version_less_than("0.20"):
+                    assert "._amax" in k, f"Invalid quantizer state: {k}"
                     quantizer = self.get_submodule(k.split("._amax")[0])
                     if (
                         quantizer.block_sizes
@@ -296,3 +365,13 @@ class _MegatronRowParallelLinear(_MegatronParallelLinear):
             if k == "input_quantizer._pre_quant_scale":
                 shard_axis_dict[k] = 0
         return shard_axis_dict
+
+
+@QuantModuleRegistry.register({megatron_mlp.MLP: "megatron_MegatronMLP"})
+class _QuantMegatronMLP(_MegatronMLP):
+    """Module to support special handling of `linear_fc1` in `sharded_state_dict()` of MCore `MLP`."""
+
+    _modelopt_state_keys = [
+        r"weight_quantizer\.(\d+\.)*_amax$",
+        r"weight_quantizer\.(\d+\.)*_scale$",
+    ]

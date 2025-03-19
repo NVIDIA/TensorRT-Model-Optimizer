@@ -16,6 +16,8 @@
 import pytest
 import torch
 
+import modelopt.torch.opt as mto
+
 
 @pytest.fixture(scope="module")
 def set_torch_dtype(request):
@@ -23,3 +25,8 @@ def set_torch_dtype(request):
     torch.set_default_dtype(request.param)
     yield
     torch.set_default_dtype(orig_dtype)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def enable_hf_checkpointing():
+    mto.enable_huggingface_checkpointing()

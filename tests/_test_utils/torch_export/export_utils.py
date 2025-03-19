@@ -51,24 +51,6 @@ class SmallQKVModel(torch.nn.Module):
         return x
 
 
-def get_tiny_llama_and_tokenizer():
-    from transformers import GPT2Tokenizer, LlamaConfig, LlamaForCausalLM
-
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    tiny_llama = LlamaForCausalLM(
-        LlamaConfig(
-            hidden_size=128,
-            intermediate_size=256,
-            num_hidden_layers=2,
-            num_attention_heads=2,
-            max_position_embeddings=128,
-            vocab_size=tokenizer.vocab_size,
-        )
-    )
-
-    return tiny_llama, tokenizer
-
-
 # Quantization configs
 partial_fp8_config = {
     "quant_cfg": {

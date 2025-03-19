@@ -150,7 +150,7 @@ case "${MODEL_TYPE}" in
         VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
         ;;
     "mllama")
-        VLM_ARGS=" --max_encoder_input_len=4100 --skip_run"
+        VLM_ARGS=" --max_encoder_input_len=6404 --skip_run"
         ;;
 esac
 

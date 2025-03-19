@@ -15,40 +15,29 @@
 
 import os
 
-import pytest
+from _test_utils.torch_model.transformers_models import (
+    create_tiny_llama_dir,
+    tf_modelopt_state_and_output_tester,
+)
+from transformers import AutoModelForCausalLM, LlamaForCausalLM
 
-import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
 
-transformers = pytest.importorskip("transformers")
 
-mto.enable_huggingface_checkpointing()
-
-
-def test_medusa_model_convert_save_and_restore(tmpdir):
-    llama_config = transformers.LlamaConfig(
-        vocab_size=64,
-        hidden_size=8,
-        intermediate_size=16,
-        num_hidden_layers=2,
-        num_attention_heads=4,
-        max_position_embeddings=4,
-    )
-    model = transformers.LlamaForCausalLM(llama_config)
+def test_medusa_model_convert_save_and_restore(tmp_path):
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
+    model_ref = LlamaForCausalLM.from_pretrained(tiny_llama_dir)
 
     config = {
         "medusa_num_heads": 2,
         "medusa_num_layers": 1,
     }
-    mtsp.convert(model, mode=[("medusa", config)])
-    assert isinstance(model, mtsp.plugins.HFMedusaModel)
+    mtsp.convert(model_ref, mode=[("medusa", config)])
+    assert isinstance(model_ref, mtsp.plugins.HFMedusaModel)
 
-    model.save_pretrained(tmpdir + "/modelopt_model")
-    assert os.path.exists(tmpdir + "/modelopt_model/modelopt_state.pth")
+    model_ref.save_pretrained(tiny_llama_dir / "modelopt_model")
+    assert os.path.exists(tiny_llama_dir / "modelopt_model/modelopt_state.pth")
 
-    res_model = transformers.AutoModelForCausalLM.from_pretrained(tmpdir + "/modelopt_model")
-    assert isinstance(res_model, mtsp.plugins.HFMedusaModel)
-
-    modelopt_state = mto.modelopt_state(model)
-    res_modelopt_state = mto.modelopt_state(res_model)
-    assert modelopt_state == res_modelopt_state
+    model_test = AutoModelForCausalLM.from_pretrained(tiny_llama_dir / "modelopt_model")
+    assert isinstance(model_test, mtsp.plugins.HFMedusaModel)
+    tf_modelopt_state_and_output_tester(model_ref, model_test)

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import os
-import sys
 
 import numpy as np
 import onnx
@@ -49,17 +48,16 @@ def _assert_nodes_are_not_quantized(nodes):
     return True
 
 
-def test_bias_add_rule(tmpdir):
-    # Copy the test model to the tmpdir
+def test_bias_add_rule(tmp_path):
+    # Copy the test model to the tmp_path
     model = build_r1a_model()
-    this_function_name = sys._getframe().f_code.co_name
-    onnx_path = os.path.join(tmpdir, f"{this_function_name}.onnx")
+    onnx_path = os.path.join(tmp_path, "model.onnx")
     onnx.save(model, onnx_path)
 
     # Quantize the input model
     quantize(onnx_path)
 
-    # Output model should be produced in the same tmpdir
+    # Output model should be produced in the same tmp_path
     output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
 
     # Check that quantized explicit model is generated
@@ -109,17 +107,15 @@ def _check_resnet_residual_connection(onnx_path):
     assert _assert_nodes_are_not_quantized(other_nodes)
 
 
-def test_resnet_residual_connections(tmpdir):
+def test_resnet_residual_connections(tmp_path):
     model_torch, input_tensor = build_resnet_block()
-    this_function_name = sys._getframe().f_code.co_name
-    onnx_path = os.path.join(tmpdir, f"{this_function_name}.onnx")
+    onnx_path = os.path.join(tmp_path, "model.onnx")
     onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
     _check_resnet_residual_connection(onnx_path)
 
 
-def test_resnet_residual_connection_with_downsample(tmpdir):
+def test_resnet_residual_connection_with_downsample(tmp_path):
     model_torch, input_tensor = build_resnet_block_with_downsample()
-    this_function_name = sys._getframe().f_code.co_name
-    onnx_path = os.path.join(tmpdir, f"{this_function_name}.onnx")
+    onnx_path = os.path.join(tmp_path, "model.onnx")
     onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
     _check_resnet_residual_connection(onnx_path)

@@ -41,7 +41,7 @@ from .config import ExportStudentConfig, KDLossConfig
 from .distillation_model import DistillationModel
 from .registry import DistillationDMRegistry
 
-DistillModeRegistry = _ModeRegistryCls()
+DistillModeRegistry = _ModeRegistryCls("distill")
 
 
 @DistillModeRegistry.register_mode

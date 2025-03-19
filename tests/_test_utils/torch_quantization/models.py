@@ -107,12 +107,13 @@ class SimpleConvLinear(nn.Module):
         return torch.randn(4, 16, 4, 4)
 
 
+# NOTE: This should match configuration of _test_utils.torch_dist.plugins.megatron_common.MegatronModel
 class RegularQuantModelForTP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = QuantLinear(128, 256)
+        self.fc1 = QuantLinear(32, 64)
         self.activation = nn.ReLU()
-        self.fc2 = QuantLinear(256, 128)
+        self.fc2 = QuantLinear(64, 32)
 
     def forward(self, x):
         for block in [self.fc1, self.activation, self.fc2]:

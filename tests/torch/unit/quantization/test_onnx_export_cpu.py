@@ -17,6 +17,9 @@
 
 import pytest
 import torch
+
+pytest.importorskip("onnxruntime")
+
 from _test_utils.torch_quantization.onnx_export import TEST_MODELS, onnx_export_tester
 
 

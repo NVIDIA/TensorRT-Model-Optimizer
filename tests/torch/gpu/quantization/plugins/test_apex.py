@@ -47,9 +47,9 @@ SEED = 1234
 class ApexModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = apex_parallel.ColumnParallelLinear(128, 256, gather_output=False)
+        self.fc1 = apex_parallel.ColumnParallelLinear(32, 64, gather_output=False)
         self.activation = nn.ReLU()
-        self.fc2 = apex_parallel.RowParallelLinear(256, 128, input_is_parallel=True)
+        self.fc2 = apex_parallel.RowParallelLinear(64, 32, input_is_parallel=True)
 
     def forward(self, x):
         for block in [self.fc1, self.activation, self.fc2]:
@@ -59,7 +59,7 @@ class ApexModel(nn.Module):
         return x
 
     def get_dummy_input(self):
-        return torch.randn(1, 4, 128)
+        return torch.randn(1, 4, 32)
 
 
 def test_convert_apex_parallel_linear(distributed_setup_size_1):

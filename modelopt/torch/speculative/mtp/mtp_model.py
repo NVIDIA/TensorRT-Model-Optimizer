@@ -13,15 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
+"""MTP model to support mtp decoding."""
 
-from modelopt.torch.nas.search_space import SearchSpace
 from modelopt.torch.opt.dynamic import DynamicModule
 
 
-def sample_subnet_with_sparsity(model, sample_func=min):
-    for name, module in model.named_modules():
-        if isinstance(model, DynamicModule):
-            if hasattr(module, "set_mask"):
-                module.set_mask(torch.rand_like(module.weight) > 0.5)
-            SearchSpace(module).sample(sample_func)
+class MTPModel(DynamicModule):
+    """Base MTP Model."""
+
+    def _setup(self):
+        self._register_temp_attribute("mtp_num_layers", 0)
+        self._register_temp_attribute("mtp_num_module", 0)
+        self._register_temp_attribute("mtp_freeze_list", [])
+
+    def modify(self, mtp_num_layers, mtp_num_module, mtp_freeze_list, use_last_layernorm):
+        """Base MTP Model modify function. Child class should implement the details."""
+        self.mtp_num_layers = mtp_num_layers
+        self.mtp_num_module = mtp_num_module
+        self.mtp_freeze_list = mtp_freeze_list
+        self.use_last_layernorm = use_last_layernorm

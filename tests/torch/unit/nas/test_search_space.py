@@ -18,8 +18,9 @@ from collections import OrderedDict
 import pytest
 import torch
 import torchvision
+from _test_utils.torch_model.vision_models import TinyMobileNetFeatures
 from torch import nn
-from torchvision.models.mobilenetv2 import InvertedResidual, mobilenet_v2
+from torchvision.models.mobilenetv2 import InvertedResidual
 from torchvision.models.resnet import BasicBlock, Bottleneck
 
 from modelopt.torch.nas.registry import DMRegistry
@@ -42,7 +43,7 @@ def test_rules():
         "nn.Sequential": {"min_depth": 1},
         "nn.Conv2d": {
             "channels_ratio": (0.4, 0.6, 0.8, 1.0),
-            "kernel_size": (3, 5, 7),
+            "kernel_size": (3, 5),
             "channel_divisor": 16,
         },
         "nn.BatchNorm2d": {},
@@ -50,20 +51,10 @@ def test_rules():
     }
 
 
-class MobileNetV2(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.backbone = mobilenet_v2(*args, **kwargs).features
-
-    def forward(self, x):
-        # only run forward on features, not classification head (no dropout and more stable)
-        return self.backbone(x)
-
-
 def get_data_loader(num_batches):
     """Yield some fake data that's consistent over the test."""
     for _ in range(num_batches):
-        yield torch.rand(2, 3, 228, 228), int(torch.randint(1000, (1,)))
+        yield torch.rand(2, 3, 56, 56), int(torch.randint(1000, (1,)))
 
 
 @pytest.mark.parametrize(
@@ -214,7 +205,7 @@ def test_config(search_space: SearchSpace) -> None:
 
 
 def test_model_match(test_rules):
-    model = MobileNetV2(width_mult=0.25)
+    model = TinyMobileNetFeatures()
     dummy_input = torch.randn(1, 3, 128, 128)
     targets_nn = model(dummy_input)
 
@@ -228,7 +219,7 @@ def test_model_match(test_rules):
 
 
 def test_format_match(test_rules):
-    model = MobileNetV2(width_mult=0.25)
+    model = TinyMobileNetFeatures()
     model.half()
     generate_search_space(model, test_rules)
     for p in model.parameters():

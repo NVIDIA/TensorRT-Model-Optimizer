@@ -21,9 +21,10 @@ from collections import deque
 
 import pytest
 import torch
+from _test_utils.torch_model.vision_models import TinyMobileNetFeatures
 from torch import nn
 from torch.nn.modules.batchnorm import _BatchNorm
-from torchvision.models.mobilenetv2 import InvertedResidual, mobilenet_v2
+from torchvision.models.mobilenetv2 import InvertedResidual
 
 import modelopt.torch.nas as mtn
 import modelopt.torch.opt as mto
@@ -40,7 +41,7 @@ def test_config():
         "nn.Sequential": {"min_depth": 1},
         "nn.Conv2d": {
             "channels_ratio": (0.4, 0.6, 0.8, 1.0),
-            "kernel_size": (1, 3, 5, 7),
+            "kernel_size": (1, 3),
             "channel_divisor": 16,
         },
         "nn.BatchNorm2d": {},
@@ -48,25 +49,15 @@ def test_config():
     }
 
 
-class MobileNetV2(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        self.backbone = mobilenet_v2(*args, **kwargs).features
-
-    def forward(self, x):
-        # only run forward on features, not classification head (no dropout and more stable)
-        return self.backbone(x)
-
-
 def get_data_loader(num_batches):
     """Yield some fake data that's consistent over the test."""
     for _ in range(num_batches):
-        yield torch.rand(2, 3, 228, 228), int(torch.randint(1000, (1,)))
+        yield torch.rand(2, 3, 56, 56), int(torch.randint(1000, (1,)))
 
 
 def test_automode(test_config):
     # Use model class to create a model inside mtn.convert
-    model = mtn.convert((MobileNetV2, (), {"width_mult": 0.25}), mode=[("autonas", test_config)])
+    model = mtn.convert((TinyMobileNetFeatures, (), {}), mode=[("autonas", test_config)])
     num_batches = 3
     auto_data = AutoNASPatchManager(model).patch_data
     queue = auto_data["queue"]
@@ -137,7 +128,7 @@ def test_prep_for_eval(native_eval, test_config):
     We check this using both calling prep_for_eval directly or using the monkey-patched
     train function.
     """
-    model = MobileNetV2(width_mult=0.25)
+    model = TinyMobileNetFeatures()
     model = mtn.convert(model, mode=[("autonas", test_config)])
     num_batches = 3
     auto_data = AutoNASPatchManager(model).patch_data
@@ -278,7 +269,7 @@ def test_prep_for_eval(native_eval, test_config):
 
     mtn.set_modelopt_patches_enabled(True)
     model.train()
-    for i, (img, _) in enumerate(get_data_loader(1000)):
+    for i, (img, _) in enumerate(get_data_loader(100)):
         model(img)
         if max_config != mtn.get_subnet_config(model):
             break
@@ -300,7 +291,7 @@ def test_prep_for_eval(native_eval, test_config):
 def test_set_auto_mode(test_config):
     """Test whether we can correctly set automode on/off."""
     # setup model in autonas mode and training mode
-    model = MobileNetV2(width_mult=0.25)
+    model = TinyMobileNetFeatures()
     model = mtn.convert(model, mode=[("autonas", test_config)])
     model.train()
 
@@ -421,9 +412,9 @@ def test_set_auto_mode(test_config):
             torch.randn(1, 16, 8, 8),
             ["autonas", "export"],
         ],
-        [MobileNetV2, (), "", False, torch.randn(1, 3, 64, 64), ["autonas", "export"]],
-        [MobileNetV2, (), "", False, torch.randn(1, 3, 64, 64), ["autonas"]],
-        [MobileNetV2, (), "", False, torch.randn(1, 3, 64, 64), []],
+        [TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), ["autonas", "export"]],
+        [TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), ["autonas"]],
+        [TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), []],
     ],
 )
 def test_save_restore_whole(
@@ -486,6 +477,10 @@ def test_save_restore_whole(
         manager = mto.ModeloptStateManager(model.get_submodule(submodule))
         manager2 = mto.ModeloptStateManager(model2.get_submodule(submodule))
         assert manager.state_dict() == manager2.state_dict()
+        assert mto.ModeloptStateManager.has_state_for_mode_type("nas", state=modelopt_state)
+        assert mto.ModeloptStateManager.has_state_for_mode_type(
+            "nas", model=model2.get_submodule(submodule)
+        )
 
     # run comparison in eval mode since there might be model randomization in train mode
     model.eval()

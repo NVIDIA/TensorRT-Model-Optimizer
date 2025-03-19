@@ -14,19 +14,19 @@
 # limitations under the License.
 
 from _test_utils.import_helper import skip_if_mcore_dist_ckpt_is_not_supported
+from _test_utils.sparsity_utils import sample_subnet_with_sparsity
 from _test_utils.torch_dist.plugins.megatron_common import (
     MegatronModel,
     initialize_for_megatron,
     sharded_state_dict_test_helper,
 )
-from _test_utils.torch_model.utils import sample_subnet_with_sparsity
 from megatron.core.parallel_state import destroy_model_parallel
 
 import modelopt.torch.quantization as mtq
 import modelopt.torch.sparsity as mts
 
 
-def test_sharded_state_dict(tmpdir, distributed_setup_size_1):
+def test_sharded_state_dict(tmp_path, distributed_setup_size_1):
     skip_if_mcore_dist_ckpt_is_not_supported()
     initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
 
@@ -43,7 +43,7 @@ def test_sharded_state_dict(tmpdir, distributed_setup_size_1):
 
     model_test = MegatronModel().cuda()
 
-    sharded_state_dict_test_helper(tmpdir, model_ref, model_test, forward_fn)
+    sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn)
 
     # Clean up since this is not a spawned process
     destroy_model_parallel()

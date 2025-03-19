@@ -26,7 +26,6 @@ import modelopt.torch.opt as mto
 
 skip_if_no_megatron()
 
-import megatron.core.tensor_parallel.layers as megatron_parallel
 from megatron.core import __version__ as mcore_version
 from megatron.core import dist_checkpointing
 from megatron.core.inference.communication_utils import broadcast_from_last_pipeline_stage
@@ -46,13 +45,14 @@ from megatron.core.parallel_state import (
     is_pipeline_first_stage,
     is_pipeline_last_stage,
 )
+from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_config import TransformerConfig
 
 try:
+    from megatron.core.extensions.transformer_engine import TENorm
     from megatron.core.inference.modelopt_support.gpt.model_specs import get_gpt_layer_modelopt_spec
-    from megatron.core.transformer.custom_layers.transformer_engine import TENorm
 
     HAS_TE = True
 except ImportError:
@@ -78,9 +78,9 @@ class MegatronModel(MegatronModule):
             num_attention_heads=tp_size,
         )
         super().__init__(config)
-        self.fc1 = megatron_parallel.ColumnParallelLinear(
-            128,
-            256,
+        self.fc1 = ColumnParallelLinear(
+            32,
+            64,
             config=config,
             init_method=torch.nn.init.xavier_uniform_,
             bias=True,
@@ -91,10 +91,10 @@ class MegatronModel(MegatronModule):
         self.activation = nn.ReLU()
         if use_te_norm:
             assert HAS_TE
-            self.norm = TENorm(config, 256)
-        self.fc2 = megatron_parallel.RowParallelLinear(
-            256,
-            128,
+            self.norm = TENorm(config, 64)
+        self.fc2 = RowParallelLinear(
+            64,
+            32,
             config=config,
             init_method=torch.nn.init.xavier_uniform_,
             bias=True,
@@ -111,7 +111,7 @@ class MegatronModel(MegatronModule):
         return x
 
     def get_dummy_input(self) -> torch.Tensor:
-        return torch.randn(1, 4, 128)
+        return torch.randn(1, 4, 32)
 
 
 def get_mcore_gpt_model(
@@ -119,7 +119,7 @@ def get_mcore_gpt_model(
     pipeline_model_parallel_size: int = 1,
     *,
     num_layers: int = 2,
-    hidden_size: int = 256,
+    hidden_size: int = 64,
     num_attention_heads: int = 8,
     num_query_groups: Optional[int] = None,
     ffn_hidden_size: Optional[int] = 128,
@@ -263,12 +263,12 @@ def load_distributed_checkpoint(checkpoint_path, gpt_model):
     return gpt_model
 
 
-def sharded_state_dict_test_helper(tmpdir, model_ref, model_test, forward_fn):
+def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn):
     logits_ref = forward_fn(model_ref)
     modelopt_state = mto.modelopt_state(model_ref)
     state_dict = copy.deepcopy(model_ref.state_dict())
 
-    save_distributed_checkpoint(tmpdir, model_ref)
+    save_distributed_checkpoint(tmp_path, model_ref)
     # Test that model_ref has not been modified during distributed save
     modelopt_state_after_distributed_save = mto.modelopt_state(model_ref)
     assert modelopt_state == modelopt_state_after_distributed_save
@@ -276,13 +276,13 @@ def sharded_state_dict_test_helper(tmpdir, model_ref, model_test, forward_fn):
     assert state_dict.keys() == state_dict_after_distributed_save.keys()
     for k, v in state_dict.items():
         assert not isinstance(v, torch.Tensor) or torch.allclose(
-            v, state_dict_after_distributed_save[k]
+            v.to(torch.float32), state_dict_after_distributed_save[k].to(torch.float32)
         )
     logits_ref_after_distributed_save = forward_fn(model_ref)
     assert torch.allclose(logits_ref, logits_ref_after_distributed_save)
 
     model_test = mto.restore_from_modelopt_state(model_test, modelopt_state)
-    model_test = load_distributed_checkpoint(tmpdir, model_test)
+    model_test = load_distributed_checkpoint(tmp_path, model_test)
 
     modelopt_state_test = mto.modelopt_state(model_test)
     assert modelopt_state == modelopt_state_test
@@ -290,7 +290,12 @@ def sharded_state_dict_test_helper(tmpdir, model_ref, model_test, forward_fn):
     state_dict_test = model_test.state_dict()
     assert state_dict.keys() == state_dict_test.keys()
     for k, v in state_dict.items():
-        assert not isinstance(v, torch.Tensor) or torch.allclose(v, state_dict_test[k])
+        # sharded_state_dict will omit output_layer since we are lacking support on vocab padding
+        if "output_layer" in k:
+            continue
+        assert not isinstance(v, torch.Tensor) or torch.allclose(
+            v.to(torch.float32), state_dict_test[k].to(torch.float32)
+        ), "{} {} {}".format(k, v, state_dict_test[k])
 
     logits_test = forward_fn(model_test)
-    assert torch.allclose(logits_ref, logits_test)
+    assert torch.allclose(logits_ref, logits_test), "{} {}".format(logits_ref, logits_test)

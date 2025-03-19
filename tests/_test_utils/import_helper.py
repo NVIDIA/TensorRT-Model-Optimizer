@@ -36,11 +36,9 @@ def skip_if_no_trtexec():
 
 def skip_if_no_libcudnn():
     try:
-        found = _check_for_libcudnn()
-        return not found
+        _check_for_libcudnn()
     except FileNotFoundError as e:
         pytest.skip(f"{e}!", allow_module_level=True)
-        return True
 
 
 def skip_if_no_megatron(apex_or_te_required: bool = False):

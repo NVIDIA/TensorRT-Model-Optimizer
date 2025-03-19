@@ -32,6 +32,7 @@ from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
 from .layer_utils import (
+    build_conv_config,
     build_decoder_config,
     build_embedding_config,
     build_layernorm_config,
@@ -43,6 +44,7 @@ from .layer_utils import (
     get_enc_dec_token_ids,
     get_encoder_config,
     get_transformer_layers,
+    is_conv,
     is_decoder_list,
     is_embedding,
     is_layernorm,
@@ -201,7 +203,10 @@ def torch_to_tensorrt_llm_checkpoint(
     models = [("decoder", model)]
     is_enc_dec = model_type_is_enc_dec(decoder_type)
     if is_enc_dec:
-        model_lm_head = model.lm_head
+        if decoder_type in ["whisper"]:
+            model_lm_head = model.proj_out
+        else:
+            model_lm_head = model.lm_head
         # For Encoder-Decoder models, we process the checkpoint separately.
         models = get_enc_dec_models(model, decoder_type)
 
@@ -235,9 +240,11 @@ def torch_to_tensorrt_llm_checkpoint(
             config.enc_dec = component_name
             model_metadata_config["enc_dec"] = component_name
 
-            if decoder_type == "bart":
+            if decoder_type in ["bart"]:
                 # bart does not have final layernorm but has embedding layernorm.
                 has_embedding_layernorm = True
+            elif decoder_type in ["whisper"]:
+                has_position_embedding = True
 
         # GLM has a different handling of word_embeddings.
         if decoder_type == "glm":
@@ -247,9 +254,11 @@ def torch_to_tensorrt_llm_checkpoint(
         # Build the full model_config dict layer by layer.
         for module in transformer_layers:
             if is_embedding(module):
-                if config.vocab_embedding is None:
+                if config.vocab_embedding is None and not (
+                    decoder_type == "whisper" and model_metadata_config["enc_dec"] == "enc"
+                ):
                     # We assume the first embedding in the list the vocab_embedding.
-
+                    # For whisper encoder module, the only embedding is position embedding
                     normalization_constant = 1
                     # Normalize vocab embedding for gemma.
                     if (
@@ -315,6 +324,12 @@ def torch_to_tensorrt_llm_checkpoint(
                     # This will update lm_head quantization config according to constraints from TRT-LLM
                     update_lm_head_quantization(config, module, inference_pipeline_parallel)
                     config.lm_head = build_linear_config(module, "column")
+            elif is_conv(module):
+                if decoder_type in ["whisper"]:
+                    if config.conv1 is None:
+                        config.conv1 = build_conv_config(module)
+                    else:
+                        config.conv2 = build_conv_config(module)
 
         # For decoder of Encoder-Decoder model, it needs some encoder information
         if is_enc_dec:
@@ -332,7 +347,8 @@ def torch_to_tensorrt_llm_checkpoint(
         # For the training time PP, not all ranks will have the lm_head layer.
         if config.lm_head is None:
             if is_enc_dec:
-                config.share_embedding_table = False
+                if decoder_type not in ["whisper"]:
+                    config.share_embedding_table = False
                 if model_metadata_config["enc_dec"] == "dec":
                     config.lm_head = build_linear_config(model_lm_head, "column")
             elif training_pipeline_parallel == 1:
@@ -402,10 +418,10 @@ def torch_to_tensorrt_llm_checkpoint(
             # We split the weights from model_config and save them separately as two files.
             split_config_and_weights(model_config_dict, weights, "transformer", layer_config_dict)
             # Process per layer quantization config dict
-            per_layer_quantization = process_layer_quant_config(layer_config_dict)
+            quant_config = process_layer_quant_config(layer_config_dict)
             # We only export the json once across ranks as all jsons should be the same except for the rank.
             tensorrt_llm_config = convert_to_tensorrt_llm_config(
-                model_config, weights.keys(), hf_config=hf_config
+                model_config, quant_config, hf_config=hf_config
             )
 
             # Postprocess the tensors in the model_config.
@@ -418,7 +434,7 @@ def torch_to_tensorrt_llm_checkpoint(
                 force_non_view=False,
             )
 
-            yield tensorrt_llm_config, weights, per_layer_quantization
+            yield tensorrt_llm_config, weights, quant_config
 
 
 def export_tensorrt_llm_checkpoint(
@@ -464,11 +480,10 @@ def export_tensorrt_llm_checkpoint(
         workspace_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        exclude_modules = set()
         for (
             tensorrt_llm_config,
             weights,
-            per_layer_quantization,
+            quant_config,
         ) in torch_to_tensorrt_llm_checkpoint(
             model=model,
             decoder_type=decoder_type,
@@ -477,6 +492,7 @@ def export_tensorrt_llm_checkpoint(
             inference_pipeline_parallel=inference_pipeline_parallel,
             workspace_path=workspace_path,
         ):
+            exclude_modules = set()
             rank = tensorrt_llm_config["rank"]
             world_size = tensorrt_llm_config["mapping"]["world_size"]
             if tensorrt_llm_config["quantization"]:
@@ -495,20 +511,14 @@ def export_tensorrt_llm_checkpoint(
             if rank == world_size - 1:
                 # We only export the json once across ranks as all jsons should be the same except for the rank.
                 # If auto_quant is used, save per layer quantization information in quant_cfg.json
-                if per_layer_quantization:
-                    # Update auto quant related information for quantization.json export
-                    per_layer_quantization["kv_cache_quant_algo"] = tensorrt_llm_config[
-                        "quantization"
-                    ]["kv_cache_quant_algo"]
-
+                if "quantized_layers" in quant_config:
                     # Update auto quant related information for config.json export
                     # We remove group_size, has_zero_point, exclude_modules and pre_quant_scale information from config
                     tensorrt_llm_config["quantization"] = {
-                        k: per_layer_quantization[k] for k in ("quant_algo", "kv_cache_quant_algo")
+                        k: quant_config[k] for k in ("quant_algo", "kv_cache_quant_algo")
                     }
-
                     with open(export_dir / "quant_cfg.json", "w") as f:
-                        json.dump(per_layer_quantization, f, indent=4)
+                        json.dump(quant_config, f, indent=4)
                 else:
                     # Excluded modules information is only included in non auto_quant case
                     tensorrt_llm_config["quantization"]["exclude_modules"] = list(exclude_modules)

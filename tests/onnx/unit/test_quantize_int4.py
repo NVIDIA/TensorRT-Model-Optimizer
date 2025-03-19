@@ -26,7 +26,7 @@ from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.utils import save_onnx
 
 
-def _matmul_model(w: np.ndarray, in_shape: Sequence[int], out_shape: Sequence[int], tmpdir):
+def _matmul_model(w: np.ndarray, in_shape: Sequence[int], out_shape: Sequence[int], tmp_path):
     # Assumes
     w = gs.Constant("w", w)
     x = gs.Variable("x", dtype=np.float32, shape=in_shape)
@@ -35,19 +35,22 @@ def _matmul_model(w: np.ndarray, in_shape: Sequence[int], out_shape: Sequence[in
     g = gs.Graph([mm], inputs=[x, w], outputs=[y])
 
     onnx_model = gs.export_onnx(g)
-    onnx_path = os.path.join(tmpdir, "model.onnx")
+    onnx_path = os.path.join(tmp_path, "model.onnx")
     save_onnx(onnx_model, onnx_path)
 
     return onnx_path
 
 
-def test_int4_rtn(tmpdir):
+def test_int4_rtn(tmp_path):
     # Test scale factor computation.
     # Use moq.quantize once to check that path doesnt have any bugs
     onnx_path = _matmul_model(
-        w=np.asarray([[0.5, 1.5], [0.875, 1.75]]), in_shape=(1, 2), out_shape=(1, 2), tmpdir=tmpdir
+        w=np.asarray([[0.5, 1.5], [0.875, 1.75]]),
+        in_shape=(1, 2),
+        out_shape=(1, 2),
+        tmp_path=tmp_path,
     )
-    output_path = os.path.join(tmpdir, "model_int4.onnx")
+    output_path = os.path.join(tmp_path, "model_int4.onnx")
     moq.quantize(onnx_path, "int4", calibration_method="rtn", output_path=output_path, block_size=8)
     onnx_model = onnx.load(output_path)
 
@@ -84,7 +87,7 @@ def test_int4_rtn(tmpdir):
         ),
         in_shape=(1, 16),
         out_shape=(1, 1),
-        tmpdir=tmpdir,
+        tmp_path=tmp_path,
     )
     onnx_model = quantize_int4(onnx_path, "rtn", block_size=8)
 
@@ -93,24 +96,24 @@ def test_int4_rtn(tmpdir):
 
     # Test shape compatibility
     onnx_path = _matmul_model(
-        w=np.random.rand(288, 16), in_shape=(96, 288), out_shape=(96, 16), tmpdir=tmpdir
+        w=np.random.rand(288, 16), in_shape=(96, 288), out_shape=(96, 16), tmp_path=tmp_path
     )
     onnx_model = quantize_int4(onnx_path, "rtn", block_size=8)  # Ensure it passes.
 
     onnx_path = _matmul_model(
-        w=np.random.rand(577, 3), in_shape=(8, 557), out_shape=(8, 3), tmpdir=tmpdir
+        w=np.random.rand(577, 3), in_shape=(8, 557), out_shape=(8, 3), tmp_path=tmp_path
     )
     onnx_model = quantize_int4(onnx_path, "rtn", block_size=8)  # Ensure it passes.
 
 
-def test_shape_rtn(tmpdir):
+def test_shape_rtn(tmp_path):
     # Test shape compatibility
     onnx_dataloader = [{"x": np.random.rand(96, 288)}]
     onnx_path = _matmul_model(
         w=np.random.rand(288, 16).astype(np.float32),
         in_shape=(96, 288),
         out_shape=(96, 16),
-        tmpdir=tmpdir,
+        tmp_path=tmp_path,
     )
     quantize_int4(
         onnx_path,
@@ -121,14 +124,14 @@ def test_shape_rtn(tmpdir):
     )  # Ensure it passes.
 
 
-def test_shape_awq(tmpdir):
+def test_shape_awq(tmp_path):
     # Test shape compatibility
     onnx_dataloader = [{"x": np.random.rand(96, 288).astype(np.float32)}]
     onnx_path = _matmul_model(
         w=np.random.rand(288, 16).astype(np.float32),
         in_shape=(96, 288),
         out_shape=(96, 16),
-        tmpdir=tmpdir,
+        tmp_path=tmp_path,
     )
     quantize_int4(
         onnx_path,

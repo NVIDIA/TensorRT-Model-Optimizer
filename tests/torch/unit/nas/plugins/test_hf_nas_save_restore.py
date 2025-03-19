@@ -15,59 +15,27 @@
 
 import os
 
-import pytest
-import torch
+from _test_utils.torch_model.transformers_models import (
+    create_tiny_bert_dir,
+    tf_modelopt_state_and_output_tester,
+)
+from transformers import AutoModelForQuestionAnswering, BertForQuestionAnswering
 
 import modelopt.torch.nas as mtn
-import modelopt.torch.opt as mto
-
-tf = pytest.importorskip("transformers")
 
 
-def test_pruned_transformers_save_restore(tmpdir):
-    def create_base_model() -> str:
-        base_model_path = tmpdir + "/base_model"
-        model = tf.AutoModelForQuestionAnswering.from_config(
-            tf.BertConfig(
-                vocab_size=64,
-                hidden_size=8,
-                num_hidden_layers=2,
-                num_attention_heads=4,
-                intermediate_size=16,
-                max_position_embeddings=32,
-            )
-        )
-        model.save_pretrained(base_model_path)
-        return base_model_path
-
-    mto.enable_huggingface_checkpointing()
-
-    model_ref = tf.BertForQuestionAnswering.from_pretrained(create_base_model())
+def test_pruned_transformers_save_restore(tmp_path):
+    tiny_bert_dir = create_tiny_bert_dir(tmp_path)
+    model_ref = BertForQuestionAnswering.from_pretrained(tiny_bert_dir)
 
     # Export a random subnet (proxy for search / prune)
     model_ref = mtn.convert(model_ref, "fastnas")
     mtn.sample(model_ref)
     model_ref = mtn.export(model_ref)
 
-    model_ref.save_pretrained(tmpdir + "/modelopt_model")
-    assert os.path.exists(tmpdir + "/modelopt_model/modelopt_state.pth")
+    model_ref.save_pretrained(tiny_bert_dir / "modelopt_model")
+    assert os.path.exists(tiny_bert_dir / "modelopt_model/modelopt_state.pth")
 
     # Restore pruned model + weights
-    model_test = tf.BertForQuestionAnswering.from_pretrained(tmpdir + "/modelopt_model")
-
-    # Huggingface adds a _is_hf_initialized attribute to the model's modules
-    for module in model_test.modules():
-        if hasattr(module, "_is_hf_initialized"):
-            delattr(module, "_is_hf_initialized")
-
-    model_ref_state = mto.modelopt_state(model_ref)
-    model_test_state = mto.modelopt_state(model_test)
-    assert model_ref_state == model_test_state
-
-    inputs = model_ref.dummy_inputs
-    model_ref.eval()
-    model_test.eval()
-    output_ref = model_ref(**inputs)
-    output_test = model_test(**inputs)
-    assert torch.allclose(output_ref.start_logits, output_test.start_logits)
-    assert torch.allclose(output_ref.end_logits, output_test.end_logits)
+    model_test = AutoModelForQuestionAnswering.from_pretrained(tiny_bert_dir / "modelopt_model")
+    tf_modelopt_state_and_output_tester(model_ref, model_test)

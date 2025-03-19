@@ -13,18 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
 import torch
-from torchvision.models import resnet18
 
-from modelopt.torch._deploy.utils import get_onnx_bytes
-
-
-@pytest.fixture(scope="session")
-def resnet18_model():
-    return resnet18()
+from modelopt.torch.nas.search_space import SearchSpace
+from modelopt.torch.opt.dynamic import DynamicModule
 
 
-@pytest.fixture(scope="session")
-def resnet18_onnx_bytes(resnet18_model):
-    return get_onnx_bytes(resnet18_model, torch.rand(1, 3, 224, 224))
+def sample_subnet_with_sparsity(model, sample_func=min):
+    for module in model.modules():
+        if isinstance(model, DynamicModule):
+            if hasattr(module, "set_mask"):
+                module.set_mask(torch.rand_like(module.weight) > 0.5)
+            SearchSpace(module).sample(sample_func)

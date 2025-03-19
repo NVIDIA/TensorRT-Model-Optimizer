@@ -27,6 +27,7 @@ from .model_config import (
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_NVFP4,
     QUANTIZATION_NVFP4_AWQ,
+    QUANTIZATION_W4A8_AWQ,
     DecoderLayerConfig,
     LayernormConfig,
     LinearConfig,
@@ -97,6 +98,17 @@ def split_config_and_weights(
                 array_key = prefix
             else:
                 array_key = f"{prefix}.{k}"
+
+            # TensorRT-LLM 0.17 uses the kv_cache_scaling_factor,
+            # the following code will be deprecated after the 0.18 upgrade.
+            if "v_cache_scaling_factor" in array_key:
+                k_cache_scaling_factor_key = array_key.replace(
+                    "v_cache_scaling_factor", "k_cache_scaling_factor"
+                )
+                if k_cache_scaling_factor_key in weights:
+                    weights[
+                        array_key.replace("v_cache_scaling_factor", "kv_cache_scaling_factor")
+                    ] = torch.maximum(v, weights[k_cache_scaling_factor_key])
 
             # Construct per_layer quantization dictionary, with block size information
             if array_key != "transformer.quantization" and (
@@ -291,6 +303,11 @@ def pack_linear_weights(model_config: ModelConfig):
                         linear_layer.weights_scaling_factor_2,
                         linear_layer.awq_block_size,
                     ).cpu()
+
+                    # Convert to int8 if to make the checkpoint compatible with the latest TensorRT-LLM release.
+                    # The future TensorRT-LLM release will use uint8 weights instead.
+                    if linear_layer.quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
+                        linear_layer.weight = linear_layer.weight.view(torch.int8)
 
                     linear_layer.weights_scaling_factor = linear_layer.weights_scaling_factor.cpu()
 

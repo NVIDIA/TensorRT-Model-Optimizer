@@ -19,7 +19,7 @@ export HF_FP4_PATH={path_to_save_the_final_FP4_checkpoint}
 huggingface-cli download deepseek-ai/DeepSeek-R1 --local-dir $HF_FP8_CKPT
 
 # clone DeepSeek-V3 (base model of R1) Github repository for FP8 inference,
-git clone https://github.com/deepseek-ai/DeepSeek-V3.git && cd DeepSeek-V3 && git checkout 1d7d440
+git clone https://github.com/deepseek-ai/DeepSeek-V3.git && cd DeepSeek-V3 && git checkout 1398800
 
 # convert the HF checkpoint to a specific format for Deepseek
 python inference/convert.py --hf-ckpt-path $HF_FP8_CKPT --save-path $DS_CKPT --n-experts 256 --model-parallel 8

@@ -44,8 +44,8 @@ def test_calib_data_generator(batch_size, num_batches, total_batch):
     model = LeNet5TwoInputs()
     onnx_bytes = model.to_onnx_bytes(batch_size)
 
-    inputs_1 = model.gen_input(0, total_batch)
-    inputs_2 = model.gen_input(1, total_batch)
+    inputs_1 = LeNet5TwoInputs.gen_input(0, total_batch)
+    inputs_2 = LeNet5TwoInputs.gen_input(1, total_batch)
 
     generator = calib_data_generator(onnx_bytes, [inputs_1, inputs_2])
     count = 0

@@ -41,7 +41,6 @@ import argparse
 import glob
 import json
 import os
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -50,13 +49,41 @@ import torch
 from safetensors.torch import load_file, save_file
 from tqdm import tqdm
 
-from modelopt import __version__
-from modelopt.torch.export.quant_utils import process_layer_quant_config
-from modelopt.torch.export.tensorrt_llm_utils import _prefix_wildcard_summarize_exclude_modules
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
 
 sys.path.append(str(Path(__file__).resolve().parent / "DeepSeek-V3/inference"))
 from kernel import weight_dequant
+
+
+def _remap_key(key_dict: dict[str, Any]):
+    # renaming the module to match HF modeling
+    # The order matters here.
+    mappig = {
+        "ffn": "mlp",
+        "w1": "gate_proj",
+        "w2": "down_proj",
+        "w3": "up_proj",
+        "attn": "self_attn",
+        "wq_a": "q_a_proj",
+        "wq_b": "q_b_proj",
+        "wq": "q_proj",
+        "wkv_a": "kv_a_proj_with_mqa",
+        "wkv_b": "kv_b_proj",
+        "wo": "o_proj",
+        "head": "lm_head",
+    }
+
+    new_dict = {}
+    for k, v in key_dict.items():
+        new_key = k.replace("layers", "model.layers")
+
+        for original_pattern, replace_pattern in mappig.items():
+            new_key = new_key.replace(original_pattern, replace_pattern)
+
+        new_dict[new_key] = v
+
+    key_dict.clear()
+    key_dict.update(new_dict)
 
 
 def load_and_preprocess_state_dict(modelopt_state_root, world_size=8):
@@ -75,56 +102,65 @@ def load_and_preprocess_state_dict(modelopt_state_root, world_size=8):
                 amax = torch.max(amax, merged_state_dict[key].to(amax.device))
             merged_state_dict[key] = amax
 
-    # renaming the module to match HF modeling
-    mappig = {
-        "ffn.shared_experts.w1": "mlp.shared_experts.gate_proj",
-        "ffn.shared_experts.w2": "mlp.shared_experts.down_proj",
-        "ffn.shared_experts.w3": "mlp.shared_experts.up_proj",
-        "ffn.w1": "mlp.gate_proj",
-        "ffn.w2": "mlp.down_proj",
-        "ffn.w3": "mlp.up_proj",
-    }
-    renamed_state_dict = {}
-    for ori_key, amax in merged_state_dict.items():
-        item = merged_state_dict[ori_key]
-        key = ori_key.replace("layers", "model.layers")
-        for original_pattern, replace_pattern in mappig.items():
-            key = key.replace(original_pattern, replace_pattern)
-
-        # ffn.experts.xx.w1/w2/w3- > mlp.experts.xx.gate_proj/down_proj/up_proj
-        key = re.sub(r"ffn\.experts\.(\d+)\.w1", r"mlp.experts.\1.gate_proj", key)
-        key = re.sub(r"ffn\.experts\.(\d+)\.w2", r"mlp.experts.\1.down_proj", key)
-        key = re.sub(r"ffn\.experts\.(\d+)\.w3", r"mlp.experts.\1.up_proj", key)
-
-        renamed_state_dict[key] = item
+    _remap_key(merged_state_dict)
 
     # set amax for modules to be fused and make sure they share the same input
-    for key, amax in renamed_state_dict.items():
+    for key, amax in merged_state_dict.items():
         if "up_proj" in key:
             gate_proj_key = key.replace("up_proj", "gate_proj")
             if "weight_quantizer" in key:
-                fused_amax = torch.max(amax, renamed_state_dict[gate_proj_key])
-                renamed_state_dict[key] = fused_amax
-                renamed_state_dict[gate_proj_key] = fused_amax
+                fused_amax = torch.max(amax, merged_state_dict[gate_proj_key])
+                merged_state_dict[key] = fused_amax
+                merged_state_dict[gate_proj_key] = fused_amax
             elif "input_quantizer" in key:
-                assert amax == renamed_state_dict[gate_proj_key]
+                assert amax == merged_state_dict[gate_proj_key]
             else:
                 raise NotImplementedError
 
-    return renamed_state_dict
+    return merged_state_dict
+
+
+def process_quant_config(quant_config_path: str, save_path: str) -> dict[str, Any]:
+    with open(quant_config_path, "r") as f:
+        quant_config = json.load(f)
+
+    if "exclude_modules" in quant_config["quantization"]:
+        exclude_dict = {k: None for k in quant_config["quantization"]["exclude_modules"]}
+        _remap_key(exclude_dict)
+        quant_config["quantization"]["exclude_modules"] = list(exclude_dict.keys())
+
+    per_layer_quant_config = {}
+    if "quantized_layers" in quant_config["quantization"]:
+        _remap_key(quant_config["quantization"]["quantized_layers"])
+        per_layer_quant_config = quant_config["quantization"]["quantized_layers"]
+
+    with open(save_path, "w") as f:
+        json.dump(quant_config, f, indent=4)
+
+    return per_layer_quant_config
 
 
 def find_safetensors_files(directory: str):
     """Recursively finds all `.safetensors` files in the specified directory."""
-    safetensors_files = glob.glob(os.path.join(directory, "**", "*.safetensors"), recursive=True)
+    safetensors_files = sorted(
+        glob.glob(os.path.join(directory, "**", "*.safetensors"), recursive=True)
+    )
 
     return safetensors_files
 
 
 # Adopted from https://github.com/deepseek-ai/DeepSeek-V3/blob/2f7b80eecebf3d1c84da5a0d465f6639ea175012/inference/fp8_cast_bf16.py
-def convert_fp8_ckpt_to_nvfp4(renamed_state_dict, fp8_root, save_root):
-    def amax_to_weights_scaling_factor_2(amax):
+def convert_fp8_ckpt_to_nvfp4(
+    renamed_state_dict,
+    fp8_root,
+    save_root,
+    per_layer_quant_config,
+):
+    def amax_to_nvfp4_scaling_factor_2(amax):
         return amax.float() / 6.0 / 448.0
+
+    def amax_to_fp8_scaling_factor(amax):
+        return amax.float() / 448.0
 
     torch.set_default_dtype(torch.bfloat16)
     model_index_file = os.path.join(fp8_root, "model.safetensors.index.json")
@@ -170,36 +206,68 @@ def convert_fp8_ckpt_to_nvfp4(renamed_state_dict, fp8_root, save_root):
             else:
                 bf16_state_dict[key] = item
 
-        new_dict_nvfp4 = {}
+        new_dict = {}
         for key, item in bf16_state_dict.items():
-            if "weight" in key and any(sub in key for sub in ["up_proj", "gate_proj", "down_proj"]):
+            if "weight" in key:
+                weight = item
                 amax_key = key + "_quantizer._amax"
                 layer_name = key.replace(".weight", "")
                 input_scale_key = layer_name + ".input_quantizer._amax"
+
                 if amax_key in renamed_state_dict:
-                    weight = item
-                    weights_scaling_factor_2 = amax_to_weights_scaling_factor_2(
-                        renamed_state_dict[amax_key]
-                    )
-                    input_scaling_factor = amax_to_weights_scaling_factor_2(
-                        renamed_state_dict[input_scale_key]
-                    )
-                    quantized_weight, scaling_factor, scaling_factor_2 = NVFP4QTensor.quantize(
-                        weight.to(weights_scaling_factor_2.device),
-                        16,
-                        None,
-                        weights_scaling_factor_2,
+                    # default quant is NVFP4
+                    is_nvfp4 = (
+                        not per_layer_quant_config
+                        or per_layer_quant_config.get(layer_name, {}).get("quant_algo", None)
+                        == "NVFP4"
                     )
 
-                    # adding input_scale, weight_scaling_factor,
-                    new_dict_nvfp4[key] = quantized_weight._quantized_data
-                    new_dict_nvfp4[layer_name + ".input_scale"] = input_scaling_factor
-                    new_dict_nvfp4[key + "_scale"] = scaling_factor
-                    new_dict_nvfp4[key + "_scale_2"] = scaling_factor_2
+                    is_per_tensor_fp8 = (
+                        per_layer_quant_config
+                        and per_layer_quant_config.get(layer_name, {}).get("quant_algo", None)
+                        == "FP8"
+                    )
+
+                    if is_nvfp4:
+                        weight_scaling_factor_2 = amax_to_nvfp4_scaling_factor_2(
+                            renamed_state_dict[amax_key]
+                        ).to(weight.device)
+                        input_scaling_factor = amax_to_nvfp4_scaling_factor_2(
+                            renamed_state_dict[input_scale_key]
+                        ).to(weight.device)
+                        quantized_weight, weight_scaling_factor, weight_scaling_factor_2 = (
+                            NVFP4QTensor.quantize(
+                                weight,
+                                16,
+                                None,
+                                weight_scaling_factor_2,
+                            )
+                        )
+
+                        # adding input_scale, weight_scaling_factor,
+                        new_dict[key] = quantized_weight._quantized_data
+                        new_dict[layer_name + ".input_scale"] = input_scaling_factor
+                        new_dict[key + "_scale"] = weight_scaling_factor
+                        new_dict[key + "_scale_2"] = weight_scaling_factor_2
+                    elif is_per_tensor_fp8:
+                        weight_scaling_factor = amax_to_fp8_scaling_factor(
+                            renamed_state_dict[amax_key]
+                        ).to(weight.device)
+                        input_scaling_factor = amax_to_fp8_scaling_factor(
+                            renamed_state_dict[input_scale_key]
+                        ).to(weight.device)
+
+                        quantized_weight = (weight / weight_scaling_factor).to(torch.float8_e4m3fn)
+                        new_dict[key] = quantized_weight
+                        new_dict[layer_name + ".input_scale"] = input_scaling_factor
+                        new_dict[key + "_scale"] = weight_scaling_factor
+                    else:
+                        raise NotImplementedError("Quantization algorithm not supported")
                     continue
-            new_dict_nvfp4[key] = item
 
-        save_file(new_dict_nvfp4, os.path.join(save_root, file_name))
+            new_dict[key] = item
+
+        save_file(new_dict, os.path.join(save_root, file_name))
 
         # Memory management: keep only the 2 most recently used files
         while len(loaded_files) > 2:
@@ -217,75 +285,6 @@ def convert_fp8_ckpt_to_nvfp4(renamed_state_dict, fp8_root, save_root):
         json.dump({"metadata": {}, "weight_map": weight_map}, f, indent=2)
 
 
-def construct_quant_config(save_root):
-    all_keys = set()
-
-    all_safetensor_files = find_safetensors_files(save_root)
-    for safetensor_file in tqdm(all_safetensor_files, desc="Gathering all keys"):
-        state_dict = load_file(safetensor_file)  # Load tensors
-        all_keys.update(state_dict.keys())  # Add keys to the set
-
-    # construct quantization layer dict
-    layer_config_dict = {}
-    for k in all_keys:
-        if k.endswith(".weight"):
-            name = k.rsplit(".weight", 1)[0]
-            # Note: assume nvfp4 if scales exists
-            quantization = None
-            block_size = None
-            if k + "_scale" in all_keys:
-                quantization = "nvfp4"
-                block_size = 16
-            layer_config_dict.update({name + ".quantization": quantization})
-            layer_config_dict.update({name + ".awq_block_size": block_size})
-
-    per_layer_quantization = process_layer_quant_config(layer_config_dict)
-
-    def get_exclude_modules(layer_config_dict):
-        """Returns the list of modules to exclude from quantization."""
-        quantized_layers = set()
-        unquantized_layers = set()
-        for k, v in layer_config_dict.items():
-            if "awq_block_size" in k:
-                continue
-
-            prefix = ".".join(k.rsplit(".", 1)[:-1])
-            if v is not None:
-                quantized_layers.add(prefix)
-            else:
-                unquantized_layers.add(prefix)
-
-        unquantized_layers = unquantized_layers - quantized_layers
-
-        res_with_wildcards = _prefix_wildcard_summarize_exclude_modules(
-            unquantized_layers, quantized_layers
-        )
-        return list(res_with_wildcards)
-
-    exclude_modules = []
-    if not per_layer_quantization:
-        exclude_modules = get_exclude_modules(layer_config_dict)
-
-    # construct hf_quant_config
-    quant_config: dict[str, Any] = {
-        "producer": {
-            "name": "modelopt",
-            "version": __version__,
-        },
-        "quantization": {"quant_algo": None, "kv_cache_quant_algo": None},
-    }
-    quant_config["quantization"].update(
-        {
-            "quant_algo": "NVFP4",
-            "group_size": 16,
-            "exclude_modules": exclude_modules,
-        }
-    )
-    # dump the config
-    with open(os.path.join(save_root, "hf_quant_config.json"), "w") as json_file:
-        json.dump(quant_config, json_file, indent=4)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
 
@@ -297,10 +296,18 @@ if __name__ == "__main__":
     parser.add_argument("--world_size", type=int, required=True, help="world size used by ptq.")
     args = parser.parse_args()
 
+    per_layer_quant_config = process_quant_config(
+        quant_config_path=os.path.join(args.amax_path, "hf_quant_config.json"),
+        save_path=os.path.join(args.fp4_path, "hf_quant_config.json"),
+    )
+
     renamed_state_dict = load_and_preprocess_state_dict(
-        modelopt_state_root=args.amax_path, world_size=args.world_size
+        modelopt_state_root=args.amax_path,
+        world_size=args.world_size,
     )
     convert_fp8_ckpt_to_nvfp4(
-        renamed_state_dict, fp8_root=args.fp8_hf_path, save_root=args.fp4_path
+        renamed_state_dict,
+        fp8_root=args.fp8_hf_path,
+        save_root=args.fp4_path,
+        per_layer_quant_config=per_layer_quant_config,
     )
-    construct_quant_config(save_root=args.fp4_path)

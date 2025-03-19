@@ -23,7 +23,7 @@ import onnx
 import onnx_graphsurgeon as gs
 from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
-from onnxmltools.utils.float16_converter import convert_float_to_float16
+from onnxconverter_common import convert_float_to_float16
 from onnxruntime.quantization import CalibrationMethod
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
@@ -117,7 +117,7 @@ def quantize(
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cpu"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,

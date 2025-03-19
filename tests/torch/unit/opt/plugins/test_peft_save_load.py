@@ -14,24 +14,22 @@
 # limitations under the License.
 
 import pytest
-import torch
+from _test_utils.torch_model.transformers_models import (
+    create_tiny_llama_dir,
+    tf_modelopt_state_and_output_tester,
+)
 
-import modelopt.torch.opt as mto
-import modelopt.torch.quantization as mtq
-
-peft = pytest.importorskip("peft")
-transformers = pytest.importorskip("transformers")
-
-from _transformers_helper import create_base_model
+pytest.importorskip("peft")
 from peft import AutoPeftModelForCausalLM, LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM
 
+import modelopt.torch.quantization as mtq
+
 
 @pytest.mark.skip(reason="under investigation")
-def test_peft_save_restore(tmpdir):
-    mto.enable_huggingface_checkpointing()
-
-    model_ref = AutoModelForCausalLM.from_pretrained(create_base_model(tmpdir))
+def test_peft_save_restore(tmp_path):
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
+    model_ref = AutoModelForCausalLM.from_pretrained(tiny_llama_dir)
 
     peft_config = LoraConfig(
         task_type="CAUSAL_LM",
@@ -42,19 +40,7 @@ def test_peft_save_restore(tmpdir):
     )
     model_ref = get_peft_model(model_ref, peft_config)
     mtq.quantize(model_ref, mtq.INT8_DEFAULT_CFG, lambda model: model(**model.dummy_inputs))
+    model_ref.save_pretrained(tiny_llama_dir / "modelopt_peft_model")
 
-    model_ref.save_pretrained(tmpdir + "/modelopt_peft_model")
-
-    model_test = AutoPeftModelForCausalLM.from_pretrained(tmpdir + "/modelopt_peft_model")
-
-    model_ref_state = mto.modelopt_state(model_ref)
-    model_test_state = mto.modelopt_state(model_test)
-
-    assert model_ref_state == model_test_state
-
-    inputs = model_ref.dummy_inputs
-    model_ref.eval()
-    model_test.eval()
-    output_ref = model_ref(**inputs).logits
-    output_test = model_test(**inputs).logits
-    assert torch.allclose(output_ref, output_test)
+    model_test = AutoPeftModelForCausalLM.from_pretrained(tiny_llama_dir / "modelopt_peft_model")
+    tf_modelopt_state_and_output_tester(model_ref, model_test)

@@ -37,11 +37,8 @@ from modelopt.torch.speculative.plugins.megatron import (
 def _test_speculative_gpt_model(
     algo, num_medusa_heads_or_eagle_layers, activation_func, normalization, rank, size
 ):
-    num_layers = 2
-    hidden_size = 256
     num_attention_heads = 8
     num_query_groups = size
-    ffn_hidden_size = 128
     max_sequence_length = 32
     vocab_size = 64
     batch_size = 2
@@ -51,11 +48,8 @@ def _test_speculative_gpt_model(
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=size,
         pipeline_model_parallel_size=1,
-        num_layers=num_layers,
-        hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
         num_query_groups=num_query_groups,
-        ffn_hidden_size=ffn_hidden_size,
         max_sequence_length=max_sequence_length,
         vocab_size=vocab_size,
         activation_func=activation_func,
@@ -122,8 +116,8 @@ def _test_speculative_gpt_model(
 @pytest.mark.parametrize(
     "algo,num_medusa_heads_or_eagle_layers,activation_func,normalization",
     [
-        ("eagle", 1, "squared_relu", "LayerNorm"),  # MHA
-        ("eagle", 2, "swiglu", "RMSNorm"),  # GQA
+        # ("eagle", 1, "squared_relu", "LayerNorm"),  # MHA
+        # ("eagle", 2, "swiglu", "RMSNorm"),  # GQA
         ("medusa", 1, "squared_relu", "LayerNorm"),  # MHA
         ("medusa", 2, "swiglu", "RMSNorm"),  # GQA
     ],

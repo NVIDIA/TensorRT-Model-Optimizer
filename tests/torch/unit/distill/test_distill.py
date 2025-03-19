@@ -15,13 +15,13 @@
 
 import inspect
 import warnings
-from pathlib import Path
 
 import pytest
 import torch
 import torch.nn as nn
+from _test_utils.torch_model.vision_models import get_tiny_mobilenet_and_input
 from torch.nn.modules.loss import _Loss as Loss
-from torchvision.models import alexnet, mobilenet_v2
+from torchvision.models import alexnet
 
 import modelopt.torch.distill as mtd
 import modelopt.torch.opt as mto
@@ -29,14 +29,22 @@ import modelopt.torch.opt as mto
 
 def get_input_tensor():
     """Dummy input tensor."""
-    return torch.rand(2, 3, 228, 228)
+    return torch.rand(2, 3, 112, 112)
+
+
+def tiny_mobilenet():
+    return get_tiny_mobilenet_and_input()[0]
+
+
+def tiny_alexnet():
+    return alexnet(num_classes=10)  # Same class as tiny_mobilenet
 
 
 @pytest.fixture()
 def distillation_model():
-    student = mobilenet_v2().train()
+    student = tiny_mobilenet().train()
     config = {
-        "teacher_model": alexnet,
+        "teacher_model": tiny_alexnet,
         "criterion": mtd.LogitsDistillationLoss(),
         "loss_balancer": mtd.StaticLossBalancer(),
     }
@@ -46,7 +54,7 @@ def distillation_model():
 
 
 def test_distillation_model_loss_params():
-    teacher, student = alexnet(), mobilenet_v2()
+    teacher, student = tiny_alexnet(), tiny_mobilenet()
     kd_loss = mtd.MGDLoss(32, 48)
 
     student_params = student.parameters()
@@ -74,9 +82,9 @@ def test_distillation_model_loss_params():
 
 
 def test_distillation_model_no_balancer():
-    student = mobilenet_v2().train()
+    student = tiny_mobilenet().train()
     config = {
-        "teacher_model": alexnet,
+        "teacher_model": tiny_alexnet,
         "criterion": mtd.LogitsDistillationLoss(),
         "loss_balancer": None,
     }
@@ -88,9 +96,9 @@ def test_distillation_model_no_balancer():
 
 
 def test_distillation_model_multiloss_balancer():
-    student = alexnet().train()
+    student = tiny_alexnet().train()
     config = {
-        "teacher_model": alexnet,
+        "teacher_model": tiny_alexnet,
         "criterion": {
             ("avgpool", "avgpool"): torch.nn.MSELoss(),
             ("classifier", "classifier"): mtd.LogitsDistillationLoss(),
@@ -104,7 +112,7 @@ def test_distillation_model_multiloss_balancer():
 
 
 def test_distillation_mode_default_config():
-    student = mobilenet_v2()
+    student = tiny_mobilenet()
     with pytest.raises(AssertionError):
         mtd.convert(student, mode="kd_loss")
 
@@ -116,11 +124,11 @@ def test_distillation_mode_config_types(distillation_model):
     assert isinstance(cfg["criterion"], dict)
 
 
-def test_distillation_save_restore(distillation_model, tmpdir):
-    mto.save(distillation_model, Path(tmpdir) / "ckpt.pt")
+def test_distillation_save_restore(distillation_model, tmp_path):
+    mto.save(distillation_model, tmp_path / "ckpt.pt")
 
-    new_student = mobilenet_v2()
-    distillation_model_new = mto.restore(new_student, Path(tmpdir) / "ckpt.pt")
+    new_student = tiny_mobilenet()
+    distillation_model_new = mto.restore(new_student, tmp_path / "ckpt.pt")
 
     assert isinstance(distillation_model_new, mtd.DistillationModel)
     assert distillation_model_new.teacher_model is not None
@@ -137,7 +145,7 @@ def test_distillation_save_restore(distillation_model, tmpdir):
     assert torch.allclose(out, out_new)
 
 
-def test_distillation_export(distillation_model, tmpdir):
+def test_distillation_export(distillation_model, tmp_path):
     model_exported = mtd.export(distillation_model)
     assert not hasattr(model_exported, "_teacher_model")
     assert hasattr(model_exported, mto.ModeloptStateManager._state_key)
@@ -149,9 +157,9 @@ def test_distillation_export(distillation_model, tmpdir):
     assert isinstance(next(iter(cfg["criterion"].values())), Loss)
     assert cfg["loss_balancer"] is None
 
-    mto.save(model_exported, Path(tmpdir) / "ckpt.pt")
-    new_student = mobilenet_v2()
-    new_student_restored = mto.restore(new_student, Path(tmpdir) / "ckpt.pt")
+    mto.save(model_exported, tmp_path / "ckpt.pt")
+    new_student = tiny_mobilenet()
+    new_student_restored = mto.restore(new_student, tmp_path / "ckpt.pt")
     assert isinstance(new_student_restored, new_student.__class__)
 
 
@@ -166,9 +174,9 @@ def test_logits_distillation(distillation_model):
 
 
 def test_minimal_state_dict_mode():
-    student = mobilenet_v2().train()
+    student = tiny_mobilenet().train()
     config = {
-        "teacher_model": alexnet,
+        "teacher_model": tiny_alexnet,
         "criterion": mtd.MGDLoss(32, 48),
         "loss_balancer": None,
         "expose_minimal_state_dict": True,
@@ -184,9 +192,9 @@ def test_minimal_state_dict_mode():
 
 
 def test_full_state_dict_mode():
-    student = mobilenet_v2().train()
+    student = tiny_mobilenet().train()
     config = {
-        "teacher_model": alexnet,
+        "teacher_model": tiny_alexnet,
         "criterion": mtd.MGDLoss(32, 48),
         "loss_balancer": None,
         "expose_minimal_state_dict": False,
@@ -202,9 +210,9 @@ def test_full_state_dict_mode():
 
 
 def test_load_student_only_state():
-    student = mobilenet_v2().train()
+    student = tiny_mobilenet().train()
     config = {
-        "teacher_model": alexnet,
+        "teacher_model": tiny_alexnet,
         "criterion": mtd.MGDLoss(32, 48),
         "loss_balancer": None,
         "expose_minimal_state_dict": False,
@@ -212,13 +220,13 @@ def test_load_student_only_state():
 
     distillation_model = mtd.convert(student, mode=[("kd_loss", config)])
 
-    state_dict = mobilenet_v2().state_dict()
+    state_dict = tiny_mobilenet().state_dict()
     distillation_model.load_state_dict(state_dict)
 
 
 def test_multiple_modelopt_states():
-    student = mobilenet_v2().train()
-    teacher = alexnet()
+    student = tiny_mobilenet().train()
+    teacher = tiny_alexnet()
     mto.ModeloptStateManager(teacher, init_state=True)
 
     config = {

@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import os
-import sys
 
 import onnx
 import onnx_graphsurgeon as gs
@@ -24,17 +23,17 @@ from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_o
 from modelopt.onnx.quantization.quantize import quantize
 
 
-def test_fused_q(tmpdir):
+def test_fused_q(tmp_path):
     model_torch = SimpleMLP()
     input_tensor = torch.randn(2, 16, 16)
 
-    onnx_path = os.path.join(tmpdir, f"{sys._getframe().f_code.co_name}.onnx")
+    onnx_path = os.path.join(tmp_path, "model.onnx")
     onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
 
     # Quantize the model and export with only DQ nodes for weights
     quantize(onnx_path, quantize_mode="fp8", dq_only=True)
 
-    # Output model should be produced in the same tmpdir
+    # Output model should be produced in the same tmp_path
     output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
 
     # Check that quantized explicit model is generated

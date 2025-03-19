@@ -30,3 +30,6 @@ with import_plugin("diffusers"):
 
 with import_plugin("peft"):
     from .peft import *
+
+with import_plugin("megatron"):
+    from .megatron import *

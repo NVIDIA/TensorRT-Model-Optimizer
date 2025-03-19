@@ -1213,7 +1213,7 @@ def quantize(
     onnx_path: Union[str, onnx.onnx_pb.ModelProto],
     calibration_method: str = "awq_lite",
     calibration_data_reader: CalibrationDataReader = None,
-    calibration_eps: list[str] = ["cpu"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     use_external_data_format: bool = True,
     use_zero_point: bool = False,
     block_size: Optional[int] = None,

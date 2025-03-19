@@ -17,18 +17,8 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from _test_utils.torch_export.export_utils import get_tiny_llama_and_tokenizer
+from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
 from safetensors import safe_open
-
-
-@pytest.fixture(scope="session")
-def tiny_llama_dir(tmp_path_factory):
-    # Build a tiny LLaMA model on the fly and store in a temp directory
-    model_dir = tmp_path_factory.mktemp("tiny_llama_model")
-    tiny_llama, tokenizer = get_tiny_llama_and_tokenizer()
-    tokenizer.save_pretrained(model_dir)
-    tiny_llama.save_pretrained(model_dir)
-    return model_dir
 
 
 # Here we map each qformat -> the suffix we expect in the generated safetensors directory
@@ -42,9 +32,7 @@ def tiny_llama_dir(tmp_path_factory):
         ("w4a8_awq", "tiny_llama-w4a8-awq"),
     ],
 )
-def test_unified_hf_export_and_check_safetensors(
-    tmp_path, tiny_llama_dir, qformat, expected_suffix
-):
+def test_unified_hf_export_and_check_safetensors(tmp_path, qformat, expected_suffix):
     """
     1) Generates a .safetensors file by running hf_ptq.py with each --qformat.
     2) Checks the generated directory for the expected .safetensors file:
@@ -55,6 +43,7 @@ def test_unified_hf_export_and_check_safetensors(
     :param qformat: the quantization format to test (e.g., 'fp8', 'nvfp4', etc.).
     :param expected_suffix: the directory suffix where the .safetensors is expected.
     """
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path, with_tokenizer=True, num_hidden_layers=1)
     current_file_dir = Path(__file__).parent
     hf_ptq_script_path = (current_file_dir / "../../../../examples/llm_ptq/hf_ptq.py").resolve()
 
@@ -75,7 +64,6 @@ def test_unified_hf_export_and_check_safetensors(
         "hf",
         "--export_path",
         str(output_dir),
-        "--trust_remote_code",
     ]
 
     # Run the command

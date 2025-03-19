@@ -57,7 +57,7 @@ def _check_gemm_quantized(model, dtype):
     "dtype",
     ["Half", "BFloat16"],
 )
-def test_simple_linear(tmpdir, dtype: str):
+def test_simple_linear(tmp_path, dtype: str):
     def forward_loop(model, run_backward=False):
         for batch in calib_data:
             output = model(batch)
@@ -82,7 +82,7 @@ def test_simple_linear(tmpdir, dtype: str):
             module.weight_quantizer._onnx_quantizer_type = "static"
 
     # Export the model to ONNX
-    onnx_path = os.path.join(tmpdir, "simple_linear_qdq.onnx")
+    onnx_path = os.path.join(tmp_path, "simple_linear_qdq.onnx")
     torch.onnx.export(
         model,
         sample_input,

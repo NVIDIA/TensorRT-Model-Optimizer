@@ -23,12 +23,13 @@ from modelopt.torch.opt.mode import (
     _ModeRegistryCls,
 )
 
-from .config import EagleConfig, MedusaConfig, RedrafterConfig
+from .config import EagleConfig, MedusaConfig, MTPConfig, RedrafterConfig
 from .eagle.conversion import convert_to_eagle_model, restore_eagle_model
 from .medusa.conversion import convert_to_medusa_model, restore_medusa_model
+from .mtp.conversion import convert_to_mtp_model, restore_mtp_model
 from .redrafter.conversion import convert_to_redrafter_model, restore_redrafter_model
 
-SpeculativeDecodingModeRegistry = _ModeRegistryCls()
+SpeculativeDecodingModeRegistry = _ModeRegistryCls("speculative")
 
 
 @SpeculativeDecodingModeRegistry.register_mode
@@ -113,3 +114,31 @@ class RedrafterModeDescriptor(_ModeDescriptor):
     def restore(self) -> RestoreEntrypoint:
         """The mode's entrypoint for restoring a model."""
         return restore_redrafter_model
+
+
+@SpeculativeDecodingModeRegistry.register_mode
+class MTPModeDescriptor(_ModeDescriptor):
+    """Class to describe the ``"mtp"`` mode.
+
+    The properties of this mode can be inspected via the source code.
+    """
+
+    @property
+    def name(self) -> str:
+        """Returns the value (str representation) of the mode."""
+        return "mtp"
+
+    @property
+    def config_class(self) -> type[ModeloptBaseConfig]:
+        """Specifies the config class for the mode."""
+        return MTPConfig
+
+    @property
+    def convert(self) -> ConvertEntrypoint:
+        """The mode's entrypoint for converting a model."""
+        return convert_to_mtp_model
+
+    @property
+    def restore(self) -> RestoreEntrypoint:
+        """The mode's entrypoint for restoring a model."""
+        return restore_mtp_model

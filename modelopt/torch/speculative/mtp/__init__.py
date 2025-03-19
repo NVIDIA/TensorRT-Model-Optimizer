@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Placeholder for unit tests for modelopt.torch.export
-def test_torch_export_dummy():
-    assert True
+"""Eagle Optimization Method."""
+
+from .conversion import *
+from .mtp_model import *

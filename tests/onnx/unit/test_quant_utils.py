@@ -94,7 +94,7 @@ def test_pack_float32_to_4bit_utils():
     _validate_results(test_output80, test_output81)
     _validate_results(test_output80, test_output82)
 
-    input_pattern_int8 = [123, 2, 1, -23, -3, -1001, 3456, 127]
+    input_pattern_int8 = [123, 2, 1, -23, -3, -127, 8, 127]
     np8 = np.asarray(input_pattern_int8, dtype=np.int8)
     np8_odd = np.asarray(input_pattern_int8[:-1], dtype=np.int8)
 
@@ -112,7 +112,7 @@ def test_pack_float32_to_4bit_utils():
     _validate_results(test_output1001, test_output1002)
     _validate_results(test_output1001, test_output1003)
 
-    input_pattern_uint8 = [123, 2, 1, 3456, 127, 13, 5, 15]
+    input_pattern_uint8 = [123, 2, 1, 56, 127, 13, 5, 15]
     npu8 = np.asarray(input_pattern_uint8, dtype=np.uint8)
     npu8_odd = np.asarray(input_pattern_uint8[:-1], dtype=np.uint8)
 

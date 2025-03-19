@@ -48,7 +48,7 @@ def _check_for_tensorrt(min_version: str = "10.0"):
 
 
 def _check_for_libcudnn():
-    lib_pattern = "*cudnn*.dll" if platform.system() == "Windows" else "libcudnn*.so*"
+    lib_pattern = "*cudnn*.dll" if platform.system() == "Windows" else "libcudnn_adv.so*"
     env_variable = "PATH" if platform.system() == "Windows" else "LD_LIBRARY_PATH"
     ld_library_path = os.environ.get(env_variable, "").split(os.pathsep)
 
@@ -79,27 +79,28 @@ def _prepare_ep_list(calibration_eps: list[str]):
     providers: list[Union[str, tuple[str, dict]]] = []
     for ep in calibration_eps:
         if "cuda" in ep:
-            device_id = int(ep.split(":")[1]) if ":" in ep else 0
-            providers.append(("CUDAExecutionProvider", {"device_id": device_id}))
+            try:
+                _check_for_libcudnn()
+                device_id = int(ep.split(":")[1]) if ":" in ep else 0
+                providers.append(("CUDAExecutionProvider", {"device_id": device_id}))
+            except Exception as e:
+                logging.warning(f"Failed to enable ORT with CUDA EP: '{e}'")
         elif "dml" in ep:
             device_id = int(ep.split(":")[1]) if ":" in ep else 0
             providers.append(("DmlExecutionProvider", {"device_id": device_id}))
         elif "cpu" in ep:
             providers.append("CPUExecutionProvider")
         elif "trt" in ep:
-            providers.append("TensorrtExecutionProvider")
-            _check_for_tensorrt()
+            try:
+                _check_for_tensorrt()
+                _check_for_libcudnn()
+                providers.append("TensorrtExecutionProvider")
+            except Exception as e:
+                logging.warning(f"Failed to enable ORT with TensorRT EP: '{e}'")
         else:
             raise NotImplementedError(f"Execution Provider {ep} not recognized!")
 
-    # Check if `libcudnn*.so*` is available for CUDA and TRT EPs
-    eps_to_check = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-    if any(
-        item in eps_to_check if isinstance(item, str) else item[0] in eps_to_check
-        for item in providers
-    ):
-        _check_for_libcudnn()
-
+    logging.info(f"Successfully enabled {len(providers)} EPs for ORT: {providers}")
     return providers
 
 

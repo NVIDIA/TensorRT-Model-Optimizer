@@ -89,6 +89,28 @@ class TestTensorQuantizerfp4:
 
         assert torch.allclose(x.grad, torch.ones_like(x.grad) * (x.abs() <= fp4_quantizer.amax))
 
+    def test_fp4_non_contiguous_input(self):
+        contiguous_tensor = torch.ones(2, 16).cuda()
+        large_tensor = torch.ones(2, 32).cuda()
+        large_tensor[:, :16] = torch.randn(2, 16).cuda()
+        non_contiguous_tensor = large_tensor[:, 16:].cuda()
+
+        assert torch.equal(contiguous_tensor, non_contiguous_tensor)
+        assert contiguous_tensor.is_contiguous()
+        assert not non_contiguous_tensor.is_contiguous()
+
+        quantizer = tensor_quantizer.TensorQuantizer(
+            QuantizerAttributeConfig(
+                num_bits=(2, 1),
+                block_sizes={-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+                axis=None,
+                enable=True,
+            )
+        ).cuda()
+        output_contiguous = quantizer(contiguous_tensor)
+        output_non_contiguous = quantizer(non_contiguous_tensor)
+        assert torch.equal(output_contiguous, output_non_contiguous)
+
 
 @pytest.mark.skipif(get_cuda_ext_mx() is None, reason="cuda_ext_mx is not available")
 class TestTensorQuantizerBlockQuant:

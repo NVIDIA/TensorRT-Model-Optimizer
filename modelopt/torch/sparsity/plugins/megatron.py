@@ -13,10 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Support megatron parallel linear."""
+"""Support sparsify and save/resore for Megatron."""
 
+import megatron.core.transformer.mlp as megatron_mlp
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+
+from modelopt.torch.opt.plugins.megatron import _MegatronMLP
 
 from ..config import SparseGPTConfig, SparseMagnitudeConfig
 from ..module import SparseModule, SpDMRegistry
@@ -59,6 +62,13 @@ class _MegatronRowParallelLinear(_MegatronParallelLinear):
         return {"_weight_mask": 1}
 
 
+@SpDMRegistry.register({megatron_mlp.MLP: "megatron.core.transformer.mlp.MLP"})
+class _SparseMegatronMLP(_MegatronMLP):
+    """Module to support special handling of `linear_fc1` in `sharded_state_dict()` of MCore `MLP`."""
+
+    _modelopt_state_keys = [r"\._weight_mask$"]
+
+
 def _get_extra_rules():
     """Get the extra rules for megatron."""
     return {
@@ -70,6 +80,7 @@ def _get_extra_rules():
             "*": {},
             "*output_layer*": None,
         },
+        "megatron.core.transformer.mlp.MLP": {},
     }
 
 
