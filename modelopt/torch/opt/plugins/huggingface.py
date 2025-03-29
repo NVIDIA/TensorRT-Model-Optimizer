@@ -101,7 +101,6 @@ def _new__load_pretrained_model(
     /,
     model,
     state_dict,
-    loaded_keys,
     resolved_archive_file,
     pretrained_model_name_or_path,
     *args,
@@ -122,7 +121,6 @@ def _new__load_pretrained_model(
     return types.MethodType(cls._modelopt_cache["_load_pretrained_model"].__func__, cls)(
         model,
         state_dict,
-        loaded_keys,
         resolved_archive_file,
         pretrained_model_name_or_path,
         *args,
