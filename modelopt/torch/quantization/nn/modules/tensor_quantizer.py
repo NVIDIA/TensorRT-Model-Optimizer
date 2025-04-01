@@ -36,6 +36,7 @@ from ...config import QuantizerAttributeConfig
 from ...qtensor import (
     BaseQuantizedTensor,
     FP8QTensor,
+    INT8QTensor,
     INT4QTensor,
     NF4QTensor,
     NVFP4QTensor,
@@ -491,6 +492,11 @@ class TensorQuantizer(nn.Module):
         if self._num_bits == (4, 3):
             # FP8 quantization
             outputs, _scale = FP8QTensor.quantize(
+                inputs, axis=self._axis, block_sizes=self._block_sizes
+            )
+            buffer_to_register["_scale"] = _scale
+        elif self._num_bits == 8:
+            outputs, _scale = INT8QTensor.quantize(
                 inputs, axis=self._axis, block_sizes=self._block_sizes
             )
             buffer_to_register["_scale"] = _scale
