@@ -101,4 +101,4 @@ class INT8QTensor(BaseQuantizedTensor):
         # Handle padded tensors
         slices = tuple(slice(0, dim) for dim in self.metadata["shape"])
 
-        return (self._quantized_data.to(torch.int8) * scales.to(dtype))[slices]
+        return (self._quantized_data.view(torch.int8).to(dtype) * scales.to(dtype))[slices]
