@@ -38,6 +38,7 @@ trt\_utils
       :nosignatures:
    
       get_custom_layers
+      infer_types_shapes
       load_onnx_model
    
    

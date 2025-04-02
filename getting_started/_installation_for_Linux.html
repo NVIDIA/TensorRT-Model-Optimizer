@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installation for Linux &mdash; Model Optimizer 0.25.0</title>
+  <title>Installation for Linux &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -279,6 +279,18 @@ need to be installed to correctly use the corresponding modules:</p>
 </tr>
 </tbody>
 </table>
+<p><strong>Accelerated Quantization with Triton Kernels</strong></p>
+<p>ModelOpt includes optimized quantization kernels implemented with Triton language that accelerate quantization
+operations by approximately 40% compared to the default implementation. These kernels are particularly
+beneficial for <a class="reference internal" href="../guides/_choosing_quant_methods.html"><span class="doc">AWQ</span></a> and Quantization-aware Training (QAT) workflows.</p>
+<p>The Triton-based kernels currently support the NVFP4 quantization format, with support for additional
+formats coming in future releases. To use these accelerated kernels, you need:</p>
+<ul class="simple">
+<li><p>CUDA device with compute capability &gt;= 8.9 (e.g. RTX 40 series, RTX 6000, NVIDIA L40 or later)</p></li>
+<li><p>Triton package installed: <code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">triton</span></code></p></li>
+</ul>
+<p>No additional configuration is required - the optimized kernels are used automatically when available
+for your hardware and quantization format.</p>
 </section>
 <section id="check-installation">
 <h2>Check installation<a class="headerlink" href="#check-installation" title="Link to this heading"></a></h2>

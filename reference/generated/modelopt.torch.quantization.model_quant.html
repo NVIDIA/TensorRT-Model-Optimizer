@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_quant &mdash; Model Optimizer 0.25.0</title>
+  <title>model_quant &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -102,6 +102,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.export_onnx.html">export_onnx</a></li>
@@ -115,6 +116,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.qtensor.html">qtensor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.quant_modules.html">quant_modules</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.tensor_quant.html">tensor_quant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.triton.html">triton</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.utils.html">utils</a></li>
 </ul>
 </li>
@@ -331,7 +333,7 @@ might not be readily deployable to TensorRT-LLM yet.</p>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – A pytorch model with quantizer modules.</p></li>
-<li><p><strong>algorithm</strong> (<em>str</em><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.MaxCalibConfig" title="modelopt.torch.quantization.config.MaxCalibConfig"><em>MaxCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SmoothQuantCalibConfig" title="modelopt.torch.quantization.config.SmoothQuantCalibConfig"><em>SmoothQuantCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><em>AWQLiteCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><em>AWQClipCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><em>AWQFullCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.RealQuantizeConfig" title="modelopt.torch.quantization.config.RealQuantizeConfig"><em>RealQuantizeConfig</em></a><em> | </em><em>None</em>) – A string or dictionary specifying the calibration algorithm to use. Supported
+<li><p><strong>algorithm</strong> (<em>str</em><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.MaxCalibConfig" title="modelopt.torch.quantization.config.MaxCalibConfig"><em>MaxCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SmoothQuantCalibConfig" title="modelopt.torch.quantization.config.SmoothQuantCalibConfig"><em>SmoothQuantCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><em>AWQLiteCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><em>AWQClipCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><em>AWQFullCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SVDQuantConfig" title="modelopt.torch.quantization.config.SVDQuantConfig"><em>SVDQuantConfig</em></a><em> | </em><em>None</em>) – A string or dictionary specifying the calibration algorithm to use. Supported
 algorithms are <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;smoothquant&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;awq_lite&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;awq_full&quot;</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">&quot;awq_clip&quot;</span></code>. If a dictionary is passed, the key <code class="docutils literal notranslate"><span class="pre">&quot;method&quot;</span></code> should specify the
 calibration algorithm to use. Other key-value pairs  in this dictionary will be passed

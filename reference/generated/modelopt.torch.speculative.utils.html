@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.25.0</title>
+  <title>utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -107,6 +107,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.eagle.html">eagle</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.medusa.html">medusa</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mode.html">mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mtp.html">mtp</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.plugins.html">plugins</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.redrafter.html">redrafter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.speculative_decoding.html">speculative_decoding</a></li>
@@ -159,11 +160,74 @@
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.ResBlock" title="modelopt.torch.speculative.utils.ResBlock"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ResBlock</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation" title="modelopt.torch.speculative.utils.AcceptanceRateValidation"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AcceptanceRateValidation</span></code></a></p></td>
+<td><p>Base acceptance rate (AR) validation class.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.ResBlock" title="modelopt.torch.speculative.utils.ResBlock"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ResBlock</span></code></a></p></td>
 <td><p>A Residual Block module.</p></td>
 </tr>
 </tbody>
 </table>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids" title="modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_default_attention_mask_and_position_ids</span></code></a></p></td>
+<td><p>Compute default attention_mask ans position_ids given input_ids.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.right_padding" title="modelopt.torch.speculative.utils.right_padding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">right_padding</span></code></a></p></td>
+<td><p>Pad zeros to the right so that the padded_input_ids is a multiple of tp.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.tree_decode" title="modelopt.torch.speculative.utils.tree_decode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">tree_decode</span></code></a></p></td>
+<td><p>Decode tokens using the tree.</p></td>
+</tr>
+</tbody>
+</table>
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">AcceptanceRateValidation</span></span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Base acceptance rate (AR) validation class.</p>
+<p>This class is used to validate the AR within ModelOpt.
+self.validate is the main function to validate the AR given a prompt or input_ids.
+Note: currently it only supports TP.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.__init__" title="Link to this definition"></a></dt>
+<dd><p>Init function to take in the model and tokenizer.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation.check_draft">
+<span class="sig-name descname"><span class="pre">check_draft</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ground_truth</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">draft_tokens</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tree</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.check_draft" title="Link to this definition"></a></dt>
+<dd><p>This function checks if the draft tokens should be accepted (same as ground truth).</p>
+<p>If tree is None, it is eager mode.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation.get_ground_truth">
+<span class="sig-name descname"><span class="pre">get_ground_truth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">osl</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.get_ground_truth" title="Link to this definition"></a></dt>
+<dd><p>This function returns ground truth token ids from the base model.</p>
+<p>This function will be implemented in the plugins.</p>
+<p>Args:
+input_ids (torch.Tensor): the token ids of the input
+attention_mask (torch.Tensor): attention mask of the input
+osl (int): output sequence length</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation.tokenize">
+<span class="sig-name descname"><span class="pre">tokenize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">prompt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.tokenize" title="Link to this definition"></a></dt>
+<dd><p>Apply chat template to the prompt and get input_ids.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation.validate">
+<span class="sig-name descname"><span class="pre">validate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">osl</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">prompt</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">input_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ground_truth</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tree</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">steps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.validate" title="Link to this definition"></a></dt>
+<dd><p>This function validate the AR of the model given the input sequence.</p>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="modelopt.torch.speculative.utils.ResBlock">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ResBlock</span></span><a class="headerlink" href="#modelopt.torch.speculative.utils.ResBlock" title="Link to this definition"></a></dt>
@@ -201,6 +265,47 @@ hidden_size (int): The size of the hidden layers in the block.</p>
 </dl>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids">
+<span class="sig-name descname"><span class="pre">get_default_attention_mask_and_position_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids" title="Link to this definition"></a></dt>
+<dd><p>Compute default attention_mask ans position_ids given input_ids.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>input_ids</strong> (<em>Tensor</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.right_padding">
+<span class="sig-name descname"><span class="pre">right_padding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_states</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.right_padding" title="Link to this definition"></a></dt>
+<dd><p>Pad zeros to the right so that the padded_input_ids is a multiple of tp.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input_ids</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>tp</strong> (<em>int</em>) – </p></li>
+<li><p><strong>hidden_states</strong> (<em>Tensor</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.tree_decode">
+<span class="sig-name descname"><span class="pre">tree_decode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">draft_logits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tree</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.tree_decode" title="Link to this definition"></a></dt>
+<dd><p>Decode tokens using the tree.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>draft_logits</strong> (<em>List</em><em>[</em><em>torch.Tensor</em><em>]</em>) – a list of logits. Each logit represent a future position.</p></li>
+<li><p><strong>tree</strong> (<em>List</em><em>[</em><em>List</em><em>[</em><em>int</em><em>]</em><em>]</em>) – a tree for decoding. Each sublist is a branch from root where the number</p></li>
+<li><p><strong>index.</strong> (<em>represents the topk</em>) – </p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 </section>

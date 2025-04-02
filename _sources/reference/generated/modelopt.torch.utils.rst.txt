@@ -48,6 +48,9 @@ utils
    modelopt.torch.utils.random
 
 
+   modelopt.torch.utils.speech_dataset_utils
+
+
    modelopt.torch.utils.tensor
 
 

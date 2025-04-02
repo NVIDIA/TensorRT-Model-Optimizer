@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>mcore_gpt_minitron &mdash; Model Optimizer 0.25.0</title>
+  <title>mcore_gpt_minitron &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -154,14 +154,23 @@
              
   <section id="mcore-gpt-minitron">
 <h1>mcore_gpt_minitron<a class="headerlink" href="#mcore-gpt-minitron" title="Link to this heading"></a></h1>
-<p id="module-modelopt.torch.prune.mcore_gpt_minitron">Module implementing <code class="docutils literal notranslate"><span class="pre">mcore_gpt_minitron</span></code> pruning algorithm for NVIDIA Megatron-Core / NeMo models.</p>
+<p id="module-modelopt.torch.prune.mcore_gpt_minitron">Module implementing top-level <code class="docutils literal notranslate"><span class="pre">mcore_gpt_minitron</span></code> pruning handler for NVIDIA Megatron-Core / NeMo models.</p>
 <p>Minitron pruning algorithm uses activation magnitudes to estimate importance of neurons / attention heads in the model.
 More details on Minitron pruning algorithm can be found here: <a class="reference external" href="https://arxiv.org/pdf/2407.14679" rel="noopener noreferrer" target="_blank">https://arxiv.org/pdf/2407.14679</a></p>
+<p>Actual implementation is at <code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.nas.plugins.megatron</span></code>.</p>
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.prune.mcore_gpt_minitron.MCoreGPTMinitronSearcher" title="modelopt.torch.prune.mcore_gpt_minitron.MCoreGPTMinitronSearcher"><code class="xref py py-obj docutils literal notranslate"><span class="pre">MCoreGPTMinitronSearcher</span></code></a></p></td>
 <td><p>Searcher for Minitron pruning algorithm.</p></td>
+</tr>
+</tbody>
+</table>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.prune.mcore_gpt_minitron.get_supported_model_config_map" title="modelopt.torch.prune.mcore_gpt_minitron.get_supported_model_config_map"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_supported_model_config_map</span></code></a></p></td>
+<td><p>Get supported models (inside function to avoid circular imports).</p></td>
 </tr>
 </tbody>
 </table>
@@ -218,6 +227,17 @@ More details on Minitron pruning algorithm can be found here: <a class="referenc
 </dl>
 </dd></dl>
 
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.prune.mcore_gpt_minitron.get_supported_model_config_map">
+<span class="sig-name descname"><span class="pre">get_supported_model_config_map</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.prune.mcore_gpt_minitron.get_supported_model_config_map" title="Link to this definition"></a></dt>
+<dd><p>Get supported models (inside function to avoid circular imports).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>dict</em>[<em>type</em>, <em>str</em>]</p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>

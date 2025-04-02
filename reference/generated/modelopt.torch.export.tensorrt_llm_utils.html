@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tensorrt_llm_utils &mdash; Model Optimizer 0.25.0</title>
+  <title>tensorrt_llm_utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -105,6 +105,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_utils.html">model_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quant_utils.html">quant_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
@@ -183,13 +184,13 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.tensorrt_llm_utils.convert_to_tensorrt_llm_config">
-<span class="sig-name descname"><span class="pre">convert_to_tensorrt_llm_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight_keys</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.tensorrt_llm_utils.convert_to_tensorrt_llm_config" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">convert_to_tensorrt_llm_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quant_config</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hf_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.tensorrt_llm_utils.convert_to_tensorrt_llm_config" title="Link to this definition"></a></dt>
 <dd><p>Convert to TensorRT-LLM checkpoint config.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>) – The model_config to convert.</p></li>
-<li><p><strong>weight_keys</strong> (<em>Iterable</em><em>[</em><em>str</em><em>]</em>) – The iterable of string of weights exported to the tensorrt_llm checkpoint.</p></li>
+<li><p><strong>quant_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – The quantization config to convert. It will be updated with kv_cache_quant_algo.</p></li>
 <li><p><strong>hf_config</strong> – The huggingface model config.
 If provided, we try to use the TensorRT-LLM’s export method if available.</p></li>
 </ul>

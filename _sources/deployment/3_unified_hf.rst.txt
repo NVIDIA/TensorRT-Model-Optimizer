@@ -32,6 +32,26 @@ The export API (:meth:`export_hf_checkpoint <modelopt.torch.export.unified_expor
             export_dir,  # The directory where the exported files will be stored.
         )
 
+Deployment Support Matrix
+==============================================
+
+Currently, we support the following quantization formats with the unified HF export API:
+#. FP8
+#. FP8_PB
+#. NVFP4
+#. NVFP4_AWQ
+#. INT4_AWQ
+#. W4A8_AWQ
+
+For deployment with TensorRT-LLM, we support llama 3.1, 3.3, Mixtral 8x7B, with FP8 and NVFP4 checkpoints; Medusa and Eagle FP8 checkpoints are also tested.
+
+For deployment with vLLM, we support llama 3.1, 3.3, Mixtral 8x7B, with FP8 checkpoints.
+
+For deployment with SGLang, we support llama 3.1, 3.3, with FP8 checkpoints.
+
+Other models and quantization formats may work, but they are not thoroughly tested.
+
+
 Deployment with Selected Inference Frameworks
 ==============================================
 

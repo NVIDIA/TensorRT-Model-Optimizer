@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Unified HuggingFace Checkpoint &mdash; Model Optimizer 0.25.0</title>
+  <title>Unified HuggingFace Checkpoint &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -84,6 +84,7 @@
 <li class="toctree-l1"><a class="reference internal" href="2_directml.html">DirectML</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Unified HuggingFace Checkpoint</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#export-quantized-model">Export Quantized Model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#deployment-support-matrix">Deployment Support Matrix</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#deployment-with-selected-inference-frameworks">Deployment with Selected Inference Frameworks</a></li>
 </ul>
 </li>
@@ -153,6 +154,20 @@
     <span class="p">)</span>
 </pre></div>
 </div>
+</section>
+<section id="deployment-support-matrix">
+<h2>Deployment Support Matrix<a class="headerlink" href="#deployment-support-matrix" title="Link to this heading"></a></h2>
+<p>Currently, we support the following quantization formats with the unified HF export API:
+#. FP8
+#. FP8_PB
+#. NVFP4
+#. NVFP4_AWQ
+#. INT4_AWQ
+#. W4A8_AWQ</p>
+<p>For deployment with TensorRT-LLM, we support llama 3.1, 3.3, Mixtral 8x7B, with FP8 and NVFP4 checkpoints; Medusa and Eagle FP8 checkpoints are also tested.</p>
+<p>For deployment with vLLM, we support llama 3.1, 3.3, Mixtral 8x7B, with FP8 checkpoints.</p>
+<p>For deployment with SGLang, we support llama 3.1, 3.3, with FP8 checkpoints.</p>
+<p>Other models and quantization formats may work, but they are not thoroughly tested.</p>
 </section>
 <section id="deployment-with-selected-inference-frameworks">
 <h2>Deployment with Selected Inference Frameworks<a class="headerlink" href="#deployment-with-selected-inference-frameworks" title="Link to this heading"></a></h2>

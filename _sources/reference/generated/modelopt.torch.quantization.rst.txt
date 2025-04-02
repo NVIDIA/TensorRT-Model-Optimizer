@@ -15,6 +15,9 @@ quantization
    modelopt.torch.quantization.calib
 
 
+   modelopt.torch.quantization.compress
+
+
    modelopt.torch.quantization.config
 
 
@@ -52,6 +55,9 @@ quantization
 
 
    modelopt.torch.quantization.tensor_quant
+
+
+   modelopt.torch.quantization.triton
 
 
    modelopt.torch.quantization.utils

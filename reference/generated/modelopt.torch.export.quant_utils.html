@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>quant_utils &mdash; Model Optimizer 0.25.0</title>
+  <title>quant_utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -105,6 +105,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_utils.html">model_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">quant_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
@@ -190,23 +191,29 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_prequant_scaling_factor" title="modelopt.torch.export.quant_utils.get_prequant_scaling_factor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_prequant_scaling_factor</span></code></a></p></td>
 <td><p>Returns the prequant scaling factor.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_quantization_format" title="modelopt.torch.export.quant_utils.get_quantization_format"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_quantization_format</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_quant_config" title="modelopt.torch.export.quant_utils.get_quant_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_quant_config</span></code></a></p></td>
+<td><p>Generate quantization config for a torch model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_quantization_format" title="modelopt.torch.export.quant_utils.get_quantization_format"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_quantization_format</span></code></a></p></td>
 <td><p>Gets the quantization string.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_scaling_factor" title="modelopt.torch.export.quant_utils.get_scaling_factor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_scaling_factor</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_scaling_factor" title="modelopt.torch.export.quant_utils.get_scaling_factor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_scaling_factor</span></code></a></p></td>
 <td><p>Returns scaling factor from the quantizer as torch.Tensor.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_scaling_factor_from_weight" title="modelopt.torch.export.quant_utils.get_scaling_factor_from_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_scaling_factor_from_weight</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_scaling_factor_from_weight" title="modelopt.torch.export.quant_utils.get_scaling_factor_from_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_scaling_factor_from_weight</span></code></a></p></td>
 <td><p>Calculate the weight scaling factor for a given group size.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_weight_block_size" title="modelopt.torch.export.quant_utils.get_weight_block_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weight_block_size</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_weight_block_size" title="modelopt.torch.export.quant_utils.get_weight_block_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weight_block_size</span></code></a></p></td>
 <td><p>Returns the weight block size.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_weight_scaling_factor" title="modelopt.torch.export.quant_utils.get_weight_scaling_factor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weight_scaling_factor</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_weight_scaling_factor" title="modelopt.torch.export.quant_utils.get_weight_scaling_factor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weight_scaling_factor</span></code></a></p></td>
 <td><p>Returns the weight scaling factor.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_weight_scaling_factor_2" title="modelopt.torch.export.quant_utils.get_weight_scaling_factor_2"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weight_scaling_factor_2</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.get_weight_scaling_factor_2" title="modelopt.torch.export.quant_utils.get_weight_scaling_factor_2"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weight_scaling_factor_2</span></code></a></p></td>
 <td><p>Returns the secondary weight scaling factor.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.pack_int4_in_uint8" title="modelopt.torch.export.quant_utils.pack_int4_in_uint8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">pack_int4_in_uint8</span></code></a></p></td>
+<td><p>Packs the INT4 weights into uint8 tensor.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.quant_utils.postprocess_state_dict" title="modelopt.torch.export.quant_utils.postprocess_state_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">postprocess_state_dict</span></code></a></p></td>
 <td><p>Filters out keys related to weight quantizers and updates KV cache related keys.</p></td>
@@ -301,11 +308,11 @@ otherwise returns None.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.quant_utils.get_kv_cache_scaling_factor">
-<span class="sig-name descname"><span class="pre">get_kv_cache_scaling_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">qkv_modules</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.quant_utils.get_kv_cache_scaling_factor" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">get_kv_cache_scaling_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">kv_module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.quant_utils.get_kv_cache_scaling_factor" title="Link to this definition"></a></dt>
 <dd><p>Returns the kv_cache scaling factor if output quantizer is set. Else returns None by default.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>qkv_modules</strong> (<em>list</em><em>[</em><em>Module</em><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>kv_module</strong> (<em>Module</em>) – </p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>Tensor</em></p>
@@ -323,6 +330,26 @@ otherwise returns None.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>Tensor</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.quant_utils.get_quant_config">
+<span class="sig-name descname"><span class="pre">get_quant_config</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">named_modules</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.quant_utils.get_quant_config" title="Link to this definition"></a></dt>
+<dd><p>Generate quantization config for a torch model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – The PyTorch model to analyze</p></li>
+<li><p><strong>named_modules</strong> (<em>Module</em><em> | </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Module</em><em>]</em>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Dictionary containing the quantization configuration</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>dict</em>[<em>str</em>, <em>Any</em>]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -405,6 +432,12 @@ The first non-None quantization string is returned.</p>
 <dd class="field-even"><p><em>Tensor</em></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.quant_utils.pack_int4_in_uint8">
+<span class="sig-name descname"><span class="pre">pack_int4_in_uint8</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.quant_utils.pack_int4_in_uint8" title="Link to this definition"></a></dt>
+<dd><p>Packs the INT4 weights into uint8 tensor.</p>
 </dd></dl>
 
 <dl class="py function">

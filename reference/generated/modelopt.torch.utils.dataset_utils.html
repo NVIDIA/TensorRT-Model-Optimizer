@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dataset_utils &mdash; Model Optimizer 0.25.0</title>
+  <title>dataset_utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -117,6 +117,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.network.html">network</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.perf.html">perf</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.random.html">random</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.speech_dataset_utils.html">speech_dataset_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.tensor.html">tensor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.utils.vlm_dataset_utils.html">vlm_dataset_utils</a></li>
 </ul>
@@ -275,7 +276,7 @@ for the model.</p></li>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.utils.dataset_utils.get_max_batch_size">
-<span class="sig-name descname"><span class="pre">get_max_batch_size</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_sample_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_memory_usage_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.dataset_utils.get_max_batch_size" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">get_max_batch_size</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_sample_length</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_memory_usage_ratio</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_input_single_batch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.dataset_utils.get_max_batch_size" title="Link to this definition"></a></dt>
 <dd><p>Get the maximum batch size that can be used for the model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -283,6 +284,7 @@ for the model.</p></li>
 <li><p><strong>model</strong> (<em>Module</em>) – </p></li>
 <li><p><strong>max_sample_length</strong> (<em>int</em>) – </p></li>
 <li><p><strong>sample_memory_usage_ratio</strong> (<em>float</em>) – </p></li>
+<li><p><strong>sample_input_single_batch</strong> (<em>Tensor</em>) – </p></li>
 </ul>
 </dd>
 </dl>

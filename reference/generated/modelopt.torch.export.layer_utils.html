@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>layer_utils &mdash; Model Optimizer 0.25.0</title>
+  <title>layer_utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -105,6 +105,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_utils.html">model_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quant_utils.html">quant_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
@@ -236,34 +237,37 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_attention" title="modelopt.torch.export.layer_utils.is_attention"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_attention</span></code></a></p></td>
 <td><p>Returns whether the module is an attention layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_decoder_list" title="modelopt.torch.export.layer_utils.is_decoder_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_decoder_list</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_conv" title="modelopt.torch.export.layer_utils.is_conv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_conv</span></code></a></p></td>
+<td><p>Returns whether the module is a convolutional layer.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_decoder_list" title="modelopt.torch.export.layer_utils.is_decoder_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_decoder_list</span></code></a></p></td>
 <td><p>Returns whether the module is a decoder list.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_embedding" title="modelopt.torch.export.layer_utils.is_embedding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_embedding</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_embedding" title="modelopt.torch.export.layer_utils.is_embedding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_embedding</span></code></a></p></td>
 <td><p>Returns whether the module is an embedding layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_layernorm" title="modelopt.torch.export.layer_utils.is_layernorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_layernorm</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_layernorm" title="modelopt.torch.export.layer_utils.is_layernorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_layernorm</span></code></a></p></td>
 <td><p>Returns whether the module is a layernorm layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_linear" title="modelopt.torch.export.layer_utils.is_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_linear" title="modelopt.torch.export.layer_utils.is_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear</span></code></a></p></td>
 <td><p>Returns whether the module is a linear layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_mlp" title="modelopt.torch.export.layer_utils.is_mlp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_mlp</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_mlp" title="modelopt.torch.export.layer_utils.is_mlp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_mlp</span></code></a></p></td>
 <td><p>Returns whether the module is an MLP layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_moe" title="modelopt.torch.export.layer_utils.is_moe"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_moe</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_moe" title="modelopt.torch.export.layer_utils.is_moe"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_moe</span></code></a></p></td>
 <td><p>Returns whether the module is an MOE layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_quantlinear" title="modelopt.torch.export.layer_utils.is_quantlinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantlinear</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_quantlinear" title="modelopt.torch.export.layer_utils.is_quantlinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantlinear</span></code></a></p></td>
 <td><p>Returns whether the module is a quantized linear layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_recurrent" title="modelopt.torch.export.layer_utils.is_recurrent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_recurrent" title="modelopt.torch.export.layer_utils.is_recurrent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent</span></code></a></p></td>
 <td><p>Returns whether the module is a recurrent layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="modelopt.torch.export.layer_utils.model_type_is_enc_dec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_type_is_enc_dec</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="modelopt.torch.export.layer_utils.model_type_is_enc_dec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_type_is_enc_dec</span></code></a></p></td>
 <td><p>Check if model_type is a enc-dec model.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale" title="modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_experts_avg_prequant_scale</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale" title="modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_experts_avg_prequant_scale</span></code></a></p></td>
 <td><p>Registers experts_pre_quant_scale attribute of each expert with average pre_quant_scale amongst experts.</p></td>
 </tr>
 </tbody>
@@ -582,6 +586,20 @@ Otherwise it will not be supported.</p>
 <dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.is_attention">
 <span class="sig-name descname"><span class="pre">is_attention</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.is_attention" title="Link to this definition"></a></dt>
 <dd><p>Returns whether the module is an attention layer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>bool</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.is_conv">
+<span class="sig-name descname"><span class="pre">is_conv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.is_conv" title="Link to this definition"></a></dt>
+<dd><p>Returns whether the module is a convolutional layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>

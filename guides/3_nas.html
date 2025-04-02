@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NAS &mdash; Model Optimizer 0.25.0</title>
+  <title>NAS &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -178,7 +178,7 @@
 <h1>NAS<a class="headerlink" href="#nas" title="Link to this heading"></a></h1>
 <section id="introduction">
 <h2>Introduction<a class="headerlink" href="#introduction" title="Link to this heading"></a></h2>
-<p>ModelOpt provides a NAS method (aka <code class="docutils literal notranslate"><span class="pre">mode</span></code>) - AutoNAS via the
+<p>ModelOpt provides NAS methods (aka <code class="docutils literal notranslate"><span class="pre">mode</span></code>) like AutoNAS via the
 <a class="reference internal" href="../reference/generated/modelopt.torch.nas.html#module-modelopt.torch.nas" title="modelopt.torch.nas"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.nas</span></code></a> module. Given a model, these methods finds the
 subnet which meets the given deployment constraints (e.g. FLOPs, parameters) from your provided
 base model with little to no accuracy degradation (depending on how aggressive is the model size reduced).
@@ -491,6 +491,7 @@ can be converted into searchable units:</p>
 <span class="c1"># and depth of the model.</span>
 <span class="n">megatron</span><span class="o">.</span><span class="n">core</span><span class="o">.</span><span class="n">transformer</span><span class="o">.</span><span class="n">module</span><span class="o">.</span><span class="n">MegatronModule</span>
 <span class="n">nemo</span><span class="o">.</span><span class="n">collections</span><span class="o">.</span><span class="n">nlp</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">language_modeling</span><span class="o">.</span><span class="n">megatron_gpt_model</span><span class="o">.</span><span class="n">MegatronGPTModel</span>
+<span class="n">nemo</span><span class="o">.</span><span class="n">collections</span><span class="o">.</span><span class="n">llm</span><span class="o">.</span><span class="n">gpt</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">base</span><span class="o">.</span><span class="n">GPTModel</span>
 
 <span class="c1"># We convert Hugging Face Attention layers to automatically search over the number of heads</span>
 <span class="c1"># and MLP hidden size.</span>

@@ -60,6 +60,7 @@ layer\_utils
       get_experts_list
       get_transformer_layers
       is_attention
+      is_conv
       is_decoder_list
       is_embedding
       is_layernorm

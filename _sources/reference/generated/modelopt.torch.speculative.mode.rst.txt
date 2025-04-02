@@ -32,6 +32,7 @@ mode
       :nosignatures:
    
       EagleModeDescriptor
+      MTPModeDescriptor
       MedusaModeDescriptor
       RedrafterModeDescriptor
    

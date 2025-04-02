@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.25.0</title>
+  <title>utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -107,6 +107,7 @@
 <li class="toctree-l4 current"><a class="reference internal" href="modelopt.torch.speculative.eagle.html">eagle</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.medusa.html">medusa</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mode.html">mode</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mtp.html">mtp</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.plugins.html">plugins</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.redrafter.html">redrafter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.speculative_decoding.html">speculative_decoding</a></li>
@@ -160,172 +161,39 @@
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.LlamaAttention" title="modelopt.torch.speculative.eagle.utils.LlamaAttention"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LlamaAttention</span></code></a></p></td>
-<td><p>Multi-headed attention from 'Attention Is All You Need' paper.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer" title="modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LlamaDecoderLayer</span></code></a></p></td>
-<td><p>LlamaDecoderLayer class.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.LlamaMLP" title="modelopt.torch.speculative.eagle.utils.LlamaMLP"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LlamaMLP</span></code></a></p></td>
-<td><p>LlamaMLP class.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.LlamaRMSNorm" title="modelopt.torch.speculative.eagle.utils.LlamaRMSNorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LlamaRMSNorm</span></code></a></p></td>
-<td><p>LlamaRMSNorm class.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding" title="modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LlamaRotaryEmbedding</span></code></a></p></td>
-<td><p>Llama Rotary Embedding.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.RMSNorm" title="modelopt.torch.speculative.eagle.utils.RMSNorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">RMSNorm</span></code></a></p></td>
+<td><p>Borrowed from LlamaRMSNorm class.</p></td>
 </tr>
 </tbody>
 </table>
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.apply_rotary_pos_emb" title="modelopt.torch.speculative.eagle.utils.apply_rotary_pos_emb"><code class="xref py py-obj docutils literal notranslate"><span class="pre">apply_rotary_pos_emb</span></code></a></p></td>
-<td><p>Apply rotary position embedding.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.expand_mask" title="modelopt.torch.speculative.eagle.utils.expand_mask"><code class="xref py py-obj docutils literal notranslate"><span class="pre">expand_mask</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.expand_mask" title="modelopt.torch.speculative.eagle.utils.expand_mask"><code class="xref py py-obj docutils literal notranslate"><span class="pre">expand_mask</span></code></a></p></td>
 <td><p>Expands attention_mask from <cite>[bsz, seq_len]</cite> to <cite>[bsz, 1, tgt_seq_len, src_seq_len]</cite>.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.make_causal_mask" title="modelopt.torch.speculative.eagle.utils.make_causal_mask"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_causal_mask</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.make_causal_mask" title="modelopt.torch.speculative.eagle.utils.make_causal_mask"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_causal_mask</span></code></a></p></td>
 <td><p>Make causal mask used for bi-directional self-attention.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.repeat_kv" title="modelopt.torch.speculative.eagle.utils.repeat_kv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">repeat_kv</span></code></a></p></td>
-<td><p>This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.eagle.utils.rotate_half" title="modelopt.torch.speculative.eagle.utils.rotate_half"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rotate_half</span></code></a></p></td>
-<td><p>Rotates half the hidden dims of the input.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaAttention">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">LlamaAttention</span></span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaAttention" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.RMSNorm">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">RMSNorm</span></span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.RMSNorm" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>Multi-headed attention from ‘Attention Is All You Need’ paper.</p>
+<p>Borrowed from LlamaRMSNorm class.</p>
 <dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaAttention.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_attention_heads</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_key_value_heads</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_position_embeddings</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rope_theta</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaAttention.__init__" title="Link to this definition"></a></dt>
-<dd><p>Init function for LlamaAttention.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaAttention.forward">
-<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_states</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_key_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_attentions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_cache</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaAttention.forward" title="Link to this definition"></a></dt>
-<dd><p>Forward function for LlamaAttention.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>hidden_states</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>attention_mask</strong> (<em>Tensor</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>position_ids</strong> (<em>LongTensor</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>past_key_value</strong> (<em>tuple</em><em>[</em><em>Tensor</em><em>] </em><em>| </em><em>None</em>) – </p></li>
-<li><p><strong>output_attentions</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>use_cache</strong> (<em>bool</em>) – </p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>tuple</em>[<em>Tensor</em>, <em>Tensor</em> | <em>None</em>, <em>tuple</em>[<em>Tensor</em>] | <em>None</em>]</p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">LlamaDecoderLayer</span></span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>LlamaDecoderLayer class.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">index</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">14336</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rms_norm_eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-05</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_attention_heads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">32</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_key_value_heads</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_position_embeddings</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">131072</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">rope_theta</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">500000.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_input_layernorm_in_first_layer</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer.__init__" title="Link to this definition"></a></dt>
-<dd><p>Init function for LlamaDecoderLayer.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer.forward">
-<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_states</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attention_mask</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">past_key_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_attentions</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_cache</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaDecoderLayer.forward" title="Link to this definition"></a></dt>
-<dd><p>Forward function for LlamaDecoderLayer.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>hidden_states</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>attention_mask</strong> (<em>Tensor</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>position_ids</strong> (<em>LongTensor</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>past_key_value</strong> (<em>tuple</em><em>[</em><em>Tensor</em><em>] </em><em>| </em><em>None</em>) – </p></li>
-<li><p><strong>output_attentions</strong> (<em>bool</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>use_cache</strong> (<em>bool</em><em> | </em><em>None</em>) – </p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>tuple</em>[<em>FloatTensor</em>, <em>tuple</em>[<em>FloatTensor</em>, <em>FloatTensor</em>] | <em>None</em>]</p>
-</dd>
-</dl>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaMLP">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">LlamaMLP</span></span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaMLP" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>LlamaMLP class.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaMLP.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_size</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaMLP.__init__" title="Link to this definition"></a></dt>
-<dd><p>Init function for LlamaMLP.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaMLP.forward">
-<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaMLP.forward" title="Link to this definition"></a></dt>
-<dd><p>Forward function for LlamaMLP.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaRMSNorm">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">LlamaRMSNorm</span></span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaRMSNorm" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>LlamaRMSNorm class.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaRMSNorm.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-06</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaRMSNorm.__init__" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.RMSNorm.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1e-06</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.RMSNorm.__init__" title="Link to this definition"></a></dt>
 <dd><p>LlamaRMSNorm is equivalent to T5LayerNorm.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaRMSNorm.forward">
-<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_states</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaRMSNorm.forward" title="Link to this definition"></a></dt>
-<dd><p>Forward function for LlamaRMSNorm.</p>
+<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.RMSNorm.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_states</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.RMSNorm.forward" title="Link to this definition"></a></dt>
+<dd><p>Forward function for RMSNorm.</p>
 </dd></dl>
 
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">LlamaRotaryEmbedding</span></span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Module</span></code></p>
-<p>Llama Rotary Embedding.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dim</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_position_embeddings</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2048</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">base</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding.__init__" title="Link to this definition"></a></dt>
-<dd><p>Init function for LlamaRotaryEmbedding.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding.forward">
-<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seq_len</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.LlamaRotaryEmbedding.forward" title="Link to this definition"></a></dt>
-<dd><p>Forward function for LlamaRotaryEmbedding.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.apply_rotary_pos_emb">
-<span class="sig-name descname"><span class="pre">apply_rotary_pos_emb</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">q</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">k</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cos</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sin</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">position_ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.apply_rotary_pos_emb" title="Link to this definition"></a></dt>
-<dd><p>Apply rotary position embedding.</p>
 </dd></dl>
 
 <dl class="py function">
@@ -357,31 +225,6 @@
 </ul>
 </dd>
 </dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.repeat_kv">
-<span class="sig-name descname"><span class="pre">repeat_kv</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_states</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_rep</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.repeat_kv" title="Link to this definition"></a></dt>
-<dd><p>This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).</p>
-<p>The hidden states go from (batch,
-num_key_value_heads, seqlen, head_dim) to (batch, num_attention_heads, seqlen, head_dim)</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>hidden_states</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>n_rep</strong> (<em>int</em>) – </p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>Tensor</em></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.eagle.utils.rotate_half">
-<span class="sig-name descname"><span class="pre">rotate_half</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.eagle.utils.rotate_half" title="Link to this definition"></a></dt>
-<dd><p>Rotates half the hidden dims of the input.</p>
 </dd></dl>
 
 </section>

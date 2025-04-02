@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>conversion &mdash; Model Optimizer 0.25.0</title>
+  <title>conversion &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -270,6 +270,25 @@ recall the order of modes!</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.opt.conversion.ModeloptStateManager.has_state_for_mode_type">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">has_state_for_mode_type</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode_type</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">model</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.has_state_for_mode_type" title="Link to this definition"></a></dt>
+<dd><p>Check if the model or modelopt state contains state from any modes of a given type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mode_type</strong> (<em>str</em>) – The type of mode to check for.
+Example types: <code class="docutils literal notranslate"><span class="pre">quantization</span></code>, <code class="docutils literal notranslate"><span class="pre">distill</span></code>, <code class="docutils literal notranslate"><span class="pre">nas</span></code>, <code class="docutils literal notranslate"><span class="pre">prune</span></code>, <code class="docutils literal notranslate"><span class="pre">speculative</span></code>, etc.</p></li>
+<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>None</em>) – A model to check for state.</p></li>
+<li><p><strong>state</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>None</em>) – A modelopt state extracted from a model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>bool</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.opt.conversion.ModeloptStateManager.is_converted">
 <em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_converted</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">is_root</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.is_converted" title="Link to this definition"></a></dt>
 <dd><p>Check if model is converted.</p>
@@ -321,6 +340,20 @@ set to True but the module with state is not the root module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>Iterator</em>[<em>tuple</em>[<em>_ModeDescriptor</em>, <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><em>ModeloptBaseConfig</em></a>, <em>dict</em>[<em>str</em>, <em>Any</em>]]]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.opt.conversion.ModeloptStateManager.remove_state">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">remove_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.remove_state" title="Link to this definition"></a></dt>
+<dd><p>Delete the state dict from the model.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>None</em></p>
 </dd>
 </dl>
 </dd></dl>

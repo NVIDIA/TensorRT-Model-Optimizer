@@ -138,6 +138,21 @@ Additionally, we support installing dependencies for following 3rd-party package
     *   - Huggingface (``transformers``, ``diffusers``, etc.)
         - ``[hf]``
 
+**Accelerated Quantization with Triton Kernels**
+
+ModelOpt includes optimized quantization kernels implemented with Triton language that accelerate quantization
+operations by approximately 40% compared to the default implementation. These kernels are particularly
+beneficial for :doc:`AWQ <../guides/_choosing_quant_methods>` and Quantization-aware Training (QAT) workflows.
+
+The Triton-based kernels currently support the NVFP4 quantization format, with support for additional
+formats coming in future releases. To use these accelerated kernels, you need:
+
+* CUDA device with compute capability >= 8.9 (e.g. RTX 40 series, RTX 6000, NVIDIA L40 or later)
+* Triton package installed: ``pip install triton``
+
+No additional configuration is required - the optimized kernels are used automatically when available
+for your hardware and quantization format.
+
 Check installation
 ==================
 

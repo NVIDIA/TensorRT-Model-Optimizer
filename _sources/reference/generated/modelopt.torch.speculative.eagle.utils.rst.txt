@@ -31,11 +31,7 @@ utils
    .. autosummary::
       :nosignatures:
    
-      LlamaAttention
-      LlamaDecoderLayer
-      LlamaMLP
-      LlamaRMSNorm
-      LlamaRotaryEmbedding
+      RMSNorm
    
    
 
@@ -48,10 +44,7 @@ utils
    .. autosummary::
       :nosignatures:
    
-      apply_rotary_pos_emb
       expand_mask
       make_causal_mask
-      repeat_kv
-      rotate_half
    
    

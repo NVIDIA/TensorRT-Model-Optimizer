@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>trt_utils &mdash; Model Optimizer 0.25.0</title>
+  <title>trt_utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -162,7 +162,10 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.trt_utils.get_custom_layers" title="modelopt.onnx.quantization.trt_utils.get_custom_layers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_custom_layers</span></code></a></p></td>
 <td><p>Gets custom layers in ONNX model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.trt_utils.load_onnx_model" title="modelopt.onnx.quantization.trt_utils.load_onnx_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_onnx_model</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.trt_utils.infer_types_shapes" title="modelopt.onnx.quantization.trt_utils.infer_types_shapes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">infer_types_shapes</span></code></a></p></td>
+<td><p>Updates tensor shapes in ORT graph.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.trt_utils.load_onnx_model" title="modelopt.onnx.quantization.trt_utils.load_onnx_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">load_onnx_model</span></code></a></p></td>
 <td><p>Load ONNX model.</p></td>
 </tr>
 </tbody>
@@ -179,33 +182,57 @@
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>List of custom layers.</p>
+<dd class="field-even"><p>List of custom layers.
+Dictionary containing tensors information: {‘tensor_name’: {‘shape’: tensor.shape, ‘dtype’: tensor.dtype}}</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>list</em>[<em>str</em>]</p>
+<dd class="field-odd"><p><em>Tuple</em>[<em>List</em>[<em>str</em>], <em>Dict</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.trt_utils.infer_types_shapes">
+<span class="sig-name descname"><span class="pre">infer_types_shapes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">graph</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">all_tensor_info</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.trt_utils.infer_types_shapes" title="Link to this definition"></a></dt>
+<dd><p>Updates tensor shapes in ORT graph.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>graph</strong> (<em>Graph</em>) – ONNX model’s GS graph.</p></li>
+<li><p><strong>all_tensor_info</strong> (<em>Dict</em>) – Dictionary containing tensors information.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None. In-memory modification of graph.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>None</em></p>
 </dd>
 </dl>
 </dd></dl>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.trt_utils.load_onnx_model">
-<span class="sig-name descname"><span class="pre">load_onnx_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_plugins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.trt_utils.load_onnx_model" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">load_onnx_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_plugins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibrations_shapes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_generated_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.trt_utils.load_onnx_model" title="Link to this definition"></a></dt>
 <dd><p>Load ONNX model. If ‘tensorrt’ is installed, check if the model has custom ops and ensure it’s supported by ORT.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>onnx_path</strong> (<em>str</em>) – Path to the input ONNX model.</p></li>
 <li><p><strong>trt_plugins</strong> (<em>str</em><em> | </em><em>None</em>) – Paths to custom TensorRT plugins.</p></li>
+<li><p><strong>calibrations_shapes</strong> (<em>str</em>) – Static shapes for graph inputs.</p></li>
 <li><p><strong>use_external_data_format</strong> (<em>bool</em>) – If True, separate data path will be used to store the weights of the quantized model.</p></li>
+<li><p><strong>intermediate_generated_files</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – List of paths of intermediate ONNX files, generated during quantization.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Loaded ONNX model supported by ORT.
 Boolean indicating whether the model has custom ops or not.
-List of custom ops in the ONNX model.</p>
+List of custom ops in the ONNX model.
+Path to new intermediary ONNX model.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>tuple</em>[<em>ModelProto</em>, <em>bool</em>, <em>list</em>[<em>str</em>]]</p>
+<dd class="field-odd"><p><em>tuple</em>[<em>ModelProto</em>, <em>bool</em>, <em>list</em>[<em>str</em>], <em>str</em>]</p>
 </dd>
 </dl>
 </dd></dl>

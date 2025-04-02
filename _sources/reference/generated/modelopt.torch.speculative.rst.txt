@@ -24,6 +24,9 @@ speculative
    modelopt.torch.speculative.mode
 
 
+   modelopt.torch.speculative.mtp
+
+
    modelopt.torch.speculative.plugins
 
 

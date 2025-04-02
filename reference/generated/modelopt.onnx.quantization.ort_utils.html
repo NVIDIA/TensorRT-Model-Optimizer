@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ort_utils &mdash; Model Optimizer 0.25.0</title>
+  <title>ort_utils &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -168,6 +168,9 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.ort_utils.get_quantizable_op_types" title="modelopt.onnx.quantization.ort_utils.get_quantizable_op_types"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_quantizable_op_types</span></code></a></p></td>
 <td><p>Returns a set of quantizable op types.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.ort_utils.update_trt_ep_support" title="modelopt.onnx.quantization.ort_utils.update_trt_ep_support"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_trt_ep_support</span></code></a></p></td>
+<td><p>Checks whether TRT should be enabled or disabled and updates the list of calibration EPs accordingly.</p></td>
+</tr>
 </tbody>
 </table>
 <dl class="py function">
@@ -213,6 +216,22 @@ or from modelopt.onnx’s default quantizable ops setting.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>list</em>[<em>str</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.ort_utils.update_trt_ep_support">
+<span class="sig-name descname"><span class="pre">update_trt_ep_support</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">calibration_eps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">has_dds_op</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">has_custom_op</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_plugins</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.ort_utils.update_trt_ep_support" title="Link to this definition"></a></dt>
+<dd><p>Checks whether TRT should be enabled or disabled and updates the list of calibration EPs accordingly.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>calibration_eps</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
+<li><p><strong>has_dds_op</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>has_custom_op</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>trt_plugins</strong> (<em>str</em>) – </p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>

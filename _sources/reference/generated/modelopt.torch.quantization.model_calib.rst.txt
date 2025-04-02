@@ -40,5 +40,6 @@ model\_calib
       max_calibrate
       awq
       smoothquant
+      svdquant
    
    

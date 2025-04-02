@@ -36,6 +36,9 @@ export
    modelopt.torch.export.model_config_utils
 
 
+   modelopt.torch.export.model_utils
+
+
    modelopt.torch.export.postprocess
 
 

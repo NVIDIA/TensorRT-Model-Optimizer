@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_config_export &mdash; Model Optimizer 0.25.0</title>
+  <title>model_config_export &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -105,6 +105,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_utils.html">model_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quant_utils.html">quant_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
@@ -182,7 +183,8 @@
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – the torch model.</p></li>
-<li><p><strong>decoder_type</strong> (<em>str</em>) – the type of the decoder, e.g. gpt, gptj, llama.</p></li>
+<li><p><strong>decoder_type</strong> (<em>str</em>) – the type of the decoder, e.g. gpt, gptj, llama.
+Please see the model_utils.py for the supported models.</p></li>
 <li><p><strong>dtype</strong> (<em>dtype</em><em> | </em><em>None</em>) – the weights data type to export the unquantized layers or the default model data type if None.</p></li>
 <li><p><strong>export_dir</strong> (<em>Path</em><em> | </em><em>str</em>) – the target export path.</p></li>
 <li><p><strong>inference_tensor_parallel</strong> (<em>int</em>) – The target inference time tensor parallel.
@@ -222,7 +224,8 @@ for the engine building process.
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – the torch model.</p></li>
-<li><p><strong>decoder_type</strong> (<em>str</em>) – the type of the decoder, e.g. gpt, gptj, llama.</p></li>
+<li><p><strong>decoder_type</strong> (<em>str</em>) – the type of the decoder, e.g. gpt, gptj, llama.
+Please see <a class="reference internal" href="modelopt.torch.export.model_utils.html#module-modelopt.torch.export.model_utils" title="modelopt.torch.export.model_utils"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.export.model_utils</span></code></a> for the supported models.</p></li>
 <li><p><strong>dtype</strong> (<em>dtype</em><em> | </em><em>None</em>) – the weights data type to export the unquantized layers or the default model data type if None.</p></li>
 <li><p><strong>inference_tensor_parallel</strong> (<em>int</em>) – The target inference time tensor parallel.
 We will merge or split the calibration tensor parallelism to inference.

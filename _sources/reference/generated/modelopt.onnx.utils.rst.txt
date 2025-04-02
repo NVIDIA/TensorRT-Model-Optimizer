@@ -44,6 +44,7 @@ utils
       get_batch_size
       get_batch_size_from_bytes
       get_child_nodes
+      get_dynamic_graph_inputs
       get_input_names
       get_input_names_from_bytes
       get_input_shapes

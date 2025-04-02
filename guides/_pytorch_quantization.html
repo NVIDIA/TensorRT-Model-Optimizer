@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PyTorch Quantization &mdash; Model Optimizer 0.25.0</title>
+  <title>PyTorch Quantization &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -75,6 +75,7 @@
 <li class="toctree-l2"><a class="reference internal" href="_choosing_quant_methods.html">Best practices to choose the right quantization methods</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">PyTorch Quantization</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#apply-post-training-quantization-ptq">Apply Post Training Quantization (PTQ)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#compressing-model-weights-after-quantization">Compressing model weights after quantization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#quantization-aware-training-qat">Quantization-aware Training (QAT)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#storing-and-restoring-quantized-model">Storing and restoring quantized model</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#optimal-partial-quantization-using-autoquantize-auto-quantize">Optimal Partial Quantization using AutoQuantize(<code class="docutils literal notranslate"><span class="pre">auto_quantize</span></code>)</a></li>
@@ -172,7 +173,7 @@ The simplest way to quantize a model using ModelOpt is to use <a class="referenc
 <p><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.quantize()</span></code> takes a model, a quantization config and a forward loop callable as input.  The quantization config specifies the layers to quantize, their quantization formats as well as the algorithm to use for calibration. Please
 refer to <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.config.html#quantization-configs"><span class="std std-ref">Quantization Configs</span></a> for the list of quantization configs supported by default. You may also define your own quantization config as
 described in <a class="reference internal" href="#customize-quantizer-config"><span class="std std-ref">customizing quantizer config</span></a>.</p>
-<p>ModelOpt supports algorithms such as AWQ, SmoothQuant or max for calibration. Please refer to <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.calibrate" title="modelopt.torch.quantization.model_quant.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.calibrate</span></code></a>
+<p>ModelOpt supports algorithms such as AWQ, SmoothQuant, SVDQuant or max for calibration. Please refer to <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.calibrate" title="modelopt.torch.quantization.model_quant.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.calibrate</span></code></a>
 for more details.</p>
 <p>The forward loop is used to pass data through the model in-order to collect statistics for calibration.
 It should wrap around the calibration dataloader and the model.</p>
@@ -212,6 +213,17 @@ It should wrap around the calibration dataloader and the model.</p>
 </div>
 <p>ModelOpt also supports direct export of Huggingface or Nemo LLM models to TensorRT-LLM for deployment.
 Please see <a class="reference internal" href="../deployment/1_tensorrt_llm.html"><span class="doc">TensorRT-LLM Deployment</span></a> for more details.</p>
+</section>
+<section id="compressing-model-weights-after-quantization">
+<h2>Compressing model weights after quantization<a class="headerlink" href="#compressing-model-weights-after-quantization" title="Link to this heading"></a></h2>
+<p>ModelOpt provides a API <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.compress.html#modelopt.torch.quantization.compress" title="modelopt.torch.quantization.compress"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.compress()</span></code></a> to compress the model weights after quantization.
+This API can be used to reduce the memory footprint of the quantized model for future evaluation or fine-tuning such as QLoRA. Note that
+this API only supports selected quantization formats.</p>
+<p>After PTQ, the model can be compressed with the following code:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Compress the model</span>
+<span class="n">mtq</span><span class="o">.</span><span class="n">compress</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+</pre></div>
+</div>
 </section>
 <section id="quantization-aware-training-qat">
 <h2>Quantization-aware Training (QAT)<a class="headerlink" href="#quantization-aware-training-qat" title="Link to this heading"></a></h2>

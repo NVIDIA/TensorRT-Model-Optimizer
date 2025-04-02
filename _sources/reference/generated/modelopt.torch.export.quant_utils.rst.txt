@@ -45,12 +45,14 @@ quant\_utils
       get_kv_cache_dtype
       get_kv_cache_scaling_factor
       get_prequant_scaling_factor
+      get_quant_config
       get_quantization_format
       get_scaling_factor
       get_scaling_factor_from_weight
       get_weight_block_size
       get_weight_scaling_factor
       get_weight_scaling_factor_2
+      pack_int4_in_uint8
       postprocess_state_dict
       preprocess_linear_fusion
       process_layer_quant_config

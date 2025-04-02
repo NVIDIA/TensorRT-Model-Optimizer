@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Guides to quantize a customized model from Hugging Face for TensorRT-LLM deployment &mdash; Model Optimizer 0.25.0</title>
+  <title>Guides to quantize a customized model from Hugging Face for TensorRT-LLM deployment &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -150,112 +150,113 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.opt.dynamic</span><span class="w"> </span><span class="kn">import</span> <span class="n">DynamicModule</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.quantization.nn</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantModuleRegistry</span>
 
-<span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="p">,</span> <span class="s2">&quot;dbrx&quot;</span><span class="p">):</span>
-    <span class="c1"># For more information on DbrxExpert, see https://github.com/huggingface/transformers/blame/dcdda5324bcc7a750b5e40e11dd795442204ff27/src/transformers/models/dbrx/modeling_dbrx.py#L756</span>
-    <span class="k">class</span><span class="w"> </span><span class="nc">_QuantDbrxExperts</span><span class="p">(</span><span class="n">DynamicModule</span><span class="p">):</span>
-        <span class="k">def</span><span class="w"> </span><span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">            </span><span class="sd">&quot;&quot;&quot;Modify the DbrxExpert.&quot;&quot;&quot;</span>
-            <span class="c1"># No setup is needed for DbrxExpert, we only need to update DbrxExpertGLU</span>
-            <span class="k">pass</span>
+<span class="c1"># For more information on DbrxExpert, see https://github.com/huggingface/transformers/blob/dcdda532/src/transformers/models/dbrx/modeling_dbrx.py#L756</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_QuantDbrxExperts</span><span class="p">(</span><span class="n">DynamicModule</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Modify the DbrxExpert.&quot;&quot;&quot;</span>
+        <span class="c1"># No setup is needed for DbrxExpert, we only need to update DbrxExpertGLU</span>
+        <span class="k">pass</span>
 
-        <span class="c1"># forward method copied from the original dbrx repo - https://github.com/databricks/dbrx/blob/a3200393e678387a6f30f3e903108c650625eb21/model/modeling_dbrx.py#L795</span>
-        <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
-            <span class="bp">self</span><span class="p">,</span>
-            <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
-            <span class="n">weights</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
-            <span class="n">top_weights</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
-            <span class="n">top_experts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">,</span>
-        <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-            <span class="n">bsz</span><span class="p">,</span> <span class="n">q_len</span><span class="p">,</span> <span class="n">hidden_size</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
-            <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">hidden_size</span><span class="p">)</span>
-            <span class="n">out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+    <span class="c1"># forward method copied from the original dbrx repo - https://github.com/databricks/dbrx/blob/a3200393/model/modeling_dbrx.py#L795</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+        <span class="n">weights</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+        <span class="n">top_weights</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+        <span class="n">top_experts</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">LongTensor</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="n">bsz</span><span class="p">,</span> <span class="n">q_len</span><span class="p">,</span> <span class="n">hidden_size</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">hidden_size</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
 
-            <span class="n">expert_mask</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">one_hot</span><span class="p">(</span>
-                <span class="n">top_experts</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span>
-            <span class="p">)</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">expert_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">):</span>
-                <span class="n">topk_idx</span><span class="p">,</span> <span class="n">token_idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">expert_mask</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">])</span>
-                <span class="k">if</span> <span class="n">token_idx</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="k">continue</span>
+        <span class="n">expert_mask</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">one_hot</span><span class="p">(</span><span class="n">top_experts</span><span class="p">,</span> <span class="n">num_classes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">)</span><span class="o">.</span><span class="n">permute</span><span class="p">(</span>
+            <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">expert_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">):</span>
+            <span class="n">topk_idx</span><span class="p">,</span> <span class="n">token_idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">expert_mask</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">])</span>
+            <span class="k">if</span> <span class="n">token_idx</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">continue</span>
 
-                <span class="n">token_list</span> <span class="o">=</span> <span class="n">token_idx</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
-                <span class="n">topk_list</span> <span class="o">=</span> <span class="n">topk_idx</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+            <span class="n">token_list</span> <span class="o">=</span> <span class="n">token_idx</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+            <span class="n">topk_list</span> <span class="o">=</span> <span class="n">topk_idx</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
 
-                <span class="n">expert_tokens</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">token_list</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">hidden_size</span><span class="p">)</span>
-                <span class="n">expert_out</span> <span class="o">=</span> <span class="p">(</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">expert_tokens</span><span class="p">,</span> <span class="n">expert_idx</span><span class="p">)</span> <span class="o">*</span> <span class="n">top_weights</span><span class="p">[</span><span class="n">token_list</span><span class="p">,</span> <span class="n">topk_list</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
-                <span class="p">)</span>
-
-                <span class="n">out</span><span class="o">.</span><span class="n">index_add_</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">token_idx</span><span class="p">,</span> <span class="n">expert_out</span><span class="p">)</span>
-
-            <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">bsz</span><span class="p">,</span> <span class="n">q_len</span><span class="p">,</span> <span class="n">hidden_size</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">out</span>
-
-    <span class="k">class</span><span class="w"> </span><span class="nc">_QuantDbrxExpertGLU</span><span class="p">(</span><span class="n">DynamicModule</span><span class="p">):</span>
-        <span class="k">def</span><span class="w"> </span><span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">            </span><span class="sd">&quot;&quot;&quot;Modify the DbrxExpertGLU by using nn.Linear layers.&quot;&quot;&quot;</span>
-            <span class="n">dtype</span><span class="p">,</span> <span class="n">device</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w1</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">w1</span><span class="o">.</span><span class="n">device</span>
-
-            <span class="k">def</span><span class="w"> </span><span class="nf">_copy_weights</span><span class="p">(</span><span class="n">modules</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
-                <span class="n">modules</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">expert_idx</span><span class="p">,</span> <span class="n">module</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">modules</span><span class="p">):</span>
-                    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-                        <span class="n">module</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">weights</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">]</span><span class="o">.</span><span class="n">detach</span><span class="p">())</span>
-
-            <span class="bp">self</span><span class="o">.</span><span class="n">w1_linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span>
-                <span class="p">[</span>
-                    <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-                    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">)</span>
-                <span class="p">]</span>
+            <span class="n">expert_tokens</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">token_list</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">hidden_size</span><span class="p">)</span>
+            <span class="n">expert_out</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">mlp</span><span class="p">(</span><span class="n">expert_tokens</span><span class="p">,</span> <span class="n">expert_idx</span><span class="p">)</span> <span class="o">*</span> <span class="n">top_weights</span><span class="p">[</span><span class="n">token_list</span><span class="p">,</span> <span class="n">topk_list</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span>
             <span class="p">)</span>
-            <span class="n">_copy_weights</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">w1_linear</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">w1</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">),</span>
-            <span class="p">)</span>
-            <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;w1&quot;</span><span class="p">)</span>
 
-            <span class="bp">self</span><span class="o">.</span><span class="n">v1_linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span>
-                <span class="p">[</span>
-                    <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-                    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">)</span>
-                <span class="p">]</span>
-            <span class="p">)</span>
-            <span class="n">_copy_weights</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">v1_linear</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">v1</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">),</span>
-            <span class="p">)</span>
-            <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;v1&quot;</span><span class="p">)</span>
+            <span class="n">out</span><span class="o">.</span><span class="n">index_add_</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">token_idx</span><span class="p">,</span> <span class="n">expert_out</span><span class="p">)</span>
 
-            <span class="bp">self</span><span class="o">.</span><span class="n">w2_linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span>
-                <span class="p">[</span>
-                    <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-                    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">)</span>
-                <span class="p">]</span>
-            <span class="p">)</span>
-            <span class="n">_copy_weights</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">w2_linear</span><span class="p">,</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">w2</span><span class="o">.</span><span class="n">view</span><span class="p">(</span>
-                    <span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span>
-                <span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span>
-            <span class="p">)</span>
-            <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;w2&quot;</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">bsz</span><span class="p">,</span> <span class="n">q_len</span><span class="p">,</span> <span class="n">hidden_size</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span>
 
-        <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">expert_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
-            <span class="n">x1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w1_linear</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
-            <span class="n">x2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">v1_linear</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
-            <span class="n">x1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">activation_fn</span><span class="p">(</span><span class="n">x1</span><span class="p">)</span>
-            <span class="n">x1</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">*</span> <span class="n">x2</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">w2_linear</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">](</span><span class="n">x1</span><span class="p">)</span>
 
-    <span class="k">if</span> <span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExperts</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">QuantModuleRegistry</span><span class="p">:</span>
-        <span class="n">QuantModuleRegistry</span><span class="o">.</span><span class="n">register</span><span class="p">(</span>
-            <span class="p">{</span><span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExperts</span><span class="p">:</span> <span class="s2">&quot;hf.DbrxExperts&quot;</span><span class="p">}</span>
-        <span class="p">)(</span><span class="n">_QuantDbrxExperts</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_QuantDbrxExpertGLU</span><span class="p">(</span><span class="n">DynamicModule</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Modify the DbrxExpertGLU by using nn.Linear layers.&quot;&quot;&quot;</span>
+        <span class="n">dtype</span><span class="p">,</span> <span class="n">device</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w1</span><span class="o">.</span><span class="n">dtype</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">w1</span><span class="o">.</span><span class="n">device</span>
 
-    <span class="k">if</span> <span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExpertGLU</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">QuantModuleRegistry</span><span class="p">:</span>
-        <span class="n">QuantModuleRegistry</span><span class="o">.</span><span class="n">register</span><span class="p">(</span>
-            <span class="p">{</span><span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExpertGLU</span><span class="p">:</span> <span class="s2">&quot;hf.DbrxExpertGLU&quot;</span><span class="p">}</span>
-        <span class="p">)(</span><span class="n">_QuantDbrxExpertGLU</span><span class="p">)</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">_copy_weights</span><span class="p">(</span><span class="n">modules</span><span class="p">,</span> <span class="n">weights</span><span class="p">):</span>
+            <span class="n">modules</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">dtype</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">expert_idx</span><span class="p">,</span> <span class="n">module</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">modules</span><span class="p">):</span>
+                <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+                    <span class="n">module</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">weights</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">]</span><span class="o">.</span><span class="n">detach</span><span class="p">())</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">w1_linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">)</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">_copy_weights</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">w1_linear</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">w1</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;w1&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">v1_linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">)</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">_copy_weights</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">v1_linear</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">v1</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;v1&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">w2_linear</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">)</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+        <span class="n">_copy_weights</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">w2_linear</span><span class="p">,</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">w2</span><span class="o">.</span><span class="n">view</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">moe_num_experts</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ffn_hidden_size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">hidden_size</span><span class="p">)</span><span class="o">.</span><span class="n">transpose</span><span class="p">(</span>
+                <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span>
+            <span class="p">),</span>
+        <span class="p">)</span>
+        <span class="nb">delattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;w2&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">expert_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+        <span class="n">x1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w1_linear</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">v1_linear</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">](</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">x1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">activation_fn</span><span class="p">(</span><span class="n">x1</span><span class="p">)</span>
+        <span class="n">x1</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">*</span> <span class="n">x2</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">w2_linear</span><span class="p">[</span><span class="n">expert_idx</span><span class="p">](</span><span class="n">x1</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExperts</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">QuantModuleRegistry</span><span class="p">:</span>
+    <span class="n">QuantModuleRegistry</span><span class="o">.</span><span class="n">register</span><span class="p">(</span>
+        <span class="p">{</span><span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExperts</span><span class="p">:</span> <span class="s2">&quot;hf.DbrxExperts&quot;</span><span class="p">}</span>
+    <span class="p">)(</span><span class="n">_QuantDbrxExperts</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExpertGLU</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">QuantModuleRegistry</span><span class="p">:</span>
+    <span class="n">QuantModuleRegistry</span><span class="o">.</span><span class="n">register</span><span class="p">(</span>
+        <span class="p">{</span><span class="n">transformers</span><span class="o">.</span><span class="n">models</span><span class="o">.</span><span class="n">dbrx</span><span class="o">.</span><span class="n">modeling_dbrx</span><span class="o">.</span><span class="n">DbrxExpertGLU</span><span class="p">:</span> <span class="s2">&quot;hf.DbrxExpertGLU&quot;</span><span class="p">}</span>
+    <span class="p">)(</span><span class="n">_QuantDbrxExpertGLU</span><span class="p">)</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">register_dbrx_moe_on_the_fly</span><span class="p">(</span><span class="n">model</span><span class="p">):</span>

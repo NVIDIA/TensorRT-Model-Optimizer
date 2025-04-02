@@ -32,4 +32,11 @@ config
    .. Overview table of available functions in the module
    
    
+   .. rubric:: Functions
+
+   .. autosummary::
+      :nosignatures:
+   
+      need_calibration
+   
    

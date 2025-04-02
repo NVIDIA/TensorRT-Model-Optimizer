@@ -39,4 +39,11 @@ mcore\_gpt\_minitron
    .. Overview table of available functions in the module
    
    
+   .. rubric:: Functions
+
+   .. autosummary::
+      :nosignatures:
+   
+      get_supported_model_config_map
+   
    

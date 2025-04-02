@@ -29,7 +29,7 @@ The simplest way to quantize a model using ModelOpt is to use :meth:`mtq.quantiz
 refer to :any:`quantization-configs` for the list of quantization configs supported by default. You may also define your own quantization config as
 described in :ref:`customizing quantizer config <customize_quantizer_config>`.
 
-ModelOpt supports algorithms such as AWQ, SmoothQuant or max for calibration. Please refer to :meth:`mtq.calibrate <modelopt.torch.quantization.model_quant.calibrate>`
+ModelOpt supports algorithms such as AWQ, SmoothQuant, SVDQuant or max for calibration. Please refer to :meth:`mtq.calibrate <modelopt.torch.quantization.model_quant.calibrate>`
 for more details.
 
 The forward loop is used to pass data through the model in-order to collect statistics for calibration.
@@ -78,6 +78,21 @@ After PTQ, the model can be exported to ONNX with the normal PyTorch ONNX export
 
 ModelOpt also supports direct export of Huggingface or Nemo LLM models to TensorRT-LLM for deployment.
 Please see :doc:`TensorRT-LLM Deployment <../deployment/1_tensorrt_llm>` for more details.
+
+Compressing model weights after quantization
+============================================
+
+ModelOpt provides a API :meth:`mtq.compress() <modelopt.torch.quantization.compress>` to compress the model weights after quantization.
+This API can be used to reduce the memory footprint of the quantized model for future evaluation or fine-tuning such as QLoRA. Note that
+this API only supports selected quantization formats.
+
+After PTQ, the model can be compressed with the following code:
+
+.. code-block:: python
+
+    # Compress the model
+    mtq.compress(model)
+
 
 Quantization-aware Training (QAT)
 =================================

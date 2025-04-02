@@ -47,6 +47,7 @@ graph\_utils
       find_nodes_from_matmul_to_exclude
       find_nodes_from_mha_to_exclude
       find_nodes_to_exclude
+      get_concat_eliminated_tensors
       get_extended_model_outputs
       get_fusible_backbone
       get_resize_scales

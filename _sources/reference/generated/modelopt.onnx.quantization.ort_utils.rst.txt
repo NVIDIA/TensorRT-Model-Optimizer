@@ -40,5 +40,6 @@ ort\_utils
       configure_ort
       create_inference_session
       get_quantizable_op_types
+      update_trt_ep_support
    
    

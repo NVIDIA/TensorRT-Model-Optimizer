@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>op_types &mdash; Model Optimizer 0.25.0</title>
+  <title>op_types &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -99,6 +99,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.op_types.is_control_flow_op"><code class="docutils literal notranslate"><span class="pre">is_control_flow_op()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.op_types.is_conversion_op"><code class="docutils literal notranslate"><span class="pre">is_conversion_op()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.op_types.is_copy_op"><code class="docutils literal notranslate"><span class="pre">is_copy_op()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.op_types.is_data_dependent_shape_op"><code class="docutils literal notranslate"><span class="pre">is_data_dependent_shape_op()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.op_types.is_default_quantizable_op_by_ort"><code class="docutils literal notranslate"><span class="pre">is_default_quantizable_op_by_ort()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.op_types.is_fusible_reduction_op"><code class="docutils literal notranslate"><span class="pre">is_fusible_reduction_op()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.op_types.is_fusible_scaling_op"><code class="docutils literal notranslate"><span class="pre">is_fusible_scaling_op()</span></code></a></li>
@@ -176,55 +177,58 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_copy_op" title="modelopt.onnx.op_types.is_copy_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_copy_op</span></code></a></p></td>
 <td><p>Returns whether the given op is a copy operator or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_default_quantizable_op_by_ort" title="modelopt.onnx.op_types.is_default_quantizable_op_by_ort"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_default_quantizable_op_by_ort</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_data_dependent_shape_op" title="modelopt.onnx.op_types.is_data_dependent_shape_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_data_dependent_shape_op</span></code></a></p></td>
+<td><p>Returns whether the op type has data-dependent shapes (DDS).</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_default_quantizable_op_by_ort" title="modelopt.onnx.op_types.is_default_quantizable_op_by_ort"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_default_quantizable_op_by_ort</span></code></a></p></td>
 <td><p>Returns if ORT quantizes the op type by default.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_fusible_reduction_op" title="modelopt.onnx.op_types.is_fusible_reduction_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_fusible_reduction_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_fusible_reduction_op" title="modelopt.onnx.op_types.is_fusible_reduction_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_fusible_reduction_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of reduction category and fusible by the compiler.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_fusible_scaling_op" title="modelopt.onnx.op_types.is_fusible_scaling_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_fusible_scaling_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_fusible_scaling_op" title="modelopt.onnx.op_types.is_fusible_scaling_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_fusible_scaling_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of scaling category and fusible with input.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_generator_op" title="modelopt.onnx.op_types.is_generator_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_generator_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_generator_op" title="modelopt.onnx.op_types.is_generator_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_generator_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Generator category or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_irregular_mem_access_op" title="modelopt.onnx.op_types.is_irregular_mem_access_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_irregular_mem_access_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_irregular_mem_access_op" title="modelopt.onnx.op_types.is_irregular_mem_access_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_irregular_mem_access_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Irreggular mem access category or not.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_linear_op" title="modelopt.onnx.op_types.is_linear_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_linear_op" title="modelopt.onnx.op_types.is_linear_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Linear category or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_modifier_op" title="modelopt.onnx.op_types.is_modifier_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_modifier_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_modifier_op" title="modelopt.onnx.op_types.is_modifier_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_modifier_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Modifier category or not.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_multiclass_op" title="modelopt.onnx.op_types.is_multiclass_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_multiclass_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_multiclass_op" title="modelopt.onnx.op_types.is_multiclass_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_multiclass_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Multiclass category or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_non_reshape_copy_op" title="modelopt.onnx.op_types.is_non_reshape_copy_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_non_reshape_copy_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_non_reshape_copy_op" title="modelopt.onnx.op_types.is_non_reshape_copy_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_non_reshape_copy_op</span></code></a></p></td>
 <td><p>Returns whether the given op is a non-reshape copy op or not.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_normalization_op" title="modelopt.onnx.op_types.is_normalization_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_normalization_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_normalization_op" title="modelopt.onnx.op_types.is_normalization_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_normalization_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Normalization category or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_pointwise_or_elementwise_op" title="modelopt.onnx.op_types.is_pointwise_or_elementwise_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_pointwise_or_elementwise_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_pointwise_or_elementwise_op" title="modelopt.onnx.op_types.is_pointwise_or_elementwise_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_pointwise_or_elementwise_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Pointwise or Elementwise category or not.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_pooling_or_window_op" title="modelopt.onnx.op_types.is_pooling_or_window_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_pooling_or_window_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_pooling_or_window_op" title="modelopt.onnx.op_types.is_pooling_or_window_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_pooling_or_window_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Pooling/Window category or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_recurrent_op" title="modelopt.onnx.op_types.is_recurrent_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_recurrent_op" title="modelopt.onnx.op_types.is_recurrent_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Recurrent category or not.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_selection_op" title="modelopt.onnx.op_types.is_selection_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_selection_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_selection_op" title="modelopt.onnx.op_types.is_selection_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_selection_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Selection category or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_sequence_op" title="modelopt.onnx.op_types.is_sequence_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_sequence_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_sequence_op" title="modelopt.onnx.op_types.is_sequence_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_sequence_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Sequence category or not.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_shape_op" title="modelopt.onnx.op_types.is_shape_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_shape_op</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_shape_op" title="modelopt.onnx.op_types.is_shape_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_shape_op</span></code></a></p></td>
 <td><p>Returns whether the given op type is of Shape category or not.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_unary_op" title="modelopt.onnx.op_types.is_unary_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_unary_op</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.op_types.is_unary_op" title="modelopt.onnx.op_types.is_unary_op"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_unary_op</span></code></a></p></td>
 <td><p>Returns whether the given op is a unary operator or not.</p></td>
 </tr>
 </tbody>
@@ -266,6 +270,19 @@
 <dt class="sig sig-object py" id="modelopt.onnx.op_types.is_copy_op">
 <span class="sig-name descname"><span class="pre">is_copy_op</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">op_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.op_types.is_copy_op" title="Link to this definition"></a></dt>
 <dd><p>Returns whether the given op is a copy operator or not.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>op_type</strong> (<em>str</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.op_types.is_data_dependent_shape_op">
+<span class="sig-name descname"><span class="pre">is_data_dependent_shape_op</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">op_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.op_types.is_data_dependent_shape_op" title="Link to this definition"></a></dt>
+<dd><p>Returns whether the op type has data-dependent shapes (DDS).</p>
+<p>DDS ops have output shapes that are only determined at runtime based on its input data.
+Source: <a class="reference external" href="https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#data-dependant-shape-dds-ops" rel="noopener noreferrer" target="_blank">https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#data-dependant-shape-dds-ops</a></p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>op_type</strong> (<em>str</em>) – </p>

@@ -23,7 +23,7 @@ Quantization
 ^^^^^^^^^^^^
 Quantization is an effective model optimization technique for large models. Quantization with Model Optimizer can compress
 model size by 2x-4x, speeding up inference while preserving model quality. Model Optimizer enables highly performant
-quantization formats including NVFP4, FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, and
+quantization formats including NVFP4, FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, SVDQuant, and
 Double Quantization with easy-to-use Python APIs. Both Post-training quantization (PTQ) and Quantization-aware training (QAT)
 are supported. Visit :meth:`Quantization Format page <modelopt.torch.quantization.config>`
 for list of formats supported.

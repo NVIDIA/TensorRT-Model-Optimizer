@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Support Matrix &mdash; Model Optimizer 0.25.0</title>
+  <title>Support Matrix &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -148,7 +148,16 @@
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><th class="stub"><p>FP8</p></th>
+<tr class="row-even"><th class="stub"><p>FP4</p></th>
+<td><ul class="simple">
+<li><p>Per-Block FP4 Weight &amp; Activations</p></li>
+<li><p>GPUs: Blackwell and Later</p></li>
+</ul>
+</td>
+<td><p>PyTorch</p></td>
+<td><p>TensorRT, TensorRT-LLM</p></td>
+</tr>
+<tr class="row-odd"><th class="stub"><p>FP8</p></th>
 <td><ul class="simple">
 <li><p>Per-Tensor FP8 Weight &amp; Activations</p></li>
 <li><p>GPUs: Ada and Later</p></li>
@@ -157,7 +166,7 @@
 <td><p>PyTorch, ONNX*</p></td>
 <td><p>TensorRT*, TensorRT-LLM</p></td>
 </tr>
-<tr class="row-odd"><th class="stub"><p>INT8</p></th>
+<tr class="row-even"><th class="stub"><p>INT8</p></th>
 <td><ul class="simple">
 <li><p>Per-channel INT8 Weights, Per-Tensor FP8 Activations</p></li>
 <li><p>Uses Smooth Quant Algorithm</p></li>
@@ -167,7 +176,7 @@
 <td><p>PyTorch, ONNX*</p></td>
 <td><p>TensorRT*, TensorRT-LLM</p></td>
 </tr>
-<tr class="row-even"><th class="stub"><p>W4A16 (INT4 Weights Only)</p></th>
+<tr class="row-odd"><th class="stub"><p>W4A16 (INT4 Weights Only)</p></th>
 <td><ul class="simple">
 <li><p>Block-wise INT4 Weights, F16 Activations</p></li>
 <li><p>Uses AWQ Algorithm</p></li>
@@ -177,7 +186,7 @@
 <td><p>PyTorch, ONNX</p></td>
 <td><p>TensorRT, TensorRT-LLM</p></td>
 </tr>
-<tr class="row-odd"><th class="stub"><p>W4A8 (INT4 Weights, FP8 Activations)</p></th>
+<tr class="row-even"><th class="stub"><p>W4A8 (INT4 Weights, FP8 Activations)</p></th>
 <td><ul class="simple">
 <li><p>Block-wise INT8 Weights, Per-Tensor FP8 Activations</p></li>
 <li><p>Uses AWQ Algorithm</p></li>

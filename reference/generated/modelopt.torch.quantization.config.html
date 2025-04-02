@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>config &mdash; Model Optimizer 0.25.0</title>
+  <title>config &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -35,7 +35,7 @@
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
     <link rel="next" title="conversion" href="modelopt.torch.quantization.conversion.html" />
-    <link rel="prev" title="max" href="modelopt.torch.quantization.calib.max.html" /> 
+    <link rel="prev" title="modelopt.torch.quantization.compress" href="modelopt.torch.quantization.compress.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -102,6 +102,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.export_onnx.html">export_onnx</a></li>
@@ -115,6 +116,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.qtensor.html">qtensor</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.quant_modules.html">quant_modules</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.tensor_quant.html">tensor_quant</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.triton.html">triton</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.utils.html">utils</a></li>
 </ul>
 </li>
@@ -250,90 +252,7 @@ quantization configurations. The pytorch modules should have a quantized equival
 </section>
 <section id="example-quantization-configurations">
 <span id="example-quantization-configs"></span><h2>Example Quantization Configurations<a class="headerlink" href="#example-quantization-configurations" title="Link to this heading"></a></h2>
-<p>Here are the recommended quantization configs from Model Optimizer for
-quantization formats such as FP8, INT8, INT4, etc.:</p>
-<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">INT8_DEFAULT_CFG</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;quant_cfg&quot;</span><span class="p">:</span> <span class="p">{</span>
-    <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">},</span>
-    <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span>
-    <span class="s2">&quot;*lm_head*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="s2">&quot;*block_sparse_moe.gate*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;*router*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="p">},</span>
-    <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span>
-<span class="p">}</span>
-
-<span class="n">INT8_SMOOTHQUANT_CFG</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;quant_cfg&quot;</span><span class="p">:</span> <span class="p">{</span>
-    <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">},</span>
-    <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">},</span>
-    <span class="s2">&quot;*lm_head*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="s2">&quot;*block_sparse_moe.gate*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;*router*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;nn.Conv2d&quot;</span><span class="p">:</span> <span class="p">{</span>
-        <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">},</span>
-        <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span>
-    <span class="p">},</span>
-    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="p">},</span>
-    <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="s2">&quot;smoothquant&quot;</span><span class="p">,</span>
-<span class="p">}</span>
-
-<span class="n">FP8_DEFAULT_CFG</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;quant_cfg&quot;</span><span class="p">:</span> <span class="p">{</span>
-    <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span>
-    <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">},</span>
-    <span class="s2">&quot;*block_sparse_moe.gate*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;*router*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="p">},</span>
-    <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span>
-<span class="p">}</span>
-
-<span class="n">INT4_BLOCKWISE_WEIGHT_ONLY_CFG</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;quant_cfg&quot;</span><span class="p">:</span> <span class="p">{</span>
-    <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;block_sizes&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span> <span class="mi">128</span><span class="p">},</span> <span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-    <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="s2">&quot;*lm_head*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="s2">&quot;*block_sparse_moe.gate*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;*router*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="p">},</span>
-    <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span>
-<span class="p">}</span>
-
-<span class="n">INT4_AWQ_CFG</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;quant_cfg&quot;</span><span class="p">:</span> <span class="p">{</span>
-    <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;block_sizes&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span> <span class="mi">128</span><span class="p">},</span> <span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-    <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="s2">&quot;*lm_head*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="s2">&quot;*block_sparse_moe.gate*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;*router*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="p">},</span>
-    <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;awq_lite&quot;</span><span class="p">,</span> <span class="s2">&quot;alpha_step&quot;</span><span class="p">:</span> <span class="mf">0.1</span><span class="p">},</span>
-    <span class="c1"># &quot;algorithm&quot;: {&quot;method&quot;: &quot;awq_full&quot;, &quot;alpha_step&quot;: 0.1, &quot;max_co_batch_size&quot;: 1024},</span>
-    <span class="c1"># &quot;algorithm&quot;: {&quot;method&quot;: &quot;awq_clip&quot;, &quot;max_co_batch_size&quot;: 2048},</span>
-<span class="p">}</span>
-
-<span class="n">W4A8_AWQ_BETA_CFG</span> <span class="o">=</span> <span class="p">{</span>
-<span class="s2">&quot;quant_cfg&quot;</span><span class="p">:</span> <span class="p">{</span>
-    <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">[</span>
-        <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;block_sizes&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span> <span class="mi">128</span><span class="p">},</span> <span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-        <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-    <span class="p">],</span>
-    <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span> <span class="s2">&quot;axis&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span> <span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
-    <span class="s2">&quot;*lm_head*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-    <span class="s2">&quot;*block_sparse_moe.gate*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;*router*&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>  <span class="c1"># Skip the MOE router</span>
-    <span class="s2">&quot;default&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">},</span>
-<span class="p">},</span>
-<span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="s2">&quot;awq_lite&quot;</span><span class="p">,</span>
-<span class="p">}</span>
-</pre></div>
-</div>
-<p>These config can be accessed as attributes of <code class="docutils literal notranslate"><span class="pre">modelopt.torch.quantization</span></code> and can be given as
+<p>These example configs can be accessed as attributes of <code class="docutils literal notranslate"><span class="pre">modelopt.torch.quantization</span></code> and can be given as
 input to <a class="reference internal" href="modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.quantize" title="modelopt.torch.quantization.model_quant.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.quantize()</span></code></a>. For example:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.quantization</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtq</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">mtq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">mtq</span><span class="o">.</span><span class="n">INT8_DEFAULT_CFG</span><span class="p">,</span> <span class="n">forward_loop</span><span class="p">)</span>
@@ -351,6 +270,14 @@ the layer named <code class="docutils literal notranslate"><span class="pre">lm_
 </pre></div>
 </div>
 </section>
+<p class="rubric">Functions</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.config.need_calibration" title="modelopt.torch.quantization.config.need_calibration"><code class="xref py py-obj docutils literal notranslate"><span class="pre">need_calibration</span></code></a></p></td>
+<td><p>Check if calibration is needed for the given config.</p></td>
+</tr>
+</tbody>
+</table>
 <dl class="py class pydantic_model">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.AWQClipCalibConfig">
 <em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">AWQClipCalibConfig</span></span><a class="headerlink" href="#modelopt.torch.quantization.config.AWQClipCalibConfig" title="Link to this definition"></a></dt>
@@ -505,6 +432,30 @@ See <a class="reference external" href="https://arxiv.org/pdf/2306.00978" rel="n
 </dd></dl>
 
 <dl class="py class pydantic_model">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.CompressConfig">
+<em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">CompressConfig</span></span><a class="headerlink" href="#modelopt.torch.quantization.config.CompressConfig" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModeloptBaseConfig</span></code></a></p>
+<p>Default configuration for <code class="docutils literal notranslate"><span class="pre">compress</span></code> mode.</p>
+<p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show default config as JSON</summary><dl class="field-list simple">
+<dt class="field-odd">Default config (JSON)<span class="colon">:</span></dt>
+<dd class="field-odd"><p></p></dd>
+</dl>
+<div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">   </span><span class="nt">&quot;compress&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;*&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">   </span><span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</details></p><dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.CompressConfig.compress">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">compress</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">bool</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.CompressConfig.compress" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class pydantic_model">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.MaxCalibConfig">
 <em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">MaxCalibConfig</span></span><a class="headerlink" href="#modelopt.torch.quantization.config.MaxCalibConfig" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#modelopt.torch.quantization.config.QuantizeAlgorithmConfig" title="modelopt.torch.quantization.config.QuantizeAlgorithmConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizeAlgorithmConfig</span></code></a></p>
@@ -572,7 +523,7 @@ See <a class="reference external" href="https://arxiv.org/pdf/2004.09602" rel="n
 </div>
 </details></p><dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizeConfig.algorithm">
-<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">None</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.MaxCalibConfig" title="modelopt.torch.quantization.config.MaxCalibConfig"><span class="pre">MaxCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.SmoothQuantCalibConfig" title="modelopt.torch.quantization.config.SmoothQuantCalibConfig"><span class="pre">SmoothQuantCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><span class="pre">AWQLiteCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><span class="pre">AWQClipCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><span class="pre">AWQFullCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.RealQuantizeConfig" title="modelopt.torch.quantization.config.RealQuantizeConfig"><span class="pre">RealQuantizeConfig</span></a></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizeConfig.algorithm" title="Link to this definition"></a></dt>
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">None</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.MaxCalibConfig" title="modelopt.torch.quantization.config.MaxCalibConfig"><span class="pre">MaxCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.SmoothQuantCalibConfig" title="modelopt.torch.quantization.config.SmoothQuantCalibConfig"><span class="pre">SmoothQuantCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><span class="pre">AWQLiteCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><span class="pre">AWQClipCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><span class="pre">AWQFullCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.SVDQuantConfig" title="modelopt.torch.quantization.config.SVDQuantConfig"><span class="pre">SVDQuantConfig</span></a></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizeConfig.algorithm" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -759,11 +710,11 @@ calibration.</p>
 </dd></dl>
 
 <dl class="py class pydantic_model">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.config.RealQuantizeConfig">
-<em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">RealQuantizeConfig</span></span><a class="headerlink" href="#modelopt.torch.quantization.config.RealQuantizeConfig" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.SVDQuantConfig">
+<em class="property"><span class="pre">ModeloptConfig</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">SVDQuantConfig</span></span><a class="headerlink" href="#modelopt.torch.quantization.config.SVDQuantConfig" title="Link to this definition"></a></dt>
 <dd><p>Bases: <a class="reference internal" href="#modelopt.torch.quantization.config.QuantizeAlgorithmConfig" title="modelopt.torch.quantization.config.QuantizeAlgorithmConfig"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizeAlgorithmConfig</span></code></a></p>
-<p>The config for real quantization config.</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">additional_algorithm</span></code> will be used for calibration before quantizing weights into low precision.</p>
+<p>The config for SVDQuant.</p>
+<p>Refer to the <a class="reference external" href="https://arxiv.org/pdf/2411.05007" rel="noopener noreferrer" target="_blank">SVDQuant paper</a> for more details.</p>
 <p><details  class="autodoc_pydantic_collapsable_json">
 <summary>Show default config as JSON</summary><dl class="field-list simple">
 <dt class="field-odd">Default config (JSON)<span class="colon">:</span></dt>
@@ -771,16 +722,15 @@ calibration.</p>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span>
-<span class="w">   </span><span class="nt">&quot;additional_algorithm&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;&quot;</span>
+<span class="w">   </span><span class="nt">&quot;lowrank&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">32</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 </details></p><dl class="py attribute pydantic_field">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.config.RealQuantizeConfig.additional_algorithm">
-<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">additional_algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><span class="pre">AWQLiteCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><span class="pre">AWQClipCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><span class="pre">AWQFullCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.RealQuantizeConfig.additional_algorithm" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.SVDQuantConfig.lowrank">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">lowrank</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.SVDQuantConfig.lowrank" title="Link to this definition"></a></dt>
 <dd><p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show details</summary><p>The algorithm used for calibration. Supported algorithms include
-<code class="docutils literal notranslate"><span class="pre">&quot;awq_lite&quot;,</span> <span class="pre">&quot;awq_full&quot;,</span> <span class="pre">and</span> <span class="pre">&quot;awq_clip&quot;</span></code>.</p>
+<summary>Show details</summary><p>Specifies the rank of the LoRA used in the SVDQuant method, which captures outliers from the original weights.</p>
 </details></p></dd></dl>
 
 </dd></dl>
@@ -820,13 +770,19 @@ See <a class="reference external" href="https://arxiv.org/pdf/2211.10438" rel="n
 
 </dd></dl>
 
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.need_calibration">
+<span class="sig-name descname"><span class="pre">need_calibration</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.config.need_calibration" title="Link to this definition"></a></dt>
+<dd><p>Check if calibration is needed for the given config.</p>
+</dd></dl>
+
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modelopt.torch.quantization.calib.max.html" class="btn btn-neutral float-left" title="max" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.quantization.compress.html" class="btn btn-neutral float-left" title="modelopt.torch.quantization.compress" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="modelopt.torch.quantization.conversion.html" class="btn btn-neutral float-right" title="conversion" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

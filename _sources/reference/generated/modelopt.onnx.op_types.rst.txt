@@ -41,6 +41,7 @@ op\_types
       is_control_flow_op
       is_conversion_op
       is_copy_op
+      is_data_dependent_shape_op
       is_default_quantizable_op_by_ort
       is_fusible_reduction_op
       is_fusible_scaling_op

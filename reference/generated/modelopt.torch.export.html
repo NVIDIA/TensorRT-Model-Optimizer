@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>export &mdash; Model Optimizer 0.25.0</title>
+  <title>export &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -105,6 +105,7 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_utils.html">model_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quant_utils.html">quant_utils</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
@@ -188,25 +189,28 @@
 <tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.model_config_utils.html#module-modelopt.torch.export.model_config_utils" title="modelopt.torch.export.model_config_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.model_config_utils</span></code></a></p></td>
 <td><p>Common utils for the ModelConfig.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.postprocess.html#module-modelopt.torch.export.postprocess" title="modelopt.torch.export.postprocess"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.postprocess</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.model_utils.html#module-modelopt.torch.export.model_utils" title="modelopt.torch.export.model_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.model_utils</span></code></a></p></td>
+<td><p>Utility functions for model type detection and classification.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.postprocess.html#module-modelopt.torch.export.postprocess" title="modelopt.torch.export.postprocess"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.postprocess</span></code></a></p></td>
 <td><p>Utils to load and process model_config.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.quant_utils.html#module-modelopt.torch.export.quant_utils" title="modelopt.torch.export.quant_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.quant_utils</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.quant_utils.html#module-modelopt.torch.export.quant_utils" title="modelopt.torch.export.quant_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.quant_utils</span></code></a></p></td>
 <td><p>Utils for quantization including scaling factors adjustments.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html#module-modelopt.torch.export.tensorrt_llm_type" title="modelopt.torch.export.tensorrt_llm_type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.tensorrt_llm_type</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html#module-modelopt.torch.export.tensorrt_llm_type" title="modelopt.torch.export.tensorrt_llm_type"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.tensorrt_llm_type</span></code></a></p></td>
 <td><p>Code from TRT-LLM that export optimized models to the TensorRT-LLM checkpoint.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html#module-modelopt.torch.export.tensorrt_llm_utils" title="modelopt.torch.export.tensorrt_llm_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.tensorrt_llm_utils</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html#module-modelopt.torch.export.tensorrt_llm_utils" title="modelopt.torch.export.tensorrt_llm_utils"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.tensorrt_llm_utils</span></code></a></p></td>
 <td><p>Utils for TensorRT-LLM checkpoint export.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.transformer_engine.html#module-modelopt.torch.export.transformer_engine" title="modelopt.torch.export.transformer_engine"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.transformer_engine</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.transformer_engine.html#module-modelopt.torch.export.transformer_engine" title="modelopt.torch.export.transformer_engine"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.transformer_engine</span></code></a></p></td>
 <td><p>Convert the Model Optimizer quantized model to the transformer_engine.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html#module-modelopt.torch.export.unified_export_hf" title="modelopt.torch.export.unified_export_hf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.unified_export_hf</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html#module-modelopt.torch.export.unified_export_hf" title="modelopt.torch.export.unified_export_hf"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.unified_export_hf</span></code></a></p></td>
 <td><p>Code that export quantized Hugging Face models for deployment.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="modelopt.torch.export.unified_export_megatron.html#module-modelopt.torch.export.unified_export_megatron" title="modelopt.torch.export.unified_export_megatron"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.unified_export_megatron</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="modelopt.torch.export.unified_export_megatron.html#module-modelopt.torch.export.unified_export_megatron" title="modelopt.torch.export.unified_export_megatron"><code class="xref py py-obj docutils literal notranslate"><span class="pre">modelopt.torch.export.unified_export_megatron</span></code></a></p></td>
 <td><p>Code that export quantized Megatron Core models for deployment.</p></td>
 </tr>
 </tbody>

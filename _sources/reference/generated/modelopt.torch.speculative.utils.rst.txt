@@ -31,6 +31,7 @@ utils
    .. autosummary::
       :nosignatures:
    
+      AcceptanceRateValidation
       ResBlock
    
    
@@ -38,5 +39,14 @@ utils
 
    .. Overview table of available functions in the module
    
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+      :nosignatures:
+   
+      get_default_attention_mask_and_position_ids
+      right_padding
+      tree_decode
    
    

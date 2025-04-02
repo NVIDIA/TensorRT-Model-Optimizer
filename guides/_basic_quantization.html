@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Basic Concepts &mdash; Model Optimizer 0.25.0</title>
+  <title>Basic Concepts &mdash; Model Optimizer 0.27.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -180,7 +180,8 @@ accuracy post quantization. The simplest calibration algorithm is “max calibra
 scaling factor is calculated from the global maximum of the tensor and the weights are unchanged and
 rounded to the nearest quantized value. An example of a more advanced calibration algorithm is
 <a class="reference external" href="https://docs.nvidia.com/deeplearning/tensorrt/api/python_api/infer/Int8/EntropyCalibrator.html" rel="noopener noreferrer" target="_blank">Entropy Calibration</a>,
-<a class="reference external" href="https://arxiv.org/abs/2211.10438" rel="noopener noreferrer" target="_blank">SmoothQuant</a>, and <a class="reference external" href="https://arxiv.org/abs/2306.00978" rel="noopener noreferrer" target="_blank">AWQ</a>.</p>
+<a class="reference external" href="https://arxiv.org/abs/2211.10438" rel="noopener noreferrer" target="_blank">SmoothQuant</a>, <a class="reference external" href="https://arxiv.org/abs/2306.00978" rel="noopener noreferrer" target="_blank">AWQ</a>, and
+<a class="reference external" href="https://arxiv.org/pdf/2411.05007" rel="noopener noreferrer" target="_blank">SVDQuant</a>.</p>
 </section>
 <section id="quantization-aware-training-qat">
 <h2>Quantization-aware training (QAT)<a class="headerlink" href="#quantization-aware-training-qat" title="Link to this heading"></a></h2>
