@@ -268,6 +268,88 @@ def get_max_batch_size(
         return 64
 
 
+def _process_batch(batch_data, infer_method, max_working_batch_size=None):
+    """Process a batch of data through the model's inference method.
+
+    Args:
+        batch_data: Dictionary containing the batch data
+        infer_method: Model's inference method (either forward or generate)
+        max_working_batch_size: Maximum batch size known to work without OOM
+
+    Returns:
+        The maximum batch size that worked successfully
+    """
+    assert all(torch.is_tensor(data) or data is None for data in batch_data.values()), (
+        "batch_data values must be tensors"
+    )
+    # Get the batch size of current data
+    batch_size = batch_data[list(batch_data.keys())[0]].shape[0]
+
+    # If we know a smaller batch size works, preemptively split
+    if max_working_batch_size is not None and batch_size > max_working_batch_size:
+        # Split the batch to avoid OOM
+        for i in range(0, batch_size, max_working_batch_size):
+            end_idx = min(i + max_working_batch_size, batch_size)
+            split_data = {}
+            for key in batch_data:
+                if batch_data[key] is None:
+                    split_data[key] = None
+                else:
+                    split_data[key] = batch_data[key][i:end_idx, ...]
+
+            max_working_batch_size = _process_batch(
+                split_data, infer_method, max_working_batch_size
+            )
+
+        return max_working_batch_size
+
+    # Try processing with current batch size
+    try:
+        infer_method(**batch_data)
+        return (
+            batch_size
+            if max_working_batch_size is None
+            else max(batch_size, max_working_batch_size)
+        )  # This batch size worked successfully
+    except torch.cuda.OutOfMemoryError:
+        assert batch_size > 1, (
+            "CUDA out of memory error occurred while processing a single sample. "
+            "This indicates the model is too large for the available GPU memory. "
+            "Consider reducing the model size, using a smaller max_sample_length, "
+            "or using a GPU with more memory."
+        )
+
+    # Split the batch in half
+    mid = (batch_size + 1) // 2
+    warn(f"CUDA out of memory with batch size {batch_size}, trying with batch size {mid}")
+    split_data_1 = {key: batch_data[key][:mid, ...] for key in batch_data}
+    split_data_2 = {key: batch_data[key][mid:, ...] for key in batch_data}
+
+    # Recursively process each half and track max working batch size
+    max_working_batch_size = _process_batch(split_data_1, infer_method)
+    max_working_batch_size = _process_batch(split_data_2, infer_method, max_working_batch_size)
+
+    # Return the minimum of the two (to be conservative)
+    return max_working_batch_size
+
+
+def _forward_loop(model: torch.nn.Module, dataloader: DataLoader) -> None:
+    """Runs forward passes through the model using data from the dataloader.
+
+    Args:
+        model: The PyTorch model to run inference on
+        dataloader: DataLoader containing the batched input data
+    """
+    with torch.no_grad():
+        is_enc_dec = model_type_is_enc_dec(model)
+        infer_method = model.generate if is_enc_dec else model.forward
+        max_working_batch_size = None  # Initialize max working batch size as None
+
+        for _, data in enumerate(tqdm(dataloader)):
+            # Process batch and update max working batch size
+            max_working_batch_size = _process_batch(data, infer_method, max_working_batch_size)
+
+
 def create_forward_loop(
     model: Optional[torch.nn.Module] = None,
     dataset_name: str = "cnn_dailymail",
@@ -335,32 +417,7 @@ def create_forward_loop(
             include_labels=include_labels,
         )
 
-    def forward_loop(model):
-        with torch.no_grad():
-            low_mem_mode = False
-            is_enc_dec = model_type_is_enc_dec(model)
-            infer_method = model.generate if is_enc_dec else model.forward
-            for _, data in enumerate(tqdm(dataloader)):
-                batch_size = data[list(data.keys())[0]].shape[0]
-                if batch_size == 1:
-                    infer_method(**data)
-                elif not low_mem_mode:
-                    # Try running the forward once.
-                    # If output memory, we try running inference with split input tensors
-                    try:
-                        infer_method(**data)
-                    except torch.cuda.OutOfMemoryError:
-                        warn("torch.OutOfMemoryError detected, try reducing the batch size...")
-                        low_mem_mode = True
-
-                if low_mem_mode:
-                    split_data_1 = {key: data[key][: batch_size // 2, ...] for key in data}
-                    infer_method(**split_data_1)
-
-                    split_data_2 = {key: data[key][batch_size // 2 :, ...] for key in data}
-                    infer_method(**split_data_2)
-
-    return forward_loop
+    return lambda model: _forward_loop(model, dataloader)
 
 
 def model_type_is_enc_dec(model):
