@@ -22,7 +22,7 @@ import warnings
 import numpy as np
 import torch
 from example_utils import get_model, get_processor, get_tokenizer, is_enc_dec, is_model_on_gpu
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
+from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, WhisperProcessor
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
@@ -39,6 +39,7 @@ from modelopt.torch.utils.dataset_utils import (
 )
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
 from modelopt.torch.utils.memory_monitor import launch_memory_monitor
+from modelopt.torch.utils.speech_dataset_utils import get_speech_dataset_dataloader
 from modelopt.torch.utils.vlm_dataset_utils import get_vlm_dataset_dataloader
 
 RAND_SEED = 1234
@@ -210,7 +211,19 @@ def main(args):
         elif args.dataset != "scienceqa":
             raise ValueError("Only the scienceqa dataset is supported for the mllama model.")
         processor = get_processor(
-            args.pyt_ckpt_path, device, trust_remote_code=args.trust_remote_code
+            args.pyt_ckpt_path, model_type, device, trust_remote_code=args.trust_remote_code
+        )
+    elif model_type == "whisper":
+        if args.dataset is None:
+            args.dataset = "peoples_speech"
+            warnings.warn(
+                "Currently only the peoples_speech dataset is supported for the whisper model. "
+                "Overriding dataset to peoples_speech."
+            )
+        elif args.dataset != "peoples_speech":
+            raise ValueError("Only the peoples_speech dataset is supported for the whisper model.")
+        processor = get_processor(
+            args.pyt_ckpt_path, model_type, device, trust_remote_code=args.trust_remote_code
         )
     else:
         if args.dataset is None:
@@ -273,8 +286,25 @@ def main(args):
             # due to intermediate tensors for fake quantization. Setting sample_memory_usage_ratio
             # to 2 to avoid OOM for AWQ/SmoothQuant fake quantization as it will take more memory than inference.
             sample_memory_usage_ratio = 2 if "awq" in args.qformat or "sq" in args.qformat else 1.1
+            # Whisper model expects mel-spectrogram input features of length 3000
+            # Whisper model needs input of shape (batch_size, num_mel_bins, 3000)
+            # As the encoder of Whisper doesn't have embedding layer, input dtype has to be float
+            # For non-Whisper models (language models), sample_input will be set up inside get_max_batch_size()
+            if model_type == "whisper":
+                max_sample_length = 3000
+                num_mel_bins = model.config.num_mel_bins
+                sample_input_single_batch = (
+                    torch.ones([1, num_mel_bins, max_sample_length], dtype=torch.float32).to(
+                        model.device
+                    )
+                    * 100
+                )
+            else:
+                sample_input_single_batch = None
             args.batch_size = get_max_batch_size(
-                model, sample_memory_usage_ratio=sample_memory_usage_ratio
+                model,
+                sample_memory_usage_ratio=sample_memory_usage_ratio,
+                sample_input_single_batch=sample_input_single_batch,
             )
             if args.batch_size > args.calib_size:
                 args.batch_size = args.calib_size
@@ -291,6 +321,17 @@ def main(args):
                 processor=processor,
                 batch_size=args.batch_size,
                 num_samples=args.calib_size,
+            )
+        elif model_type == "whisper":
+            assert processor is not None and isinstance(processor, WhisperProcessor), (
+                "The AutoProcessor must be set."
+            )
+            calib_dataloader, first_text = get_speech_dataset_dataloader(
+                dataset_name=args.dataset,
+                processor=processor,
+                batch_size=args.batch_size,
+                num_samples=args.calib_size,
+                device=device,
             )
         else:
             assert tokenizer is not None and isinstance(
@@ -347,30 +388,40 @@ def main(args):
                 quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
 
         # Only run single sample for preview
-        input_ids = next(iter(calib_dataloader))["input_ids"][0:1]
-        generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
+        input_ids = next(iter(calib_dataloader))[
+            "input_features" if model_type == "whisper" else "input_ids"
+        ][0:1]
+        with torch.autocast("cuda"):
+            generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
 
-        model = quantize_model(model, quant_cfg, args, calib_dataloader)
-        if args.compress:
-            mtq.compress(model)
-        # Lets print the quantization summary
-        if args.verbose:
-            mtq.print_quant_summary(model)
+            model = quantize_model(model, quant_cfg, args, calib_dataloader)
+            if args.compress:
+                mtq.compress(model)
+            # Lets print the quantization summary
+            if args.verbose:
+                mtq.print_quant_summary(model)
 
-        # Run some samples
-        generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
+            # Run some samples
+            generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
 
         def input_decode(input_ids):
             if processor is not None and isinstance(processor, MllamaImageProcessor):
                 return processor.tokenizer.batch_decode(input_ids)
+            elif processor is not None and isinstance(processor, WhisperProcessor):
+                return first_text
             elif tokenizer is not None:
                 return tokenizer.batch_decode(input_ids)
             else:
                 raise ValueError("The processor or tokenizer must be set")
 
         def output_decode(generated_ids, input_shape):
-            if tokenizer is not None and is_enc_dec(model_type):
-                return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+            if is_enc_dec(model_type):
+                if processor is not None and isinstance(processor, WhisperProcessor):
+                    return processor.tokenizer.batch_decode(
+                        generated_ids, skip_special_tokens=True
+                    )[0]
+                elif tokenizer is not None:
+                    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
             elif processor is not None and isinstance(processor, MllamaImageProcessor):
                 return processor.tokenizer.batch_decode(generated_ids[:, input_shape:])
             elif tokenizer is not None:

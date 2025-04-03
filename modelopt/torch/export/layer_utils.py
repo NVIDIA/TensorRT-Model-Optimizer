@@ -221,6 +221,11 @@ def is_linear(module: nn.Module) -> bool:
     return any([k in type(module).__name__ for k in ["Linear", "Conv1D", "NormHead"]])
 
 
+def is_conv(module: nn.Module) -> bool:
+    """Returns whether the module is a convolutional layer."""
+    return "Conv" in type(module).__name__
+
+
 def is_embedding(module: nn.Module) -> bool:
     """Returns whether the module is an embedding layer."""
     module_type_name = type(module).__name__
@@ -644,6 +649,14 @@ def build_attention_config(
         assert k
         assert v
         qkv_modules = [q, k, v]
+        for layer in qkv_modules:
+            # Add the missing zero bias for Whisper model for export purpose
+            if layer.bias is None and q.bias is not None:
+                layer.bias = torch.nn.Parameter(
+                    torch.zeros(layer.weight.size(1), device=layer.weight.device),
+                    requires_grad=True,
+                )
+                print("Add missing zero bias for qkv modules for export purpose")
 
     config.qkv = build_qkv(qkv_modules, model_metadata_config, ext_config, tp_size=tp_size)
 
@@ -723,7 +736,7 @@ def build_mlp_config(
             "dense_h_to_4h",  # falcon, chatglm, bloom
             "linear_fc1",
             "w2",  # qwen
-            "fc1",  # phi, gemma
+            "fc1",  # phi, gemma, whisper
             "gate_up_proj",  # phi
             "wi_0",  # t5
             "wi",  # t5
@@ -739,7 +752,7 @@ def build_mlp_config(
             "down_proj",  # llama, baichuan, mpt, phi, recurrentgemma, nemotron, deepseek
             "linear_fc2",
             "proj",
-            "fc2",  # phi, gemma
+            "fc2",  # phi, gemma, whisper
             "wo",  # t5
         ]
     )
@@ -1288,21 +1301,29 @@ def build_decoder_config(
             for layer in sub_module.children():
                 combined_module.append(layer)
         module_layers = dict(combined_module.named_children())
-    elif decoder_type in ["bart"]:
-        # BartEncoderLayer, BartDecoderLayer have MLP component with no Module wrapper.
-        # creating a dummy module so that is_mlp may catch it.
-        bart_mlp_submodule_names = ["fc1", "fc2", "activation_fn"]
+    elif decoder_type in ["bart", "whisper"]:
+        if decoder_type == "whisper":
+            # Add max_position_embeddings for Whisper model
+            if model_metadata_config.get("enc_dec") == "enc":
+                config.max_position_embeddings = module.self_attn.config.max_source_positions
+            else:
+                config.max_position_embeddings = module.self_attn.config.max_target_positions
+        # BartEncoderLayer, BartDecoderLayer, WhisperEncoderLayer, WhisperDecoderLayer
+        # have MLP component with no Module wrapper.
+        # Create a dummy module so that is_mlp may catch it.
+        encdec_mlp_submodule_names = ["fc1", "fc2", "activation_fn", "activation_fn"]
         module_layers = dict(module.named_children())
 
-        class BartMLP(nn.Module):
+        class EncDecMLP(nn.Module):
             def __init__(self):
                 super().__init__()
 
-        bart_mlp_module = BartMLP()
-        for submodule_name in bart_mlp_submodule_names:
-            setattr(bart_mlp_module, submodule_name, getattr(module, submodule_name))
-            module_layers.pop(submodule_name)
-        module_layers.update({"MLP": bart_mlp_module})
+        encdec_mlp_module = EncDecMLP()
+        for submodule_name in encdec_mlp_submodule_names:
+            if submodule_name in module_layers:
+                setattr(encdec_mlp_module, submodule_name, getattr(module, submodule_name))
+                module_layers.pop(submodule_name)
+        module_layers.update({"MLP": encdec_mlp_module})
     else:
         module_layers = dict(module.named_children())
         if decoder_type in ["exaone"]:
@@ -1612,13 +1633,13 @@ def get_experts_linear_names(model: torch.nn.Module):
 
 def model_type_is_enc_dec(model_type):
     """Check if model_type is a enc-dec model."""
-    return model_type in ["t5", "bart"]
+    return model_type in ["t5", "bart", "whisper"]
 
 
 def get_enc_dec_models(hf_model, model_type):
     """Get the correct encoder, decoder from hf model."""
     assert model_type_is_enc_dec(model_type), "This encoder decoder model is not supported"
-    if model_type in "bart":
+    if model_type in ["bart", "whisper"]:
         return [("enc", hf_model.model.encoder), ("dec", hf_model.model.decoder)]
     else:
         return [("enc", hf_model.encoder), ("dec", hf_model.decoder)]

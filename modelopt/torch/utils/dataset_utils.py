@@ -195,6 +195,7 @@ def get_max_batch_size(
     model: torch.nn.Module,
     max_sample_length: int = 512,
     sample_memory_usage_ratio: float = 1.0,
+    sample_input_single_batch: torch.Tensor = None,
 ):
     """Get the maximum batch size that can be used for the model."""
 
@@ -213,9 +214,15 @@ def get_max_batch_size(
     free_mem_before, max_allocated_before = _get_free_gpu_mem()
     is_enc_dec = model_type_is_enc_dec(model)
     infer_method = model.generate if is_enc_dec else model.forward
+
+    if sample_input_single_batch is None:
+        sample_input_single_batch = (
+            torch.ones([1, max_sample_length], dtype=torch.int32, device=model.device) * 100
+        )
+
     # Calculate single batch inference with dummy input.
     with torch.no_grad():
-        infer_method(torch.ones([1, max_sample_length]).int().to(model.device) * 100)
+        infer_method(sample_input_single_batch)
     free_mem_after, max_allocated_after = _get_free_gpu_mem()
 
     mem_diff_per_data_batch = (
@@ -233,15 +240,19 @@ def get_max_batch_size(
         target_data_batch = 1
     else:
         target_data_batch = max(int(free_mem_before / mem_diff_per_data_batch), 1)
+    target_input = sample_input_single_batch.expand(
+        [
+            target_data_batch if index == 0 else dim
+            for index, dim in enumerate(sample_input_single_batch.shape)
+        ]
+    )
 
     # For some models on multi GPU, we observe the memory per batch is not a constant.
     # So we just test the target batch size and make sure we do not go OOM.
     while target_data_batch > 1:
         with torch.no_grad():
             try:
-                infer_method(
-                    torch.ones([target_data_batch, max_sample_length]).int().to(model.device) * 100
-                )
+                infer_method(target_input)
                 break
             except torch.cuda.OutOfMemoryError:
                 target_data_batch = target_data_batch // 2
@@ -353,5 +364,5 @@ def create_forward_loop(
 
 
 def model_type_is_enc_dec(model):
-    enc_dec_model_list = ["t5", "bart"]
+    enc_dec_model_list = ["t5", "bart", "whisper"]
     return any(model_name in model.__class__.__name__.lower() for model_name in enc_dec_model_list)

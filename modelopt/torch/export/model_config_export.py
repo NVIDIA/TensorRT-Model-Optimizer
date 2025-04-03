@@ -32,6 +32,7 @@ from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
 from .layer_utils import (
+    build_conv_config,
     build_decoder_config,
     build_embedding_config,
     build_layernorm_config,
@@ -43,6 +44,7 @@ from .layer_utils import (
     get_enc_dec_token_ids,
     get_encoder_config,
     get_transformer_layers,
+    is_conv,
     is_decoder_list,
     is_embedding,
     is_layernorm,
@@ -202,7 +204,10 @@ def torch_to_tensorrt_llm_checkpoint(
     models = [("decoder", model)]
     is_enc_dec = model_type_is_enc_dec(decoder_type)
     if is_enc_dec:
-        model_lm_head = model.lm_head
+        if decoder_type in ["whisper"]:
+            model_lm_head = model.proj_out
+        else:
+            model_lm_head = model.lm_head
         # For Encoder-Decoder models, we process the checkpoint separately.
         models = get_enc_dec_models(model, decoder_type)
 
@@ -236,9 +241,11 @@ def torch_to_tensorrt_llm_checkpoint(
             config.enc_dec = component_name
             model_metadata_config["enc_dec"] = component_name
 
-            if decoder_type == "bart":
+            if decoder_type in ["bart"]:
                 # bart does not have final layernorm but has embedding layernorm.
                 has_embedding_layernorm = True
+            elif decoder_type in ["whisper"]:
+                has_position_embedding = True
 
         # GLM has a different handling of word_embeddings.
         if decoder_type == "glm":
@@ -248,9 +255,11 @@ def torch_to_tensorrt_llm_checkpoint(
         # Build the full model_config dict layer by layer.
         for module in transformer_layers:
             if is_embedding(module):
-                if config.vocab_embedding is None:
+                if config.vocab_embedding is None and not (
+                    decoder_type == "whisper" and model_metadata_config["enc_dec"] == "enc"
+                ):
                     # We assume the first embedding in the list the vocab_embedding.
-
+                    # For whisper encoder module, the only embedding is position embedding
                     normalization_constant = 1
                     # Normalize vocab embedding for gemma.
                     if (
@@ -316,6 +325,12 @@ def torch_to_tensorrt_llm_checkpoint(
                     # This will update lm_head quantization config according to constraints from TRT-LLM
                     update_lm_head_quantization(config, module, inference_pipeline_parallel)
                     config.lm_head = build_linear_config(module, "column")
+            elif is_conv(module):
+                if decoder_type in ["whisper"]:
+                    if config.conv1 is None:
+                        config.conv1 = build_conv_config(module)
+                    else:
+                        config.conv2 = build_conv_config(module)
 
         # For decoder of Encoder-Decoder model, it needs some encoder information
         if is_enc_dec:
@@ -333,7 +348,8 @@ def torch_to_tensorrt_llm_checkpoint(
         # For the training time PP, not all ranks will have the lm_head layer.
         if config.lm_head is None:
             if is_enc_dec:
-                config.share_embedding_table = False
+                if decoder_type not in ["whisper"]:
+                    config.share_embedding_table = False
                 if model_metadata_config["enc_dec"] == "dec":
                     config.lm_head = build_linear_config(model_lm_head, "column")
             elif training_pipeline_parallel == 1:
@@ -466,7 +482,6 @@ def export_tensorrt_llm_checkpoint(
         workspace_path.mkdir(parents=True, exist_ok=True)
 
     try:
-        exclude_modules = set()
         for (
             tensorrt_llm_config,
             weights,
@@ -479,6 +494,7 @@ def export_tensorrt_llm_checkpoint(
             inference_pipeline_parallel=inference_pipeline_parallel,
             workspace_path=workspace_path,
         ):
+            exclude_modules = set()
             rank = tensorrt_llm_config["rank"]
             world_size = tensorrt_llm_config["mapping"]["world_size"]
             if tensorrt_llm_config["quantization"]:

@@ -10,6 +10,7 @@ Model Optimizer Changelog (Linux)
 
 **New Features**
 
+- New model support in the ``llm_ptq`` example: OpenAI Whisper.
 - Blockwise FP8 quantization support in unified model export.
 - Add quantization support to the Transformer Engine Linear module.
 - Add support for SVDQuant. Currently, only simulation is available; real deployment (for example, TensorRT deployment) support is coming soon.

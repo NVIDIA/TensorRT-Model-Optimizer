@@ -46,6 +46,7 @@ MODEL_NAME_TO_TYPE = {
     "ExaoneForCausalLM": "exaone",
     "Nemotron": "gpt",
     "Deepseek": "deepseek",
+    "Whisper": "whisper",
 }
 
 __doc__ = f"""Utility functions for model type detection and classification.

@@ -568,6 +568,10 @@ class ModelConfig:
     bos_token_id: int = None
     pad_token_id: int = None
 
+    # For whisper encoder feature extractor
+    conv1: ConvConfig = None
+    conv2: ConvConfig = None
+
     @property
     def vocab_size_padded(self):
         """Returns the padded vocab_size of the model rounds to the tensor_parallel."""
