@@ -19,7 +19,7 @@ from functools import partial
 
 import datasets
 import transformers
-from peft import LoraConfig
+from peft import LoraConfig, TaskType
 from torch.utils.data import Dataset
 from transformers import default_data_collator
 
@@ -158,7 +158,7 @@ def get_lora_config():
             "up_proj",
             "down_proj",
         ],
-        task_type="CAUSAL_LM",
+        task_type=TaskType.CAUSAL_LM,
     )
 
 

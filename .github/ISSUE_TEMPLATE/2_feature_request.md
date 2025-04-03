@@ -17,5 +17,5 @@ assignees: ''
 ### Describe alternatives you've considered
 
 
-### Target Hardware/Use Case
+### Target hardware/use case
 <!-- Target hardware/use case this feature will be used for -->

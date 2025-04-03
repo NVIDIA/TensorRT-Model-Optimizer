@@ -51,6 +51,7 @@ import onnx
 import onnxruntime as ort
 from onnx import onnx_pb
 from onnxruntime.quantization import calibrate
+from onnxruntime.quantization.base_quantizer import BaseQuantizer
 from onnxruntime.quantization.calibrate import (
     CalibraterBase,
     CalibrationDataReader,
@@ -64,7 +65,7 @@ from onnxruntime.quantization.calibrate import (
     TensorData,
     TensorsData,
 )
-from onnxruntime.quantization.onnx_quantizer import ONNXQuantizer as QDQQuantizer
+from onnxruntime.quantization.qdq_quantizer import QDQQuantizer
 from onnxruntime.quantization.quant_utils import (
     QuantFormat,
     QuantizationMode,
@@ -77,16 +78,20 @@ from onnxruntime.quantization.quantize import check_static_quant_arguments
 from onnxruntime.quantization.registry import QDQRegistry, QLinearOpsRegistry
 from tqdm import tqdm
 
-if ort.__version__ >= "1.18":
-    from onnxruntime.quantization.qdq_quantizer import QDQQuantizer
-
 
 def _collect_value(histogram_collector, name_to_arr):
     """Collect histogram on real value."""
     for tensor, data_arr in tqdm(name_to_arr.items()):
-        data_arr = np.asarray(data_arr)  # noqa: PLW2901
-        data_arr = data_arr.flatten()  # noqa: PLW2901
+        # ====================== Modification ======================
+        concat_data_arr = np.asarray(data_arr[0])  # noqa: PLW2901
+        concat_data_arr = concat_data_arr.flatten()  # noqa: PLW2901
+        for i in range(1, len(data_arr)):
+            curr_data_arr = np.asarray(data_arr[i])  # noqa: PLW2901
+            curr_data_arr = curr_data_arr.flatten()  # noqa: PLW2901
+            concat_data_arr = np.concatenate((concat_data_arr, curr_data_arr))
 
+        data_arr = concat_data_arr
+        # ==========================================================
         if data_arr.size > 0:
             min_value = np.min(data_arr)
             max_value = np.max(data_arr)
@@ -119,6 +124,82 @@ def _collect_value(histogram_collector, name_to_arr):
                 min_value,
                 max_value,
                 threshold,
+            )
+
+
+def _collect_absolute_value(histogram_collector, name_to_arr):
+    """Collect histogram on absolute value."""
+    for tensor, data_arr in name_to_arr.items():
+        if isinstance(data_arr, list):
+            for arr in data_arr:
+                assert isinstance(arr, np.ndarray), (
+                    f"Unexpected type {type(arr)} for tensor={tensor!r}"
+                )
+            dtypes = {a.dtype for a in data_arr}
+            assert len(dtypes) == 1, (
+                f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
+            )
+            # ====================== Modification ======================
+            concat_data_arr = np.asarray(data_arr[0])  # noqa: PLW2901
+            concat_data_arr = concat_data_arr.flatten()  # noqa: PLW2901
+            for i in range(1, len(data_arr)):
+                curr_data_arr = np.asarray(data_arr[i])  # noqa: PLW2901
+                curr_data_arr = curr_data_arr.flatten()  # noqa: PLW2901
+                concat_data_arr = np.concatenate((concat_data_arr, curr_data_arr))
+            data_arr_np = concat_data_arr
+            # ==========================================================
+        elif not isinstance(data_arr, np.ndarray):
+            raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
+        else:
+            data_arr_np = data_arr
+        data_arr_np = data_arr_np.flatten()
+        if data_arr_np.size > 0:
+            min_value = np.min(data_arr_np)
+            max_value = np.max(data_arr_np)
+        else:
+            min_value = np.array(0, dtype=data_arr_np.dtype)
+            max_value = np.array(0, dtype=data_arr_np.dtype)
+
+        data_arr_np = np.absolute(data_arr_np)  # only consider absolute value
+
+        if tensor not in histogram_collector.histogram_dict:
+            # first time it uses num_bins to compute histogram.
+            hist, hist_edges = np.histogram(data_arr_np, bins=histogram_collector.num_bins)
+            hist_edges = hist_edges.astype(data_arr_np.dtype)
+            assert data_arr_np.dtype != np.float64, (
+                "only float32 or float16 is supported, every constant must be explicitly typed"
+            )
+            histogram_collector.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
+        else:
+            old_histogram = histogram_collector.histogram_dict[tensor]
+            old_min = old_histogram[2]
+            old_max = old_histogram[3]
+            assert hasattr(old_min, "dtype"), (
+                f"old_min should be a numpy array but is {type(old_min)}"
+            )
+            assert hasattr(old_max, "dtype"), (
+                f"old_min should be a numpy array but is {type(old_max)}"
+            )
+            old_hist = old_histogram[0]
+            old_hist_edges = old_histogram[1]
+            temp_amax = np.max(data_arr_np)
+            if temp_amax > old_hist_edges[-1]:
+                # increase the number of bins
+                width = old_hist_edges[1] - old_hist_edges[0]
+                # NOTE: np.arange may create an extra bin after the one containing temp_amax
+                new_bin_edges = np.arange(old_hist_edges[-1] + width, temp_amax + width, width)
+                old_hist_edges = np.hstack((old_hist_edges, new_bin_edges))
+            hist, hist_edges = np.histogram(data_arr_np, bins=old_hist_edges)
+            hist_edges = hist_edges.astype(data_arr_np.dtype)
+            hist[: len(old_hist)] += old_hist
+            assert data_arr_np.dtype != np.float64, (
+                "only float32 or float16 is supported, every constant must be explicitly typed"
+            )
+            histogram_collector.histogram_dict[tensor] = (
+                hist,
+                hist_edges,
+                min(old_min, min_value),
+                max(old_max, max_value),
             )
 
 
@@ -189,10 +270,6 @@ def _create_inference_session_with_ep_config(calibrator, **kwargs):
     trt_extra_plugin_lib_paths = kwargs.get("trt_extra_plugin_lib_paths", None)
 
     if trt_extra_plugin_lib_paths is not None:
-        # Assert supported configuration
-        assert ort.__version__ >= "1.18", (
-            "Plugin support is only available with ORT 1.18, which only supports TRT 10."
-        )
         if "TensorrtExecutionProvider" not in ort.get_available_providers():
             raise RuntimeError(
                 "Could not find `TensorrtExecutionProvider`, only {}".format(
@@ -218,6 +295,98 @@ def _create_inference_session_with_ep_config(calibrator, **kwargs):
         sess_options=sess_options,
         providers=providers,
     )
+
+    # Group qdq tensors will have the same scaling factor.
+    calibrator.group_qdq_tensors = kwargs.get("group_qdq_tensors", None)
+
+
+def _compute_data_minmax_calibrator(calibrator):
+    """Compute the min-max range of tensor.
+
+    :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
+    """
+    if len(calibrator.intermediate_outputs) == 0:
+        return calibrator.calibrate_tensors_range
+
+    output_names = [
+        calibrator.infer_session.get_outputs()[i].name
+        for i in range(len(calibrator.intermediate_outputs[0]))
+    ]
+
+    # TODO: If Python 3.10, we can instead just add strict=True to zip
+    assert all(
+        len(output_names) == len(intermediate_output)
+        for intermediate_output in calibrator.intermediate_outputs
+    )
+    output_dicts_list = [
+        dict(zip(output_names, intermediate_output))
+        for intermediate_output in calibrator.intermediate_outputs
+    ]
+
+    merged_output_dict = {}
+    for d in output_dicts_list:
+        for k, v in d.items():
+            merged_output_dict.setdefault(k, []).append(v)
+
+    # ====================== Modification ======================
+    # Group qdq tensors should have the same scaling factor. Each tensor in group should add
+    # other tensors in its merged_dict value. In this way, calibrator will generate the same
+    # scaling factor.
+    if calibrator.group_qdq_tensors:
+        for cur, group in calibrator.group_qdq_tensors.items():
+            for other in group:
+                if cur == other:
+                    continue
+                for d in output_dicts_list:
+                    for k, v in d.items():
+                        cur_min = cur + "_" + "ReduceMin"
+                        cur_max = cur + "_" + "ReduceMax"
+                        other_min = other + "_" + "ReduceMin"
+                        other_max = other + "_" + "ReduceMax"
+                        if k == other_min:
+                            merged_output_dict[cur_min].append(v)
+                        elif k == other_max:
+                            merged_output_dict[cur_max].append(v)
+    # ============================================================
+
+    added_output_names = output_names[calibrator.num_model_outputs :]
+    calibrate_tensor_names = [
+        added_output_names[i].rpartition("_")[0] for i in range(0, len(added_output_names), 2)
+    ]  # output names
+
+    merged_added_output_dict = {
+        i: merged_output_dict[i]
+        for i in merged_output_dict
+        if i not in calibrator.model_original_outputs
+    }
+
+    pairs = []
+    for i in range(0, len(added_output_names), 2):
+        if calibrator.moving_average:
+            min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis=0)
+            max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
+        else:
+            min_value_array = np.min(merged_added_output_dict[added_output_names[i]], axis=0)
+            max_value_array = np.max(merged_added_output_dict[added_output_names[i + 1]], axis=0)
+
+        if calibrator.symmetric:
+            max_absolute_value = np.max([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
+            pairs.append((-max_absolute_value, max_absolute_value))
+        else:
+            pairs.append((min_value_array, max_value_array))
+
+    # TODO: For Python 3.10, we can instead just add strict=False here
+    new_calibrate_tensors_range = TensorsData(
+        CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs))
+    )
+    if calibrator.calibrate_tensors_range:
+        calibrator.calibrate_tensors_range = calibrator.merge_range(
+            calibrator.calibrate_tensors_range, new_calibrate_tensors_range
+        )
+    else:
+        calibrator.calibrate_tensors_range = new_calibrate_tensors_range
+
+    return calibrator.calibrate_tensors_range
 
 
 def _collect_data_minmax_calibrator(calibrator, data_reader: CalibrationDataReader):
@@ -305,6 +474,19 @@ def _collect_data_histogram_calibrator(calibrator, data_reader: CalibrationDataR
         for d in output_dicts_list:
             for k, v in d.items():
                 merged_dict.setdefault(k, []).append(v)
+
+        # Group qdq tensors should have the same scaling factor. Each tensor in group should add
+        # other tensors in its merged_dict value. In this way, calibrator will generate the same
+        # scaling factor.
+        if calibrator.group_qdq_tensors:
+            for cur, group in calibrator.group_qdq_tensors.items():
+                for other in group:
+                    if cur == other:
+                        continue
+                    for d in output_dicts_list:
+                        for k, v in d.items():
+                            if k == other:
+                                merged_dict[cur].append(v)
 
         clean_merged_dict = {
             i: merged_dict[i] for i in merged_dict if i in calibrator.tensors_to_calibrate
@@ -516,6 +698,7 @@ def _quantize_static(
         # ====================== Modification ======================
         ("TrtExtraPluginLibraryPaths", "trt_extra_plugin_lib_paths"),
         ("ExecutionProviders", "execution_providers"),
+        ("group_qdq_tensors", "group_qdq_tensors"),
         # ==========================================================
     ]
     calib_extra_options = {
@@ -596,15 +779,13 @@ def _quantize_static(
 def patch_ort_modules():
     """Patches the ORT modules."""
     HistogramCollector.collect_value = _collect_value
+    HistogramCollector.collect_absolute_value = _collect_absolute_value
     calibrate.create_calibrator = _create_calibrator_with_extra_options
     CalibraterBase.create_inference_session = _create_inference_session_with_ep_config
     CalibraterBase.select_tensors_to_calibrate = _select_tensors_to_calibrate
     QDQQuantizer.check_opset_version = _check_opset_version
+    MinMaxCalibrater.compute_data = _compute_data_minmax_calibrator
     MinMaxCalibrater.collect_data = _collect_data_minmax_calibrator
     MinMaxCalibrater.merge_range = _merge_range_minmax_calibrator
     HistogramCalibrater.collect_data = _collect_data_histogram_calibrator
-
-    if ort.__version__ >= "1.18":
-        from onnxruntime.quantization.base_quantizer import BaseQuantizer
-
-        BaseQuantizer.adjust_tensor_ranges = _adjust_tensor_ranges
+    BaseQuantizer.adjust_tensor_ranges = _adjust_tensor_ranges

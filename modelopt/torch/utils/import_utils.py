@@ -20,12 +20,13 @@ from contextlib import contextmanager
 
 
 @contextmanager
-def import_plugin(plugin_name, verbose=True):
+def import_plugin(plugin_name, msg_if_missing=None, verbose=True):
     """Context manager to import a plugin and suppress ModuleNotFoundError."""
     try:
         yield
     except ModuleNotFoundError:
-        pass
+        if msg_if_missing is not None:
+            warnings.warn(msg_if_missing)
     except Exception as e:
         if verbose:
             warnings.warn(

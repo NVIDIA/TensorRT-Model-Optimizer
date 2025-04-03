@@ -10,7 +10,6 @@ build-backend = "setuptools.build_meta"
 ###############################  LINTING, FORMATTING AND TESTING CONFIGURATION  ####################
 ####################################################################################################
 [tool.ruff]
-extend-exclude = ["internal/experimental/*"]
 line-length = 100 # Line length limit for code
 fix = true
 
@@ -41,9 +40,9 @@ extend-ignore = ["D105", "D417", "N812"]
 "examples/*" = ["D"]
 "internal/*" = ["D"]
 "tests/*" = ["D", "E402"]
-"setup.py" = ["D"]
 "*/_[a-zA-Z]*" = ["D"]           # Private packages (_abc/*.py) or modules (_xyz.py)
 "*.ipynb" = ["D", "E501"]        # Ignore missing docstrings or line length for Jupyter notebooks
+"modelopt/torch/quantization/triton/*" = ["N803", "N806", "E731"]  # triton style
 
 
 [tool.ruff.lint.pycodestyle]
@@ -109,7 +108,7 @@ omit = ["*/plugins/*", "*/export/*"]
 
 
 [tool.coverage.report]
-fail_under = 65
+fail_under = 70
 skip_covered = true
 ignore_errors = true
 exclude_lines = [
@@ -134,7 +133,7 @@ exclude_lines = [
 
 
 [tool.bandit]
-exclude_dirs = ["docs/", "examples/", "internal/", "tests/", "setup.py"]
+exclude_dirs = ["examples/", "internal/", "tests/"]
 # Do not change `skips`. It should be consistent with NVIDIA's Wheel-CI-CD bandit.yml config.
 # Use of `# nosec BXXX` requires special approval
 skips = [

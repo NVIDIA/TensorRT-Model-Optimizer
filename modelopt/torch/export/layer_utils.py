@@ -647,8 +647,12 @@ def build_attention_config(
 
     config.qkv = build_qkv(qkv_modules, model_metadata_config, ext_config, tp_size=tp_size)
 
-    config.kv_cache_scaling_factor = get_kv_cache_scaling_factor(qkv_modules)
-    if config.kv_cache_scaling_factor is not None:
+    config.k_cache_scaling_factor, config.v_cache_scaling_factor = get_kv_cache_scaling_factor(
+        module
+    )
+
+    if config.k_cache_scaling_factor is not None:
+        assert config.v_cache_scaling_factor is not None
         config.kv_cache_dtype = get_kv_cache_dtype(qkv_modules)
 
     return config

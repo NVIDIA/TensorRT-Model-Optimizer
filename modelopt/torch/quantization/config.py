@@ -113,92 +113,7 @@ Here is an example of a quantization config:
 Example Quantization Configurations
 ==========================================
 
-Here are the recommended quantization configs from Model Optimizer for
-quantization formats such as FP8, INT8, INT4, etc.:
-
-.. code-block::
-
-    INT8_DEFAULT_CFG = {
-        "quant_cfg": {
-        "*weight_quantizer": {"num_bits": 8, "axis": 0},
-        "*input_quantizer": {"num_bits": 8, "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "default": {"enable": False},
-        },
-        "algorithm": "max",
-    }
-
-    INT8_SMOOTHQUANT_CFG = {
-        "quant_cfg": {
-        "*weight_quantizer": {"num_bits": 8, "axis": 0},
-        "*input_quantizer": {"num_bits": 8, "axis": -1},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "nn.Conv2d": {
-            "*weight_quantizer": {"num_bits": 8, "axis": 0},
-            "*input_quantizer": {"num_bits": 8, "axis": None},
-        },
-        "default": {"enable": False},
-        },
-        "algorithm": "smoothquant",
-    }
-
-    FP8_DEFAULT_CFG = {
-        "quant_cfg": {
-        "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "default": {"enable": False},
-        },
-        "algorithm": "max",
-    }
-
-    INT4_BLOCKWISE_WEIGHT_ONLY_CFG = {
-        "quant_cfg": {
-        "*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
-        "*input_quantizer": {"enable": False},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "default": {"enable": False},
-        },
-        "algorithm": "max",
-    }
-
-    INT4_AWQ_CFG = {
-        "quant_cfg": {
-        "*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
-        "*input_quantizer": {"enable": False},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "default": {"enable": False},
-        },
-        "algorithm": {"method": "awq_lite", "alpha_step": 0.1},
-        # "algorithm": {"method": "awq_full", "alpha_step": 0.1, "max_co_batch_size": 1024},
-        # "algorithm": {"method": "awq_clip", "max_co_batch_size": 2048},
-    }
-
-    W4A8_AWQ_BETA_CFG = {
-    "quant_cfg": {
-        "*weight_quantizer": [
-            {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
-            {"num_bits": (4, 3), "axis": None, "enable": True},
-        ],
-        "*input_quantizer": {"num_bits": (4, 3), "axis": None, "enable": True},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "default": {"enable": False},
-    },
-    "algorithm": "awq_lite",
-    }
-
-These config can be accessed as attributes of ``modelopt.torch.quantization`` and can be given as
+These example configs can be accessed as attributes of ``modelopt.torch.quantization`` and can be given as
 input to :meth:`mtq.quantize() <modelopt.torch.quantization.model_quant.quantize>`. For example:
 
 .. code-block::
@@ -221,6 +136,7 @@ the layer named ``lm_head``,  you can create a custom config and quantize your m
 
 """
 
+import warnings
 from fnmatch import fnmatch
 from typing import Callable, Dict, Literal, Optional, Tuple, Union
 
@@ -232,8 +148,9 @@ from modelopt.core.torch.quantization.config import (  # noqa: F401
     NVFP4_AWQ_FULL_CFG,
     NVFP4_AWQ_LITE_CFG,
     NVFP4_DEFAULT_CFG,
-    NVFP4_REAL_QUANT_CFG,
-    NVFP4_WA_NVFP4_KV_ROTATE_CFG,
+    NVFP4_KV_CFG,
+    NVFP4_KV_ROTATE_CFG,
+    NVFP4_SVDQUANT_DEFAULT_CFG,
 )
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 from modelopt.torch.utils.network import ConstructorLike
@@ -243,19 +160,19 @@ _default_disabled_quantizer_cfg = {
     "nn.BatchNorm2d": {"*": {"enable": False}},
     "nn.BatchNorm3d": {"*": {"enable": False}},
     "nn.LeakyReLU": {"*": {"enable": False}},
+    "*lm_head*": {"enable": False},
+    "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
+    "*router*": {"enable": False},  # Skip the MOE router
+    "*output_layer*": {"enable": False},
+    "output.*": {"enable": False},
+    "default": {"enable": False},
 }
 
 INT8_DEFAULT_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": 8, "axis": 0},
         "*input_quantizer": {"num_bits": 8, "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "max",
 }
@@ -264,13 +181,7 @@ INT8_SMOOTHQUANT_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": 8, "axis": 0},
         "*input_quantizer": {"num_bits": 8, "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "smoothquant",
 }
@@ -279,94 +190,39 @@ FP8_DEFAULT_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "max",
 }
 
-FP8_PER_TENSOR_REAL_QUANT_CFG = {
+FP8_PER_CHANNEL_WEIGHT_CFG = {
     "quant_cfg": {
-        "*weight_quantizer": {"num_bits": (4, 3), "axis": None, "fake_quant": False},
+        "*weight_quantizer": {"num_bits": (4, 3), "axis": -1},
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "max",
 }
 
-FP8_PER_CHANNEL_REAL_QUANT_CFG = {
+FP8_PER_CHANNEL_PER_TOKEN_CFG = {
     "quant_cfg": {
-        "*weight_quantizer": {"num_bits": (4, 3), "axis": -1, "fake_quant": False},
-        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
+        "*weight_quantizer": {"num_bits": (4, 3), "axis": -1},
+        "*input_quantizer": {"num_bits": (4, 3), "type": "dynamic", "axis": 0},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "max",
 }
 
-FP8_BLOCKWISE_REAL_QUANT_CFG = {
+# FP8 2D blockwise fake quantization config for deepseek models
+FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {
             "num_bits": (4, 3),
             "block_sizes": {-1: 128, -2: 128},
-            "fake_quant": False,
+            "enable": True,
         },
-        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
+        "*input_quantizer": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
-    },
-    "algorithm": "max",
-}
-
-
-FP8_PER_CHANNEL_CFG = {
-    "quant_cfg": {
-        "*weight_quantizer": {"num_bits": (4, 3), "axis": 0},
-        "*input_quantizer": {"num_bits": (4, 3), "axis": -1, "type": "dynamic"},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
-        **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
-    },
-    "algorithm": "max",
-}
-
-FP8_WA_FP8_KV_CFG = {
-    "quant_cfg": {
-        "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*[kv]_bmm_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
-        **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "max",
 }
@@ -375,54 +231,9 @@ INT4_BLOCKWISE_WEIGHT_ONLY_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
         "*input_quantizer": {"enable": False},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "max",
-}
-
-NF4_REAL_QUANT_CFG = {
-    "quant_cfg": {
-        "*weight_quantizer": {
-            "num_bits": 4,
-            "block_sizes": {-1: 64, "scale_bits": 8, "scale_block_sizes": {-1: 256}},
-            "enable": True,
-            "fake_quant": False,
-        },
-        "*input_quantizer": {"enable": False},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
-        "default": {"enable": False},
-    },
-    "algorithm": "max",
-}
-
-INT4_AWQ_REAL_QUANT_CFG = {
-    "quant_cfg": {
-        "*weight_quantizer": {
-            "num_bits": 4,
-            "block_sizes": {-1: 128, "type": "static"},
-            "enable": True,
-            "fake_quant": False,
-        },
-        "*input_quantizer": {"enable": False},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
-        **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
-    },
-    "algorithm": {"method": "awq_lite", "alpha_step": 0.1},
 }
 
 INT4_AWQ_CFG = {
@@ -433,13 +244,7 @@ INT4_AWQ_CFG = {
             "enable": True,
         },
         "*input_quantizer": {"enable": False},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": {"method": "awq_lite", "alpha_step": 0.1},
     # "algorithm": {"method": "awq_full", "alpha_step": 0.1, "max_co_batch_size": 1024},
@@ -455,13 +260,7 @@ W4A8_AWQ_BETA_CFG = {
             {"num_bits": (4, 3), "axis": None, "enable": True},
         ],
         "*input_quantizer": {"num_bits": (4, 3), "axis": None, "enable": True},
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "awq_lite",
 }
@@ -478,41 +277,63 @@ MXFP8_DEFAULT_CFG = {
             "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
             "enable": True,
         },
-        "*lm_head*": {"enable": False},
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
         **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": None,
 }
 
+FP8_KV_CFG = {
+    "quant_cfg": {
+        "*[kv]_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+            "enable": True,
+        },
+    }
+}
+
 FP8_AFFINE_KV_CFG = {
     "quant_cfg": {
-        "*weight_quantizer": {"enable": False},
-        "*input_quantizer": {"enable": False},
-        "*lm_head*": {"enable": False},
         "*[kv]_bmm_quantizer": {
             "num_bits": (4, 3),
             "axis": None,
             "bias": {-2: None, -4: None, "type": "static"},
         },
-        "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
-        "*router*": {"enable": False},  # Skip the MOE router
-        "*output_layer*": {"enable": False},
-        "output.*": {"enable": False},
-        **_default_disabled_quantizer_cfg,
-        "default": {"enable": False},
     },
     "algorithm": "max",
 }
+
+
+# Deprecated configs
+class _DeprecatedConfig(dict):
+    """A dictionary that prints out a warning when the deprecated config is used."""
+
+    _warned = False  # Class-level flag to track if warning was shown
+
+    def __getitem__(self, key):
+        if not self._warned:
+            warnings.warn(
+                "This quantization configuration is deprecated, and will be removed in the next release. "
+                "Please use the new API `mtq.compress` to compress the model weights after quantization instead.",
+                DeprecationWarning,
+                stacklevel=2,  # Show the caller's line number
+            )
+            self.__class__._warned = True  # Set flag for all instances
+        return super().__getitem__(key)
+
+
+# Deprecated configs
+FP8_PER_TENSOR_REAL_QUANT_CFG = _DeprecatedConfig(FP8_DEFAULT_CFG)
+FP8_2D_BLOCKWISE_REAL_QUANT_CFG = _DeprecatedConfig(FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG)
+FP8_PER_CHANNEL_REAL_QUANT_CFG = _DeprecatedConfig(FP8_PER_CHANNEL_WEIGHT_CFG)
 
 choices: set[str] = {
     "INT8_DEFAULT_CFG",
     "INT8_SMOOTHQUANT_CFG",
     "FP8_DEFAULT_CFG",
+    "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
+    "FP8_PER_CHANNEL_WEIGHT_CFG",
+    "FP8_PER_CHANNEL_PER_TOKEN_CFG",
     "INT4_BLOCKWISE_WEIGHT_ONLY_CFG",
     "INT4_AWQ_CFG",
     "W4A8_AWQ_BETA_CFG",
@@ -520,14 +341,10 @@ choices: set[str] = {
     "NVFP4_AWQ_LITE_CFG",
     "NVFP4_AWQ_CLIP_CFG",
     "NVFP4_AWQ_FULL_CFG",
-    "NVFP4_WA_NVFP4_KV_ROTATE_CFG",
-    "NF4_REAL_QUANT_CFG",
-    "NVFP4_REAL_QUANT_CFG",
-    "INT4_AWQ_REAL_QUANT_CFG",
-    "FP8_PER_TENSOR_REAL_QUANT_CFG",
-    "FP8_PER_CHANNEL_REAL_QUANT_CFG",
-    "FP8_BLOCKWISE_REAL_QUANT_CFG",
+    "NVFP4_KV_ROTATE_CFG",
+    "FP8_KV_CFG",
     "FP8_AFFINE_KV_CFG",
+    "NVFP4_KV_CFG",
     "NVFP4_AFFINE_KV_CFG",
     "MXFP8_DEFAULT_CFG",
 }
@@ -925,19 +742,19 @@ class AWQFullCalibConfig(AWQLiteCalibConfig, AWQClipCalibConfig):
     )
 
 
-class RealQuantizeConfig(QuantizeAlgorithmConfig):
-    """The config for real quantization config.
+class SVDQuantConfig(QuantizeAlgorithmConfig):
+    """The config for SVDQuant.
 
-    The ``additional_algorithm`` will be used for calibration before quantizing weights into low precision.
+    Refer to the `SVDQuant paper <https://arxiv.org/pdf/2411.05007>`_ for more details.
     """
 
-    additional_algorithm: Optional[
-        Union[AWQLiteCalibConfig, AWQClipCalibConfig, AWQFullCalibConfig]
-    ] = ModeloptField(
-        default="",
-        title="Additional algorithm for calibration before applying real quantization.",
-        description="""The algorithm used for calibration. Supported algorithms include
-        ``"awq_lite", "awq_full", and "awq_clip"``.""",
+    lowrank: Optional[int] = ModeloptField(
+        default=32,
+        title="Low-rank dimension for the SVD LoRA",
+        description=(
+            "Specifies the rank of the LoRA used in the SVDQuant method, "
+            "which captures outliers from the original weights."
+        ),
     )
 
 
@@ -959,7 +776,7 @@ CalibAlgorithmCfgType = Union[
     AWQLiteCalibConfig,
     AWQClipCalibConfig,
     AWQFullCalibConfig,
-    RealQuantizeConfig,
+    SVDQuantConfig,
 ]
 
 
@@ -983,7 +800,7 @@ class QuantizeConfig(ModeloptBaseConfig):
     def validate_calibrator(cls, v, info: ValidationInfo):
         """Validate algorithm."""
         if isinstance(v, str):
-            assert v in ["max", "smoothquant", "awq_lite", "awq_clip", "awq_full"]
+            assert v in ["max", "smoothquant", "awq_lite", "awq_clip", "awq_full", "svdquant"]
         return v
 
     @field_validator("quant_cfg")
@@ -1003,5 +820,45 @@ class QuantizeConfig(ModeloptBaseConfig):
         return v
 
 
+class CompressConfig(ModeloptBaseConfig):
+    """Default configuration for ``compress`` mode."""
+
+    compress: dict[str, bool] = ModeloptField(
+        default={"*": False},
+        title="""Enable weight compression for the given pattern. Default is False for all weights.
+        Call `compress` function to compress the model weights.""",
+    )
+
+
 class _QuantizeExportConfig(ModeloptBaseConfig):
     """An empty config."""
+
+
+def need_calibration(config):
+    """Check if calibration is needed for the given config."""
+    if config["algorithm"] != "max":
+        return True
+
+    def _not_dynamic(cfg):
+        return (
+            cfg.get("enable", True)
+            and cfg.get("type", "") != "dynamic"
+            and cfg.get("*", {}).get("enable", True)
+        )
+
+    for name, cfg in config.get("quant_cfg", {}).items():
+        if "weight_quantizer" in name:
+            # We don't calibrate weight quantizer
+            continue
+        # quantization like W4A8 has a list of weight quantizers
+        if isinstance(cfg, list):
+            for config in cfg:
+                if _not_dynamic(config):
+                    print(f"{cfg}: True")
+                    return True
+        else:
+            if _not_dynamic(cfg):
+                print(f"{cfg}: True")
+                return True
+
+    return False

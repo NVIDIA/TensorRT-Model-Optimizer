@@ -190,8 +190,9 @@ def train():
     trainer.save_state()
     trainer.save_model(training_args.output_dir)
 
-    metrics = trainer.evaluate()
-    print_rank_0(f"Evaluation results: \n{metrics}")
+    if training_args.do_eval:
+        metrics = trainer.evaluate()
+        print_rank_0(f"Evaluation results: \n{metrics}")
 
 
 if __name__ == "__main__":

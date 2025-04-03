@@ -25,8 +25,13 @@ from modelopt.torch.utils import print_rank_0
 
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 
+REMOVE_THINK_CHAT_TEMPLATE = (
+    "{% if '</think>' in content %}{% set content = content.split('</think>')[-1] %}{% endif %}"
+)
+
 
 def preprocess(examples, tokenizer):
+    tokenizer.chat_template = tokenizer.chat_template.replace(REMOVE_THINK_CHAT_TEMPLATE, "")
     new_examples = {
         "input_ids": [],
         "attention_mask": [],
@@ -131,8 +136,6 @@ class LazySupervisedDataset(Dataset):
 
     def __init__(self, raw_data, tokenizer: transformers.PreTrainedTokenizer):
         super(LazySupervisedDataset, self).__init__()
-        self.tokenizer = tokenizer
-
         print_rank_0("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
         self.raw_data = raw_data

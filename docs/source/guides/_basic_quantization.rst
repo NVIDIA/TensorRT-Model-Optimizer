@@ -42,7 +42,8 @@ accuracy post quantization. The simplest calibration algorithm is "max calibrati
 scaling factor is calculated from the global maximum of the tensor and the weights are unchanged and
 rounded to the nearest quantized value. An example of a more advanced calibration algorithm is
 `Entropy Calibration <https://docs.nvidia.com/deeplearning/tensorrt/api/python_api/infer/Int8/EntropyCalibrator.html>`_,
-`SmoothQuant <https://arxiv.org/abs/2211.10438>`_, and `AWQ <https://arxiv.org/abs/2306.00978>`_.
+`SmoothQuant <https://arxiv.org/abs/2211.10438>`_, `AWQ <https://arxiv.org/abs/2306.00978>`_, and
+`SVDQuant <https://arxiv.org/pdf/2411.05007>`_.
 
 Quantization-aware training (QAT)
 *********************************

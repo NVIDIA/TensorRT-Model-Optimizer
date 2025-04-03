@@ -25,11 +25,12 @@ from typing import Any, Optional, Union
 import torch
 import torch.nn as nn
 
-from modelopt import __version__
-
 from .layer_utils import get_experts_list, is_layernorm, is_moe, is_quantlinear
 from .model_config import (
+    KV_CACHE_FP8,
+    KV_CACHE_NVFP4,
     QUANTIZATION_FP8,
+    QUANTIZATION_FP8_PB_REAL,
     QUANTIZATION_NONE,
     QUANTIZATION_NVFP4,
     QUANTIZATION_NVFP4_AWQ,
@@ -38,14 +39,13 @@ from .model_config import (
 from .quant_utils import (
     fuse_prequant_layernorm,
     get_activation_scaling_factor,
-    get_kv_cache_dtype,
+    get_quant_config,
     get_quantization_format,
     get_weight_block_size,
     get_weight_scaling_factor,
     get_weight_scaling_factor_2,
     postprocess_state_dict,
     preprocess_linear_fusion,
-    process_layer_quant_config,
     to_quantized_weight,
 )
 
@@ -105,6 +105,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         if len(modules) > 1 and quantization_format not in [
             QUANTIZATION_FP8,
             QUANTIZATION_NONE,
+            QUANTIZATION_FP8_PB_REAL,
         ]:
             # Fuse modules that have the same input
             preprocess_linear_fusion(modules)
@@ -121,7 +122,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
 
 def _export_hf_checkpoint(
     model: nn.Module, dtype: Optional[torch.dtype] = None
-) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
     The packed checkpoint will be consumed by the TensorRT-LLM unified converter.
@@ -133,8 +134,6 @@ def _export_hf_checkpoint(
     Returns:
         post_state_dict: Dict containing quantized weights
         quant_config: config information to export hf_quant_cfg.json
-        per_layer_quantization: Dict containing layerwise quantization information to export quant_cfg.json
-        in mixed_precision case.
     """
     if dtype is None:
         dtype = model.config.torch_dtype
@@ -156,25 +155,37 @@ def _export_hf_checkpoint(
             for name, sub_module in getattr(model, key).named_modules():
                 layer_pool.update({f"{key}.{name}": sub_module})
 
-    # Layer config dict holds quantization format of each layer.
-    # It also holds awq_block_size information for applicable layers.
-    layer_config_dict = {}
-
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
     requantize_resmooth_fused_llm_layers(model)
 
+    # Remove all hooks from the model
+    try:
+        from accelerate.hooks import remove_hook_from_module
+
+        remove_hook_from_module(model, recurse=True)
+    except ImportError:
+        warnings.warn("accelerate is not installed, hooks will not be removed")
+        pass
+
+    quant_config = get_quant_config(layer_pool)
+
     kv_cache_max_bound = 0
-    kv_cache_format = QUANTIZATION_NONE
+    kv_cache_format = quant_config["quantization"]["kv_cache_quant_algo"]
+
+    cache_bound_mapping = {
+        KV_CACHE_NVFP4: 6 * 448,
+        KV_CACHE_FP8: 448,
+    }
+
+    # Only update kv_cache_max_bound if a quantization is applied.
+    if kv_cache_format != QUANTIZATION_NONE:
+        kv_cache_max_bound = cache_bound_mapping.get(kv_cache_format)
 
     for name, sub_module in layer_pool.items():
         if is_quantlinear(sub_module):
             quantization_format = get_quantization_format(sub_module)
             block_size = get_weight_block_size(sub_module)
-
-            # Construct per layer config dictionary
-            layer_config_dict.update({name + ".quantization": quantization_format})
-            layer_config_dict.update({name + ".awq_block_size": block_size})
 
             if quantization_format == QUANTIZATION_FP8:
                 # Convert amax to float32
@@ -226,7 +237,18 @@ def _export_hf_checkpoint(
 
             if quantization_format not in [QUANTIZATION_FP8, QUANTIZATION_NONE]:
                 # Register weight_scale and input_scale
-                sub_module.register_buffer("weight_scale", get_weight_scaling_factor(sub_module))
+                if quantization_format == QUANTIZATION_FP8_PB_REAL:
+                    sub_module.register_buffer(
+                        "weight_scale",
+                        sub_module.weight_quantizer._scale.to(torch.float32),
+                    )
+                    del sub_module.weight_quantizer._scale
+                else:
+                    sub_module.register_buffer(
+                        "weight_scale", get_weight_scaling_factor(sub_module)
+                    )
+                    # Remove size-1 dimensions for blocked fp8 scales
+                    sub_module.weight_scale.squeeze()
 
                 if hasattr(sub_module, "input_quantizer") and "disabled" not in repr(
                     sub_module.input_quantizer
@@ -246,82 +268,16 @@ def _export_hf_checkpoint(
                 )
                 sub_module.weight = nn.Parameter(quantized_weight, requires_grad=False)
 
-            # Find kv cache quant format
-            if kv_cache_format == QUANTIZATION_NONE:
-                kv_cache_format = get_kv_cache_dtype(sub_module)
-            else:
-                assert kv_cache_format == get_kv_cache_dtype(sub_module), (
-                    "Do not support mixed precision kv cache quantization"
-                )
-            if kv_cache_format != QUANTIZATION_NONE:
-                kv_cache_max_bound = sub_module.output_quantizer.maxbound
-
     quantized_state_dict = model.state_dict()
-
-    # Process per layer quantization config dict
-    per_layer_quantization = process_layer_quant_config(layer_config_dict)
 
     quantized_state_dict = postprocess_state_dict(
         quantized_state_dict, kv_cache_max_bound, kv_cache_format
     )
-    # Create the quantization config
-    # TODO: add support for customized mixed precision config
-    quant_config: dict[str, Any] = {
-        "producer": {
-            "name": "modelopt",
-            "version": __version__,
-        },
-        "quantization": {"quant_algo": None, "kv_cache_quant_algo": None},
-    }
 
-    if quantization_format == "fp8":
-        quant_config["quantization"].update({"quant_algo": "FP8", "exclude_modules": ["lm_head"]})
-        # TODO: add info about per-channel weight scale and dynamic per token input scale
-    elif quantization_format == "int4_awq":
-        quant_config["quantization"].update(
-            {
-                "quant_algo": "W4A16_AWQ",
-                "group_size": block_size,
-                "has_zero_point": False,
-                "pre_quant_scale": True,
-                "exclude_modules": ["lm_head"],
-            }
-        )
-    elif quantization_format == "nvfp4":
-        quant_config["quantization"].update(
-            {
-                "quant_algo": "NVFP4",
-                "group_size": block_size,
-                "exclude_modules": ["lm_head"],
-            }
-        )
-    elif quantization_format == "nvfp4_awq":
-        quant_config["quantization"].update(
-            {
-                "quant_algo": "NVFP4_AWQ",
-                "group_size": block_size,
-                "has_zero_point": False,
-                "pre_quant_scale": True,
-                "exclude_modules": ["lm_head"],
-            }
-        )
-    else:
-        quant_config["quantization"].update(
-            {
-                "quant_algo": (
-                    quantization_format if quantization_format != QUANTIZATION_NONE else None
-                ),
-            }
-        )
+    if quantization_format != QUANTIZATION_NONE:
+        quant_config["quantization"].setdefault("exclude_modules", []).append("lm_head")
 
-    if kv_cache_format is not None:
-        quant_config["quantization"].update(
-            {
-                "kv_cache_quant_algo": kv_cache_format,
-            }
-        )
-
-    return quantized_state_dict, quant_config, per_layer_quantization
+    return quantized_state_dict, quant_config
 
 
 def export_hf_checkpoint(
@@ -341,25 +297,7 @@ def export_hf_checkpoint(
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
     try:
-        post_state_dict, hf_quant_config, per_layer_quantization = _export_hf_checkpoint(
-            model, dtype
-        )
-
-        # If auto_quant is used, save per layer quantization information in quant_cfg.json
-        if per_layer_quantization:
-            # Update auto quant related information in quantization.json
-            per_layer_quantization["kv_cache_quant_algo"] = hf_quant_config["quantization"][
-                "kv_cache_quant_algo"
-            ]
-
-            # Update auto quant related informaion in hf_quant_config.json
-            # We remove group_size, has_zero_point and pre_quant_scale information from config.json
-            hf_quant_config["quantization"] = {
-                k: per_layer_quantization[k] for k in ("quant_algo", "kv_cache_quant_algo")
-            }
-
-            with open(f"{export_dir}/quant_cfg.json", "w") as file:
-                json.dump(per_layer_quantization, file, indent=4)
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
         # Save config
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:

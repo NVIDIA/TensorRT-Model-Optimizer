@@ -119,6 +119,15 @@ class QuantizationArguments:
             )
         },
     )
+    compress: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to compress the model weights after quantization. "
+                "This is useful for reducing the model size."
+            )
+        },
+    )
 
 
 def get_metrics_with_perplexity(metrics):
@@ -169,7 +178,7 @@ def train():
     if training_args.gradient_checkpointing and training_args.gradient_checkpointing_kwargs is None:
         training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
 
-    trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+    trainer = Trainer(model=model, processing_class=tokenizer, args=training_args, **data_module)
     trainer._move_model_to_device(model, trainer.args.device)
 
     if checkpoint is None:
@@ -201,7 +210,7 @@ def train():
                 else getattr(mtq, quant_args.quant_cfg)
             )
             model = mtq.quantize(model, quant_cfg, calibrate_loop)
-        torch.cuda.empty_cache()  # Lets make sure to free up the memory for training
+            torch.cuda.empty_cache()  # Lets make sure to free up the memory for training
     else:
         assert not training_args.lora, "Does not support LoRA resuming training yet!"
 
@@ -209,18 +218,24 @@ def train():
     if training_args.lora:
         model.add_adapter(get_lora_config(), adapter_name="adapter")
 
+    # compress model weights after lora adapter inserted to prevent training error
+    if checkpoint is None and quant_args.compress:
+        mtq.compress(model)
+
     # There could be GPU memory leak during QAT causing OOM. This is a workaround to fix it.
     monkey_patch_training_step_to_fix_memory_leak(trainer)
 
     if training_args.do_train:
         trainer.train(resume_from_checkpoint=checkpoint)
-        trainer.save_state()
-        trainer.save_model(training_args.output_dir)
 
     if training_args.do_eval:
         metrics = trainer.evaluate()
         metrics = get_metrics_with_perplexity(metrics)
         print_rank_0(f"Evaluation results: \n{metrics}")
+
+    if training_args.do_train or quant_args.quant_cfg is not None:
+        trainer.save_state()
+        trainer.save_model(training_args.output_dir)
 
 
 if __name__ == "__main__":

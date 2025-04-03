@@ -15,7 +15,6 @@
 # limitations under the License.
 
 set -e
-set -x
 set -o pipefail
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -58,6 +57,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       QUANT_CFG="${1#*=}"
       ;;
+    --compress*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      COMPRESS="${1#*=}"
+      ;;
     --calib_size*)
       if [[ "$1" != *=* ]]; then shift; fi
       CALIB_SIZE="${1#*=}"
@@ -78,13 +81,19 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       LORA="${1#*=}"
       ;;
+    --fsdp_transformer_layer_cls_to_wrap*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP="${1#*=}"
+      ;;
     *)
-      >&2 printf "Error: Invalid argument\n"
+      >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
       ;;
   esac
   shift
 done
+
+set -x
 
 # Get the default value for save_steps based on the available number of GPUs
 GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count())")
@@ -103,7 +112,8 @@ TRAIN_BS=${TRAIN_BS:-4}
 EVAL_BS=${EVAL_BS:-4}
 DO_TRAIN=${DO_TRAIN:-True}
 LORA=${LORA:-"False"}
-
+COMPRESS=${COMPRESS:-"False"}
+FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 
 if [ -z $QUANT_CFG ]; then
   QUANT_ARGS=""
@@ -116,10 +126,11 @@ if [ ! -z $MAX_STEPS ]; then
   OPTIONAL_ARGS="$OPTIONAL_ARGS --max_steps $MAX_STEPS"
 fi
 
-FSDP_ARGS="--fsdp 'full_shard auto_wrap' --fsdp_transformer_layer_cls_to_wrap 'LlamaDecoderLayer'"
+FSDP_ARGS="--fsdp 'full_shard auto_wrap' --fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
 
 # real quantization does not work with FSDP
-if [[ "$QUANT_CFG" == *"REAL_QUANT"* ]]; then
+if [[ "${COMPRESS,,}" == "true" ]]; then
+  echo "Compression is not supported with FSDP. Disabling FSDP."
   FSDP_ARGS=""
 fi
 
@@ -140,7 +151,7 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --gradient_checkpointing True \
     --save_strategy steps \
     --save_steps $SAVE_STEPS \
-    --evaluation_strategy steps \
+    --eval_strategy steps \
     --eval_steps $SAVE_STEPS \
     --load_best_model_at_end True \
     --save_total_limit 2 \
@@ -152,6 +163,7 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --report_to tensorboard \
     --tf32 True \
     --lora $LORA \
+    --compress $COMPRESS \
     $FSDP_ARGS $QUANT_ARGS $OPTIONAL_ARGS
 "
 

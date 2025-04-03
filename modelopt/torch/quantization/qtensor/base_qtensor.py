@@ -89,7 +89,7 @@ class QTensorWrapper(torch.nn.Parameter):
 
     def __new__(cls, qtensor: BaseQuantizedTensor):
         """Create a new QTensorWrapper instance."""
-        quantized_tensor = qtensor._quantized_data.view(torch.uint8)
+        quantized_tensor = qtensor._quantized_data
         instance = super().__new__(cls, quantized_tensor, requires_grad=False)
         instance.metadata = qtensor.metadata
         instance.metadata["qtensor_class"] = qtensor.__class__

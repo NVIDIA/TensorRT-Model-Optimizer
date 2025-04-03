@@ -33,7 +33,7 @@ while [ $# -gt 0 ]; do
       MAX_TOKEN="${1#*=}"
       ;;
     *)
-      >&2 printf "Error: Invalid argument\n"
+      >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
       ;;
   esac

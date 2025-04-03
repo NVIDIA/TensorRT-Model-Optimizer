@@ -19,6 +19,7 @@
 from . import mode, plugins, utils
 
 # Add methods to mtq namespace
+from .compress import *
 from .config import *
 from .conversion import *
 from .model_quant import *

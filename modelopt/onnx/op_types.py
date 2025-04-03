@@ -285,3 +285,16 @@ def is_default_quantizable_op_by_ort(op_type: str):
         "LeakyRelu",
         "AveragePool",
     ]
+
+
+def is_data_dependent_shape_op(op_type: str):
+    """Returns whether the op type has data-dependent shapes (DDS).
+
+    DDS ops have output shapes that are only determined at runtime based on its input data.
+    Source: https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#data-dependant-shape-dds-ops
+    """
+    return op_type in [
+        "NonMaxSuppression",
+        "NonZero",
+        "RoiAlign",
+    ]

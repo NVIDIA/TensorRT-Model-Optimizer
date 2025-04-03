@@ -15,12 +15,13 @@
 
 """Utility functions related to Onnx."""
 
+import base64
 import inspect
+import json
 import os
 import shutil
 from typing import Any, Union
 
-import cloudpickle
 import onnx
 import torch
 import torch.nn as nn
@@ -35,11 +36,10 @@ from modelopt.onnx.utils import (
     get_output_names,
     get_output_shapes,
 )
-from modelopt.torch._deploy._runtime.common import write_bytes
-from modelopt.torch._deploy.utils.onnx_optimizer import Optimizer
 from modelopt.torch.utils import flatten_tree, standardize_named_model_args
 from modelopt.torch.utils._pytree import TreeSpec
 
+from ..utils.onnx_optimizer import Optimizer
 from .onnx_utils import _get_onnx_external_data_tensors, check_model_uses_external_data
 
 ModelMetadata = dict[str, Any]
@@ -49,7 +49,7 @@ ValueInfoType = Any
 # a few constants...
 DEFAULT_ONNX_OPSET = 13
 ONNX_EXPORT_OUT_PREFIX = "out"
-TWO_GB = 2147483648
+TWO_GB = 2 * 1024 * 1024 * 1024
 
 
 class OnnxBytes:
@@ -109,8 +109,19 @@ class OnnxBytes:
                 f.write(onnx_model_bytes)
 
     def to_bytes(self) -> bytes:
-        """Returns the bytes of the object."""
-        return cloudpickle.dumps(self)
+        """Returns the bytes of the object that can be restored using the OnnxBytes.from_bytes method."""
+        serialized_model = {}
+        for file_name, file_bytes in self.onnx_model.items():
+            serialized_model[file_name] = base64.b64encode(file_bytes).decode("utf-8")
+
+        # Create a dictionary with all necessary attributes
+        data = {
+            "onnx_load_path": self.onnx_load_path,
+            "model_name": self.model_name,
+            "onnx_model": serialized_model,
+        }
+
+        return json.dumps(data).encode("utf-8")
 
     def get_onnx_model_file_bytes(self) -> bytes:
         """Returns the bytes of the onnx model file."""
@@ -119,7 +130,17 @@ class OnnxBytes:
     @classmethod
     def from_bytes(cls, onnx_bytes: bytes) -> "OnnxBytes":
         """Returns the OnnxBytes object from the bytes."""
-        return cloudpickle.loads(onnx_bytes)
+        data = json.loads(onnx_bytes.decode("utf-8"))
+
+        # Create a new instance without calling __init__ and set the attributes
+        instance = cls.__new__(cls)
+        instance.onnx_load_path = data["onnx_load_path"]
+        instance.model_name = data["model_name"]
+        instance.onnx_model = {}
+        for file_name, encoded_bytes in data["onnx_model"].items():
+            instance.onnx_model[file_name] = base64.b64decode(encoded_bytes)
+
+        return instance
 
 
 def _to_expected_onnx_type(val: Any) -> Any:
@@ -430,44 +451,6 @@ def has_external_data(onnx_model_path: str):
     return check_model_uses_external_data(onnx_model)
 
 
-def create_onnx_model_dict(
-    onnx_load_path: str = None, model_metadata: ModelMetadata = None, model_dict: dict = None
-) -> tuple[bytes, ModelMetadata]:
-    """Creates onnx model dictionary and model metadata.
-
-    Args:
-        onnx_load_path: The path to load the onnx model.
-        model_metadata: Metadata to be stored in the DeviceModel.
-        model_dict: A dictionaty containing the Pytorch model and the input and output treespec for the model.
-
-    Returns:
-        A tuple of onnx model dictionary and model metadata.
-    """
-    onnx_model_dict = {"onnx_load_path": onnx_load_path}
-    onnx_model = {}
-    for onnx_model_file in os.listdir(onnx_load_path):
-        with open(os.path.join(onnx_load_path, onnx_model_file), "rb") as f:
-            onnx_model[onnx_model_file] = f.read()
-        if onnx_model_file.endswith(".onnx") and model_metadata is None:
-            onnx_model_file_path = os.path.join(onnx_load_path, onnx_model_file)
-            onnx_graph = onnx.load(onnx_model_file_path)
-            onnx_input_names = [input.name for input in onnx_graph.graph.input]
-            torch_input_names = model_dict["tree_spec_input"].names
-            assert set(onnx_input_names).issubset(set(torch_input_names)), (
-                "One or more inputs in the onnx model are not present in the torch model."
-            )
-    onnx_model_dict["onnx_model"] = onnx_model
-    if model_metadata is None:
-        model_metadata = create_model_metadata(
-            model_dict["tree_spec_input"],
-            model_dict["tree_spec_output"],
-            model_dict["input_none_names"],
-            onnx_graph,
-            model_dict["model"],
-        )
-    return cloudpickle.dumps(onnx_model_dict), model_metadata
-
-
 def create_model_metadata(
     tree_spec_input: TreeSpec,
     tree_spec_output: TreeSpec,
@@ -502,41 +485,14 @@ def create_model_metadata(
     }
 
 
-def write_onnx_bytes(onnx_model_bytes: Union[bytes, dict], onnx_save_path: str) -> tuple[str, str]:
-    """Write onnx bytes to the specified path.
-
-    Args:
-        onnx_model_bytes: Can be one of the following:
-            1. A pickled dictionary of onnx model files. The keys of this dictionary are file names and\
-            the values are the corresponding bytes.
-            2. A single onnx model bytes.
-        onnx_save_path: The onnx path to save the model.
-
-    Returns:
-        The path to the onnx model.
-        Name of the onnx model.
-    """
-    if isinstance(onnx_model_bytes, dict):
-        if not os.path.exists(onnx_save_path):
-            os.makedirs(onnx_save_path)
-        for key in onnx_model_bytes["onnx_model"]:
-            write_bytes(onnx_model_bytes["onnx_model"][key], os.path.join(onnx_save_path, key))
-        onnx_model_file = [s for s in onnx_model_bytes["onnx_model"].keys() if s.endswith(".onnx")]
-        assert len(onnx_model_file) == 1, "There should be only one onnx model file"
-        model_name = onnx_model_file[0].split(".")[0]
-        return os.path.join(onnx_save_path, onnx_model_file[0]), model_name
-    write_bytes(onnx_model_bytes, os.path.join(onnx_save_path, "model.onnx"))
-    return os.path.join(onnx_save_path, "model.onnx"), ""
-
-
-def get_onnx_bytes(*args, **kwargs):
+def get_onnx_bytes(*args, **kwargs) -> bytes:
     """Return onnx bytes only.
 
     See ``get_onnx_bytes_and_metadata()`` for more info.
     """
     onnx_bytes = get_onnx_bytes_and_metadata(*args, **kwargs)[0]
     onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
-    return onnx_bytes_obj.onnx_model[f"{onnx_bytes_obj.model_name}.onnx"]
+    return onnx_bytes_obj.get_onnx_model_file_bytes()
 
 
 def remove_node_training_mode(onnx_model: ModelProto, node_op_type: str) -> ModelProto:

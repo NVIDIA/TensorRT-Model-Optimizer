@@ -104,6 +104,7 @@ def compile(
                     "version": "1.11",
                     "precision": "fp32",
                     "onnx_opset": 13,
+                    "verbose": "false",
                 }
         dynamic_axes: A dictionary that maps input names to the dynamic axes of the model. This is
             useful when the model has dynamic input shapes. The keys are the input names and the

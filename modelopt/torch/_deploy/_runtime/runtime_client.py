@@ -63,7 +63,7 @@ class RuntimeClient(ABC):
 
         # sanity check on keys (inverse doesn't have to be checked since we fill in defaults)
         table = self.deployment_table
-        extra_keys = deployment.keys() - table.keys() - {"runtime"}
+        extra_keys = deployment.keys() - table.keys() - {"runtime", "verbose"}
         assert not extra_keys, f"Invalid deployment config keys detected: {extra_keys}!"
 
         # sanity checks on values

@@ -69,7 +69,7 @@ WARMUP_TIME_MS = 500
 
 # Profiling parameters
 DEFAULT_PROFILING_RUNS = 1
-DEFAULT_NUM_INFERENCE_PER_RUN = 100
+DEFAULT_NUM_INFERENCE_PER_RUN = 500
 
 # Layerwise profiling parameters
 INPUT_DATA_KEY = "input_data"

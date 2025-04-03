@@ -18,6 +18,11 @@ Feature Support Matrix
           - Details
           - Supported Model Formats
           - Deployment
+        * - FP4
+          - * Per-Block FP4 Weight & Activations
+            * GPUs: Blackwell and Later
+          - PyTorch
+          - TensorRT, TensorRT-LLM
         * - FP8
           - * Per-Tensor FP8 Weight & Activations
             * GPUs: Ada and Later

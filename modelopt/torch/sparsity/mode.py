@@ -39,7 +39,7 @@ from .magnitude import MagnitudeSearcher
 from .module import SpDMRegistry
 from .sparsegpt import SparseGPTSearcher
 
-SparsityModeRegistry = _ModeRegistryCls()
+SparsityModeRegistry = _ModeRegistryCls("sparsity")
 
 
 def convert_sparse_model(model: nn.Module, config: ModeloptBaseConfig) -> ConvertReturnType:

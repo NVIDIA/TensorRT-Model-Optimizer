@@ -107,12 +107,27 @@ class SimpleConvLinear(nn.Module):
         return torch.randn(4, 16, 4, 4)
 
 
+class SDPAAttention(nn.Module):
+    def forward(self, qkv: tuple, extra_arg=None):
+        # NOTE: Add unused argument y with default value to test that replaced attention retain original defaults
+        q, k, v = qkv
+        return nn.functional.scaled_dot_product_attention(q, k, v)
+
+    @classmethod
+    def get_input(cls, device: str = "cpu"):
+        q = torch.randn(1, 4, 8, device=device)
+        k = torch.randn(1, 4, 8, device=device)
+        v = torch.randn(1, 4, 8, device=device)
+        return (q, k, v)
+
+
+# NOTE: This should match configuration of _test_utils.torch_dist.plugins.megatron_common.MegatronModel
 class RegularQuantModelForTP(nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = QuantLinear(128, 256)
+        self.fc1 = QuantLinear(32, 64)
         self.activation = nn.ReLU()
-        self.fc2 = QuantLinear(256, 128)
+        self.fc2 = QuantLinear(64, 32)
 
     def forward(self, x):
         for block in [self.fc1, self.activation, self.fc2]:

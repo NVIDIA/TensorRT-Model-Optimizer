@@ -1,6 +1,6 @@
 docker
 examples/**/.git
-examples/llm_ptq/saved_models*
+examples/**/saved_models*
 **/experimental
 
 ##### Copied from .gitignore #####

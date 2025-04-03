@@ -18,6 +18,7 @@
 
 ## Latest News
 
+- [2025/03/18] [World's Fastest DeepSeek-R1 Inference with Blackwell FP4 & Increasing Image Generation Efficiency on Blackwell](https://developer.nvidia.com/blog/nvidia-blackwell-delivers-world-record-deepseek-r1-inference-performance/)
 - [2025/02/25] Model Optimizer quantized NVFP4 models available on Hugging Face for download: [DeepSeek-R1-FP4](https://huggingface.co/nvidia/DeepSeek-R1-FP4), [Llama-3.3-70B-Instruct-FP4](https://huggingface.co/nvidia/Llama-3.3-70B-Instruct-FP4), [Llama-3.1-405B-Instruct-FP4](https://huggingface.co/nvidia/Llama-3.1-405B-Instruct-FP4)
 - [2025/01/28] Model Optimizer has added support for NVFP4. Check out an example of NVFP4 PTQ [here](./examples/llm_ptq/README.md#model-quantization-and-trt-llm-conversion).
 - [2025/01/28] Model Optimizer is now open source!
@@ -44,12 +45,12 @@
 - [Model Optimizer Overview](#model-optimizer-overview)
 - [Installation](#installation--docker)
 - [Techniques](#techniques)
-  - [Quantization](#quantization)
+  - [Quantization](#quantization-examples-docs)
     - [Quantized Checkpoints](#quantized-checkpoints)
-  - [Pruning](#pruning)
-  - [Distillation](#distillation)
-  - [Speculative Decoding](#speculative-decoding)
-  - [Sparsity](#sparsity)
+  - [Pruning](#pruning-examples-docs)
+  - [Distillation](#distillation-examples-docs)
+  - [Speculative Decoding](#speculative-decoding-examples-docs)
+  - [Sparsity](#sparsity-examples-docs)
 - [Examples](#examples)
 - [Support Matrix](#model-support-matrix)
 - [Benchmark](#benchmark)
@@ -114,7 +115,7 @@ Below is a short description of the techniques supported by Model Optimizer.
 
 ### Quantization \[[examples](./examples/README.md#quantization)\] \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html)\]
 
-Quantization is an effective model optimization technique for large models. Quantization with Model Optimizer can compress model size by 2x-4x, speeding up inference while preserving model quality. Model Optimizer enables highly performant quantization formats including NVFP4, FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, and Double Quantization with easy-to-use Python APIs. Both Post-training quantization (PTQ) and Quantization-aware training (QAT) are supported.
+Quantization is an effective model optimization technique for large models. Quantization with Model Optimizer can compress model size by 2x-4x, speeding up inference while preserving model quality. Model Optimizer enables highly performant quantization formats including NVFP4, FP8, INT8, INT4, etc and supports advanced algorithms such as SmoothQuant, AWQ, SVDQuant, and Double Quantization with easy-to-use Python APIs. Both Post-training quantization (PTQ) and Quantization-aware training (QAT) are supported.
 
 #### Quantized Checkpoints
 
@@ -158,7 +159,7 @@ Please find the [detailed performance benchmarks](./examples/benchmark.md).
 
 ## Roadmap
 
-Please see our [product roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/108).
+Please see our [product roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/146).
 
 ## Release Notes
 

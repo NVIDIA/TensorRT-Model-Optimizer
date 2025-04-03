@@ -39,11 +39,13 @@ from .utils import (
     is_quantized_row_parallel_linear,
 )
 
-__all__ = ["max_calibrate", "awq", "smoothquant"]
+__all__ = ["max_calibrate", "awq", "smoothquant", "svdquant"]
 
 
 @torch.no_grad()
-def max_calibrate(model: nn.Module, forward_loop: Optional[ForwardLoop] = None):
+def max_calibrate(
+    model: nn.Module, forward_loop: Optional[ForwardLoop] = None, distributed_sync=True
+):
     """Calibrate the model using max."""
     enable_stats_collection(model)
     if forward_loop is None:
@@ -59,6 +61,9 @@ def max_calibrate(model: nn.Module, forward_loop: Optional[ForwardLoop] = None):
 
     forward_loop(model)
     finish_stats_collection(model)
+
+    if not distributed_sync:
+        return
 
     for name, module in model.named_modules():
         if isinstance(module, TensorQuantizer) and module.amax is not None:
@@ -850,3 +855,53 @@ def _get_awq_quantizer_block_size(tensor: torch.Tensor, quantizer: TensorQuantiz
     else:
         raise ValueError("AWQ requires block quantization along -1 axis")
     return blocksize
+
+
+def svdquant(
+    model: nn.Module,
+    forward_loop: Optional[ForwardLoop] = None,
+    lowrank: int = 32,
+    **kwargs,
+):
+    """Lite version of SVDQuant.
+
+    The parameters are as described in
+    :class:`SVDQuantConfig <modelopt.torch.quantization.config.SVDQuantConfig>`.
+
+    Args:
+        model: Model to be calibrated.
+        forward_loop: A callable which takes the model as argument and
+            forwards calibration data through the model.
+
+    """
+    # AWQ-Lite initially calibrates only linear quantizers, skipping FMHA quantizers.
+    # Enable calibration for BMM quantizers here, so AWQ can perform max calibration for BMMs.
+    # Otherwise, AWQ-Lite will require an additional calibration round to activate FMHA quantizers.
+    enable_stats_collection(model)
+    awq(model, "awq_lite", forward_loop, **kwargs)
+
+    for name, module in model.named_modules():
+        if is_quantized_linear(module) and module.weight_quantizer.is_enabled:
+            print(f"SVD {name}")
+            u, s, vt = torch.linalg.svd(module.weight.data.double())
+            if u.shape[1] < lowrank or vt.shape[0] < lowrank:
+                warnings.warn(
+                    "The low-rank dimensions do not match the layer dimensions. "
+                    "Please verify your configuration and model settings. "
+                    "SVD will be skipped for this layer {name}."
+                )
+                continue
+            us = u[:, :lowrank] * s[:lowrank]
+            vt = vt[:lowrank]
+            device = module.weight.device
+            dtype = module.weight.dtype
+            module.weight_quantizer.svdquant_lora_a = vt.to(device).to(dtype)
+            module.weight_quantizer.svdquant_lora_b = us.to(device).to(dtype)
+            module.weight.data.sub_(
+                module.weight_quantizer.svdquant_lora_b @ module.weight_quantizer.svdquant_lora_a
+            )
+            module.weight_quantizer.reset_amax()
+            max_calibrate(
+                module,
+                lambda module: module.weight_quantizer(module.weight),
+            )

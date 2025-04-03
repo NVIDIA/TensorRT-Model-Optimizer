@@ -51,24 +51,6 @@ class SmallQKVModel(torch.nn.Module):
         return x
 
 
-def get_tiny_llama_and_tokenizer():
-    from transformers import GPT2Tokenizer, LlamaConfig, LlamaForCausalLM
-
-    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    tiny_llama = LlamaForCausalLM(
-        LlamaConfig(
-            hidden_size=128,
-            intermediate_size=256,
-            num_hidden_layers=2,
-            num_attention_heads=2,
-            max_position_embeddings=128,
-            vocab_size=tokenizer.vocab_size,
-        )
-    )
-
-    return tiny_llama, tokenizer
-
-
 # Quantization configs
 partial_fp8_config = {
     "quant_cfg": {
@@ -171,6 +153,21 @@ partial_int8_kv_cache_config = {
         "*.1.weight_quantizer": {"num_bits": (4, 3), "axis": None},
         "*.1.input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*output_quantizer": {"num_bits": 8, "axis": None, "enable": True},
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+partial_nvfp4_kv_cache_config = {
+    "quant_cfg": {
+        "*.1.weight_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*.1.input_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*[kv]_bmm_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
         "default": {"enable": False},
     },
     "algorithm": "max",

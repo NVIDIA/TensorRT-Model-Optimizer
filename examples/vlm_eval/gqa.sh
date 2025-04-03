@@ -68,12 +68,21 @@ while [[ $# -gt 0 ]]; do
             QUANT_CFG="$2"
             shift 2
             ;;
+        --kv_cache_free_gpu_memory_fraction)
+            KV_CACHE_FREE_GPU_MEMORY_FRACTION="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option $1"
             exit 1
             ;;
     esac
 done
+
+# Set default value for kv_cache_free_gpu_memory_fraction if not provided
+if [ -z "$KV_CACHE_FREE_GPU_MEMORY_FRACTION" ]; then
+    KV_CACHE_FREE_GPU_MEMORY_FRACTION=0.8
+fi
 
 # Verify required arguments are set
 if [ -z "$HF_MODEL_DIR" ]; then
@@ -103,7 +112,7 @@ fi
 
 # Check if TRT engine is provided
 if [ -z "$VISUAL_ENGINE_DIR" ] || [ -z "$LLM_ENGINE_DIR" ]; then
-    echo "Either --visual_engine or --llm_engine not provided, evalluation will be based on Pytorch."
+    echo "Either --visual_engine or --llm_engine not provided, evaluation will be based on Pytorch."
     if [ -z "$QUANT_CFG" ]; then
         ANSWER_DIR="$script_dir/gqa/$MODEL_NAME/llava_gqa_testdev_balanced/answers"
         ANSWERS_FILE="$ANSWER_DIR/merge.jsonl"
@@ -112,7 +121,7 @@ if [ -z "$VISUAL_ENGINE_DIR" ] || [ -z "$LLM_ENGINE_DIR" ]; then
         ANSWERS_FILE="$ANSWER_DIR/merge.jsonl"
     fi
 else
-    echo "Both --visual_engine or --llm_engine are provided, evalluation will be based on TRT engine."
+    echo "Both --visual_engine or --llm_engine are provided, evaluation will be based on TRT engine."
     ANSWER_DIR="$script_dir/gqa/$(basename $LLM_ENGINE_DIR)/llava_gqa_testdev_balanced/answers"
     ANSWERS_FILE="$ANSWER_DIR/merge.jsonl"
 fi
@@ -125,7 +134,8 @@ if [ ! -f $ANSWERS_FILE ]; then
         ${VISUAL_ENGINE_DIR:+--visual_engine_dir "$VISUAL_ENGINE_DIR"} \
         ${LLM_ENGINE_DIR:+--llm_engine_dir "$LLM_ENGINE_DIR"} \
         ${BATCH_SIZE:+--batch_size "$BATCH_SIZE"} \
-        ${QUANT_CFG:+--quant_cfg "$QUANT_CFG"}
+        ${QUANT_CFG:+--quant_cfg "$QUANT_CFG"} \
+        --kv_cache_free_gpu_memory_fraction "$KV_CACHE_FREE_GPU_MEMORY_FRACTION"
 fi
 
 # Convert answer to prediction for evaluation

@@ -27,7 +27,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Support medusa for huggingface models."""
+"""Support speculative decoding for huggingface models."""
 
 import contextlib
 from typing import Any, Optional
@@ -41,7 +41,7 @@ from transformers.utils import ModelOutput
 
 from ..eagle.conversion import EagleDMRegistry
 from ..eagle.eagle_model import EagleModel
-from ..eagle.utils import LlamaDecoderLayer, LlamaRMSNorm, expand_mask, make_causal_mask
+from ..eagle.utils import RMSNorm, expand_mask, make_causal_mask
 from ..medusa.conversion import MedusaDMRegistry
 from ..medusa.medusa_model import MedusaModel
 from ..redrafter.conversion import RedrafterDMRegistry
@@ -105,6 +105,7 @@ class HFMedusaModel(MedusaModel):
         freeze_base_model: bool = True,
         medusa_heads_coefficient: Optional[float] = 0.2,
         medusa_decay_coefficient: Optional[float] = 0.8,
+        **kwargs,
     ) -> Any:
         """Forward pass of the MedusaModel.
 
@@ -171,29 +172,16 @@ class HFMedusaModel(MedusaModel):
 class EagleModule(nn.Module):
     """Eagle module used in EAGLE model."""
 
-    def __init__(self, eagle_config, bias=True):
+    def __init__(self, config, decoder_layer_cls, num_layers, use_last_layernorm=False, bias=True):
         """Init function for EagleModule."""
         super().__init__()
 
-        self.fc = nn.Linear(2 * eagle_config["hidden_size"], eagle_config["hidden_size"], bias=bias)
+        self.fc = nn.Linear(2 * config.hidden_size, config.hidden_size, bias=bias)
         self.layers = nn.ModuleList(
-            [
-                LlamaDecoderLayer(
-                    index,
-                    eagle_config["hidden_size"],
-                    eagle_config["intermediate_size"],
-                    eagle_config["rms_norm_eps"],
-                    eagle_config["num_attention_heads"],
-                    eagle_config["num_key_value_heads"],
-                    eagle_config["max_position_embeddings"],
-                    eagle_config["rope_theta"],
-                    eagle_config["use_input_layernorm_in_first_layer"],
-                )
-                for index in range(eagle_config["num_hidden_layers"])
-            ]
+            [decoder_layer_cls(config, layer_idx) for layer_idx in range(num_layers)]
         )
-        if eagle_config["use_last_layernorm"]:
-            self.norm = LlamaRMSNorm(eagle_config["hidden_size"], eagle_config["rms_norm_eps"])
+        if use_last_layernorm:
+            self.norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
 
     def forward(
         self,
@@ -207,6 +195,7 @@ class EagleModule(nn.Module):
         past_key_values: Optional[Cache] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = False,
+        position_embeddings: Optional[torch.Tensor] = None,
     ):
         """Forward function for EagleModule."""
         batch_size, seq_length, _ = hidden_states.shape
@@ -214,7 +203,7 @@ class EagleModule(nn.Module):
         past_key_values_length = 0
 
         if past_key_values is not None:
-            past_key_values_length = past_key_values[0][0].shape[2]
+            past_key_values_length = past_key_values.get_seq_length()
             seq_length_with_past = seq_length_with_past + past_key_values_length
         if position_ids is None:
             device = hidden_states.device if hidden_states is not None else inputs_embeds.device
@@ -239,28 +228,25 @@ class EagleModule(nn.Module):
         inputs_embeds = inputs_embeds.to(hidden_states.dtype).to(hidden_states.device)
         hidden_states = self.fc(torch.cat((inputs_embeds, hidden_states), dim=-1))
 
-        next_decoder_cache = ()
         for idx, decoder_layer in enumerate(self.layers):
-            past_key_value = past_key_values[idx] if past_key_values is not None else None
-
             layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                past_key_value=past_key_value,
+                past_key_value=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
+                position_embeddings=position_embeddings,
             )
 
             hidden_states = layer_outputs[0]
-            next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
 
         if hasattr(self, "norm"):
             hidden_states = self.norm(hidden_states)
 
         logits = lm_head(hidden_states).to(hidden_states.device)
 
-        return hidden_states, logits, next_decoder_cache
+        return hidden_states, logits, past_key_values
 
     def _prepare_decoder_attention_mask(
         self, attention_mask, input_shape, inputs_embeds, past_key_values_length
@@ -310,6 +296,9 @@ class HFEagleModel(EagleModel):
         self.config.eagle = {
             "num_hidden_layers": eagle_num_layers,
             "num_attention_heads": self.config.num_attention_heads,
+            "head_dim": getattr(
+                self.config, "head_dim", self.config.hidden_size // self.config.num_attention_heads
+            ),
             "intermediate_size": self.config.intermediate_size,
             "hidden_size": self.config.hidden_size,
             "num_key_value_heads": self.config.num_key_value_heads,
@@ -319,7 +308,9 @@ class HFEagleModel(EagleModel):
             "use_input_layernorm_in_first_layer": use_input_layernorm_in_first_layer,
             "use_last_layernorm": use_last_layernorm,
         }
-        self.eagle_module = EagleModule(self.config.eagle)
+        self.eagle_module = EagleModule(
+            self.config, type(self.model.layers[-1]), eagle_num_layers, use_last_layernorm
+        )
 
         if hasattr(self.model.layers[-1].self_attn, "o_proj"):
             device = self.model.layers[-1].self_attn.o_proj.weight.device
@@ -353,6 +344,7 @@ class HFEagleModel(EagleModel):
         freeze_base_model: Optional[bool] = True,
         classification_loss_coefficient: Optional[float] = 0.1,
         regression_loss_coefficient: Optional[float] = 1.0,
+        **kwargs,
     ) -> Any:
         """Forward pass of the EagleModel.
 
@@ -401,6 +393,22 @@ class HFEagleModel(EagleModel):
 
         with torch.no_grad():
             inputs_embeds = self.model.embed_tokens(eagle_input_ids)
+
+        _, seq_length, _ = hidden_states.shape
+        device = hidden_states.device
+        past_key_values_length = eagle_cache.get_seq_length() if eagle_cache is not None else 0
+        if position_ids is None:
+            position_ids = torch.arange(
+                past_key_values_length,
+                seq_length + past_key_values_length,
+                dtype=torch.long,
+                device=device,
+            )
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+        else:
+            position_ids = position_ids.view(-1, seq_length).long()
+        position_embeddings = self.model.rotary_emb(hidden_states, position_ids)
+
         eagle_hidden_states, eagle_logits, eagle_cache = self.eagle_module(
             hidden_states,
             inputs_embeds,
@@ -410,6 +418,7 @@ class HFEagleModel(EagleModel):
             past_key_values=eagle_cache,
             use_cache=True,
             output_attentions=output_attentions,
+            position_embeddings=position_embeddings,
         )
         if not isinstance(eagle_cache, Cache):
             eagle_cache = DynamicCache.from_legacy_cache(eagle_cache)
@@ -555,6 +564,7 @@ class HFRedrafterModel(RedrafterModel):
         cache_position: Optional[torch.LongTensor] = None,
         num_logits_to_keep: int = 0,
         freeze_base_model: bool = True,
+        **kwargs,
     ) -> Any:
         """Forward pass of the RedrafterModel."""
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict

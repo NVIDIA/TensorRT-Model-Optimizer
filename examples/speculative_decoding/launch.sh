@@ -15,7 +15,6 @@
 # limitations under the License.
 
 set -e
-set -x
 set -o pipefail
 
 while [ $# -gt 0 ]; do
@@ -80,13 +79,19 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       NUM_GPU="${1#*=}"
       ;;
+    --do_eval*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      DO_EVAL="${1#*=}"
+      ;;
     *)
-      >&2 printf "Error: Invalid argument\n"
+      >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
       ;;
   esac
   shift
 done
+
+set -x
 
 # Get the default value for save_steps based on the available number of GPUs
 GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count())")
@@ -107,6 +112,7 @@ REDRAFTER_TOKENS=${REDRAFTER_TOKENS:-1}
 REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 NUM_GPU=${NUM_GPU:-1}
+DO_EVAL=${DO_EVAL:-"True"}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
@@ -138,6 +144,7 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --per_device_train_batch_size $TRAIN_BS \
     --per_device_eval_batch_size $TRAIN_BS \
     --gradient_accumulation_steps 1 \
+    --do_eval $DO_EVAL \
     --eval_accumulation_steps 1 \
     --save_strategy steps \
     --save_steps $SAVE_STEPS \

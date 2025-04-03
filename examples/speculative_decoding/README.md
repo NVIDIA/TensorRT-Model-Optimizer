@@ -91,6 +91,7 @@ Next, we fine-tune the speculative decoding models with the base model frozen. H
             --num_epochs 1 --lr 1e-5 --save_steps 1000 \
             --output_dir medusa-tinyllama \
             --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer \
+            --num_gpu 1 \
             --medusa_num_heads 2 --medusa_num_layers 1
 
 ./launch.sh --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
@@ -99,6 +100,7 @@ Next, we fine-tune the speculative decoding models with the base model frozen. H
             --num_epochs 1 --lr 1e-5 --save_steps 1000 \
             --output_dir eagle-tinyllama \
             --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer \
+            --num_gpu 1 \
             --eagle_num_layers 1
 ```
 
@@ -117,5 +119,5 @@ Model | Medusa | EAGLE
 LLAMA 2 | Yes | Yes
 LLAMA 3, 3.1 | Yes | Yes
 Mistral | Yes | Yes
-Phi-1,2,3 | Yes | Yes
+Phi 3 | Yes | Yes
 QWen 1.5,2,2.5 | Yes | Yes

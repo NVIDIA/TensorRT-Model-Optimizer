@@ -285,6 +285,20 @@ def filter_quantizable_kgen_heads(
 
         return False
 
+    def _is_mha_epilogue_pattern(node: Node):
+        if head_node.op != "Add":
+            return False
+
+        child_nodes = get_child_nodes(head_node)
+        if child_nodes[0].op != "Softmax":
+            return False
+
+        child_nodes = get_child_nodes(child_nodes[0])
+        if child_nodes[0].op != "MatMul":
+            return False
+
+        return True
+
     def _has_other_quantizable_consumer(
         tensor: Tensor, quantizable_kgen_heads: list[Node], head_name: str
     ):
@@ -331,8 +345,15 @@ def filter_quantizable_kgen_heads(
         for parent in head_parents:
             # If the head is consuming output of any quantizable op, then it is quantizable
             if _is_following_cask_partition(parent) or parent.op in output_quantization_candidates:
-                quantizable_kgen_heads.append(partition[0])
-                has_quantizable_input = True
+                # MHA pattern: MatMul -> Div/Mul -> Add -> Softmax -> MatMul
+                # The mask add of MHA should not be quantized
+                if _is_mha_epilogue_pattern(head_node):
+                    no_quantize_inputs_of_head.append(
+                        (parent, partition[0], parent.outputs[0].name)
+                    )
+                else:
+                    quantizable_kgen_heads.append(partition[0])
+                    has_quantizable_input = True
             # If the input from the current parent has no other quantizable consumer, do not quantize that input
             elif not _has_other_quantizable_consumer(
                 parent.outputs[0], quantizable_kgen_heads, head_node.name
@@ -620,7 +641,7 @@ def find_nodes_from_matmul_to_exclude(
     use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = None,
     calibration_data_reader: CalibrationDataReader = None,
-    calibration_eps: list[str] = ["cuda:0", "cpu", "trt"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     verbose: bool = False,
 ) -> list[str]:
     """Find MatMul nodes that meets gemv condition to exclude.
@@ -697,7 +718,7 @@ def find_nodes_from_mha_to_exclude(
     quantize_mode: str = "int8",
     intermediate_generated_files: list[str] = None,
     calibration_data_reader: CalibrationDataReader = None,
-    calibration_eps: list[str] = ["cuda:0", "cpu", "trt"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     verbose: bool = False,
 ) -> list[str]:
     """Find MatMul nodes in MHA pattern to exclude.
@@ -1132,3 +1153,102 @@ def replace_resize_scales(onnx_model, resize_scale_inits):
                         new_init.data_type = old_data_type
                         new_init.raw_data = old_raw_data
     return onnx_model
+
+
+def get_concat_eliminated_tensors(
+    onnx_model: onnx.onnx_pb.ModelProto,
+    nodes_to_quantize: list[str],
+) -> dict[str, set[str]]:
+    """Find the input tensors and output tensor of concat that will be quantized.
+
+    We can do some perf optimization for TRT.
+
+    For example, like the below pattern:
+    (t1) q1 -> dq1 \
+    (t2) q2 -> dq2 -> concat -> q4 -> dq4 (t4)
+    (t3) q3 -> dq3 /
+
+    In TRT, q4 will be propagated forward concat. It will be like:
+    (t1) q1 -> dq1 -> q4 \
+    (t2) q2 -> dq2 -> q4 -> concat -> dq4 (t4)
+    (t3) q3 -> dq3 -> q4 /
+
+    If the scaling factor of dq1 and q4 are different, it will cause the dq-q compute latency. If
+    they are the same, then the dq-q pairs can be eliminated in TRT, and no extra dq-q compute
+    latency. However, it will sacrifice the accuracy.
+
+    Thus, this function will collect which tensors should have the same scaling factors. For the
+    above example, we want the scaling factor of dq1, dq2, dq3, q4 be the same. This function will
+    return like
+    {
+    t1: {t1,t2,t3,t4},
+    t2: {t1,t2,t3,t4},
+    t3: {t1,t2,t3,t4},
+    t4: {t1,t2,t3,t4},
+    }
+    This format is convinient for calibrator to assign the same scaling factor.
+
+    Returns:
+        {current tensor name: set of tensors that should share the same scaling factor}
+    """
+    input_name_to_nodes = get_tensor_consumer_nodes(onnx_model.graph)
+    graph = gs.import_onnx(onnx_model)
+
+    # We'll use a Union-Find data structure to track tensor groups
+    parent = {}
+
+    def find(x):
+        if x not in parent:
+            parent[x] = x
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x, y):
+        parent[find(x)] = find(y)
+
+    # First, identify concat ops where output is quantized
+    for node in graph.nodes:
+        if node.op == "Concat":
+            # Check if concat output is quantized
+            concat_output_name = node.outputs[0].name
+            concat_consumers = input_name_to_nodes[concat_output_name]
+            concat_has_qdq = any(
+                consumer.name in nodes_to_quantize for consumer in concat_consumers
+            )
+
+            if concat_has_qdq:
+                # Find quantized inputs to concat
+                quantized_inputs = []
+                for input_tensor in node.inputs:
+                    input_name = input_tensor.name
+                    input_consumers = input_name_to_nodes[input_name]
+                    if any(consumer.name in nodes_to_quantize for consumer in input_consumers):
+                        quantized_inputs.append(input_name)
+
+                # If we have quantized inputs, merge them with the output
+                if quantized_inputs:
+                    # Add the concat output
+                    quantized_inputs.append(concat_output_name)
+
+                    # Use union-find to merge all related tensors
+                    for i in range(1, len(quantized_inputs)):
+                        union(quantized_inputs[i], quantized_inputs[0])
+
+    # Build the final result dictionary
+    result = {}
+    all_tensors = set(parent.keys())
+
+    # Group by the root parent
+    groups = {}
+    for tensor in all_tensors:
+        root = find(tensor)
+        if root not in groups:
+            groups[root] = set()
+        groups[root].add(tensor)
+
+    # Build the final mapping
+    for tensor in all_tensors:
+        root = find(tensor)
+        result[tensor] = groups[root]
+    return result

@@ -15,8 +15,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -x
-
 while [ $# -gt 0 ]; do
   case "$1" in
     --model*)
@@ -48,12 +46,14 @@ while [ $# -gt 0 ]; do
       MODELOPT_RESTORE_PATH="${1#*=}"
       ;;
     *)
-      >&2 printf "Error: Invalid argument\n"
+      >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
       ;;
   esac
   shift
 done
+
+set -x
 
 MODEL=${MODEL:-"meta-llama/Llama-2-7b-hf"}
 MODEL_MAX_LENGTH=${MODEL_MAX_LENGTH:-2048}
@@ -78,7 +78,7 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 finetune.py \
     --gradient_accumulation_steps 1 \
     --save_strategy steps \
     --save_steps 2000 \
-    --evaluation_strategy steps \
+    --eval_strategy steps \
     --eval_steps 2000 \
     --save_total_limit 10 \
     --learning_rate 2e-5 \

@@ -16,7 +16,9 @@
 """ModelOpt plugin for enabling automatic save/restore of ModelOpt state for HuggingFace models."""
 
 import functools
+import inspect
 import os
+import threading
 import types
 from contextlib import contextmanager
 from typing import Any
@@ -25,12 +27,7 @@ import torch
 
 from modelopt.torch.utils import print_rank_0
 
-from ..conversion import (
-    ModeloptStateManager,
-    has_nas_modelopt_state,
-    modelopt_state,
-    restore_from_modelopt_state,
-)
+from ..conversion import ModeloptStateManager, modelopt_state, restore_from_modelopt_state
 
 __all__ = ["enable_huggingface_checkpointing"]
 
@@ -53,15 +50,16 @@ def _get_modelopt_state_path(obj: Any, model_name_or_path: str) -> str:
 @contextmanager
 def _patch_model_init_for_modelopt(cls, model_path):
     """Patch for `cls.init` method to restore ModelOpt state after `init`."""
-    cls._original__init__ = cls.__init__
+    # Note: Keeping original config in local as the package will be shared among threads
+    _original__init__ = cls.__init__
 
-    @functools.wraps(cls._original__init__)
+    @functools.wraps(_original__init__)
     def new_init_fn(self, *args, **kwargs):
         modelopt_state_path = _get_modelopt_state_path(self, model_path)
-        cls._original__init__(self, *args, **kwargs)
+        _original__init__(self, *args, **kwargs)
         if os.path.isfile(modelopt_state_path):
             modelopt_state = torch.load(modelopt_state_path, map_location="cpu", weights_only=False)
-            if not has_nas_modelopt_state(modelopt_state):
+            if not ModeloptStateManager.has_state_for_mode_type("nas", state=modelopt_state):
                 restore_from_modelopt_state(self, modelopt_state)
                 print_rank_0(f"Restored ModelOpt state from {modelopt_state_path}")
 
@@ -69,8 +67,7 @@ def _patch_model_init_for_modelopt(cls, model_path):
     try:
         yield
     finally:
-        cls.__init__ = cls._original__init__
-        delattr(cls, "_original__init__")
+        cls.__init__ = _original__init__
 
 
 def _new_from_pretrained(cls, /, pretrained_model_name_or_path, *args, **kwargs):
@@ -96,21 +93,23 @@ def _new_from_config(cls, /, config, **kwargs):
     return model
 
 
-def _new__load_pretrained_model(
-    cls,
-    /,
-    model,
-    state_dict,
-    loaded_keys,
-    resolved_archive_file,
-    pretrained_model_name_or_path,
-    *args,
-    **kwargs,
-):
-    """Patch for `cls._load_pretrained_model` method to restore ModelOpt state for NAS/Pruned models.
+def _new__load_pretrained_model(cls, *args, **kwargs):
+    """Patch for `cls._load_pretrained_model` method to restore ModelOpt state for NAS/Pruned models."""
+    # Get the original function signature
+    original_func = cls._modelopt_cache["_load_pretrained_model"].__func__
+    sig = inspect.signature(original_func)
+    param_names = list(sig.parameters.keys())
 
-    NOTE: Since ths is a lower level method, make sure to check if the order of arguments is ever changed!
-    """
+    # Extract model from args (first positional param)
+    model = args[0] if args else kwargs.get("model")
+
+    # Check if pretrained_model_name_or_path was passed as positional or keyword argument
+    idx = param_names.index("pretrained_model_name_or_path") - 1  # -1 for cls
+    if idx < len(args):
+        pretrained_model_name_or_path = args[idx]
+    else:
+        pretrained_model_name_or_path = kwargs.get("pretrained_model_name_or_path")
+
     modelopt_state_path = _get_modelopt_state_path(model, pretrained_model_name_or_path)
     if os.path.isfile(modelopt_state_path) and not ModeloptStateManager.is_converted(model):
         modelopt_state_dict = torch.load(
@@ -119,15 +118,7 @@ def _new__load_pretrained_model(
         restore_from_modelopt_state(model, modelopt_state_dict)
         print_rank_0(f"Restored ModelOpt state after init from {modelopt_state_path}")
 
-    return types.MethodType(cls._modelopt_cache["_load_pretrained_model"].__func__, cls)(
-        model,
-        state_dict,
-        loaded_keys,
-        resolved_archive_file,
-        pretrained_model_name_or_path,
-        *args,
-        **kwargs,
-    )
+    return types.MethodType(original_func, cls)(*args, **kwargs)
 
 
 def _new_save_pretrained(self, save_directory, *args, **kwargs):
@@ -142,24 +133,32 @@ def _new_save_pretrained(self, save_directory, *args, **kwargs):
 
 _DEFAULT_PATCH_METHODS_MAP = {
     "from_pretrained": classmethod(_new_from_pretrained),
-    "_load_pretrained_model": classmethod(_new__load_pretrained_model),
+    "_load_pretrained_model": classmethod(_new__load_pretrained_model),  # type: ignore [arg-type]
     "save_pretrained": _new_save_pretrained,
     "_from_config": classmethod(_new_from_config),
 }
 
 
+_patch_lock = threading.Lock()
+
+
 def patch_pretrained_methods(cls, library_name: str, patch_methods_map: dict = None):
     if hasattr(cls, "_modelopt_cache"):
         return
-    cls._modelopt_cache = {}
-    patch_methods_map = patch_methods_map or _DEFAULT_PATCH_METHODS_MAP
-    for method_name in patch_methods_map:
-        if not hasattr(cls, method_name):
-            continue
-        cls._modelopt_cache[method_name] = getattr(cls, method_name)
-        setattr(cls, method_name, patch_methods_map[method_name])
 
-    _PATCHED_LIBRARIES.add(library_name)
+    with _patch_lock:
+        # in case multiple threads patch the same library
+        if library_name in _PATCHED_LIBRARIES:
+            return
+        cls._modelopt_cache = {}
+        patch_methods_map = patch_methods_map or _DEFAULT_PATCH_METHODS_MAP
+        for method_name in patch_methods_map:
+            if not hasattr(cls, method_name):
+                continue
+            cls._modelopt_cache[method_name] = getattr(cls, method_name)
+            setattr(cls, method_name, patch_methods_map[method_name])
+
+        _PATCHED_LIBRARIES.add(library_name)
 
 
 def enable_huggingface_checkpointing():

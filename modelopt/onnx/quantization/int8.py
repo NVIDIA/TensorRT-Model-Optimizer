@@ -23,7 +23,7 @@ import onnx
 import onnx_graphsurgeon as gs
 from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
-from onnxmltools.utils.float16_converter import convert_float_to_float16
+from onnxconverter_common import convert_float_to_float16
 from onnxruntime.quantization import CalibrationMethod
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
@@ -35,6 +35,7 @@ from modelopt.onnx.quantization.graph_utils import (
     filter_quantizable_kgen_heads,
     find_nodes_from_matmul_to_exclude,
     find_nodes_to_exclude,
+    get_concat_eliminated_tensors,
     remove_partial_input_qdq,
 )
 from modelopt.onnx.quantization.ort_patching import _quantize_static as quantize_static
@@ -117,7 +118,7 @@ def quantize(
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cpu"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -127,6 +128,7 @@ def quantize(
     verbose: bool = False,
     trt_extra_plugin_lib_paths: str = None,
     high_precision_dtype: str = "fp32",
+    passes: list[str] = None,
     **kwargs,
 ) -> onnx.onnx_pb.ModelProto:
     """Applies INT8 quantization to an ONNX file using the compiler friendly heuristics.
@@ -216,6 +218,13 @@ def quantize(
         return
     elif verbose:
         logging.info(f"Selected {len(nodes_to_quantize)} nodes to quantize: {nodes_to_quantize}")
+
+    if passes and "concat_elimination" in passes:
+        group_qdq_tensors = get_concat_eliminated_tensors(onnx_model, nodes_to_quantize)
+        if group_qdq_tensors:
+            trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
+            if verbose:
+                logging.info("concat_elimination enable")
 
     # Create a temp file for intermediate model
     tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")

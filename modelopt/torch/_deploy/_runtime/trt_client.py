@@ -86,6 +86,7 @@ class TRTLocalClient(RuntimeClient):
             dynamic_shapes=compilation_args.get("dynamic_shapes", None),
             plugin_config=compilation_args.get("plugin_config", None),
             trt_mode=self.deployment["precision"],
+            verbose=(self.deployment.get("verbose", "false").lower() == "true"),
         )
         self.engine_bytes = engine_bytes
         return engine_bytes
@@ -108,8 +109,8 @@ class TRTLocalClient(RuntimeClient):
         latency = 0.0
         detailed_results = {}
         if profiling_results is not None:
-            gpu_compute_time = profiling_results["performance_summary"]["GPU Compute Time"]
-            latency = sum(gpu_compute_time) / len(gpu_compute_time)
+            # Return the mean of the GPU Compute Time
+            latency = profiling_results["performance_summary"]["GPU Compute Time"][2]
             detailed_results = profiling_results
         return latency, detailed_results
 

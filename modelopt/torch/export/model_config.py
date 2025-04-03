@@ -34,10 +34,12 @@ QUANTIZATION_INT4_AWQ = "int4_awq"
 QUANTIZATION_W4A8_AWQ = "w4a8_awq"
 QUANTIZATION_NVFP4 = "nvfp4"
 QUANTIZATION_NVFP4_AWQ = "nvfp4_awq"
+QUANTIZATION_FP8_PB_REAL = "fp8_pb_real"
+QUANTIZATION_FP8_PB_WO = "fp8_pb_wo"
 
 KV_CACHE_FP8 = "FP8"
 KV_CACHE_INT8 = "INT8"
-
+KV_CACHE_NVFP4 = "NVFP4"
 LINEAR_COLUMN = "column"
 LINEAR_ROW = "row"
 LINEAR_GROUP = "group"
@@ -295,7 +297,8 @@ class AttentionConfig:
     # or merged (for TRT LLM export)
     qkv: Union[QKVConfig, LinearConfig] = None
     dense: LinearConfig = None
-    kv_cache_scaling_factor: torch.Tensor = None
+    k_cache_scaling_factor: torch.Tensor = None
+    v_cache_scaling_factor: torch.Tensor = None
     kv_cache_dtype: Optional[str] = None
 
     rotary_dim: int = -math.inf

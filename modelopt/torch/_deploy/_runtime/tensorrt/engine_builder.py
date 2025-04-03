@@ -79,6 +79,7 @@ def _get_trtexec_params(
     engine_path: str,
     builder_optimization_level: str,
     timing_cache_file: str = None,
+    verbose: bool = False,
 ) -> list[str]:
     cmd = ["--saveEngine=" + engine_path]
 
@@ -91,10 +92,10 @@ def _get_trtexec_params(
     cmd.append("--builderOptimizationLevel=" + builder_optimization_level)
 
     # Generates an engine layer graph file for visualization.
-    cmd += [
-        "--verbose",
-        f"--exportLayerInfo={engine_path}.graph.json",
-    ]
+    cmd.append(f"--exportLayerInfo={engine_path}.graph.json")
+
+    if verbose:
+        cmd.append("--verbose")
 
     return cmd
 
@@ -150,6 +151,7 @@ def build_engine(
     plugin_config: dict = None,
     builder_optimization_level: str = "3",
     draw_engine: bool = False,
+    verbose: bool = False,
 ) -> tuple[Optional[bytes], bytes, Optional[bytes]]:
     """This method produces serialized TensorRT engine from an ONNX model.
 
@@ -184,6 +186,7 @@ def build_engine(
             For more details, please refer to:
             https://docs.nvidia.com/deeplearning/tensorrt/api/python_api/infer/Core/BuilderConfig.html
         draw_engine: True or False based on whether to draw the engine graph or not.
+        verbose: Set trtexec command to verbose or not.
 
     Returns:
         The generated engine file data.
@@ -234,6 +237,7 @@ def build_engine(
         cmd += _get_trtexec_params(
             engine_path,
             builder_optimization_level,
+            verbose=verbose,
         )
 
         try:

@@ -25,7 +25,7 @@ import onnx
 import onnx_graphsurgeon as gs
 from onnx import numpy_helper
 from onnx_graphsurgeon.ir.graph import Graph
-from onnxmltools.utils.float16_converter import convert_float_to_float16
+from onnxconverter_common import convert_float_to_float16
 from onnxruntime.quantization import CalibrationMethod
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
@@ -34,6 +34,7 @@ from modelopt.onnx.quantization.graph_utils import (
     convert_fp16_io,
     expand_node_names_from_patterns,
     find_nodes_to_exclude,
+    get_concat_eliminated_tensors,
     get_resize_scales,
     get_tensor_producer_nodes,
     insert_fp8_mha_casts,
@@ -68,6 +69,11 @@ def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
             input_channel = weight.shape[1]
             if output_channel % 16 != input_channel % 16:
                 logging.info(f"Found unpaddable conv for FP8: {node.name}")
+                unsupported_conv_nodes.append(node.name)
+                continue
+
+            if output_channel < 16 or input_channel < 16:
+                logging.info(f"Found Conv with I/O channel size less than 16: {node.name}")
                 unsupported_conv_nodes.append(node.name)
                 continue
 
@@ -187,7 +193,7 @@ def quantize(
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cpu"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -198,6 +204,7 @@ def quantize(
     trt_extra_plugin_lib_paths: str = None,
     high_precision_dtype: str = "fp16",
     mha_accumulation_dtype: str = "fp16",
+    passes: list[str] = None,
     **kwargs,
 ) -> onnx.onnx_pb.ModelProto:
     """Applies FP8 GEMM only quantization to an ONNX file.
@@ -258,6 +265,13 @@ def quantize(
         return
     elif verbose:
         logging.info(f"Selected nodes to quantize: {nodes_to_quantize}")
+
+    if passes and "concat_elimination" in passes:
+        group_qdq_tensors = get_concat_eliminated_tensors(onnx_model, nodes_to_quantize)
+        if group_qdq_tensors:
+            trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
+            if verbose:
+                logging.info("concat_elimination enable")
 
     # Create a temp file for intermediate model
     tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")

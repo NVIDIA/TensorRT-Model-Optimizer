@@ -104,6 +104,8 @@ class QuantLinearConvBase(QuantInputBase):
         # # Import in the function to avoid circular imports
         from ...model_calib import max_calibrate
 
+        # TODO: Fix device for svdquant
+
         def _initialize_activation_quantizer_amax(quantizer, device, dtype):
             if not getattr(quantizer, "_has_amax", False):
                 return
@@ -138,8 +140,13 @@ class QuantLinearConvBase(QuantInputBase):
             getattr(module, "weight_quantizer", None)
         ):
             if getattr(weight_quantizer, "_has_amax", False):
+                # [IMPORTANT] max_calibrate will perform distributed sync on amax; hence should
+                # not be called here. When parallel_state is not found, distributed sync will
+                # result in deadlock.
                 max_calibrate(
-                    weight_quantizer, lambda weight_quantizer: weight_quantizer(module.weight)
+                    weight_quantizer,
+                    lambda weight_quantizer: weight_quantizer(module.weight),
+                    distributed_sync=False,
                 )
 
     @staticmethod

@@ -176,3 +176,134 @@ def find_init(onnx_model: onnx.onnx_ml_pb2.ModelProto, init_name: str) -> np.nda
 
     assert ret is not None
     return onnx.numpy_helper.to_array(ret)
+
+
+#
+#                 |
+#              conv_1
+#             /   |
+#         conv_2  |
+#          /  |   |
+#     conv_3  |   |
+#        |    |   |
+#       concatenation
+#             |
+#           conv_4
+#             |
+#
+def build_conv_concat_model():
+    # Define your model inputs and outputs
+    input_names = ["input_0"]
+    output_names = ["conv4_conv/Conv2D:0"]
+    input_shapes = [(1, 128, 240, 64)]
+    output_shapes = [(1, 256, 240, 64)]
+
+    inputs = [
+        helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, input_shape)
+        for input_name, input_shape in zip(input_names, input_shapes)
+    ]
+    outputs = [
+        helper.make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, output_shape)
+        for output_name, output_shape in zip(output_names, output_shapes)
+    ]
+
+    # Create the ONNX graph with the nodes
+    nodes = [
+        helper.make_node(
+            op_type="Conv",
+            inputs=["input_0", "ReadVariableOp:0"],
+            outputs=["conv1_conv/Conv2D:0"],
+            name="conv1_conv/Conv2D",
+            dilations=[1, 1],
+            strides=[1, 1],
+            kernel_shape=[3, 3],
+            group=1,
+            auto_pad="NOTSET",
+            pads=[1, 1, 1, 1],
+        ),
+        helper.make_node(
+            op_type="Conv",
+            inputs=["conv1_conv/Conv2D:0", "ReadVariableOp:1"],
+            outputs=["conv2_conv/Conv2D:0"],
+            name="conv2_conv/Conv2D",
+            dilations=[1, 1],
+            strides=[1, 1],
+            kernel_shape=[3, 3],
+            group=1,
+            auto_pad="NOTSET",
+            pads=[1, 1, 1, 1],
+        ),
+        helper.make_node(
+            op_type="Conv",
+            inputs=["conv2_conv/Conv2D:0", "ReadVariableOp:2"],
+            outputs=["conv3_conv/Conv2D:0"],
+            name="conv3_conv/Conv2D",
+            dilations=[1, 1],
+            strides=[1, 1],
+            kernel_shape=[3, 3],
+            group=1,
+            auto_pad="NOTSET",
+            pads=[1, 1, 1, 1],
+        ),
+        helper.make_node(
+            op_type="Concat",
+            inputs=["conv1_conv/Conv2D:0", "conv2_conv/Conv2D:0", "conv3_conv/Conv2D:0"],
+            outputs=["concat0:0"],
+            name="concat0",
+            axis=1,
+        ),
+        helper.make_node(
+            op_type="Conv",
+            inputs=["concat0:0", "ReadVariableOp:3"],
+            outputs=["conv4_conv/Conv2D:0"],
+            name="conv4_conv/Conv2D",
+            dilations=[1, 1],
+            strides=[1, 1],
+            kernel_shape=[1, 1],
+            group=1,
+            auto_pad="NOTSET",
+            pads=[0, 0, 0, 0],
+        ),
+    ]
+
+    # Create the ONNX initializers
+    initializers = [
+        helper.make_tensor(
+            name="ReadVariableOp:0",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(128, 128, 3, 3),
+            vals=np.random.uniform(low=0.5, high=1.0, size=128 * 128 * 3 * 3),
+        ),
+        helper.make_tensor(
+            name="ReadVariableOp:1",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(128, 128, 3, 3),
+            vals=np.random.uniform(low=0.5, high=1.0, size=128 * 128 * 3 * 3),
+        ),
+        helper.make_tensor(
+            name="ReadVariableOp:2",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(128, 128, 3, 3),
+            vals=np.random.uniform(low=0.5, high=1.0, size=128 * 128 * 3 * 3),
+        ),
+        helper.make_tensor(
+            name="ReadVariableOp:3",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(256, 384, 1, 1),
+            vals=np.random.uniform(low=0.5, high=1.0, size=256 * 384 * 1 * 1),
+        ),
+    ]
+
+    # Create the ONNX graph with the nodes and initializers
+    graph = helper.make_graph(nodes, "r1a", inputs, outputs, initializer=initializers)
+
+    # Create the ONNX model
+    model = helper.make_model(graph)
+    model.opset_import[0].version = 13
+    model.ir_version = 9  # TODO: remove manual ir_version change once ORT supports ir_version 10
+
+    # Check the ONNX model
+    model_inferred = onnx.shape_inference.infer_shapes(model)
+    onnx.checker.check_model(model_inferred)
+
+    return model_inferred

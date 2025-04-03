@@ -19,12 +19,14 @@ Please check out the source code of this module for examples of how plugins work
 write your own one. Currently, we support plugins for
 
 - :meth:`apex<modelopt.torch.quantization.plugins.apex>`
+- :meth:`attention<modelopt.torch.quantization.plugins.attention>`
 - :meth:`diffusers<modelopt.torch.quantization.plugins.diffusers>`
+- :meth:`fairscale<modelopt.torch.quantization.plugins.fairscale>`
 - :meth:`huggingface<modelopt.torch.quantization.plugins.huggingface>`
 - :meth:`megatron<modelopt.torch.quantization.plugins.megatron>`
 - :meth:`nemo<modelopt.torch.quantization.plugins.nemo>`
-- :meth:`fairscale<modelopt.torch.quantization.plugins.fairscale>`
 - :meth:`peft<modelopt.torch.quantization.plugins.peft>`
+- :meth:`transformer_engine<modelopt.torch.quantization.plugins.transformer_engine>`
 """
 
 from modelopt.torch.utils import import_plugin
@@ -32,8 +34,14 @@ from modelopt.torch.utils import import_plugin
 with import_plugin("apex"):
     from .apex import *
 
+from .attention import *
+from .custom import *
+
 with import_plugin("diffusers"):
     from .diffusers import *
+
+with import_plugin("fairscale"):
+    from .fairscale import *
 
 with import_plugin("huggingface"):
     from .huggingface import *
@@ -44,8 +52,8 @@ with import_plugin("megatron"):
 with import_plugin("nemo"):
     from .nemo import *
 
-with import_plugin("fairscale"):
-    from .fairscale import *
-
 with import_plugin("peft"):
     from .peft import *
+
+with import_plugin("transformer_engine"):
+    from .transformer_engine import *

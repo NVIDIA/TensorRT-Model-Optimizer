@@ -18,7 +18,6 @@
 import fnmatch
 import inspect
 import warnings
-from contextlib import contextmanager
 from typing import Any, Callable, Iterable, Optional, Union
 
 import torch
@@ -27,13 +26,13 @@ import torch.nn as nn
 from modelopt.core.torch.quantization.algorithms import AutoQuantizeSearcher
 from modelopt.torch.opt import apply_mode
 from modelopt.torch.opt.searcher import ForwardLoop
+from modelopt.torch.quantization.conversion import set_quantizer_by_cfg
 
 from .config import CalibAlgorithmCfgType
 from .conversion import set_quantizer_attribute
 from .mode import QuantizeModeRegistry
-from .model_calib import awq, max_calibrate, smoothquant
-from .nn import SequentialQuantizer, TensorQuantizer
-from .qtensor import QTensorWrapper, pack_real_quantize_weight
+from .model_calib import awq, max_calibrate, smoothquant, svdquant
+from .nn import TensorQuantizer
 
 __all__ = [
     "calibrate",
@@ -71,18 +70,6 @@ def calibrate(
 
     Returns: The calibrated pytorch model.
     """
-
-    @contextmanager
-    def _disable_real_quantization(model):
-        real_quantized_modules = []
-        for name, module in model.named_modules():
-            if isinstance(module, TensorQuantizer) and not module.fake_quant:
-                module.fake_quant = True
-                real_quantized_modules.append(module)
-        yield
-        for module in real_quantized_modules:
-            module.fake_quant = False
-
     if forward_loop is not None:
         # get the number of arguments of forward_loop
         num_args = len(inspect.signature(forward_loop).parameters)
@@ -116,62 +103,21 @@ def calibrate(
     is_training = model.training
     model.eval()
 
-    with _disable_real_quantization(model):
-        if algorithm.startswith("awq"):  # type: ignore[union-attr]
-            awq(model, algorithm, forward_loop, **kwargs)  # type: ignore[arg-type]
-        elif algorithm == "smoothquant":
-            smoothquant(model, forward_loop, **kwargs)
-        elif algorithm == "max":
-            max_calibrate(model, forward_loop)
-        else:
-            raise ValueError(f"Unsupported calibration algorithm: {algorithm}")
-
-    # If real quant quantizer is present, real quantize the weights.
-    real_quantize_weight(model)
+    if algorithm.startswith("awq"):  # type: ignore[union-attr]
+        awq(model, algorithm, forward_loop, **kwargs)  # type: ignore[arg-type]
+    elif algorithm == "smoothquant":
+        smoothquant(model, forward_loop, **kwargs)
+    elif algorithm == "max":
+        max_calibrate(model, forward_loop)
+    elif algorithm == "svdquant":
+        svdquant(model, forward_loop, **kwargs)
+    else:
+        raise ValueError(f"Unsupported calibration algorithm: {algorithm}")
 
     # TODO: Re-enable when the CUDA error: unspecified launch failure is fixed.
     # clear_cuda_cache()
 
     model.train(is_training)
-
-    return model
-
-
-def real_quantize_weight(model):
-    """Applies real weight-only quantization to the given model using the provided configuration.
-
-    This function first applies a quantization mode to the model using the provided configuration.
-    It then recursively traverses the model to apply real quantization to the weights of any modules
-    that have a `weight_quantizer` attribute enabled. The quantized weights are wrapped in a
-    `QTensorWrapper` to make them compatible with PyTorch's `torch.nn.Parameter`.
-
-    Args:
-        module (nn.Module): The neural network model to be quantized.
-
-    Note:
-        This function modifies the input model in-place.
-    """
-    # Real quantize the weights. If the weight quantizer is a `SequentialQuantizer`,
-    # we only need to real-quantize the first weight quantizer.
-    with SequentialQuantizer.replace_sequential_quantizer_with_single_quantizer(model):
-        pack_real_quantize_weight(model)
-
-    # TODO: remove this warnning once the real quantization feature is mature
-    def _has_qtensorwrapper(module):
-        if hasattr(module, "weight") and isinstance(module.weight, QTensorWrapper):
-            return True
-        for _, submodule in module.named_children():
-            if _has_qtensorwrapper(submodule):
-                return True
-        return False
-
-    if _has_qtensorwrapper(model):
-        warnings.warn(
-            "Real quantization has been applied to the model. This feature is still "
-            "experimental, and some functionalities may not be supported. For example, "
-            "converting the model back to its original state or saving and restoring "
-            "the quantized model may not be available."
-        )
 
     return model
 
@@ -458,6 +404,8 @@ def auto_quantize(
         "num_score_steps": num_score_steps,
         "verbose": verbose,
     }
+    # Disable all quantizers; AutoQuantize will enable the needed ones
+    set_quantizer_by_cfg(model, {"*": {"enable": False}})
     searcher.search(model, constraints, config=search_config)  # type: ignore[arg-type]
 
     if disabled_layers:
@@ -501,7 +449,12 @@ def fold_weight(model: nn.Module):
                 (module.weight_quantizer(module.weight.float())).to(module.weight.dtype)
             )
             module.weight_quantizer.disable()
-            if hasattr(module.weight_quantizer, "_pre_quant_scale"):
-                delattr(module.weight_quantizer, "_pre_quant_scale")
-            if hasattr(module.weight_quantizer, "_amax"):
-                delattr(module.weight_quantizer, "_amax")
+            _attrs = [
+                "_pre_quant_scale",
+                "_amax",
+                "_svdquant_lora_a",
+                "_svdquant_lora_b",
+            ]
+            for attr in _attrs:
+                if hasattr(module.weight_quantizer, attr):
+                    delattr(module.weight_quantizer, attr)

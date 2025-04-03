@@ -75,6 +75,8 @@ trainer.save_model()
 > **_NOTE:_** The example above uses [mto.modelopt_state](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.modelopt_state) and [mto.restore_from_modelopt_state](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.restore_from_modelopt_state) for saving and restoring of ModelOpt
 > modified model. ModelOpt provides additional methods/workflows for saving and restoring ModelOpt modified model. Please see [saving & restoring](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/6_save_load.html) to learn more.
 
+> **_NOTE:_** ModelOpt provides accelerated quantization kernels using Triton that significantly speed up NVFP4 format QAT. For details, see the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/_installation_for_Linux.html#accelerated-quantization-with-triton-kernels).
+
 #### End-to-end QAT Example
 
 This folder contains end-to-end runnable fine-tuning/QAT pipeline where Llama2-7B from huggingface is trained on
@@ -100,19 +102,18 @@ To perform PTQ evaluation, run:
 # Load the checkpoint from previous fine-tuning stage, quantize the model and evaluate without additional training
 ./launch.sh --model llama2-finetune \
    --do_train False \
-   --quant_cfg 'INT4_WEIGHT_INT8_ACTIVATIONS'
+   --quant_cfg INT4_WEIGHT_INT8_ACTIVATIONS
 ```
 
 To perform QAT, run:
 
 ```sh
-# Load the checkpoint from previous fine-tuning stage, quantize the model and run additional training (QAT)
+# Load the quantized checkpoint from previous fine-tuning stage and run additional training (QAT)
 ./launch.sh --model llama2-finetune \
    --num_epochs 0.5 \
    --lr 1e-5 \
    --do_train True \
-   --output_dir llama2-qat \
-   --quant_cfg 'INT4_WEIGHT_INT8_ACTIVATIONS'
+   --output_dir llama2-qat
 ```
 
 You may alternatively perform QAT with any other quantization formats from **ModelOpt**. Please see more details on the supported quantization formats and how to use them as shown below:
@@ -128,6 +129,8 @@ help(mtq.config)
 
 > **_NOTE:_** Like any other model training, the QAT model accuracy can be further improved by optimizing the training
 > hyper-parameters such as learning rate, training duration etc.
+
+> **_NOTE:_** `launch.sh` defaults to use `LlamaDecoderLayer` as the transformer layer class. If your model uses a different class, you can pass `--fsdp_transformer_layer_cls_to_wrap <your_layer_class>` to the `launch.sh` script.
 
 #### Results
 
@@ -166,7 +169,7 @@ The final model after QAT is similar in architecture to that of PTQ model. QAT m
 
 ### End-to-end QLoRA with Real Quantization
 
-[QLoRA](https://arxiv.org/pdf/2305.14314) is a technique mainly intended for further reducing the training memory requirement of LoRA. In QLoRA, the LoRA backbone weights are quantized to reduce the model footprint. Unlike QAT which uses simulated quantization, QLoRA requires real quantization. Currently, we support NF4, FP8, FP4, and INT4. Please check `modelopt.torch.quantization.config.choices` for pre-defined configs.
+[QLoRA](https://arxiv.org/pdf/2305.14314) is a technique mainly intended for further reducing the training memory requirement of LoRA. In QLoRA, the LoRA backbone weights are quantized to reduce the model footprint. Unlike QAT which uses simulated quantization, QLoRA requires real quantization. To compress the model weights after quantization, we use the `mtq.compress()` function, which currently supports FP8, FP4, and INT4 formats. This feature can be enabled by passing `--compress True` to the `launch.sh` script. For detailed configuration options and patterns, please refer to the `modelopt.torch.quantization.compress` documentation.
 
 In this example, the model is trained on [Samsung/samsum](https://huggingface.co/datasets/Samsung/samsum) dataset.
 
@@ -174,21 +177,25 @@ To evaluate QLoRA quantized model before training, run:
 
 ```sh
 # Load the HF checkpoint, quantize the model and evaluate without additional training
+# Also compress the model after quantization
 ./launch.sh --model meta-llama/Llama-2-7b-hf \
    --do_train False \
-   --quant_cfg 'NVFP4_REAL_QUANT_CFG'
+   --quant_cfg NVFP4_DEFAULT_CFG \
+   --compress True
 ```
 
 To perform QLoRA training, run:
 
 ```sh
 # Load the HF checkpoint, quantize the model, add LoRA adapter, and run additional training
+# Also compress the model after quantization
 ./launch.sh --model meta-llama/Llama-2-7b-hf \
    --num_epochs 0.5 \
    --lr 1e-3 \
    --do_train True \
    --output_dir llama2-fp4-qlora \
-   --quant_cfg 'NVFP4_REAL_QUANT_CFG' \
+   --quant_cfg NVFP4_DEFAULT_CFG \
+   --compress True \
    --lora True
 ```
 

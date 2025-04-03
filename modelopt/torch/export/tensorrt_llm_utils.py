@@ -20,7 +20,7 @@ Some of the logics in this file are empirical and needs constant update if excep
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator, Iterable, Optional
+from typing import TYPE_CHECKING, Any
 from warnings import warn
 
 from .layer_utils import model_type_is_enc_dec
@@ -38,7 +38,6 @@ from .model_config import (
     DecoderLayerConfig,
     MLPConfig,
     ModelConfig,
-    MOEConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,215 +74,16 @@ def _find_layernorm_type(model_config: ModelConfig):
     return LAYERNORM_DEFAULT
 
 
-def _prefix_wildcard_summarize_exclude_modules(unquantized_layers, quantized_layers):
-    """Generate a summarization of the quantization layer configs using prefix wildcards.
-
-    Prefix wildcards means we only consider wildcards that is a prefix with a star in the end.
-    We do not consider other wildcards such as: a*b.
-    """
-
-    def all_matching_prefix_wildcards(name):
-        # include all possible prefix wildcards, and the exact name itself
-        wildcards = set([name])
-        for i in range(len(name) + 1):
-            wildcards.add(name[:i] + "*")
-        return wildcards
-
-    def next_formated_matching_prefix_wildcards(name: str) -> Generator[list[str], None, None]:
-        """Enumerate formated prefix wildcards. A result may be a combination of prefix wildcards.
-
-        Formated here means we only consider wildcards at dot split. We need two patterns.
-
-        1. a single wildcard: module_name*
-        2. a set of 2 wildcards: {module_name, module_name.*}. We need this pattern set because
-           module_name* may match other modules with module_name as a prefix.
-        """
-        for i in range(len(name)):
-            if name[i] == ".":
-                yield [name[:i] + "*"]
-                yield [name[:i], name[:i] + ".*"]
-        # in the end, itself only is a wildcard
-        yield [name]
-
-    # any of the wildcard in this set cannot be present in the result
-    negtive_wild_candidates = set()
-    for layer in quantized_layers:
-        negtive = all_matching_prefix_wildcards(layer)
-        negtive_wild_candidates.update(negtive)
-        logger.debug(
-            f"Quantized layer {layer}, prefix wildcards {negtive} identified as negative wildcards"
-        )
-
-    res_summary = set()
-    for layer in unquantized_layers:
-        candidate_wildcards = []
-        for wildcards in next_formated_matching_prefix_wildcards(layer):
-            if any([wildcard in negtive_wild_candidates for wildcard in wildcards]):
-                # need a more specific wildcard
-                logger.debug(
-                    f"Unquantized layer {layer}, prefix wildcards {wildcards} invalidated by negative wildcards"
-                )
-                continue
-            if all([wildcard in res_summary for wildcard in wildcards]):
-                # we get covered already, do not need to move forward, and clear candidate
-                logger.debug(
-                    f"Unquantized layer {layer}, prefix wildcards {wildcards} already covered"
-                )
-                candidate_wildcards = []
-                break
-            # find one, now terminate the search
-            candidate_wildcards = wildcards
-            logger.debug(
-                f"Unquantized layer {layer}, prefix wildcards {wildcards} identified as a new match"
-            )
-            break
-        res_summary.update(candidate_wildcards)
-    return res_summary
-
-
-def _detect_exclude_modules(weight_keys: Iterable[str]) -> list[str]:
-    quantized_layers = set()
-    unquantized_layers = set()
-
-    for key in weight_keys:
-        suffix = key.split(".")[-1]
-
-        # Filter kv_cache_scaling_factor.
-        if "kv_cache_scaling_factor" in suffix:
-            continue
-
-        if "_scaling_factor" in suffix:
-            quantized_layers.add(key.rsplit(".", 1)[0])
-        else:
-            unquantized_layers.add(key.rsplit(".", 1)[0])
-
-    logger.debug(f"pre-unquantized_layers {unquantized_layers}")
-    logger.debug(f"pre-quantized_layers {quantized_layers}")
-
-    unquantized_layers = unquantized_layers - quantized_layers
-
-    logger.debug(f"unquantized_layers {unquantized_layers}")
-    logger.debug(f"quantized_layers {quantized_layers}")
-
-    res_with_wildcards = _prefix_wildcard_summarize_exclude_modules(
-        unquantized_layers, quantized_layers
-    )
-    return list(res_with_wildcards)
-
-
-def _get_block_size(model_config: ModelConfig):
-    """Return the first block size that is not zero if any."""
-    for layer in model_config.layers:
-        module_list = [layer.attention.qkv] if layer.attention else []
-        if layer.mlp and isinstance(layer.mlp, MLPConfig):
-            module_list.extend(
-                [
-                    layer.mlp.fc,
-                    layer.mlp.proj,
-                    layer.mlp.gate,
-                ]
-            )
-        if layer.mlp and isinstance(layer.mlp, MOEConfig):
-            module_list.extend([layer.mlp.experts.fc, layer.mlp.experts.proj])
-        for m in module_list:
-            if m is not None and m.awq_block_size != 0:
-                return m.awq_block_size
-    return 0
-
-
-def _get_quant_config(
-    model_config: ModelConfig,
-    weight_keys: Iterable[str],
-    kv_cache_dtype: Optional[str] = None,
-    pp_size: int = 1,
-) -> dict[str, Any]:
-    quantization: dict[str, Any] = {"quant_algo": None, "kv_cache_quant_algo": None}
-
-    if model_config.quantization == "fp8":
-        quantization.update({"quant_algo": "FP8"})
-    elif model_config.quantization == "int4_awq":
-        quantization.update(
-            {
-                "quant_algo": "W4A16_AWQ",
-                "group_size": _get_block_size(model_config),
-                "has_zero_point": False,
-                "pre_quant_scale": True,
-            }
-        )
-    elif model_config.quantization == "w4a8_awq":
-        quantization.update(
-            {
-                "quant_algo": "W4A8_AWQ",
-                "group_size": _get_block_size(model_config),
-                "has_zero_point": False,
-                "pre_quant_scale": True,
-            }
-        )
-    elif model_config.quantization == "int8_sq":
-        quantization.update(
-            {
-                "quant_algo": "W8A8_SQ_PER_CHANNEL",
-            }
-        )
-    elif model_config.quantization == "nvfp4":
-        quantization.update(
-            {
-                "quant_algo": "NVFP4",
-                "group_size": _get_block_size(model_config),
-            }
-        )
-    elif model_config.quantization == "nvfp4_awq":
-        quantization.update(
-            {
-                "quant_algo": "NVFP4_AWQ",
-                "group_size": _get_block_size(model_config),
-                "has_zero_point": False,
-                "pre_quant_scale": True,
-            }
-        )
-    elif model_config.quantization == QUANTIZATION_NONE:
-        quantization.update(
-            {
-                "quant_algo": None,
-            }
-        )
-    else:
-        quantization.update(
-            {
-                "quant_algo": model_config.quantization,
-            }
-        )
-
-    # Deprecate exclude modules for per layer export
-    if model_config.quantization != QUANTIZATION_NONE:
-        exclude_modules = _detect_exclude_modules(weight_keys)
-        # In TRT LLM, the embedding table is shared for the following models, so lm_head quantization format
-        # won't be automatically detected in the excluded_modules. We need to manually add it to the exclusions.
-        share_embedding_table = model_config.lm_head is None and pp_size == 1
-        if share_embedding_table:
-            exclude_modules.append("lm_head")
-        quantization["exclude_modules"] = exclude_modules
-
-    if kv_cache_dtype is not None:
-        quantization.update(
-            {
-                "kv_cache_quant_algo": kv_cache_dtype,
-            }
-        )
-
-    return quantization
-
-
 def convert_to_tensorrt_llm_config(
     model_config: ModelConfig,
-    weight_keys: Iterable[str],
+    quant_config: dict[str, Any],
     hf_config=None,
 ):
     """Convert to TensorRT-LLM checkpoint config.
 
     Args:
         model_config: The model_config to convert.
-        weight_keys: The iterable of string of weights exported to the tensorrt_llm checkpoint.
+        quant_config: The quantization config to convert. It will be updated with kv_cache_quant_algo.
         hf_config: The huggingface model config.
             If provided, we try to use the TensorRT-LLM's export method if available.
     """
@@ -310,9 +110,6 @@ def convert_to_tensorrt_llm_config(
         "tp_size": tp_size,
         "pp_size": pp_size,
     }
-    quantization = _get_quant_config(
-        model_config, weight_keys, first_attention_config.kv_cache_dtype, pp_size
-    )
 
     decoder_type = model_config.layers[0].decoder_type
 
@@ -373,6 +170,16 @@ def convert_to_tensorrt_llm_config(
         "lm_head_bias": model_config.lm_head is not None and model_config.lm_head.bias is not None,
     }
 
+    # Update quantization config
+    if model_config.quantization != QUANTIZATION_NONE:
+        # In TRT LLM, the embedding table is shared for the following models, so lm_head quantization format
+        # won't be automatically detected in the excluded_modules. We need to manually add it to the exclusions.
+        share_embedding_table = model_config.lm_head is None and pp_size == 1
+        if share_embedding_table:
+            quant_config.setdefault("exclude_modules", []).append("lm_head")
+
+    quant_config["kv_cache_quant_algo"] = first_attention_config.kv_cache_dtype
+
     if hf_config is not None:
         try:
             from tensorrt_llm.models import MODEL_MAP
@@ -386,7 +193,9 @@ def convert_to_tensorrt_llm_config(
                     hf_config_or_dir=hf_config,
                     dtype=model_config.dtype,
                     mapping=Mapping.from_dict(mapping),
-                    quant_config=QuantConfig.from_dict(quantization),
+                    quant_config=QuantConfig.from_dict(
+                        {k: v for k, v in quant_config.items() if k != "quantized_layers"}
+                    ),
                 ).to_dict()
 
                 config.update(tensorrt_llm_config)
@@ -416,7 +225,7 @@ def convert_to_tensorrt_llm_config(
         config["rotary_scaling"] = first_attention_decoder_config.rope_scaling
 
     config["mapping"] = mapping
-    config["quantization"] = quantization
+    config["quantization"] = quant_config
 
     layernorm_type_map = {i.name: i.value for i in LayerNormType}
     layernorm_position_map = {i.name: i.value for i in LayerNormPositionType}

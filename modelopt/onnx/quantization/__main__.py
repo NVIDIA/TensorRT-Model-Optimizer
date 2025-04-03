@@ -69,15 +69,12 @@ def parse_args():
     argparser.add_argument(
         "--calibration_eps",
         type=str,
-        default=["cpu"],
+        default=["cpu", "cuda:0", "trt"],
         nargs="+",
         help=(
             "Priority order for the execution providers (EP) to calibrate the model. "
             "Any subset of ['trt', 'cuda:x', dml:x, 'cpu'], where 'x' is the device id."
-            "Note that the order of EPs should follow the fallback logic. For example, to allow the model to run with "
-            "CUDA or CPU, the EP list should be ['cuda:0', 'cpu'], as layers that can't run in CUDA can fall back to "
-            "CPU, but not the other way. If TensorRT should also be enabled, then the EP list should be "
-            "['trt', 'cuda:0', 'cpu']."
+            "If a custom op is detected in the model, 'trt' will automatically be added to the EP list."
         ),
     )
     argparser.add_argument(
@@ -195,6 +192,22 @@ def parse_args():
             "If True, zero-point based quantization will be used - currently, applicable for awq_lite algorithm."
         ),
     )
+    argparser.add_argument(
+        "--passes",
+        type=str,
+        choices=["concat_elimination"],
+        default=[],
+        nargs="+",
+        help=(
+            "A space-separated list of optimization passes name, if set, appropriate pre/post-processing passes will "
+            "be invoked."
+        ),
+    )
+    argparser.add_argument(
+        "--simplify",
+        action="store_true",
+        help="If True, the given ONNX model will be simplified before quantization is performed.",
+    )
     return argparser.parse_args()
 
 
@@ -230,6 +243,8 @@ def main():
         disable_mha_qdq=args.disable_mha_qdq,
         dq_only=args.dq_only,
         use_zero_point=args.use_zero_point,
+        passes=args.passes,
+        simplify=args.simplify,
     )
 
 

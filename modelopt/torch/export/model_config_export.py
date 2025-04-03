@@ -98,6 +98,7 @@ def torch_to_tensorrt_llm_checkpoint(
     Args:
         model: the torch model.
         decoder_type: the type of the decoder, e.g. gpt, gptj, llama.
+            Please see :mod:`modelopt.torch.export.model_utils` for the supported models.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         inference_tensor_parallel: The target inference time tensor parallel.
             We will merge or split the calibration tensor parallelism to inference.
@@ -402,10 +403,10 @@ def torch_to_tensorrt_llm_checkpoint(
             # We split the weights from model_config and save them separately as two files.
             split_config_and_weights(model_config_dict, weights, "transformer", layer_config_dict)
             # Process per layer quantization config dict
-            per_layer_quantization = process_layer_quant_config(layer_config_dict)
+            quant_config = process_layer_quant_config(layer_config_dict)
             # We only export the json once across ranks as all jsons should be the same except for the rank.
             tensorrt_llm_config = convert_to_tensorrt_llm_config(
-                model_config, weights.keys(), hf_config=hf_config
+                model_config, quant_config, hf_config=hf_config
             )
 
             # Postprocess the tensors in the model_config.
@@ -418,7 +419,7 @@ def torch_to_tensorrt_llm_checkpoint(
                 force_non_view=False,
             )
 
-            yield tensorrt_llm_config, weights, per_layer_quantization
+            yield tensorrt_llm_config, weights, quant_config
 
 
 def export_tensorrt_llm_checkpoint(
@@ -435,6 +436,7 @@ def export_tensorrt_llm_checkpoint(
     Args:
         model: the torch model.
         decoder_type: the type of the decoder, e.g. gpt, gptj, llama.
+            Please see the model_utils.py for the supported models.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         inference_tensor_parallel: The target inference time tensor parallel.
@@ -468,7 +470,7 @@ def export_tensorrt_llm_checkpoint(
         for (
             tensorrt_llm_config,
             weights,
-            per_layer_quantization,
+            quant_config,
         ) in torch_to_tensorrt_llm_checkpoint(
             model=model,
             decoder_type=decoder_type,
@@ -495,20 +497,14 @@ def export_tensorrt_llm_checkpoint(
             if rank == world_size - 1:
                 # We only export the json once across ranks as all jsons should be the same except for the rank.
                 # If auto_quant is used, save per layer quantization information in quant_cfg.json
-                if per_layer_quantization:
-                    # Update auto quant related information for quantization.json export
-                    per_layer_quantization["kv_cache_quant_algo"] = tensorrt_llm_config[
-                        "quantization"
-                    ]["kv_cache_quant_algo"]
-
+                if "quantized_layers" in quant_config:
                     # Update auto quant related information for config.json export
                     # We remove group_size, has_zero_point, exclude_modules and pre_quant_scale information from config
                     tensorrt_llm_config["quantization"] = {
-                        k: per_layer_quantization[k] for k in ("quant_algo", "kv_cache_quant_algo")
+                        k: quant_config[k] for k in ("quant_algo", "kv_cache_quant_algo")
                     }
-
                     with open(export_dir / "quant_cfg.json", "w") as f:
-                        json.dump(per_layer_quantization, f, indent=4)
+                        json.dump(quant_config, f, indent=4)
                 else:
                     # Excluded modules information is only included in non auto_quant case
                     tensorrt_llm_config["quantization"]["exclude_modules"] = list(exclude_modules)

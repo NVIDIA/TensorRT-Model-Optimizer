@@ -101,7 +101,10 @@ class _CustomDataset(torch.utils.data.Dataset):
         self.encodings = encodings
 
     def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+        item = {
+            key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
+            for key, val in self.encodings.items()
+        }
         return item
 
     def __len__(self):

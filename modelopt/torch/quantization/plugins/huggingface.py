@@ -46,117 +46,115 @@ if transformers.modeling_utils.Conv1D not in QuantModuleRegistry:
             return dyn_cls.convert(module)
 
 
-if hasattr(transformers.models, "dbrx"):
-    # For more information on DbrxExpert, see https://github.com/huggingface/transformers/blame/dcdda5324bcc7a750b5e40e11dd795442204ff27/src/transformers/models/dbrx/modeling_dbrx.py#L756
-    class _QuantDbrxExperts(DynamicModule):
-        def _setup(self):
-            """Modify the DbrxExpert."""
-            # No setup is needed for DbrxExpert, we only need to update DbrxExpertGLU
-            pass
+# For more information on DbrxExpert, see https://github.com/huggingface/transformers/blob/dcdda532/src/transformers/models/dbrx/modeling_dbrx.py#L756
+class _QuantDbrxExperts(DynamicModule):
+    def _setup(self):
+        """Modify the DbrxExpert."""
+        # No setup is needed for DbrxExpert, we only need to update DbrxExpertGLU
+        pass
 
-        # forward method copied from the original dbrx repo - https://github.com/databricks/dbrx/blob/a3200393e678387a6f30f3e903108c650625eb21/model/modeling_dbrx.py#L795
-        def forward(
-            self,
-            x: torch.Tensor,
-            weights: torch.Tensor,
-            top_weights: torch.Tensor,
-            top_experts: torch.LongTensor,
-        ) -> torch.Tensor:
-            bsz, q_len, hidden_size = x.shape
-            x = x.view(-1, hidden_size)
-            out = torch.zeros_like(x)
+    # forward method copied from the original dbrx repo - https://github.com/databricks/dbrx/blob/a3200393/model/modeling_dbrx.py#L795
+    def forward(
+        self,
+        x: torch.Tensor,
+        weights: torch.Tensor,
+        top_weights: torch.Tensor,
+        top_experts: torch.LongTensor,
+    ) -> torch.Tensor:
+        bsz, q_len, hidden_size = x.shape
+        x = x.view(-1, hidden_size)
+        out = torch.zeros_like(x)
 
-            expert_mask = nn.functional.one_hot(
-                top_experts, num_classes=self.moe_num_experts
-            ).permute(2, 1, 0)
-            for expert_idx in range(0, self.moe_num_experts):
-                topk_idx, token_idx = torch.where(expert_mask[expert_idx])
-                if token_idx.shape[0] == 0:
-                    continue
+        expert_mask = nn.functional.one_hot(top_experts, num_classes=self.moe_num_experts).permute(
+            2, 1, 0
+        )
+        for expert_idx in range(0, self.moe_num_experts):
+            topk_idx, token_idx = torch.where(expert_mask[expert_idx])
+            if token_idx.shape[0] == 0:
+                continue
 
-                token_list = token_idx.tolist()
-                topk_list = topk_idx.tolist()
+            token_list = token_idx.tolist()
+            topk_list = topk_idx.tolist()
 
-                expert_tokens = x[None, token_list].reshape(-1, hidden_size)
-                expert_out = (
-                    self.mlp(expert_tokens, expert_idx) * top_weights[token_list, topk_list, None]
-                )
-
-                out.index_add_(0, token_idx, expert_out)
-
-            out = out.reshape(bsz, q_len, hidden_size)
-            return out
-
-    class _QuantDbrxExpertGLU(DynamicModule):
-        def _setup(self):
-            """Modify the DbrxExpertGLU by using nn.Linear layers."""
-            dtype, device = self.w1.dtype, self.w1.device
-
-            def _copy_weights(modules, weights):
-                modules.to(dtype=dtype, device=device)
-                for expert_idx, module in enumerate(modules):
-                    with torch.no_grad():
-                        module.weight.copy_(weights[expert_idx].detach())
-
-            self.w1_linear = nn.ModuleList(
-                [
-                    nn.Linear(self.hidden_size, self.ffn_hidden_size, bias=False)
-                    for _ in range(self.moe_num_experts)
-                ]
+            expert_tokens = x[None, token_list].reshape(-1, hidden_size)
+            expert_out = (
+                self.mlp(expert_tokens, expert_idx) * top_weights[token_list, topk_list, None]
             )
-            _copy_weights(
-                self.w1_linear,
-                self.w1.view(self.moe_num_experts, self.ffn_hidden_size, self.hidden_size),
-            )
-            delattr(self, "w1")
 
-            self.v1_linear = nn.ModuleList(
-                [
-                    nn.Linear(self.hidden_size, self.ffn_hidden_size, bias=False)
-                    for _ in range(self.moe_num_experts)
-                ]
-            )
-            _copy_weights(
-                self.v1_linear,
-                self.v1.view(self.moe_num_experts, self.ffn_hidden_size, self.hidden_size),
-            )
-            delattr(self, "v1")
+            out.index_add_(0, token_idx, expert_out)
 
-            self.w2_linear = nn.ModuleList(
-                [
-                    nn.Linear(self.ffn_hidden_size, self.hidden_size, bias=False)
-                    for _ in range(self.moe_num_experts)
-                ]
-            )
-            _copy_weights(
-                self.w2_linear,
-                self.w2.view(
-                    self.moe_num_experts, self.ffn_hidden_size, self.hidden_size
-                ).transpose(1, 2),
-            )
-            delattr(self, "w2")
-
-        def forward(self, x: torch.Tensor, expert_idx: int) -> torch.Tensor:
-            x1 = self.w1_linear[expert_idx](x)
-            x2 = self.v1_linear[expert_idx](x)
-            x1 = self.activation_fn(x1)
-            x1 = x1 * x2
-            return self.w2_linear[expert_idx](x1)
-
-    if transformers.models.dbrx.modeling_dbrx.DbrxExperts not in QuantModuleRegistry:
-        QuantModuleRegistry.register(
-            {transformers.models.dbrx.modeling_dbrx.DbrxExperts: "hf.DbrxExperts"}
-        )(_QuantDbrxExperts)
-
-    if transformers.models.dbrx.modeling_dbrx.DbrxExpertGLU not in QuantModuleRegistry:
-        QuantModuleRegistry.register(
-            {transformers.models.dbrx.modeling_dbrx.DbrxExpertGLU: "hf.DbrxExpertGLU"}
-        )(_QuantDbrxExpertGLU)
+        out = out.reshape(bsz, q_len, hidden_size)
+        return out
 
 
-if hasattr(transformers.models, "falcon") and hasattr(
-    transformers.models.falcon.modeling_falcon, "FalconLinear"
-):
+class _QuantDbrxExpertGLU(DynamicModule):
+    def _setup(self):
+        """Modify the DbrxExpertGLU by using nn.Linear layers."""
+        dtype, device = self.w1.dtype, self.w1.device
+
+        def _copy_weights(modules, weights):
+            modules.to(dtype=dtype, device=device)
+            for expert_idx, module in enumerate(modules):
+                with torch.no_grad():
+                    module.weight.copy_(weights[expert_idx].detach())
+
+        self.w1_linear = nn.ModuleList(
+            [
+                nn.Linear(self.hidden_size, self.ffn_hidden_size, bias=False)
+                for _ in range(self.moe_num_experts)
+            ]
+        )
+        _copy_weights(
+            self.w1_linear,
+            self.w1.view(self.moe_num_experts, self.ffn_hidden_size, self.hidden_size),
+        )
+        delattr(self, "w1")
+
+        self.v1_linear = nn.ModuleList(
+            [
+                nn.Linear(self.hidden_size, self.ffn_hidden_size, bias=False)
+                for _ in range(self.moe_num_experts)
+            ]
+        )
+        _copy_weights(
+            self.v1_linear,
+            self.v1.view(self.moe_num_experts, self.ffn_hidden_size, self.hidden_size),
+        )
+        delattr(self, "v1")
+
+        self.w2_linear = nn.ModuleList(
+            [
+                nn.Linear(self.ffn_hidden_size, self.hidden_size, bias=False)
+                for _ in range(self.moe_num_experts)
+            ]
+        )
+        _copy_weights(
+            self.w2_linear,
+            self.w2.view(self.moe_num_experts, self.ffn_hidden_size, self.hidden_size).transpose(
+                1, 2
+            ),
+        )
+        delattr(self, "w2")
+
+    def forward(self, x: torch.Tensor, expert_idx: int) -> torch.Tensor:
+        x1 = self.w1_linear[expert_idx](x)
+        x2 = self.v1_linear[expert_idx](x)
+        x1 = self.activation_fn(x1)
+        x1 = x1 * x2
+        return self.w2_linear[expert_idx](x1)
+
+
+if transformers.models.dbrx.modeling_dbrx.DbrxExperts not in QuantModuleRegistry:
+    QuantModuleRegistry.register(
+        {transformers.models.dbrx.modeling_dbrx.DbrxExperts: "hf.DbrxExperts"}
+    )(_QuantDbrxExperts)
+
+if transformers.models.dbrx.modeling_dbrx.DbrxExpertGLU not in QuantModuleRegistry:
+    QuantModuleRegistry.register(
+        {transformers.models.dbrx.modeling_dbrx.DbrxExpertGLU: "hf.DbrxExpertGLU"}
+    )(_QuantDbrxExpertGLU)
+
+if transformers.models.falcon.modeling_falcon.FalconLinear not in QuantModuleRegistry:
     QuantModuleRegistry.register(
         {transformers.models.falcon.modeling_falcon.FalconLinear: "FalconLinear"}
     )(_QuantLinear)
@@ -196,17 +194,38 @@ def register_hf_attentions_on_the_fly(model):
     """
     attention_cls = {}
     for name, module in model.named_modules():
+        # Only register attention classes that are from Huggingface transformers
         if type(module).__name__.endswith("Attention"):
-            attention_cls[type(module)] = type(module).__name__
+            attention_type = type(module)
+            # Add modules to be registered only if they arent already registered
+            if QuantModuleRegistry.get(attention_type) is None:
+                attention_cls[attention_type] = type(module).__name__
 
-    if transformers.__version__ >= "4.48.0":
-        success = any([register_hf_attention_for_kv_quant(cls) for cls in attention_cls])
-    else:
-        print(f"transformers.__version__: {transformers.__version__} is lower than 4.48.0")
-        print("Legacy attention quantization method will soon be deprecated")
+    # Check if the attention class is already registered
+    for cls in list(attention_cls.keys()):
+        if QuantModuleRegistry.get(cls) is not None:
+            print(f"Attention class {cls} already registered")
+            del attention_cls[cls]
+
+    # Check if there is any attention class to register
+    if not attention_cls:
+        print("No module ending with Attention found")
+        return
+
+    if not _is_supported_hf_model(model):
+        return
+
+    # Register the attention class for KV Cache quantization
+    success = any([register_hf_attention_for_kv_quant(cls) for cls in attention_cls])
+    if not success:
         success = any([register_attention_for_kv_quant(cls) for cls in attention_cls])
     if not success:
-        raise RuntimeError("No Attention class found for KV Cache quantization.")
+        warnings.warn(
+            f"Could not create a quantized attention class for  {attention_cls} from this model. "
+            "To enable KV Cache quantization, please create a custom quantized attention class for this model and "
+            "register it to ModelOpt using `mtq.register` "
+            "(see https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_pytorch_quantization.html#custom-quantized-module-and-quantizer-placement)"
+        )
 
 
 def _is_supported_hf_model(model):

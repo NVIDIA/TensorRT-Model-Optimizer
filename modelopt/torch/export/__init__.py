@@ -15,7 +15,9 @@
 
 """Export package. So far it only supports selected nemo and huggingface LLMs."""
 
+from .model_config import *
 from .model_config_export import *
+from .model_utils import *
 from .transformer_engine import *
 from .unified_export_hf import *
 from .unified_export_megatron import *

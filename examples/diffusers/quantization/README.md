@@ -21,11 +21,11 @@ We support calibration for INT8, FP8 and FP4 precision and for both weights and 
 Note: Model calibration requires relatively more GPU computing powers and it does not need to be on the same GPUs as
 the deployment target GPUs. Using the command line below will execute both calibration and ONNX export.
 
-### FLUX-Dev|SD3-Medium|SDXL|SD2.1|SDXL-Turbo INT8
+### FLUX-Dev|SD3-Medium|SDXL|SDXL-Turbo INT8
 
 ```sh
 python quantize.py \
-  --model {flux-dev|sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base|sd3-medium} \
+  --model {flux-dev|sdxl-1.0|sdxl-turbo|sd3-medium} \
   --format int8 --batch-size 2 \
   --calib-size 32 --collect-method min-mean \
   --percentile 1.0 --alpha 0.8 \
@@ -34,15 +34,15 @@ python quantize.py \
   --quantized-torch-ckpt-save-path ./{MODEL_NAME}.pt --onnx-dir {ONNX_DIR}
 ```
 
-### FLUX-Dev|SDXL|SD2.1|SDXL-Turbo FP8/FP4
+### FLUX-Dev|SDXL|SDXL-Turbo FP8/FP4
 
 *In our example code, FP4 is only supported for Flux. However, you can modify our script to enable FP4 format support for your own model.*
 
-*The FP4 format relies on the onnx-weekly build rather than the stable ONNX version.*
+*The FP4 format relies on the `onnx-weekly` build rather than the stable ONNX 1.17 version.*
 
 ```sh
 python quantize.py \
-  --model {flux-dev|sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base} --model-dtype {Half|BFloat16} --trt-high-precision-dtype {Half|BFloat16} \
+  --model {flux-dev|sdxl-1.0|sdxl-turbo} --model-dtype {Half|BFloat16} --trt-high-precision-dtype {Half|BFloat16} \
   --format {fp8|fp4} --batch-size 2 --calib-size {128|256} --quant-level {3.0|4.0} \
   --n-steps 20 --quantized-torch-ckpt-save-path ./{MODEL_NAME}.pt --collect-method default \
   --onnx-dir {ONNX_DIR}
@@ -70,12 +70,11 @@ For guidance on using our tool for QAT, please refer to this [link](./QAT_GUIDAN
 
 ## Build the TRT engine for the Quantized ONNX Backbone
 
-We assume you already have TensorRT environment setup. INT8 requires **TensorRT version >= 9.2.0**. If you prefer to use the FP8 TensorRT, ensure you have **TensorRT version 10.2.0 or higher**. You can download the latest version of TensorRT at [here](https://developer.nvidia.com/tensorrt/download).
+We assume you already have TensorRT environment setup. INT8 requires **TensorRT version >= 9.2.0**. If you prefer to use the FP8 TensorRT, ensure you have **TensorRT version 10.2.0 or higher**. You can download the latest version of TensorRT at [here](https://developer.nvidia.com/tensorrt/download). Deployment of SVDQuant is currently not supported.
 
 Then generate the INT8/FP8 Backbone Engine
 
 ```bash
-
 # For SDXL
 trtexec --builderOptimizationLevel=4 --stronglyTyped --onnx=./model.onnx \
   --minShapes=sample:2x4x128x128,timestep:1,encoder_hidden_states:2x77x2048,text_embeds:2x1280,time_ids:2x6 \
@@ -137,7 +136,7 @@ Generate a quantized torch checkpoint using the command shown below:
 
 ```bash
 python quantize.py \
-  --model {sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base|sd3-medium|flux-dev} \
+  --model {sdxl-1.0|sdxl-turbo|sd3-medium|flux-dev} \
   --format fp8 \
   --batch-size {1|2} \
   --calib-size 128 \
@@ -151,7 +150,7 @@ Generate images for the quantized checkpoint with the following command:
 
 ```bash
 python diffusion_trt.py \
-  --model {sdxl-1.0|sdxl-turbo|sd2.1|sd2.1-base|sd3-medium|flux-dev} \
+  --model {sdxl-1.0|sdxl-turbo|sd3-medium|flux-dev} \
   --prompt "A cat holding a sign that says hello world" \
   [--restore-from ./{MODEL}_fp8.pt] \
   [--onnx-load-path {ONNX_DIR}] \

@@ -18,6 +18,7 @@ from typing import Union
 from transformers import AutoTokenizer
 
 import modelopt.torch.quantization as mtq
+from modelopt.torch.quantization.config import need_calibration
 from modelopt.torch.quantization.plugins import register_hf_attentions_on_the_fly
 from modelopt.torch.utils.dataset_utils import (
     create_forward_loop,
@@ -80,31 +81,8 @@ def _quantize_model_with_dataset(
     else:
         mtq_cfg = getattr(mtq, quant_cfg)  # type: ignore [arg-type]
 
-        def is_dynamic(mtq_cfg):
-            def _not_dynamic(cfg):
-                return (
-                    cfg.get("enable", True)
-                    and cfg.get("type", "") != "dynamic"
-                    and cfg.get("*", {}).get("enable", True)
-                )
-
-            for name, cfg in mtq_cfg.get("quant_cfg", {}).items():
-                if "weight_quantizer" in name:
-                    # We don't calibrate weight quantizer
-                    continue
-                # quantization like W4A8 has a list of weight quantizers
-                if isinstance(cfg, list):
-                    for config in cfg:
-                        if _not_dynamic(config):
-                            return False
-                else:
-                    if _not_dynamic(cfg):
-                        return False
-
-            return True
-
         calibrate_loop = None
-        use_calibration = not (is_dynamic(mtq_cfg) and mtq_cfg.get("algorithm") == "max")
+        use_calibration = need_calibration(mtq_cfg)
         if not use_calibration:
             print("Dynamic quantization. Calibration skipped.")
         else:

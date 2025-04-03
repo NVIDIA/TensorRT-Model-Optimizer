@@ -20,6 +20,23 @@ assignees: ''
 
 ## System information
 
+- Container used (if applicable): ?
+- OS (e.g., Ubuntu 22.04, CentOS 7, Windows 10): ? <!-- If Windows, please add the `windows` label to the issue. -->
+- CPU architecture (x86_64, aarch64): ?
+- GPU name (e.g. H100, A100, L40S): ?
+- GPU memory size: ?
+- Number of GPUs: ?
+- Library versions (if applicable):
+  - Python: ?
+  - ModelOpt version or commit hash: ?
+  - CUDA: ?
+  - PyTorch: ?
+  - Transformers: ?
+  - TensorRT-LLM: ?
+  - ONNXRuntime: ?
+  - TensorRT: ?
+- Any other details that may help: ?
+
 
 <details>
 <summary><b>Click to expand: Python script to automatically collect system information</b></summary>
@@ -103,24 +120,8 @@ print("  - Transformers: " + get_package_version("transformers"))
 print("  - TensorRT-LLM: " + get_package_version("tensorrt_llm"))
 print("  - ONNXRuntime: " + get_package_version("onnxruntime"))
 print("  - TensorRT: " + get_package_version("tensorrt"))
+print("- Any other details that may help: " + "?")
 print("=" * 70)
 ```
 
 </details>
-
-- Container used (if applicable): ?
-- OS (e.g., Ubuntu 22.04, CentOS 7, Windows 10): ? <!-- If Windows, please add the `windows` label to the issue. -->
-- CPU architecture (x86_64, aarch64): ?
-- GPU name (e.g. H100, A100, L40S): ?
-- GPU memory size: ?
-- Number of GPUs: ?
-- Library versions (if applicable):
-  - Python: ?
-  - ModelOpt version or commit hash: ?
-  - CUDA: ?
-  - PyTorch: ?
-  - Transformers: ?
-  - TensorRT-LLM: ?
-  - ONNXRuntime: ?
-  - TensorRT: ?
-- Any other details that may help: ?

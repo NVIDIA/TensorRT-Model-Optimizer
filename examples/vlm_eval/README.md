@@ -34,3 +34,9 @@ TensorRT engine could be built following this [guide](../vlm_ptq/README.md)
 ```bash
 bash gqa.sh --hf_model <dir_hf_model> --visual_engine <dir_visual_engine> --llm_engine <dir_llm_engine>
 ```
+
+If you encounter Out of Memory (OOM) issues during evaluation, you can try lowering the `--kv_cache_free_gpu_memory_fraction` argument (default is 0.8) to reduce GPU memory usage for kv_cache:
+
+```bash
+bash gqa.sh --hf_model <dir_hf_model> --visual_engine <dir_visual_engine> --llm_engine <dir_llm_engine> --kv_cache_free_gpu_memory_fraction 0.5
+```

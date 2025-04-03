@@ -18,6 +18,7 @@
 import os
 import warnings
 from pathlib import Path
+from time import time
 from types import ModuleType
 from typing import Any, Optional, Union
 
@@ -51,6 +52,7 @@ def load_cpp_extension(
     """
     ext = None
     print(f"Loading extension {name}...")
+    start = time()
 
     if not os.environ.get("TORCH_CUDA_ARCH_LIST"):
         try:
@@ -85,5 +87,5 @@ def load_cpp_extension(
         else:
             warnings.warn(fail_msg)
     else:
-        print(f"Loaded extension {name}")
+        print(f"Loaded extension {name} in {time() - start:.1f} seconds")
     return ext

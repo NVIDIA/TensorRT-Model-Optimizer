@@ -380,6 +380,54 @@ class TensorQuantizer(nn.Module):
             and self.block_sizes.get("scale_bits", None) == (8, 0)
         )
 
+    @property
+    def svdquant_lora_a(self):
+        """Lora a weights for svdquant."""
+        if not hasattr(self, "_svdquant_lora_a"):
+            return None
+        return self._svdquant_lora_a
+
+    @svdquant_lora_a.setter
+    def svdquant_lora_a(self, value):
+        """Lora a weights for svdquant."""
+        assert value is not None, "svdquant_lora_a cannot be set to None."
+
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor(value)
+
+        if not hasattr(self, "_svdquant_lora_a"):
+            self.register_buffer("_svdquant_lora_a", value.clone().detach())
+        else:
+            if self._svdquant_lora_a.shape != value.shape:
+                raise RuntimeError("Changing shape when setting svdquant_lora_a is not allowed.")
+            self._svdquant_lora_a.data.copy_(
+                value.clone().detach().to(self._svdquant_lora_a.device)
+            )
+
+    @property
+    def svdquant_lora_b(self):
+        """Lora b weights for svdquant."""
+        if not hasattr(self, "_svdquant_lora_b"):
+            return None
+        return self._svdquant_lora_b
+
+    @svdquant_lora_b.setter
+    def svdquant_lora_b(self, value):
+        """Lora b weights for svdquant."""
+        assert value is not None, "svdquant_lora_b cannot be set to None."
+
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor(value)
+
+        if not hasattr(self, "_svdquant_lora_b"):
+            self.register_buffer("_svdquant_lora_b", value.clone().detach())
+        else:
+            if self._svdquant_lora_b.shape != value.shape:
+                raise RuntimeError("Changing shape when setting svdquant_lora_b is not allowed.")
+            self._svdquant_lora_b.data.copy_(
+                value.clone().detach().to(self._svdquant_lora_b.device)
+            )
+
     def disable_calib(self):
         """Disable calibration."""
         self._if_calib = False
@@ -515,7 +563,7 @@ class TensorQuantizer(nn.Module):
                 inputs,
                 self._block_sizes[-1],
             )
-            buffer_to_register["_scale"] = _weights_scaling_factor.to(torch.float32)
+            buffer_to_register["_scale"] = _weights_scaling_factor
             buffer_to_register["_double_scale"] = _weights_scaling_factor_2
         else:
             outputs, _scale = INT4QTensor.quantize(inputs, self._block_sizes[-1])
@@ -594,15 +642,27 @@ class TensorQuantizer(nn.Module):
                         getattr(self, "_onnx_quantizer_type", None),
                     )
                 else:
-                    # Static block quantization, e.g., INT4_BLOCKWISE
+                    # Static block quantization,
                     # Double quantization is not supported
-                    outputs = static_block_quant(
-                        inputs,
-                        amax,
-                        self._num_bits,
-                        self._unsigned,
-                        self._narrow_range,
-                    )
+                    assert amax is not None, "amax is required for static quantization."
+                    if isinstance(self._num_bits, tuple):
+                        # Float-point static quantization, e.g., FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG
+                        E, M = self._num_bits  # noqa: N806
+                        # assert all the block sizes are valid numbers
+                        assert all(
+                            isinstance(v, int) and v > 0 for v in self.block_sizes.values()
+                        ), "Invalid block sizes for static block quantization."
+
+                        outputs = scaled_e4m3(inputs, amax, E, M, self._trt_high_precision_dtype)
+                    else:
+                        # Integer static quantization, e.g., INT4_BLOCKWISE
+                        outputs = static_block_quant(
+                            inputs,
+                            amax,
+                            self._num_bits,
+                            self._unsigned,
+                            self._narrow_range,
+                        )
 
                 # Add bias back to output tensor in affine quantization
                 if self.bias_calibrator is not None:
@@ -844,11 +904,20 @@ class TensorQuantizer(nn.Module):
         if self._rotate:
             inputs = normalized_hadamard_transform(inputs)
 
+        # SVDQuant LoRA residual
+        _svdquant_lora_residual = None
+        if self.svdquant_lora_a is not None:
+            _svdquant_lora_residual = self.svdquant_lora_b @ self.svdquant_lora_a
+
         if self._disabled:
             # if quantizer is disabled, we still need to track the input dtype for saving the model
             # TODO: This is a temporary solution and needs to be removed once megatron supports
             # non-homogeneous layers
             self._input_dtype = inputs.dtype if hasattr(inputs, "dtype") else None
+            if torch.is_tensor(inputs):
+                inputs = (
+                    inputs if _svdquant_lora_residual is None else inputs + _svdquant_lora_residual
+                )
             return inputs
 
         # GLOBALS could break TorchDynamo for some Pytorch versions (i.e., 2.3.0)
@@ -891,6 +960,10 @@ class TensorQuantizer(nn.Module):
             self._calibrator.collect(inputs)
 
         if self._if_quant:
+            # Check if the input tensor is contiguous
+            # Non-contiguous tensors will generate incorrect FP4 quantization results
+            if hasattr(inputs, "is_contiguous") and not inputs.is_contiguous():
+                inputs.data = inputs.data.contiguous()
             outputs = self._quant_forward(inputs)
 
         if (
@@ -900,6 +973,10 @@ class TensorQuantizer(nn.Module):
         ):
             outputs = self._reset_to_original_shape(outputs)
 
+        if torch.is_tensor(outputs):
+            outputs = (
+                outputs if _svdquant_lora_residual is None else outputs + _svdquant_lora_residual
+            )
         return outputs
 
     def _short_amax(self, fmt=".4f"):
@@ -938,6 +1015,7 @@ class TensorQuantizer(nn.Module):
             s += f" axis={self._axis}" if self._axis is not None else " per-tensor"
         s += f" amax={self._short_amax()}"
         s += " pre_quant_scale" if self.pre_quant_scale is not None else ""
+        s += " svdquant" if self.svdquant_lora_a is not None else ""
         s += " rotated" if self._rotate else ""
         s += (
             f" calibrator={self._calibrator.__class__.__name__}"
@@ -961,38 +1039,24 @@ class TensorQuantizer(nn.Module):
             state_dict: A dict containing the state of the top level module
             prefix: A string that prefixes all of this modules state in state_dict, e.g. 'model.conv1.'
         """
-        dst_has_amax = "_amax" in self._buffers
-        src_has_amax = prefix + "_amax" in state_dict
-
+        _attrs = ["_amax", "_pre_quant_scale", "_svdquant_lora_a", "_svdquant_lora_b"]
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        if not src_has_amax and dst_has_amax:
-            warnings.warn(f"{prefix[:-1]}: No amax in state_dict.")
-        elif src_has_amax and not dst_has_amax:
-            warnings.warn(
-                f"{prefix[:-1]}: No '_amax' buffer to load amax into."
-                " '_amax` will be created as WAR for now. "
-                "This behavior will change in future."
-            )
-            self.register_buffer("_amax", state_dict[prefix + "_amax"].clone().detach().to(device))
+        for attr in _attrs:
+            has_dst = attr in self._buffers
+            has_src = prefix + attr in state_dict
 
-        dst_has_pre_quant_scale = "_pre_quant_scale" in self._buffers
-        src_has_pre_quant_scale = prefix + "_pre_quant_scale" in state_dict
+            if not has_src and has_dst:
+                warnings.warn(f"{prefix[:-1]}: No {attr} in state_dict.")
+            elif has_src and not has_dst:
+                warnings.warn(
+                    f"{prefix[:-1]}: No '{attr}' buffer to load {attr} into."
+                    f" '{attr}` will be created as WAR for now. "
+                    "This behavior will change in future."
+                )
+                self.register_buffer(attr, state_dict[prefix + attr].clone().detach().to(device))
 
-        if not src_has_pre_quant_scale and dst_has_pre_quant_scale:
-            warnings.warn(f"{prefix[:-1]}: No pre_quant_scale in state_dict.")
-        elif src_has_pre_quant_scale and not dst_has_pre_quant_scale:
-            warnings.warn(
-                f"{prefix[:-1]}: No '_pre_quant_scale' buffer to load pre_quant_scale into."
-                " '_pre_quant_scale` will be created as WAR for now. "
-                "This behavior will change in future."
-            )
-            self.register_buffer(
-                "_pre_quant_scale",
-                state_dict[prefix + "_pre_quant_scale"].clone().detach().to(device),
-            )
-
-        super(TensorQuantizer, self)._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def _get_skip_properties_for_modelopt_state(self):
         return {
@@ -1029,6 +1093,12 @@ class TensorQuantizer(nn.Module):
         if hasattr(self, "_pre_quant_scale"):
             modelopt_state["_has_pre_quant_scale"] = True
 
+        if hasattr(self, "_svdquant_lora_a"):
+            modelopt_state["_has_svdquant_lora_a"] = True
+
+        if hasattr(self, "_svdquant_lora_b"):
+            modelopt_state["_has_svdquant_lora_b"] = True
+
         return modelopt_state
 
     def set_from_modelopt_state(self, modelopt_state, prefix=""):
@@ -1052,6 +1122,18 @@ class TensorQuantizer(nn.Module):
                 "_has_pre_quant_scale", "_pre_quant_scale" in modelopt_state
             )
 
+        # Create a temporary variable to indicate if the quantizer had svdquant_lora_a in the checkpoint
+        if "_has_svdquant_lora_a" in modelopt_state or "_svdquant_lora_a" in modelopt_state:
+            self._has_svdquant_lora_a = modelopt_state.get(
+                "_has_svdquant_lora_a", "_svdquant_lora_a" in modelopt_state
+            )
+
+        # Create a temporary variable to indicate if the quantizer had svdquant_lora_b in the checkpoint
+        if "_has_svdquant_lora_b" in modelopt_state or "_svdquant_lora_b" in modelopt_state:
+            self._has_svdquant_lora_b = modelopt_state.get(
+                "_has_svdquant_lora_b", "_svdquant_lora_b" in modelopt_state
+            )
+
     def clean_up_after_set_from_modelopt_state(self, prefix=""):
         """Clean up temporary variables created during set_from_modelopt_state."""
         warning_msg = (
@@ -1069,6 +1151,16 @@ class TensorQuantizer(nn.Module):
             if self._has_pre_quant_scale and self.pre_quant_scale is None:
                 warnings.warn(warning_msg, UserWarning)
             delattr(self, "_has_pre_quant_scale")
+
+        if hasattr(self, "_has_svdquant_lora_a"):
+            if self._has_svdquant_lora_a and self.svdquant_lora_a is None:
+                warnings.warn(warning_msg, UserWarning)
+            delattr(self, "_has_svdquant_lora_a")
+
+        if hasattr(self, "_has_svdquant_lora_b"):
+            if self._has_svdquant_lora_b and self.svdquant_lora_b is None:
+                warnings.warn(warning_msg, UserWarning)
+            delattr(self, "_has_svdquant_lora_b")
 
     def sync_amax_across_distributed_group(self, parallel_group: DistributedProcessGroup):
         """Synchronize the amax across all ranks in the given group."""

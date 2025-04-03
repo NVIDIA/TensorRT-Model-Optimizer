@@ -9,7 +9,7 @@ Quantization is an effective technique to reduce the memory footprint of deep le
 accelerate the inference speed.
 
 ModelOpt's :meth:`mtq.quantize() <modelopt.torch.quantization.model_quant.quantize>` API enables
-users to quantize a model with advanced algorithms like SmoothQuant, AWQ, and more. ModelOpt
+users to quantize a model with advanced algorithms like SmoothQuant, AWQ, SVDQuant, and more. ModelOpt
 supports both Post Training Quantization (PTQ) and Quantization Aware Training (QAT).
 
 .. tip::

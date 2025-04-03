@@ -238,8 +238,9 @@ class _ModeRegistryCls:
     # global list to keep track of all registries we initialize
     _all_registries: list["_ModeRegistryCls"] = []
 
-    def __init__(self) -> None:
+    def __init__(self, registry_name: str) -> None:
         """Initialize the registry with the lookup dictionaries."""
+        self._registry_name = registry_name  # quantization, distill, nas, prune, speculative, etc.
         self._name2descriptor: dict[str, _ModeDescriptor] = {}
         self._all_registries.append(self)
 
@@ -302,6 +303,14 @@ class _ModeRegistryCls:
             raise KeyError(f"Mode {mode} not found in any registry.")
         assert all(mode_ds[0] == m_d for m_d in mode_ds), f"Mode {mode} is ambiguous."
         return mode_ds[0]
+
+    @classmethod
+    def get_registry_by_name(cls, registry_name: str) -> "_ModeRegistryCls":
+        """Get the registry by name."""
+        for registry in cls._all_registries:
+            if registry._registry_name == registry_name:
+                return registry
+        raise KeyError(f"Registry {registry_name} not found.")
 
 
 def get_mode_config(mode_like: ModeLike) -> ModeConfigList:

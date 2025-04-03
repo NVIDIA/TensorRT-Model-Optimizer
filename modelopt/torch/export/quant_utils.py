@@ -15,22 +15,26 @@
 
 """Utils for quantization including scaling factors adjustments."""
 
-import warnings
-from typing import Any, Optional, Union
+import logging
+from typing import Any, Generator, Optional, Union
 from warnings import warn
 
 import torch
 import torch.nn as nn
 
+from modelopt import __version__
 from modelopt.torch.quantization.model_calib import enable_stats_collection, finish_stats_collection
-from modelopt.torch.quantization.qtensor import NVFP4QTensor
+from modelopt.torch.quantization.qtensor import FP8QTensor, NVFP4QTensor, QTensorWrapper
 from modelopt.torch.quantization.utils import is_quantized_linear
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .model_config import (
     KV_CACHE_FP8,
     KV_CACHE_INT8,
+    KV_CACHE_NVFP4,
     QUANTIZATION_FP8,
+    QUANTIZATION_FP8_PB_REAL,
+    QUANTIZATION_FP8_PB_WO,
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_INT8_SQ,
     QUANTIZATION_NONE,
@@ -38,6 +42,8 @@ from .model_config import (
     QUANTIZATION_NVFP4_AWQ,
     QUANTIZATION_W4A8_AWQ,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_scaling_factor_from_weight(weight, group_size) -> torch.tensor:
@@ -164,7 +170,10 @@ def get_scaling_factor(quantizer: TensorQuantizer) -> torch.Tensor:
         return None
 
     # tensorrt_llm uses float as the scaling_factors.
-    scaling_factor = amax.float() / quantizer.maxbound
+    if quantizer.num_bits == (2, 1):
+        scaling_factor = NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(quantizer)
+    else:
+        scaling_factor = amax.float() / quantizer.maxbound
 
     assert torch.all(scaling_factor > 0), f"scaling factor {scaling_factor} not positive."
 
@@ -245,35 +254,29 @@ def get_prequant_scaling_factor(module: nn.Module) -> torch.Tensor:
     return prequant_scaling_factor
 
 
-def get_kv_cache_scaling_factor(qkv_modules: list[nn.Module]) -> torch.Tensor:
+def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
     """Returns the kv_cache scaling factor if output quantizer is set. Else returns None by default."""
-    scaling_factors = [
-        get_scaling_factor(module.output_quantizer)
-        for module in qkv_modules
-        if hasattr(module, "output_quantizer")
-    ]
+    if not hasattr(kv_module, "k_bmm_quantizer") or not hasattr(kv_module, "v_bmm_quantizer"):
+        return [None, None]
 
     scaling_factors = [
-        scaling_factor for scaling_factor in scaling_factors if scaling_factor is not None
+        get_scaling_factor(getattr(kv_module, quantizer))
+        for quantizer in ("k_bmm_quantizer", "v_bmm_quantizer")
     ]
-
-    if not scaling_factors:
-        return None
-
-    scaling_factor = torch.stack(scaling_factors).max(dim=0).values
 
     # For FP8, we recommend default kv cache scaling factor to be 1.
-    if get_kv_cache_dtype(qkv_modules) == KV_CACHE_FP8:
-        if scaling_factor.item() > 0.5:
-            warn(
-                f"!!!!\nWarning: Large KV activations detected: {scaling_factor.item()}, "
-                "Quantized KV cache may lead to higher accuracy drop.\n!!!!"
+    if get_kv_cache_dtype(kv_module) == KV_CACHE_FP8:
+        for i, factor in enumerate(scaling_factors):
+            if factor.item() > 0.5:
+                warn(
+                    f"Warning: Large KV activation detected: {factor.item()}, "
+                    "Quantized KV cache may lead to higher accuracy drop."
+                )
+            scaling_factors[i] = torch.max(
+                factor, torch.tensor([1.0], dtype=torch.float, device=factor.device)
             )
-        scaling_factor = torch.max(
-            scaling_factor,
-            torch.tensor([1.0], dtype=torch.float, device=scaling_factor.device),
-        )
-    return scaling_factor
+
+    return scaling_factors
 
 
 def get_kv_cache_dtype(modules: Union[list[nn.Module], nn.Module]) -> Optional[str]:
@@ -294,13 +297,18 @@ def get_kv_cache_dtype(modules: Union[list[nn.Module], nn.Module]) -> Optional[s
         modules = [modules]
 
     for module in modules:
-        if hasattr(module, "output_quantizer") and module.output_quantizer.is_enabled:
-            num_bits_list.append(module.output_quantizer.num_bits)
+        # Case where the module has both k_bmm_quantizer and v_bmm_quantizer
+        # Still check for output quantizer for the unified_megatron_export path
+        for quantizer in ("k_bmm_quantizer", "v_bmm_quantizer", "output_quantizer"):
+            if hasattr(module, quantizer) and getattr(module, quantizer).is_enabled:
+                num_bits_list.append(getattr(module, quantizer).num_bits)
 
     if (4, 3) in num_bits_list:
         return KV_CACHE_FP8
     elif 8 in num_bits_list:
         return KV_CACHE_INT8
+    elif (2, 1) in num_bits_list:
+        return KV_CACHE_NVFP4
     else:
         return QUANTIZATION_NONE
 
@@ -369,6 +377,12 @@ def get_quantization_format(module) -> Optional[str]:
             return QUANTIZATION_INT8_SQ
 
         if w_quantizer.num_bits == (4, 3):
+            if w_quantizer.block_sizes:
+                assert w_quantizer.block_sizes[-1] > 0, "Invalid block_sizes for FP8 quantizer"
+                if w_quantizer.fake_quant:
+                    return QUANTIZATION_FP8_PB_WO
+                else:
+                    return QUANTIZATION_FP8_PB_REAL
             return QUANTIZATION_FP8
 
         if w_quantizer.num_bits == (2, 1):
@@ -399,6 +413,72 @@ def get_quantization_format(module) -> Optional[str]:
     return QUANTIZATION_NONE
 
 
+def _prefix_wildcard_summarize_exclude_modules(unquantized_layers, quantized_layers):
+    """Generate a summarization of the quantization layer configs using prefix wildcards.
+
+    Prefix wildcards means we only consider wildcards that is a prefix with a star in the end.
+    We do not consider other wildcards such as: a*b.
+    """
+
+    def all_matching_prefix_wildcards(name):
+        # include all possible prefix wildcards, and the exact name itself
+        wildcards = set([name])
+        for i in range(len(name) + 1):
+            wildcards.add(name[:i] + "*")
+        return wildcards
+
+    def next_formated_matching_prefix_wildcards(name: str) -> Generator[list[str], None, None]:
+        """Enumerate formated prefix wildcards. A result may be a combination of prefix wildcards.
+
+        Formated here means we only consider wildcards at dot split. We need two patterns.
+
+        1. a single wildcard: module_name*
+        2. a set of 2 wildcards: {module_name, module_name.*}. We need this pattern set because
+           module_name* may match other modules with module_name as a prefix.
+        """
+        for i in range(len(name)):
+            if name[i] == ".":
+                yield [name[:i] + "*"]
+                yield [name[:i], name[:i] + ".*"]
+        # in the end, itself only is a wildcard
+        yield [name]
+
+    # any of the wildcard in this set cannot be present in the result
+    negtive_wild_candidates = set()
+    for layer in quantized_layers:
+        negtive = all_matching_prefix_wildcards(layer)
+        negtive_wild_candidates.update(negtive)
+        logger.debug(
+            f"Quantized layer {layer}, prefix wildcards {negtive} identified as negative wildcards"
+        )
+
+    res_summary = set()
+    for layer in unquantized_layers:
+        candidate_wildcards = []
+        for wildcards in next_formated_matching_prefix_wildcards(layer):
+            if any([wildcard in negtive_wild_candidates for wildcard in wildcards]):
+                # need a more specific wildcard
+                logger.debug(
+                    f"Unquantized layer {layer}, prefix wildcards {wildcards} invalidated by negative wildcards"
+                )
+                continue
+            if all([wildcard in res_summary for wildcard in wildcards]):
+                # we get covered already, do not need to move forward, and clear candidate
+                logger.debug(
+                    f"Unquantized layer {layer}, prefix wildcards {wildcards} already covered"
+                )
+                candidate_wildcards = []
+                break
+            # find one, now terminate the search
+            candidate_wildcards = wildcards
+            logger.debug(
+                f"Unquantized layer {layer}, prefix wildcards {wildcards} identified as a new match"
+            )
+            break
+        res_summary.update(candidate_wildcards)
+    return res_summary
+
+
 def process_layer_quant_config(layer_config_dict):
     """Processes per layer quantization information for TRTLLM export to quant_cfg.json."""
     per_layer_config: dict[str, Any] = {
@@ -409,6 +489,8 @@ def process_layer_quant_config(layer_config_dict):
     layer_config: dict[str, Any] = {}
     # Set of quantization formats used.
     quantization_formats = set()
+    quantization_config = None
+    exclude_modules = []
 
     for k, v in layer_config_dict.items():
         if "awq_block_size" in k:
@@ -416,7 +498,6 @@ def process_layer_quant_config(layer_config_dict):
 
         # Get layer name for constructing quantized_layers dictionary under per_layer_config
         prefix = ".".join(k.rsplit(".", 1)[:-1])
-        quantization_formats.add(v)
         if v == "fp8":
             layer_config = {"quant_algo": "FP8"}
         elif v == "int4_awq":
@@ -440,22 +521,82 @@ def process_layer_quant_config(layer_config_dict):
                 "quant_algo": "NVFP4",
                 "group_size": layer_config_dict[prefix + ".awq_block_size"],
             }
+        elif v == "nvfp4_awq":
+            layer_config = {
+                "quant_algo": "NVFP4_AWQ",
+                "group_size": layer_config_dict[prefix + ".awq_block_size"],
+                "has_zero_point": False,
+                "pre_quant_scale": True,
+            }
         else:
             layer_config = {"quant_algo": v}
 
-        per_layer_config["quantized_layers"].update({prefix: layer_config})
+        if layer_config["quant_algo"] != QUANTIZATION_NONE:
+            quantization_formats.add(str(layer_config))
+            quantization_config = layer_config
+            per_layer_config["quantized_layers"].update({prefix: layer_config})
+        else:
+            exclude_modules.append(prefix)
 
     # If we have more than one quantization format, infer MIXED_PRECISION
-    quantization_formats.discard(None)
-
     if len(quantization_formats) > 1:
         per_layer_config["quant_algo"] = "MIXED_PRECISION"
-    else:
-        # We return empty dictionary if we do not have more than one quantization format as
-        # per layer quantization information is redundant
-        per_layer_config = {}
+    elif len(quantization_formats) == 1 and quantization_config is not None:
+        per_layer_config.update(quantization_config)
+        per_layer_config["exclude_modules"] = sorted(
+            list(
+                _prefix_wildcard_summarize_exclude_modules(
+                    exclude_modules, per_layer_config["quantized_layers"].keys()
+                )
+            )
+        )
+        per_layer_config.pop("quantized_layers")
 
     return per_layer_config
+
+
+def pack_int4_in_uint8(weight, weights_scaling_factor):
+    """Packs the INT4 weights into uint8 tensor."""
+    out_dim = weight.shape[-2]
+    assert out_dim % 2 == 0, f"Cannot pack weight. Out dimension {out_dim} is not an even number."
+    in_dim = weight.shape[-1]
+    block_size = weight.shape[-1] // weights_scaling_factor.shape[-1]
+
+    # Scale, round, and clamp to the signed 4-bit range [-8..7].
+    int8_tensor = (
+        (weight / weights_scaling_factor[..., :, torch.arange(in_dim) // block_size])
+        .round()
+        .clamp(-8, 7)
+        .to(torch.int8)
+    )
+
+    # -- Handle the MoE (3D) case vs. the 2D case --
+    if int8_tensor.dim() == 3:
+        # Dimensions might be (experts, out_dim, in_dim)
+        transpose = int8_tensor.permute(0, 2, 1)  # -> (experts, in_dim, out_dim)
+        # Reshape to group two output channels (out_dim // 2) and keep an extra dimension of size 2
+        transpose = transpose.reshape(-1, in_dim, out_dim // 2, 2)  # (E, in_dim, out_dim//2, 2)
+
+        # Pack two 4-bit values (val0,val1) into a single byte:
+        val0 = transpose[..., 0] & 0x0F
+        val1 = transpose[..., 1] & 0x0F
+        packed_byte = val0 | (val1 << 4)
+
+        # Transpose back to the shape (experts, out_dim // 2, in_dim)
+        return packed_byte.permute(0, 2, 1).contiguous().view(torch.uint8)
+
+    else:
+        # 2D weights: shape typically (out_dim, in_dim)
+        # Transpose to (in_dim, out_dim)
+        reshaped = int8_tensor.T.reshape(in_dim, out_dim // 2, 2)
+
+        # Pack two 4-bit values into one byte
+        val0 = reshaped[..., 0] & 0x0F
+        val1 = reshaped[..., 1] & 0x0F
+        packed_byte = val0 | (val1 << 4)
+
+        # Return shape (out_dim // 2, in_dim)
+        return packed_byte.T.contiguous().view(torch.uint8)
 
 
 def to_quantized_weight(
@@ -472,6 +613,10 @@ def to_quantized_weight(
     if weights_scaling_factor2 is not None:
         weights_scaling_factor2 = weights_scaling_factor2.to(weight.device)
 
+    # For compressed weights, we directly return the data from wrapper
+    if isinstance(weight, QTensorWrapper):
+        return weight.data
+
     if quantization == QUANTIZATION_FP8:
         if weight.dim() == 3:
             # for MOE stacked weights
@@ -481,37 +626,13 @@ def to_quantized_weight(
     if quantization == QUANTIZATION_INT8_SQ:
         return (weight / weights_scaling_factor[:, None]).round().clamp(-128, 127).to(torch.int8)
 
+    if quantization == QUANTIZATION_FP8_PB_WO:
+        return FP8QTensor.quantize(
+            weight, weights_scaling_factor.squeeze(), block_sizes={-1: block_size, -2: block_size}
+        )[0]._quantized_data
+
     if quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
-        out_dim = weight.shape[-2]
-        assert out_dim % 2 == 0, (
-            f"Cannot pack weight. Out dimension {out_dim} is not an even number."
-        )
-        in_dim = weight.shape[-1]
-        block_size = weight.shape[-1] // weights_scaling_factor.shape[-1]
-        int8_tensor = (
-            (weight / weights_scaling_factor[..., :, torch.arange(in_dim) // block_size])
-            .round()
-            .clamp(-8, 7)
-            .to(torch.int8)
-        )
-
-        if int8_tensor.dim() == 3:
-            # Case of MoE, where weights are stacked
-            transpose = int8_tensor.permute(0, 2, 1)  # (experts, in_dim, out_dim)
-            int8_tensor = transpose.reshape(
-                -1,
-                in_dim,
-                out_dim // 2,
-                2,
-            )
-            int4x2_tensor = (int8_tensor[..., 0] & 0x0F) | (int8_tensor[..., 1] << 4)
-            # The shape of the returned weight is (experts, out_dim // 2, in_dim)
-            return int4x2_tensor.permute(0, 2, 1).contiguous()
-
-        int8_tensor = int8_tensor.T.reshape(in_dim, out_dim // 2, 2)  # (in_dim, out_dim)
-        int4x2_tensor = (int8_tensor[..., 0] & 0x0F) | (int8_tensor[..., 1] << 4)
-        # The shape of the returned weight is (out_dim // 2, in_dim)
-        return int4x2_tensor.T.contiguous()
+        return pack_int4_in_uint8(weight, weights_scaling_factor)
 
     if quantization in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ]:
         assert block_size is not None, "Block size not passed. Unable to quantize to NVFP4 format."
@@ -566,8 +687,8 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Opti
         dict: Filtered state_dict without unnecessary keys like '_amax' and non KV cache output quantizers.
     """
     replacements = {
-        "k_proj.output_quantizer._amax": "k_proj.k_scale",
-        "v_proj.output_quantizer._amax": "v_proj.v_scale",
+        "k_bmm_quantizer._amax": "k_proj.k_scale",
+        "v_bmm_quantizer._amax": "v_proj.v_scale",
         "input_quantizer._pre_quant_scale": "pre_quant_scale",
     }
 
@@ -586,22 +707,27 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Opti
         # Apply replacements if the key matches any suffix in the replacements dict
         for old_suffix, new_suffix in replacements.items():
             if key.endswith(old_suffix):
-                assert quantization == KV_CACHE_FP8, "Invalid quantization format."
-                assert maxbound > 0, "Maxbound must be greater than zero."
-
                 prefix = key[: -len(old_suffix)]
+
                 if "_amax" in key:
+                    assert quantization in [KV_CACHE_FP8, KV_CACHE_NVFP4], (
+                        "Invalid KV cache quantization format."
+                    )
+                    assert maxbound > 0, "Maxbound must be greater than zero."
+
                     value = value.float() / maxbound
 
                     # Warn if scale exceeds threshold
-                    if value.item() > 0.5:
-                        warnings.warn(
+                    if quantization == KV_CACHE_FP8 and value.item() > 0.5:
+                        logger.warning(
                             "Large KV activations detected. Quantized KV cache may lead to higher accuracy drop. "
                             "Setting KV cache scaling factor to at least 1."
                         )
 
-                    # Ensure scale is at least 1
-                    value.clamp_(min=1.0)
+                    # Ensure scale is at least 1 for KV_CACHE_FP8
+                    # We export real value for KV_CACHE_NVFP4
+                    if quantization == KV_CACHE_FP8:
+                        value.clamp_(min=1.0)
 
                 post_state_dict[prefix + new_suffix] = value
                 break
@@ -698,3 +824,67 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
             )
             for module in modules:
                 module.weight_quantizer.amax = weight_amax
+
+
+def get_quant_config(named_modules: Union[nn.Module, dict[str, nn.Module]]) -> dict[str, Any]:
+    """Generate quantization config for a torch model.
+
+    Args:
+        model: The PyTorch model to analyze
+
+    Returns:
+        Dictionary containing the quantization configuration
+    """
+    # Find first quantized linear layer to determine quantization format
+    quantization_format = None
+    block_size = None
+
+    # Create base config
+    quant_config = {
+        "producer": {
+            "name": "modelopt",
+            "version": __version__,
+        },
+    }
+
+    default_quantization = {
+        "quant_algo": None,
+        "kv_cache_quant_algo": None,
+    }
+
+    quant_config["quantization"] = default_quantization
+
+    # Layer config dict holds quantization format of each layer.
+    # It also holds awq_block_size information for applicable layers.
+    layer_config_dict = {}
+
+    kv_cache_format = QUANTIZATION_NONE
+    for name, module in dict(named_modules).items():
+        if hasattr(module, "input_quantizer") or hasattr(module, "weight_quantizer"):
+            quantization_format = get_quantization_format(module)
+            block_size = get_weight_block_size(module)
+
+            # Construct per layer config dictionary
+            layer_config_dict[name + ".quantization"] = quantization_format
+            layer_config_dict[name + ".awq_block_size"] = block_size
+
+        # Find kv cache quant format
+        if (
+            hasattr(module, "k_bmm_quantizer")
+            or hasattr(module, "v_bmm_quantizer")
+            or (hasattr(module, "output_quantizer") and module.output_quantizer.is_enabled)
+        ):
+            if kv_cache_format == QUANTIZATION_NONE:
+                kv_cache_format = get_kv_cache_dtype(module)
+            else:
+                assert kv_cache_format == get_kv_cache_dtype(module), (
+                    "Do not support mixed precision kv cache quantization"
+                )
+
+    # Process per layer quantization config dict
+    quant_config["quantization"].update(process_layer_quant_config(layer_config_dict))
+
+    if kv_cache_format is not None:
+        quant_config["quantization"]["kv_cache_quant_algo"] = kv_cache_format
+
+    return quant_config

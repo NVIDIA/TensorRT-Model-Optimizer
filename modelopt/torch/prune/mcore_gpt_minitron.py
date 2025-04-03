@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Module implementing ``mcore_gpt_minitron`` pruning algorithm for NVIDIA Megatron-Core / NeMo models.
+"""Module implementing top-level ``mcore_gpt_minitron`` pruning handler for NVIDIA Megatron-Core / NeMo models.
 
 Minitron pruning algorithm uses activation magnitudes to estimate importance of neurons / attention heads in the model.
 More details on Minitron pruning algorithm can be found here: https://arxiv.org/pdf/2407.14679
+
+Actual implementation is at :mod:`modelopt.torch.nas.plugins.megatron`.
 """
 
 from typing import Optional
@@ -27,7 +29,6 @@ from modelopt.torch.nas.utils import sort_parameters
 from modelopt.torch.opt.searcher import BaseSearcher, SearchConfig, SearchStateDict
 from modelopt.torch.opt.utils import named_hparams
 
-SUPPORTED_MODEL_CONFIG_MAP = {}  # map from model type to config attribute name
 SUPPORTED_HPARAMS = {
     # Width pruning
     "ffn_hidden_size",
@@ -38,21 +39,29 @@ SUPPORTED_HPARAMS = {
     "num_layers",
 }
 
-try:
-    from megatron.core.models.gpt import GPTModel
 
-    SUPPORTED_MODEL_CONFIG_MAP[GPTModel] = "config"
-except Exception:
-    pass
+def get_supported_model_config_map() -> dict[type, str]:
+    """Get supported models (inside function to avoid circular imports)."""
+    supported_model_config_map = {}
+    try:
+        from megatron.core.models.gpt import GPTModel
 
-try:
-    from nemo.collections import llm
-    from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import MegatronGPTModel
+        supported_model_config_map[GPTModel] = "config"
+    except Exception:
+        pass
 
-    SUPPORTED_MODEL_CONFIG_MAP[MegatronGPTModel] = "cfg"
-    SUPPORTED_MODEL_CONFIG_MAP[llm.GPTModel] = "config"
-except Exception:
-    pass
+    try:
+        from nemo.collections import llm
+        from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import (
+            MegatronGPTModel,
+        )
+
+        supported_model_config_map[MegatronGPTModel] = "cfg"
+        supported_model_config_map[llm.GPTModel] = "config"
+    except Exception:
+        pass
+
+    return supported_model_config_map
 
 
 class MCoreGPTMinitronSearcher(BaseSearcher):
@@ -117,6 +126,17 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
     def run_search(self) -> None:
         """Run actual search."""
         # Run forward loop to collect activations and sort parameters
+        supported_model_config_map = get_supported_model_config_map()
+        model_cfg = None
+        for m_type, cfg_name in supported_model_config_map.items():
+            if isinstance(self.model, m_type):
+                model_cfg = getattr(self.model, cfg_name)
+                break
+        if model_cfg is None:
+            raise NotImplementedError(
+                f"Only {supported_model_config_map.keys()} models are supported! Got: {type(self.model)}"
+            )
+
         assert self.forward_loop is not None
         is_training = self.model.training
         self.model.eval()
@@ -132,16 +152,6 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
             hp_name = n.split(".")[-1]
             if hp_name in export_config:
                 hp.active = export_config[hp_name]
-
-        model_cfg = None
-        for m_type, cfg_name in SUPPORTED_MODEL_CONFIG_MAP.items():
-            if isinstance(self.model, m_type):
-                model_cfg = getattr(self.model, cfg_name)
-                break
-        if model_cfg is None:
-            raise NotImplementedError(
-                f"Only {SUPPORTED_MODEL_CONFIG_MAP.keys()} models are supported! Got: {type(self.model)}"
-            )
 
         # kv_channels can be None so we need to save original from original hidden_size and num_attention_heads
         orig_kv_channels = getattr(model_cfg, "kv_channels")

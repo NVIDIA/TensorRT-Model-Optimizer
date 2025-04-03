@@ -6,7 +6,7 @@ NAS
 Introduction
 ============
 
-ModelOpt provides a NAS method (aka ``mode``) - AutoNAS via the
+ModelOpt provides NAS methods (aka ``mode``) like AutoNAS via the
 :mod:`modelopt.torch.nas<modelopt.torch.nas>` module. Given a model, these methods finds the
 subnet which meets the given deployment constraints (e.g. FLOPs, parameters) from your provided
 base model with little to no accuracy degradation (depending on how aggressive is the model size reduced).
@@ -366,6 +366,7 @@ can be converted into searchable units:
     # and depth of the model.
     megatron.core.transformer.module.MegatronModule
     nemo.collections.nlp.models.language_modeling.megatron_gpt_model.MegatronGPTModel
+    nemo.collections.llm.gpt.model.base.GPTModel
 
     # We convert Hugging Face Attention layers to automatically search over the number of heads
     # and MLP hidden size.

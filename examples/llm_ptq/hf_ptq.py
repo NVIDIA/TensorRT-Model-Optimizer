@@ -21,21 +21,17 @@ import warnings
 
 import numpy as np
 import torch
-from accelerate.hooks import remove_hook_from_module
-from example_utils import (
-    get_model,
-    get_model_type,
-    get_processor,
-    get_tokenizer,
-    is_enc_dec,
-    is_model_on_gpu,
-)
+from example_utils import get_model, get_processor, get_tokenizer, is_enc_dec, is_model_on_gpu
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 import modelopt.torch.sparsity as mts
-from modelopt.torch.export import export_hf_checkpoint, export_tensorrt_llm_checkpoint
+from modelopt.torch.export import (
+    export_hf_checkpoint,
+    export_tensorrt_llm_checkpoint,
+    get_model_type,
+)
 from modelopt.torch.utils.dataset_utils import (
     create_forward_loop,
     get_dataset_dataloader,
@@ -55,6 +51,12 @@ QUANT_CFG_CHOICES = {
     "w4a8_awq": "W4A8_AWQ_BETA_CFG",
     "nvfp4": "NVFP4_DEFAULT_CFG",
     "nvfp4_awq": "NVFP4_AWQ_LITE_CFG",
+    "fp8_pb_wo": "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
+}
+
+KV_QUANT_CFG_CHOICES = {
+    "fp8": "FP8_KV_CFG",
+    "nvfp4": "NVFP4_KV_CFG",
 }
 
 mto.enable_huggingface_checkpointing()
@@ -64,10 +66,11 @@ def auto_quantize(
     model, qformat, auto_quantize_bits, calib_dataloader, calibrate_loop, batch_size=1
 ):
     qformat_list = qformat.split(",")
+    assert qformat_list, "No quantization formats provided"
     # Check if all provided quantization formats are supported
     if args.export_fmt == "hf":
         assert all(
-            qformat in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq", "w4a8_awq"]
+            qformat in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq", "w4a8_awq", "fp8_pb_wo"]
             for qformat in qformat_list
         ), (
             "One or more quantization formats provided are not supported for unified checkpoint export"
@@ -93,18 +96,19 @@ def auto_quantize(
         verbose=True,
         disabled_layers=["*lm_head*"],
     )
-
     # We need to explicitly calibrate for kv cache quantization
-    enable_kv_cache_quantization = "int8" not in args.qformat and not args.disable_kv_cache_quant
-    print(f"{'Enable' if enable_kv_cache_quantization else 'Disable'} KV cache quantization")
-    if enable_kv_cache_quantization:
+    enable_quant_kv_cache = args.kv_cache_qformat not in ["", "none"]
+    print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
+    if enable_quant_kv_cache:
+        kv_cache_quant_cfg = getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
+
         mtq.set_quantizer_by_cfg(
             model,
-            quant_cfg={"*output_quantizer": {"num_bits": (4, 3), "axis": None, "enable": True}},
+            quant_cfg=kv_cache_quant_cfg,
         )
-        # Lets calibrate only the output quantizer this time. Let's disable all other quantizers.
+        # Lets calibrate only the quantizers for kv cache quantization this time. Let's disable all others.
         with mtq.set_quantizer_by_cfg_context(
-            model, {"*": {"enable": False}, "*output_quantizer": {"enable": True}}
+            model, {"*": {"enable": False}, **kv_cache_quant_cfg}
         ):
             mtq.calibrate(model, algorithm="max", forward_loop=calibrate_loop)
     return model
@@ -183,7 +187,10 @@ def main(args):
                 "nvfp4",
                 "nvfp4_awq",
                 "w4a8_awq",
-            ], f"Quantization format {args.qformat} not supported for HF export path"
+                "fp8_pb_wo",
+            ] or args.kv_cache_qformat in ["fp8", "nvfp4", "none", ""], (
+                f"Quantization format {args.qformat} not supported for HF export path"
+            )
 
     model = get_model(args.pyt_ckpt_path, args.device, trust_remote_code=args.trust_remote_code)
     model_type = get_model_type(model)
@@ -242,10 +249,8 @@ def main(args):
         )
         mts.export(model)
 
-    if (
-        not args.auto_quantize_bits
-        and args.qformat in ["fp8", "int8_sq", "int4_awq", "w4a8_awq", "nvfp4", "nvfp4_awq"]
-    ) or args.auto_quantize_bits:
+    enable_quant_kv_cache = args.kv_cache_qformat not in ["", "none"]
+    if args.qformat or enable_quant_kv_cache:
         # If any qformat provided is not fp8, assert model is on GPU
         if args.qformat not in ["fp8", "nvfp4"]:
             assert is_model_on_gpu(model), (
@@ -300,12 +305,14 @@ def main(args):
                 include_labels=args.auto_quantize_bits is not None,
             )
 
-        quant_cfg = None
+        quant_cfg = {}
         if not args.auto_quantize_bits:
+            assert args.qformat in QUANT_CFG_CHOICES or enable_quant_kv_cache, (
+                f"Unsupported quantization format: {args.qformat} with {args.kv_cache_qformat} KV cache"
+            )
+
             if args.qformat in QUANT_CFG_CHOICES:
                 quant_cfg = getattr(mtq, QUANT_CFG_CHOICES[args.qformat])
-            else:
-                raise ValueError(f"Unsupported quantization format: {args.qformat}")
 
             if "awq" in args.qformat:
                 quant_cfg = copy.deepcopy(getattr(mtq, QUANT_CFG_CHOICES[args.qformat]))
@@ -320,19 +327,20 @@ def main(args):
                 if "w4a8_awq" == args.qformat and model_type in ["gemma", "mpt"]:
                     quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
 
-            # Always turn on FP8 kv cache to save memory footprint.
-            # For int8_sq, we do not quantize kv cache to preserve accuracy.
-            # We turn off FP8 kv cache for unified_hf checkpoint
-            enable_quant_kv_cache = (
-                "int8_sq" not in args.qformat and not args.disable_kv_cache_quant
-            )
-
             print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
-            quant_cfg["quant_cfg"]["*output_quantizer"] = {
-                "num_bits": 8 if args.qformat == "int8_sq" else (4, 3),
-                "axis": None,
-                "enable": enable_quant_kv_cache,
-            }
+
+            # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
+            if enable_quant_kv_cache:
+                # Update KV cache related bmm quantizers
+                # If quant_cfg["quant_cfg"] is None, it corresponds to only kv cache quantization case
+                quant_cfg["quant_cfg"] = quant_cfg.get("quant_cfg", {"default": {"enable": False}})
+                quant_cfg["quant_cfg"].update(
+                    getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
+                )
+
+                # Set default algorithm for kv cache quantization if not provided.
+                if not quant_cfg.get("algorithm", None):
+                    quant_cfg["algorithm"] = "max"
 
             # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
             if model_type == "gemma" and "int8_sq" in args.qformat:
@@ -343,8 +351,11 @@ def main(args):
         generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
 
         model = quantize_model(model, quant_cfg, args, calib_dataloader)
+        if args.compress:
+            mtq.compress(model)
         # Lets print the quantization summary
-        mtq.print_quant_summary(model)
+        if args.verbose:
+            mtq.print_quant_summary(model)
 
         # Run some samples
         generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
@@ -397,31 +408,38 @@ def main(args):
             setattr(model.config, "text_config", full_model_config.text_config)
             setattr(model.config, "architectures", full_model_config.architectures)
 
-        start_time = time.time()
-        if args.export_fmt == "tensorrt_llm":
-            # Move meta tensor back to device before exporting.
-            remove_hook_from_module(model, recurse=True)
+        with torch.autocast("cuda"):
+            start_time = time.time()
+            if args.export_fmt == "tensorrt_llm":
+                # Move meta tensor back to device before exporting.
+                try:
+                    from accelerate.hooks import remove_hook_from_module
 
-            dtype = None
-            if "w4a8_awq" in args.qformat:
-                # TensorRT-LLM w4a8 only support fp16 as the dtype.
-                dtype = torch.float16
+                    remove_hook_from_module(model, recurse=True)
+                except ImportError:
+                    warnings.warn("accelerate is not installed, hooks will not be removed")
+                    pass
 
-            export_tensorrt_llm_checkpoint(
-                model,
-                model_type,
-                dtype=dtype,
-                export_dir=export_path,
-                inference_tensor_parallel=args.inference_tensor_parallel,
-                inference_pipeline_parallel=args.inference_pipeline_parallel,
-            )
-        elif args.export_fmt == "hf":
-            export_hf_checkpoint(
-                model,
-                export_dir=export_path,
-            )
-        else:
-            raise NotImplementedError(f"{args.export_fmt} not supported")
+                dtype = None
+                if "w4a8_awq" in args.qformat:
+                    # TensorRT-LLM w4a8 only support fp16 as the dtype.
+                    dtype = torch.float16
+
+                export_tensorrt_llm_checkpoint(
+                    model,
+                    model_type,
+                    dtype=dtype,
+                    export_dir=export_path,
+                    inference_tensor_parallel=args.inference_tensor_parallel,
+                    inference_pipeline_parallel=args.inference_pipeline_parallel,
+                )
+            elif args.export_fmt == "hf":
+                export_hf_checkpoint(
+                    model,
+                    export_dir=export_path,
+                )
+            else:
+                raise NotImplementedError(f"{args.export_fmt} not supported")
 
         # Restore default padding and export the tokenizer as well.
         if tokenizer is not None:
@@ -480,10 +498,11 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--disable_kv_cache_quant",
-        type=lambda x: x.lower() == "true",
-        choices=[True, False],
-        help="Disable KV cache quantization (True/False)",
+        "--kv_cache_qformat",
+        required=False,
+        default="fp8",
+        choices=["fp8", "nvfp4", "", "none"],
+        help="Specify KV cache quantization format",
     )
     parser.add_argument(
         "--vlm",
@@ -503,6 +522,18 @@ if __name__ == "__main__":
         help="Set trust_remote_code for Huggingface models and tokenizers",
         default=False,
         action="store_true",
+    )
+    parser.add_argument(
+        "--compress",
+        help="Compress the model weights after quantization",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--verbose",
+        help="Print verbose output (e.g. quantization summary). Disable by --no_verbose.",
+        default=True,
+        action=argparse.BooleanOptionalAction,
     )
     args = parser.parse_args()
 

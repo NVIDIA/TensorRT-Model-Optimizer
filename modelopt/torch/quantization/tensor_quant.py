@@ -24,6 +24,8 @@ from packaging.version import Version
 from torch.autograd import Function
 from torch.onnx import symbolic_helper
 
+import modelopt.torch.quantization.triton as triton_kernel
+
 from .config import QuantizerAttributeConfig
 from .export_onnx import export_fp4, export_fp8, export_int8
 from .extensions import get_cuda_ext, get_cuda_ext_fp8, get_cuda_ext_mx
@@ -40,6 +42,8 @@ mx_format_map = {
     (0, 3): "E0M3",
     (3, 0): "E3M0",
 }
+
+DISABLE_TRITON_KERNEL = False
 
 
 def scaled_e4m3_impl(
@@ -177,10 +181,16 @@ def _dynamic_block_quantize_impl(
             assert amax.is_cuda, "amax must be a CUDA tensor for dynamic block quantization."
             if amax.numel() != 1:
                 amax = amax.amax()
-        cuda_ext_mx = get_cuda_ext_mx(raise_if_failed=True)
         with torch.cuda.device(
             None if inputs.device.index == torch.cuda.current_device() else inputs.device.index
         ):
+            if (
+                num_bits == (2, 1)  # type: ignore[comparison-overlap]
+                and triton_kernel.IS_AVAILABLE
+                and not DISABLE_TRITON_KERNEL
+            ):
+                return triton_kernel.fp4_fake_quant_block(inputs, amax.item())
+            cuda_ext_mx = get_cuda_ext_mx(raise_if_failed=True)
             return cuda_ext_mx.fused_amax_convert(
                 inputs,
                 block_size,

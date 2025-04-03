@@ -38,11 +38,11 @@ import shutil
 import tempfile
 from typing import Any, Optional
 
-import numpy as np
 import onnx
 import onnx.onnx_cpp2py_export.checker as C  # noqa: N812
 import onnx_graphsurgeon as gs
 
+from modelopt.onnx.op_types import is_data_dependent_shape_op
 from modelopt.onnx.quantization.calib_utils import (
     CalibrationDataProvider,
     CalibrationDataType,
@@ -56,6 +56,7 @@ from modelopt.onnx.quantization.graph_utils import (
 )
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
+from modelopt.onnx.quantization.ort_utils import update_trt_ep_support
 from modelopt.onnx.quantization.qdq_utils import qdq_to_dq
 from modelopt.onnx.quantization.trt_utils import load_onnx_model
 from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
@@ -74,14 +75,20 @@ def _preprocess_onnx(
     enable_shared_constants_duplication: bool,
     trt_plugins: Optional[str],
     trt_plugins_precision: Optional[list[str]],
-) -> tuple[str, list[str], bool]:
+    calibration_shapes: str,
+    simplify: bool = False,
+) -> tuple[str, list[str], bool, bool]:
     intermediate_generated_files = []
     output_dir = os.path.dirname(output_path)
     model_name = os.path.splitext(os.path.basename(onnx_path))[0]
 
     # Load the model and weights
-    onnx_model, has_custom_op, custom_ops = load_onnx_model(
-        onnx_path, trt_plugins, use_external_data_format
+    onnx_model, has_custom_op, custom_ops, onnx_path = load_onnx_model(
+        onnx_path,
+        trt_plugins,
+        calibration_shapes,
+        use_external_data_format,
+        intermediate_generated_files,
     )
     if has_custom_op:
         onnx_path = os.path.join(output_dir, f"{model_name}_ort_support.onnx")
@@ -98,9 +105,6 @@ def _preprocess_onnx(
             " also make sure that the path to the compiled '.so' TensorRT plugin is also being given via the "
             " '--trt_plugins' flag (requires TRT 10+)."
         )
-
-    # Check if there's a custom TensorRT op in the ONNX model
-    has_custom_op = np.any([node.domain == "trt.plugins" for node in onnx_model.graph.node])
 
     # Per-Channel support with QDQ format requires onnx opset version 13 or above
     ai_onnx_domain = [
@@ -119,6 +123,36 @@ def _preprocess_onnx(
         save_onnx(onnx_model, onnx_path, use_external_data_format)
         logging.info(f"Model is cloned to {onnx_path} with opset_version {opset_version}.")
         intermediate_generated_files.append(onnx_path)
+
+    # Simplify model if requested
+    if simplify:
+        try:
+            import onnxsim
+        except ModuleNotFoundError as e:
+            logging.warning(
+                "onnxsim is not installed. Please install it with 'pip install onnxsim'."
+            )
+            raise e
+
+        try:
+            model_simp, check = onnxsim.simplify(onnx_model)
+            if check:
+                onnx_model = model_simp
+                onnx_path = os.path.join(output_dir, f"{model_name}_simp.onnx")
+                save_onnx(onnx_model, onnx_path, use_external_data_format)
+                logging.info(f"Simplified model was validated and saved in {onnx_path}!")
+            else:
+                logging.warning(
+                    "Simplified ONNX model could not be validated. Will use the original model."
+                )
+        except Exception as e:
+            logging.warning(
+                f"Simplification of {onnx_path} failed with error: {e}. Will use the original model."
+            )
+
+    # Check if data-dependent shape ops are present in the model
+    graph = gs.import_onnx(onnx_model)
+    has_dds_op = len([node for node in graph.nodes if is_data_dependent_shape_op(node.op)]) > 0
 
     # Sometimes input onnx model does not contain the node names
     # This tool depends on those names, so we assign names if needed
@@ -152,7 +186,7 @@ def _preprocess_onnx(
             onnx_path = add_fp16_fp32_cast(onnx_path, custom_ops_to_cast)
             logging.info("Adding cast nodes related to custom ops to match requested precisions.")
             intermediate_generated_files.append(onnx_path)
-    return onnx_path, intermediate_generated_files, has_custom_op
+    return onnx_path, intermediate_generated_files, has_custom_op, has_dds_op
 
 
 def quantize(
@@ -162,7 +196,7 @@ def quantize(
     calibration_method: str = None,
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
-    calibration_eps: list[str] = ["cpu"],
+    calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -179,6 +213,8 @@ def quantize(
     dq_only: bool = True,
     block_size: Optional[int] = None,
     use_zero_point: bool = False,
+    passes: list[str] = None,
+    simplify: bool = False,
     **kwargs: Any,
 ) -> None:
     """Quantizes the provided ONNX model.
@@ -200,10 +236,7 @@ def quantize(
             Any subset of ['trt', 'cuda:x', 'dml:x', 'cpu'], where 'x' is the device id.
 
             .. note::
-                The order of EPs should follow the fallback logic. For example, to allow the model to run with CUDA
-                or CPU, the EP list should be ['cuda:0', 'cpu'], as layers that can't run in CUDA can fall back to
-                CPU, but not the other way. If TensorRT should also be enabled, then the EP list should be
-                ['trt', 'cuda:0', 'cpu'].
+                If a custom op is detected in the model, 'trt' will automatically be added to the EP list.
         op_types_to_quantize:
             List of op types to quantize. If None (default), all supported operators are quantized.
             This flag does not support regular expression.
@@ -247,6 +280,10 @@ def quantize(
             Block size parameter for int4 quantization.
         use_zero_point:
             Use zero-point based quantization, if True.
+        passes:
+            List of optimization passes name, if set, appropriate pre/post-processing passes will be invoked.
+        simplify:
+            Simplify the given model before quantization.
         kwargs:
             Additional keyword arguments for int4 quantization, including:
             - awqlite_alpha_step (float): Alpha step for lite, range [0, 1].
@@ -289,23 +326,17 @@ def quantize(
 
     # We need to preprocess the model with naming, weight duplication etc.
     enable_shared_constants_duplication = kwargs.get("enable_shared_constants_duplication", True)
-    onnx_path, intermediate_generated_files, has_custom_op = _preprocess_onnx(
+    onnx_path, intermediate_generated_files, has_custom_op, has_dds_op = _preprocess_onnx(
         onnx_path,
         use_external_data_format,
         output_path,
         enable_shared_constants_duplication,
         trt_plugins,
         trt_plugins_precision,
+        calibration_shapes,
+        simplify,
     )
-    if has_custom_op:
-        # Ensure that TRT EP is enabled for models with custom ops.
-        if "trt" not in calibration_eps:
-            calibration_eps.insert(0, "trt")
-
-        # If the model has a custom op and no plugin path was given, assume that this custom op is being implemented
-        # by a TRT native plugin. In order to enable the TRT EP, 'trt_extra_plugin_lib_paths' needs to be != None.
-        if not trt_plugins:
-            trt_plugins = ""
+    trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)
 
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
@@ -355,6 +386,7 @@ def quantize(
             trt_extra_plugin_lib_paths=trt_plugins,
             high_precision_dtype=high_precision_dtype,
             mha_accumulation_dtype=mha_accumulation_dtype,
+            passes=passes,
             **kwargs,
         )
     elif "int4" in quantize_mode:

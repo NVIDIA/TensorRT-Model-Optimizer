@@ -53,6 +53,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 import modelopt.torch.quantization as mtq
+from modelopt.torch.export.quant_utils import get_quant_config
 from modelopt.torch.quantization.nn import TensorQuantizer
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
 
@@ -207,7 +208,14 @@ def load_deepseek_model(model_config: str, model_path: str, batch_size: int):
     return model
 
 
-def ptq(model, tokenizer, quant_cfg: str, batch_size: int, calib_size: int, moe_only=True):
+def ptq(
+    model,
+    tokenizer,
+    quant_cfg: str,
+    batch_size: int,
+    calib_size: int,
+    mla_quant: Optional[str] = None,
+):
     """Runs Deepseek model PTQ and returns the quantized model."""
 
     # quantize the model
@@ -232,8 +240,17 @@ def ptq(model, tokenizer, quant_cfg: str, batch_size: int, calib_size: int, moe_
     ## quant config
     mtq_cfg = getattr(mtq, quant_cfg)
 
-    if moe_only:
+    # disable head that corresponds to lm_head (for the huggingface checkpoint)
+    mtq_cfg["quant_cfg"]["*head*"] = {"enable": False}
+
+    allowed_mla_quant = [None, "per_tensor_fp8"]
+    assert mla_quant in allowed_mla_quant, f"mla_quant must be {allowed_mla_quant}"
+
+    if not mla_quant:
         mtq_cfg["quant_cfg"]["*attn*"] = {"enable": False}
+    elif mla_quant == "per_tensor_fp8":
+        mtq_cfg["quant_cfg"]["*attn*weight_quantizer"] = {"num_bits": (4, 3), "axis": None}
+        mtq_cfg["quant_cfg"]["*attn*input_quantizer"] = {"num_bits": (4, 3), "axis": None}
 
     ## ptq
     transformer = mtq.quantize(transformer, mtq_cfg, calibrate_loop)
@@ -243,13 +260,15 @@ def ptq(model, tokenizer, quant_cfg: str, batch_size: int, calib_size: int, moe_
     return model
 
 
-def save_amax(model, output_path: str):
+def save_amax_and_quant_config(model, output_path: str):
     """Saves the amax values of the model to the output path."""
     world_size = int(os.getenv("WORLD_SIZE", "1"))
     rank = int(os.getenv("RANK", "0"))
 
     if rank == 0 and not os.path.exists(output_path):
         os.mkdir(output_path)
+
+    dist.barrier()
 
     # save amax
     def state_dict_filter(state_dict):
@@ -260,6 +279,30 @@ def save_amax(model, output_path: str):
         state_dict_filter(model.state_dict()),
         os.path.join(output_path, f"amax_dict_rank{rank}-mp{world_size}.pt"),
     )
+
+    quant_config = get_quant_config(model.named_modules())
+
+    all_quant_configs = [None] * dist.get_world_size()
+    dist.all_gather_object(all_quant_configs, quant_config)
+
+    if rank == 0:
+        exclude_modules = set()
+        quantized_layers = {}
+
+        for quant_config_rank in all_quant_configs:
+            assert quant_config_rank is not None
+            if "exclude_modules" in quant_config_rank["quantization"]:
+                exclude_modules.update(quant_config_rank["quantization"]["exclude_modules"])
+            if "quantized_layers" in quant_config_rank["quantization"]:
+                quantized_layers.update(quant_config_rank["quantization"]["quantized_layers"])
+
+        if exclude_modules:
+            quant_config["quantization"]["exclude_modules"] = sorted(list(exclude_modules))
+        if quantized_layers:
+            quant_config["quantization"]["quantized_layers"] = quantized_layers
+
+        with open(os.path.join(output_path, "hf_quant_config.json"), "w") as f:
+            json.dump(quant_config, f, indent=4)
 
 
 if __name__ == "__main__":
@@ -283,4 +326,4 @@ if __name__ == "__main__":
     model = load_deepseek_model(args.config, args.model_path, args.batch_size)
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     model = ptq(model, tokenizer, args.quant_cfg, args.batch_size, args.calib_size)
-    save_amax(model, args.output_path)
+    save_amax_and_quant_config(model, args.output_path)

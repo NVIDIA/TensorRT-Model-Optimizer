@@ -100,6 +100,7 @@ def get_latency(
                     "version": "1.11",
                     "precision": "fp32",
                     "onnx_opset": 13,
+                    "verbose": "false",
                 }
 
     Returns:
@@ -184,6 +185,7 @@ def profile(
                     "version": "1.11",
                     "precision": "fp32",
                     "onnx_opset": 13,
+                    "verbose": False,
                 }
         verbose: If True, print out the profiling results as a table.
 

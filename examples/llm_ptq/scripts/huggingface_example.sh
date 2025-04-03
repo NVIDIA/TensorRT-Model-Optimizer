@@ -114,9 +114,11 @@ fi
 QFORMAT_MODIFIED="${QFORMAT//,/_}"
 
 MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')
-MODEL_FULL_NAME=${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT_MODIFIED}_tp${TP}_pp${PP}
+
+MODEL_FULL_NAME=${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT_MODIFIED}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}_tp${TP}_pp${PP}
+
 if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
-    MODEL_FULL_NAME=${MODEL_NAME}_${QFORMAT_MODIFIED}_${EXPORT_FORMAT}
+    MODEL_FULL_NAME=${MODEL_NAME}_${QFORMAT_MODIFIED}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}_${EXPORT_FORMAT}
 fi
 
 SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_FULL_NAME}
@@ -144,6 +146,10 @@ if $TRUST_REMOTE_CODE; then
     PTQ_ARGS+=" --trust_remote_code "
 fi
 
+if ! $VERBOSE; then
+    PTQ_ARGS+=" --no-verbose "
+fi
+
 AWQ_ARGS=""
 if [ -n "$AWQ_BLOCK_SIZE" ]; then
     AWQ_ARGS+="--awq_block_size=$AWQ_BLOCK_SIZE"
@@ -157,7 +163,7 @@ fi
 
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
 
-    if [ "$EXPORT_FORMAT" == "hf" ] && ([ "$qformat" == "bf16" ] || [ "$qformat" == "fp16" ]); then
+    if [ "$EXPORT_FORMAT" == "hf" ] && ([ "$qformat" == "bf16" ] || [ "$qformat" == "fp16" ] && ["$KV_CACHE_QUANT" == ""]); then
         if  [ -d "$MODEL_PATH" ]; then
             MODEL_CONFIG_EXIST=true
             MODEL_CONFIG=$MODEL_PATH/config.json
@@ -181,7 +187,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
             --export_fmt=$EXPORT_FORMAT \
-            --disable_kv_cache_quant=$DISABLE_KV_CACHE_QUANT \
+            --kv_cache_qformat=$KV_CACHE_QUANT \
             $PTQ_ARGS \
             $AWQ_ARGS
     else
@@ -331,7 +337,7 @@ if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     HASH=$(echo -n "$ENGINE_DIR" | md5sum | awk '{print $1}')
     PORT=$((10000 + (0x${HASH:0:4} % 50001)))
     echo "Starting trtllm-serve on $PORT"
-    trtllm-serve $ENGINE_DIR --port $PORT > $ENGINE_DIR/serve.txt 2>&1 &
+    trtllm-serve $ENGINE_DIR --host 0.0.0.0 --port $PORT > $ENGINE_DIR/serve.txt 2>&1 &
     SERVE_PID=$!
 
     tail -f $ENGINE_DIR/serve.txt | while read line; do

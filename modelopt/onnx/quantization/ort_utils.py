@@ -48,7 +48,7 @@ def _check_for_tensorrt(min_version: str = "10.0"):
 
 
 def _check_for_libcudnn():
-    lib_pattern = "*cudnn*.dll" if platform.system() == "Windows" else "libcudnn*.so*"
+    lib_pattern = "*cudnn*.dll" if platform.system() == "Windows" else "libcudnn_adv.so*"
     env_variable = "PATH" if platform.system() == "Windows" else "LD_LIBRARY_PATH"
     ld_library_path = os.environ.get(env_variable, "").split(os.pathsep)
 
@@ -79,28 +79,88 @@ def _prepare_ep_list(calibration_eps: list[str]):
     providers: list[Union[str, tuple[str, dict]]] = []
     for ep in calibration_eps:
         if "cuda" in ep:
-            device_id = int(ep.split(":")[1]) if ":" in ep else 0
-            providers.append(("CUDAExecutionProvider", {"device_id": device_id}))
+            try:
+                _check_for_libcudnn()
+                device_id = int(ep.split(":")[1]) if ":" in ep else 0
+                providers.append(("CUDAExecutionProvider", {"device_id": device_id}))
+            except Exception as e:
+                logging.warning(f"Failed to enable ORT with CUDA EP: '{e}'")
         elif "dml" in ep:
             device_id = int(ep.split(":")[1]) if ":" in ep else 0
             providers.append(("DmlExecutionProvider", {"device_id": device_id}))
         elif "cpu" in ep:
             providers.append("CPUExecutionProvider")
         elif "trt" in ep:
-            providers.append("TensorrtExecutionProvider")
-            _check_for_tensorrt()
+            try:
+                _check_for_tensorrt()
+                _check_for_libcudnn()
+                providers.append("TensorrtExecutionProvider")
+            except Exception as e:
+                logging.warning(f"Failed to enable ORT with TensorRT EP: '{e}'")
         else:
             raise NotImplementedError(f"Execution Provider {ep} not recognized!")
 
-    # Check if `libcudnn*.so*` is available for CUDA and TRT EPs
-    eps_to_check = ["CUDAExecutionProvider", "TensorrtExecutionProvider"]
-    if any(
-        item in eps_to_check if isinstance(item, str) else item[0] in eps_to_check
-        for item in providers
-    ):
-        _check_for_libcudnn()
-
+    logging.info(f"Successfully enabled {len(providers)} EPs for ORT: {providers}")
     return providers
+
+
+def update_trt_ep_support(
+    calibration_eps: list[str], has_dds_op: bool, has_custom_op: bool, trt_plugins: str
+):
+    """Checks whether TRT should be enabled or disabled and updates the list of calibration EPs accordingly."""
+
+    def _make_trt_ep_first_choice(calibration_eps, trt_plugins):
+        # Ensure that TRT EP is enabled for models with custom ops.
+        # If it's already enabled, ensure that it's the first EP in the list of EPs to mitigate fallback issues.
+        if "trt" in calibration_eps:
+            calibration_eps.remove("trt")
+        calibration_eps.insert(0, "trt")
+
+        # If the model has a custom op and no plugin path was given, assume that this custom op is being implemented
+        # by a TRT native plugin. In order to enable the TRT EP, 'trt_extra_plugin_lib_paths' needs to be != None.
+        if not trt_plugins:
+            trt_plugins = ""
+        return trt_plugins
+
+    if has_dds_op:
+        if "trt" in calibration_eps:
+            try:
+                _check_for_tensorrt(min_version="10.6")
+            except AssertionError:
+                logging.warning(
+                    "This model contains DDS ops, which are only supported in ORT with TensorRT EP backend "
+                    "for TRT versions 10.6+. Please update TRT to a supported version, disabling it for now. "
+                    "See https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#data-dependant-shape-dds-ops"
+                )
+                calibration_eps.remove("trt")
+            try:
+                assert Version(ort.__version__) >= Version("1.21.0")
+            except AssertionError:
+                logging.warning(
+                    "This model contains DDS ops, please upgrade your ORT version to 1.21.0+ for full support with "
+                    "TRT EP backend. The reason for that is because DDS ops require TRT 10.6+, and earlier versions "
+                    "of ORT were compiled with TRT 10.4 or lower. Disabling it for now. "
+                    "See https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#data-dependant-shape-dds-ops"
+                )
+                calibration_eps.remove("trt")
+        if has_custom_op:
+            if "trt" in calibration_eps:
+                logging.warning(
+                    "This model contains DDS and custom ops, which should be supported in ORT with TensorRT EP "
+                    "backend from TRT 10.6+. If you still encounter errors, please try using the '--simplify' "
+                    "flag to simplify your model, as it may be able to remove some problematic ops."
+                )
+                trt_plugins = _make_trt_ep_first_choice(calibration_eps, trt_plugins)
+            else:
+                raise Exception(
+                    "This model contains DDS and custom ops. Custom ops are only supported with the TensorRT EP, but "
+                    "that has been disabled. Please update your TRT and/or ORT version."
+                )
+    elif has_custom_op:
+        logging.info("Custom op detected. Enabling TensorRT EP.")
+        trt_plugins = _make_trt_ep_first_choice(calibration_eps, trt_plugins)
+
+    return trt_plugins
 
 
 def create_inference_session(onnx_path_or_model: Union[str, bytes], calibration_eps: list[str]):

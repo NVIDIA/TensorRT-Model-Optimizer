@@ -153,6 +153,23 @@ def _get_tensor_shape(tensor: onnx.onnx_ml_pb2.ValueInfoProto) -> list[int]:
     return shape
 
 
+def get_dynamic_graph_inputs(onnx_model: onnx.ModelProto):
+    """This function returns the dynamic inputs of an ONNX model.
+
+    Args:
+        onnx_model: ONNX model to obtain dynamic inputs from.
+
+    Returns:
+        List of dynamic inputs.
+    """
+    graph = gs.import_onnx(onnx_model)
+    return [
+        inp
+        for inp in graph.inputs
+        if -1 in inp.shape or any([isinstance(s, str) for s in inp.shape])
+    ]
+
+
 def _get_all_shapes(container: Any) -> dict[str, list[int]]:
     """This method returns the shape of tensors within a RepeatedCompositeContainer.
 

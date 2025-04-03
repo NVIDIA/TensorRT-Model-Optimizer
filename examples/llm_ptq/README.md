@@ -128,14 +128,18 @@ T5 | Yes | Yes | Yes | Yes | -
 
 > *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](./hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*
 
-### Deploy FP8 quantized model using vLLM
+### Deploy FP8 quantized model using vLLM and SGLang
 
-> *This feature is experimental.*
-
-Besides TensorRT-LLM, the Model Optimizer also supports deploying the FP8 quantized Hugging Face LLM using [vLLM](https://github.com/vllm-project/vllm). Model Optimizer supports exporting a unified checkpoint<sup>1</sup> that is compatible for deployment with vLLM<sup>2</sup>. The unified checkpoint format aligns with the original model built from the HF transformers library. A unified checkpoint can be exported using the following command:
+Besides TensorRT-LLM, the Model Optimizer also supports deploying the FP8 quantized Hugging Face LLM using [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang). Model Optimizer supports exporting a unified checkpoint<sup>1</sup> that is compatible for deployment with vLLM and SGLang. The unified checkpoint format design reflects two key characteristics: 1. The layer structures and tensor names remain aligned with the original Hugging Face checkpoint, and 2. The same checkpoint can be deployed across multiple inference frameworks without modification. A unified checkpoint can be exported using the following command:
 
 ```bash
 # Quantize and export
+python hf_ptq.py --pyt_ckpt_path <huggingface_model_card> --qformat fp8 --export_fmt hf --export_path <quantized_ckpt_path> --trust_remote_code
+```
+
+Alternatively, the wrapper script `huggingface_example.sh` also supports quantize and export:
+
+```bash
 scripts/huggingface_example.sh --model <huggingface_model_card> --quant fp8 --export_fmt hf
 ```
 
@@ -148,8 +152,16 @@ llm_fp8 = LLM(model="<the exported model path>", quantization="modelopt")
 print(llm_fp8.generate(["What's the age of the earth? "]))
 ```
 
-> *<sup>1. Unified checkpoint export currently does not support sparsity, KV cache quantization or AutoQuantize. Speculative decoding is only supported in unified checkpoint export. The exported unified checkpoint then needs a TensorRT-LLM checkpoint converter (e.g., [this](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/eagle/convert_checkpoint.py)) to convert and build the TensorRT engine(s) for deployment.</sup>*
-> *<sup>2. Exported checkpoint can be deployed on vLLM with changes from this unmerged [PR](https://github.com/vllm-project/vllm/pull/6112/files#diff-b2645ce390db5e2ac2123144700f912fab9458314789aa8245c657cf42c6039e). Users can deploy to vLLM directly once the PR has been merged.</sup>*
+For SGLang:
+
+```python
+import sglang as sgl
+
+llm_fp8 = sgl.Engine(model_path="<the exported model path>", quantization="modelopt")
+print(llm_fp8.generate(["What's the age of the earth? "]))
+```
+
+> *<sup>1. Unified checkpoint export currently does not support sparsity. Speculative decoding is only supported in unified checkpoint export. The exported unified checkpoint then needs a TensorRT-LLM checkpoint converter (e.g., [this](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/eagle/convert_checkpoint.py)) to convert and build the TensorRT engine(s) for deployment. Alternatively, call TensorRT-LLM LLM-API to deploy the unified checkpoints e.g., check examples [here](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/pytorch#trt-llm-with-pytorch). </sup>*
 
 ### Model Support List
 

@@ -108,6 +108,12 @@ def _quantized_sdpa(self, *args, **kwargs):
     while fp8_sdpa_args and fp8_sdpa_args[-1] is None:
         fp8_sdpa_args.pop()
     query, key, value = fp8_sdpa_args[:3]
+
+    if not torch.onnx.is_in_onnx_export():
+        query = self.q_bmm_quantizer(query)
+        key = self.k_bmm_quantizer(key)
+        value = self.v_bmm_quantizer(value)
+
     q_quantized_scale = self.q_bmm_quantizer._get_amax(query)
     k_quantized_scale = self.k_bmm_quantizer._get_amax(key)
     v_quantized_scale = self.v_bmm_quantizer._get_amax(value)

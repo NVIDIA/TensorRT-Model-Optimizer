@@ -150,7 +150,7 @@ case "${MODEL_TYPE}" in
         VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
         ;;
     "mllama")
-        VLM_ARGS=" --max_encoder_input_len=4100 --skip_run"
+        VLM_ARGS=" --max_encoder_input_len=6404 --skip_run"
         ;;
 esac
 
@@ -165,9 +165,6 @@ if [ "${MODEL_TYPE}" = "vila" ]; then
 	git checkout ec7fb2c264920bf004fd9fa37f1ec36ea0942db5 && \
 	cd "$script_dir/.."
     fi
-elif [ "${MODEL_TYPE}" = "mllama" ]; then
-    echo "Mllama3.2 model requires transformers version 4.46.2 or try the latest version."
-    pip install -r ../vlm_ptq/requirements-mllama.txt
 fi
 
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
@@ -243,10 +240,11 @@ case "${MODEL_TYPE}" in
 esac
 echo "Run inference example"
 
-python vlm_run.py  \
+mpirun -n $GPUS --allow-run-as-root python vlm_run.py  \
     --hf_model_dir $MODEL_PATH \
     --visual_engine_dir $VISION_ENCODER_DIR \
     --llm_engine_dir $ENGINE_DIR \
+    --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION \
     $VLM_RUN_ARGS
 
 if [[ $TASKS =~ "gqa" ]]; then
@@ -254,11 +252,11 @@ if [[ $TASKS =~ "gqa" ]]; then
     pushd ../vlm_eval/
     if [[ "$MODEL_PATH" =~ ^/ ]]; then
         # If MODEL_PATH is absolute path
-        source gqa.sh --hf_model $MODEL_PATH --llm_engine $ENGINE_DIR --visual_engine $VISION_ENCODER_DIR
+        source gqa.sh --hf_model $MODEL_PATH --llm_engine $ENGINE_DIR --visual_engine $VISION_ENCODER_DIR --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION
     else
         # If MODEL_PATH is absolute path
         script_parent_dir=$(dirname "$script_dir")
-        source gqa.sh --hf_model $script_parent_dir/$MODEL_PATH --llm_engine $ENGINE_DIR --visual_engine $VISION_ENCODER_DIR
+        source gqa.sh --hf_model $script_parent_dir/$MODEL_PATH --llm_engine $ENGINE_DIR --visual_engine $VISION_ENCODER_DIR --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION
     fi
 
     popd

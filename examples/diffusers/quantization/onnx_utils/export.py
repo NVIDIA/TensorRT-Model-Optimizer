@@ -37,14 +37,17 @@ from pathlib import Path
 import onnx
 import onnx_graphsurgeon as gs
 import torch
-from onnxmltools.utils.float16_converter import convert_float_to_float16
+from diffusers.models.transformers import FluxTransformer2DModel, SD3Transformer2DModel
+from diffusers.models.unets import UNet2DConditionModel
+from onnxconverter_common import convert_float_to_float16
 from torch.onnx import export as onnx_export
 
 from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
+from modelopt.torch.utils import torch_to
 
 from .fp8_onnx_graphsurgeon import cast_resize_io, convert_fp16_io, convert_zp_fp8
 
-AXES_NAME = {
+MODEL_ID_TO_DYNAMIC_AXES = {
     "sdxl-1.0": {
         "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
         "timestep": {0: "steps"},
@@ -59,26 +62,6 @@ AXES_NAME = {
         "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
         "text_embeds": {0: "batch_size"},
         "time_ids": {0: "batch_size"},
-        "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-    },
-    # SD 1.5 has been removed from HF, but we’re keeping the ONNX export
-    # logic in case anyone is looking to quantize a similar model.
-    "sd1.5": {
-        "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-        "timestep": {0: "steps"},
-        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
-        "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-    },
-    "sd2.1": {
-        "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-        "timestep": {0: "steps"},
-        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
-        "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-    },
-    "sd2.1-base": {
-        "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
-        "timestep": {0: "steps"},
-        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
         "latent": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
     },
     "sd3-medium": {
@@ -97,18 +80,14 @@ AXES_NAME = {
         "guidance": {0: "batch_size"},
         "latent": {0: "batch_size"},
     },
-}
-
-# Per-tensor for INT8, we will convert it to FP8 later in onnxgraphsurgeon
-SDXL_FP8_CFG = {
-    "quant_cfg": {
-        "*weight_quantizer": {"num_bits": 8, "axis": None},
-        "*input_quantizer": {"num_bits": 8, "axis": None},
-        "*lm_head*": {"enable": False},
-        "*output_layer*": {"enable": False},
-        "default": {"num_bits": 8, "axis": None},
+    "flux-schnell": {
+        "hidden_states": {0: "batch_size", 1: "latent_dim"},
+        "encoder_hidden_states": {0: "batch_size"},
+        "pooled_projections": {0: "batch_size"},
+        "timestep": {0: "batch_size"},
+        "img_ids": {0: "latent_dim"},
+        "latent": {0: "batch_size"},
     },
-    "algorithm": "max",
 }
 
 
@@ -132,49 +111,223 @@ def generate_fp8_scales(backbone):
             module.weight_quantizer._amax = module.weight_quantizer._amax * (127 / 448.0)
 
 
-def generate_dummy_inputs(model_id, device, model_dtype="BFloat16"):
-    dummy_input = {}
-    if model_id == "sdxl-1.0" or model_id == "sdxl-turbo":
-        dummy_input["sample"] = torch.ones(2, 4, 128, 128).to(device).half()
-        dummy_input["timestep"] = torch.ones(1).to(device).half()
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 2048).to(device).half()
-        dummy_input["added_cond_kwargs"] = {}
-        dummy_input["added_cond_kwargs"]["text_embeds"] = torch.ones(2, 1280).to(device).half()
-        dummy_input["added_cond_kwargs"]["time_ids"] = torch.ones(2, 6).to(device).half()
-        dummy_input["return_dict"] = False
+def _gen_dummy_inp_and_dyn_shapes_sdxl(backbone, min_bs=1, opt_bs=1):
+    assert isinstance(backbone, UNet2DConditionModel)
+    cfg = backbone.config
+    assert cfg.addition_embed_type == "text_time"
+
+    dynamic_shapes = {
+        "sample": {
+            "min": [min_bs, cfg.in_channels, cfg.sample_size, cfg.sample_size],
+            "opt": [opt_bs, cfg.in_channels, cfg.sample_size, cfg.sample_size],
+        },
+        "timestep": {"min": [1], "opt": [1]},
+        "encoder_hidden_states": {
+            "min": [min_bs, 77, cfg.cross_attention_dim],
+            "opt": [opt_bs, 77, cfg.cross_attention_dim],
+        },
+        "added_cond_kwargs.text_embeds": {
+            "min": [
+                min_bs,
+                backbone.add_embedding.linear_1.in_features
+                - 6 * backbone.add_time_proj.num_channels,
+            ],
+            "opt": [
+                opt_bs,
+                backbone.add_embedding.linear_1.in_features
+                - 6 * backbone.add_time_proj.num_channels,
+            ],
+        },
+        "added_cond_kwargs.time_ids": {"min": [min_bs, 6], "opt": [opt_bs, 6]},
+    }
+
+    dummy_input = {
+        "sample": torch.randn(*dynamic_shapes["sample"]["min"]),
+        "timestep": torch.ones(1),
+        "encoder_hidden_states": torch.randn(*dynamic_shapes["encoder_hidden_states"]["min"]),
+        "added_cond_kwargs": {
+            "text_embeds": torch.randn(*dynamic_shapes["added_cond_kwargs.text_embeds"]["min"]),
+            "time_ids": torch.randn(*dynamic_shapes["added_cond_kwargs.time_ids"]["min"]),
+        },
+        "return_dict": False,
+    }
+    dummy_input = torch_to(dummy_input, dtype=backbone.dtype)
+
+    return dummy_input, dynamic_shapes
+
+
+def _gen_dummy_inp_and_dyn_shapes_sd3(backbone, min_bs=1, opt_bs=1):
+    assert isinstance(backbone, SD3Transformer2DModel)
+    cfg = backbone.config
+
+    dynamic_shapes = {
+        "hidden_states": {
+            "min": [min_bs, cfg.in_channels, cfg.sample_size, cfg.sample_size],
+            "opt": [opt_bs, cfg.in_channels, cfg.sample_size, cfg.sample_size],
+        },
+        "timestep": {"min": [2], "opt": [16]},
+        "encoder_hidden_states": {
+            "min": [min_bs, 333, cfg.joint_attention_dim],
+            "opt": [opt_bs, 333, cfg.joint_attention_dim],
+        },
+        "pooled_projections": {
+            "min": [min_bs, cfg.pooled_projection_dim],
+            "opt": [opt_bs, cfg.pooled_projection_dim],
+        },
+    }
+
+    dummy_input = {
+        "hidden_states": torch.randn(*dynamic_shapes["hidden_states"]["min"]),
+        "timestep": torch.ones(1),
+        "encoder_hidden_states": torch.randn(*dynamic_shapes["encoder_hidden_states"]["min"]),
+        "pooled_projections": torch.randn(*dynamic_shapes["pooled_projections"]["min"]),
+        "return_dict": False,
+    }
+    dummy_input = torch_to(dummy_input, dtype=backbone.dtype)
+
+    return dummy_input, dynamic_shapes
+
+
+def _gen_dummy_inp_and_dyn_shapes_flux(backbone, min_bs=1, opt_bs=1):
+    assert isinstance(backbone, FluxTransformer2DModel)
+    cfg = backbone.config
+    text_maxlen = 512
+    img_dim = 4096
+
+    dynamic_shapes = {
+        "hidden_states": {
+            "min": [min_bs, img_dim, cfg.in_channels],
+            "opt": [opt_bs, img_dim, cfg.in_channels],
+        },
+        "encoder_hidden_states": {
+            "min": [min_bs, text_maxlen, cfg.joint_attention_dim],
+            "opt": [opt_bs, text_maxlen, cfg.joint_attention_dim],
+        },
+        "pooled_projections": {
+            "min": [min_bs, cfg.pooled_projection_dim],
+            "opt": [opt_bs, cfg.pooled_projection_dim],
+        },
+        "timestep": {"min": [1], "opt": [1]},
+        "img_ids": {"min": [img_dim, 3], "opt": [img_dim, 3]},
+        "txt_ids": {"min": [text_maxlen, 3], "opt": [text_maxlen, 3]},
+    }
+    if cfg.guidance_embeds:  # flux-dev
+        dynamic_shapes["guidance"] = {"min": [1], "opt": [1]}
+
+    dtype = backbone.dtype
+    dummy_input = {
+        "hidden_states": torch.randn(*dynamic_shapes["hidden_states"]["min"], dtype=dtype),
+        "encoder_hidden_states": torch.randn(
+            *dynamic_shapes["encoder_hidden_states"]["min"], dtype=dtype
+        ),
+        "pooled_projections": torch.randn(
+            *dynamic_shapes["pooled_projections"]["min"], dtype=dtype
+        ),
+        "timestep": torch.ones(1, dtype=dtype),
+        "img_ids": torch.randn(*dynamic_shapes["img_ids"]["min"], dtype=torch.float32),
+        "txt_ids": torch.randn(*dynamic_shapes["txt_ids"]["min"], dtype=torch.float32),
+        "return_dict": False,
+    }
+    if cfg.guidance_embeds:  # flux-dev
+        dummy_input["guidance"] = torch.full((1,), 3.5, dtype=torch.float32)
+
+    dummy_input["pooled_projections"] = torch.randn(min_bs, cfg.pooled_projection_dim, dtype=dtype)
+    dummy_input["timestep"] = torch.ones(1, dtype=dtype)
+    dummy_input["img_ids"] = torch.randn(img_dim, 3, dtype=torch.float32)
+    dummy_input["txt_ids"] = torch.randn(text_maxlen, 3, dtype=torch.float32)
+    if cfg.guidance_embeds:  # flux-dev
+        dummy_input["guidance"] = torch.full((1,), 3.5, dtype=torch.float32)
+    dummy_input["return_dict"] = False
+
+    return dummy_input, dynamic_shapes
+
+
+def update_dynamic_axes(model_id, dynamic_axes):
+    if model_id in ["flux-dev", "flux-schnell"]:
+        dynamic_axes["out.0"] = dynamic_axes.pop("latent")
+    elif model_id in ["sdxl-1.0", "sdxl-turbo"]:
+        dynamic_axes["added_cond_kwargs.text_embeds"] = dynamic_axes.pop("text_embeds")
+        dynamic_axes["added_cond_kwargs.time_ids"] = dynamic_axes.pop("time_ids")
+        dynamic_axes["out.0"] = dynamic_axes.pop("latent")
     elif model_id == "sd3-medium":
-        dummy_input["hidden_states"] = torch.ones(2, 16, 128, 128).to(device).half()
-        dummy_input["timestep"] = torch.ones(2).to(device).half()
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 333, 4096).to(device).half()
-        dummy_input["pooled_projections"] = torch.ones(2, 2048).to(device).half()
-        dummy_input["return_dict"] = False
-    elif model_id == "sd2.1":
-        dummy_input["sample"] = torch.ones(2, 4, 96, 96).to(device).half()
-        dummy_input["timestep"] = torch.ones(1).to(device).half()
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 1024).to(device).half()
-        dummy_input["return_dict"] = False
-    elif model_id == "sd2.1-base":
-        dummy_input["sample"] = torch.ones(2, 4, 64, 64).to(device).half()
-        dummy_input["timestep"] = torch.ones(1).to(device).half()
-        dummy_input["encoder_hidden_states"] = torch.ones(2, 77, 1024).to(device).half()
-        dummy_input["return_dict"] = False
-    elif model_id == "flux-dev":
-        text_maxlen = 512
-        torch_dtype = torch.bfloat16 if model_dtype == "BFloat16" else torch.float16
-        dummy_input["hidden_states"] = torch.randn(1, 1024, 64, dtype=torch_dtype, device=device)
-        dummy_input["encoder_hidden_states"] = torch.randn(
-            1, text_maxlen, 4096, dtype=torch_dtype, device=device
+        dynamic_axes["out.0"] = dynamic_axes.pop("sample")
+
+
+def _create_dynamic_shapes(dynamic_shapes):
+    min_shapes = {}
+    opt_shapes = {}
+    for key, value in dynamic_shapes.items():
+        min_shapes[key] = value["min"]
+        opt_shapes[key] = value["opt"]
+    return {
+        "dynamic_shapes": {
+            "minShapes": min_shapes,
+            "optShapes": opt_shapes,
+            "maxShapes": opt_shapes,
+        }
+    }
+
+
+def generate_dummy_inputs_and_dynamic_axes_and_shapes(model_id, backbone):
+    """Generate dummy inputs, dynamic axes, and dynamic shapes for the given model."""
+    if model_id in ["sdxl-1.0", "sdxl-turbo"]:
+        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sdxl(
+            backbone, min_bs=2, opt_bs=16
         )
-        dummy_input["pooled_projections"] = torch.randn(1, 768, dtype=torch_dtype, device=device)
-        dummy_input["timestep"] = torch.tensor(data=[1.0] * 1, dtype=torch_dtype, device=device)
-        dummy_input["img_ids"] = torch.randn(1024, 3, dtype=torch.float32, device=device)
-        dummy_input["txt_ids"] = torch.randn(text_maxlen, 3, dtype=torch.float32, device=device)
-        dummy_input["guidance"] = torch.full((1,), 3.5, dtype=torch.float32, device=device)
-        dummy_input["return_dict"] = False
+    elif model_id == "sd3-medium":
+        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sd3(
+            backbone, min_bs=2, opt_bs=16
+        )
+    elif model_id in ["flux-dev", "flux-schnell"]:
+        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_flux(
+            backbone, min_bs=1, opt_bs=1
+        )
     else:
         raise NotImplementedError(f"Unsupported model_id: {model_id}")
 
-    return dummy_input
+    dummy_input = torch_to(dummy_input, device=backbone.device)
+    dummy_inputs = (dummy_input,)
+    dynamic_axes = MODEL_ID_TO_DYNAMIC_AXES[model_id]
+    dynamic_shapes = _create_dynamic_shapes(dynamic_shapes)
+
+    return dummy_inputs, dynamic_axes, dynamic_shapes
+
+
+def get_io_shapes(model_id, onnx_load_path, dynamic_shapes):
+    output_name = "out.0"
+    if onnx_load_path != "":
+        if model_id in ["sdxl-1.0", "sdxl-turbo"]:
+            output_name = "latent"
+        elif model_id in ["sd3-medium"]:
+            output_name = "sample"
+        elif model_id in ["flux-dev", "flux-schnell"]:
+            output_name = "output"
+        else:
+            raise NotImplementedError(f"Unsupported model_id: {model_id}")
+
+    if model_id in ["sdxl-1.0", "sdxl-turbo"]:
+        io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["sample"]}
+    elif model_id in ["sd3-medium"]:
+        io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["hidden_states"]}
+    elif model_id in ["flux-dev", "flux-schnell"]:
+        io_shapes = {}
+
+    return io_shapes
+
+
+def remove_nesting(dynamic_shapes):
+    dynamic_shapes["dynamic_shapes"]["minShapes"]["text_embeds"] = dynamic_shapes["dynamic_shapes"][
+        "minShapes"
+    ].pop("added_cond_kwargs.text_embeds")
+    dynamic_shapes["dynamic_shapes"]["minShapes"]["time_ids"] = dynamic_shapes["dynamic_shapes"][
+        "minShapes"
+    ].pop("added_cond_kwargs.time_ids")
+    dynamic_shapes["dynamic_shapes"]["optShapes"]["text_embeds"] = dynamic_shapes["dynamic_shapes"][
+        "optShapes"
+    ].pop("added_cond_kwargs.text_embeds")
+    dynamic_shapes["dynamic_shapes"]["optShapes"]["time_ids"] = dynamic_shapes["dynamic_shapes"][
+        "optShapes"
+    ].pop("added_cond_kwargs.time_ids")
 
 
 def save_onnx(onnx_model, output):
@@ -196,7 +349,7 @@ def set_onnx_export_attr(model):
             module.weight_quantizer._onnx_quantizer_type = "static"
 
 
-def modelopt_export_sd(backbone, onnx_dir, model_name, precision, model_dtype="BFloat16"):
+def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     model_file_name = "model.onnx"
     os.makedirs(f"{onnx_dir}", exist_ok=True)
     tmp_subfolder = tempfile.mkdtemp(prefix="myapp_")
@@ -206,8 +359,8 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision, model_dtype="B
     if precision == "fp4":
         set_onnx_export_attr(backbone)
 
-    dummy_inputs = generate_dummy_inputs(
-        model_name, device=backbone.device, model_dtype=model_dtype
+    dummy_inputs, dynamic_axes, _ = generate_dummy_inputs_and_dynamic_axes_and_shapes(
+        model_name, backbone
     )
 
     if model_name == "sdxl-1.0" or model_name == "sdxl-turbo":
@@ -216,7 +369,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision, model_dtype="B
     elif model_name == "sd3-medium":
         input_names = ["hidden_states", "encoder_hidden_states", "pooled_projections", "timestep"]
         output_names = ["sample"]
-    elif model_name in ["flux-dev"]:
+    elif model_name in ["flux-dev", "flux-schnell"]:
         input_names = [
             "hidden_states",
             "encoder_hidden_states",
@@ -224,22 +377,19 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision, model_dtype="B
             "timestep",
             "img_ids",
             "txt_ids",
-            "guidance",
         ]
-        output_names = ["latent"]
-    elif model_name == "sd2.1" or model_name == "sd2.1-base":
-        input_names = ["sample", "timestep", "encoder_hidden_states"]
+        if model_name == "flux-dev":
+            input_names.append("guidance")
         output_names = ["latent"]
     else:
         raise NotImplementedError(f"Unsupported model_id: {model_name}")
 
-    dynamic_axes = AXES_NAME[model_name]
     do_constant_folding = True
     opset_version = 20
 
     onnx_export(
         backbone,
-        (dummy_inputs,),
+        dummy_inputs,
         f=tmp_output.as_posix(),
         input_names=input_names,
         output_names=output_names,

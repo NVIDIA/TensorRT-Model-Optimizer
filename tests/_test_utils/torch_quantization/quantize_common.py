@@ -30,8 +30,16 @@ INT4_AWQ_FULL_CFG["algorithm"] = "awq_full"
 INT4_AWQ_CLIP_CFG = mtq.INT4_AWQ_CFG.copy()
 INT4_AWQ_CLIP_CFG["algorithm"] = "awq_clip"
 
+# SVDQuant test cfg
+INT4_SVDQUANT_CFG = mtq.INT4_AWQ_CFG.copy()
+INT4_SVDQUANT_CFG["algorithm"] = {"method": "svdquant", "lowrank": 8}
 
-def quantize_model_and_forward(model, config, calib_data):
+# SVDQuant test cfg
+FP4_SVDQUANT_CFG = mtq.NVFP4_AWQ_LITE_CFG.copy()
+FP4_SVDQUANT_CFG["algorithm"] = {"method": "svdquant", "lowrank": 8}
+
+
+def quantize_model_and_forward(model, config, calib_data, compress=False):
     def forward_loop(model, run_backward=False):
         for batch in calib_data:
             output = model(batch)
@@ -39,6 +47,8 @@ def quantize_model_and_forward(model, config, calib_data):
                 output.sum().backward()
 
     model = mtq.quantize(model, config, forward_loop=forward_loop)
+    if compress:
+        mtq.compress(model)
 
     for module in model.modules():
         assert not isinstance(module, torch.nn.Linear) or is_quantized_linear(module)
@@ -49,13 +59,13 @@ def quantize_model_and_forward(model, config, calib_data):
     forward_loop(model, run_backward=True)
 
 
-def save_restore_test(model_cls, device, quant_config):
+def save_restore_test(model_cls, device, quant_config, compress=False):
     # test restoring to an unquantized model
     model_quant = model_cls().to(device)
     model_ref = model_cls().to(device)
 
     calib_data = [model_quant.get_input().to(device) for _ in range(2)]
-    quantize_model_and_forward(model_quant.to(device), quant_config, calib_data)
+    quantize_model_and_forward(model_quant.to(device), quant_config, calib_data, compress)
 
     state_dict = mto.modelopt_state(model_quant)
 

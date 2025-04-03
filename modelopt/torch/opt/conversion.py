@@ -172,7 +172,34 @@ class ModeloptStateManager:
         manager_to = ModeloptStateManager(model_to, init_state=False)  # state must exist now
 
         # remove state from model_from
-        delattr(model_from, cls._state_key)
+        cls.remove_state(model_from)
+
+    @staticmethod
+    def has_state_for_mode_type(
+        mode_type: str,
+        *,
+        model: Optional[nn.Module] = None,
+        state: Optional[dict[str, Any]] = None,
+    ) -> bool:
+        """Check if the model or modelopt state contains state from any modes of a given type.
+
+        Args:
+            mode_type: The type of mode to check for.
+                Example types: ``quantization``, ``distill``, ``nas``, ``prune``, ``speculative``, etc.
+            model: A model to check for state.
+            state: A modelopt state extracted from a model.
+        """
+        if (model and state) or (not model and not state):
+            raise ValueError("Must provide either model or state!")
+        if model:
+            state = modelopt_state(model)
+        mode_registry = _ModeRegistryCls.get_registry_by_name(mode_type)
+        return any(m_str in mode_registry for m_str, _ in state["modelopt_state_dict"])  # type: ignore [index]
+
+    @classmethod
+    def remove_state(cls, model: nn.Module) -> None:
+        """Delete the state dict from the model."""
+        delattr(model, cls._state_key)
 
     def modes_with_states(
         self,
@@ -580,10 +607,3 @@ def restore(model: ModelLike, f: Union[str, os.PathLike, BinaryIO], **kwargs) ->
 def export(model: nn.Module) -> nn.Module:
     """Fully export the model to a regular model and finalize any model modifications."""
     raise NotImplementedError
-
-
-def has_nas_modelopt_state(modelopt_state: dict[str, Any]) -> bool:
-    """Check if the modelopt state contains NAS state."""
-    from modelopt.torch.nas.mode import NASModeRegistry
-
-    return any(m_str in NASModeRegistry for m_str, _ in modelopt_state["modelopt_state_dict"])

@@ -16,7 +16,7 @@
 """Plugins for pruning for Megatron-Core / NeMo modules using Minitron algorithm."""
 
 # import nas plugin to check if it is enabled else raises an Exception
-from modelopt.core.torch.nas.plugins.megatron import *  # noqa: F403
+from modelopt.torch.nas.plugins.megatron import *  # noqa: F403
 
 from ..config import MCoreGPTMinitronConfig
 

@@ -21,7 +21,7 @@ parse_options() {
     MODEL_TYPE=""
     MODEL_PATH=""
     QFORMAT=""
-    DISABLE_KV_CACHE_QUANT="False"
+    KV_CACHE_QUANT="fp8"
     TP=1
     CALIB_TP=
     PP=1
@@ -35,16 +35,18 @@ parse_options() {
     TASKS="build"
 
     TRUST_REMOTE_CODE=false
+    KV_CACHE_FREE_GPU_MEMORY_FRACTION=0.8
+    VERBOSE=true
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,disable_kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code" -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,kv_cache_free_gpu_memory_fraction:,no-verbose" -n "$0" -- "$@")
   eval set -- "$ARGS"
   while true; do
     case "$1" in
       --type ) MODEL_TYPE="$2"; shift 2;;
       --model ) MODEL_PATH="$2"; shift 2;;
       --quant ) QFORMAT="$2"; shift 2;;
-      --disable_kv_cache_quant ) DISABLE_KV_CACHE_QUANT="$2"; shift 2;;
+      --kv_cache_quant ) KV_CACHE_QUANT="$2"; shift 2;;
       --tp ) TP="$2"; shift 2;;
       --calib_tp ) CALIB_TP="$2"; shift 2;;
       --pp ) PP="$2"; shift 2;;
@@ -63,6 +65,8 @@ parse_options() {
       --simple_eval_tasks ) SIMPLE_EVAL_TASKS="$2"; shift 2;;
       --num_samples ) NUM_SAMPLES="$2"; shift 2;;
       --trust_remote_code ) TRUST_REMOTE_CODE=true; shift;;
+      --kv_cache_free_gpu_memory_fraction ) KV_CACHE_FREE_GPU_MEMORY_FRACTION="$2"; shift 2;;
+      --no-verbose ) VERBOSE=false; shift;;
       -- ) shift; break ;;
       * ) break ;;
     esac
@@ -89,9 +93,6 @@ parse_options() {
   if [ -z "$BUILD_MAX_BATCH_SIZE" ]; then
     BUILD_MAX_BATCH_SIZE=$DEFAULT_BUILD_MAX_BATCH_SIZE
   fi
-
-
-  echo "$TASKS"
 
   # Verify required options are provided
   if [ -z "$MODEL_PATH" ] || [ -z "$QFORMAT" ] || [ -z "$TASKS" ]; then
@@ -145,5 +146,6 @@ parse_options() {
   echo "lm_eval_limit: $LM_EVAL_LIMIT"
   echo "simple_eval_tasks: $SIMPLE_EVAL_TASKS"
   echo "num_sample: $NUM_SAMPLES"
+  echo "kv_cache_free_gpu_memory_fraction: $KV_CACHE_FREE_GPU_MEMORY_FRACTION"
   echo "================="
 }

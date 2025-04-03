@@ -13,28 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: MIT
-#
-# Permission is hereby granted, free of charge, to any person obtaining a
-# copy of this software and associated documentation files (the "Software"),
-# to deal in the Software without restriction, including without limitation
-# the rights to use, copy, modify, merge, publish, distribute, sublicense,
-# and/or sell copies of the Software, and to permit persons to whom the
-# Software is furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in
-# all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-# THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-# DEALINGS IN THE SOFTWARE.
-
-
+import argparse
 import copy
 import os
 import sys
@@ -45,25 +24,31 @@ from datasets import load_dataset
 from tensorrt_llm import logger
 from tensorrt_llm.runtime import MultimodalModelRunner
 from tqdm import tqdm
-from transformers import AutoProcessor
+from transformers import (
+    AutoModelForCausalLM,
+    AutoProcessor,
+    GenerationConfig,
+    LlavaForConditionalGeneration,
+    MllamaForConditionalGeneration,
+)
 
 import modelopt.torch.quantization as mtq
-
-sys.path.append(str(Path(__file__).resolve().parent / "../llm_ptq"))
-from example_utils import get_tokenizer
-from vlm_eval_utils import save_jsonl
-
-sys.path.append(str(Path(__file__).resolve().parent / "../vlm_ptq"))
-from utils import parse_arguments
-
 from modelopt.torch.utils.dataset_utils import (
     create_forward_loop,
     get_dataset_dataloader,
     get_max_batch_size,
 )
+from modelopt.torch.utils.image_processor import MllamaImageProcessor
+from modelopt.torch.utils.vlm_dataset_utils import get_vlm_dataset_dataloader
+
+sys.path.append(str(Path(__file__).resolve().parent / "../llm_ptq"))
+sys.path.append(str(Path(__file__).resolve().parent / "../vlm_ptq"))
+from example_utils import get_processor, get_tokenizer
+from utils import add_common_args
+from vlm_eval_utils import save_jsonl
 
 
-def quantize_model(model, args, tokenizer):
+def quantize_model(model, args, tokenizer, processor=None):
     sample_memory_usage_ratio = (
         2 if "AWQ" in args.quant_cfg or "SMOOTHQUANT" in args.quant_cfg else 1.1
     )
@@ -71,13 +56,23 @@ def quantize_model(model, args, tokenizer):
     calib_size = args.calib_size
     if batch_size > calib_size:
         batch_size = calib_size
-    calib_dataloader = get_dataset_dataloader(
-        dataset_name="cnn_dailymail",
-        tokenizer=tokenizer,
-        batch_size=batch_size,
-        num_samples=calib_size,
-        device=model.device,
-    )
+
+    # Handle Mllama models with VLM dataset
+    if processor is not None and isinstance(processor, MllamaImageProcessor):
+        calib_dataloader = get_vlm_dataset_dataloader(
+            dataset_name="scienceqa",  # Default dataset for Mllama
+            processor=processor,
+            batch_size=batch_size,
+            num_samples=calib_size,
+        )
+    else:
+        calib_dataloader = get_dataset_dataloader(
+            dataset_name="cnn_dailymail",
+            tokenizer=tokenizer,
+            batch_size=batch_size,
+            num_samples=calib_size,
+            device=model.device,
+        )
     calibrate_loop = create_forward_loop(dataloader=calib_dataloader)
 
     quant_cfg = getattr(mtq, args.quant_cfg)
@@ -103,7 +98,31 @@ def quantize_model(model, args, tokenizer):
 
 
 def main():
-    args = parse_arguments("eval")
+    parser = argparse.ArgumentParser()
+    parser = add_common_args(parser)
+    parser.add_argument("--answers_file", type=str, required=True)
+    parser.add_argument(
+        "--quant_cfg",
+        type=str,
+        default=None,
+        help="Specify the modelopt quantization configuration for simulated evaluation",
+        choices=[
+            "INT8_SMOOTHQUANT_CFG",
+            "FP8_DEFAULT_CFG",
+            "INT4_AWQ_CFG",
+            "W4A8_AWQ_BETA_CFG",
+        ],
+    )
+    parser.add_argument(
+        "--calib_size", type=int, default=512, help="Number of samples for calibration."
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        help="Set trust_remote_code for Huggingface models and tokenizers",
+        default=False,
+        action="store_true",
+    )
+    args = parser.parse_args()
 
     # Load data
     instances = load_dataset(
@@ -170,17 +189,26 @@ def main():
             conversation_lib.default_conversation = conversation_lib.conv_templates[
                 conv_mode
             ].copy()
-            from transformers import GenerationConfig
 
             generation_config = GenerationConfig.from_pretrained(args.hf_model_dir + "/llm")
             generation_config.update(**{"max_new_tokens": args.max_new_tokens})
+        elif "llama" in args.hf_model_dir.lower():
+            model = MllamaForConditionalGeneration.from_pretrained(
+                args.hf_model_dir,
+                device_map="auto",
+                trust_remote_code=args.trust_remote_code,
+                torch_dtype="auto",
+            )
+            # processor = AutoProcessor.from_pretrained(args.hf_model_dir)
+            processor = get_processor(
+                args.hf_model_dir, "mllama", model.device, trust_remote_code=args.trust_remote_code
+            )
+
         else:
             processor = AutoProcessor.from_pretrained(
                 args.hf_model_dir, trust_remote_code=args.trust_remote_code
             )
             if "llava" in args.hf_model_dir.lower():
-                from transformers import LlavaForConditionalGeneration
-
                 model = LlavaForConditionalGeneration.from_pretrained(
                     args.hf_model_dir, device_map="auto", torch_dtype="auto"
                 )
@@ -190,8 +218,6 @@ def main():
                     model.config.vision_feature_select_strategy
                 )
             elif "phi" in args.hf_model_dir.lower():
-                from transformers import AutoModelForCausalLM
-
                 model = AutoModelForCausalLM.from_pretrained(
                     args.hf_model_dir,
                     device_map="auto",
@@ -199,6 +225,8 @@ def main():
                     torch_dtype="auto",
                     _attn_implementation="flash_attention_2",
                 )
+            else:
+                raise ValueError(f"Unsupported model: {args.hf_model_dir}")
         # Evaluation for simulated quantization
         if args.quant_cfg:
             tokenizer = get_tokenizer(args.hf_model_dir, trust_remote_code=args.trust_remote_code)
@@ -208,6 +236,12 @@ def main():
                 model.language_model = quantize_model(model.language_model, args, tokenizer)
             elif "phi" in args.hf_model_dir.lower():
                 model = quantize_model(model, args, tokenizer)
+            elif "llama" in args.hf_model_dir.lower():
+                model = quantize_model(model, args, tokenizer, processor)
+            else:
+                raise ValueError(f"Unsupported model: {args.hf_model_dir}")
+        if "llama" in args.hf_model_dir.lower():
+            processor = processor.tokenizer
 
         outputs = []
         for instance in tqdm(instances):
@@ -251,6 +285,33 @@ def main():
                         max_new_tokens=args.max_new_tokens,
                         do_sample=False,
                     )
+                elif "llama" in args.hf_model_dir.lower():
+                    conversation = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image"},
+                                {
+                                    "type": "text",
+                                    "text": question
+                                    + "\nAnswer the question using a single word or phrase.",
+                                },
+                            ],
+                        }
+                    ]
+                    prompt = processor.apply_chat_template(
+                        conversation, tokenize=False, add_generation_prompt=True
+                    )
+
+                    inputs = processor(image, prompt, return_tensors="pt").to("cuda:0", model.dtype)
+                    response = model.generate(
+                        **inputs,
+                        eos_token_id=processor.tokenizer.eos_token_id,
+                        max_new_tokens=args.max_new_tokens,
+                        do_sample=False,
+                    )
+                else:
+                    raise ValueError(f"Unsupported model: {args.hf_model_dir}")
                 response = processor.decode(
                     response[0][inputs["input_ids"].shape[-1] :], skip_special_tokens=True
                 )

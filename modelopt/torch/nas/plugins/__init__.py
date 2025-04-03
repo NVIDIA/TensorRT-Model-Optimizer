@@ -20,8 +20,7 @@ from modelopt.torch.utils import import_plugin
 from .torch import *
 
 with import_plugin("megatron"):
-    from modelopt.core.torch.nas.plugins.megatron import *
-
+    from .megatron import *
 
 with import_plugin("transformer engine"):
     from .transformer_engine import *

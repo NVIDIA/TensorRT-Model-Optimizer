@@ -91,7 +91,7 @@ def add_common_args(parser):
     )
     parser.add_argument(
         "--kv_cache_free_gpu_memory_fraction",
-        default=0.9,
+        default=0.8,
         type=float,
         help="Specify the free gpu memory fraction.",
     )

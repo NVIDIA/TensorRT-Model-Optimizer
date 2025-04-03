@@ -54,40 +54,50 @@ class FP8QTensor(BaseQuantizedTensor):
             tuple: FP8QTensor, scales
         """
         original_input = input
+
+        # If block_sizes is provided, pad the input so that each dimension is divisible by the block size.
+        if block_sizes:
+            input = reduce_block_padding(input, block_sizes)
+
+        # Compute scales if not provided
         if scales is None:
             if block_sizes:
-                input = reduce_block_padding(input, block_sizes)
                 amax = reduce_block_amax(input, block_sizes)
             else:
                 amax = reduce_amax(input, axis=axis)
-            scales = amax / 448.0
+            scales = amax / 448.0  # Consider parameterizing the divisor if needed
 
-        # Calculate the scale shape and make sure it aligns with input and block_sizes
+        # Determine the expected scales shape from the (possibly padded) input
         expected_shape = list(input.shape)
         expanded_scales = scales.clone()
         if block_sizes:
             for dim, block_size in block_sizes.items():
-                dim = dim if dim >= 0 else len(input.shape) + dim  # Convert negative index
+                # Convert negative indices to positive ones.
+                dim = dim if dim >= 0 else len(input.shape) + dim
+                # After padding, this should always hold.
                 assert input.shape[dim] % block_size == 0, (
-                    f"Tensor dimension {dim}, {input.shape[dim]} is not divisible by {block_size}."
+                    f"Tensor dimension {dim}, {input.shape[dim]} is not divisible by {block_size} even after padding."
                 )
-                expected_shape[dim] = (
-                    input.shape[dim] // block_size
-                )  # Adjust expected shape for blocks
+                # The scales tensor is expected to have size equal to input.shape[dim] // block_size.
+                expected_shape[dim] = input.shape[dim] // block_size
 
-            # Assert the shape of `scales` matches expected reduced dimensions
+            # Verify that the provided scales shape matches the expected shape.
             assert scales.shape == tuple(expected_shape), (
                 f"Mismatch in expected scale shape: {scales.shape} vs {tuple(expected_shape)}"
             )
 
-            # Expand scales for broadcasting
+            # Expand scales along each block dimension for broadcasting.
             for dim, block_size in block_sizes.items():
                 expanded_scales = expanded_scales.repeat_interleave(block_size, dim=dim)
 
-        # Quantization
+        # Perform quantization using FP8 (E4M3) format.
         quantized_data = (input / expanded_scales).to(torch.float8_e4m3fn)
 
-        return cls(original_input.shape, original_input.dtype, quantized_data), scales
+        # Crop quantized_data back to the original shape (if padding was added).
+        slices = tuple(slice(0, dim) for dim in original_input.shape)
+        quantized_data_cropped = quantized_data[slices]
+
+        return cls(original_input.shape, original_input.dtype, quantized_data_cropped), scales
 
     def dequantize(self, dtype: torch.dtype = None, **kwarg):
         """Dequantze FP8 packed tensor to a target dtype."""
@@ -99,8 +109,12 @@ class FP8QTensor(BaseQuantizedTensor):
         scales = kwarg["scale"]
         block_sizes = kwarg.get("block_sizes", None)
 
-        shape = self._quantized_data.shape
+        quantized_data = self._quantized_data
         if block_sizes:
+            # pad the weight if needed
+            quantized_data = reduce_block_padding(quantized_data, block_sizes)
+            shape = quantized_data.shape
+
             # Compute expanded shape for broadcasting scales
             expanded_shape = list(shape)
             for dim, block_size in block_sizes.items():
@@ -120,4 +134,4 @@ class FP8QTensor(BaseQuantizedTensor):
         # handle padded tensors
         slices = tuple(slice(0, dim) for dim in self.metadata["shape"])
 
-        return (self._quantized_data.view(torch.float8_e4m3fn).to(dtype) * scales.to(dtype))[slices]
+        return (quantized_data.to(dtype) * scales.to(dtype))[slices]

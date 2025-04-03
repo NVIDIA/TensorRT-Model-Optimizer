@@ -34,11 +34,12 @@ import ast
 import inspect
 import tempfile
 import types
+from warnings import warn
 
 from ..conversion import register
 from ..nn import TensorQuantizer
 
-__all__ = ["register_attention_for_kv_quant"]
+__all__ = ["register_attention_for_kv_quant", "register_hf_attention_for_kv_quant"]
 
 
 def register_attention_for_kv_quant(attention_cls: type) -> bool:
@@ -206,50 +207,7 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
     head = ast.fix_missing_locations(head)
     org_class = model_module.__dict__[org_class_name]
 
-    module_code_str = ast.unparse(head)
-    with tempfile.NamedTemporaryFile(prefix="modelopt_", suffix=".py", delete=False) as temp_file:
-        temp_file.write(module_code_str.encode())
-        print(f"Definition of {new_class_name} saved to {temp_file.name}")
-
-    # Exec with python runtime and extract the new class
-    # This could lead to side effects if the class code is not properly isolated
-    # Therefore, it is recommended to run this function only when necessary
-    # exec(
-    #     new_class_code,
-    #     globals=model_module.__dict__,
-    #     locals=model_module.__dict__
-    # )  # bandit throws error here
-    # quant_class = model_module.__dict__[new_class_name]
-
-    # Extract the bytecode and create a new class on the fly
-    # This is more tricky but doesn't require runtime execution
-    module_code = compile(head, filename="modelopt_generated", mode="exec")
-    class_code = module_code.co_consts[0]
-    assert class_code.co_name == new_class_name
-    method_codes = [const for const in class_code.co_consts if isinstance(const, types.CodeType)]
-
-    new_methods = {}
-    for method_code in method_codes:
-        method_name = method_code.co_name
-        original_method = getattr(org_class, method_name, None)
-        if not isinstance(original_method, types.FunctionType):
-            continue
-        # Create a new class method from bytecode
-        new_methods[method_name] = types.FunctionType(
-            method_code, globals=original_method.__globals__, closure=original_method.__closure__
-        )
-
-    def setup_method(self):
-        self.q_bmm_quantizer = TensorQuantizer()
-        self.k_bmm_quantizer = TensorQuantizer()
-        self.v_bmm_quantizer = TensorQuantizer()
-
-    assert "_setup" not in new_methods, "Method _setup already exists"
-    new_methods["_setup"] = setup_method
-
-    # Create a new subclass on the fly
-    quant_class = type(new_class_name, (org_class,), new_methods)
-
+    quant_class = _create_quantized_class_from_ast(head, org_class, new_class_name, model_module)
     register(original_cls=org_class, quantized_cls=quant_class)
     print(f"Successfully registered {org_class_name} for quantization")
     return True
@@ -331,13 +289,56 @@ def register_hf_attention_for_kv_quant(attention_cls: type) -> bool:
     head = ast.fix_missing_locations(head)
     org_class = model_module.__dict__[org_class_name]
 
+    quant_class = _create_quantized_class_from_ast(head, org_class, new_class_name, model_module)
+
+    register(original_cls=org_class, quantized_cls=quant_class)
+    print(f"Successfully registered {org_class_name} for quantization")
+    return True
+
+
+def _create_quantized_class_from_ast(
+    head, org_class, new_class_name, model_module, temp_file_name=None
+):
+    """Create a quantized class from an AST representation.
+
+    Args:
+        head: The AST head containing the modified class definition
+        org_class: The original class to be quantized
+        new_class_name: Name for the new quantized class
+        model_module: The module containing the original class
+        temp_file_name: Optional file name to save the generated code
+
+    Returns:
+        The newly created quantized class
+    """
+    head = ast.fix_missing_locations(head)
+
+    # Save the generated code to a temporary file if requested
     module_code_str = ast.unparse(head)
-    with tempfile.NamedTemporaryFile(prefix="modelopt_", suffix=".py", delete=False) as temp_file:
-        temp_file.write(module_code_str.encode())
-        print(f"Definition of {new_class_name} saved to {temp_file.name}")
+    if temp_file_name is None:
+        with tempfile.NamedTemporaryFile(
+            prefix="modelopt_", suffix=".py", delete=False
+        ) as temp_file:
+            temp_file.write(module_code_str.encode())
+            temp_file_name = temp_file.name
+            print(f"Definition of {new_class_name} saved to {temp_file_name}")
+    else:
+        with open(temp_file_name, "w") as f:
+            f.write(module_code_str)
+
+    # Exec with python runtime and extract the new class
+    # This could lead to side effects if the class code is not properly isolated
+    # Therefore, it is recommended to run this function only when necessary
+    # exec(
+    #     new_class_code,
+    #     globals=model_module.__dict__,
+    #     locals=model_module.__dict__
+    # )  # bandit throws error here
+    # quant_class = model_module.__dict__[new_class_name]
 
     # Extract the bytecode and create a new class on the fly
-    module_code = compile(head, filename="modelopt_generated", mode="exec")
+    # This is more tricky but doesn't require runtime execution
+    module_code = compile(head, filename=f"{temp_file_name}", mode="exec")
     class_code = module_code.co_consts[0]
     assert class_code.co_name == new_class_name
     method_codes = [const for const in class_code.co_consts if isinstance(const, types.CodeType)]
@@ -348,10 +349,37 @@ def register_hf_attention_for_kv_quant(attention_cls: type) -> bool:
         original_method = getattr(org_class, method_name, None)
         if not isinstance(original_method, types.FunctionType):
             continue
+
+        # Check if the method is a decorated method
+        # The exec path can handle decorated methods, but the safety compliance disallows exec
+        closure = original_method.__closure__
+        globals = original_method.__globals__
+        if method_code.co_freevars != original_method.__code__.co_freevars:
+            warn(f"{new_class_name}.{method_name} is a decorated method. Ignoring the decorator!")
+
+            new_closure = tuple()
+            for freevar in method_code.co_freevars:
+                assert freevar in original_method.__closure__
+                new_closure += (
+                    original_method.__closure__[  # type: ignore[index]
+                        original_method.__code__.co_freevars.index(freevar)
+                    ],
+                )
+            closure = new_closure
+            for closure_item in original_method.__closure__:  # type: ignore[union-attr]
+                item = closure_item.cell_contents
+                if isinstance(item, types.FunctionType) and item.__name__ == method_name:
+                    globals = item.__globals__
+                    break
+            else:
+                raise ValueError(f"Cannot find the original method {method_name} in the closure")
+
         # Create a new class method from bytecode
-        new_methods[method_name] = types.FunctionType(
-            method_code, globals=original_method.__globals__, closure=original_method.__closure__
-        )
+        new_method = types.FunctionType(method_code, globals=globals, closure=closure)
+        new_method.__annotations__ = original_method.__annotations__
+        new_method.__defaults__ = original_method.__defaults__
+        new_method.__kwdefaults__ = original_method.__kwdefaults__
+        new_methods[method_name] = new_method
 
     def setup_method(self):
         self.q_bmm_quantizer = TensorQuantizer()
@@ -364,6 +392,4 @@ def register_hf_attention_for_kv_quant(attention_cls: type) -> bool:
     # Create a new subclass on the fly
     quant_class = type(new_class_name, (org_class,), new_methods)
 
-    register(original_cls=org_class, quantized_cls=quant_class)
-    print(f"Successfully registered {org_class_name} for quantization")
-    return True
+    return quant_class

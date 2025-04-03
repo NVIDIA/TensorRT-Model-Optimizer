@@ -15,11 +15,13 @@
 
 """The package setup script for modelopt customizing certain aspects of the installation process."""
 
+import os
+
 import setuptools
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-version = "0.25.0"
+version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "0.27.0")
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -28,9 +30,8 @@ setup_kwargs = {}
 # Required and optional dependencies ###############################################################
 required_deps = [
     f"nvidia-modelopt-core=={version}",
-    "cloudpickle>=1.6.0",
     "ninja",  # for faster building of C++ / CUDA extensions
-    "numpy<2",  # Temporarily disable NumPy 2 until we have a fix
+    "numpy",
     "packaging",
     "pydantic>=2.0",
     "rich",
@@ -39,8 +40,6 @@ required_deps = [
     # TODO: (temporary fix) Python 3.12+ venv does not install setuptools by default but it is
     #   required to load cuda extensions using torch.utils.cpp_extension.load
     # Torch will have a dependency on setuptools after github.com/pytorch/pytorch/pull/127921 (2.4+)
-    # It is also required for onnxmltools (pkg_resources)
-    #   Related issue: https://github.com/onnx/onnxmltools/issues/698
     "setuptools ; python_version >= '3.12'",
 ]
 
@@ -51,29 +50,29 @@ optional_deps = {
         "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
         "onnx",
         "onnxconverter-common",
-        "onnxmltools",
         "onnx-graphsurgeon",
         # Onnxruntime 1.20+ is not supported on Python 3.9
         "onnxruntime~=1.18.1 ; python_version < '3.10'",
         "onnxruntime~=1.20.1 ; python_version >= '3.10' and (platform_machine == 'aarch64' or platform_system == 'Darwin')",  # noqa: E501
         "onnxruntime-gpu~=1.20.1 ; python_version >= '3.10' and platform_machine != 'aarch64' and platform_system != 'Darwin'",  # noqa: E501
+        "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
     ],
     "torch": [
         "pulp",
+        "pynvml>=11.5.0",
         "regex",
         "safetensors",
         "torch>=2.2",
         "torchprofile>=0.0.4",
         "torchvision",
-        "pynvml",
     ],
     "hf": [
-        "accelerate>=0.27.2",
-        "datasets>=2.16.1",
-        "diffusers>=0.27.2",
+        "accelerate>=1.0.0",
+        "datasets>=3.0.0",
+        "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
-        "transformers>=4.40.2",
         "peft>=0.12.0",
+        "transformers>=4.48.0",
     ],
     # linter tools
     "dev-lint": [

@@ -16,15 +16,13 @@
 import argparse
 
 import torch
-from config import DYNAMIC_SHAPES, get_io_shapes, remove_nesting, update_dynamic_axes
-from diffusers import (
-    DiffusionPipeline,
-    FluxPipeline,
-    StableDiffusion3Pipeline,
-    StableDiffusionPipeline,
+from onnx_utils.export import (
+    generate_dummy_inputs_and_dynamic_axes_and_shapes,
+    get_io_shapes,
+    remove_nesting,
+    update_dynamic_axes,
 )
-from onnx_utils.export import AXES_NAME, generate_dummy_inputs
-from quantize import MODEL_ID
+from quantize import create_pipeline
 
 import modelopt.torch.opt as mto
 from modelopt.torch._deploy._runtime import RuntimeRegistry
@@ -52,15 +50,20 @@ def main():
         "--model",
         type=str,
         default="flux-dev",
-        choices=[
-            "sdxl-1.0",
-            "sdxl-turbo",
-            "sd2.1",
-            "sd2.1-base",
-            "sd3-medium",
-            "flux-dev",
-            "flux-schnell",
-        ],
+        choices=["sdxl-1.0", "sdxl-turbo", "sd3-medium", "flux-dev", "flux-schnell"],
+    )
+    parser.add_argument(
+        "--override-model-path",
+        type=str,
+        default=None,
+        help="Path to the model if not using default paths in MODEL_ID mapping.",
+    )
+    parser.add_argument(
+        "--model-dtype",
+        type=str,
+        default="Half",
+        choices=["Half", "BFloat16", "Float"],
+        help="Precision used to load the model.",
     )
     parser.add_argument(
         "--restore-from", type=str, default=None, help="Path to the modelopt quantized checkpoint"
@@ -88,26 +91,7 @@ def main():
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
 
-    if args.model in ["sd2.1", "sd2.1-base"]:
-        pipe = StableDiffusionPipeline.from_pretrained(
-            MODEL_ID[args.model], torch_dtype=torch.float16, safety_checker=None
-        )
-    elif args.model == "sd3-medium":
-        pipe = StableDiffusion3Pipeline.from_pretrained(
-            MODEL_ID[args.model], torch_dtype=torch.float16
-        )
-    elif args.model in ["flux-dev", "flux-schnell"]:
-        pipe = FluxPipeline.from_pretrained(
-            MODEL_ID[args.model],
-            torch_dtype=torch.bfloat16,
-        )
-    else:
-        pipe = DiffusionPipeline.from_pretrained(
-            MODEL_ID[args.model],
-            torch_dtype=torch.float16,
-            variant="fp16",
-            use_safetensors=True,
-        )
+    pipe = create_pipeline(args.model, args.model_dtype, args.override_model_path)
 
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
@@ -116,9 +100,7 @@ def main():
         backbone = pipe.transformer
     elif hasattr(pipe, "unet"):
         backbone = pipe.unet
-        add_embedding = (
-            backbone.add_embedding if args.model not in ["sd2.1", "sd2.1-base"] else None
-        )
+        add_embedding = backbone.add_embedding
     else:
         raise ValueError("Pipeline does not have a transformer or unet backbone")
 
@@ -137,16 +119,15 @@ def main():
     backbone.to("cuda")
 
     # Generate dummy inputs for the backbone
-    dummy_inputs = generate_dummy_inputs(args.model, "cuda", "BFloat16")
-
-    # Define dynamic axes for ONNX export
-    dynamic_axes = AXES_NAME[args.model]
+    dummy_inputs, dynamic_axes, dynamic_shapes = generate_dummy_inputs_and_dynamic_axes_and_shapes(
+        args.model, backbone
+    )
 
     # Postprocess the dynamic axes to match the input and output names with DeviceModel
     if args.onnx_load_path == "":
         update_dynamic_axes(args.model, dynamic_axes)
 
-    compilation_args = DYNAMIC_SHAPES[args.model]
+    compilation_args = dynamic_shapes
 
     # We only need to remove the nesting for SDXL models as they contain the nested input added_cond_kwargs
     # which are renamed by the DeviceModel
@@ -161,6 +142,7 @@ def main():
         "version": "10.3",
         "precision": "stronglyTyped",
         "onnx_opset": "17",
+        "verbose": "false",
     }
 
     client = RuntimeRegistry.get(deployment)
@@ -195,7 +177,7 @@ def main():
         compiled_model,
         metadata,
         compilation_args,
-        get_io_shapes(args.model, args.onnx_load_path),
+        get_io_shapes(args.model, args.onnx_load_path, dynamic_shapes),
         ignore_nesting,
     )
 

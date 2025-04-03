@@ -43,6 +43,12 @@ scripts/huggingface_example.sh --type phi --model Phi-3-vision-128k-instruct --q
 
 The example scripts above also have an additional flag `--tasks gqa`, which will trigger evaluation of the built TensorRT engine using GQA benchmark. Details of the evaluation is explained in this [tutorial](../vlm_eval/README.md).
 
+If you encounter Out of Memory (OOM) issues during inference or evaluation, you can try lowering the `--kv_cache_free_gpu_memory_fraction` argument (default is 0.8) to reduce GPU memory usage for kv_cache:
+
+```bash
+scripts/huggingface_example.sh --type phi --model Phi-3-vision-128k-instruct --quant fp8 --kv_cache_free_gpu_memory_fraction 0.5
+```
+
 ### Model Support List
 
 Model | type | fp8 | int8_sq | int4_awq | w4a8_awq<sup>1</sup>
