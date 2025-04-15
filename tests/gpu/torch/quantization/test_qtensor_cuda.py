@@ -149,17 +149,6 @@ class TestQTensor:
                 0,
                 torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
                 torch.tensor(
-                    [[0.0000, 0.9844, 1.9219, 3.0000], [4.0000, 5.0000, 6.0000, 7.000]],
-                    dtype=torch.bfloat16,
-                ),
-            ),
-            # FP8, per-channel quantization
-            (
-                (4, 3),
-                None,
-                1,
-                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
-                torch.tensor(
                     [[0.0000, 0.9609, 1.9219, 3.0000], [4.0000, 5.0000, 6.0000, 7.0000]],
                     dtype=torch.bfloat16,
                 ),

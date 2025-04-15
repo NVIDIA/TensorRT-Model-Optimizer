@@ -21,6 +21,7 @@ import warnings
 
 import numpy as np
 import torch
+from accelerate.hooks import remove_hook_from_module
 from example_utils import get_model, get_processor, get_tokenizer, is_enc_dec, is_model_on_gpu
 from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, WhisperProcessor
 
@@ -97,8 +98,9 @@ def auto_quantize(
         verbose=True,
         disabled_layers=["*lm_head*"],
     )
+
     # We need to explicitly calibrate for kv cache quantization
-    enable_quant_kv_cache = args.kv_cache_qformat not in ["", "none"]
+    enable_quant_kv_cache = args.kv_cache_qformat != "none"
     print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
     if enable_quant_kv_cache:
         kv_cache_quant_cfg = getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
@@ -262,8 +264,7 @@ def main(args):
         )
         mts.export(model)
 
-    enable_quant_kv_cache = args.kv_cache_qformat not in ["", "none"]
-    if args.qformat or enable_quant_kv_cache:
+    if args.auto_quantize_bits or args.qformat in QUANT_CFG_CHOICES:
         # If any qformat provided is not fp8, assert model is on GPU
         if args.qformat not in ["fp8", "nvfp4"]:
             assert is_model_on_gpu(model), (
@@ -348,12 +349,11 @@ def main(args):
 
         quant_cfg = {}
         if not args.auto_quantize_bits:
-            assert args.qformat in QUANT_CFG_CHOICES or enable_quant_kv_cache, (
+            assert args.qformat in QUANT_CFG_CHOICES, (
                 f"Unsupported quantization format: {args.qformat} with {args.kv_cache_qformat} KV cache"
             )
 
-            if args.qformat in QUANT_CFG_CHOICES:
-                quant_cfg = getattr(mtq, QUANT_CFG_CHOICES[args.qformat])
+            quant_cfg = getattr(mtq, QUANT_CFG_CHOICES[args.qformat])
 
             if "awq" in args.qformat:
                 quant_cfg = copy.deepcopy(getattr(mtq, QUANT_CFG_CHOICES[args.qformat]))
@@ -368,6 +368,7 @@ def main(args):
                 if "w4a8_awq" == args.qformat and model_type in ["gemma", "mpt"]:
                     quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
 
+            enable_quant_kv_cache = args.kv_cache_qformat != "none"
             print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
 
             # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
@@ -391,18 +392,24 @@ def main(args):
         input_ids = next(iter(calib_dataloader))[
             "input_features" if model_type == "whisper" else "input_ids"
         ][0:1]
-        with torch.autocast("cuda"):
-            generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
+        generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
 
-            model = quantize_model(model, quant_cfg, args, calib_dataloader)
-            if args.compress:
-                mtq.compress(model)
+        model = quantize_model(model, quant_cfg, args, calib_dataloader)
+        if args.compress:
+            mtq.compress(model)
             # Lets print the quantization summary
-            if args.verbose:
-                mtq.print_quant_summary(model)
+        if args.verbose:
+            mtq.print_quant_summary(model)
 
-            # Run some samples
+        # Run some samples
+        torch.cuda.empty_cache()
+        generated_ids_after_ptq = None
+        if model_type != "llama4":
             generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
+        else:
+            warnings.warn(
+                "Llama4 Maverick generation after quantization has a bug. Skipping generation sample."
+            )
 
         def input_decode(input_ids):
             if processor is not None and isinstance(processor, MllamaImageProcessor):
@@ -429,20 +436,21 @@ def main(args):
             else:
                 raise ValueError("The processor or tokenizer must be set")
 
-        print("--------")
-        print(f"example test input: {input_decode(input_ids)}")
-        print("--------")
-        print(
-            f"example outputs before ptq: {output_decode(generated_ids_before_ptq, input_ids.shape[1])}"
-        )
-        print("--------")
-        print(
-            f"example outputs after ptq: {output_decode(generated_ids_after_ptq, input_ids.shape[1])}"
-        )
+        if generated_ids_after_ptq is not None:
+            print("--------")
+            print(f"example test input: {input_decode(input_ids)}")
+            print("--------")
+            print(
+                f"example outputs before ptq: {output_decode(generated_ids_before_ptq, input_ids.shape[1])}"
+            )
+            print("--------")
+            print(
+                f"example outputs after ptq: {output_decode(generated_ids_after_ptq, input_ids.shape[1])}"
+            )
 
     else:
         assert model_type != "dbrx", f"Does not support export {model_type} without quantizaton"
-        print(f"No quantization applied, export {device} model")
+        print(f"qformat: {args.qformat}. No quantization applied, export {device} model")
 
     with torch.inference_mode():
         if model_type is None:
@@ -459,38 +467,31 @@ def main(args):
             setattr(model.config, "text_config", full_model_config.text_config)
             setattr(model.config, "architectures", full_model_config.architectures)
 
-        with torch.autocast("cuda"):
-            start_time = time.time()
-            if args.export_fmt == "tensorrt_llm":
-                # Move meta tensor back to device before exporting.
-                try:
-                    from accelerate.hooks import remove_hook_from_module
+        start_time = time.time()
+        if args.export_fmt == "tensorrt_llm":
+            # Move meta tensor back to device before exporting.
+            remove_hook_from_module(model, recurse=True)
 
-                    remove_hook_from_module(model, recurse=True)
-                except ImportError:
-                    warnings.warn("accelerate is not installed, hooks will not be removed")
-                    pass
+            dtype = None
+            if "w4a8_awq" in args.qformat:
+                # TensorRT-LLM w4a8 only support fp16 as the dtype.
+                dtype = torch.float16
 
-                dtype = None
-                if "w4a8_awq" in args.qformat:
-                    # TensorRT-LLM w4a8 only support fp16 as the dtype.
-                    dtype = torch.float16
-
-                export_tensorrt_llm_checkpoint(
-                    model,
-                    model_type,
-                    dtype=dtype,
-                    export_dir=export_path,
-                    inference_tensor_parallel=args.inference_tensor_parallel,
-                    inference_pipeline_parallel=args.inference_pipeline_parallel,
-                )
-            elif args.export_fmt == "hf":
-                export_hf_checkpoint(
-                    model,
-                    export_dir=export_path,
-                )
-            else:
-                raise NotImplementedError(f"{args.export_fmt} not supported")
+            export_tensorrt_llm_checkpoint(
+                model,
+                model_type,
+                dtype=dtype,
+                export_dir=export_path,
+                inference_tensor_parallel=args.inference_tensor_parallel,
+                inference_pipeline_parallel=args.inference_pipeline_parallel,
+            )
+        elif args.export_fmt == "hf":
+            export_hf_checkpoint(
+                model,
+                export_dir=export_path,
+            )
+        else:
+            raise NotImplementedError(f"{args.export_fmt} not supported")
 
         # Restore default padding and export the tokenizer as well.
         if tokenizer is not None:
@@ -552,8 +553,8 @@ if __name__ == "__main__":
         "--kv_cache_qformat",
         required=False,
         default="fp8",
-        choices=["fp8", "nvfp4", "", "none"],
-        help="Specify KV cache quantization format",
+        choices=["fp8", "nvfp4", "none"],
+        help="Specify KV cache quantization format, default to fp8 if not provided",
     )
     parser.add_argument(
         "--vlm",

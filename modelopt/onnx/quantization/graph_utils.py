@@ -290,11 +290,14 @@ def filter_quantizable_kgen_heads(
             return False
 
         child_nodes = get_child_nodes(head_node)
-        if child_nodes[0].op != "Softmax":
-            return False
+        if child_nodes:
+            if child_nodes[0].op != "Softmax":
+                return False
 
-        child_nodes = get_child_nodes(child_nodes[0])
-        if child_nodes[0].op != "MatMul":
+            child_nodes = get_child_nodes(child_nodes[0])
+            if child_nodes and child_nodes[0].op != "MatMul":
+                return False
+        else:
             return False
 
         return True

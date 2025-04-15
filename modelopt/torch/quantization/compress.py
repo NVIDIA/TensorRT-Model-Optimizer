@@ -48,15 +48,13 @@ def compress(quant_model, compress_config: dict[str, bool] = {"default": True}):
 
     Note: This function modifies the input model in-place.
     """
-    compress_config = compress_config.copy()
     if "default" in compress_config and isinstance(compress_config["default"], bool):
         set_quantizer_attribute(
             quant_model, "*weight_quantizer*", {"fake_quant": not compress_config["default"]}
         )
-        compress_config.pop("default")
 
     for pattern, to_compress in compress_config.items():
-        if not to_compress:
+        if pattern == "default":
             continue
         if isinstance(to_compress, bool):
 

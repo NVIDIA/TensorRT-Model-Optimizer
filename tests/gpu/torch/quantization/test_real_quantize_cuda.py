@@ -33,7 +33,7 @@ from modelopt.torch.quantization.qtensor import QTensorWrapper
         mtq.INT4_AWQ_CFG,
         mtq.FP8_DEFAULT_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
-        mtq.FP8_PER_CHANNEL_WEIGHT_CFG,
+        mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
     ],
 )
 def test_real_quantize(model_cls, config):
@@ -84,7 +84,7 @@ def test_real_quantize(model_cls, config):
         mtq.INT4_AWQ_CFG,
         mtq.FP8_DEFAULT_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
-        mtq.FP8_PER_CHANNEL_WEIGHT_CFG,
+        mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
     ],
 )
 def test_save_restore(model_cls, config):
@@ -107,14 +107,14 @@ def test_save_restore(model_cls, config):
         mtq.INT4_AWQ_CFG,
         mtq.FP8_DEFAULT_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
-        mtq.FP8_PER_CHANNEL_WEIGHT_CFG,
+        mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
     ],
 )
 @pytest.mark.parametrize(
     "compress_config",
     [
         {
-            "*.net.0*": False,
+            "*net.0*": False,
             "*.conv1*": False,
             "*.fc1*": False,
             "default": True,
@@ -155,12 +155,13 @@ def test_compress_config(model_cls, quant_config, compress_config):
             continue
 
         # Check if layer should be skipped based on patterns
-        should_skip = any(
-            fnmatch.fnmatch(name, pattern)
-            for pattern in compress_config
-            if pattern != "default" and not compress_config[pattern]
-        )
-        if not should_skip:
+        should_compress = compress_config["default"] if "default" in compress_config else False
+        for pattern in compress_config:
+            if pattern == "default":
+                continue
+            if fnmatch.fnmatch(name, pattern):
+                should_compress = compress_config[pattern]
+        if should_compress:
             assert isinstance(module.weight, QTensorWrapper)
         else:
             assert not isinstance(module.weight, QTensorWrapper)

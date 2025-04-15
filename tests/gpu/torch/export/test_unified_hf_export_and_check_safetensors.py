@@ -17,22 +17,31 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import torch
 from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
 from safetensors import safe_open
 
 
 # Here we map each qformat -> the suffix we expect in the generated safetensors directory
 @pytest.mark.parametrize(
-    "qformat,expected_suffix",
+    "qformat,expected_suffix,fuse_input_scale,fuse_weight_scale,fuse_weight_scale_2,fuse_prequant_scale",
     [
-        ("fp8", "tiny_llama-fp8"),
-        ("nvfp4", "tiny_llama-nvfp4"),
-        ("nvfp4_awq", "tiny_llama-nvfp4-awq"),
-        ("int4_awq", "tiny_llama-int4-awq"),
-        ("w4a8_awq", "tiny_llama-w4a8-awq"),
+        ("fp8", "tiny_llama-fp8", True, False, True, True),
+        ("nvfp4", "tiny_llama-nvfp4", True, False, True, True),
+        ("nvfp4_awq", "tiny_llama-nvfp4-awq", True, False, True, True),
+        ("int4_awq", "tiny_llama-int4-awq", True, False, True, True),
+        ("w4a8_awq", "tiny_llama-w4a8-awq", True, False, True, True),
     ],
 )
-def test_unified_hf_export_and_check_safetensors(tmp_path, qformat, expected_suffix):
+def test_unified_hf_export_and_check_safetensors(
+    tmp_path,
+    qformat,
+    expected_suffix,
+    fuse_input_scale,
+    fuse_weight_scale,
+    fuse_weight_scale_2,
+    fuse_prequant_scale,
+):
     """
     1) Generates a .safetensors file by running hf_ptq.py with each --qformat.
     2) Checks the generated directory for the expected .safetensors file:
@@ -75,6 +84,12 @@ def test_unified_hf_export_and_check_safetensors(tmp_path, qformat, expected_suf
         f"Expected .safetensors file not found for qformat={qformat}: {generated_file}"
     )
 
+    def _same_scale(name, key1, key2, f):
+        if key1 in name:
+            tensor1 = f.get_tensor(name)
+            tensor2 = f.get_tensor(name.replace(key1, key2))
+            assert torch.allclose(tensor1, tensor2)
+
     # Load the safetensors to do further checks
     with safe_open(generated_file, framework="pt") as f:
         tensor_names = list(f.keys())
@@ -84,5 +99,24 @@ def test_unified_hf_export_and_check_safetensors(tmp_path, qformat, expected_suf
             # Basic sanity checks
             assert tensor.shape is not None, f"Tensor '{name}' shape is None!"
             assert tensor.dtype is not None, f"Tensor '{name}' dtype is None!"
+
+            if "scale" in name:
+                # Map scale types to their conditions
+                scale_types = [
+                    ("input_scale", fuse_input_scale),
+                    ("weight_scale", fuse_weight_scale),
+                    ("weight_scale_2", fuse_weight_scale_2),
+                    ("prequant_scale", fuse_prequant_scale),
+                ]
+
+                # Projection pairs to check for equality
+                proj_pairs = [("gate_proj", "up_proj"), ("q_proj", "k_proj"), ("q_proj", "v_proj")]
+
+                # Check each scale type if its condition is met
+                for scale_suffix, condition in scale_types:
+                    if name.endswith(scale_suffix) and condition:
+                        # Check each projection pair
+                        for proj1, proj2 in proj_pairs:
+                            _same_scale(name, proj1, proj2, f)
 
     # TODO: Load a pre-dumped log to compare textually or use pre-defined dict for sanity checks

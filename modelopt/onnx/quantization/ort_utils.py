@@ -48,7 +48,7 @@ def _check_for_tensorrt(min_version: str = "10.0"):
 
 
 def _check_for_libcudnn():
-    lib_pattern = "*cudnn*.dll" if platform.system() == "Windows" else "libcudnn_adv.so*"
+    lib_pattern = "*cudnn*.dll" if platform.system() == "Windows" else "libcudnn_adv*.so*"
     env_variable = "PATH" if platform.system() == "Windows" else "LD_LIBRARY_PATH"
     ld_library_path = os.environ.get(env_variable, "").split(os.pathsep)
 

@@ -16,7 +16,10 @@
 import pytest
 import torch
 
-from modelopt.torch.quantization.utils import reduce_block_amax
+from modelopt.torch.quantization.utils import (
+    convert_quantization_axis_to_reduce_axis,
+    reduce_block_amax,
+)
 
 
 @pytest.mark.parametrize(
@@ -52,3 +55,49 @@ def test_reduce_block_amax(block_sizes, test_input, expected_scales):
     scales = reduce_block_amax(test_input, block_sizes)
 
     torch.allclose(scales, expected_scales)
+
+
+@pytest.mark.parametrize(
+    "shape, quant_axis, expected_reduce_axis",
+    [
+        ((2, 3, 4), None, None),  # Per-tensor quantization (None axis)
+        ((2, 3, 4), 0, [1, 2]),  # Single axis cases
+        ((2, 3, 4), -2, [0, 2]),  # Negative indices
+        ((2, 3, 4, 5), [0, -1], [1, 2]),  # Multiple axes
+        ((2, 3, 4), (0, 2), [1]),  # Tuple instead of list
+    ],
+)
+def test_convert_quantization_axis_to_reduce_axis(shape, quant_axis, expected_reduce_axis):
+    """Test converting quantization axes to reduction axes."""
+    # Create a tensor with the specified shape
+    input_tensor = torch.randn(shape)
+
+    # Convert quantization axis to reduce axis
+    result = convert_quantization_axis_to_reduce_axis(input_tensor, quant_axis)
+
+    # Check if the result matches expected
+    assert result == expected_reduce_axis, (
+        f"For shape {shape} and quant_axis {quant_axis}, expected {expected_reduce_axis} but got {result}"
+    )
+
+    # Additional sanity check: if we sum-reduce along the returned axes,
+    # we should get a tensor with the same shape as if we kept the quantization axes
+    if result is not None and len(result) > 0:
+        # Create a ones tensor for easy shape verification
+        ones = torch.ones(shape)
+
+        # Reduce sum across the returned axes
+        reduced = ones
+        for axis in sorted(
+            result, reverse=True
+        ):  # Reduce from highest dim to avoid changing indices
+            reduced = reduced.sum(dim=axis, keepdim=True)
+
+        # Build expected shape after reduction
+        expected_shape = list(shape)
+        for axis in sorted(result, reverse=True):
+            expected_shape[axis] = 1
+
+        assert reduced.shape == tuple(expected_shape), (
+            f"Reduction result shape {reduced.shape} doesn't match expected {tuple(expected_shape)}"
+        )

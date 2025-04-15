@@ -211,7 +211,9 @@ def get_weight_scaling_factor(module: nn.Module) -> torch.Tensor:
         return NVFP4QTensor.get_weights_scaling_factor(
             module.weight,
             module.weight_quantizer.block_sizes[-1],
-            NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(module.weight_quantizer),
+            NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(module.weight_quantizer).to(
+                module.weight.device
+            ),
         )[0]
 
     return (
@@ -888,3 +890,101 @@ def get_quant_config(named_modules: Union[nn.Module, dict[str, nn.Module]]) -> d
         quant_config["quantization"]["kv_cache_quant_algo"] = kv_cache_format
 
     return quant_config
+
+
+def quantize_llama4_experts_for_hf_export(module: nn.Module):
+    """Quantize the experts in the Llama4 model."""
+    from transformers.models.llama4.modeling_llama4 import Llama4TextExperts
+
+    assert isinstance(module, Llama4TextExperts), "Module is not a Llama4TextExperts"
+
+    assert module.gate_up_proj_weight_quantizer.is_enabled
+    assert module.down_proj_weight_quantizer.is_enabled
+    assert module.gate_up_proj_input_quantizer.is_enabled
+    assert module.down_proj_input_quantizer.is_enabled
+
+    for weight_name in ["gate_up_proj", "down_proj"]:
+        weight = getattr(module, weight_name)
+        weight_quantizer = getattr(module, f"{weight_name}_weight_quantizer")
+
+        if weight_quantizer.num_bits == (4, 3):
+            assert not weight_quantizer.block_sizes
+
+            weight_scale = weight_quantizer.amax.to(torch.float32) / weight_quantizer.maxbound
+
+            module.register_buffer(
+                f"{weight_name}_weight_scale",
+                weight_scale,
+            )
+
+            setattr(
+                module,
+                weight_name,
+                nn.Parameter(
+                    (weight / weight_scale.to(weight.dtype).to(weight.device)).to(
+                        torch.float8_e4m3fn
+                    ),
+                    requires_grad=False,
+                ),
+            )
+
+        elif weight_quantizer.num_bits == (2, 1):
+            # Maverick export can go OOM on the GPU. So just move to the CPU for weights compression.
+            weight = weight.to("cpu")
+            weight_scale_2 = NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(
+                weight_quantizer
+            ).to("cpu")
+
+            module.register_buffer(
+                f"{weight_name}_weight_scale_2",
+                weight_scale_2,
+            )
+
+            block_size = weight_quantizer.block_sizes[-1]
+
+            weight_scale = NVFP4QTensor.get_weights_scaling_factor(
+                weight,
+                block_size=block_size,
+                weights_scaling_factor_2=weight_scale_2,
+            )[0]
+
+            module.register_buffer(
+                f"{weight_name}_weight_scale",
+                weight_scale,
+            )
+
+            setattr(
+                module,
+                weight_name,
+                nn.Parameter(
+                    to_quantized_weight(
+                        weight,
+                        weight_scale,
+                        quantization=QUANTIZATION_NVFP4,
+                        weights_scaling_factor2=weight_scale_2,
+                        block_size=block_size,
+                    ),
+                    requires_grad=False,
+                ),
+            )
+
+    for input_name in ["gate_up_proj", "down_proj"]:
+        input_quantizer = getattr(module, f"{input_name}_input_quantizer")
+        if input_quantizer.num_bits == (4, 3):
+            assert not input_quantizer.block_sizes
+
+            input_scale = input_quantizer.amax.to(torch.float32) / input_quantizer.maxbound
+            module.register_buffer(
+                f"{input_name}_input_scale",
+                input_scale,
+            )
+
+        elif input_quantizer.num_bits == (2, 1):
+            input_scale_2 = NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(
+                input_quantizer
+            )
+
+            module.register_buffer(
+                f"{input_name}_input_scale",
+                input_scale_2,
+            )

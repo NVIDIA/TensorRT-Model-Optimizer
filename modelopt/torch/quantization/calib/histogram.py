@@ -409,8 +409,9 @@ def calibrate_weights(model, method="percentile", perchannel=True, percentile=99
 
             calib_amax = []
             if method == "max":
-                reduce_axis = list(range(module.weight.dim()))
-                reduce_axis.remove(axis)  # type: ignore
+                reduce_axis = quant_utils.convert_quantization_axis_to_reduce_axis(
+                    module.weight, axis
+                )
                 calib_amax.append(quant_utils.reduce_amax(module.weight, axis=reduce_axis))
             elif method == "mse":
                 for i in range(axis_size):

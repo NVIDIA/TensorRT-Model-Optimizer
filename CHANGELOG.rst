@@ -10,7 +10,7 @@ Model Optimizer Changelog (Linux)
 
 **New Features**
 
-- New model support in the ``llm_ptq`` example: OpenAI Whisper.
+- New model support in the ``llm_ptq`` example: OpenAI Whisper. Experimental support: Llama4, QwQ, Qwen MOE.
 - Blockwise FP8 quantization support in unified model export.
 - Add quantization support to the Transformer Engine Linear module.
 - Add support for SVDQuant. Currently, only simulation is available; real deployment (for example, TensorRT deployment) support is coming soon.
@@ -18,6 +18,8 @@ Model Optimizer Changelog (Linux)
 - Add triton-based NVFP4 quantization kernel that delivers approximately 40% performance improvement over the previous implementation.
 - Add a new API :meth:`mtq.compress <modelopt.torch.quantization.compress>` for model compression for weights after quantization.
 - Add option to simplify ONNX model before quantization is performed.
+- Add FP4 KV cache support for unified HF and TensorRT-LLM export.
+- Add speculative decoding support to Multi-Token Prediction (MTP) in Megatron Core models.
 - (Experimental) Improve support for ONNX models with custom TensorRT op:
    - Add support for ``--calibration_shapes`` flag.
    - Add automatic type and shape tensor propagation for full ORT support with TensorRT EP.

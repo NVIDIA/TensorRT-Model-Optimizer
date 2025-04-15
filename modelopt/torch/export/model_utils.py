@@ -17,6 +17,7 @@
 MODEL_NAME_TO_TYPE = {
     "GPT2": "gpt",
     "Mllama": "mllama",
+    "Llama4": "llama4",
     "Llama": "llama",
     "Mistral": "llama",
     "GPTJ": "gptj",

@@ -30,7 +30,7 @@
 """Support speculative decoding for huggingface models."""
 
 import contextlib
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import torch
 from torch import nn
@@ -44,8 +44,6 @@ from ..eagle.eagle_model import EagleModel
 from ..eagle.utils import RMSNorm, expand_mask, make_causal_mask
 from ..medusa.conversion import MedusaDMRegistry
 from ..medusa.medusa_model import MedusaModel
-from ..redrafter.conversion import RedrafterDMRegistry
-from ..redrafter.redrafter_model import RedrafterModel
 from ..utils import ResBlock
 
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
@@ -99,9 +97,8 @@ class HFMedusaModel(MedusaModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: Union[int, torch.Tensor] = 0,
         freeze_base_model: bool = True,
         medusa_heads_coefficient: Optional[float] = 0.2,
         medusa_decay_coefficient: Optional[float] = 0.8,
@@ -112,8 +109,6 @@ class HFMedusaModel(MedusaModel):
         Returns:
             torch.Tensor: A tensor containing predictions from all Medusa heads.
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
         # Pass input through the base model
         with torch.no_grad() if freeze_base_model else contextlib.nullcontext():
             outputs = self.model(
@@ -125,12 +120,20 @@ class HFMedusaModel(MedusaModel):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
+                rcache_position=cache_position,
+                **kwargs,
             )
-            hidden_states = outputs[0]
-            logits = self.lm_head(hidden_states)
+            hidden_states = outputs.last_hidden_state
+            # Only compute necessary logits, and do not upcast them to float if we are not computing the loss
+            slice_indices = (
+                slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
+            )
+            logits = self.lm_head(hidden_states[:, slice_indices, :])
 
-        medusa_logits = [self.medusa_heads[i](hidden_states) for i in range(self.medusa_num_heads)]
+        medusa_logits = [
+            self.medusa_heads[i](hidden_states[:, slice_indices, :])
+            for i in range(self.medusa_num_heads)
+        ]
 
         if labels is not None:
             loss = 0
@@ -154,10 +157,6 @@ class HFMedusaModel(MedusaModel):
                 )
         else:
             loss = None
-
-        if not return_dict:
-            output = (logits, medusa_logits)
-            return (loss,) + output if loss is not None else output
 
         return ModelOutput(
             loss=loss,
@@ -257,8 +256,7 @@ class EagleModule(nn.Module):
         if input_shape[-1] > 1:
             combined_attention_mask = make_causal_mask(
                 input_shape,
-                # inputs_embeds.dtype,
-                torch.float32,  # [MODIFIED] force to cast to float32
+                inputs_embeds.dtype,
                 device=inputs_embeds.device,
                 past_key_values_length=past_key_values_length,
             )
@@ -266,7 +264,7 @@ class EagleModule(nn.Module):
         if attention_mask is not None:
             # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
             expanded_attn_mask = expand_mask(
-                attention_mask, torch.float32, tgt_len=input_shape[-1]
+                attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]
             ).to(inputs_embeds.device)
             combined_attention_mask = (
                 expanded_attn_mask
@@ -337,9 +335,8 @@ class HFEagleModel(EagleModel):
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
         cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
+        logits_to_keep: int = 0,
         loss_mask: torch.Tensor = None,
         freeze_base_model: Optional[bool] = True,
         classification_loss_coefficient: Optional[float] = 0.1,
@@ -354,7 +351,6 @@ class HFEagleModel(EagleModel):
             eagle_hidden_states: The hidden state from eagle_module.
             eagle_logits: logits from the eagle_module.
         """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         if past_key_values is not None and hasattr(past_key_values, "eagle_cache"):
             eagle_cache = past_key_values.eagle_cache
         else:
@@ -371,8 +367,9 @@ class HFEagleModel(EagleModel):
                 use_cache=use_cache,
                 output_attentions=output_attentions,
                 output_hidden_states=True,
-                return_dict=True,
                 cache_position=cache_position,
+                logits_to_keep=logits_to_keep,
+                **kwargs,
             )
             past_key_values = outputs.past_key_values
             if not isinstance(past_key_values, Cache):
@@ -459,10 +456,6 @@ class HFEagleModel(EagleModel):
             else:
                 loss += eagle_loss
 
-        if not return_dict:
-            output = (logits, eagle_logits)
-            return (loss,) + output if loss is not None else output
-
         return ModelOutput(
             loss=loss,
             logits=logits,
@@ -485,146 +478,3 @@ class HFEagleModel(EagleModel):
             loss_mask.sum() + 1e-5
         )
         return regression_loss, classification_loss
-
-
-class Drafter(nn.Module):
-    """Wrapper class for the drafter in Redrafter."""
-
-    def __init__(self, redrafter_num_layers, hidden_size, vocab_size):
-        """Init function for drafter."""
-        super().__init__()
-
-        self.lm_head = torch.nn.Sequential(
-            *([ResBlock(2 * hidden_size) for _ in range(redrafter_num_layers)]),
-            torch.nn.Linear(in_features=2 * hidden_size, out_features=vocab_size, bias=False),
-        )
-
-        self.rnn_u = torch.nn.Linear(hidden_size, hidden_size, bias=True)
-        self.rnn_w = torch.nn.Linear(hidden_size, hidden_size, bias=False)
-
-    def forward(
-        self, input_embs: torch.Tensor, cumsum_input_embs: torch.Tensor, hidden_states: torch.Tensor
-    ):
-        """Forward pass of the Drafter."""
-        input_embs = torch.roll(input_embs, -1, dims=1)
-        o = self.rnn_u(cumsum_input_embs)
-        cumsum_input_embs = nn.SiLU()(o + self.rnn_w(input_embs))
-        h = torch.cat((hidden_states, cumsum_input_embs), -1)
-        logits = self.lm_head(h)
-
-        return input_embs, cumsum_input_embs, logits
-
-
-@RedrafterDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
-class HFRedrafterModel(RedrafterModel):
-    """Redrafter Model Class for huggingface models."""
-
-    def modify(self, redrafter_predict_n_tokens=0, redrafter_num_layers=0):
-        """Constructor.
-
-        Args:
-            redrafter_predict_n_tokens: number of tokens the drafter will predict.
-            redrafter_num_layers: number of ResBlock layers in lm head.
-        """
-        super().modify(
-            redrafter_predict_n_tokens=redrafter_predict_n_tokens,
-            redrafter_num_layers=redrafter_num_layers,
-        )
-
-        hidden_size = self.lm_head.weight.shape[-1]
-        vocab_size = self.lm_head.weight.shape[0]
-
-        self.config.redrafter = {
-            "num_draft_layers": redrafter_num_layers,
-            "hidden_size": hidden_size,
-            "exit_dim": 2 * hidden_size,
-            "rnn": True,
-        }
-
-        self.drafter = Drafter(self.redrafter_predict_n_tokens, hidden_size, vocab_size)
-
-        # Ensure drafter's dtype and device align with the base_model
-        self.drafter.to(self.lm_head.weight.dtype).to(self.lm_head.weight.device)
-        self.drafter.device = self.lm_head.weight.device
-        if hasattr(self, "hf_device_map") and "lm_head" in self.hf_device_map:
-            self.hf_device_map["drafter"] = self.hf_device_map["lm_head"]
-
-    def forward(
-        self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Cache] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        num_logits_to_keep: int = 0,
-        freeze_base_model: bool = True,
-        **kwargs,
-    ) -> Any:
-        """Forward pass of the RedrafterModel."""
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        # Pass input through the base model
-        with torch.no_grad() if freeze_base_model else contextlib.nullcontext():
-            outputs = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                inputs_embeds=inputs_embeds,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=output_hidden_states,
-                return_dict=return_dict,
-            )
-            hidden_states = outputs[0]
-            logits = self.lm_head(hidden_states)
-
-        redrafter_logits = []
-        input_embs = self.model.embed_tokens(input_ids)
-        cumsum_input_embs = torch.zeros_like(
-            input_embs, dtype=input_embs.dtype, device=input_embs.device
-        )
-
-        for _ in range(self.redrafter_predict_n_tokens):
-            input_embs, cumsum_input_embs, drafter_logits = self.drafter(
-                input_embs, cumsum_input_embs, hidden_states
-            )
-            redrafter_logits.append(drafter_logits)
-
-        if labels is not None:
-            loss = 0
-            loss_fct = CrossEntropyLoss()
-            # Base model loss
-            if not freeze_base_model:
-                loss_logits = logits.view(-1, logits.shape[-1])
-                loss_labels = labels.view(-1)
-                base_model_loss = loss_fct(loss_logits, loss_labels)
-                loss += base_model_loss
-            # Drafter loss
-            for i in range(self.redrafter_predict_n_tokens):
-                labels = labels[..., 1:].contiguous()
-                loss_logits = redrafter_logits[i][:, : -(1 + i)].contiguous()
-                loss_logits = loss_logits.view(-1, loss_logits.shape[-1])
-                loss_labels = labels.view(-1)
-                loss += loss_fct(loss_logits, loss_labels)
-        else:
-            loss = None
-
-        if not return_dict:
-            output = (logits, redrafter_logits)
-            return (loss,) + output if loss is not None else output
-
-        return ModelOutput(
-            loss=loss,
-            logits=logits,
-            redrafter_logits=redrafter_logits,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )

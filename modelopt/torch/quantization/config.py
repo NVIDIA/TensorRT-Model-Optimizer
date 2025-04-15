@@ -161,6 +161,7 @@ _default_disabled_quantizer_cfg = {
     "nn.BatchNorm3d": {"*": {"enable": False}},
     "nn.LeakyReLU": {"*": {"enable": False}},
     "*lm_head*": {"enable": False},
+    "*proj_out.*": {"enable": False},  # In Whisper model, lm_head has key name proj_out
     "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
     "*router*": {"enable": False},  # Skip the MOE router
     "*output_layer*": {"enable": False},
@@ -195,19 +196,10 @@ FP8_DEFAULT_CFG = {
     "algorithm": "max",
 }
 
-FP8_PER_CHANNEL_WEIGHT_CFG = {
-    "quant_cfg": {
-        "*weight_quantizer": {"num_bits": (4, 3), "axis": -1},
-        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        **_default_disabled_quantizer_cfg,
-    },
-    "algorithm": "max",
-}
-
 FP8_PER_CHANNEL_PER_TOKEN_CFG = {
     "quant_cfg": {
-        "*weight_quantizer": {"num_bits": (4, 3), "axis": -1},
-        "*input_quantizer": {"num_bits": (4, 3), "type": "dynamic", "axis": 0},
+        "*weight_quantizer": {"num_bits": (4, 3), "axis": 0},
+        "*input_quantizer": {"num_bits": (4, 3), "type": "dynamic", "block_sizes": {-1: None}},
         **_default_disabled_quantizer_cfg,
     },
     "algorithm": "max",
@@ -325,7 +317,7 @@ class _DeprecatedConfig(dict):
 # Deprecated configs
 FP8_PER_TENSOR_REAL_QUANT_CFG = _DeprecatedConfig(FP8_DEFAULT_CFG)
 FP8_2D_BLOCKWISE_REAL_QUANT_CFG = _DeprecatedConfig(FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG)
-FP8_PER_CHANNEL_REAL_QUANT_CFG = _DeprecatedConfig(FP8_PER_CHANNEL_WEIGHT_CFG)
+FP8_PER_CHANNEL_REAL_QUANT_CFG = _DeprecatedConfig(FP8_PER_CHANNEL_PER_TOKEN_CFG)
 
 choices: set[str] = {
     "INT8_DEFAULT_CFG",
@@ -468,6 +460,19 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         description="""If True, enable narrow range quantization. Used only for integer quantization.""",
     )
 
+    learn_amax: bool = ModeloptField(
+        default=False,
+        title="Enable learning amax.",
+        description="""``learn_amax`` is deprecated and reserved for backward compatibility.""",
+    )
+
+    @field_validator("learn_amax")
+    @classmethod
+    def validate_learn_amax(cls, v):
+        """Validate learn_amax."""
+        assert v is not True, "learn_amax is deprecated and reserved for backward compatibility."
+        return v
+
     type: str = ModeloptField(
         default="static",
         title="""Specify whether the quantization is static or dynamic.""",
@@ -484,8 +489,11 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         title="Optional dictionary specifying block quantization parameters.",
         description="""The keys are the axes for block quantization and the
             values are block sizes for quantization along the respective axes. Keys must be in the
-            range ``[-tensor.dim(), tensor.dim())``. Values, which are the block sizes
-            for quantization must be positive integers.
+            range ``[-tensor.dim(), tensor.dim())``. Values, which are the block sizes for quantization must be
+            positive integers or ``None``. A positive block size specifies the block size for quantization along that
+            axis. ``None`` means that the block size will be the maximum possible size in that dimension - this is
+            useful for specifying certain quantization formats such per-token dynamic quantization which has the `amax`
+            shared along the last dimension.
 
             In addition, there can be special string keys ``"type"``, ``"scale_bits"`` and ``"scale_block_sizes"``.
 
@@ -501,8 +509,10 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
 
             For example, ``block_sizes = {-1: 32}`` will quantize the last axis of the input tensor in
             blocks of size 32 with static calibration and ``block_sizes = {-1: 32, "type": "dynamic"}``
-            will perform dynamic block quantization. If None, block
-            quantization is not performed. ``axis`` must be None when ``block_sizes`` is not None.
+            will perform dynamic block quantization. ``block_sizes = {-1: None, "type": "dynamic"}`` can be used to
+            specify per-token dynamic quantization.
+
+            If None, block quantization is not performed. ``axis`` must be None when ``block_sizes`` is not None.
         """,
     )
 

@@ -63,14 +63,6 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       EAGLE_NUM_LAYERS="${1#*=}"
       ;;
-    --redrafter_predict_n_tokens*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      REDRAFTER_TOKENS="${1#*=}"
-      ;;
-    --redrafter_num_layers*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      REDRAFTER_NUM_LAYERS="${1#*=}"
-      ;;
     --fsdp_transformer_layer_cls_to_wrap*)
       if [[ "$1" != *=* ]]; then shift; fi
       FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP="${1#*=}"
@@ -118,8 +110,6 @@ if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
 elif [[ "$MODE" == "eagle" ]]; then
   SPECULATIVE_ARGS="--eagle_num_layers $EAGLE_NUM_LAYERS"
-elif [[ "$MODE" == "redrafter" ]]; then
-  SPECULATIVE_ARGS="--redrafter_predict_n_tokens $REDRAFTER_TOKENS --redrafter_num_layers $REDRAFTER_NUM_LAYERS"
 else
   echo "Only medusa and eagle supported for now!"
   exit 1

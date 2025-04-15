@@ -48,15 +48,6 @@ COMMON_ARGS="--model $LLAMA_PATH --data Daring-Anteater/train.jsonl --num_epochs
             --eagle_num_layers 1
 
 
-# Test ReDrafter
-./launch.sh $COMMON_ARGS \
-            --mode redrafter \
-            --output_dir redrafter-tinyllama \
-            --redrafter_predict_n_tokens 2 --redrafter_num_layers 1
-
-popd
-
-
 # Test PTQ on Medusa
 pushd $script_dir/../../examples/llm_ptq
 python hf_ptq.py --pyt_ckpt_path ../speculative_decoding/medusa-tinyllama \

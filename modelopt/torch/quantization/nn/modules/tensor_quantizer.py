@@ -501,15 +501,7 @@ class TensorQuantizer(nn.Module):
         if hasattr(self, "_amax"):
             amax = self._amax
         else:
-            if self._axis is None:
-                reduce_axis = None
-            else:
-                reduce_axis = []
-                # Swap axis to reduce
-                axis = self._axis if isinstance(self._axis, (list, tuple)) else [self._axis]
-                for i in range(inputs.dim()):
-                    if not (i in axis or (i - inputs.dim()) in axis):
-                        reduce_axis.append(i)
+            reduce_axis = quant_utils.convert_quantization_axis_to_reduce_axis(inputs, self._axis)
             amax = quant_utils.reduce_amax(inputs, axis=reduce_axis, keepdims=True).detach()
 
         amax = amax.detach() if is_torch_export_mode() else amax.data

@@ -21,6 +21,15 @@ from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTo
 
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
 
+SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
+
+
+def is_speculative(hf_config):
+    for name in SPECULATIVE_MODEL_LIST:
+        if name in hf_config.architectures[0]:
+            return True
+    return False
+
 
 def get_mode_type_from_engine_dir(engine_dir_str):
     # Split the path by '/' and get the last part
@@ -134,7 +143,14 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8, trust_remote_cod
     else:
         hf_config = AutoConfig.from_pretrained(ckpt_path, trust_remote_code=trust_remote_code)
 
-        if hf_config.model_type == "llava":
+        if is_speculative(hf_config):
+            model = AutoModelForCausalLM.from_pretrained(
+                ckpt_path,
+                device_map=device_map,
+                **model_kwargs,
+                trust_remote_code=trust_remote_code,
+            )
+        elif hf_config.model_type == "llava":
             from transformers import LlavaForConditionalGeneration
 
             hf_llava = LlavaForConditionalGeneration.from_pretrained(
@@ -170,6 +186,13 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8, trust_remote_cod
             from transformers import MllamaForConditionalGeneration
 
             model = MllamaForConditionalGeneration.from_pretrained(
+                ckpt_path,
+                device_map=device_map,
+                **model_kwargs,
+                trust_remote_code=trust_remote_code,
+            )
+        elif hf_config.model_type == "llama4":
+            model = AutoModelForCausalLM.from_pretrained(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,

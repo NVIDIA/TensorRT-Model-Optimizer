@@ -49,20 +49,6 @@ class EagleConfig(ModeloptBaseConfig):
     )
 
 
-class RedrafterConfig(ModeloptBaseConfig):
-    """Redrafter config."""
-
-    redrafter_predict_n_tokens: int = ModeloptField(
-        default=2,
-        description=("The number of tokens that redrafter will predict"),
-    )
-
-    redrafter_num_layers: int = ModeloptField(
-        default=1,
-        description=("The number of ResBlocks used in lm head."),
-    )
-
-
 class MTPConfig(ModeloptBaseConfig):
     """MTP config."""
 

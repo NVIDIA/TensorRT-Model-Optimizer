@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from modelopt.torch.utils.distributed import ParallelState
 
 __all__ = [
+    "convert_quantization_axis_to_reduce_axis",
     "reduce_amax",
     "is_quantized",
     "is_quantized_layer_with_weight",
@@ -115,6 +116,27 @@ def reduce_block_padding(input: torch.Tensor, block_sizes: dict, pad_value: floa
                 padded_tensor = F.pad(padded_tensor, pad, value=pad_value)
 
         return padded_tensor
+
+
+def convert_quantization_axis_to_reduce_axis(input, axis):
+    """Convert the quantization axis to the reduce axis.
+
+    Args:
+        input (torch.Tensor): The input tensor.
+        axis (int, tuple, list of None): The quantization axis. None means per-tensor quantization.
+
+    Returns:
+        list: The axis to reduce. None suggests all dimensions should be reduced.
+    """
+    if axis is None:
+        return None
+    reduce_axis = []
+    axis = axis if isinstance(axis, (list, tuple)) else [axis]
+    for i in range(input.dim()):
+        # Handle positive and negative axis.
+        if i not in axis and (i - input.dim()) not in axis:
+            reduce_axis.append(i)
+    return reduce_axis
 
 
 def reduce_amax(input, axis=None, keepdims=True, squeeze_scalar=True):

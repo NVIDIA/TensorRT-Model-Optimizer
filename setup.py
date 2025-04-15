@@ -21,7 +21,7 @@ import setuptools
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "0.27.0")
+version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "0.27.1")
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -72,7 +72,9 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.12.0",
-        "transformers>=4.48.0",
+        # TODO: Upgrade to 4.51.0 after fixing unittests
+        # User can post install 4.51.0 to use the new transformers features
+        "transformers>=4.48.0,<4.51.0",
     ],
     # linter tools
     "dev-lint": [

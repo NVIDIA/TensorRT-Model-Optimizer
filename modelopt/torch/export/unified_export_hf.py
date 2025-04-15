@@ -25,6 +25,9 @@ from typing import Any, Optional, Union
 import torch
 import torch.nn as nn
 
+from modelopt.torch.quantization import set_quantizer_by_cfg_context
+from modelopt.torch.quantization.nn import SequentialQuantizer
+
 from .layer_utils import get_experts_list, is_layernorm, is_moe, is_quantlinear
 from .model_config import (
     KV_CACHE_FP8,
@@ -46,12 +49,23 @@ from .quant_utils import (
     get_weight_scaling_factor_2,
     postprocess_state_dict,
     preprocess_linear_fusion,
+    quantize_llama4_experts_for_hf_export,
     to_quantized_weight,
 )
 
 __all__ = ["export_hf_checkpoint"]
 
 SPECULATIVE_DECODING_MODULE_NAMES = ["medusa_heads", "eagle_module", "drafter"]
+
+
+def _is_enabled_quantizer(quantizer):
+    if hasattr(quantizer, "is_enabled") and quantizer.is_enabled:
+        return True
+
+    if isinstance(quantizer, SequentialQuantizer):
+        return any(q.is_enabled for q in quantizer)
+
+    return False
 
 
 def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
@@ -86,8 +100,10 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             module.name = name
             handle = module.register_forward_hook(_output_hook)
             handles.append(handle)
-
-        elif "QuantLinear" in type(module).__name__:
+        elif is_quantlinear(module) and (
+            _is_enabled_quantizer(module.input_quantizer)
+            or _is_enabled_quantizer(module.weight_quantizer)
+        ):
             module.name = name
             handle = module.register_forward_hook(_input_hook)
             handles.append(handle)
@@ -95,7 +111,9 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     with torch.no_grad():
         fake_input = torch.ones([1, 2], dtype=torch.long).to(model.device)
         # Run forward pass so that all modules sharing the same input are collected using forward hook.
-        model(fake_input)
+
+        with set_quantizer_by_cfg_context(model, {"*": {"enable": False}}):
+            model(fake_input)
 
         for handle in handles:
             handle.remove()
@@ -267,6 +285,8 @@ def _export_hf_checkpoint(
                     block_size,
                 )
                 sub_module.weight = nn.Parameter(quantized_weight, requires_grad=False)
+        elif "Llama4TextExperts" in type(sub_module).__name__:
+            quantize_llama4_experts_for_hf_export(sub_module)
 
     quantized_state_dict = model.state_dict()
 

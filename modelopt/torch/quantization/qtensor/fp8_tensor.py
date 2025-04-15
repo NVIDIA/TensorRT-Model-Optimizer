@@ -20,7 +20,12 @@ from typing import Union
 import torch
 
 from ..qtensor.base_qtensor import BaseQuantizedTensor
-from ..utils import reduce_amax, reduce_block_amax, reduce_block_padding
+from ..utils import (
+    convert_quantization_axis_to_reduce_axis,
+    reduce_amax,
+    reduce_block_amax,
+    reduce_block_padding,
+)
 
 __all__ = ["FP8QTensor"]
 
@@ -64,7 +69,8 @@ class FP8QTensor(BaseQuantizedTensor):
             if block_sizes:
                 amax = reduce_block_amax(input, block_sizes)
             else:
-                amax = reduce_amax(input, axis=axis)
+                reduce_axis = convert_quantization_axis_to_reduce_axis(input, axis)
+                amax = reduce_amax(input, axis=reduce_axis)
             scales = amax / 448.0  # Consider parameterizing the divisor if needed
 
         # Determine the expected scales shape from the (possibly padded) input

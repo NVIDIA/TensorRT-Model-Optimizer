@@ -75,7 +75,7 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     dataloader_drop_last: bool = field(default=True)
     bf16: bool = field(default=True)
-    mode: Literal["eagle", "medusa", "redrafter"] = "medusa"
+    mode: Literal["eagle", "medusa"] = "medusa"
 
 
 @dataclass
@@ -91,12 +91,6 @@ class EagleArguments:
     use_last_layernorm: Optional[bool] = field(default=False)
 
 
-@dataclass
-class RedrafterArguments:
-    redrafter_predict_n_tokens: Optional[int] = field(default=1)
-    redrafter_num_layers: Optional[int] = field(default=1)
-
-
 def train():
     parser = transformers.HfArgumentParser(
         (
@@ -105,15 +99,12 @@ def train():
             TrainingArguments,
             MedusaArguments,
             EagleArguments,
-            RedrafterArguments,
         )
     )
-    model_args, data_args, training_args, medusa_args, eagle_args, redrafter_args = (
+    model_args, data_args, training_args, medusa_args, eagle_args = (
         parser.parse_args_into_dataclasses()
     )
-    print_rank_0(
-        f"arguments: {model_args}, {training_args}, {medusa_args}, {eagle_args}, {redrafter_args}"
-    )
+    print_rank_0(f"arguments: {model_args}, {training_args}, {medusa_args}, {eagle_args}")
 
     # Detecting last checkpoint.
     last_checkpoint = None
@@ -160,17 +151,11 @@ def train():
                 "use_last_layernorm": eagle_args.use_last_layernorm,
             }
             mtsp.convert(model, [("eagle", config)])
-        elif training_args.mode == "redrafter":
-            config = {
-                "redrafter_predict_n_tokens": redrafter_args.redrafter_predict_n_tokens,
-                "redrafter_num_layers": redrafter_args.redrafter_num_layers,
-            }
-            mtsp.convert(model, [("redrafter", config)])
         else:
             raise Exception(f"{training_args.mode} is not supported!")
 
     print_rank_0("Loading dataset...")
-    if training_args.mode == "medusa" or training_args.mode == "redrafter":
+    if training_args.mode == "medusa":
         data_module = make_medusa_supervised_data_module(tokenizer, data_args)
     elif training_args.mode == "eagle":
         data_module = make_eagle_supervised_data_module(tokenizer, data_args)

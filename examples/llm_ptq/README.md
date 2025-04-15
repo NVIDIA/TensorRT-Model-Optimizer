@@ -56,6 +56,16 @@ scripts/huggingface_example.sh --model $HF_PATH --quant [fp8|nvfp4|int8_sq|int4_
 
 > *Calibration by default uses left padding_side for the Huggingface tokenizer as it usually leads to lower accuracy loss. The exported tokenizer files restores the default padding_side.*
 
+#### Llama 4
+
+We support FP8 and NVFP4 quantized Llama 4 model Hugging Face checkpoint export using the following command:
+
+```bash
+python hf_ptq.py --pyt_ckpt_path=<llama4 model path> --export_path=<quantized hf checkpoint> --qformat=[fp8|nvfp4] --export_fmt=hf
+```
+
+The quantized checkpoint can be deployed following the TensorRT-LLM instructions.
+
 #### For NeMo models like [nemotron](https://huggingface.co/nvidia/nemotron-3-8b-base-4k):
 
 NeMo PTQ requires the NeMo package installed. It's recommended to start from the NeMo containers like `nvcr.io/nvidia/nemo:24.07` or latest `nvcr.io/nvidia/nemo:dev` directly.
@@ -91,6 +101,7 @@ Model | fp8 | int8_sq | int4_awq | w4a8_awq<sup>1</sup> | nvfp4<sup>5</sup> |
 GPTJ | Yes | Yes | Yes | Yes | -
 LLAMA 2 | Yes | Yes | Yes | Yes | -
 LLAMA 3, 3.1, 3.3 | Yes | No | Yes | Yes<sup>3</sup> | Yes
+LLAMA 4 | Yes | No | No | No | Yes
 LLAMA 2 (Nemo) | Yes | Yes | Yes | Yes | -
 CodeLlama | Yes | Yes | Yes | No | -
 Mistral | Yes | Yes | Yes | No | Yes
@@ -110,6 +121,8 @@ Gemma 2 9B, 27B | Yes<sup>2</sup> | No | Yes | No | -
 RecurrentGemma 2B | Yes | Yes | Yes | No | -
 StarCoder 2 | Yes | Yes | Yes | No | -
 QWen 2, 2.5 <sup>4</sup> | Yes | Yes | Yes | Yes | Yes
+QWen MOE | Yes | - | - | - | Yes
+QwQ | Yes | - | - | - | Yes
 DBRX | Yes | No | No | No | -
 InternLM2 | Yes | No | Yes | Yes<sup>3</sup> | -
 Exaone | Yes | Yes | Yes | Yes | -

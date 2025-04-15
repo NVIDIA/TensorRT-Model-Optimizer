@@ -21,7 +21,7 @@ parse_options() {
     MODEL_TYPE=""
     MODEL_PATH=""
     QFORMAT=""
-    KV_CACHE_QUANT="fp8"
+    KV_CACHE_QUANT=""
     TP=1
     CALIB_TP=
     PP=1

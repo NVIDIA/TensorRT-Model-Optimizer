@@ -75,13 +75,9 @@ $CMD_BUILD --model $LLAMA_PATH --quant int4_awq,nvfp4,fp8,w4a8_awq --calib_batch
 $CMD_BUILD --model $LLAMA_PATH --quant nvfp4_awq --kv_cache_quant nvfp4
 # Normal quantization HF
 $CMD_BUILD --model $LLAMA_PATH --quant nvfp4_awq --kv_cache_quant nvfp4 --export_fmt hf
-# Only KV cache quantization (TRTLLM path)
-$CMD_BUILD --model $LLAMA_PATH --quant fp16 --kv_cache_quant nvfp4
-# Only KV cache quantization (HF path)
-$CMD_BUILD --model $LLAMA_PATH --quant fp16 --kv_cache_quant nvfp4 --export_fmt hf
 
 # Disable KV cache for fp8
-$CMD_BUILD --model $LLAMA_PATH --quant fp8 --kv_cache_quant ""
+$CMD_BUILD --model $LLAMA_PATH --quant fp8 --kv_cache_quant "none"
 
 if [ $cuda_capability -ge 89 ]; then
     $CMD_BUILD --model $LLAMA_PATH --quant fp8

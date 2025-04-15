@@ -18,6 +18,7 @@
 Some of the logics in this file are empirical and needs constant update if exceptions occur.
 """
 
+from contextlib import contextmanager
 from typing import Optional
 from warnings import warn
 
@@ -666,7 +667,7 @@ def build_attention_config(
 
     if config.k_cache_scaling_factor is not None:
         assert config.v_cache_scaling_factor is not None
-        config.kv_cache_dtype = get_kv_cache_dtype(qkv_modules)
+        config.kv_cache_dtype = get_kv_cache_dtype(module)
 
     return config
 
@@ -977,6 +978,32 @@ def _build_stacked_linear(experts: nn.Module, module_name, linear_type, num_expe
     return config
 
 
+@contextmanager
+def set_zero_amax_for_uncalibrated_experts(experts: nn.Module):
+    """For experts that does not have valid amax value of input quantizer, we set them to 0."""
+    uncalibrated_experts = []
+    for module in experts:
+        if (
+            hasattr(module, "input_quantizer")
+            and module.input_quantizer is not None
+            and module.input_quantizer.is_enabled
+        ):
+            if module.input_quantizer.amax is None:
+                warn(
+                    f"Missing amax value for {module} input_quantizer. Setting it to 0 for checkpoint export. "
+                    f"This typically occurs in MoE models when certain experts are not activated during calibration. "
+                    f"Consider increasing your calibration dataset size to ensure all experts are exercised."
+                )
+                # Use float32 dtype explicitly to ensure we create a floating point tensor
+                module.input_quantizer.amax = torch.tensor(
+                    0.0, dtype=torch.float32, device=module.weight_quantizer.amax.device
+                )
+                uncalibrated_experts.append(module)
+    yield
+    for module in uncalibrated_experts:
+        delattr(module.input_quantizer, "_amax")
+
+
 def build_stacked_experts(
     experts: nn.Module,
     linear_names: list[str],
@@ -1003,61 +1030,70 @@ def build_stacked_experts(
         resmooth_only=True,
     )
 
-    # Pre-fuse W1 and W3
-    if len(linear_names) == 3:
-        for i in range(num_experts):
-            preprocess_linear_fusion(
-                [
-                    expert_getter(experts, i, module_name)
-                    for module_name in [linear_names[0], linear_names[2]]
-                ]
+    # Set amax to 0 for uncalibrated experts
+    with set_zero_amax_for_uncalibrated_experts(
+        [
+            expert_getter(experts, i, module_name)
+            for module_name in linear_names
+            for i in range(num_experts)
+        ]
+    ):
+        # Pre-fuse W1 and W3
+        if len(linear_names) == 3:
+            for i in range(num_experts):
+                preprocess_linear_fusion(
+                    [
+                        expert_getter(experts, i, module_name)
+                        for module_name in [linear_names[0], linear_names[2]]
+                    ]
+                )
+
+        experts_weight_1 = _build_stacked_linear(
+            experts, linear_names[0], LINEAR_COLUMN, num_experts, expert_getter
+        )
+        experts_weight_2 = _build_stacked_linear(
+            experts, linear_names[1], LINEAR_ROW, num_experts, expert_getter
+        )
+
+        if len(linear_names) > 2:
+            # Only for HF model, as Mcore model only has two fc layers in MoE
+            experts_weight_3 = _build_stacked_linear(
+                experts, linear_names[2], LINEAR_COLUMN, num_experts, expert_getter
             )
 
-    experts_weight_1 = _build_stacked_linear(
-        experts, linear_names[0], LINEAR_COLUMN, num_experts, expert_getter
-    )
-    experts_weight_2 = _build_stacked_linear(
-        experts, linear_names[1], LINEAR_ROW, num_experts, expert_getter
-    )
-    if len(linear_names) > 2:
-        # Only for HF model, as Mcore model only has two fc layers in MoE
-        experts_weight_3 = _build_stacked_linear(
-            experts, linear_names[2], LINEAR_COLUMN, num_experts, expert_getter
-        )
+            # Concat w1 and w3 into w1
+            experts_weight_1.weight = torch.concat(
+                [experts_weight_3.weight, experts_weight_1.weight], dim=-2
+            )
 
-        # Concat w1 and w3 into w1
-        experts_weight_1.weight = torch.concat(
-            [experts_weight_3.weight, experts_weight_1.weight], dim=-2
-        )
-
-        if experts_weight_1.weights_scaling_factor is not None:
-            if experts_weight_1.weights_scaling_factor.numel() != num_experts:
-                experts_weight_1.weights_scaling_factor = view_as_float8_e4m3fn_if_needed(
-                    torch.concat(
-                        [
-                            view_as_uint8_if_needed(experts_weight_3.weights_scaling_factor),
-                            view_as_uint8_if_needed(experts_weight_1.weights_scaling_factor),
-                        ],
-                        dim=-2,
+            if experts_weight_1.weights_scaling_factor is not None:
+                if experts_weight_1.weights_scaling_factor.numel() != num_experts:
+                    experts_weight_1.weights_scaling_factor = view_as_float8_e4m3fn_if_needed(
+                        torch.concat(
+                            [
+                                view_as_uint8_if_needed(experts_weight_3.weights_scaling_factor),
+                                view_as_uint8_if_needed(experts_weight_1.weights_scaling_factor),
+                            ],
+                            dim=-2,
+                        )
                     )
-                )
-            else:
+                else:
+                    assert torch.equal(
+                        experts_weight_1.weights_scaling_factor,
+                        experts_weight_3.weights_scaling_factor,
+                    )
+
+            if experts_weight_1.activation_scaling_factor is not None:
                 assert torch.equal(
-                    experts_weight_1.weights_scaling_factor,
-                    experts_weight_3.weights_scaling_factor,
+                    experts_weight_1.activation_scaling_factor,
+                    experts_weight_3.activation_scaling_factor,
                 )
 
-        if experts_weight_1.activation_scaling_factor is not None:
-            assert torch.equal(
-                experts_weight_1.activation_scaling_factor,
-                experts_weight_3.activation_scaling_factor,
-            )
-
-        if experts_weight_1.weights_scaling_factor_2 is not None:
-            assert torch.equal(
-                experts_weight_1.weights_scaling_factor_2,
-                experts_weight_3.weights_scaling_factor_2,
-            )
+            if experts_weight_1.weights_scaling_factor_2 is not None:
+                assert torch.equal(
+                    experts_weight_1.weights_scaling_factor_2,
+                    experts_weight_3.weights_scaling_factor_2,
+                )
 
     # Explicitly move weight to CPU to reduce GPU memory requirement.
     experts_weight_1.weight = experts_weight_1.weight.cpu()

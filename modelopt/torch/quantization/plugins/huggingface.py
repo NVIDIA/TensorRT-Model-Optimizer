@@ -25,7 +25,7 @@ import transformers
 from modelopt.core.torch.quantization.algorithms import AutoQuantizeSearcher
 from modelopt.torch.opt.dynamic import DynamicModule
 
-from ..nn import QuantModuleRegistry
+from ..nn import QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import _QuantLinear
 from .attention import register_attention_for_kv_quant, register_hf_attention_for_kv_quant
 
@@ -44,6 +44,28 @@ if transformers.modeling_utils.Conv1D not in QuantModuleRegistry:
             # We want the forward method of nn.Linear to be called instead of the forward method of Conv1D
             dyn_cls: DynamicModule = QuantModuleRegistry.get(nn.Linear)
             return dyn_cls.convert(module)
+
+
+class _QuantLlama4TextExperts(DynamicModule):
+    def _setup(self):
+        self.gate_up_proj_input_quantizer = TensorQuantizer()
+        self.gate_up_proj_weight_quantizer = TensorQuantizer()
+        self.down_proj_input_quantizer = TensorQuantizer()
+        self.down_proj_weight_quantizer = TensorQuantizer()
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = hidden_states.view(self.num_experts, -1, self.hidden_size)
+        gate_up = torch.bmm(
+            self.gate_up_proj_input_quantizer(hidden_states),
+            self.gate_up_proj_weight_quantizer(self.gate_up_proj),
+        )
+        gate, up = gate_up.chunk(2, dim=-1)  # not supported for DTensors
+        next_states = torch.bmm(
+            self.down_proj_input_quantizer(up * self.act_fn(gate)),
+            self.down_proj_weight_quantizer(self.down_proj),
+        )
+        next_states = next_states.view(-1, self.hidden_size)
+        return next_states
 
 
 # For more information on DbrxExpert, see https://github.com/huggingface/transformers/blob/dcdda532/src/transformers/models/dbrx/modeling_dbrx.py#L756
@@ -144,20 +166,34 @@ class _QuantDbrxExpertGLU(DynamicModule):
         return self.w2_linear[expert_idx](x1)
 
 
-if transformers.models.dbrx.modeling_dbrx.DbrxExperts not in QuantModuleRegistry:
-    QuantModuleRegistry.register(
-        {transformers.models.dbrx.modeling_dbrx.DbrxExperts: "hf.DbrxExperts"}
-    )(_QuantDbrxExperts)
+try:
+    from transformers.models.llama4.modeling_llama4 import Llama4TextExperts
 
-if transformers.models.dbrx.modeling_dbrx.DbrxExpertGLU not in QuantModuleRegistry:
-    QuantModuleRegistry.register(
-        {transformers.models.dbrx.modeling_dbrx.DbrxExpertGLU: "hf.DbrxExpertGLU"}
-    )(_QuantDbrxExpertGLU)
+    if Llama4TextExperts not in QuantModuleRegistry:
+        QuantModuleRegistry.register({Llama4TextExperts: "hf.Llama4TextExperts"})(
+            _QuantLlama4TextExperts
+        )
+except ImportError:
+    pass
 
-if transformers.models.falcon.modeling_falcon.FalconLinear not in QuantModuleRegistry:
-    QuantModuleRegistry.register(
-        {transformers.models.falcon.modeling_falcon.FalconLinear: "FalconLinear"}
-    )(_QuantLinear)
+try:
+    from transformers.models.dbrx.modeling_dbrx import DbrxExpertGLU, DbrxExperts
+
+    if DbrxExperts not in QuantModuleRegistry:
+        QuantModuleRegistry.register({DbrxExperts: "hf.DbrxExperts"})(_QuantDbrxExperts)
+
+    if DbrxExpertGLU not in QuantModuleRegistry:
+        QuantModuleRegistry.register({DbrxExpertGLU: "hf.DbrxExpertGLU"})(_QuantDbrxExpertGLU)
+except ImportError:
+    pass
+
+try:
+    from transformers.models.falcon.modeling_falcon import FalconLinear
+
+    if FalconLinear not in QuantModuleRegistry:
+        QuantModuleRegistry.register({FalconLinear: "hf.FalconLinear"})(_QuantLinear)
+except ImportError:
+    pass
 
 
 def register_dbrx_moe_on_the_fly(model):

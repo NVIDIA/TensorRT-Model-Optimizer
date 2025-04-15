@@ -38,13 +38,7 @@ class PercentileCalibrator(MaxCalibrator):
             RuntimeError: If amax shape changes
         """
         # Swap axis to reduce.
-        axis = self._axis if isinstance(self._axis, (list, tuple)) else [self._axis]
-        # Handle negative axis.
-        axis = [x.dim() + i if isinstance(i, int) and i < 0 else i for i in axis]
-        reduce_axis = []
-        for i in range(x.dim()):
-            if i not in axis:
-                reduce_axis.append(i)
+        reduce_axis = quant_utils.convert_quantization_axis_to_reduce_axis(x, self._axis)
         local_amax = quant_utils.reduce_amax(x, axis=reduce_axis).detach()
         _cur_step = self.i % self.total_step
         if _cur_step not in self.data.keys():

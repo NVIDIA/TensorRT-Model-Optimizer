@@ -142,6 +142,10 @@ if [ -n "$AUTO_QUANTIZE_BITS" ]; then
     PTQ_ARGS+=" --auto_quantize_bits=$AUTO_QUANTIZE_BITS "
 fi
 
+if [ -n "$KV_CACHE_QUANT" ]; then
+    PTQ_ARGS+=" --kv_cache_qformat=$KV_CACHE_QUANT "
+fi
+
 if $TRUST_REMOTE_CODE; then
     PTQ_ARGS+=" --trust_remote_code "
 fi
@@ -163,7 +167,7 @@ fi
 
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
 
-    if [ "$EXPORT_FORMAT" == "hf" ] && ([ "$qformat" == "bf16" ] || [ "$qformat" == "fp16" ] && ["$KV_CACHE_QUANT" == ""]); then
+    if [ "$EXPORT_FORMAT" == "hf" ] && ([ "$qformat" == "bf16" ] || [ "$qformat" == "fp16" ]); then
         if  [ -d "$MODEL_PATH" ]; then
             MODEL_CONFIG_EXIST=true
             MODEL_CONFIG=$MODEL_PATH/config.json
@@ -187,7 +191,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
             --export_fmt=$EXPORT_FORMAT \
-            --kv_cache_qformat=$KV_CACHE_QUANT \
             $PTQ_ARGS \
             $AWQ_ARGS
     else
