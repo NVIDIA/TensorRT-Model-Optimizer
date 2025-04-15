@@ -53,6 +53,7 @@ from .layer_utils import (
 )
 from .model_config import QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ, ModelConfig
 from .model_config_utils import (
+    merge_gate_fc,
     merge_qkv,
     model_config_to_dict,
     pack_linear_weights,
@@ -409,6 +410,7 @@ def torch_to_tensorrt_llm_checkpoint(
             assert model_config.rank >= 0, "Invalid model_config, postprocess_model_config fails."
 
             merge_qkv(model_config)
+            merge_gate_fc(model_config)
             pack_linear_weights(model_config)
 
             weights = {}

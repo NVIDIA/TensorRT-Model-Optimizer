@@ -95,6 +95,9 @@ class LinearConfig:
     prequant_scaling_factor: torch.Tensor = None
     awq_block_size: int = 0
 
+    # If set to false, we do not split or merge this config during post tp processing.
+    tp: bool = True
+
     def __del__(self):
         del self.weight
         del self.bias
@@ -320,6 +323,7 @@ class MLPConfig:
     gate: LinearConfig = None
     proj: LinearConfig = None
     hidden_act: str = ""
+    merge_gate_fc: bool = False
 
 
 @dataclass
@@ -359,6 +363,7 @@ class MOEConfig:
     router: LinearConfig = None
     experts: ExpertConfig = None
     shared_expert: MLPConfig = None  # Deepseek MOE
+    shared_expert_gate: LinearConfig = None  # Qwen MOE
     hidden_act: str = ""
 
     @property

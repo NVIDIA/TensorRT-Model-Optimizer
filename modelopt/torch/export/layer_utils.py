@@ -330,6 +330,7 @@ def is_moe(module: nn.Module) -> bool:
         "MoELayer".lower(),
         "PhimoeSparseMoeBlock".lower(),
         "DeepseekMoE".lower(),
+        "Qwen2MoeSparseMoeBlock".lower(),
     ]
 
 
@@ -594,7 +595,7 @@ def build_fused_linear_config(modules: list[nn.Module], linear_type: str) -> Lin
     config = build_linear_config(modules[0], linear_type=linear_type)
     config.weight = torch.cat([module.weight for module in modules], dim=0)
 
-    if config.weights_scaling_factor.numel() != 1:
+    if config.weights_scaling_factor is not None and config.weights_scaling_factor.numel() != 1:
         config.weights_scaling_factor = torch.cat(
             [get_weight_scaling_factor(module) for module in modules], dim=0
         )
@@ -710,7 +711,7 @@ def build_mlp_config(
     """Builds the MLP config for the module."""
     assert is_mlp(module)
 
-    config = MLPConfig()
+    config = MLPConfig(merge_gate_fc=merge_gate_fc)
 
     def _split_gate_from_fc(decoder_type, module, fc_name, fc_layer):
         if (
@@ -833,11 +834,7 @@ def build_mlp_config(
                 weight_quantizer.amax = torch.cat([amax_chunks[1], amax_chunks[0]], dim=0)
 
         split_gate = _split_gate_from_fc(decoder_type, module, name, fc_linear)
-        if merge_gate_fc:
-            config.fc = build_fused_linear_config([gate_linear, fc_linear], LINEAR_COLUMN)
-            gate_linear = None
-
-        elif split_gate:
+        if split_gate:
             # We have to split the gate from the fc
             weights = torch.chunk(fc_linear.weight, 2, dim=0)
             weight_scaling_factor = get_weight_scaling_factor(fc_linear)
@@ -1104,7 +1101,7 @@ def build_stacked_experts(
 def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
     """Builds the MOE config for the module."""
     assert is_moe(module)
-    assert decoder_type in ["llama", "dbrx", "phi3", "deepseek"]
+    assert decoder_type in ["llama", "dbrx", "phi3", "deepseek", "qwen"]
 
     config = MOEConfig()
 
@@ -1128,10 +1125,19 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
         config.shared_expert = build_mlp_config(
             module.shared_experts, decoder_type, merge_gate_fc=True
         )
+    elif decoder_type == "qwen":
+        config.router = build_linear_config(module.gate, LINEAR_ROW)
+        preprocess_linear_fusion([module.shared_expert.gate_proj, module.shared_expert.up_proj])
+        config.shared_expert = build_mlp_config(
+            module.shared_expert, decoder_type, merge_gate_fc=True
+        )
+        config.shared_expert_gate = build_linear_config(module.shared_expert_gate, LINEAR_ROW)
+        config.shared_expert_gate.tp = False
     else:
         raise NotImplementedError(f"{decoder_type} not supported")
 
     config.router.weight = config.router.weight.type(torch.float)
+    config.router.tp = False
 
     # Experts
     experts = ExpertConfig()
@@ -1168,7 +1174,7 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
             len(module.experts.mlp.w1_linear),
             _get_dbrx_expert,
         )
-    elif decoder_type == "deepseek":
+    elif decoder_type in ["deepseek", "qwen"]:
         experts.fc, experts.proj = build_stacked_experts(
             module.experts,
             ["gate_proj", "down_proj", "up_proj"],

@@ -23,10 +23,7 @@ import numpy as np
 import torch
 
 from .model_config import (
-    QUANTIZATION_FP8,
     QUANTIZATION_INT4_AWQ,
-    QUANTIZATION_NVFP4,
-    QUANTIZATION_NVFP4_AWQ,
     QUANTIZATION_W4A8_AWQ,
     DecoderLayerConfig,
     LayernormConfig,
@@ -272,6 +269,38 @@ def merge_qkv(model_config):
                 del splitted_qkv
 
 
+def merge_gate_fc(model_config):
+    """Postprocess the MLP config for TensorRT-LLM export."""
+    for decoder_config in model_config.layers:
+        mlp = None
+        if isinstance(decoder_config.mlp, MLPConfig):
+            mlp = decoder_config.mlp
+        elif (
+            isinstance(decoder_config.mlp, MOEConfig)
+            and decoder_config.mlp.shared_expert is not None
+        ):
+            mlp = decoder_config.mlp.shared_expert
+
+        if mlp is not None and mlp.merge_gate_fc and mlp.gate is not None and mlp.fc is not None:
+            mlp.fc.weight = torch.cat(
+                [
+                    mlp.gate.weight,
+                    mlp.fc.weight,
+                ],
+                dim=0,
+            )
+
+            if (
+                mlp.fc.weights_scaling_factor is not None
+                and mlp.fc.weights_scaling_factor.numel() > 1
+            ):
+                mlp.fc.weights_scaling_factor = torch.cat(
+                    [mlp.gate.weights_scaling_factor, mlp.fc.weights_scaling_factor], dim=0
+                )
+
+            mlp.gate = None
+
+
 def pack_linear_weights(model_config: ModelConfig):
     """Packs the quantized linear weights in the model_config to the quantized format."""
 
@@ -314,43 +343,39 @@ def pack_linear_weights(model_config: ModelConfig):
     if not model_config.quantization:
         return
 
-    attention_key_list = ["attention", "self_attention", "cross_attention"]
-    for decoder_config in model_config.layers:
-        linear_layers = []
-        if any([hasattr(decoder_config, attention_key) for attention_key in attention_key_list]):
-            for attention_key in attention_key_list:
-                attention = getattr(decoder_config, attention_key, None)
-                if attention:
-                    linear_layers += [
-                        attention.qkv,
-                        attention.dense,
-                    ]
-        if decoder_config.recurrent:
-            linear_layers = [
-                decoder_config.recurrent.linear_y,
-                decoder_config.recurrent.linear_x,
-                decoder_config.recurrent.linear_out,
-            ]
+    def _find_linear_configs_recursive(model_config):
+        linear_configs = []
 
-        if isinstance(decoder_config.mlp, MOEConfig):
-            if model_config.quantization not in [
-                QUANTIZATION_FP8,
-                QUANTIZATION_INT4_AWQ,
-                QUANTIZATION_NVFP4,
-                QUANTIZATION_NVFP4_AWQ,
-            ]:
-                raise NotImplementedError(
-                    f"MOE quantization for {model_config.quantization} is not supported yet."
-                )
-            else:
-                linear_layers.append(decoder_config.mlp.experts.fc)
-                linear_layers.append(decoder_config.mlp.experts.proj)
-        elif decoder_config.mlp is not None:
-            linear_layers.append(decoder_config.mlp.fc)
-            linear_layers.append(decoder_config.mlp.proj)
-            linear_layers.append(decoder_config.mlp.gate)
+        # Base case - not a dataclass
+        if not dataclasses.is_dataclass(model_config):
+            return linear_configs
 
-        _linear_layer_to_quantized_weight(linear_layers)
+        # Check if current object is a LinearConfig
+        if isinstance(model_config, LinearConfig):
+            linear_configs.append(model_config)
+            return linear_configs
+
+        # Recursively check all fields
+        for field in dataclasses.fields(model_config):
+            value = getattr(model_config, field.name)
+
+            if isinstance(value, list):
+                for item in value:
+                    linear_configs.extend(_find_linear_configs_recursive(item))
+
+            elif isinstance(value, dict):
+                for _, item in value.items():
+                    linear_configs.extend(_find_linear_configs_recursive(item))
+
+            # Handle nested dataclasses
+            elif dataclasses.is_dataclass(value):
+                linear_configs.extend(_find_linear_configs_recursive(value))
+
+        return linear_configs
+
+    linear_layers = _find_linear_configs_recursive(model_config)
+
+    _linear_layer_to_quantized_weight(linear_layers)
 
     if model_config.medusa_heads is not None:
         linear_layers = []

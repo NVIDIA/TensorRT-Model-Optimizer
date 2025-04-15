@@ -41,7 +41,6 @@ from .model_config import (
     ExpertConfig,
     LinearConfig,
     ModelConfig,
-    MOEConfig,
     RelativeAttentionTableConfig,
 )
 from .model_config_utils import pad_weights
@@ -98,17 +97,6 @@ def _split_model_config_for_tp(merged_config, split_factor):
         weights = torch.chunk(pad_weights(merged_config.weight, split_factor), split_factor, dim=0)
         for i, config in enumerate(configs):
             config.weight = weights[i]
-
-    elif isinstance(merged_config, MOEConfig):
-        split_expert_configs = _split_model_config_for_tp(
-            merged_config.experts,
-            split_factor,
-        )
-        # TP for rounter of MoE is skipped for better performance
-        # See https://github.com/NVIDIA/TensorRT-LLM/pull/1091 for details
-        for i in range(split_factor):
-            configs[i].experts = split_expert_configs[i]
-            configs[i].router = merged_config.router
 
     elif isinstance(merged_config, ExpertConfig):
         assert merged_config.proj.linear_type != LINEAR_COLUMN  # row
@@ -198,6 +186,10 @@ def _split_model_config_for_tp(merged_config, split_factor):
         assert merged_config.linear_type != LINEAR_GROUP, (
             "Do not support group linear TP merge or split"
         )
+
+        # Do not do anything if we don't need to process TP.
+        if not merged_config.tp:
+            return configs
 
         split_axis = 0 if merged_config.linear_type == LINEAR_COLUMN else 1
         if merged_config.linear_type == LINEAR_COLUMN:
@@ -341,6 +333,10 @@ def _merge_model_configs_to_first_tp(config, ranks: list[int], group=None):
         # I4R  C1  M   C0
 
         assert config.linear_type != LINEAR_GROUP, "Do not support group linear TP merge or split"
+
+        # No merge is needed if tp is disabled.
+        if not config.tp:
+            return
 
         # Handling constants
         for field_name in [
@@ -758,41 +754,48 @@ def check_weight_shape_valid(config, inference_tensor_parallel=1, training_tenso
     This function is recurisve.
     """
 
-    def _check_merged_weight(merged_k):
-        assert merged_k % inference_tensor_parallel == 0, (
-            f"Weights cannot be split into {inference_tensor_parallel} ranks."
-        )
+    def _check_merged_weight(merged_k, tp):
+        assert merged_k % tp == 0, f"Weights with shape {merged_k} cannot be split into {tp} ranks."
 
-    def _check_merged_weight_scaling_factor(merged_k, awq_block_size):
-        if awq_block_size > 0 and (merged_k // inference_tensor_parallel) % awq_block_size != 0:
+    def _check_merged_weight_scaling_factor(merged_k, tp, awq_block_size):
+        if awq_block_size > 0 and (merged_k // tp) % awq_block_size != 0:
             raise NotImplementedError(
-                "Weight shape is not divisible for block size for block quantization."
+                f"Weight shape {merged_k} of each TP tp={tp} "
+                f"is not divisible for block size {awq_block_size} for block quantization."
             )
 
-    def _check_merged_channel_is_valid(merged_k, awq_block_size):
-        _check_merged_weight(merged_k=merged_k)
-        _check_merged_weight_scaling_factor(merged_k=merged_k, awq_block_size=awq_block_size)
+    def _check_merged_channel_is_valid(merged_k, tp, awq_block_size):
+        _check_merged_weight(merged_k=merged_k, tp=tp)
+        _check_merged_weight_scaling_factor(merged_k=merged_k, tp=tp, awq_block_size=awq_block_size)
 
     if isinstance(config, LinearConfig):
         # check weight shape
+        if not config.tp:
+            inference_tensor_parallel = 1
         if config.linear_type == LINEAR_COLUMN:
             _, k = config.weight.shape
             merged_k = k * training_tensor_parallel
-            _check_merged_channel_is_valid(merged_k, config.awq_block_size)
+            _check_merged_channel_is_valid(
+                merged_k, tp=inference_tensor_parallel, awq_block_size=config.awq_block_size
+            )
         elif config.linear_type == LINEAR_ROW:
             k, m = config.weight.shape
             merged_k = k * training_tensor_parallel
             merged_m = m * training_tensor_parallel
             # For int4_awq, weight scaling factors will be split as (k, (merged_m // TP) // block_size)
-            _check_merged_weight(merged_k=merged_k)
-            _check_merged_weight_scaling_factor(merged_m, config.awq_block_size)
+            _check_merged_weight(merged_k=merged_k, tp=inference_tensor_parallel)
+            _check_merged_weight_scaling_factor(
+                merged_m, tp=inference_tensor_parallel, awq_block_size=config.awq_block_size
+            )
 
         return
 
     if isinstance(config, ExpertConfig):
         _, _, k = config.fc.weight.shape
         merged_k = k * training_tensor_parallel
-        _check_merged_channel_is_valid(merged_k, config.fc.awq_block_size)
+        _check_merged_channel_is_valid(
+            merged_k, tp=inference_tensor_parallel, awq_block_size=config.fc.awq_block_size
+        )
         return
 
     if is_dataclass(config):

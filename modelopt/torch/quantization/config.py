@@ -164,6 +164,8 @@ _default_disabled_quantizer_cfg = {
     "*proj_out.*": {"enable": False},  # In Whisper model, lm_head has key name proj_out
     "*block_sparse_moe.gate*": {"enable": False},  # Skip the MOE router
     "*router*": {"enable": False},  # Skip the MOE router
+    "*mlp.gate.*": {"enable": False},  # Skip the MOE router
+    "*mlp.shared_expert_gate.*": {"enable": False},  # Skip the MOE router
     "*output_layer*": {"enable": False},
     "output.*": {"enable": False},
     "default": {"enable": False},
