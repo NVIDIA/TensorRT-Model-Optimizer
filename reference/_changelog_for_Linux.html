@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.27.0</title>
+  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.27.1</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -149,7 +149,7 @@
 </ul>
 <p><strong>New Features</strong></p>
 <ul class="simple">
-<li><p>New model support in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example: OpenAI Whisper.</p></li>
+<li><p>New model support in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example: OpenAI Whisper. Experimental support: Llama4, QwQ, Qwen MOE.</p></li>
 <li><p>Blockwise FP8 quantization support in unified model export.</p></li>
 <li><p>Add quantization support to the Transformer Engine Linear module.</p></li>
 <li><p>Add support for SVDQuant. Currently, only simulation is available; real deployment (for example, TensorRT deployment) support is coming soon.</p></li>
@@ -157,6 +157,8 @@
 <li><p>Add triton-based NVFP4 quantization kernel that delivers approximately 40% performance improvement over the previous implementation.</p></li>
 <li><p>Add a new API <a class="reference internal" href="generated/modelopt.torch.quantization.compress.html#modelopt.torch.quantization.compress" title="modelopt.torch.quantization.compress"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.compress</span></code></a> for model compression for weights after quantization.</p></li>
 <li><p>Add option to simplify ONNX model before quantization is performed.</p></li>
+<li><p>Add FP4 KV cache support for unified HF and TensorRT-LLM export.</p></li>
+<li><p>Add speculative decoding support to Multi-Token Prediction (MTP) in Megatron Core models.</p></li>
 <li><dl class="simple">
 <dt>(Experimental) Improve support for ONNX models with custom TensorRT op:</dt><dd><ul>
 <li><p>Add support for <code class="docutils literal notranslate"><span class="pre">--calibration_shapes</span></code> flag.</p></li>

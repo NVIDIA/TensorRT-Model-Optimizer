@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>mode &mdash; Model Optimizer 0.27.0</title>
+  <title>mode &mdash; Model Optimizer 0.27.1</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -109,7 +109,6 @@
 <li class="toctree-l4 current"><a class="current reference internal" href="#">mode</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.mtp.html">mtp</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.plugins.html">plugins</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.redrafter.html">redrafter</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.speculative_decoding.html">speculative_decoding</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.speculative.utils.html">utils</a></li>
 </ul>
@@ -168,9 +167,6 @@
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.mode.MedusaModeDescriptor" title="modelopt.torch.speculative.mode.MedusaModeDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">MedusaModeDescriptor</span></code></a></p></td>
 <td><p>Class to describe the <code class="docutils literal notranslate"><span class="pre">&quot;medusa&quot;</span></code> mode.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.mode.RedrafterModeDescriptor" title="modelopt.torch.speculative.mode.RedrafterModeDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">RedrafterModeDescriptor</span></code></a></p></td>
-<td><p>Class to describe the <code class="docutils literal notranslate"><span class="pre">&quot;redrafter&quot;</span></code> mode.</p></td>
 </tr>
 </tbody>
 </table>
@@ -265,38 +261,6 @@
 <dl class="py property">
 <dt class="sig sig-object py" id="modelopt.torch.speculative.mode.MedusaModeDescriptor.restore">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">restore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.speculative.mode.MedusaModeDescriptor.restore" title="Link to this definition"></a></dt>
-<dd><p>The mode’s entrypoint for restoring a model.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.mode.RedrafterModeDescriptor">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">RedrafterModeDescriptor</span></span><a class="headerlink" href="#modelopt.torch.speculative.mode.RedrafterModeDescriptor" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_ModeDescriptor</span></code></p>
-<p>Class to describe the <code class="docutils literal notranslate"><span class="pre">&quot;redrafter&quot;</span></code> mode.</p>
-<p>The properties of this mode can be inspected via the source code.</p>
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.mode.RedrafterModeDescriptor.config_class">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config_class</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.speculative.mode.RedrafterModeDescriptor.config_class" title="Link to this definition"></a></dt>
-<dd><p>Specifies the config class for the mode.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.mode.RedrafterModeDescriptor.convert">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">convert</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.speculative.mode.RedrafterModeDescriptor.convert" title="Link to this definition"></a></dt>
-<dd><p>The mode’s entrypoint for converting a model.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.mode.RedrafterModeDescriptor.name">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#modelopt.torch.speculative.mode.RedrafterModeDescriptor.name" title="Link to this definition"></a></dt>
-<dd><p>Returns the value (str representation) of the mode.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.mode.RedrafterModeDescriptor.restore">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">restore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.speculative.mode.RedrafterModeDescriptor.restore" title="Link to this definition"></a></dt>
 <dd><p>The mode’s entrypoint for restoring a model.</p>
 </dd></dl>
 

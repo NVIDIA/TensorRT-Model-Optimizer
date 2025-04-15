@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>layer_utils &mdash; Model Optimizer 0.27.0</title>
+  <title>layer_utils &mdash; Model Optimizer 0.27.1</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -267,7 +267,10 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="modelopt.torch.export.layer_utils.model_type_is_enc_dec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_type_is_enc_dec</span></code></a></p></td>
 <td><p>Check if model_type is a enc-dec model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale" title="modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_experts_avg_prequant_scale</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts" title="modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_zero_amax_for_uncalibrated_experts</span></code></a></p></td>
+<td><p>For experts that does not have valid amax value of input quantizer, we set them to 0.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale" title="modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_experts_avg_prequant_scale</span></code></a></p></td>
 <td><p>Registers experts_pre_quant_scale attribute of each expert with average pre_quant_scale amongst experts.</p></td>
 </tr>
 </tbody>
@@ -726,6 +729,17 @@ Otherwise it will not be supported.</p>
 <dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.model_type_is_enc_dec">
 <span class="sig-name descname"><span class="pre">model_type_is_enc_dec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model_type</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="Link to this definition"></a></dt>
 <dd><p>Check if model_type is a enc-dec model.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts">
+<span class="sig-name descname"><span class="pre">set_zero_amax_for_uncalibrated_experts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">experts</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts" title="Link to this definition"></a></dt>
+<dd><p>For experts that does not have valid amax value of input quantizer, we set them to 0.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>experts</strong> (<em>Module</em>) – </p>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py function">

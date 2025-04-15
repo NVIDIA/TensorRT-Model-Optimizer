@@ -34,7 +34,6 @@ mode
       EagleModeDescriptor
       MTPModeDescriptor
       MedusaModeDescriptor
-      RedrafterModeDescriptor
    
    
 

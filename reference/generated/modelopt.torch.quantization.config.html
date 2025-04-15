@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>config &mdash; Model Optimizer 0.27.0</title>
+  <title>config &mdash; Model Optimizer 0.27.1</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -550,6 +550,7 @@ See <a class="reference external" href="https://arxiv.org/pdf/2004.09602" rel="n
 <span class="w">   </span><span class="nt">&quot;fake_quant&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;unsigned&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;narrow_range&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;learn_amax&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;static&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;block_sizes&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;bias&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
@@ -590,8 +591,11 @@ bias = {“enable”: True, “type”: “dynamic”, “axis”: (-1, -3)}</p>
 <dd><p><details  class="autodoc_pydantic_collapsable_json">
 <summary>Show details</summary><p>The keys are the axes for block quantization and the
 values are block sizes for quantization along the respective axes. Keys must be in the
-range <code class="docutils literal notranslate"><span class="pre">[-tensor.dim(),</span> <span class="pre">tensor.dim())</span></code>. Values, which are the block sizes
-for quantization must be positive integers.</p>
+range <code class="docutils literal notranslate"><span class="pre">[-tensor.dim(),</span> <span class="pre">tensor.dim())</span></code>. Values, which are the block sizes for quantization must be
+positive integers or <code class="docutils literal notranslate"><span class="pre">None</span></code>. A positive block size specifies the block size for quantization along that
+axis. <code class="docutils literal notranslate"><span class="pre">None</span></code> means that the block size will be the maximum possible size in that dimension - this is
+useful for specifying certain quantization formats such per-token dynamic quantization which has the <cite>amax</cite>
+shared along the last dimension.</p>
 <p>In addition, there can be special string keys <code class="docutils literal notranslate"><span class="pre">&quot;type&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;scale_bits&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">&quot;scale_block_sizes&quot;</span></code>.</p>
 <p>Key <code class="docutils literal notranslate"><span class="pre">&quot;type&quot;</span></code> should map to <code class="docutils literal notranslate"><span class="pre">&quot;dynamic&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">&quot;static&quot;</span></code> where <code class="docutils literal notranslate"><span class="pre">&quot;dynamic&quot;</span></code>
 indicates dynamic block quantization and “static”
@@ -602,8 +606,9 @@ indicates static calibrated block quantization. By default, the type is <code cl
 By default per-block quantization scale is not quantized.</p>
 <p>For example, <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">32}</span></code> will quantize the last axis of the input tensor in
 blocks of size 32 with static calibration and <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">32,</span> <span class="pre">&quot;type&quot;:</span> <span class="pre">&quot;dynamic&quot;}</span></code>
-will perform dynamic block quantization. If None, block
-quantization is not performed. <code class="docutils literal notranslate"><span class="pre">axis</span></code> must be None when <code class="docutils literal notranslate"><span class="pre">block_sizes</span></code> is not None.</p>
+will perform dynamic block quantization. <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">None,</span> <span class="pre">&quot;type&quot;:</span> <span class="pre">&quot;dynamic&quot;}</span></code> can be used to
+specify per-token dynamic quantization.</p>
+<p>If None, block quantization is not performed. <code class="docutils literal notranslate"><span class="pre">axis</span></code> must be None when <code class="docutils literal notranslate"><span class="pre">block_sizes</span></code> is not None.</p>
 </details></p></dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -628,6 +633,13 @@ for more information on how to specify the constructor.</p>
 <em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">fake_quant</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizerAttributeConfig.fake_quant" title="Link to this definition"></a></dt>
 <dd><p><details  class="autodoc_pydantic_collapsable_json">
 <summary>Show details</summary><p>If True, enable fake quantization.</p>
+</details></p></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizerAttributeConfig.learn_amax">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">learn_amax</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizerAttributeConfig.learn_amax" title="Link to this definition"></a></dt>
+<dd><p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show details</summary><p><code class="docutils literal notranslate"><span class="pre">learn_amax</span></code> is deprecated and reserved for backward compatibility.</p>
 </details></p></dd></dl>
 
 <dl class="py attribute pydantic_field">

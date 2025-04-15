@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Index &mdash; Model Optimizer 0.27.0</title>
+  <title>Index &mdash; Model Optimizer 0.27.1</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
@@ -688,8 +688,6 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.config_class">(QuantizeModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.RedrafterModeDescriptor.config_class">(RedrafterModeDescriptor property)</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseGPTModeDescriptor.config_class">(SparseGPTModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.config_class">(SparseMagnitudeModeDescriptor property)</a>
@@ -742,8 +740,6 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.convert">(QuantizeModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.RedrafterModeDescriptor.convert">(RedrafterModeDescriptor property)</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.convert">(SparseMagnitudeModeDescriptor property)</a>
 </li>
       </ul></li>
@@ -765,6 +761,8 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.convert_fp16_io">convert_fp16_io() (in module modelopt.onnx.quantization.graph_utils)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.convert_quantization_axis_to_reduce_axis">convert_quantization_axis_to_reduce_axis() (in module modelopt.torch.quantization.utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.nas.autonas.html#modelopt.torch.nas.autonas.convert_searchspace">convert_searchspace() (in module modelopt.torch.nas.autonas)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.convert_sparse_model">convert_sparse_model() (in module modelopt.torch.sparsity.mode)</a>
@@ -776,8 +774,6 @@
       <li><a href="reference/generated/modelopt.torch.speculative.medusa.conversion.html#modelopt.torch.speculative.medusa.conversion.convert_to_medusa_model">convert_to_medusa_model() (in module modelopt.torch.speculative.medusa.conversion)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.mtp.conversion.html#modelopt.torch.speculative.mtp.conversion.convert_to_mtp_model">convert_to_mtp_model() (in module modelopt.torch.speculative.mtp.conversion)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.speculative.redrafter.conversion.html#modelopt.torch.speculative.redrafter.conversion.convert_to_redrafter_model">convert_to_redrafter_model() (in module modelopt.torch.speculative.redrafter.conversion)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.tensorrt_llm_utils.html#modelopt.torch.export.tensorrt_llm_utils.convert_to_tensorrt_llm_config">convert_to_tensorrt_llm_config() (in module modelopt.torch.export.tensorrt_llm_utils)</a>
 </li>
@@ -1845,6 +1841,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.layers">layers (ModelConfig attribute)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig.learn_amax">learn_amax (QuantizerAttributeConfig attribute)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction">LegacyFakeTensorQuantFunction (class in modelopt.torch.quantization.tensor_quant)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_linear.html#modelopt.torch.quantization.nn.modules.quant_linear.Linear">Linear (in module modelopt.torch.quantization.nn.modules.quant_linear)</a>
@@ -1875,10 +1873,10 @@
       </ul></li>
       <li><a href="reference/generated/modelopt.torch.utils.list.html#modelopt.torch.utils.list.list_closest_to_median">list_closest_to_median() (in module modelopt.torch.utils.list)</a>
 </li>
-      <li><a href="reference/generated/modelopt.deploy.llm.generate.html#modelopt.deploy.llm.generate.LLM">LLM (class in modelopt.deploy.llm.generate)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.deploy.llm.generate.html#modelopt.deploy.llm.generate.LLM">LLM (class in modelopt.deploy.llm.generate)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MedusaHeadConfig.lm_head">lm_head (MedusaHeadConfig attribute)</a>
 
       <ul>
@@ -2024,6 +2022,10 @@
       <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MedusaModeDescriptor">MedusaModeDescriptor (class in modelopt.torch.speculative.mode)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.medusa.medusa_model.html#modelopt.torch.speculative.medusa.medusa_model.MedusaModel">MedusaModel (class in modelopt.torch.speculative.medusa.medusa_model)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MLPConfig.merge_gate_fc">merge_gate_fc (MLPConfig attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.export.model_config_utils.html#modelopt.torch.export.model_config_utils.merge_gate_fc">merge_gate_fc() (in module modelopt.torch.export.model_config_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config_utils.html#modelopt.torch.export.model_config_utils.merge_qkv">merge_qkv() (in module modelopt.torch.export.model_config_utils)</a>
 </li>
@@ -2917,6 +2919,8 @@
         <li><a href="reference/generated/modelopt.torch.quantization.quant_modules.html#module-modelopt.torch.quantization.quant_modules">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     modelopt.torch.quantization.tensor_quant
 
@@ -2938,8 +2942,6 @@
         <li><a href="reference/generated/modelopt.torch.quantization.triton.fp4_kernel.html#module-modelopt.torch.quantization.triton.fp4_kernel">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     modelopt.torch.quantization.utils
 
@@ -3113,27 +3115,6 @@
 
       <ul>
         <li><a href="reference/generated/modelopt.torch.speculative.plugins.html#module-modelopt.torch.speculative.plugins">module</a>
-</li>
-      </ul></li>
-      <li>
-    modelopt.torch.speculative.redrafter
-
-      <ul>
-        <li><a href="reference/generated/modelopt.torch.speculative.redrafter.html#module-modelopt.torch.speculative.redrafter">module</a>
-</li>
-      </ul></li>
-      <li>
-    modelopt.torch.speculative.redrafter.conversion
-
-      <ul>
-        <li><a href="reference/generated/modelopt.torch.speculative.redrafter.conversion.html#module-modelopt.torch.speculative.redrafter.conversion">module</a>
-</li>
-      </ul></li>
-      <li>
-    modelopt.torch.speculative.redrafter.redrafter_model
-
-      <ul>
-        <li><a href="reference/generated/modelopt.torch.speculative.redrafter.redrafter_model.html#module-modelopt.torch.speculative.redrafter.redrafter_model">module</a>
 </li>
       </ul></li>
       <li>
@@ -3336,8 +3317,6 @@
         <li><a href="reference/generated/modelopt.torch.speculative.medusa.medusa_model.html#modelopt.torch.speculative.medusa.medusa_model.MedusaModel.modify">(MedusaModel method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.speculative.mtp.mtp_model.html#modelopt.torch.speculative.mtp.mtp_model.MTPModel.modify">(MTPModel method)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.speculative.redrafter.redrafter_model.html#modelopt.torch.speculative.redrafter.redrafter_model.RedrafterModel.modify">(RedrafterModel method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.module.html#modelopt.torch.sparsity.module.SparseModule.modify">(SparseModule method)</a>
 </li>
@@ -3642,12 +3621,6 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.speculative.plugins.html#module-modelopt.torch.speculative.plugins">modelopt.torch.speculative.plugins</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.speculative.redrafter.html#module-modelopt.torch.speculative.redrafter">modelopt.torch.speculative.redrafter</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.speculative.redrafter.conversion.html#module-modelopt.torch.speculative.redrafter.conversion">modelopt.torch.speculative.redrafter.conversion</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.speculative.redrafter.redrafter_model.html#module-modelopt.torch.speculative.redrafter.redrafter_model">modelopt.torch.speculative.redrafter.redrafter_model</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.speculative.speculative_decoding.html#module-modelopt.torch.speculative.speculative_decoding">modelopt.torch.speculative.speculative_decoding</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.speculative.utils.html#module-modelopt.torch.speculative.utils">modelopt.torch.speculative.utils</a>
@@ -3765,8 +3738,6 @@
         <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.name">(QuantizeExportModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.name">(QuantizeModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.RedrafterModeDescriptor.name">(RedrafterModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseGPTModeDescriptor.name">(SparseGPTModeDescriptor property)</a>
 </li>
@@ -4225,8 +4196,6 @@
         <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.quantization">(ModelConfig attribute)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.quantization.qtensor.base_qtensor.html#modelopt.torch.quantization.qtensor.base_qtensor.BaseQuantizedTensor.quantize">quantize() (BaseQuantizedTensor class method)</a>
 
       <ul>
@@ -4253,6 +4222,10 @@
         <li><a href="reference/generated/modelopt.onnx.quantization.operators.html#modelopt.onnx.quantization.operators.QDQNormalization.quantize">(QDQNormalization method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.torch.export.quant_utils.html#modelopt.torch.export.quant_utils.quantize_llama4_experts_for_hf_export">quantize_llama4_experts_for_hf_export() (in module modelopt.torch.export.quant_utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase.quantize_weight">quantize_weight() (QuantLinearConvBase method)</a>
 
       <ul>
@@ -4331,14 +4304,6 @@
         <li><a href="reference/generated/modelopt.torch.trace.tracer.html#modelopt.torch.trace.tracer.recursive_trace">(in module modelopt.torch.trace.tracer)</a>
 </li>
       </ul></li>
-      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.RedrafterConfig.redrafter_num_layers">redrafter_num_layers (RedrafterConfig attribute)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.RedrafterConfig.redrafter_predict_n_tokens">redrafter_predict_n_tokens (RedrafterConfig attribute)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.RedrafterModeDescriptor">RedrafterModeDescriptor (class in modelopt.torch.speculative.mode)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.speculative.redrafter.redrafter_model.html#modelopt.torch.speculative.redrafter.redrafter_model.RedrafterModel">RedrafterModel (class in modelopt.torch.speculative.redrafter.redrafter_model)</a>
-</li>
       <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.reduce_amax">reduce_amax() (in module modelopt.torch.quantization.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.conversion.html#modelopt.torch.quantization.conversion.register">register() (in module modelopt.torch.quantization.conversion)</a>
@@ -4409,10 +4374,10 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.sparsity.magnitude.html#modelopt.torch.sparsity.magnitude.reshape_1d">reshape_1d() (in module modelopt.torch.sparsity.magnitude)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.residual_layernorm">residual_layernorm (DecoderLayerConfig attribute)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.residual_mlp">residual_mlp (DecoderLayerConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.quant_utils.html#modelopt.torch.export.quant_utils.resmooth_and_get_scale">resmooth_and_get_scale() (in module modelopt.torch.export.quant_utils)</a>
@@ -4442,8 +4407,6 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.restore">(QuantizeModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.RedrafterModeDescriptor.restore">(RedrafterModeDescriptor property)</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.restore">(SparseMagnitudeModeDescriptor property)</a>
 </li>
       </ul></li>
@@ -4466,8 +4429,6 @@
       <li><a href="reference/generated/modelopt.torch.export.model_config_utils.html#modelopt.torch.export.model_config_utils.restore_model_config">restore_model_config() (in module modelopt.torch.export.model_config_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.mtp.conversion.html#modelopt.torch.speculative.mtp.conversion.restore_mtp_model">restore_mtp_model() (in module modelopt.torch.speculative.mtp.conversion)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.speculative.redrafter.conversion.html#modelopt.torch.speculative.redrafter.conversion.restore_redrafter_model">restore_redrafter_model() (in module modelopt.torch.speculative.redrafter.conversion)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.nas.autonas.html#modelopt.torch.nas.autonas.restore_searchspace">restore_searchspace() (in module modelopt.torch.nas.autonas)</a>
 </li>
@@ -4641,19 +4602,23 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.distill.loss_balancers.html#modelopt.torch.distill.loss_balancers.DistillationLossBalancer.set_student_loss_reduction_fn">set_student_loss_reduction_fn() (DistillationLossBalancer method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.set_submodule">set_submodule() (in module modelopt.torch.utils.network)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.SymMap.set_symbol">set_symbol() (SymMap method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.set_tensor_parallel_group">set_tensor_parallel_group() (in module modelopt.torch.utils.distributed)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.export.layer_utils.html#modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts">set_zero_amax_for_uncalibrated_experts() (in module modelopt.torch.export.layer_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.prune.gradnas.html#modelopt.torch.prune.gradnas.GradientBinarySearcher.SETUP_GRADIENT_FUNC">SETUP_GRADIENT_FUNC (GradientBinarySearcher attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.share_embedding_table">share_embedding_table (ModelConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MOEConfig.shared_expert">shared_expert (MOEConfig attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MOEConfig.shared_expert_gate">shared_expert_gate (MOEConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQClipCalibConfig.shrink_step">shrink_step (AWQClipCalibConfig attribute)</a>
 </li>
@@ -4789,13 +4754,15 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.tensor.html#modelopt.torch.utils.tensor.torch_detach">torch_detach() (in module modelopt.torch.utils.tensor)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.utils.tensor.html#modelopt.torch.utils.tensor.torch_to">torch_to() (in module modelopt.torch.utils.tensor)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.utils.tensor.html#modelopt.torch.utils.tensor.torch_to_numpy">torch_to_numpy() (in module modelopt.torch.utils.tensor)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config_export.html#modelopt.torch.export.model_config_export.torch_to_tensorrt_llm_checkpoint">torch_to_tensorrt_llm_checkpoint() (in module modelopt.torch.export.model_config_export)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.LinearConfig.tp">tp (LinearConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.trace.tracer.html#modelopt.torch.trace.tracer.RobustTracer.trace">trace() (RobustTracer method)</a>
 </li>

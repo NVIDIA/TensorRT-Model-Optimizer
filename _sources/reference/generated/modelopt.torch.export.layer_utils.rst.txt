@@ -70,6 +70,7 @@ layer\_utils
       is_quantlinear
       is_recurrent
       model_type_is_enc_dec
+      set_zero_amax_for_uncalibrated_experts
       update_experts_avg_prequant_scale
    
    

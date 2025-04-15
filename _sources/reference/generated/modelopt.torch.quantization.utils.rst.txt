@@ -37,6 +37,7 @@ utils
    .. autosummary::
       :nosignatures:
    
+      convert_quantization_axis_to_reduce_axis
       reduce_amax
       is_quantized
       is_quantized_layer_with_weight

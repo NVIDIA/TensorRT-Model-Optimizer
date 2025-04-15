@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>quant_rnn &mdash; Model Optimizer 0.27.0</title>
+  <title>quant_rnn &mdash; Model Optimizer 0.27.1</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -217,12 +217,12 @@
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.default_quant_desc_input">
-<span class="sig-name descname"><span class="pre">default_quant_desc_input</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">QuantizerAttributeConfig(enable=True,</span> <span class="pre">num_bits=8,</span> <span class="pre">axis=None,</span> <span class="pre">fake_quant=True,</span> <span class="pre">unsigned=False,</span> <span class="pre">narrow_range=False,</span> <span class="pre">type='static',</span> <span class="pre">block_sizes=None,</span> <span class="pre">bias=None,</span> <span class="pre">trt_high_precision_dtype='Float',</span> <span class="pre">calibrator='max',</span> <span class="pre">rotate=False)</span></em><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.default_quant_desc_input" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">default_quant_desc_input</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">QuantizerAttributeConfig(enable=True,</span> <span class="pre">num_bits=8,</span> <span class="pre">axis=None,</span> <span class="pre">fake_quant=True,</span> <span class="pre">unsigned=False,</span> <span class="pre">narrow_range=False,</span> <span class="pre">learn_amax=False,</span> <span class="pre">type='static',</span> <span class="pre">block_sizes=None,</span> <span class="pre">bias=None,</span> <span class="pre">trt_high_precision_dtype='Float',</span> <span class="pre">calibrator='max',</span> <span class="pre">rotate=False)</span></em><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.default_quant_desc_input" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.default_quant_desc_weight">
-<span class="sig-name descname"><span class="pre">default_quant_desc_weight</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">QuantizerAttributeConfig(enable=True,</span> <span class="pre">num_bits=8,</span> <span class="pre">axis=None,</span> <span class="pre">fake_quant=True,</span> <span class="pre">unsigned=False,</span> <span class="pre">narrow_range=False,</span> <span class="pre">type='static',</span> <span class="pre">block_sizes=None,</span> <span class="pre">bias=None,</span> <span class="pre">trt_high_precision_dtype='Float',</span> <span class="pre">calibrator='max',</span> <span class="pre">rotate=False)</span></em><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.default_quant_desc_weight" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">default_quant_desc_weight</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">QuantizerAttributeConfig(enable=True,</span> <span class="pre">num_bits=8,</span> <span class="pre">axis=None,</span> <span class="pre">fake_quant=True,</span> <span class="pre">unsigned=False,</span> <span class="pre">narrow_range=False,</span> <span class="pre">learn_amax=False,</span> <span class="pre">type='static',</span> <span class="pre">block_sizes=None,</span> <span class="pre">bias=None,</span> <span class="pre">trt_high_precision_dtype='Float',</span> <span class="pre">calibrator='max',</span> <span class="pre">rotate=False)</span></em><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.default_quant_desc_weight" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py method">
