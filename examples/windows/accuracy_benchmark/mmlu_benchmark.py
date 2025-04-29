@@ -223,7 +223,7 @@ def evaluate_genai_dml(args, subject, model, dev_df, test_df, model_path):
         input_tokens = tokenizer.encode(prompt)
         params = og.GeneratorParams(model)
 
-        params.input_ids = input_tokens
+        # params.input_ids = input_tokens
 
         if len(input_tokens) + 2 > args.max_seq_length:
             print(
@@ -238,13 +238,16 @@ def evaluate_genai_dml(args, subject, model, dev_df, test_df, model_path):
 
         params.set_search_options(**search_options)
         generator = og.Generator(model, params)
+
+        generator.append_tokens(input_tokens)
+
         new_tokens = []
-        generator.compute_logits()
+        # generator.compute_logits()
         generator.generate_next_token()
         new_token = generator.get_next_tokens()[0]
         new_tokens.append(new_token)
         if not generator.is_done():
-            generator.compute_logits()
+            # generator.compute_logits()
             generator.generate_next_token()
             new_token = generator.get_next_tokens()[0]
             new_tokens.append(new_token)

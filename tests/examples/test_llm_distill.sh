@@ -27,9 +27,12 @@ pushd $script_dir/../../examples/llm_distill
 LLAMA_PATH=/tmp/tiny-random-Llama
 $script_dir/setup_tiny_llama.sh $LLAMA_PATH
 
+SAVE_PATH=/tmp/llm_distill_test_output
+
 accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --teacher_name_or_path $LLAMA_PATH \
     --student_name_or_path $LLAMA_PATH \
+    --output_dir $SAVE_PATH \
     --logging_steps 5 \
     --max_steps 10 \
     --max_seq_length 1024 \

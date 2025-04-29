@@ -2,6 +2,15 @@
 Model Optimizer Changelog (Windows)
 ===================================
 
+0.27 (2025-04-30)
+^^^^^^^^^^^^^^^^^
+
+**New Features**
+
+- New LLM models like DeepSeek etc. are supported with ONNX INT4 AWQ quantization on Windows. Refer `Windows Support Matrix <https://nvidia.github.io/TensorRT-Model-Optimizer/guides/0_support_matrix.html>`_ for details about supported features and models.
+- TensorRT Model Optimizer for Windows now supports ONNX INT8 and FP8 quantization (W8A8) of SAM2 and Whisper models. Check `example scripts <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq>`_ for getting started with quantizing these models.
+
+
 0.19 (2024-11-18)
 ^^^^^^^^^^^^^^^^^
 

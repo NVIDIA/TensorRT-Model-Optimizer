@@ -79,14 +79,7 @@ Refer to the following example scripts and tutorials for deployment:
 
 ### Model Support Matrix
 
-Model | int4_awq
---- | ---
-Llama3.1-8B-Instruct | Yes
-Phi3.5-mini-Instruct | Yes
-Mistral-7B-Instruct-v0.3 | Yes
-Llama3.2-3B-Instruct| Yes
-Gemma-2b-it | Yes
-Nemotron Mini 4B Instruct | Yes
+Please refer to [support matrix](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/0_support_matrix.html) for a full list of supported features and models.
 
 ### Troubleshoot
 
@@ -106,3 +99,11 @@ Nemotron Mini 4B Instruct | Yes
 1. **Check Read/Write Permissions**
 
    Ensure that both the input and output model paths have the necessary read and write permissions to avoid any permission-related errors.
+
+1. **Check Output Path**
+
+   Ensure that output .onnx file doesn't exist already. For example, if the output path is `C:\dir1\dir2\quant\model_quant.onnx` then the path `C:\dir1\dir2\quant` should be valid and the directory `quant` should not already contain `model_quant.onnx` file before quantization. If the output .onnx file already exists, then that can get appended during saving of the quantized model resulting in corrupted or invalid output model.
+
+1. **Check Input Model**
+
+   During INT4 AWQ execution, the input onnx model (one mentioned in `--onnx_path` argument) will be run with onnxruntime (ORT) for calibration (using ORT EP mentioned in `--calibration_eps` argument). So, make sure that input onnx model is running fine with the specified ORT EP.

@@ -33,7 +33,7 @@
 ## Overview
 
 The **TensorRT Model Optimizer - Windows** (**ModelOpt-Windows**) is engineered to deliver advanced model compression techniques, including quantization, to Windows RTX PC systems. Specifically tailored to meet the needs of Windows users, ModelOpt-Windows is optimized for rapid and efficient quantization, featuring local GPU calibration, reduced system and video memory consumption, and swift processing times.
-The primary objective of the ModelOpt-Windows is to generate optimized, standards-compliant ONNX-format models for DirectML backends. This makes it an ideal solution for seamless integration with ONNX Runtime (ORT) and DirectML (DML) frameworks, ensuring broad compatibility with any inference framework supporting the ONNX standard. Furthermore, ModelOpt-Windows integrates smoothly within the Windows ecosystem, with full support for tools and SDKs such as Olive and ONNX Runtime, enabling deployment of quantized models across various independent hardware vendors (IHVs) through the DML path and TensorRT path.
+The primary objective of the ModelOpt-Windows is to generate optimized, standards-compliant ONNX-format models. This makes it an ideal solution for seamless integration with ONNX Runtime (ORT) and DirectML (DML) frameworks, ensuring broad compatibility with any inference framework supporting the ONNX standard. Furthermore, ModelOpt-Windows integrates smoothly within the Windows ecosystem, with full support for tools and SDKs such as Olive and ONNX Runtime, enabling deployment of quantized models across various independent hardware vendors (IHVs) through the DML path and TensorRT path.
 
 Model Optimizer is available for free for all developers on [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/). This repository is for sharing examples and GPU-optimized recipes as well as collecting feedback from the community.
 
@@ -65,14 +65,17 @@ For more details, please refer to the [detailed installation instructions](https
 
 ### Quantization
 
-Quantization is an effective model optimization technique for large models. Quantization with ModelOpt-Windows can compress model size by 2x-4x, speeding up inference while preserving model quality. ModelOpt-Window enables highly performant quantization formats including INT4, FP8\*, INT8\*, etc. and supports advanced algorithms such as AWQ and SmoothQuant\* focusing on post-training quantization (PTQ) for ONNX and PyTorch\* models with DirectML and TensorRT\* inference backends.
+Quantization is an effective model optimization technique for large models. Quantization with ModelOpt-Windows can compress model size by 2x-4x, speeding up inference while preserving model quality. ModelOpt-Window enables highly performant quantization formats including INT4, FP8, INT8, etc. and supports advanced algorithms such as AWQ and SmoothQuant\* focusing on post-training quantization (PTQ) for ONNX and PyTorch\* models with DirectML, CUDA and TensorRT\* inference backends.
 
 For more details, please refer to the [detailed quantization guide](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/windows_guides/_ONNX_PTQ_guide.html).
 
 ## Examples
 
-- [PTQ for LLMs](./onnx_ptq/README.md) covers how to use ONNX Post-Training Quantization (PTQ) and deployment with DirectML
-- [MMLU Benchmark](./accuracy_benchmark/README.md) provides an example script for MMLU benchmark and demonstrates how to run it with various popular backends like DirectML, TensorRT-LLM\* and model formats like ONNX and PyTorch\*.
+- We have ONNX PTQ examples for various ONNX model variants:
+  - [PTQ for GenAI LLMs](./onnx_ptq/genai_llm/README.md) covers how to use ONNX Post-Training Quantization (PTQ) with [ONNX Runtime GenAI](https://onnxruntime.ai/docs/genai) built LLM ONNX models, and thier deployment with DirectML.
+  - [PTQ for Whisper](./onnx_ptq/whisper/README.md) illustrates using ONNX Post-Training Quantization (PTQ) with a Whisper ONNX model (i.e. an ASR model). It also provides example sctipt for Optimum-ORT based inference of Whisper using CUDA EP.
+  - [PTQ for SAM2](./onnx_ptq/sam2/README.md) illustrates using ONNX Post-Training Quantization (PTQ) with a SAM2 ONNX model (i.e. a segmentation model).
+- [MMLU Benchmark](./accuracy_benchmark/README.md) provides an example script for MMLU benchmarking of LLM models, and demonstrates how to run it with various popular backends like DirectML, TensorRT-LLM\* and model formats like ONNX and PyTorch\*.
 
 ## Support Matrix
 

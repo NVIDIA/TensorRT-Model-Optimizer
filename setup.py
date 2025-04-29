@@ -16,12 +16,15 @@
 """The package setup script for modelopt customizing certain aspects of the installation process."""
 
 import os
+import platform
 
 import setuptools
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "0.27.1")
+version = os.environ.get(
+    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.27.0" if platform.system() == "Windows" else "0.27.1"
+)
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -54,7 +57,8 @@ optional_deps = {
         # Onnxruntime 1.20+ is not supported on Python 3.9
         "onnxruntime~=1.18.1 ; python_version < '3.10'",
         "onnxruntime~=1.20.1 ; python_version >= '3.10' and (platform_machine == 'aarch64' or platform_system == 'Darwin')",  # noqa: E501
-        "onnxruntime-gpu~=1.20.1 ; python_version >= '3.10' and platform_machine != 'aarch64' and platform_system != 'Darwin'",  # noqa: E501
+        "onnxruntime-gpu~=1.20.1 ; python_version >= '3.10' and platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
+        "onnxruntime-directml==1.20.0; python_version >= '3.10' and platform_system == 'Windows'",
         "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
     ],
     "torch": [

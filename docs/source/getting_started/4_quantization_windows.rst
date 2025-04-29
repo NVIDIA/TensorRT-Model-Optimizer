@@ -11,7 +11,7 @@ The ONNX quantization API in ModelOpt-Windows offers advanced Post-Training Quan
 ONNX Model Quantization (PTQ)
 ------------------------------
 
-The ONNX quantization API requires a model, calibration data, along with quantization settings like algorithm, calibration-EPs etc. Here’s an example implementing int4 AWQ:
+The ONNX quantization API requires a model, calibration data, along with quantization settings like algorithm, calibration-EPs etc. Here’s an example snippet to apply INT4 AWQ quantization:
 
 .. code-block:: python
 
@@ -32,22 +32,24 @@ The ONNX quantization API requires a model, calibration data, along with quantiz
         size_threshold=0,
     )
 
-Check :meth:`modelopt.onnx.quantization.quantize_int4 <modelopt.onnx.quantization.int4.quantize>` for details about quantization API.
+Check :meth:`modelopt.onnx.quantization.quantize_int4 <modelopt.onnx.quantization.int4.quantize>` for details about INT4 quantization API.
 
 Refer :ref:`Support_Matrix` for details about supported features and models.
 
-To know more about ONNX PTQ, refer :ref:`ONNX_PTQ_Guide_Windows` and `example script <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/>`_.
+To know more about ONNX PTQ, refer :ref:`ONNX_PTQ_Guide_Windows` and `example scripts <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/>`_.
 
 
 Deployment
 ----------
-The quantized ONNX model is deployment-ready, equivalent to a standard ONNX model. ModelOpt-Windows uses ONNX’s `DequantizeLinear <https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html>`_ (DQ) nodes, which support INT4 data-type from opset version 21 onward. Ensure the model’s opset version is 21 or higher. Refer :ref:`Apply_ONNX_PTQ` for details.
+The quantized onnx model can be deployed using frameworks like onnxruntime. Ensure that model's opset is 19+ for FP8 quantization, and it is 21+ for INT4 quantization. This is needed due to different opset requirements of  ONNX's `Q <https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html>`_/`DQ <https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html>`_ nodes for INT4, FP8 data-types support. Refer :ref:`Apply_ONNX_PTQ` for details.
 
 .. code-block:: python
 
-    # write steps (say, upgrade_opset_to_21() method) to upgrade opset to 21, if it is lower than 21.
+    # write steps (say, upgrade_opset() method) to upgrade or patch opset of the model, if needed
+    # the opset-upgrade, if needed, can be done on either base ONNX model or on the quantized model
+    # finally, save the quantized model
 
-    quantized_onnx_model = upgrade_opset_to_21(quantized_onnx_model)
+    quantized_onnx_model = upgrade_opset(quantized_onnx_model)
     onnx.save_model(
         quantized_onnx_model,
         output_path,
@@ -56,7 +58,7 @@ The quantized ONNX model is deployment-ready, equivalent to a standard ONNX mode
         size_threshold=0,
     )
 
-Deploy the quantized model using the DirectML backend. For detailed deployment instructions, see the :ref:`DirectML_Deployment`.
+For detailed instructions about deployment of quantized models with DirectML backend (ORT-DML), see the :ref:`DirectML_Deployment`. Also, refer `example scripts <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/>`_ for any possible model-specific inference guidance or script (if any).
 
 .. note::
 

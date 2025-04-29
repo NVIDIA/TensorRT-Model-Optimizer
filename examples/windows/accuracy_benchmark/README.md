@@ -6,6 +6,8 @@
   - [MMLU (Massive Multitask Language Understanding)](#mmlu-massive-multitask-language-understanding)
     - [Setup](#setup)
     - [Evaluation Methods](#evaluation-methods)
+- [API changes in ONNX Runtime GenAI v0.6](#api-changes-in-onnx-runtime-genai-v0.6)
+- [Troubleshoot](#troubleshoot)
 
 ## Overview
 
@@ -35,8 +37,8 @@ The table below lists the setup steps to prepare your environment for evaluating
 |----------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Open PowerShell as Administrator** | - |
 | **Create and Activate a Virtual Environment** <br> _(Optional but Recommended)_ | `python -m venv llm_env` <br> `.\llm_env\Scripts\Activate.ps1` |
-| **Install PyTorch and Related Packages** | `pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu124` |
-| **Install ONNX Runtime Packages** | `pip install onnxruntime-directml==1.20` <br> `pip install onnxruntime-genai-directml==0.4.0` |
+| **Install PyTorch and Related Packages** | `pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu128` |
+| **Install ONNX Runtime Packages** | `pip install onnxruntime-directml==1.21.1` <br> `pip install onnxruntime-genai-directml==0.6.0` |
 | **Install Benchmark Requirements** | `pip install -r requirements.txt` |
 | **Download MMLU Data** | `mkdir data` <br> `curl -o .\data\mmlu.tar https://people.eecs.berkeley.edu/~hendrycks/data.tar` <br> `tar -xf .\data\mmlu.tar -C .\data` <br> `Move-Item .\data\data .\data\mmlu` |
 
@@ -180,3 +182,17 @@ To evaluate the PyTorch Hugging Face (HF) model, use the `--ep pt` argument.
      ```
 
 </details>
+
+## API changes in ONNX Runtime GenAI v0.6
+
+In onnxruntime-genai (GenAI) v0.6, `generator.compute_logits()` and `generator_params.input_ids` are deprecated and new API `generator.append_tokens(List: token_ids)` is added (see GenAI [PR-867](https://github.com/microsoft/onnxruntime-genai/pull/867) for details).
+
+So, this MMLU script has been updated accordingly - refer following change-snippet from this MMLU script (left works with GenAI < 0.6, right works with GenAI 0.6+). Make sure to update the MMLU script accordingly (left part) for trying it with GenAI < 0.6.
+
+![alt text](GenAI_API_changes_0.6.png)
+
+## Troubleshoot
+
+1. In case of any model specific issue (e.g. in tokenizer or in onnxruntime-genai package etc.), one can try using older GenAI e.g. export the ONNX model with `onnxruntime-genai-directml` 0.4 and `transformers` 4.44.
+
+1. In case of trying out MMLU run of ONNX model through GenAI, make sure that the input model is running fine with GenAI. Onnxruntime-genai has example inference scripts (e.g. see [phi3 example](https://github.com/microsoft/onnxruntime-genai/blob/main/examples/python/phi3-qa.py) script).

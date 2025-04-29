@@ -41,8 +41,9 @@ ModelOpt-Windows's ONNX PTQ API requires a base ONNX model, which can be obtaine
 
 Each tool offers unique features and options for conversion from PyTorch or other frameworks to the ONNX format.
 
-**Base Model Precision**: ModelOpt-Windows supports base models in both FP16 and FP32 formats. Choosing FP16 over FP32 can help reduce memory usage and improve speed, especially on hardware optimized for lower precision, such as NVIDIA GPUs with Tensor Cores. However, FP16's smaller dynamic range may require careful tuning.
+**Opset requirements of different data-types**: ModelOpt-Windows uses ONNX's `Q <https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html>`_/`DQ <https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html>`_ nodes for applying quantization and dequantization operations in the ONNX model. The INT4 datatype support in Q/DQ node came in opset-21 and, FP8 datatype support in Q/DQ node came in opset-19. So, ensure that model's opset is 19+ for FP8 quantization, and it is 21+ for INT4 quantization. This is needed for deployment of the quantized model on onnxruntime framework (e.g. ORT-DirectML backend). Different ONNX exporter tools usually have option or argument for target 'opset' field. See their documentation for details about its usage and max-supported opset limit.
 
+**Base Model Precision**: ModelOpt-Windows supports base models in both FP16 and FP32 formats. Choosing FP16 over FP32 can help reduce memory usage and improve speed, especially on hardware optimized for lower precision, such as NVIDIA GPUs with Tensor Cores. However, FP16's smaller dynamic range may require careful tuning.
 
 **ONNX FP16 Conversion Tools**: Some popular FP32 to FP16 ONNX conversion tools include:
 
@@ -50,179 +51,29 @@ Each tool offers unique features and options for conversion from PyTorch or othe
 - Hugging Face *Optimum* tool with a *dtype* argument for FP16 generation - Refer to optimum's `CLI <https://huggingface.co/docs/optimum/en/exporters/onnx/usage_guides/export_a_model/>`_, and `API <https://github.com/huggingface/optimum/blob/main/optimum/exporters/onnx/convert.py/>`_ usage.
 - Microsoft Olive, which supports FP16 via configuration files. Refer *float16* option in this example `config <https://github.com/microsoft/Olive/blob/main/examples/directml/llm/config_llm.json/>`_.
 
-
-Once base model is obtained, ModelOpt-Windows's PTQ can be applied to get the quantized mode. The resulting quantized model can be deployed on DirectML and TensorRT* backend.
+Once base model is obtained, ModelOpt-Windows's PTQ can be applied to get the quantized mode. The resulting quantized model can be deployed on backends like DirectML, CUDA and TensorRT*.
 
 .. _Apply_ONNX_PTQ:
 
 Apply Post Training Quantization (PTQ)
 --------------------------------------
 
+Applying PTQ on a model involves preparing calibration-data (if needed), invoking quantization API, saving the quantized model, and any additional post-processing like opset upgrade as needed.
+
 **Prepare calibration data**
 
-The SmoothQuant (SQ) and Activation-Aware-Quantization (AWQ) algorithms require calibration data during quantization. If the *quantize* API's calibration-data argument is not provided (i.e., set to *None*), ModelOpt-Windows will internally use randomly generated model inputs for calibration. Refer to the sample code below for preparing calibration inputs.
+Quantization algorithms like SmoothQuant (SQ), Activation-Aware-Quantization (AWQ), and static quantization of activations often require calibration data. If the *quantize* API's calibration-data argument is not provided (i.e., set to *None*), ModelOpt-Windows will internally use randomly generated model inputs for calibration.
 
-Preparing calibration data for ModelOpt-Windows involves two steps:
+As an example, preparing calibration data for INT4 AWQ quantization of LLMs may involve following major steps:
 
 1. **Generate Token Encodings**: Use a dataset like *cnn-dailymail* or *pile* with the model's tokenizer to generate token encodings and related data from the representative dataset
 2. **Format for Model Input**: Convert encodings into model-compatible formats.
 
-See the code example below for details.
-
-
-.. code-block:: python
-
-  # Refer get_calib_inputs() method below to prepare calibration inputs for your model.
-
-  # Note that names and shapes of inputs and outputs can vary from model to model, and also between ONNX exporter tools.
-  # So, use following code as reference for preparing calibration data for your model.
-
-  def make_model_input(
-      config,
-      input_ids_arg,
-      attention_mask_arg,
-      add_past_kv_inputs,
-      device,
-      use_fp16,
-      use_buffer_share,
-      add_position_ids,
-  ):
-      input_ids = input_ids_arg
-      attention_mask = attention_mask_arg
-
-      if isinstance(input_ids_arg, list):
-          input_ids = torch.tensor(input_ids_arg, device=device, dtype=torch.int64)
-          attention_mask = torch.tensor(attention_mask_arg, device=device, dtype=torch.int64)
-
-      inputs = {
-          "input_ids": input_ids.contiguous(),
-          "attention_mask": attention_mask.contiguous(),
-      }
-
-      if add_position_ids:
-          position_ids = attention_mask.long().cumsum(-1) - 1
-          position_ids.masked_fill_(attention_mask == 0, 1)
-          inputs["position_ids"] = position_ids.contiguous()
-
-      if add_past_kv_inputs:
-          torch_dtype = torch.float16 if use_fp16 else torch.float32
-          batch_size, sequence_length = input_ids.shape
-          max_sequence_length = config.max_position_embeddings
-          num_heads, head_size = (
-              config.num_key_value_heads,
-              config.hidden_size // config.num_attention_heads,
-          )
-
-          if hasattr(config, "head_dim"):
-              head_size = config.head_dim
-
-          for i in range(config.num_hidden_layers):
-              past_key = torch.zeros(
-                  batch_size,
-                  num_heads,
-                  max_sequence_length if use_buffer_share else 0,
-                  head_size,
-                  device=device,
-                  dtype=torch_dtype,
-              )
-              past_value = torch.zeros(
-                  batch_size,
-                  num_heads,
-                  max_sequence_length if use_buffer_share else 0,
-                  head_size,
-                  device=device,
-                  dtype=torch_dtype,
-              )
-              inputs.update(
-                  {
-                      f"past_key_values.{i}.key": past_key.contiguous(),
-                      f"past_key_values.{i}.value": past_value.contiguous(),
-                  }
-              )
-
-      return inputs
-
-
-  def get_calib_inputs(
-      dataset_name,
-      model_name,
-      cache_dir,
-      calib_size,
-      batch_size,
-      block_size,
-      device,
-      use_fp16,
-      use_buffer_share,
-      add_past_kv_inputs,
-      max_calib_rows_to_load,
-      add_position_ids,
-      trust_remote_code,
-  ):
-      # from transformers import LlamaConfig
-      # config = LlamaConfig.from_pretrained(
-      #     model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=trust_remote_code
-      # )
-      config = AutoConfig.from_pretrained(
-          model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=trust_remote_code
-      )
-      tokenizer = AutoTokenizer.from_pretrained(
-          model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=trust_remote_code
-      )
-      tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-      tokenizer.pad_token = tokenizer.eos_token
-
-      assert (
-          calib_size <= max_calib_rows_to_load
-      ), "calib size should be no more than max_calib_rows_to_load"
-
-      dataset2 = load_dataset("cnn_dailymail", name="3.0.0", split="train").select(range(max_calib_rows_to_load))
-      column = "article"
-
-      # dataset2 = dataset2.shuffle(seed=42)
-      dataset2 = dataset2[column][:calib_size]
-      batch_encoded = tokenizer.batch_encode_plus(
-          dataset2, return_tensors="pt", padding=True, truncation=True, max_length=block_size
-      )  # return_tensors="pt",
-      batch_encoded = batch_encoded.to(device)
-      batch_encoded_input_ids = batch_encoded["input_ids"]
-      batch_encoded_attention_mask = batch_encoded["attention_mask"]
-      calib_dataloader_input_ids = DataLoader(batch_encoded_input_ids, batch_size=batch_size, shuffle=False)
-      calib_dataloader_attenton_mask = DataLoader(batch_encoded_attention_mask, batch_size=batch_size, shuffle=False)
-
-      number_of_batched_samples = calib_size // batch_size
-
-      batched_input_ids = []
-      for idx, data in enumerate(calib_dataloader_input_ids):
-          batched_input_ids.append(data)
-          if idx == (number_of_batched_samples - 1):
-              break
-
-      batched_attention_mask = []
-      for idx, data in enumerate(calib_dataloader_attenton_mask):
-          batched_attention_mask.append(data)
-          if idx == (number_of_batched_samples - 1):
-              break
-
-      batched_inputs_list = []
-      for i in range(number_of_batched_samples):
-          input_ids = batched_input_ids[i]
-          attention_mask = batched_attention_mask[i]
-
-          inputs = make_model_input(config, input_ids, attention_mask, add_past_kv_inputs, device,
-                                    use_fp16,
-                                    use_buffer_share,
-                                    add_position_ids,
-          )
-          inputs = {
-              input_name: torch_tensor.cpu().numpy() for input_name, torch_tensor in inputs.items()
-          }
-          batched_inputs_list.append(inputs)
-
-      return batched_inputs_list
+Please refer the `example scripts <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/>`_ for details about preparing calibration-data of various supported ONNX models.
 
 **Call Quantization API**
 
-The example below demonstrates how to quantize an ONNX model using ModelOpt-Windows with INT4 precision.
+The example below demonstrates how to apply INT4 AWQ quantization on a LLM ONNX model.
 
 .. code-block:: python
 
@@ -238,9 +89,13 @@ The example below demonstrates how to quantize an ONNX model using ModelOpt-Wind
 
 Check :meth:`modelopt.onnx.quantization.quantize_int4 <modelopt.onnx.quantization.int4.quantize>` for details about quantization API.
 
-**Upgrade Opset to 21+**
+**Upgrade opset of the model**
 
-ModelOpt-Windows uses ONNX’s `DequantizeLinear <https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html>`_ (DQ) nodes, which support INT4 data-type from opset version 21 onward. Ensure the model’s opset version is 21 or higher, for deployment on DirectML backend.
+Opset requirement for different data-types is already explained in the section describing ways to obtain base model. To summarize, the opset requirements stems from the fact that support for different types in ONNX `Q <https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html>`_/`DQ <https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html>`_ nodes is gradually added in different opsets. For instance, the INT4 data-type support in Q/DQ node came in opset-21 and, FP8 data-type support in Q/DQ node came in opset-19. So, ensure that model's opset is 19+ for FP8 quantization, and it is 21+ for INT4 quantization. This is needed for deployment of the quantized model on onnxruntime framework (e.g. ORT-DirectML backend).
+
+Generally, different ONNX exporter tools have option or argument for providing the desired or target opset. It is possible that the desired opset is greater than the max-opset user's ONNX exporter tool supports. In that case, user would need to manually 'patch' the opset of the ONNX model. This would require updating the ONNX metadata that stores opset field of the graph, and it may additionally require updating some nodes in the graph as per new opset (if they have changed in later opsets). Alternatively, one can try using the ONNX exporter tool which already supports the desired opset (if exists any).
+
+A few sample code snippets to inspect the opset of the given ONNX model, and to update the opset field in the ONNX model's meta-data, are provided below.
 
 .. code-block:: python
 
@@ -266,7 +121,7 @@ Use the above steps to inspect the ONNX model's opset version.
 
     .. code-block:: python
 
-      # Example steps for opset-21 upgrade of default (onnx) domain
+      # Example steps for updating opset metadata of default (onnx) domain
       # Update opsets for other domains as needed for your requirement (or exclude them as suitable).
 
       model = onnx.load(onnx_path)
@@ -281,6 +136,7 @@ Use the above steps to inspect the ONNX model's opset version.
 
       updated_quantized_onnx_model = onnx.helper.make_model(model.graph, opset_imports=new_opset_imports)
 
+The ONNX models produced using `GenAI <https://github.com/microsoft/onnxruntime-genai/>`_ are generally seen to work fine with above opset upgrade patch. ONNX models produced using other ONNX exporter tool might require further post-processing on case-by-case basis for nodes that have changed in later opsets.
 
 **Save Quantized Model**
 
@@ -299,4 +155,4 @@ To save a quantized ONNX model with external data, use the following code:
 Deploy Quantized ONNX Model
 ---------------------------
 
-Inference of the quantized models can be done using tools like `GenAI <https://github.com/microsoft/onnxruntime-genai/>`_, `OnnxRunTime (ORT) <https://onnxruntime.ai//>`_. These APIs can do inference on backends like DML. For details about DirectML deployment, see :ref:`DirectML_Deployment`.
+Inference of the quantized models can be done using tools like `GenAI <https://github.com/microsoft/onnxruntime-genai/>`_, `OnnxRunTime (ORT) <https://onnxruntime.ai//>`_. These APIs can do inference on backends like DML. For details about DirectML deployment of quantized models, see :ref:`DirectML_Deployment`. Also, refer `example scripts <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/>`_ for any possible model-specific inference guidance or script (if any).

@@ -26,6 +26,7 @@ import onnx
 import torch
 import torch.nn as nn
 from onnx import ModelProto
+from packaging.version import Version
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 from modelopt.onnx.quantization.qdq_utils import qdq_to_dq
@@ -297,9 +298,9 @@ def get_onnx_bytes_and_metadata(
         onnx_load_path: The path to load the onnx model.
         dynamic_axes: A dictionary of dynamic shapes used for exporting the torch model to onnx.
         remove_exported_model: If True, the onnx model will be cleared from the disk after the
-            export process
-        dynamo_export: If True, the model is exported using dynamo_export. See
-            `torch.onnx.dynamo_export https://pytorch.org/docs/stable/onnx_dynamo.html` for more details.
+            export process.
+        dynamo_export: If True, the model is exported using `dynamo=True` in
+            `torch.onnx.export <https://pytorch.org/docs/stable/onnx.html#torch.onnx.export>`_.
         onnx_opset: The onnx opset version to use for exporting the model.
         dq_only: If True, the exported ONNX model is converted to a dq_only model.
 
@@ -327,10 +328,6 @@ def get_onnx_bytes_and_metadata(
     dummy_input = tuple(named_args.values())
     if dummy_input and isinstance(dummy_input[-1], dict):
         dummy_input = dummy_input + ({},)  # we need to add an extra dict for the fake kwargs!
-
-    dummy_input_args, dummy_input_kwargs = (), None
-    if dynamo_export:
-        dummy_input_args, dummy_input_kwargs = split_args_kwargs(dummy_input)
 
     # Get input tree spec, see generate_onnx_input for more info as well on this
     flat_input, tree_spec_input = flatten_tree(named_args)
@@ -377,7 +374,7 @@ def get_onnx_bytes_and_metadata(
     # Export onnx model from pytorch model
     # As the maximum size of protobuf is 2GB, we cannot use io.BytesIO() buffer during export.
     with torch.inference_mode():
-        if not dynamo_export:
+        if not dynamo_export or Version(torch.__version__) >= Version("2.6"):
             torch.onnx.export(
                 model,
                 dummy_input,
@@ -386,19 +383,17 @@ def get_onnx_bytes_and_metadata(
                 output_names=output_names,
                 opset_version=onnx_opset,
                 dynamic_axes=dynamic_axes,
+                dynamo=dynamo_export,
             )
-        else:
+        else:  # torch < 2.6 with dynamo export
             export_options = torch.onnx.ExportOptions(dynamic_shapes=True)
-            if dummy_input_kwargs:
-                torch.onnx.dynamo_export(
-                    model, *dummy_input_args, export_options=export_options, **dummy_input_kwargs
-                ).save(onnx_save_path)
-            else:
-                torch.onnx.dynamo_export(
-                    model,
-                    *dummy_input_args,
-                    export_options=export_options,
-                ).save(onnx_save_path)
+            dummy_input_args, dummy_input_kwargs = split_args_kwargs(dummy_input)
+            if dummy_input_kwargs is None:
+                dummy_input_kwargs = {}
+            torch.onnx.dynamo_export(
+                model, *dummy_input_args, export_options=export_options, **dummy_input_kwargs
+            ).save(onnx_save_path)
+
     # Check that export worked
     assert len(os.listdir(onnx_path)) > 0, "Torch to onnx export failed."
 
