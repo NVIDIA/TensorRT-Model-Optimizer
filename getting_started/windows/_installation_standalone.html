@@ -135,7 +135,7 @@
              
   <section id="install-modelopt-windows-as-a-standalone-toolkit">
 <span id="install-page-standalone-windows"></span><h1>Install ModelOpt-Windows as a Standalone Toolkit<a class="headerlink" href="#install-modelopt-windows-as-a-standalone-toolkit" title="Link to this heading"></a></h1>
-<p>The TensorRT Model Optimizer - Windows (ModelOpt-Windows) can be installed as a standalone toolkit for quantizing Large Language Models (LLMs). Below are the setup steps:</p>
+<p>The TensorRT Model Optimizer - Windows (ModelOpt-Windows) can be installed as a standalone toolkit for quantizing ONNX models. Below are the setup steps:</p>
 <p><strong>1. Setup Prerequisites</strong></p>
 <p>Before using ModelOpt-Windows, the following components must be installed:</p>
 <blockquote>
@@ -161,7 +161,7 @@ $<span class="w"> </span>.<span class="se">\m</span>yEnv<span class="se">\S</spa
 </div>
 <p>This command installs ModelOpt-Windows and its ONNX module, along with the <em>onnxruntime-directml</em> (v1.20.0) package. If ModelOpt-Windows is installed without the additional parameter, only the bare minimum dependencies will be installed, without the relevant module and dependencies.</p>
 <p><strong>4. Setup ONNX Runtime (ORT) for Calibration</strong></p>
-<p>The ONNX Post-Training Quantization (PTQ) process involves running the base model with user-supplied inputs, a process called calibration. The user-supplied model inputs are referred to as calibration data. To perform calibration, the base model must be run using a suitable ONNX Execution Provider (EP), such as <em>DmlExecutionProvider</em> (DirectML EP) or <em>CudaExecutionProvider</em> (CUDA EP). There are different ONNX Runtime packages for each EP:</p>
+<p>The ONNX Post-Training Quantization (PTQ) process involves running the base model with user-supplied inputs, a process called calibration. The user-supplied model inputs are referred to as calibration data. To perform calibration, the base model must be run using a suitable ONNX Execution Provider (EP), such as <em>DmlExecutionProvider</em> (DirectML EP) or <em>CUDAExecutionProvider</em> (CUDA EP). There are different ONNX Runtime packages for each EP:</p>
 <ul class="simple">
 <li><p><em>onnxruntime-directml</em> provides the DirectML EP.</p></li>
 <li><p><em>onnxruntime-gpu</em> provides the CUDA EP.</p></li>
@@ -192,7 +192,7 @@ If you prefer to use the CUDA EP for calibration, uninstall the existing <em>onn
 </li>
 </ul>
 <p><strong>5. Setup GPU Acceleration Tool for Quantization</strong></p>
-<p>ModelOpt-Windows utilizes the <a class="reference external" href="https://cupy.dev//" rel="noopener noreferrer" target="_blank">cupy-cuda12x</a> tool for GPU acceleration during the INT4 ONNX quantization process if you have CUDA 12.x.</p>
+<p>By default, ModelOpt-Windows utilizes the <a class="reference external" href="https://cupy.dev//" rel="noopener noreferrer" target="_blank">cupy-cuda12x</a> tool for GPU acceleration during the INT4 ONNX quantization process. This is compatible with CUDA 12.x.</p>
 <p><strong>6. Verify Installation</strong></p>
 <dl>
 <dt>Ensure the following steps are verified:</dt><dd><ul>
@@ -204,6 +204,13 @@ If you prefer to use the CUDA EP for calibration, uninstall the existing <em>onn
 <li><p><em>onnxruntime-gpu</em> (CUDA EP)</p></li>
 <li><p><em>onnxruntime</em> (CPU EP)</p></li>
 </ul>
+</dd>
+</dl>
+</li>
+<li><dl>
+<dt><strong>Onnx and Onnxruntime Import</strong>: Ensure that following python command runs successfully.</dt><dd><div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">-</span><span class="n">c</span> <span class="s2">&quot;import onnx; import onnxruntime&quot;</span>
+</pre></div>
+</div>
 </dd>
 </dl>
 </li>

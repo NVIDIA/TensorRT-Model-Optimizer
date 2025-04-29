@@ -133,7 +133,7 @@
 <p>The ONNX quantization API in ModelOpt-Windows offers advanced Post-Training Quantization (PTQ) options like Activation-Aware Quantization (AWQ).</p>
 <section id="onnx-model-quantization-ptq">
 <h2>ONNX Model Quantization (PTQ)<a class="headerlink" href="#onnx-model-quantization-ptq" title="Link to this heading"></a></h2>
-<p>The ONNX quantization API requires a model, calibration data, along with quantization settings like algorithm, calibration-EPs etc. Here’s an example implementing int4 AWQ:</p>
+<p>The ONNX quantization API requires a model, calibration data, along with quantization settings like algorithm, calibration-EPs etc. Here’s an example snippet to apply INT4 AWQ quantization:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.onnx.quantization.int4</span><span class="w"> </span><span class="kn">import</span> <span class="n">quantize</span> <span class="k">as</span> <span class="n">quantize_int4</span>
 <span class="c1"># import other packages as needed</span>
 <span class="n">calib_inputs</span> <span class="o">=</span> <span class="n">get_calib_inputs</span><span class="p">(</span><span class="n">dataset</span><span class="p">,</span> <span class="n">model_name</span><span class="p">,</span> <span class="n">cache_dir</span><span class="p">,</span> <span class="n">calib_size</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span><span class="o">...</span><span class="p">)</span>
@@ -152,16 +152,18 @@
 <span class="p">)</span>
 </pre></div>
 </div>
-<p>Check <a class="reference internal" href="../reference/generated/modelopt.onnx.quantization.int4.html#modelopt.onnx.quantization.int4.quantize" title="modelopt.onnx.quantization.int4.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">modelopt.onnx.quantization.quantize_int4</span></code></a> for details about quantization API.</p>
+<p>Check <a class="reference internal" href="../reference/generated/modelopt.onnx.quantization.int4.html#modelopt.onnx.quantization.int4.quantize" title="modelopt.onnx.quantization.int4.quantize"><code class="xref py py-meth docutils literal notranslate"><span class="pre">modelopt.onnx.quantization.quantize_int4</span></code></a> for details about INT4 quantization API.</p>
 <p>Refer <a class="reference internal" href="../guides/0_support_matrix.html#support-matrix"><span class="std std-ref">Support Matrix</span></a> for details about supported features and models.</p>
-<p>To know more about ONNX PTQ, refer <a class="reference internal" href="../guides/windows_guides/_ONNX_PTQ_guide.html#onnx-ptq-guide-windows"><span class="std std-ref">ONNX Quantization - Windows</span></a> and <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/" rel="noopener noreferrer" target="_blank">example script</a>.</p>
+<p>To know more about ONNX PTQ, refer <a class="reference internal" href="../guides/windows_guides/_ONNX_PTQ_guide.html#onnx-ptq-guide-windows"><span class="std std-ref">ONNX Quantization - Windows</span></a> and <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/" rel="noopener noreferrer" target="_blank">example scripts</a>.</p>
 </section>
 <section id="deployment">
 <h2>Deployment<a class="headerlink" href="#deployment" title="Link to this heading"></a></h2>
-<p>The quantized ONNX model is deployment-ready, equivalent to a standard ONNX model. ModelOpt-Windows uses ONNX’s <a class="reference external" href="https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html" rel="noopener noreferrer" target="_blank">DequantizeLinear</a> (DQ) nodes, which support INT4 data-type from opset version 21 onward. Ensure the model’s opset version is 21 or higher. Refer <a class="reference internal" href="../guides/windows_guides/_ONNX_PTQ_guide.html#apply-onnx-ptq"><span class="std std-ref">Apply Post Training Quantization (PTQ)</span></a> for details.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># write steps (say, upgrade_opset_to_21() method) to upgrade opset to 21, if it is lower than 21.</span>
+<p>The quantized onnx model can be deployed using frameworks like onnxruntime. Ensure that model’s opset is 19+ for FP8 quantization, and it is 21+ for INT4 quantization. This is needed due to different opset requirements of  ONNX’s <a class="reference external" href="https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html" rel="noopener noreferrer" target="_blank">Q</a>/<a class="reference external" href="https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html" rel="noopener noreferrer" target="_blank">DQ</a> nodes for INT4, FP8 data-types support. Refer <a class="reference internal" href="../guides/windows_guides/_ONNX_PTQ_guide.html#apply-onnx-ptq"><span class="std std-ref">Apply Post Training Quantization (PTQ)</span></a> for details.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># write steps (say, upgrade_opset() method) to upgrade or patch opset of the model, if needed</span>
+<span class="c1"># the opset-upgrade, if needed, can be done on either base ONNX model or on the quantized model</span>
+<span class="c1"># finally, save the quantized model</span>
 
-<span class="n">quantized_onnx_model</span> <span class="o">=</span> <span class="n">upgrade_opset_to_21</span><span class="p">(</span><span class="n">quantized_onnx_model</span><span class="p">)</span>
+<span class="n">quantized_onnx_model</span> <span class="o">=</span> <span class="n">upgrade_opset</span><span class="p">(</span><span class="n">quantized_onnx_model</span><span class="p">)</span>
 <span class="n">onnx</span><span class="o">.</span><span class="n">save_model</span><span class="p">(</span>
     <span class="n">quantized_onnx_model</span><span class="p">,</span>
     <span class="n">output_path</span><span class="p">,</span>
@@ -171,7 +173,7 @@
 <span class="p">)</span>
 </pre></div>
 </div>
-<p>Deploy the quantized model using the DirectML backend. For detailed deployment instructions, see the <a class="reference internal" href="../deployment/2_directml.html#directml-deployment"><span class="std std-ref">DirectML</span></a>.</p>
+<p>For detailed instructions about deployment of quantized models with DirectML backend (ORT-DML), see the <a class="reference internal" href="../deployment/2_directml.html#directml-deployment"><span class="std std-ref">DirectML</span></a>. Also, refer <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/" rel="noopener noreferrer" target="_blank">example scripts</a> for any possible model-specific inference guidance or script (if any).</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at HuggingFace <a class="reference external" href="https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus-67373fe7c006ebc1df310613" rel="noopener noreferrer" target="_blank">NVIDIA collections</a>.</p>

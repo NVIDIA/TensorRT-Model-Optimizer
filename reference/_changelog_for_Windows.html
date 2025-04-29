@@ -93,7 +93,8 @@
 <li class="toctree-l1 current"><a class="reference internal" href="0_changelog.html">Changelog</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="_changelog_for_Linux.html">Model Optimizer Changelog (Linux)</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">Model Optimizer Changelog (Windows)</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#id1">0.19 (2024-11-18)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1">0.27 (2025-04-30)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2">0.19 (2024-11-18)</a></li>
 </ul>
 </li>
 </ul>
@@ -134,7 +135,15 @@
   <section id="model-optimizer-changelog-windows">
 <h1>Model Optimizer Changelog (Windows)<a class="headerlink" href="#model-optimizer-changelog-windows" title="Link to this heading"></a></h1>
 <section id="id1">
-<h2>0.19 (2024-11-18)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<h2>0.27 (2025-04-30)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<p><strong>New Features</strong></p>
+<ul class="simple">
+<li><p>New LLM models like DeepSeek etc. are supported with ONNX INT4 AWQ quantization on Windows. Refer <a class="reference external" href="https://nvidia.github.io/TensorRT-Model-Optimizer/guides/0_support_matrix.html" rel="noopener noreferrer" target="_blank">Windows Support Matrix</a> for details about supported features and models.</p></li>
+<li><p>TensorRT Model Optimizer for Windows now supports ONNX INT8 and FP8 quantization (W8A8) of SAM2 and Whisper models. Check <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq" rel="noopener noreferrer" target="_blank">example scripts</a> for getting started with quantizing these models.</p></li>
+</ul>
+</section>
+<section id="id2">
+<h2>0.19 (2024-11-18)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
 <p><strong>New Features</strong></p>
 <ul class="simple">
 <li><p>This is the first official release of TensorRT Model Optimizer for Windows</p></li>

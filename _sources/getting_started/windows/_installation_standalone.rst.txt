@@ -4,7 +4,7 @@
 Install ModelOpt-Windows as a Standalone Toolkit
 ================================================
 
-The TensorRT Model Optimizer - Windows (ModelOpt-Windows) can be installed as a standalone toolkit for quantizing Large Language Models (LLMs). Below are the setup steps:
+The TensorRT Model Optimizer - Windows (ModelOpt-Windows) can be installed as a standalone toolkit for quantizing ONNX models. Below are the setup steps:
 
 **1. Setup Prerequisites**
 
@@ -40,7 +40,7 @@ This command installs ModelOpt-Windows and its ONNX module, along with the *onnx
 
 **4. Setup ONNX Runtime (ORT) for Calibration**
 
-The ONNX Post-Training Quantization (PTQ) process involves running the base model with user-supplied inputs, a process called calibration. The user-supplied model inputs are referred to as calibration data. To perform calibration, the base model must be run using a suitable ONNX Execution Provider (EP), such as *DmlExecutionProvider* (DirectML EP) or *CudaExecutionProvider* (CUDA EP). There are different ONNX Runtime packages for each EP:
+The ONNX Post-Training Quantization (PTQ) process involves running the base model with user-supplied inputs, a process called calibration. The user-supplied model inputs are referred to as calibration data. To perform calibration, the base model must be run using a suitable ONNX Execution Provider (EP), such as *DmlExecutionProvider* (DirectML EP) or *CUDAExecutionProvider* (CUDA EP). There are different ONNX Runtime packages for each EP:
 
 - *onnxruntime-directml* provides the DirectML EP.
 - *onnxruntime-gpu* provides the CUDA EP.
@@ -68,7 +68,7 @@ If you prefer to use the CUDA EP for calibration, uninstall the existing *onnxru
 
 **5. Setup GPU Acceleration Tool for Quantization**
 
-ModelOpt-Windows utilizes the `cupy-cuda12x <https://cupy.dev//>`_ tool for GPU acceleration during the INT4 ONNX quantization process if you have CUDA 12.x.
+By default, ModelOpt-Windows utilizes the `cupy-cuda12x <https://cupy.dev//>`_ tool for GPU acceleration during the INT4 ONNX quantization process. This is compatible with CUDA 12.x.
 
 **6. Verify Installation**
 
@@ -79,6 +79,10 @@ Ensure the following steps are verified:
             - *onnxruntime-directml* (DirectML EP)
             - *onnxruntime-gpu* (CUDA EP)
             - *onnxruntime* (CPU EP)
+      - **Onnx and Onnxruntime Import**: Ensure that following python command runs successfully.
+            .. code-block:: python
+
+                python -c "import onnx; import onnxruntime"
       - **Environment Variables**: For workflows using CUDA dependencies (e.g., CUDA EP-based calibration), ensure environment variables like *CUDA_PATH*, *CUDA_V12_4*, or *CUDA_V11_8* etc. are set correctly. Reopen the command-prompt if any environment variable is updated or newly created.
       - **ModelOpt-Windows Import Check**: Run the following command to ensure the installation is successful:
 

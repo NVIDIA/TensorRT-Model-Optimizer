@@ -168,7 +168,7 @@
 </tr>
 <tr class="row-even"><th class="stub"><p>INT8</p></th>
 <td><ul class="simple">
-<li><p>Per-channel INT8 Weights, Per-Tensor FP8 Activations</p></li>
+<li><p>Per-channel INT8 Weights, Per-Tensor INT8 Activations</p></li>
 <li><p>Uses Smooth Quant Algorithm</p></li>
 <li><p>GPUs: Ampere and Later</p></li>
 </ul>
@@ -237,22 +237,24 @@
 </tr>
 <tr class="row-even"><th class="stub"><p>FP8</p></th>
 <td><ul class="simple">
-<li><p>Per-Tensor FP8 Weight &amp; Activations</p></li>
+<li><p>Per-Tensor FP8 Weight &amp; Activations (PyTorch)</p></li>
+<li><p>Per-Tensor Activation and Per-Channel Weights quantization (ONNX)</p></li>
+<li><p>Uses Max calibration</p></li>
 <li><p>GPUs: Ada and Later</p></li>
 </ul>
 </td>
-<td><p>PyTorch*, ONNX*</p></td>
-<td><p>TensorRT*, TensorRT-LLM*</p></td>
+<td><p>PyTorch*, ONNX</p></td>
+<td><p>TensorRT*, TensorRT-LLM*, ORT-CUDA</p></td>
 </tr>
 <tr class="row-odd"><th class="stub"><p>INT8</p></th>
 <td><ul class="simple">
-<li><p>Per-channel INT8 Weights, Per-Tensor FP8 Activations</p></li>
-<li><p>Uses Smooth Quant Algorithm</p></li>
+<li><p>Per-Channel INT8 Weights, Per-Tensor INT8 Activations</p></li>
+<li><p>Uses Smooth Quant (PyTorch)*, Max calibration (ONNX)</p></li>
 <li><p>GPUs: Ada and Later</p></li>
 </ul>
 </td>
-<td><p>PyTorch*, ONNX*</p></td>
-<td><p>TensorRT*, TensorRT-LLM*</p></td>
+<td><p>PyTorch*, ONNX</p></td>
+<td><p>TensorRT*, TensorRT-LLM*, ORT-CUDA</p></td>
 </tr>
 </tbody>
 </table>
@@ -270,33 +272,117 @@
 <p>Please checkout the model support matrix <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer?tab=readme-ov-file#model-support-matrix" rel="noopener noreferrer" target="_blank">here</a>.</p>
 </div>
 <input class="tab-input" id="tab-set--1-input--2" name="tab-set--1" type="radio"><label class="tab-label" for="tab-set--1-input--2">Windows</label><div class="tab-content docutils container">
-<table class="docutils align-default">
+<blockquote>
+<div><table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Model</p></th>
-<th class="head"><p>ONNX INT4 AWQ</p></th>
+<th class="head"><p>ONNX INT4 AWQ (W4A16)</p></th>
+<th class="head"><p>ONNX INT8 Max (W8A8)</p></th>
+<th class="head"><p>ONNX FP8 Max (W8A8)</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td><p>Llama3.1-8B-Instruct</p></td>
 <td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
 </tr>
 <tr class="row-odd"><td><p>Phi3.5-mini-Instruct</p></td>
 <td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
 </tr>
 <tr class="row-even"><td><p>Mistral-7B-Instruct-v0.3</p></td>
 <td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
 </tr>
 <tr class="row-odd"><td><p>Llama3.2-3B-Instruct</p></td>
 <td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
 </tr>
 <tr class="row-even"><td><p>Gemma-2b-it</p></td>
 <td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p>Gemma-2-2b</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>Gemma-2-9b</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
 </tr>
 <tr class="row-odd"><td><p>Nemotron Mini 4B Instruct</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>Qwen2.5-7B-Instruct</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p>DeepSeek-R1-Distill-Llama-8B</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>DeepSeek-R1-Distil-Qwen-1.5B</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p>DeepSeek-R1-Distil-Qwen-7B</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>DeepSeek-R1-Distill-Qwen-14B</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p>Mistral-NeMo-Minitron-2B-128k-Instruct</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>Mistral-NeMo-Minitron-4B-128k-Instruct</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-odd"><td><p>Mistral-NeMo-Minitron-8B-128k-Instruct</p></td>
+<td><p>Yes</p></td>
+<td><p>No</p></td>
+<td><p>No</p></td>
+</tr>
+<tr class="row-even"><td><p>whisper-large</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
+<td><p>Yes</p></td>
+</tr>
+<tr class="row-odd"><td><p>sam2-hiera-large</p></td>
+<td><p>No</p></td>
+<td><p>Yes</p></td>
 <td><p>Yes</p></td>
 </tr>
 </tbody>
 </table>
+</div></blockquote>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">ONNX</span> <span class="pre">INT8</span> <span class="pre">Max</span></code> means INT8 (W8A8) quantization of ONNX model using Max calibration. Similar holds true for the term <code class="docutils literal notranslate"><span class="pre">ONNX</span> <span class="pre">FP8</span> <span class="pre">Max</span></code>.</p></li>
+<li><p>The LLMs in above table are <a class="reference external" href="https://github.com/microsoft/onnxruntime-genai/" rel="noopener noreferrer" target="_blank">GenAI</a> built LLMs unless specified otherwise.</p></li>
+<li><p>Check <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/windows/onnx_ptq/" rel="noopener noreferrer" target="_blank">examples</a> for specific instructions and scripts.</p></li>
+</ul>
+</div>
 </div>
 </div>
 </section>

@@ -97,12 +97,14 @@
 <li class="toctree-l1"><a class="reference internal" href="1_contact.html">Contact us</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">FAQs</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#modelopt-windows">ModelOpt-Windows</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-quantization">1. Why is awq-scale search taking too long or stuck at 0% during ONNX quantization?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-int4-quantization">1. Why is awq-scale search taking too long or stuck at 0% during ONNX INT4 quantization?</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#why-is-cuda-ep-not-found-error-showing-during-onnx-quantization">2. Why is “CUDA EP not found” error showing during ONNX quantization?</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#why-does-ort-session-creation-fail-for-cuda-ep-despite-having-cuda-toolkit-and-cudnn">3. Why does ORT-session creation fail for CUDA-EP despite having CUDA toolkit and cuDNN?</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#why-quantized-model-s-size-increases-on-re-runs">4. Why quantized model’s size increases on re-runs?</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue">5. Running quantized ONNX model on DirectML backend gives following error. What can be the issue?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-int4-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue">5. Running INT4 quantized ONNX model on DirectML backend gives following error. What can be the issue?</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#running-int4-quantized-onnx-model-on-directml-backend-gives-following-kind-of-error-what-can-be-the-issue">6. Running INT4 quantized ONNX model on DirectML backend gives following kind of error. What can be the issue?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-8-bit-quantized-onnx-model-with-ort-dml-gives-onnxruntime-error-about-using-8-bit-data-type-e-g-int8-fp8-what-can-be-the-issue">7. Running 8-bit quantized ONNX model with ORT-DML gives onnxruntime error about using 8-bit data-type (e.g. INT8/FP8). What can be the issue?</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#how-to-resolve-onnxruntime-error-about-invalid-use-of-fp8-type-in-quantizelinear-dequantizelinear-node">8. How to resolve onnxruntime error about invalid use of FP8 type in QuantizeLinear / DeQuantizeLinear node?</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#nas-pruning">NAS/Pruning</a><ul>
@@ -147,8 +149,8 @@
 <section id="modelopt-windows">
 <span id="faq-modelopt-windows"></span><h2>ModelOpt-Windows<a class="headerlink" href="#modelopt-windows" title="Link to this heading"></a></h2>
 <p><strong>ONNX PTQ</strong></p>
-<section id="why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-quantization">
-<h3>1. Why is awq-scale search taking too long or stuck at 0% during ONNX quantization?<a class="headerlink" href="#why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-quantization" title="Link to this heading"></a></h3>
+<section id="why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-int4-quantization">
+<h3>1. Why is awq-scale search taking too long or stuck at 0% during ONNX INT4 quantization?<a class="headerlink" href="#why-is-awq-scale-search-taking-too-long-or-stuck-at-0-during-onnx-int4-quantization" title="Link to this heading"></a></h3>
 <p>Awq-scale search should complete in minutes with NVIDIA GPU acceleration. If stalled:</p>
 <ul class="simple">
 <li><p><strong>GPU acceleration may be disabled.</strong> If CUDA 12.x is not available, quantization will fall back to slower <code class="docutils literal notranslate"><span class="pre">numpy</span></code> implementation instead of <code class="docutils literal notranslate"><span class="pre">cupy-cuda12x</span></code>.</p></li>
@@ -176,12 +178,12 @@
 <h3>4. Why quantized model’s size increases on re-runs?<a class="headerlink" href="#why-quantized-model-s-size-increases-on-re-runs" title="Link to this heading"></a></h3>
 <p>Make sure that the output directory is clean before each quantization run otherwise, existing quantized model file may get appended in each run leading to increase in model’s size and possibly corrupting it.</p>
 </section>
-<section id="running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue">
-<h3>5. Running quantized ONNX model on DirectML backend gives following error. What can be the issue?<a class="headerlink" href="#running-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue" title="Link to this heading"></a></h3>
+<section id="running-int4-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue">
+<h3>5. Running INT4 quantized ONNX model on DirectML backend gives following error. What can be the issue?<a class="headerlink" href="#running-int4-quantized-onnx-model-on-directml-backend-gives-following-error-what-can-be-the-issue" title="Link to this heading"></a></h3>
 <blockquote>
 <div><p><cite>Error Unrecognized attribute: block_size for operator DequantizeLinear</cite></p>
 </div></blockquote>
-<p>ModelOpt-Windows uses ONNX’s <a class="reference external" href="https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html" rel="noopener noreferrer" target="_blank">DequantizeLinear</a> (DQ) nodes. The <em>block_size</em> attribute was added in DeQuantizeLinear node in Opset-21. Make sure that quantized model’s opset version is 21 or higher. Refer <a class="reference internal" href="../guides/windows_guides/_ONNX_PTQ_guide.html#apply-onnx-ptq"><span class="std std-ref">Apply Post Training Quantization (PTQ)</span></a> for details.</p>
+<p>ModelOpt-Windows uses ONNX’s <a class="reference external" href="https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html" rel="noopener noreferrer" target="_blank">DequantizeLinear</a> (DQ) nodes. The int4 data-type support in DeQuantizeLinear node came in opset-21. And, <em>block_size</em> attribute was added in DeQuantizeLinear node in Opset-21. Make sure that quantized model’s opset version is 21 or higher. Refer <a class="reference internal" href="../guides/windows_guides/_ONNX_PTQ_guide.html#apply-onnx-ptq"><span class="std std-ref">Apply Post Training Quantization (PTQ)</span></a> for details.</p>
 </section>
 <section id="running-int4-quantized-onnx-model-on-directml-backend-gives-following-kind-of-error-what-can-be-the-issue">
 <h3>6. Running INT4 quantized ONNX model on DirectML backend gives following kind of error. What can be the issue?<a class="headerlink" href="#running-int4-quantized-onnx-model-on-directml-backend-gives-following-kind-of-error-what-can-be-the-issue" title="Link to this heading"></a></h3>
@@ -189,6 +191,14 @@
 <div><p><cite>Error: Type ‘tensor(int4)’ of input parameter (onnx::MatMul_6508_i4) of operator (DequantizeLinear) in node (onnx::MatMul_6508_DequantizeLinear) is invalid.</cite></p>
 </div></blockquote>
 <p>One possible reason for above error is that INT4 quantized ONNX model’s opset version (default or onnx domain) is less than 21. Ensure the INT4 quantized model’s opset version is 21 or higher since INT4 data-type support in DeQuantizeLinear ONNX node came in opset-21.</p>
+</section>
+<section id="running-8-bit-quantized-onnx-model-with-ort-dml-gives-onnxruntime-error-about-using-8-bit-data-type-e-g-int8-fp8-what-can-be-the-issue">
+<h3>7. Running 8-bit quantized ONNX model with ORT-DML gives onnxruntime error about using 8-bit data-type (e.g. INT8/FP8). What can be the issue?<a class="headerlink" href="#running-8-bit-quantized-onnx-model-with-ort-dml-gives-onnxruntime-error-about-using-8-bit-data-type-e-g-int8-fp8-what-can-be-the-issue" title="Link to this heading"></a></h3>
+<p>Currently, DirectML backend (ORT-DML) doesn’t support 8-bit precision. So, it expectedly complains about 8-bit data-type. Try using ORT-CUDA or other 8-bit compatible backend.</p>
+</section>
+<section id="how-to-resolve-onnxruntime-error-about-invalid-use-of-fp8-type-in-quantizelinear-dequantizelinear-node">
+<h3>8. How to resolve onnxruntime error about invalid use of FP8 type in QuantizeLinear / DeQuantizeLinear node?<a class="headerlink" href="#how-to-resolve-onnxruntime-error-about-invalid-use-of-fp8-type-in-quantizelinear-dequantizelinear-node" title="Link to this heading"></a></h3>
+<p>The FP8 type support in QuantizeLinear / DeQuantizeLinear node came with Opset-19. So, ensure that opset of ONNX model is 19+.</p>
 </section>
 </section>
 <section id="nas-pruning">
