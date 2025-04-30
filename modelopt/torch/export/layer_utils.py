@@ -331,6 +331,7 @@ def is_moe(module: nn.Module) -> bool:
         "PhimoeSparseMoeBlock".lower(),
         "DeepseekMoE".lower(),
         "Qwen2MoeSparseMoeBlock".lower(),
+        "Qwen3MoeSparseMoeBlock".lower(),
     ]
 
 
