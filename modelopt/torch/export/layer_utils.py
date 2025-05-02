@@ -1126,14 +1126,16 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
         config.shared_expert = build_mlp_config(
             module.shared_experts, decoder_type, merge_gate_fc=True
         )
-    elif decoder_type == "qwen":
+    elif decoder_type == "qwen": # qwen2_moe, qwen3_moe
         config.router = build_linear_config(module.gate, LINEAR_ROW)
-        preprocess_linear_fusion([module.shared_expert.gate_proj, module.shared_expert.up_proj])
-        config.shared_expert = build_mlp_config(
-            module.shared_expert, decoder_type, merge_gate_fc=True
-        )
-        config.shared_expert_gate = build_linear_config(module.shared_expert_gate, LINEAR_ROW)
-        config.shared_expert_gate.tp = False
+        if hasattr(module, "shared_expert"):
+            # qwen2_moe only
+            preprocess_linear_fusion([module.shared_expert.gate_proj, module.shared_expert.up_proj])
+            config.shared_expert = build_mlp_config(
+                module.shared_expert, decoder_type, merge_gate_fc=True
+            )
+            config.shared_expert_gate = build_linear_config(module.shared_expert_gate, LINEAR_ROW)
+            config.shared_expert_gate.tp = False
     else:
         raise NotImplementedError(f"{decoder_type} not supported")
 
