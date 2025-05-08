@@ -37,6 +37,7 @@ from ...qtensor import (
     BaseQuantizedTensor,
     FP8QTensor,
     INT4QTensor,
+    INT8QTensor,
     NF4QTensor,
     NVFP4QTensor,
     QTensorWrapper,
@@ -547,6 +548,7 @@ class TensorQuantizer(nn.Module):
             (self._num_bits == 4 and self._block_sizes)  # NF4 and Int4
             or (self._num_bits == (2, 1) and self._block_sizes)  # NVFP4
             or (self._num_bits == (4, 3))  # FP8
+            or (self._num_bits == 8)  # Int8
         ):
             return True
         return False
@@ -563,6 +565,11 @@ class TensorQuantizer(nn.Module):
                 axis=self._axis,
                 block_sizes=self._block_sizes,
                 scales=self.amax / 448.0 if self.amax is not None else None,
+            )
+            buffer_to_register["_scale"] = _scale
+        elif self._num_bits == 8:
+            outputs, _scale = INT8QTensor.quantize(
+                inputs, axis=self._axis, block_sizes=self._block_sizes
             )
             buffer_to_register["_scale"] = _scale
         elif self._block_sizes.get("scale_bits", 0) == 8 and self._block_sizes.get(

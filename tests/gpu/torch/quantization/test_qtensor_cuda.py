@@ -146,6 +146,28 @@ class TestQTensor:
                     dtype=torch.bfloat16,
                 ),
             ),
+            # INT8 per channel quantization
+            (
+                8,
+                None,
+                0,
+                torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 0.9922, 1.9844, 2.9844, 3.9688, 4.9688, 5.9688, 7.0000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
+            # INT8 2D block quantization
+            (
+                8,
+                {-1: 2, -2: 2},
+                None,
+                torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
+                torch.tensor(
+                    [[0.0000, 1.0234, 1.9844, 2.9844], [4.0000, 5.0000, 5.9688, 7.0000]],
+                    dtype=torch.bfloat16,
+                ),
+            ),
             # FP8, 2D block scales
             (
                 (4, 3),

@@ -20,4 +20,5 @@ from modelopt.core.torch.quantization.qtensor.nvfp4_tensor import *
 from .base_qtensor import *
 from .fp8_tensor import *
 from .int4_tensor import *
+from .int8_tensor import *
 from .nf4_tensor import *
