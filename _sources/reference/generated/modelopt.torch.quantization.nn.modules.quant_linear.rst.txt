@@ -33,6 +33,7 @@ quant\_linear
    
       Linear
       QuantLinear
+      SVDQuantLinear
    
    
 

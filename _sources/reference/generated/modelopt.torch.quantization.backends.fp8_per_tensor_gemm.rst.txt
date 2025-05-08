@@ -1,0 +1,6 @@
+modelopt.torch.quantization.backends.fp8\_per\_tensor\_gemm
+===========================================================
+
+.. currentmodule:: modelopt.torch.quantization.backends
+
+.. autofunction:: fp8_per_tensor_gemm

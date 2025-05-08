@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.27.1</title>
+  <title>utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -170,11 +170,11 @@
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids" title="modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_default_attention_mask_and_position_ids</span></code></a></p></td>
-<td><p>Compute default attention_mask ans position_ids given input_ids.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.calibrate_frequent_vocab" title="modelopt.torch.speculative.utils.calibrate_frequent_vocab"><code class="xref py py-obj docutils literal notranslate"><span class="pre">calibrate_frequent_vocab</span></code></a></p></td>
+<td><p>Given a calibration text, find the most common vocabs and return the mapping.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.right_padding" title="modelopt.torch.speculative.utils.right_padding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">right_padding</span></code></a></p></td>
-<td><p>Pad zeros to the right so that the padded_input_ids is a multiple of tp.</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids" title="modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_default_attention_mask_and_position_ids</span></code></a></p></td>
+<td><p>Compute default attention_mask ans position_ids given input_ids.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.speculative.utils.tree_decode" title="modelopt.torch.speculative.utils.tree_decode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">tree_decode</span></code></a></p></td>
 <td><p>Decode tokens using the tree.</p></td>
@@ -191,8 +191,16 @@ self.validate is the main function to validate the AR given a prompt or input_id
 Note: currently it only supports TP.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation.__init__">
-<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tp</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.__init__" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.__init__" title="Link to this definition"></a></dt>
 <dd><p>Init function to take in the model and tokenizer.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.AcceptanceRateValidation.check_data_consistancy_across_ranks">
+<span class="sig-name descname"><span class="pre">check_data_consistancy_across_ranks</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.check_data_consistancy_across_ranks" title="Link to this definition"></a></dt>
+<dd><p>This function checks the data consistancy across all ranks in the group.</p>
+<p>Use rank 0 data as the golden set to broadcast to all ranks.
+Each rank will then compare to this data and through error if different.</p>
 </dd></dl>
 
 <dl class="py method">
@@ -267,27 +275,18 @@ hidden_size (int): The size of the hidden layers in the block.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.calibrate_frequent_vocab">
+<span class="sig-name descname"><span class="pre">calibrate_frequent_vocab</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tokenizer</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">text</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_vocab_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">output_file</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.calibrate_frequent_vocab" title="Link to this definition"></a></dt>
+<dd><p>Given a calibration text, find the most common vocabs and return the mapping.</p>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids">
 <span class="sig-name descname"><span class="pre">get_default_attention_mask_and_position_ids</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids" title="Link to this definition"></a></dt>
 <dd><p>Compute default attention_mask ans position_ids given input_ids.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><p><strong>input_ids</strong> (<em>Tensor</em>) – </p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.speculative.utils.right_padding">
-<span class="sig-name descname"><span class="pre">right_padding</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tp</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">hidden_states</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.right_padding" title="Link to this definition"></a></dt>
-<dd><p>Pad zeros to the right so that the padded_input_ids is a multiple of tp.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>input_ids</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>tp</strong> (<em>int</em>) – </p></li>
-<li><p><strong>hidden_states</strong> (<em>Tensor</em>) – </p></li>
-</ul>
 </dd>
 </dl>
 </dd></dl>

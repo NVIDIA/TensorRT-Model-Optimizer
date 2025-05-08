@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Install ModelOpt-Windows as a Standalone Toolkit &mdash; Model Optimizer 0.27.1</title>
+  <title>Install ModelOpt-Windows as a Standalone Toolkit &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -156,7 +156,7 @@ $<span class="w"> </span>.<span class="se">\m</span>yEnv<span class="se">\S</spa
 <p>In the newly created virtual environment, none of the required packages (e.g., onnx, onnxruntime, onnxruntime-directml, onnxruntime-gpu, nvidia-modelopt) will be pre-installed.</p>
 <p><strong>3.  Install ModelOpt-Windows Wheel</strong></p>
 <p>To install the ModelOpt-Windows wheel, run the following command:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;nvidia-modelopt[onnx]&quot;</span><span class="w"> </span>--extra-index-url<span class="w"> </span>https://pypi.nvidia.com
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;nvidia-modelopt[onnx]&quot;</span>
 </pre></div>
 </div>
 <p>This command installs ModelOpt-Windows and its ONNX module, along with the <em>onnxruntime-directml</em> (v1.20.0) package. If ModelOpt-Windows is installed without the additional parameter, only the bare minimum dependencies will be installed, without the relevant module and dependencies.</p>

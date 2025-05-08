@@ -12,6 +12,9 @@ quantization
    :recursive:
 
 
+   modelopt.torch.quantization.backends
+
+
    modelopt.torch.quantization.calib
 
 

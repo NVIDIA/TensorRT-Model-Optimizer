@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>perf &mdash; Model Optimizer 0.27.1</title>
+  <title>perf &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -169,6 +169,9 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.perf.Timer" title="modelopt.torch.utils.perf.Timer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Timer</span></code></a></p></td>
 <td><p>A Timer that can be used as a decorator as well.</p></td>
 </tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.perf.AccumulatingTimer" title="modelopt.torch.utils.perf.AccumulatingTimer"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AccumulatingTimer</span></code></a></p></td>
+<td><p>A timer that accumulates time across multiple calls and works for both CUDA and non-CUDA operations.</p></td>
+</tr>
 </tbody>
 </table>
 <p class="rubric">Functions</p>
@@ -185,6 +188,73 @@
 </tr>
 </tbody>
 </table>
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">AccumulatingTimer</span></span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ContextDecorator</span></code></p>
+<p>A timer that accumulates time across multiple calls and works for both CUDA and non-CUDA operations.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">''</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize AccumulatingTimer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>name</strong> – Name of the timer for reporting</p></li>
+<li><p><strong>use_cuda</strong> – Whether to synchronize CUDA before timing</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer.get_call_count">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_call_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer.get_call_count" title="Link to this definition"></a></dt>
+<dd><p>Get the number of calls for a timer.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer.get_total_time">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_total_time</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer.get_total_time" title="Link to this definition"></a></dt>
+<dd><p>Get the total accumulated time for a timer in milliseconds.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer.report">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">report</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer.report" title="Link to this definition"></a></dt>
+<dd><p>Report the accumulated times and call counts.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer.reset">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">reset</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer.reset" title="Link to this definition"></a></dt>
+<dd><p>Reset the accumulated times and call counts.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer.start">
+<span class="sig-name descname"><span class="pre">start</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer.start" title="Link to this definition"></a></dt>
+<dd><p>Start the timer.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>None</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.perf.AccumulatingTimer.stop">
+<span class="sig-name descname"><span class="pre">stop</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.perf.AccumulatingTimer.stop" title="Link to this definition"></a></dt>
+<dd><p>End the timer and return the elapsed time in milliseconds.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>float</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py class">
 <dt class="sig sig-object py" id="modelopt.torch.utils.perf.Timer">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">Timer</span></span><a class="headerlink" href="#modelopt.torch.utils.perf.Timer" title="Link to this definition"></a></dt>

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>conversion &mdash; Model Optimizer 0.27.1</title>
+  <title>conversion &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -221,7 +221,7 @@ recall the order of modes!</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em>) – </p></li>
+<li><p><strong>mode</strong> (<a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em>) – </p></li>
 <li><p><strong>config</strong> (<a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><em>ModeloptBaseConfig</em></a>) – </p></li>
 <li><p><strong>metadata</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
 </ul>
@@ -238,7 +238,7 @@ recall the order of modes!</p>
 <dd><p>Check if the proposed mode is compatible with the current state.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em>) – </p>
+<dd class="field-odd"><p><strong>mode</strong> (<a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em>) – </p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -253,7 +253,7 @@ recall the order of modes!</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em>) – </p></li>
+<li><p><strong>mode</strong> (<a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em>) – </p></li>
 <li><p><strong>config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
 </ul>
 </dd>
@@ -312,7 +312,7 @@ set to True but the module with state is not the root module.</p>
 
 <dl class="py property">
 <dt class="sig sig-object py" id="modelopt.torch.opt.conversion.ModeloptStateManager.last_mode">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">last_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">_ModeDescriptor</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.last_mode" title="Link to this definition"></a></dt>
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">last_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><span class="pre">ModeDescriptor</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.opt.conversion.ModeloptStateManager.last_mode" title="Link to this definition"></a></dt>
 <dd><p>Return the last mode applied to the model (last stored mode).</p>
 </dd></dl>
 
@@ -339,7 +339,7 @@ set to True but the module with state is not the root module.</p>
 <dd><p>Yield the mode together with the full config and metadata from the state.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>Iterator</em>[<em>tuple</em>[<em>_ModeDescriptor</em>, <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><em>ModeloptBaseConfig</em></a>, <em>dict</em>[<em>str</em>, <em>Any</em>]]]</p>
+<dd class="field-odd"><p><em>Iterator</em>[<em>tuple</em>[<a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a>, <a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><em>ModeloptBaseConfig</em></a>, <em>dict</em>[<em>str</em>, <em>Any</em>]]]</p>
 </dd>
 </dl>
 </dd></dl>
@@ -424,7 +424,7 @@ set to True but the module with state is not the root module.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.opt.conversion.apply_mode">
-<span class="sig-name descname"><span class="pre">apply_mode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">registry</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.apply_mode" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">apply_mode</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">registry</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">init_state</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mode_kwargs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.conversion.apply_mode" title="Link to this definition"></a></dt>
 <dd><p>Apply the provided modes the model, record the changes, and return the model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -433,9 +433,9 @@ set to True but the module with state is not the root module.</p>
 tuple must be of the form <code class="docutils literal notranslate"><span class="pre">(model_cls,)</span></code> or <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args)</span></code> or
 <code class="docutils literal notranslate"><span class="pre">(model_cls,</span> <span class="pre">args,</span> <span class="pre">kwargs)</span></code>. Model will be initialized as
 <code class="docutils literal notranslate"><span class="pre">model_cls(*args,</span> <span class="pre">**kwargs)</span></code>.</p></li>
-<li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em><em> | </em><em>list</em><em>[</em><em>_ModeDescriptor</em><em> | </em><em>str</em><em>] </em><em>| </em><em>list</em><em>[</em><em>tuple</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em>) – A mode, a list of modes or a list of tuples containing the mode and its config. The
+<li><p><strong>mode</strong> (<a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em><em>] </em><em>| </em><em>list</em><em>[</em><em>tuple</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em>) – A mode, a list of modes or a list of tuples containing the mode and its config. The
 mode may be specified as a string or as the actual
-<code class="xref py py-class docutils literal notranslate"><span class="pre">_ModeDescriptor</span></code> class such as
+<a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModeDescriptor</span></code></a> class such as
 <code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizeModeDescriptor</span></code> class.</p></li>
 <li><p><strong>registry</strong> (<em>_ModeRegistryCls</em><em> | </em><em>None</em>) – An optional mode registry from which to retrieve the mode. If not provided, all
 registries will be searched.</p></li>
@@ -443,6 +443,11 @@ registries will be searched.</p></li>
 not provided, it will be inferred from the model. This flag can be used to enforce a
 certain behavior. For example, for <code class="docutils literal notranslate"><span class="pre">init_state=True</span></code> the state manager will raise an
 error if the model already contains state.</p></li>
+<li><p><strong>mode_kwargs</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>] </em><em>| </em><em>list</em><em>[</em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>] </em><em>| </em><em>None</em>) – Optional keyword arguments for mode conversion. Can be a single dictionary
+(applied to all modes) or a list of dictionaries (one per mode). These arguments
+are passed to each mode’s convert entrypoint but are not saved in modelopt state.
+This is useful for passing non-serializable objects (like custom functions) that aren’t
+needed when restoring the model.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

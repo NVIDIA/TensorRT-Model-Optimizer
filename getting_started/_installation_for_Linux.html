@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installation for Linux &mdash; Model Optimizer 0.27.1</title>
+  <title>Installation for Linux &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -154,10 +154,10 @@
 <td><p>&gt;=12.0</p></td>
 </tr>
 <tr class="row-odd"><td><p>PyTorch (Optional)</p></td>
-<td><p>&gt;=2.2</p></td>
+<td><p>&gt;=2.4</p></td>
 </tr>
 <tr class="row-even"><td><p>TensorRT-LLM (Optional)</p></td>
-<td><p>0.17</p></td>
+<td><p>0.18</p></td>
 </tr>
 <tr class="row-odd"><td><p>ONNX Runtime (Optional)</p></td>
 <td><p>1.20 (Python&gt;=3.10)</p></td>
@@ -227,7 +227,7 @@ dependencies before use.</p>
 optional dependencies pre-installed.
 If you use other suggested docker images, ModelOpt is pre-installed with some of the below optional dependencies.
 Make sure to upgrade to the latest version of ModelOpt (with appropriate optional dependencies you need) using pip as shown below.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;nvidia-modelopt[all]&quot;</span><span class="w"> </span>-U<span class="w"> </span>--extra-index-url<span class="w"> </span>https://pypi.nvidia.com
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;nvidia-modelopt[all]&quot;</span>
 </pre></div>
 </div>
 <p>If you want to install only partial dependencies, please replace <code class="docutils literal notranslate"><span class="pre">[all]</span></code> with the desired

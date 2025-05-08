@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.27.1</title>
+  <title>utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -101,6 +101,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.backends.html">backends</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
@@ -180,20 +181,20 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.is_quantized_layer_with_weight" title="modelopt.torch.quantization.utils.is_quantized_layer_with_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantized_layer_with_weight</span></code></a></p></td>
 <td><p>Check if a module is quantized with weights.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.is_quantized_column_parallel_linear" title="modelopt.torch.quantization.utils.is_quantized_column_parallel_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantized_column_parallel_linear</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.is_quantized_linear" title="modelopt.torch.quantization.utils.is_quantized_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantized_linear</span></code></a></p></td>
+<td><p>Check if a module is a quantized linear module.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.is_quantized_column_parallel_linear" title="modelopt.torch.quantization.utils.is_quantized_column_parallel_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantized_column_parallel_linear</span></code></a></p></td>
 <td><p>Check if a module is a quantized column parallel linear module.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.is_quantized_row_parallel_linear" title="modelopt.torch.quantization.utils.is_quantized_row_parallel_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantized_row_parallel_linear</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.is_quantized_row_parallel_linear" title="modelopt.torch.quantization.utils.is_quantized_row_parallel_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantized_row_parallel_linear</span></code></a></p></td>
 <td><p>Check if a module is a quantized row parallel linear module.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.replace_function" title="modelopt.torch.quantization.utils.replace_function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">replace_function</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.replace_function" title="modelopt.torch.quantization.utils.replace_function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">replace_function</span></code></a></p></td>
 <td><p>Replace a function with a new one within a context.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.export_torch_mode" title="modelopt.torch.quantization.utils.export_torch_mode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_torch_mode</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.export_torch_mode" title="modelopt.torch.quantization.utils.export_torch_mode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">export_torch_mode</span></code></a></p></td>
 <td><p>Context manager enabling the export mode.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.utils.get_parallel_state" title="modelopt.torch.quantization.utils.get_parallel_state"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_parallel_state</span></code></a></p></td>
-<td><p>Get the parallel state.</p></td>
 </tr>
 </tbody>
 </table>
@@ -224,24 +225,6 @@
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.utils.get_parallel_state">
-<span class="sig-name descname"><span class="pre">get_parallel_state</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.utils.get_parallel_state" title="Link to this definition"></a></dt>
-<dd><p>Get the parallel state.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> – Pytorch model.</p></li>
-<li><p><strong>name</strong> – The name of the submodule of the model to get the parallel state from. If None,
-the parallel state of the model is returned.</p></li>
-</ul>
-</dd>
-<dt class="field-even">Return type<span class="colon">:</span></dt>
-<dd class="field-even"><p><em>ParallelState</em></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.utils.is_quantized">
 <span class="sig-name descname"><span class="pre">is_quantized</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.utils.is_quantized" title="Link to this definition"></a></dt>
 <dd><p>Check if a module is quantized.</p>
@@ -257,6 +240,12 @@ the parallel state of the model is returned.</p></li>
 <dt class="sig sig-object py" id="modelopt.torch.quantization.utils.is_quantized_layer_with_weight">
 <span class="sig-name descname"><span class="pre">is_quantized_layer_with_weight</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.utils.is_quantized_layer_with_weight" title="Link to this definition"></a></dt>
 <dd><p>Check if a module is quantized with weights.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.utils.is_quantized_linear">
+<span class="sig-name descname"><span class="pre">is_quantized_linear</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.utils.is_quantized_linear" title="Link to this definition"></a></dt>
+<dd><p>Check if a module is a quantized linear module.</p>
 </dd></dl>
 
 <dl class="py function">

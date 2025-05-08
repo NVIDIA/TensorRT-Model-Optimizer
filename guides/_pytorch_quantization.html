@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PyTorch Quantization &mdash; Model Optimizer 0.27.1</title>
+  <title>PyTorch Quantization &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -81,8 +81,9 @@
 <li class="toctree-l3"><a class="reference internal" href="#optimal-partial-quantization-using-autoquantize-auto-quantize">Optimal Partial Quantization using AutoQuantize(<code class="docutils literal notranslate"><span class="pre">auto_quantize</span></code>)</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#advanced-topics">Advanced Topics</a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#tensorquantizer">TensorQuantizer</a></li>
-<li class="toctree-l4"><a class="reference internal" href="#customize-quantizer-config">Customize quantizer config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#customizing-quantizer-configuration">Customizing Quantizer Configuration</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#custom-quantized-module-and-quantizer-placement">Custom quantized module and quantizer placement</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#custom-calibration-algorithm">Custom calibration algorithm</a></li>
 <li class="toctree-l4"><a class="reference internal" href="#fast-evaluation">Fast evaluation</a></li>
 </ul>
 </li>
@@ -343,37 +344,82 @@ If the quantization parameters are not set explicitly, the quantizer will use th
 </pre></div>
 </div>
 </section>
-<section id="customize-quantizer-config">
-<span id="id1"></span><h3>Customize quantizer config<a class="headerlink" href="#customize-quantizer-config" title="Link to this heading"></a></h3>
-<p>ModelOpt inserts input quantizer, weight quantizer and output quantizer into common layers, but by default disables the output quantizer.
-Expert users who want to customize the default quantizer configuration can update the <code class="docutils literal notranslate"><span class="pre">config</span></code> dictionary provided to <code class="docutils literal notranslate"><span class="pre">mtq.quantize</span></code> using wildcard or filter function match.</p>
-<p>Here is an example of specifying a custom quantizer configuration to <code class="docutils literal notranslate"><span class="pre">mtq.quantize</span></code>:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Select quantization config</span>
+<section id="customizing-quantizer-configuration">
+<span id="customize-quantizer-config"></span><h3>Customizing Quantizer Configuration<a class="headerlink" href="#customizing-quantizer-configuration" title="Link to this heading"></a></h3>
+<p>ModelOpt inserts input quantizer, weight quantizer and output quantizer into Pytorch building blocks such as <code class="docutils literal notranslate"><span class="pre">nn.Linear</span></code>, <code class="docutils literal notranslate"><span class="pre">nn.Conv&lt;N&gt;d</span></code> layers.
+By default the output quantizer is disabled.</p>
+<p>The following examples demonstrate how to customize quantization behavior.</p>
+<section id="basic-configuration-modification">
+<h4>Basic Configuration Modification<a class="headerlink" href="#basic-configuration-modification" title="Link to this heading"></a></h4>
+<p>For debugging purposes or simple customizations, you can modify an existing configuration:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Create a copy of the default INT8 configuration</span>
 <span class="n">config</span> <span class="o">=</span> <span class="n">mtq</span><span class="o">.</span><span class="n">INT8_DEFAULT_CFG</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-<span class="n">config</span><span class="p">[</span><span class="s2">&quot;quant_cfg&quot;</span><span class="p">][</span><span class="s2">&quot;*.bmm.output_quantizer&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
-    <span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">True</span>
-<span class="p">}</span>  <span class="c1"># Enable output quantizer for bmm layer</span>
 
-<span class="c1"># Perform PTQ/QAT;</span>
-<span class="n">model</span> <span class="o">=</span> <span class="n">mtq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">forward_loop</span><span class="p">)</span>
+<span class="c1"># Disable input quantizers for all layers</span>
+<span class="n">config</span><span class="p">[</span><span class="s2">&quot;quant_cfg&quot;</span><span class="p">][</span><span class="s2">&quot;*input_quantizer&quot;</span><span class="p">][</span><span class="s2">&quot;enable&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+
+<span class="c1"># Disable all quantizers for layers matching the pattern &quot;layer1.*&quot;</span>
+<span class="n">config</span><span class="p">[</span><span class="s2">&quot;quant_cfg&quot;</span><span class="p">][</span><span class="s2">&quot;*layer1.*&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">}</span>
 </pre></div>
 </div>
 </section>
+<section id="advanced-configuration-creation">
+<h4>Advanced Configuration Creation<a class="headerlink" href="#advanced-configuration-creation" title="Link to this heading"></a></h4>
+<p>For exploring new quantization recipes, you can compose a completely new configuration. The example below creates a custom configuration with INT4 block-wise weight quantization and INT8 token-wise dynamic activation quantization:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># Custom configuration for INT4 block-wise weights and INT8 dynamic activations</span>
+<span class="n">MY_CUSTOM_CONFIG</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;quant_cfg&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="c1"># Configure weight quantizers with 4-bit precision and 128-element blocks</span>
+        <span class="s2">&quot;*weight_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;block_sizes&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span> <span class="mi">128</span><span class="p">},</span> <span class="s2">&quot;enable&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">},</span>
+
+        <span class="c1"># Configure input quantizers with 8-bit dynamic quantization</span>
+        <span class="s2">&quot;*input_quantizer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;dynamic&quot;</span><span class="p">,</span> <span class="s2">&quot;block_sizes&quot;</span><span class="p">:</span> <span class="p">{</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span> <span class="kc">None</span><span class="p">}},</span>
+
+        <span class="c1"># Include default disabled quantizer configurations</span>
+        <span class="o">**</span><span class="n">_default_disabled_quantizer_cfg</span><span class="p">,</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="s2">&quot;max&quot;</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For a detailed explanation of each configuration field, please refer to the source code in
+<code class="docutils literal notranslate"><span class="pre">modelopt/torch/quantization/config.py</span></code>.</p>
+</div>
+</section>
+</section>
 <section id="custom-quantized-module-and-quantizer-placement">
 <span id="custom-quantied-module"></span><h3>Custom quantized module and quantizer placement<a class="headerlink" href="#custom-quantized-module-and-quantizer-placement" title="Link to this heading"></a></h3>
-<p><code class="docutils literal notranslate"><span class="pre">modelopt.torch.quantization</span></code> has a default set of quantized modules (see <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.nn.modules.html#module-modelopt.torch.quantization.nn.modules" title="modelopt.torch.quantization.nn.modules"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.quantization.nn.modules</span></code></a> for a detailed list) and quantizer placement rules (input, output and weight quantizers). However, there might be cases where you want to define a custom quantized module and/or customize the quantizer placement.</p>
+<p><code class="docutils literal notranslate"><span class="pre">modelopt.torch.quantization</span></code> has a default set of quantized modules (see <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.nn.modules.html#module-modelopt.torch.quantization.nn.modules" title="modelopt.torch.quantization.nn.modules"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.quantization.nn.modules</span></code></a> for a detailed list) and quantizer placement rules (input, output and weight quantizers).
+However, there might be cases where you want to define a custom quantized module and/or customize the quantizer placement.</p>
 <p>ModelOpt provides a way to define custom quantized modules and register them with the quantization framework. This allows you to:</p>
 <ol class="arabic simple">
 <li><p>Handle unsupported modules, e.g., a subclassed Linear layer that require quantization.</p></li>
 <li><p>Customize the quantizer placement, e.g., placing the quantizer in special places like the KV Cache of an Attention layer.</p></li>
 </ol>
-<p>Here is an example of defining a custom quantized LayerNorm module:</p>
+<p>The custom quantized modules must have a <code class="docutils literal notranslate"><span class="pre">_setup</span></code> method which instantiates the quantizers that are called in the forward method.</p>
+<p>Here is an example of defining a custom quantized linear module:</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>ModelOpt assigns a <code class="docutils literal notranslate"><span class="pre">parallel_state</span></code> of type <a class="reference internal" href="../reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.ParallelState" title="modelopt.torch.utils.distributed.ParallelState"><code class="xref py py-class docutils literal notranslate"><span class="pre">ParallelState</span></code></a>
+to each module. The <code class="docutils literal notranslate"><span class="pre">parallel_state</span></code> of each module specifies its distributed parallelism such as <code class="docutils literal notranslate"><span class="pre">data_parallel_group</span></code> and <code class="docutils literal notranslate"><span class="pre">tensor_parallel_group</span></code>.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">parallel_state</span></code> groups are used to correctly synchronize the quantization parameters across different process groups during calibration.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">parallel_state</span></code> by default configures the default PyTorch distributed process group as the <code class="docutils literal notranslate"><span class="pre">data_parallel_group</span></code> - the specialized process groups such as <code class="docutils literal notranslate"><span class="pre">tensor_parallel_group</span></code> are
+set to <code class="docutils literal notranslate"><span class="pre">-1</span></code> which means this parallelism is not used.</p>
+<p>When working with distributed training or inference with specialized parallelism like tensor parallelism,
+you need to initialize the correct <code class="docutils literal notranslate"><span class="pre">parallel_state</span></code> in the <code class="docutils literal notranslate"><span class="pre">_setup</span></code> method. This will override the default <code class="docutils literal notranslate"><span class="pre">parallel_state</span></code>
+and use the correct parallel groups for that module. ModelOpt provides built-in support for common parallel libraries
+like Megatron-LM, APEX, FairScale etc, through plugin modules <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.plugins.html#module-modelopt.torch.quantization.plugins" title="modelopt.torch.quantization.plugins"><code class="xref py py-mod docutils literal notranslate"><span class="pre">plugins</span></code></a> that automatically handle
+the correct parallel state initialization.</p>
+</div>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.quantization.nn</span><span class="w"> </span><span class="kn">import</span> <span class="n">TensorQuantizer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.utils.distributed</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParallelState</span>
 
-
-<span class="k">class</span><span class="w"> </span><span class="nc">QuantLayerNorm</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">LayerNorm</span><span class="p">):</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">normalized_shape</span><span class="p">):</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">normalized_shape</span><span class="p">)</span>
+<span class="c1"># Quantized module for `CustomColumnParallelLinear`</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">QuantColumnParallelLinear</span><span class="p">(</span><span class="n">CustomColumnParallelLinear</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">in_features</span><span class="p">,</span> <span class="n">out_features</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">in_features</span><span class="p">,</span> <span class="n">out_features</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_setup</span><span class="p">()</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_setup</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -381,28 +427,75 @@ Expert users who want to customize the default quantizer configuration can updat
         <span class="bp">self</span><span class="o">.</span><span class="n">input_quantizer</span> <span class="o">=</span> <span class="n">TensorQuantizer</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">weight_quantizer</span> <span class="o">=</span> <span class="n">TensorQuantizer</span><span class="p">()</span>
 
+        <span class="c1"># Optional step for specialized distributed parallel training/inference</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parallel_state</span> <span class="o">=</span> <span class="n">ParallelState</span><span class="p">(</span>
+            <span class="n">data_parallel_group</span><span class="o">=</span><span class="n">data_parallel_group</span><span class="p">,</span> <span class="c1"># specify the data parallel group (user defined)</span>
+            <span class="n">tensor_parallel_group</span><span class="o">=</span><span class="n">tensor_parallel_group</span><span class="p">,</span> <span class="c1"># specify the tensor parallel group (user defined)</span>
+        <span class="p">)</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">input</span><span class="p">):</span>
         <span class="c1"># You can customize the quantizer placement anywhere in the forward method</span>
         <span class="nb">input</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_quantizer</span><span class="p">(</span><span class="nb">input</span><span class="p">)</span>
         <span class="n">weight</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">weight_quantizer</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">weight</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">F</span><span class="o">.</span><span class="n">layer_norm</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">normalized_shape</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">bias</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">eps</span><span class="p">)</span>
+        <span class="c1"># Call the unquantized forward method, for example</span>
+        <span class="k">return</span> <span class="n">custom_tensor_parallel_linear_func</span><span class="p">(</span><span class="nb">input</span><span class="p">,</span> <span class="n">weight</span><span class="p">,</span> <span class="n">bias</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>After defining the custom quantized module, you need to register this module so <code class="docutils literal notranslate"><span class="pre">mtq.quantize</span></code> API will automatically replace the original module with the quantized version.
-Note that the custom <code class="docutils literal notranslate"><span class="pre">QuantLayerNorm</span></code> must have a <code class="docutils literal notranslate"><span class="pre">_setup</span></code> method which instantiates the quantizer attributes that are called in the forward method.
 Here is the code to register the custom quantized module:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.quantization</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtq</span>
 
 <span class="c1"># Register the custom quantized module</span>
-<span class="n">mtq</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">original_cls</span><span class="o">=</span><span class="n">nn</span><span class="o">.</span><span class="n">LayerNorm</span><span class="p">,</span> <span class="n">quantized_cls</span><span class="o">=</span><span class="n">QuantLayerNorm</span><span class="p">)</span>
+<span class="n">mtq</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="n">original_cls</span><span class="o">=</span><span class="n">CustomColumnParallelLinear</span><span class="p">,</span> <span class="n">quantized_cls</span><span class="o">=</span><span class="n">QuantColumnParallelLinear</span><span class="p">)</span>
 
 <span class="c1"># Perform PTQ</span>
-<span class="c1"># nn.LayerNorm modules in the model will be replaced with the QuantLayerNorm module</span>
+<span class="c1"># CustomColumnParallelLinear modules in the model will be replaced with the QuantColumnParallelLinear module</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">mtq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">config</span><span class="p">,</span> <span class="n">forward_loop</span><span class="p">)</span>
 </pre></div>
 </div>
 <p>The quantization config might need to be customized if you define a custom quantized module. Please see
 <a class="reference internal" href="#customize-quantizer-config"><span class="std std-ref">customizing quantizer config</span></a> for more details.</p>
+</section>
+<section id="custom-calibration-algorithm">
+<span id="id1"></span><h3>Custom calibration algorithm<a class="headerlink" href="#custom-calibration-algorithm" title="Link to this heading"></a></h3>
+<p>ModelOpt provides a set of quantization calibration algorithms such as awq, smoothquant, and max calibration. However, there might be cases where you want to define a custom calibration algorithm for quantizing your model. You can do this by creating a custom calibration algorithm derived from <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor" title="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor"><code class="xref py py-mod docutils literal notranslate"><span class="pre">BaseCalibrateModeDescriptor</span></code></a> and registering to <code class="xref py py-mod docutils literal notranslate"><span class="pre">CalibrateModeRegistry</span></code>.
+Write a custom calibration class derived from <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor" title="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor"><code class="xref py py-mod docutils literal notranslate"><span class="pre">BaseCalibrateModeDescriptor</span></code></a> and it should define attributes such as <code class="docutils literal notranslate"><span class="pre">convert</span></code>, <code class="docutils literal notranslate"><span class="pre">config_class</span></code>, <code class="docutils literal notranslate"><span class="pre">restore</span></code> etc. Find more details on these functions and their arguments in <a class="reference internal" href="../reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor" title="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor"><code class="xref py py-mod docutils literal notranslate"><span class="pre">BaseCalibrateModeDescriptor</span></code></a> and <a class="reference internal" href="../reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><code class="xref py py-mod docutils literal notranslate"><span class="pre">ModeDescriptor</span></code></a>.</p>
+<p>Here is an example of creating custom calibration mode:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.opt.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModeloptField</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.quantization.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">QuantizeAlgorithmConfig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.torch.quantization.mode</span><span class="w"> </span><span class="kn">import</span> <span class="n">CalibrateModeRegistry</span><span class="p">,</span> <span class="n">BaseCalibrateModeDescriptor</span>
+<span class="c1"># custom configuration comprising of method name and</span>
+<span class="c1"># any other parameters required by custom calibration function</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CustomConfig</span><span class="p">(</span><span class="n">QuantizeAlgorithmConfig</span><span class="p">):</span>
+    <span class="n">method</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;custom_calib&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ModeloptField</span><span class="p">(</span><span class="s2">&quot;custom_calib&quot;</span><span class="p">)</span>
+    <span class="o">...</span>
+
+<span class="c1"># custom calibration mode class to register to base calibrator</span>
+<span class="nd">@CalibrateModeRegistry</span><span class="o">.</span><span class="n">register_mode</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">CustomCalibrateModeDescriptor</span><span class="p">(</span><span class="n">BaseCalibrateModeDescriptor</span><span class="p">):</span>
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">config_class</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">QuantizeAlgorithmConfig</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Specifies the config class.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">CustomConfig</span>
+
+    <span class="c1"># define attributes such as `convert`, `restore`, `update_for_save`</span>
+    <span class="c1"># see `BaseCalibrateModeDescriptor` for more details</span>
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ConvertEntrypoint</span><span class="p">:</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p>You can specify <code class="docutils literal notranslate"><span class="pre">custom_calib</span></code> as <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> in <code class="docutils literal notranslate"><span class="pre">quant_cfg</span></code> to use it. Here is an example of using a custom calibrator to quantize your model:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># create quantization configuration with &quot;custom_calib&quot; method</span>
+<span class="n">quant_cfg</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;quant_cfg&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;*weight_quantizer&#39;</span><span class="p">:</span> <span class="o">..</span><span class="p">},</span>
+    <span class="s1">&#39;algorithm&#39;</span><span class="p">:</span>  <span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s1">&#39;custom_calib&#39;</span><span class="p">},</span>
+<span class="p">}</span>
+
+
+<span class="n">model</span> <span class="o">=</span> <span class="n">mtq</span><span class="o">.</span><span class="n">quantize</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">quant_cfg</span><span class="p">,</span> <span class="n">forward_loop</span><span class="p">)</span>
+</pre></div>
+</div>
 </section>
 <section id="fast-evaluation">
 <h3>Fast evaluation<a class="headerlink" href="#fast-evaluation" title="Link to this heading"></a></h3>

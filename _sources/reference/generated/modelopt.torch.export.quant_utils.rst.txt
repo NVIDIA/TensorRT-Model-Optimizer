@@ -42,6 +42,7 @@ quant\_utils
       from_quantized_weight
       fuse_prequant_layernorm
       get_activation_scaling_factor
+      get_kv_cache_bias
       get_kv_cache_dtype
       get_kv_cache_scaling_factor
       get_prequant_scaling_factor

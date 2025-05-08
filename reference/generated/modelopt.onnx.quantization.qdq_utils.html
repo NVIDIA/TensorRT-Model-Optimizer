@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>qdq_utils &mdash; Model Optimizer 0.27.1</title>
+  <title>qdq_utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -162,53 +162,59 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.fp4qdq_to_2dq" title="modelopt.onnx.quantization.qdq_utils.fp4qdq_to_2dq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">fp4qdq_to_2dq</span></code></a></p></td>
 <td><p>Convert FP32/FP16 weights of the given ONNX model to FP4 weights and scaling factors.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.insert_dq_nodes" title="modelopt.onnx.quantization.qdq_utils.insert_dq_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">insert_dq_nodes</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.has_qdq_nodes" title="modelopt.onnx.quantization.qdq_utils.has_qdq_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">has_qdq_nodes</span></code></a></p></td>
+<td><p>Check if the onnx graph already has QDQ nodes.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.insert_dq_nodes" title="modelopt.onnx.quantization.qdq_utils.insert_dq_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">insert_dq_nodes</span></code></a></p></td>
 <td><p>Insert new initializers and DQ nodes into graph.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.insert_pre_quant_scale_nodes" title="modelopt.onnx.quantization.qdq_utils.insert_pre_quant_scale_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">insert_pre_quant_scale_nodes</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.insert_pre_quant_scale_nodes" title="modelopt.onnx.quantization.qdq_utils.insert_pre_quant_scale_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">insert_pre_quant_scale_nodes</span></code></a></p></td>
 <td><p>Insert new mul nodes into graph.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.insert_qdq_nodes" title="modelopt.onnx.quantization.qdq_utils.insert_qdq_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">insert_qdq_nodes</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.insert_qdq_nodes" title="modelopt.onnx.quantization.qdq_utils.insert_qdq_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">insert_qdq_nodes</span></code></a></p></td>
 <td><p>Insert scales and QDQ nodes into graph.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_awq_scale" title="modelopt.onnx.quantization.qdq_utils.make_gs_awq_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_awq_scale</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_awq_scale" title="modelopt.onnx.quantization.qdq_utils.make_gs_awq_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_awq_scale</span></code></a></p></td>
 <td><p>Create a GraphSurgeon scale tensor from the given numpy array.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_node" title="modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_node"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_dequantize_node</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_node" title="modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_node"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_dequantize_node</span></code></a></p></td>
 <td><p>Create a GraphSurgeon Dequantize node.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_output" title="modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_dequantize_output</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_output" title="modelopt.onnx.quantization.qdq_utils.make_gs_dequantize_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_dequantize_output</span></code></a></p></td>
 <td><p>Create a GraphSurgeon variable representing the output of a quantize node.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_node" title="modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_node"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_pre_quant_scale_node</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_node" title="modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_node"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_pre_quant_scale_node</span></code></a></p></td>
 <td><p>Create a GraphSurgeon Dequantize node.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_output" title="modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_pre_quant_scale_output</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_output" title="modelopt.onnx.quantization.qdq_utils.make_gs_pre_quant_scale_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_pre_quant_scale_output</span></code></a></p></td>
 <td><p>Create a GraphSurgeon variable representing the output of a quantize node.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_quantize_node" title="modelopt.onnx.quantization.qdq_utils.make_gs_quantize_node"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_quantize_node</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_quantize_node" title="modelopt.onnx.quantization.qdq_utils.make_gs_quantize_node"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_quantize_node</span></code></a></p></td>
 <td><p>Create a GraphSurgeon Quantize node.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_quantize_output" title="modelopt.onnx.quantization.qdq_utils.make_gs_quantize_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_quantize_output</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_quantize_output" title="modelopt.onnx.quantization.qdq_utils.make_gs_quantize_output"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_quantize_output</span></code></a></p></td>
 <td><p>Create a GraphSurgeon variable representing the output of a quantize node.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_quantized_weight" title="modelopt.onnx.quantization.qdq_utils.make_gs_quantized_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_quantized_weight</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_quantized_weight" title="modelopt.onnx.quantization.qdq_utils.make_gs_quantized_weight"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_quantized_weight</span></code></a></p></td>
 <td><p>Create a GraphSurgeon tensor from a quantized weight tensor.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_scale" title="modelopt.onnx.quantization.qdq_utils.make_gs_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_scale</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_scale" title="modelopt.onnx.quantization.qdq_utils.make_gs_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_scale</span></code></a></p></td>
 <td><p>Create a GraphSurgeon scale tensor from the given numpy array.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_zp" title="modelopt.onnx.quantization.qdq_utils.make_gs_zp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_zp</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.make_gs_zp" title="modelopt.onnx.quantization.qdq_utils.make_gs_zp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">make_gs_zp</span></code></a></p></td>
 <td><p>Create a GraphSurgeon zero-point tensor of all zeroes with the given shape.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.qdq_to_dq" title="modelopt.onnx.quantization.qdq_utils.qdq_to_dq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">qdq_to_dq</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.qdq_to_dq" title="modelopt.onnx.quantization.qdq_utils.qdq_to_dq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">qdq_to_dq</span></code></a></p></td>
 <td><p>Convert FP32/FP16 weights of the given ONNX model to INT8/FP8 weights.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.quantize_weights_to_mxfp8" title="modelopt.onnx.quantization.qdq_utils.quantize_weights_to_mxfp8"><code class="xref py py-obj docutils literal notranslate"><span class="pre">quantize_weights_to_mxfp8</span></code></a></p></td>
+<td><p>Converts the weights to FP8 precision using MXFP8 quantization.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.replace_fp4qdq_with_2dq" title="modelopt.onnx.quantization.qdq_utils.replace_fp4qdq_with_2dq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">replace_fp4qdq_with_2dq</span></code></a></p></td>
 <td><p>Replaces the given node in the ONNX graph with a subgraph consisting of two DequantizeLinear nodes.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.replace_scale_values" title="modelopt.onnx.quantization.qdq_utils.replace_scale_values"><code class="xref py py-obj docutils literal notranslate"><span class="pre">replace_scale_values</span></code></a></p></td>
-<td><p>Replaces the scales values from calibration cache.</p></td>
+<td><p>Replace scale values in the graph with values from calibration cache.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.qdq_utils.use_trt_qdq_ops" title="modelopt.onnx.quantization.qdq_utils.use_trt_qdq_ops"><code class="xref py py-obj docutils literal notranslate"><span class="pre">use_trt_qdq_ops</span></code></a></p></td>
 <td><p>Globally set node names to TRT custom names.</p></td>
@@ -217,19 +223,33 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.qdq_utils.fp4qdq_to_2dq">
-<span class="sig-name descname"><span class="pre">fp4qdq_to_2dq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.qdq_utils.fp4qdq_to_2dq" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">fp4qdq_to_2dq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.qdq_utils.fp4qdq_to_2dq" title="Link to this definition"></a></dt>
 <dd><p>Convert FP32/FP16 weights of the given ONNX model to FP4 weights and scaling factors.</p>
 <p>TRT_FP4QDQ nodes will get removed from the weights and have two DQ nodes with those converted FP4
 weights and scaling factors in the output model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>onnx_model</strong> (<em>ModelProto</em>) – ONNX model protobuf.</p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>onnx_model</strong> (<em>ModelProto</em>) – ONNX model protobuf.</p></li>
+<li><p><strong>verbose</strong> (<em>bool</em>) – </p></li>
+</ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>ONNX model protobuf with DQ nodes for weights and DynQ + DQ nodes for activations.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>ModelProto</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.qdq_utils.has_qdq_nodes">
+<span class="sig-name descname"><span class="pre">has_qdq_nodes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.qdq_utils.has_qdq_nodes" title="Link to this definition"></a></dt>
+<dd><p>Check if the onnx graph already has QDQ nodes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>onnx_model</strong> (<em>ModelProto</em>) – </p>
 </dd>
 </dl>
 </dd></dl>
@@ -407,7 +427,7 @@ weights and scaling factors in the output model.</p>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>name</strong> (<em>str</em>) – </p></li>
 <li><p><strong>shape</strong> (<em>Sequence</em><em>[</em><em>int</em><em>]</em>) – </p></li>
-<li><p><strong>dtype</strong> (<em>&lt;google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper object at 0x7f628a9ec230&gt;</em>) – </p></li>
+<li><p><strong>dtype</strong> (<em>&lt;google.protobuf.internal.enum_type_wrapper.EnumTypeWrapper object at 0x7f51263fd310&gt;</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -472,19 +492,48 @@ weights and scaling factors in the output model.</p>
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.qdq_utils.qdq_to_dq">
-<span class="sig-name descname"><span class="pre">qdq_to_dq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.qdq_utils.qdq_to_dq" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">qdq_to_dq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.qdq_utils.qdq_to_dq" title="Link to this definition"></a></dt>
 <dd><p>Convert FP32/FP16 weights of the given ONNX model to INT8/FP8 weights.</p>
-<p>Q nodes will get removed from the weights and have only DQ nodes with those converted INT8/FP8
-weights in the output model. Also dangling Q nodes get fused and update its consumer’s weight.</p>
+<p>This function converts a model with QDQ (QuantizeLinear-DequantizeLinear) nodes to a model
+with only DQ nodes for weights. It:
+1. Converts FP32/FP16 weights to INT8/FP8
+2. Updates the graph to maintain proper connections
+3. Removes redundant cast nodes in the quantized model (additional optimization for diffusers)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>onnx_model</strong> (<em>ModelProto</em>) – ONNX model protobuf to convert</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>ONNX model protobuf with only DQ nodes for weights</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ValueError</strong> – If the model is invalid or conversion fails</p></li>
+<li><p><strong>RuntimeError</strong> – If graph operations fail</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>ModelProto</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.qdq_utils.quantize_weights_to_mxfp8">
+<span class="sig-name descname"><span class="pre">quantize_weights_to_mxfp8</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.qdq_utils.quantize_weights_to_mxfp8" title="Link to this definition"></a></dt>
+<dd><p>Converts the weights to FP8 precision using MXFP8 quantization.</p>
+<p>For TRT_MXFP8DynamicQuantize, we update the output type to FP8.
+For TRT_MXFP8DequantizeLinear, we compute the scales in e8m0 format and saves them as a new initializer.
+We then expand the scale to the same shape as the weight and divide the weight by the scale to get the FP8 weights.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>onnx_model</strong> (<em>ModelProto</em>) – ONNX model protobuf.</p></li>
-<li><p><strong>verbose</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>graph</strong> – ONNX model protobuf.</p></li>
+<li><p><strong>onnx_model</strong> (<em>ModelProto</em>) – </p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>ONNX model protobuf with only DQ nodes for weights and QDQ nodes for activations.</p>
+<dd class="field-even"><p>ONNX model protobuf with weights quantized to FP8 precision using MXFP8 quantization.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>ModelProto</em></p>
@@ -517,13 +566,16 @@ weights in the output model. Also dangling Q nodes get fused and update its cons
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.qdq_utils.replace_scale_values">
 <span class="sig-name descname"><span class="pre">replace_scale_values</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">graph</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">act_scales_dict</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.qdq_utils.replace_scale_values" title="Link to this definition"></a></dt>
-<dd><p>Replaces the scales values from calibration cache.</p>
+<dd><p>Replace scale values in the graph with values from calibration cache.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>graph</strong> (<em>GraphProto</em>) – </p></li>
-<li><p><strong>act_scales_dict</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>float</em><em>]</em>) – </p></li>
+<li><p><strong>graph</strong> (<em>GraphProto</em>) – ONNX graph to modify</p></li>
+<li><p><strong>act_scales_dict</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>float</em><em>]</em>) – Dictionary mapping scale tensor names to their new values</p></li>
 </ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>None</em></p>
 </dd>
 </dl>
 </dd></dl>

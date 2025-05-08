@@ -16,9 +16,9 @@ Latest Model Optimizer (``nvidia-modelopt``) currently has the following system 
 +-------------------------+-----------------------------+
 | CUDA                    |  >=12.0                     |
 +-------------------------+-----------------------------+
-| PyTorch (Optional)      |  >=2.2                      |
+| PyTorch (Optional)      |  >=2.4                      |
 +-------------------------+-----------------------------+
-| TensorRT-LLM (Optional) |  0.17                       |
+| TensorRT-LLM (Optional) |  0.18                       |
 +-------------------------+-----------------------------+
 | ONNX Runtime (Optional) |  1.20 (Python>=3.10)        |
 +-------------------------+-----------------------------+
@@ -100,7 +100,7 @@ Make sure to upgrade to the latest version of ModelOpt (with appropriate optiona
 
 .. code-block:: bash
 
-    pip install "nvidia-modelopt[all]" -U --extra-index-url https://pypi.nvidia.com
+    pip install -U "nvidia-modelopt[all]"
 
 If you want to install only partial dependencies, please replace ``[all]`` with the desired
 optional dependencies as described below.

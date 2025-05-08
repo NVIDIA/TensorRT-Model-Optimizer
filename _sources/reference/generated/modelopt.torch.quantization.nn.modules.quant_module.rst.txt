@@ -33,6 +33,7 @@ quant\_module
    
       QuantInputBase
       QuantLinearConvBase
+      QuantModule
    
    
 

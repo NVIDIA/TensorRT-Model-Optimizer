@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>sparsification &mdash; Model Optimizer 0.27.1</title>
+  <title>sparsification &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -196,7 +196,7 @@ call <code class="docutils literal notranslate"><span class="pre">export()</span
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – A standard model that contains standard building blocks to be sparsified in-place.</p></li>
-<li><p><strong>mode</strong> (<em>_ModeDescriptor</em><em> | </em><em>str</em><em> | </em><em>list</em><em>[</em><em>_ModeDescriptor</em><em> | </em><em>str</em><em>] </em><em>| </em><em>list</em><em>[</em><em>tuple</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em>) – <p>A (list of) string(s) or Mode(s) or a list of tuples containing the mode and its
+<li><p><strong>mode</strong> (<a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em><em> | </em><em>list</em><em>[</em><a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em><em>] </em><em>| </em><em>list</em><em>[</em><em>tuple</em><em>[</em><em>str</em><em>, </em><em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em><em>]</em><em>]</em>) – <p>A (list of) string(s) or Mode(s) or a list of tuples containing the mode and its
 config indicating the desired mode(s) (and configurations) for the convert
 process. Modes set up the model for different algorithms for model optimization. The
 following modes are available:</p>

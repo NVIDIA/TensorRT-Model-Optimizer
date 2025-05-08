@@ -37,10 +37,12 @@ utils
    .. autosummary::
       :nosignatures:
    
+      bfloat16_to_float32
       duplicate_shared_constants
       find_lowest_common_ancestor
       gen_random_inputs
       get_all_input_names
+      get_attribute
       get_batch_size
       get_batch_size_from_bytes
       get_child_nodes
@@ -56,11 +58,13 @@ utils
       get_output_shapes
       get_parent_nodes
       get_variable_inputs
+      has_attribute
       is_valid_onnx_model
       name_onnx_nodes
       parse_shapes_spec
       randomize_weights
       randomize_weights_onnx_bytes
+      read_f16_tensor_as_fp32
       remove_weights_data
       save_onnx
       save_onnx_bytes_to_dir

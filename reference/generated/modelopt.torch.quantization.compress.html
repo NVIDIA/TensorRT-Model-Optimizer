@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>modelopt.torch.quantization.compress &mdash; Model Optimizer 0.27.1</title>
+  <title>modelopt.torch.quantization.compress &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -101,6 +101,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.backends.html">backends</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
@@ -166,16 +167,16 @@
 <h1>modelopt.torch.quantization.compress<a class="headerlink" href="#modelopt-torch-quantization-compress" title="Link to this heading"></a></h1>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.compress">
-<span class="sig-name descname"><span class="pre">compress</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">quant_model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">compress_config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">{'default':</span> <span class="pre">True}</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.compress" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">compress</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">config</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.compress" title="Link to this definition"></a></dt>
 <dd><p>Compress model weights of quantized model.</p>
 <p>This function compresses weights in layers that have an enabled <cite>weight_quantizer</cite> with
 a supported quantization format. The compression is controlled by a pattern-based configuration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>quant_model</strong> – The quantized model to compress.</p></li>
-<li><p><strong>compress_config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>bool</em><em>]</em>) – <p>Dictionary mapping layer patterns to boolean compression flags.
-Defaults to {“default”: True} which compresses all supported layers.</p>
+<li><p><strong>model</strong> – The quantized model to compress.</p></li>
+<li><p><strong>config</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>bool</em><em>] </em><em>| </em><em>None</em><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.CompressConfig" title="modelopt.torch.quantization.config.CompressConfig"><em>CompressConfig</em></a>) – <p>Dictionary mapping layer patterns to boolean compression flags.
+If <code class="docutils literal notranslate"><span class="pre">None</span></code>, defaults to <code class="docutils literal notranslate"><span class="pre">{&quot;default&quot;:</span> <span class="pre">True}</span></code> which compresses all supported layers.</p>
 <p>Example configuration:</p>
 <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
     <span class="s2">&quot;*.mlp.fc1*&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>  <span class="c1"># Skip compression for fc1 layers</span>

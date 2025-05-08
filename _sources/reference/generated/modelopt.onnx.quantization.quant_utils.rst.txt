@@ -37,6 +37,8 @@ quant\_utils
    .. autosummary::
       :nosignatures:
    
+      compute_e8m0
+      get_amax
       get_weights_scaling_factor
       get_weights_scaling_factor_2
       pack_float32_to_4bit_cpp_based

@@ -37,10 +37,12 @@ export\_onnx
    .. autosummary::
       :nosignatures:
    
+      configure_linear_module_onnx_quantizers
       export_fp4
       export_fp8
       export_fp8_mha
       export_int8
+      export_mxfp8
       scaled_dot_product_attention
    
    

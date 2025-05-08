@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>trt_utils &mdash; Model Optimizer 0.27.1</title>
+  <title>trt_utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -213,14 +213,14 @@ Dictionary containing tensors information: {‘tensor_name’: {‘shape’: ten
 
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.trt_utils.load_onnx_model">
-<span class="sig-name descname"><span class="pre">load_onnx_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_plugins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibrations_shapes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_generated_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.trt_utils.load_onnx_model" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">load_onnx_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_plugins</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">override_shapes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_generated_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.trt_utils.load_onnx_model" title="Link to this definition"></a></dt>
 <dd><p>Load ONNX model. If ‘tensorrt’ is installed, check if the model has custom ops and ensure it’s supported by ORT.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>onnx_path</strong> (<em>str</em>) – Path to the input ONNX model.</p></li>
 <li><p><strong>trt_plugins</strong> (<em>str</em><em> | </em><em>None</em>) – Paths to custom TensorRT plugins.</p></li>
-<li><p><strong>calibrations_shapes</strong> (<em>str</em>) – Static shapes for graph inputs.</p></li>
+<li><p><strong>override_shapes</strong> (<em>str</em>) – Override model input shapes with static shapes.</p></li>
 <li><p><strong>use_external_data_format</strong> (<em>bool</em>) – If True, separate data path will be used to store the weights of the quantized model.</p></li>
 <li><p><strong>intermediate_generated_files</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – List of paths of intermediate ONNX files, generated during quantization.</p></li>
 </ul>

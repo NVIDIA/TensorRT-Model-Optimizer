@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>mode &mdash; Model Optimizer 0.27.1</title>
+  <title>mode &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -166,34 +166,239 @@ sequence of modes.</p>
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">ABC</span></code></p></td>
-<td><p>Helper class that provides a standard way to create an ABC using inheritance.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">Any</span></code></p></td>
-<td><p>Special type indicating an unconstrained type.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseSearcher</span></code></p></td>
-<td><p>A basic search interface that can be used to search/optimize a model.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">TypeVar</span></code></p></td>
-<td><p>Type variable.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ModeDescriptor</span></code></a></p></td>
+<td><p>Abstract class to describe a mode.</p></td>
 </tr>
 </tbody>
 </table>
-<p class="rubric">Functions</p>
-<table class="autosummary longtable docutils align-default">
-<tbody>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">abstractmethod</span></code></p></td>
-<td><p>A decorator indicating abstract methods.</p></td>
-</tr>
-<tr class="row-even"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_mode_config</span></code></p></td>
-<td><p>Standardize mode to ModeConfigDict and return.</p></td>
-</tr>
-<tr class="row-odd"><td><p><code class="xref py py-obj docutils literal notranslate"><span class="pre">val2list</span></code></p></td>
-<td><p>Repeat <cite>val</cite> for <cite>repeat_time</cite> times and return the list or val if list/tuple.</p></td>
-</tr>
-</tbody>
-</table>
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ModeDescriptor</span></span><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ABC</span></code></p>
+<p>Abstract class to describe a mode.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.assert_compatibility_as_next_mode_of">
+<span class="sig-name descname"><span class="pre">assert_compatibility_as_next_mode_of</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">other_mode</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.assert_compatibility_as_next_mode_of" title="Link to this definition"></a></dt>
+<dd><p>Assert that this mode is compatible as a next mode of the other mode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>other_mode</strong> (<a class="reference internal" href="#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><em>ModeDescriptor</em></a><em> | </em><em>str</em>) – </p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>None</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.config_class">
+<em class="property"><span class="pre">abstract</span><span class="w"> </span><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config_class</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.config_class" title="Link to this definition"></a></dt>
+<dd><p>Specifies the config class for the mode.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.convert">
+<em class="property"><span class="pre">abstract</span><span class="w"> </span><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">convert</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.convert" title="Link to this definition"></a></dt>
+<dd><p>The mode’s entrypoint for converting a model.</p>
+<p>The function signature of the convert entrypoint is described below:</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – Model to be restored.</p></li>
+<li><p><strong>config</strong> – Config used for the model that was also used during convert.</p></li>
+<li><p><strong>mode_kwargs</strong> – Additional keyword arguments to pass to the convert entrypoint.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A tuple consisting of</dt><dd><ol class="arabic simple">
+<li><p>the in-place modified model. If the modification failed, the entrypoint can
+return None instead</p></li>
+<li><p>The config dict that can be used to call the restore entrypoint to instantly <em>restore</em>
+the modified model.</p></li>
+<li><p>The metatdata that can be used to call the restore entrypoint to instantly
+<em>restore</em> the modified model from the provided initial state, see below’s
+description for the restore entrypoint to get more info about <code class="docutils literal notranslate"><span class="pre">metadata</span></code>.</p></li>
+</ol>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ApplyModeError&lt;modelopt.torch.opt._conversion.ApplyModeError&gt;` to indicate that th</strong> – </p></li>
+<li><p><strong>conversion process failed. This error can be caught by user-facing APIs if they want to</strong> – </p></li>
+<li><p><strong>enable a fall-back behavior.</strong> – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.export_mode">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">export_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.export_mode" title="Link to this definition"></a></dt>
+<dd><p>The mode that corresponds to the export mode of this mode.</p>
+<p>Certain modes require a subsequent export step. For example, after pruning, we might want to
+fine-tune the model and then export the model. This property specifies that mode if it
+exists.</p>
+<p>None indicates that there exists no such mode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The (optional) mode name that corresponds to the export mode of this mode. Defaults to
+None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.is_export_mode">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_export_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.is_export_mode" title="Link to this definition"></a></dt>
+<dd><p>Whether the mode is an export mode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>True if the mode is an export mode, False otherwise. Defaults to False.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.name">
+<em class="property"><span class="pre">abstract</span><span class="w"> </span><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.name" title="Link to this definition"></a></dt>
+<dd><p>Returns the string name of the mode.</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.next_modes">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">next_modes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.next_modes" title="Link to this definition"></a></dt>
+<dd><p>Modes that must immediately follow this mode.</p>
+<p>Certain modes only makes sense if they are followed by certain other modes.</p>
+<p>An empty set indicates that _no_ mode can follow this mode. A None value indicates that
+there are no restrictions on the following mode.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A set of mode names that must immediately follow this mode. Defaults to None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.next_prohibited_modes">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">next_prohibited_modes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.next_prohibited_modes" title="Link to this definition"></a></dt>
+<dd><p>Modes that should not be applied after this mode.</p>
+<p>This is used to specify that certain modes should not be applied after this mode.
+A <code class="docutils literal notranslate"><span class="pre">None</span></code> value indicates that incompatibitly check is skipped for this mode.
+This is useful if there are many allowed modes but only a few prohibited modes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>A set of mode names that should not be applied after this mode. Defaults to None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.require_model_like">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">require_model_like</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.require_model_like" title="Link to this definition"></a></dt>
+<dd><p>Whether the mode requires a ModelLike input?</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>False</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.restore">
+<em class="property"><span class="pre">abstract</span><span class="w"> </span><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">restore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.restore" title="Link to this definition"></a></dt>
+<dd><p>The mode’s entrypoint for restoring a model.</p>
+<p>The function signature of the restore entrypoint is described below:</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – Model to be restored.</p></li>
+<li><p><strong>config</strong> – Config used for the model that was also used during convert.</p></li>
+<li><p><strong>metadata</strong> – The metadata is used during restoration of the model architecture to instantly
+restore the modified model. The metadata is used on top of the config to ensure that
+the model can be instantly restored/modified from the provided state. This is
+helpful when the <code class="docutils literal notranslate"><span class="pre">convert</span></code> entrypoint contains non-deterministic operations whose
+outcome can be stored in the metadata to ensure that the model can be restored
+reliably.A few examples of potential non-deterministic operations are provided
+below:
+(1) Latency measurements: if the conversion leverages latency measurements during
+conversion the conversion process may become non-deterministic.
+(2) Random operations: if the conversion leverages random operations during
+conversion, we should store the samples or random seed.
+(3) Module’s train flag: the conversion process might be affected by the module’s
+train flag (e.g. tracing is indirectly affected by train flag since the
+forward may be affected by the train flag). If so, we should store the train
+flag in the metadata and set the model into the correct mode.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>The in-place modified and restored model. If the modification failed, the entrypoint can</dt><dd><p>return None instead</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ApplyModeError&lt;modelopt.torch.opt._conversion.ApplyModeError&gt;` to indicate that th</strong> – </p></li>
+<li><p><strong>conversion process failed. This error can be caught by user-facing APIs if they want to</strong> – </p></li>
+<li><p><strong>enable a fall-back behavior.</strong> – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.search_algorithm">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">search_algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="modelopt.torch.opt.searcher.html#modelopt.torch.opt.searcher.BaseSearcher" title="modelopt.torch.opt.searcher.BaseSearcher"><span class="pre">BaseSearcher</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.search_algorithm" title="Link to this definition"></a></dt>
+<dd><p>Specifies the search algorithm to use for this mode (if any).</p>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.update_for_new_mode">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">update_for_new_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.update_for_new_mode" title="Link to this definition"></a></dt>
+<dd><p>The mode’s (optional) entrypoint for updating a model’s config and metadata before a new mode.</p>
+<p>This is useful if metadata or config needs to be updated before adding a new mode. For example, a
+after adding a new mode, the current mode’s restore might only need a subset of the metadata/config.</p>
+<p>The function signature of this update entrypoint is described below:</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – Model to be restored.</p></li>
+<li><p><strong>config</strong> – The config as described above. It should be modified IN-PLACE.</p></li>
+<li><p><strong>metadata</strong> – The metadata as described above. It should be modified IN-PLACE.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.mode.ModeDescriptor.update_for_save">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">update_for_save</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.mode.ModeDescriptor.update_for_save" title="Link to this definition"></a></dt>
+<dd><p>The mode’s (optional) entrypoint for updating a model’s config and metadata before saving.</p>
+<p>This is useful if metadata or config needs to be updated for saving (and restoring) the mode.</p>
+<p>The function signature of this update entrypoint is described below:</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>model</strong> – Model to be restored.</p></li>
+<li><p><strong>config</strong> – The config as described above. It should be modified IN-PLACE.</p></li>
+<li><p><strong>metadata</strong> – The metadata as described above. It should be modified IN-PLACE.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>None.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 </section>
 
 

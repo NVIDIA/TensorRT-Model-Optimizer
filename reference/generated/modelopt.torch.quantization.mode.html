@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>mode &mdash; Model Optimizer 0.27.1</title>
+  <title>mode &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -101,6 +101,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.backends.html">backends</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
@@ -168,105 +169,84 @@
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor" title="modelopt.torch.quantization.mode.QuantizeExportModeDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">QuantizeExportModeDescriptor</span></code></a></p></td>
-<td><p>Class to describe the export of quantization mode.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor" title="modelopt.torch.quantization.mode.QuantizeModeDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">QuantizeModeDescriptor</span></code></a></p></td>
-<td><p>Class to describe the <code class="docutils literal notranslate"><span class="pre">&quot;quant&quot;</span></code> mode.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor" title="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">BaseCalibrateModeDescriptor</span></code></a></p></td>
+<td><p>Base class for quantization calibration algorithm modes.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeExportModeDescriptor">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">QuantizeExportModeDescriptor</span></span><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_ModeDescriptor</span></code></p>
-<p>Class to describe the export of quantization mode.</p>
-<p>Note that this mode is just a placeholder to throw an error since we don’t support exporting
-quantized models right now. It is used to properly indicate that the <code class="docutils literal notranslate"><span class="pre">quantize</span></code> mode does
-require an export mode if we ever wanted to do chaining/stacking of modes with it.</p>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">BaseCalibrateModeDescriptor</span></span><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor" title="modelopt.torch.opt.mode.ModeDescriptor"><code class="xref py py-class docutils literal notranslate"><span class="pre">ModeDescriptor</span></code></a></p>
+<p>Base class for quantization calibration algorithm modes.</p>
+<p>All calibration algorithm modes must be derived from this base class.
+In addition, the <cite>config_class</cite> for the mode must return a subclass of <code class="xref py py-class docutils literal notranslate"><span class="pre">QuantizeAlgorithmConfig</span></code>.</p>
+<p>This base class also provides some convenient wrappers/utilities for calibration algorithms to be
+translated into ModelOpt mode.</p>
+<dl class="simple">
+<dt>It includes:</dt><dd><ol class="arabic simple">
+<li><dl class="simple">
+<dt>A utility to convert the algorithm name to a mode name. This is useful since many algorithm names</dt><dd><p>are trivial and not a good fit as a mode name. For example, <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code> or <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>Conversion of the <code class="docutils literal notranslate"><span class="pre">algorithm</span></code> and <code class="docutils literal notranslate"><span class="pre">kwargs</span></code> arguments of</dt><dd><p><a class="reference internal" href="modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.calibrate" title="modelopt.torch.quantization.model_quant.calibrate"><code class="xref py py-meth docutils literal notranslate"><span class="pre">calibrate</span></code></a> API to a mode config
+list compatible with <a class="reference internal" href="modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.apply_mode" title="modelopt.torch.opt.conversion.apply_mode"><code class="xref py py-meth docutils literal notranslate"><span class="pre">apply_mode</span></code></a>.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>Wrapper for the calibration functions in <a class="reference internal" href="modelopt.torch.quantization.model_calib.html#module-modelopt.torch.quantization.model_calib" title="modelopt.torch.quantization.model_calib"><code class="xref py py-mod docutils literal notranslate"><span class="pre">modelopt.torch.quantization.model_calib</span></code></a> to be</dt><dd><p>compatible with the ModelOpt convert entrypoint.</p>
+</dd>
+</dl>
+</li>
+</ol>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize Base calibrate mode descriptor.</p>
+</dd></dl>
+
 <dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.config_class">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config_class</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.config_class" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.config_class">
+<em class="property"><span class="pre">abstract</span><span class="w"> </span><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config_class</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizeAlgorithmConfig" title="modelopt.torch.quantization.config.QuantizeAlgorithmConfig"><span class="pre">QuantizeAlgorithmConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.config_class" title="Link to this definition"></a></dt>
 <dd><p>Specifies the config class for the mode.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.convert">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">convert</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.convert" title="Link to this definition"></a></dt>
-<dd><p>The mode’s entrypoint for converting a model.</p>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.convert">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">convert</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.convert" title="Link to this definition"></a></dt>
+<dd><p>The calibrate algorithm mode’s entrypoint for converting a model.</p>
+<p>This method is called by the ModelOpt framework when applying this calibration mode to a model.
+See <code class="xref py py-meth docutils literal notranslate"><span class="pre">wrapped_calib_func()</span></code> for more details on the logic.</p>
+<p>Note: Subclasses must specify the <cite>_calib_func</cite> class attribute with the appropriate
+calibration function to be used or override this method.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.is_export_mode">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">is_export_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.is_export_mode" title="Link to this definition"></a></dt>
-<dd><p>Specifies whether the mode is an export mode.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.name">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.name" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.name">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.name" title="Link to this definition"></a></dt>
 <dd><p>Returns the value (str representation) of the mode.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.restore">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">restore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.restore" title="Link to this definition"></a></dt>
-<dd><p>The mode’s entrypoint for restoring a model.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">QuantizeModeDescriptor</span></span><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">_ModeDescriptor</span></code></p>
-<p>Class to describe the <code class="docutils literal notranslate"><span class="pre">&quot;quant&quot;</span></code> mode.</p>
-<p>The properties of this mode can be inspected via the source code.</p>
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.config_class">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">config_class</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.config_class" title="Link to this definition"></a></dt>
-<dd><p>Specifies the config class for the mode.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.convert">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">convert</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.convert" title="Link to this definition"></a></dt>
-<dd><p>The mode’s entrypoint for converting a model.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.export_mode">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">export_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.export_mode" title="Link to this definition"></a></dt>
-<dd><p>The mode that corresponds to the export mode of this mode.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.name">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.name" title="Link to this definition"></a></dt>
-<dd><p>Returns the value (str representation) of the mode.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.next_modes">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">next_modes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">set</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.next_modes" title="Link to this definition"></a></dt>
-<dd><p>Modes that must immediately follow this mode.</p>
-</dd></dl>
-
-<dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.restore">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">restore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.restore" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.restore">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">restore</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.restore" title="Link to this definition"></a></dt>
 <dd><p>The mode’s entrypoint for restoring a model.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.update_for_new_mode">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">update_for_new_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.update_for_new_mode" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.update_for_new_mode">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">update_for_new_mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.update_for_new_mode" title="Link to this definition"></a></dt>
 <dd><p>The mode’s entrypoint for updating the models state before new mode.</p>
 </dd></dl>
 
 <dl class="py property">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.QuantizeModeDescriptor.update_for_save">
-<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">update_for_save</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.QuantizeModeDescriptor.update_for_save" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.update_for_save">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">update_for_save</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Callable</span><span class="p"><span class="pre">[</span></span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig" title="modelopt.torch.opt.config.ModeloptBaseConfig"><span class="pre">ModeloptBaseConfig</span></a><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.update_for_save" title="Link to this definition"></a></dt>
 <dd><p>The mode’s entrypoint for updating the models state before saving.</p>
 </dd></dl>
 

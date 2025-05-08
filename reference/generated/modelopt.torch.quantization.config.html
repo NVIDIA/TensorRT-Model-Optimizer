@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>config &mdash; Model Optimizer 0.27.1</title>
+  <title>config &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -101,6 +101,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.backends.html">backends</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">config</a></li>
@@ -292,7 +293,7 @@ dimension of batch size <code class="docutils literal notranslate"><span class="
 <dd class="field-odd"><p></p></dd>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;awq_clip&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;max_co_batch_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;max_tokens_per_batch&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;min_clip_ratio&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
@@ -322,6 +323,11 @@ dimension of batch size <code class="docutils literal notranslate"><span class="
 <summary>Show details</summary><p>The total tokens used for clip search would be <code class="docutils literal notranslate"><span class="pre">max_tokens_per_batch</span> <span class="pre">*</span> <span class="pre">number</span> <span class="pre">of</span> <span class="pre">batches</span></code>.
 Original AWQ uses a total of 512 tokens to search for clip values.</p>
 </details></p></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.AWQClipCalibConfig.method">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'awq_clip'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.AWQClipCalibConfig.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.AWQClipCalibConfig.min_clip_ratio">
@@ -369,7 +375,7 @@ with the step size specified.</p>
 <dd class="field-odd"><p></p></dd>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;awq_full&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;max_co_batch_size&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1024</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;max_tokens_per_batch&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">64</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;min_clip_ratio&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span><span class="p">,</span>
@@ -386,6 +392,11 @@ with the step size specified.</p>
 <summary>Show details</summary><p>If True, module’s search metadata will be kept as module attributes named <code class="docutils literal notranslate"><span class="pre">awq_lite</span></code> and <code class="docutils literal notranslate"><span class="pre">awq_clip</span></code>.</p>
 </details></p></dd></dl>
 
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.AWQFullCalibConfig.method">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'awq_full'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.AWQFullCalibConfig.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="py class pydantic_model">
@@ -401,7 +412,7 @@ See <a class="reference external" href="https://arxiv.org/pdf/2306.00978" rel="n
 <dd class="field-odd"><p></p></dd>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;awq_lite&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;alpha_step&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.1</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;debug&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
 <span class="p">}</span>
@@ -429,6 +440,11 @@ See <a class="reference external" href="https://arxiv.org/pdf/2306.00978" rel="n
 <summary>Show details</summary><p>If True, module’s search metadata will be kept as a module attribute named <cite>awq_lite</cite>.</p>
 </details></p></dd></dl>
 
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.AWQLiteCalibConfig.method">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'awq_lite'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.AWQLiteCalibConfig.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
 </dd></dl>
 
 <dl class="py class pydantic_model">
@@ -443,7 +459,7 @@ See <a class="reference external" href="https://arxiv.org/pdf/2306.00978" rel="n
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
 <span class="w">   </span><span class="nt">&quot;compress&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="nt">&quot;*&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span>
+<span class="w">      </span><span class="nt">&quot;*&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="w">   </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
@@ -469,11 +485,24 @@ See <a class="reference external" href="https://arxiv.org/pdf/2004.09602" rel="n
 <dd class="field-odd"><p></p></dd>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span>
+<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;distributed_sync&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
 <span class="p">}</span>
 </pre></div>
 </div>
+</details></p><dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.MaxCalibConfig.distributed_sync">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">distributed_sync</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.MaxCalibConfig.distributed_sync" title="Link to this definition"></a></dt>
+<dd><p><details  class="autodoc_pydantic_collapsable_json">
+<summary>Show details</summary><p>If True, the amax will be synced across the distributed processes.</p>
 </details></p></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.MaxCalibConfig.method">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'max'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.MaxCalibConfig.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
 
 <dl class="py class pydantic_model">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizeAlgorithmConfig">
@@ -486,17 +515,14 @@ See <a class="reference external" href="https://arxiv.org/pdf/2004.09602" rel="n
 <dd class="field-odd"><p></p></dd>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span>
+<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
 <span class="p">}</span>
 </pre></div>
 </div>
 </details></p><dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizeAlgorithmConfig.method">
-<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizeAlgorithmConfig.method" title="Link to this definition"></a></dt>
-<dd><p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show details</summary><p>The algorithm used for calibration. Supported algorithms include
-<code class="docutils literal notranslate"><span class="pre">&quot;max&quot;,</span> <span class="pre">&quot;smoothquant&quot;,</span> <span class="pre">&quot;awq_lite&quot;,</span> <span class="pre">&quot;awq_full&quot;,</span> <span class="pre">and</span> <span class="pre">&quot;awq_clip&quot;</span></code>.</p>
-</details></p></dd></dl>
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="pre">None</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizeAlgorithmConfig.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -523,7 +549,7 @@ See <a class="reference external" href="https://arxiv.org/pdf/2004.09602" rel="n
 </div>
 </details></p><dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizeConfig.algorithm">
-<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">None</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.MaxCalibConfig" title="modelopt.torch.quantization.config.MaxCalibConfig"><span class="pre">MaxCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.SmoothQuantCalibConfig" title="modelopt.torch.quantization.config.SmoothQuantCalibConfig"><span class="pre">SmoothQuantCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><span class="pre">AWQLiteCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><span class="pre">AWQClipCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><span class="pre">AWQFullCalibConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.SVDQuantConfig" title="modelopt.torch.quantization.config.SVDQuantConfig"><span class="pre">SVDQuantConfig</span></a></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizeConfig.algorithm" title="Link to this definition"></a></dt>
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">None</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.QuantizeAlgorithmConfig" title="modelopt.torch.quantization.config.QuantizeAlgorithmConfig"><span class="pre">QuantizeAlgorithmConfig</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">list</span><span class="p"><span class="pre">[</span></span><span class="pre">None</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference internal" href="#modelopt.torch.quantization.config.QuantizeAlgorithmConfig" title="modelopt.torch.quantization.config.QuantizeAlgorithmConfig"><span class="pre">QuantizeAlgorithmConfig</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizeConfig.algorithm" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -564,17 +590,19 @@ See <a class="reference external" href="https://arxiv.org/pdf/2004.09602" rel="n
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizerAttributeConfig.axis">
 <em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">axis</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizerAttributeConfig.axis" title="Link to this definition"></a></dt>
 <dd><p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show details</summary><p>The specified axis/axes will have its own amax for
-computing scaling factor. If None (the default), use per tensor scale. Must be in the
-range [-rank(input_tensor), rank(input_tensor)). E.g. For a KCRS weight tensor,
-<code class="docutils literal notranslate"><span class="pre">quant_axis=(0)</span></code> will yield per channel scaling.</p>
+<summary>Show details</summary><p>This field is for static per-channel quantization. <em>It cannot coexist with `block_sizes`</em>.
+You should set axis if you want a fixed shape of scale factor.</p>
+<p>For example, if axis is set to None, the scale factor will be a scalar (per-tensor quantization)
+if the axis is set to 0, the scale factor will be a vector of shape (dim0, ) (per-channel quantization).
+if the axis is set to (-2, -1), the scale factor will be a vector of shape (dim-2, dim-1)</p>
+<p>axis value must be in the range [-rank(input_tensor), rank(input_tensor))</p>
 </details></p></dd></dl>
 
 <dl class="py attribute pydantic_field">
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizerAttributeConfig.bias">
 <em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">bias</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'static'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'dynamic'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'mean'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'max_min'</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">bool</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizerAttributeConfig.bias" title="Link to this definition"></a></dt>
 <dd><p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show details</summary><p>Configuration for bias handling in quantization. The keys are:
+<summary>Show details</summary><p>Configuration for bias handling in affine quantization. The keys are:
 - “enable”: Boolean to enable/disable bias handling, default is False
 - “type”: Specify the type of bias [“static”, “dynamic”], default is “static”
 - “method”: Specify the method of bias calibration [“mean”, “max_min”], default is “mean”
@@ -589,7 +617,9 @@ bias = {“enable”: True, “type”: “dynamic”, “axis”: (-1, -3)}</p>
 <dt class="sig sig-object py" id="modelopt.torch.quantization.config.QuantizerAttributeConfig.block_sizes">
 <em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">block_sizes</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">dict</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.quantization.config.QuantizerAttributeConfig.block_sizes" title="Link to this definition"></a></dt>
 <dd><p><details  class="autodoc_pydantic_collapsable_json">
-<summary>Show details</summary><p>The keys are the axes for block quantization and the
+<summary>Show details</summary><p>This field is for static or dynamic block quantization. <em>It cannot coexist with ``axis``</em>.
+You should set block_sizes if you want fixed number of elements to share every scale factor.</p>
+<p>The keys are the axes for block quantization and the
 values are block sizes for quantization along the respective axes. Keys must be in the
 range <code class="docutils literal notranslate"><span class="pre">[-tensor.dim(),</span> <span class="pre">tensor.dim())</span></code>. Values, which are the block sizes for quantization must be
 positive integers or <code class="docutils literal notranslate"><span class="pre">None</span></code>. A positive block size specifies the block size for quantization along that
@@ -605,10 +635,10 @@ indicates static calibrated block quantization. By default, the type is <code cl
 <p>Key <code class="docutils literal notranslate"><span class="pre">&quot;scale_block_sizes&quot;</span></code> specify the block size for double quantization.
 By default per-block quantization scale is not quantized.</p>
 <p>For example, <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">32}</span></code> will quantize the last axis of the input tensor in
-blocks of size 32 with static calibration and <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">32,</span> <span class="pre">&quot;type&quot;:</span> <span class="pre">&quot;dynamic&quot;}</span></code>
-will perform dynamic block quantization. <code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">None,</span> <span class="pre">&quot;type&quot;:</span> <span class="pre">&quot;dynamic&quot;}</span></code> can be used to
+blocks of size 32 with static calibration, with a total of <code class="docutils literal notranslate"><span class="pre">numel(tensor)</span> <span class="pre">/</span> <span class="pre">32</span></code> scale factors.
+<code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">32,</span> <span class="pre">&quot;type&quot;:</span> <span class="pre">&quot;dynamic&quot;}</span></code> will perform dynamic block quantization.
+<code class="docutils literal notranslate"><span class="pre">block_sizes</span> <span class="pre">=</span> <span class="pre">{-1:</span> <span class="pre">None,</span> <span class="pre">&quot;type&quot;:</span> <span class="pre">&quot;dynamic&quot;}</span></code> can be used to
 specify per-token dynamic quantization.</p>
-<p>If None, block quantization is not performed. <code class="docutils literal notranslate"><span class="pre">axis</span></code> must be None when <code class="docutils literal notranslate"><span class="pre">block_sizes</span></code> is not None.</p>
 </details></p></dd></dl>
 
 <dl class="py attribute pydantic_field">
@@ -733,7 +763,7 @@ calibration.</p>
 <dd class="field-odd"><p></p></dd>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;svdquant&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;lowrank&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">32</span>
 <span class="p">}</span>
 </pre></div>
@@ -744,6 +774,11 @@ calibration.</p>
 <dd><p><details  class="autodoc_pydantic_collapsable_json">
 <summary>Show details</summary><p>Specifies the rank of the LoRA used in the SVDQuant method, which captures outliers from the original weights.</p>
 </details></p></dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.SVDQuantConfig.method">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'svdquant'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.SVDQuantConfig.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 
@@ -760,7 +795,7 @@ See <a class="reference external" href="https://arxiv.org/pdf/2211.10438" rel="n
 <dd class="field-odd"><p></p></dd>
 </dl>
 <div class="highlight-json notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;max&quot;</span><span class="p">,</span>
+<span class="w">   </span><span class="nt">&quot;method&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;smoothquant&quot;</span><span class="p">,</span>
 <span class="w">   </span><span class="nt">&quot;alpha&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">1.0</span>
 <span class="p">}</span>
 </pre></div>
@@ -779,6 +814,11 @@ See <a class="reference external" href="https://arxiv.org/pdf/2211.10438" rel="n
 </dd>
 </dl>
 </dd></dl>
+
+<dl class="py attribute pydantic_field">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.config.SmoothQuantCalibConfig.method">
+<em class="property"><span class="pre">field</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'smoothquant'</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.quantization.config.SmoothQuantCalibConfig.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
 
 </dd></dl>
 

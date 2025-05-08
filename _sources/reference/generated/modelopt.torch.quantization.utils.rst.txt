@@ -41,10 +41,10 @@ utils
       reduce_amax
       is_quantized
       is_quantized_layer_with_weight
+      is_quantized_linear
       is_quantized_column_parallel_linear
       is_quantized_row_parallel_linear
       replace_function
       export_torch_mode
-      get_parallel_state
    
    

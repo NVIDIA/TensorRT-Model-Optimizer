@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>graph_utils &mdash; Model Optimizer 0.27.1</title>
+  <title>graph_utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -228,8 +228,14 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.graph_utils.print_stat" title="modelopt.onnx.quantization.graph_utils.print_stat"><code class="xref py py-obj docutils literal notranslate"><span class="pre">print_stat</span></code></a></p></td>
 <td><p>Collect and print stats of the quantized model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.graph_utils.remove_partial_input_qdq" title="modelopt.onnx.quantization.graph_utils.remove_partial_input_qdq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">remove_partial_input_qdq</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.graph_utils.remove_output_initializers" title="modelopt.onnx.quantization.graph_utils.remove_output_initializers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">remove_output_initializers</span></code></a></p></td>
+<td><p>Remove initializers that are also listed as graph outputs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.graph_utils.remove_partial_input_qdq" title="modelopt.onnx.quantization.graph_utils.remove_partial_input_qdq"><code class="xref py py-obj docutils literal notranslate"><span class="pre">remove_partial_input_qdq</span></code></a></p></td>
 <td><p>Modifies the onnx model by removing QDQ nodes from the marked inputs, ex.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.graph_utils.remove_redundant_cast_nodes" title="modelopt.onnx.quantization.graph_utils.remove_redundant_cast_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">remove_redundant_cast_nodes</span></code></a></p></td>
+<td><p>Remove redundant Cast nodes from the ONNX graph to optimize model performance.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.graph_utils.replace_resize_scales" title="modelopt.onnx.quantization.graph_utils.replace_resize_scales"><code class="xref py py-obj docutils literal notranslate"><span class="pre">replace_resize_scales</span></code></a></p></td>
 <td><p>Replace Resize op's fp16 scale value with old fp32 scale.</p></td>
@@ -654,6 +660,23 @@ Else, match the FP8 MHA without Q/DQs.</p></li>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.graph_utils.remove_output_initializers">
+<span class="sig-name descname"><span class="pre">remove_output_initializers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">graph</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">graph_initializers</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.graph_utils.remove_output_initializers" title="Link to this definition"></a></dt>
+<dd><p>Remove initializers that are also listed as graph outputs.</p>
+<p>Having initializers (constant tensors) that are also marked as outputs can lead to ONNX Runtime
+or conversion tool errors, particularly related to ambiguous ‘dtype’ or shape inference.
+This step ensures compatibility by detaching such initializers from the graph’s outputs.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>graph</strong> (<em>Graph</em>) – </p></li>
+<li><p><strong>graph_initializers</strong> (<em>list</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.graph_utils.remove_partial_input_qdq">
 <span class="sig-name descname"><span class="pre">remove_partial_input_qdq</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">graph</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">no_quantize_inputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.graph_utils.remove_partial_input_qdq" title="Link to this definition"></a></dt>
 <dd><p>Modifies the onnx model by removing QDQ nodes from the marked inputs, ex. non-residual inputs etc.</p>
@@ -668,6 +691,42 @@ Else, match the FP8 MHA without Q/DQs.</p></li>
 <dd class="field-even"><p><em>None</em></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.graph_utils.remove_redundant_cast_nodes">
+<span class="sig-name descname"><span class="pre">remove_redundant_cast_nodes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">graph</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.graph_utils.remove_redundant_cast_nodes" title="Link to this definition"></a></dt>
+<dd><p>Remove redundant Cast nodes from the ONNX graph to optimize model performance.</p>
+<p>This function identifies and removes two types of redundant Cast nodes:</p>
+<ol class="arabic simple">
+<li><p>Cast nodes where input and output types are identical
+- Before: t1 (dtype=fp16) -&gt; cast (to=fp16) -&gt; t2 -&gt; Op
+- After:  t1 (dtype=fp16) -&gt; Op</p></li>
+<li><p>Cast nodes that can be fused with initializers
+- Before: (initializer) t1 (dtype=fp32) -&gt; cast (to=fp16) -&gt; t2 -&gt; Op
+- After:  (initializer) t1 (dtype=fp16) -&gt; Op</p></li>
+</ol>
+<p>The function preserves Cast nodes that:
+- Have outputs that are graph outputs
+- Are necessary for type conversion
+- Have dynamic inputs (not initializers)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>graph</strong> (<em>GraphProto</em>) – ONNX graph to optimize. The graph will be modified in-place.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>None</em></p>
+</dd>
+</dl>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<ul class="simple">
+<li><p>This optimization is particularly useful for models with many Cast operations</p></li>
+<li><p>The function modifies the graph in-place</p></li>
+<li><p>All tensor consumers are updated to maintain graph connectivity</p></li>
+<li><p>Initializer data types are converted when possible to eliminate Cast nodes</p></li>
+</ul>
+</div>
 </dd></dl>
 
 <dl class="py function">

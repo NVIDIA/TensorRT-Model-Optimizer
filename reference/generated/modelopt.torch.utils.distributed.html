@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>distributed &mdash; Model Optimizer 0.27.1</title>
+  <title>distributed &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -163,6 +163,17 @@
   <section id="distributed">
 <h1>distributed<a class="headerlink" href="#distributed" title="Link to this heading"></a></h1>
 <p id="module-modelopt.torch.utils.distributed">Utility functions for using torch.distributed.</p>
+<p class="rubric">Classes</p>
+<table class="autosummary longtable docutils align-default">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.ParallelState" title="modelopt.torch.utils.distributed.ParallelState"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ParallelState</span></code></a></p></td>
+<td><p>A class to manage various parallel groups such as data parallel, tensor parallel etc.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.DistributedProcessGroup" title="modelopt.torch.utils.distributed.DistributedProcessGroup"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DistributedProcessGroup</span></code></a></p></td>
+<td><p>A convenient wrapper around torch.distributed.ProcessGroup objects.</p></td>
+</tr>
+</tbody>
+</table>
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
@@ -171,12 +182,6 @@
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.barrier" title="modelopt.torch.utils.distributed.barrier"><code class="xref py py-obj docutils literal notranslate"><span class="pre">barrier</span></code></a></p></td>
 <td><p>Synchronizes all processes.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.get_data_parallel_group" title="modelopt.torch.utils.distributed.get_data_parallel_group"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_data_parallel_group</span></code></a></p></td>
-<td><p>Deprecated method.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.get_tensor_parallel_group" title="modelopt.torch.utils.distributed.get_tensor_parallel_group"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_tensor_parallel_group</span></code></a></p></td>
-<td><p>Deprecated method.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.is_available" title="modelopt.torch.utils.distributed.is_available"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_available</span></code></a></p></td>
 <td><p>Returns whether the distributed package is available.</p></td>
@@ -190,17 +195,101 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.rank" title="modelopt.torch.utils.distributed.rank"><code class="xref py py-obj docutils literal notranslate"><span class="pre">rank</span></code></a></p></td>
 <td><p>Returns the rank of the current process.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.set_data_parallel_group" title="modelopt.torch.utils.distributed.set_data_parallel_group"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_data_parallel_group</span></code></a></p></td>
-<td><p>Deprecated method.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.set_tensor_parallel_group" title="modelopt.torch.utils.distributed.set_tensor_parallel_group"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_tensor_parallel_group</span></code></a></p></td>
-<td><p>Deprecated method.</p></td>
-</tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.distributed.size" title="modelopt.torch.utils.distributed.size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">size</span></code></a></p></td>
 <td><p>Returns the number of processes.</p></td>
 </tr>
 </tbody>
 </table>
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.DistributedProcessGroup">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">DistributedProcessGroup</span></span><a class="headerlink" href="#modelopt.torch.utils.distributed.DistributedProcessGroup" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A convenient wrapper around torch.distributed.ProcessGroup objects.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.DistributedProcessGroup.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.DistributedProcessGroup.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize the distributed process group.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>group</strong> (<em>ProcessGroup</em><em> | </em><em>int</em><em> | </em><em>None</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.DistributedProcessGroup.get_dist_syncd_obj">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">get_dist_syncd_obj</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">obj</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">groups</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">op</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.DistributedProcessGroup.get_dist_syncd_obj" title="Link to this definition"></a></dt>
+<dd><p>Get the distributed synchronized object across the specified distributed groups.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obj</strong> (<em>Any</em>) – </p></li>
+<li><p><strong>groups</strong> (<a class="reference internal" href="#modelopt.torch.utils.distributed.DistributedProcessGroup" title="modelopt.torch.utils.distributed.DistributedProcessGroup"><em>DistributedProcessGroup</em></a><em> | </em><em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.utils.distributed.DistributedProcessGroup" title="modelopt.torch.utils.distributed.DistributedProcessGroup"><em>DistributedProcessGroup</em></a><em>]</em>) – </p></li>
+<li><p><strong>op</strong> (<em>Callable</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.DistributedProcessGroup.is_initialized">
+<span class="sig-name descname"><span class="pre">is_initialized</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.DistributedProcessGroup.is_initialized" title="Link to this definition"></a></dt>
+<dd><p>Check if the distributed process group is initialized.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>bool</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.DistributedProcessGroup.rank">
+<span class="sig-name descname"><span class="pre">rank</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.DistributedProcessGroup.rank" title="Link to this definition"></a></dt>
+<dd><p>Get the rank of the current process group.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>int</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.DistributedProcessGroup.world_size">
+<span class="sig-name descname"><span class="pre">world_size</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.DistributedProcessGroup.world_size" title="Link to this definition"></a></dt>
+<dd><p>Get the world size of the current process group.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>int</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.ParallelState">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">ParallelState</span></span><a class="headerlink" href="#modelopt.torch.utils.distributed.ParallelState" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A class to manage various parallel groups such as data parallel, tensor parallel etc.</p>
+<p>Specify the parallel groups of type <code class="xref py py-class docutils literal notranslate"><span class="pre">torch.distributed.ProcessGroup</span></code> for the current module.
+If the parallel group is not used, it should be set to <cite>-1</cite>.
+if a parallel group is <cite>None</cite>, it will use the default PyTorch distributed process group which is the whole world.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.ParallelState.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data_parallel_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tensor_parallel_group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.ParallelState.__init__" title="Link to this definition"></a></dt>
+<dd><p>Initialize the parallel state.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>data_parallel_group</strong> (<em>ProcessGroup</em><em> | </em><em>int</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>tensor_parallel_group</strong> (<em>ProcessGroup</em><em> | </em><em>int</em><em> | </em><em>None</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.utils.distributed.backend">
 <span class="sig-name descname"><span class="pre">backend</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.backend" title="Link to this definition"></a></dt>
@@ -216,28 +305,6 @@
 <dt class="sig sig-object py" id="modelopt.torch.utils.distributed.barrier">
 <span class="sig-name descname"><span class="pre">barrier</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">group</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.barrier" title="Link to this definition"></a></dt>
 <dd><p>Synchronizes all processes.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>None</em></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.get_data_parallel_group">
-<span class="sig-name descname"><span class="pre">get_data_parallel_group</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.get_data_parallel_group" title="Link to this definition"></a></dt>
-<dd><p>Deprecated method.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><em>None</em></p>
-</dd>
-</dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.get_tensor_parallel_group">
-<span class="sig-name descname"><span class="pre">get_tensor_parallel_group</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.get_tensor_parallel_group" title="Link to this definition"></a></dt>
-<dd><p>Deprecated method.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
 <dd class="field-odd"><p><em>None</em></p>
@@ -287,18 +354,6 @@
 <dd class="field-odd"><p><em>int</em></p>
 </dd>
 </dl>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.set_data_parallel_group">
-<span class="sig-name descname"><span class="pre">set_data_parallel_group</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">group</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.set_data_parallel_group" title="Link to this definition"></a></dt>
-<dd><p>Deprecated method.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.utils.distributed.set_tensor_parallel_group">
-<span class="sig-name descname"><span class="pre">set_tensor_parallel_group</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">group</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.distributed.set_tensor_parallel_group" title="Link to this definition"></a></dt>
-<dd><p>Deprecated method.</p>
 </dd></dl>
 
 <dl class="py function">

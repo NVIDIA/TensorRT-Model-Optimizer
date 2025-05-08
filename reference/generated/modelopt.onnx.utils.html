@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.27.1</title>
+  <title>utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -97,10 +97,12 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.onnx.op_types.html">op_types</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.onnx.quantization.html">quantization</a></li>
 <li class="toctree-l3 current"><a class="current reference internal" href="#">utils</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.bfloat16_to_float32"><code class="docutils literal notranslate"><span class="pre">bfloat16_to_float32()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.duplicate_shared_constants"><code class="docutils literal notranslate"><span class="pre">duplicate_shared_constants()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.find_lowest_common_ancestor"><code class="docutils literal notranslate"><span class="pre">find_lowest_common_ancestor()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.gen_random_inputs"><code class="docutils literal notranslate"><span class="pre">gen_random_inputs()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_all_input_names"><code class="docutils literal notranslate"><span class="pre">get_all_input_names()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_attribute"><code class="docutils literal notranslate"><span class="pre">get_attribute()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_batch_size"><code class="docutils literal notranslate"><span class="pre">get_batch_size()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_batch_size_from_bytes"><code class="docutils literal notranslate"><span class="pre">get_batch_size_from_bytes()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_child_nodes"><code class="docutils literal notranslate"><span class="pre">get_child_nodes()</span></code></a></li>
@@ -116,11 +118,13 @@
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_output_shapes"><code class="docutils literal notranslate"><span class="pre">get_output_shapes()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_parent_nodes"><code class="docutils literal notranslate"><span class="pre">get_parent_nodes()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.get_variable_inputs"><code class="docutils literal notranslate"><span class="pre">get_variable_inputs()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.has_attribute"><code class="docutils literal notranslate"><span class="pre">has_attribute()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.is_valid_onnx_model"><code class="docutils literal notranslate"><span class="pre">is_valid_onnx_model()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.name_onnx_nodes"><code class="docutils literal notranslate"><span class="pre">name_onnx_nodes()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.parse_shapes_spec"><code class="docutils literal notranslate"><span class="pre">parse_shapes_spec()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.randomize_weights"><code class="docutils literal notranslate"><span class="pre">randomize_weights()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.randomize_weights_onnx_bytes"><code class="docutils literal notranslate"><span class="pre">randomize_weights_onnx_bytes()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.read_f16_tensor_as_fp32"><code class="docutils literal notranslate"><span class="pre">read_f16_tensor_as_fp32()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.remove_weights_data"><code class="docutils literal notranslate"><span class="pre">remove_weights_data()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.save_onnx"><code class="docutils literal notranslate"><span class="pre">save_onnx()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#modelopt.onnx.utils.save_onnx_bytes_to_dir"><code class="docutils literal notranslate"><span class="pre">save_onnx_bytes_to_dir()</span></code></a></li>
@@ -173,17 +177,23 @@
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.duplicate_shared_constants" title="modelopt.onnx.utils.duplicate_shared_constants"><code class="xref py py-obj docutils literal notranslate"><span class="pre">duplicate_shared_constants</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.bfloat16_to_float32" title="modelopt.onnx.utils.bfloat16_to_float32"><code class="xref py py-obj docutils literal notranslate"><span class="pre">bfloat16_to_float32</span></code></a></p></td>
+<td><p>Converts a bfloat16 array (as raw data) to a float32 array.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.duplicate_shared_constants" title="modelopt.onnx.utils.duplicate_shared_constants"><code class="xref py py-obj docutils literal notranslate"><span class="pre">duplicate_shared_constants</span></code></a></p></td>
 <td><p>Duplicate constant tensors if they are shared.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.find_lowest_common_ancestor" title="modelopt.onnx.utils.find_lowest_common_ancestor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_lowest_common_ancestor</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.find_lowest_common_ancestor" title="modelopt.onnx.utils.find_lowest_common_ancestor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">find_lowest_common_ancestor</span></code></a></p></td>
 <td><p>Function to find the lowest common ancestor of two nodes.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.gen_random_inputs" title="modelopt.onnx.utils.gen_random_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gen_random_inputs</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.gen_random_inputs" title="modelopt.onnx.utils.gen_random_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">gen_random_inputs</span></code></a></p></td>
 <td><p>This function generates random inputs for an onnx model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.get_all_input_names" title="modelopt.onnx.utils.get_all_input_names"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_all_input_names</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.get_all_input_names" title="modelopt.onnx.utils.get_all_input_names"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_all_input_names</span></code></a></p></td>
 <td><p>This function returns the inputs names of the given onnx model.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.get_attribute" title="modelopt.onnx.utils.get_attribute"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_attribute</span></code></a></p></td>
+<td><p>Returns the value of the specified attribute.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.get_batch_size" title="modelopt.onnx.utils.get_batch_size"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_batch_size</span></code></a></p></td>
 <td><p>Returns the batch size of the given onnx model.</p></td>
@@ -230,20 +240,26 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.get_variable_inputs" title="modelopt.onnx.utils.get_variable_inputs"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_variable_inputs</span></code></a></p></td>
 <td><p>Returns the variable inputs of the given Node.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.is_valid_onnx_model" title="modelopt.onnx.utils.is_valid_onnx_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_valid_onnx_model</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.has_attribute" title="modelopt.onnx.utils.has_attribute"><code class="xref py py-obj docutils literal notranslate"><span class="pre">has_attribute</span></code></a></p></td>
+<td><p>Checks if the given node has the specified attribute.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.is_valid_onnx_model" title="modelopt.onnx.utils.is_valid_onnx_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_valid_onnx_model</span></code></a></p></td>
 <td><p>Checks if the given file is a valid ONNX model.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.name_onnx_nodes" title="modelopt.onnx.utils.name_onnx_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">name_onnx_nodes</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.name_onnx_nodes" title="modelopt.onnx.utils.name_onnx_nodes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">name_onnx_nodes</span></code></a></p></td>
 <td><p>Assigns name to the onnx nodes if not present and return the modified status.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.parse_shapes_spec" title="modelopt.onnx.utils.parse_shapes_spec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parse_shapes_spec</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.parse_shapes_spec" title="modelopt.onnx.utils.parse_shapes_spec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">parse_shapes_spec</span></code></a></p></td>
 <td><p>Parse shapes spec and returns them in a dictionary.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.randomize_weights" title="modelopt.onnx.utils.randomize_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">randomize_weights</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.randomize_weights" title="modelopt.onnx.utils.randomize_weights"><code class="xref py py-obj docutils literal notranslate"><span class="pre">randomize_weights</span></code></a></p></td>
 <td><p>Assigns random values to the onnx model weights.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.randomize_weights_onnx_bytes" title="modelopt.onnx.utils.randomize_weights_onnx_bytes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">randomize_weights_onnx_bytes</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.randomize_weights_onnx_bytes" title="modelopt.onnx.utils.randomize_weights_onnx_bytes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">randomize_weights_onnx_bytes</span></code></a></p></td>
 <td><p>Assigns random values to the onnx model weights.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.utils.read_f16_tensor_as_fp32" title="modelopt.onnx.utils.read_f16_tensor_as_fp32"><code class="xref py py-obj docutils literal notranslate"><span class="pre">read_f16_tensor_as_fp32</span></code></a></p></td>
+<td><p>Reads a float16 or bfloat16 tensor as a float32 numpy ndarray.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.utils.remove_weights_data" title="modelopt.onnx.utils.remove_weights_data"><code class="xref py py-obj docutils literal notranslate"><span class="pre">remove_weights_data</span></code></a></p></td>
 <td><p>Removes raw weight data from the onnx model.</p></td>
@@ -265,6 +281,12 @@
 </tr>
 </tbody>
 </table>
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.utils.bfloat16_to_float32">
+<span class="sig-name descname"><span class="pre">bfloat16_to_float32</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bf16_array</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.utils.bfloat16_to_float32" title="Link to this definition"></a></dt>
+<dd><p>Converts a bfloat16 array (as raw data) to a float32 array.</p>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.utils.duplicate_shared_constants">
 <span class="sig-name descname"><span class="pre">duplicate_shared_constants</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.utils.duplicate_shared_constants" title="Link to this definition"></a></dt>
@@ -334,6 +356,23 @@ Distance from second node.</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>list</em>[<em>str</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.utils.get_attribute">
+<span class="sig-name descname"><span class="pre">get_attribute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attr_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.utils.get_attribute" title="Link to this definition"></a></dt>
+<dd><p>Returns the value of the specified attribute.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>node</strong> (<em>NodeProto</em>) – </p></li>
+<li><p><strong>attr_name</strong> (<em>str</em>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>Any</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -585,6 +624,23 @@ Distance from second node.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.utils.has_attribute">
+<span class="sig-name descname"><span class="pre">has_attribute</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">attr_name</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.utils.has_attribute" title="Link to this definition"></a></dt>
+<dd><p>Checks if the given node has the specified attribute.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>node</strong> (<em>NodeProto</em>) – </p></li>
+<li><p><strong>attr_name</strong> (<em>str</em>) – </p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>bool</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.utils.is_valid_onnx_model">
 <span class="sig-name descname"><span class="pre">is_valid_onnx_model</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.utils.is_valid_onnx_model" title="Link to this definition"></a></dt>
 <dd><p>Checks if the given file is a valid ONNX model.</p>
@@ -648,6 +704,12 @@ Distance from second node.</p>
 <dd class="field-even"><p><em>bytes</em></p>
 </dd>
 </dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.utils.read_f16_tensor_as_fp32">
+<span class="sig-name descname"><span class="pre">read_f16_tensor_as_fp32</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">tensor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.utils.read_f16_tensor_as_fp32" title="Link to this definition"></a></dt>
+<dd><p>Reads a float16 or bfloat16 tensor as a float32 numpy ndarray.</p>
 </dd></dl>
 
 <dl class="py function">

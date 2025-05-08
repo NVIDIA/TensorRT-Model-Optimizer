@@ -38,6 +38,7 @@ qdq\_utils
       :nosignatures:
    
       fp4qdq_to_2dq
+      has_qdq_nodes
       insert_dq_nodes
       insert_pre_quant_scale_nodes
       insert_qdq_nodes
@@ -52,6 +53,7 @@ qdq\_utils
       make_gs_scale
       make_gs_zp
       qdq_to_dq
+      quantize_weights_to_mxfp8
       replace_fp4qdq_with_2dq
       replace_scale_values
       use_trt_qdq_ops

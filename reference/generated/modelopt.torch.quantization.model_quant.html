@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_quant &mdash; Model Optimizer 0.27.1</title>
+  <title>model_quant &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -101,6 +101,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.backends.html">backends</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
@@ -329,18 +330,21 @@ might not be readily deployable to TensorRT-LLM yet.</p>
 <dt class="sig sig-object py" id="modelopt.torch.quantization.model_quant.calibrate">
 <span class="sig-name descname"><span class="pre">calibrate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'max'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">forward_loop</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.model_quant.calibrate" title="Link to this definition"></a></dt>
 <dd><p>Adjusts weights and scaling factors based on selected algorithms.</p>
+<p>In order to calibrate using custom user defined calibration algorithm, refer to
+<a class="reference internal" href="../../guides/_pytorch_quantization.html#custom-calibration-algorithm"><span class="std std-ref">custom calibration algorithm</span></a></p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em>) – A pytorch model with quantizer modules.</p></li>
-<li><p><strong>algorithm</strong> (<em>str</em><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.MaxCalibConfig" title="modelopt.torch.quantization.config.MaxCalibConfig"><em>MaxCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SmoothQuantCalibConfig" title="modelopt.torch.quantization.config.SmoothQuantCalibConfig"><em>SmoothQuantCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQLiteCalibConfig" title="modelopt.torch.quantization.config.AWQLiteCalibConfig"><em>AWQLiteCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQClipCalibConfig" title="modelopt.torch.quantization.config.AWQClipCalibConfig"><em>AWQClipCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQFullCalibConfig" title="modelopt.torch.quantization.config.AWQFullCalibConfig"><em>AWQFullCalibConfig</em></a><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SVDQuantConfig" title="modelopt.torch.quantization.config.SVDQuantConfig"><em>SVDQuantConfig</em></a><em> | </em><em>None</em>) – A string or dictionary specifying the calibration algorithm to use. Supported
+<li><p><strong>algorithm</strong> (<em>None</em><em> | </em><em>str</em><em> | </em><em>dict</em><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizeAlgorithmConfig" title="modelopt.torch.quantization.config.QuantizeAlgorithmConfig"><em>QuantizeAlgorithmConfig</em></a><em> | </em><em>list</em><em>[</em><em>None</em><em> | </em><em>str</em><em> | </em><em>dict</em><em> | </em><a class="reference internal" href="modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizeAlgorithmConfig" title="modelopt.torch.quantization.config.QuantizeAlgorithmConfig"><em>QuantizeAlgorithmConfig</em></a><em>]</em>) – <p>A string or dictionary specifying the calibration algorithm to use. Supported
 algorithms are <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;smoothquant&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;awq_lite&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;awq_full&quot;</span></code>, and
 <code class="docutils literal notranslate"><span class="pre">&quot;awq_clip&quot;</span></code>. If a dictionary is passed, the key <code class="docutils literal notranslate"><span class="pre">&quot;method&quot;</span></code> should specify the
 calibration algorithm to use. Other key-value pairs  in this dictionary will be passed
-as kwargs to the algorithm. An example dictionary argument:
-<code class="docutils literal notranslate"><span class="pre">{&quot;method&quot;:</span> <span class="pre">&quot;awq_clip&quot;,</span> <span class="pre">&quot;max_co_batch_size&quot;:</span> <span class="pre">4096}</span></code>. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, no calibration is
-performed. For real quantization, the key <code class="docutils literal notranslate"><span class="pre">method</span></code> should be <code class="docutils literal notranslate"><span class="pre">real_quantize</span></code>, and
-the calibration algorithm used should be specified in <code class="docutils literal notranslate"><span class="pre">additional_algorithm</span></code>.</p></li>
+as kwargs to the algorithm.</p>
+<p>An example dictionary argument:
+<code class="docutils literal notranslate"><span class="pre">{&quot;method&quot;:</span> <span class="pre">&quot;awq_clip&quot;,</span> <span class="pre">&quot;max_co_batch_size&quot;:</span> <span class="pre">4096}</span></code>.</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">None</span></code>, no calibration is performed.</p>
+</p></li>
 <li><p><strong>forward_loop</strong> (<em>Callable</em><em>[</em><em>[</em><em>Module</em><em>]</em><em>, </em><em>None</em><em>] </em><em>| </em><em>None</em>) – A callable which takes the model as argument and forwards calibration data
 through the model. This is not required for weight-only quantization with the <code class="docutils literal notranslate"><span class="pre">&quot;max&quot;</span></code>
 algorithm.</p></li>

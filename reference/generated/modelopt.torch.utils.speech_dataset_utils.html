@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>speech_dataset_utils &mdash; Model Optimizer 0.27.1</title>
+  <title>speech_dataset_utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -176,7 +176,7 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.utils.speech_dataset_utils.get_speech_dataset_dataloader">
-<span class="sig-name descname"><span class="pre">get_speech_dataset_dataloader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'peoples_speech'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">processor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.speech_dataset_utils.get_speech_dataset_dataloader" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">get_speech_dataset_dataloader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dataset_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'peoples_speech'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">processor</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">batch_size</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_samples</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">512</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">device</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.utils.speech_dataset_utils.get_speech_dataset_dataloader" title="Link to this definition"></a></dt>
 <dd><p>Get a dataloader with the dataset name and processor of the target model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -185,7 +185,8 @@
 <li><p><strong>processor</strong> (<em>WhisperProcessor</em>) – Processor used for encoding images and text data.</p></li>
 <li><p><strong>batch_size</strong> (<em>int</em>) – Batch size of the returned dataloader.</p></li>
 <li><p><strong>num_samples</strong> (<em>int</em>) – Number of samples from the dataset.</p></li>
-<li><p><strong>device</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>device</strong> (<em>str</em><em> | </em><em>None</em>) – Target device for the returned dataloader.</p></li>
+<li><p><strong>dtype</strong> (<em>dtype</em><em> | </em><em>None</em>) – dtype of the returned dataset.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>

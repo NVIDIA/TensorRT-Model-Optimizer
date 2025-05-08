@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>unified_export_megatron &mdash; Model Optimizer 0.27.1</title>
+  <title>unified_export_megatron &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -177,7 +177,7 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.unified_export_megatron.export_mcore_gpt_to_hf">
-<span class="sig-name descname"><span class="pre">export_mcore_gpt_to_hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pretrained_model_name_or_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.unified_export_megatron.export_mcore_gpt_to_hf" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">export_mcore_gpt_to_hf</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">pretrained_model_name_or_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_extra_modules</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">torch.float16</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">export_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'/tmp'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.unified_export_megatron.export_mcore_gpt_to_hf" title="Link to this definition"></a></dt>
 <dd><p>Export Megatron Core GPTModel to unified checkpoint and save to export_dir.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -187,6 +187,8 @@
 pretrained model hosted inside a model repo on huggingface.co; or
 a <em>directory</em> containing model weights saved using
 [<cite>~PreTrainedModel.save_pretrained</cite>], e.g., <cite>./my_model_directory/</cite>.</p></li>
+<li><p><strong>export_extra_modules</strong> (<em>bool</em>) – If True, export extra modules like medusa_heads,
+eagle_module, or mtp. Otherwise, only export the base model.</p></li>
 <li><p><strong>dtype</strong> (<em>dtype</em>) – The weights data type to export the unquantized layers.</p></li>
 <li><p><strong>export_dir</strong> (<em>Path</em><em> | </em><em>str</em>) – The target export path.</p></li>
 </ul>

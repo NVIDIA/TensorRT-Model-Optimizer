@@ -45,8 +45,8 @@ utils
    .. autosummary::
       :nosignatures:
    
+      calibrate_frequent_vocab
       get_default_attention_mask_and_position_ids
-      right_padding
       tree_decode
    
    

@@ -31,8 +31,7 @@ mode
    .. autosummary::
       :nosignatures:
    
-      QuantizeExportModeDescriptor
-      QuantizeModeDescriptor
+      BaseCalibrateModeDescriptor
    
    
 

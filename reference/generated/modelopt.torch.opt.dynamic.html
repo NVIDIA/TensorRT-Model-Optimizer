@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dynamic &mdash; Model Optimizer 0.27.1</title>
+  <title>dynamic &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -189,6 +189,8 @@ existing attributes that are converted to dynamic attributes.</p>
 should ensure only to expose <code class="docutils literal notranslate"><span class="pre">hparams</span></code> in the outermost class and handle other <code class="docutils literal notranslate"><span class="pre">hparams</span></code>
 internally including <code class="docutils literal notranslate"><span class="pre">hparams</span></code> of child modules that are exposed on their own usually
 (e.g. block module implementations containing DynamicLinear).</p>
+<p>In addition, the class also provides <code class="docutils literal notranslate"><span class="pre">parallel_state</span></code> attribute that can be used to access
+the parallel state of the module.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.opt.dynamic.DynamicModule.__init__">
 <span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.dynamic.DynamicModule.__init__" title="Link to this definition"></a></dt>
@@ -307,6 +309,23 @@ type is still a dynamic module.</p>
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.opt.dynamic.DynamicModule.get_original_cls_by_level">
+<span class="sig-name descname"><span class="pre">get_original_cls_by_level</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">level</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">-1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.dynamic.DynamicModule.get_original_cls_by_level" title="Link to this definition"></a></dt>
+<dd><p>Return the original class of the dynamic module.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>level</strong> (<em>int</em>) – The level of inheritance to get the original class from.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The original class of the dynamic module at the specified level.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>type</em>[<em>Module</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.opt.dynamic.DynamicModule.modify">
 <span class="sig-name descname"><span class="pre">modify</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.opt.dynamic.DynamicModule.modify" title="Link to this definition"></a></dt>
 <dd><p>Modify the module’s dynamic choices in a standardized &amp; scalable fashion.</p>
@@ -348,6 +367,17 @@ arguments and the module will remain unchanged.</p>
 <dt class="sig sig-object py" id="modelopt.torch.opt.dynamic.DynamicModule.original_cls">
 <em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">original_cls</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">type</span><span class="p"><span class="pre">[</span></span><span class="pre">Module</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#modelopt.torch.opt.dynamic.DynamicModule.original_cls" title="Link to this definition"></a></dt>
 <dd><p>Return the original class of the dynamic module.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The original class of the dynamic module at the current level.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py property">
+<dt class="sig sig-object py" id="modelopt.torch.opt.dynamic.DynamicModule.parallel_state">
+<em class="property"><span class="pre">property</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parallel_state</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.ParallelState" title="modelopt.torch.utils.distributed.ParallelState"><span class="pre">ParallelState</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#modelopt.torch.opt.dynamic.DynamicModule.parallel_state" title="Link to this definition"></a></dt>
+<dd><p>Return the parallel state of the dynamic module.</p>
 </dd></dl>
 
 <dl class="py method">

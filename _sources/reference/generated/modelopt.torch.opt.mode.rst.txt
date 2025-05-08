@@ -31,24 +31,12 @@ mode
    .. autosummary::
       :nosignatures:
    
-      ABC
-      Any
-      BaseSearcher
-      TypeVar
+      ModeDescriptor
    
    
 
 
    .. Overview table of available functions in the module
    
-   
-   .. rubric:: Functions
-
-   .. autosummary::
-      :nosignatures:
-   
-      abstractmethod
-      get_mode_config
-      val2list
    
    

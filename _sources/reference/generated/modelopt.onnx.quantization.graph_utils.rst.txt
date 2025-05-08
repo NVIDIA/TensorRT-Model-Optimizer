@@ -60,7 +60,9 @@ graph\_utils
       is_const_input
       match_fp8_mha_pattern
       print_stat
+      remove_output_initializers
       remove_partial_input_qdq
+      remove_redundant_cast_nodes
       replace_resize_scales
    
    

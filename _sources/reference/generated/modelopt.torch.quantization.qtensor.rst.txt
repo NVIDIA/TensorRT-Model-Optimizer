@@ -21,6 +21,9 @@ qtensor
    modelopt.torch.quantization.qtensor.int4_tensor
 
 
+   modelopt.torch.quantization.qtensor.int8_tensor
+
+
    modelopt.torch.quantization.qtensor.nf4_tensor
 
 

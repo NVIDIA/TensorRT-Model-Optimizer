@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Speculative Decoding &mdash; Model Optimizer 0.27.1</title>
+  <title>Speculative Decoding &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -192,7 +192,7 @@ restore via <a class="reference internal" href="../reference/generated/modelopt.
 
 <span class="n">mto</span><span class="o">.</span><span class="n">enable_huggingface_checkpointing</span><span class="p">()</span>
 
-<span class="n">trainer</span> <span class="o">=</span> <span class="n">Trainer</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">training_args</span><span class="p">,</span> <span class="o">**</span><span class="n">data_module</span><span class="p">)</span>
+<span class="n">trainer</span> <span class="o">=</span> <span class="n">Trainer</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">model</span><span class="p">,</span> <span class="n">processing_class</span><span class="o">=</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="n">training_args</span><span class="p">,</span> <span class="o">**</span><span class="n">data_module</span><span class="p">)</span>
 <span class="n">trainer</span><span class="o">.</span><span class="n">_move_model_to_device</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">trainer</span><span class="o">.</span><span class="n">args</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
 
 <span class="n">trainer</span><span class="o">.</span><span class="n">train</span><span class="p">(</span><span class="n">resume_from_checkpoint</span><span class="o">=</span><span class="n">checkpoint</span><span class="p">)</span>

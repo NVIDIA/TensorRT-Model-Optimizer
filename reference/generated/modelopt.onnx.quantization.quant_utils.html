@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>quant_utils &mdash; Model Optimizer 0.27.1</title>
+  <title>quant_utils &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -159,6 +159,12 @@
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.quant_utils.compute_e8m0" title="modelopt.onnx.quantization.quant_utils.compute_e8m0"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compute_e8m0</span></code></a></p></td>
+<td><p>Computes the e8m0 value for the weight tensor.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.quant_utils.get_amax" title="modelopt.onnx.quantization.quant_utils.get_amax"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_amax</span></code></a></p></td>
+<td><p>Returns the amax of the weight tensor along the specified axis for a given block size.</p></td>
+</tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.onnx.quantization.quant_utils.get_weights_scaling_factor" title="modelopt.onnx.quantization.quant_utils.get_weights_scaling_factor"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_weights_scaling_factor</span></code></a></p></td>
 <td><p>Returns quantized per block weight scaling factor.</p></td>
 </tr>
@@ -176,6 +182,50 @@
 </tr>
 </tbody>
 </table>
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.quant_utils.compute_e8m0">
+<span class="sig-name descname"><span class="pre">compute_e8m0</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weight_shape</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quant_axis</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.quant_utils.compute_e8m0" title="Link to this definition"></a></dt>
+<dd><p>Computes the e8m0 value for the weight tensor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>amax</strong> (<em>ndarray</em>) – The amax of the weight tensor.</p></li>
+<li><p><strong>weight_shape</strong> (<em>tuple</em><em>[</em><em>int</em><em>, </em><em>...</em><em>]</em>) – The shape of the weight tensor.</p></li>
+<li><p><strong>quant_axis</strong> (<em>int</em>) – The axis to compute the e8m0 value.</p></li>
+<li><p><strong>block_size</strong> (<em>int</em>) – The block size.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The e8m0 value for the weight tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>ndarray</em></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.onnx.quantization.quant_utils.get_amax">
+<span class="sig-name descname"><span class="pre">get_amax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quant_axis</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.quant_utils.get_amax" title="Link to this definition"></a></dt>
+<dd><p>Returns the amax of the weight tensor along the specified axis for a given block size.</p>
+<p>Only 2D and 3D tensors are supported.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>weight</strong> (<em>ndarray</em>) – The weight tensor.</p></li>
+<li><p><strong>quant_axis</strong> (<em>int</em>) – The axis to quantize.</p></li>
+<li><p><strong>block_size</strong> (<em>int</em>) – The block size.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The amax of the weight tensor.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>ndarray</em></p>
+</dd>
+</dl>
+</dd></dl>
+
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.quant_utils.get_weights_scaling_factor">
 <span class="sig-name descname"><span class="pre">get_weights_scaling_factor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">weights_scaling_factor_2</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.quant_utils.get_weights_scaling_factor" title="Link to this definition"></a></dt>

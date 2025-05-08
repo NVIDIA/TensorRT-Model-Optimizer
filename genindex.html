@@ -5,7 +5,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Index &mdash; Model Optimizer 0.27.1</title>
+  <title>Index &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
@@ -156,7 +156,11 @@
       <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.AcceptanceRateValidation.__init__">__init__() (AcceptanceRateValidation method)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer.__init__">(AccumulatingTimer method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.__init__">(AttentionConfig method)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.__init__">(BaseCalibrateModeDescriptor method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.utils.image_processor.html#modelopt.torch.utils.image_processor.BaseImageProcessor.__init__">(BaseImageProcessor method)</a>
 </li>
@@ -185,6 +189,8 @@
         <li><a href="reference/generated/modelopt.torch.speculative.mtp.utils.html#modelopt.torch.speculative.mtp.utils.DeepseekV3RMSNorm.__init__">(DeepseekV3RMSNorm method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.loss_balancers.html#modelopt.torch.distill.loss_balancers.DistillationLossBalancer.__init__">(DistillationLossBalancer method)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.DistributedProcessGroup.__init__">(DistributedProcessGroup method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.opt.dynamic.html#modelopt.torch.opt.dynamic.DynamicModule.__init__">(DynamicModule method)</a>
 </li>
@@ -233,6 +239,8 @@
         <li><a href="reference/generated/modelopt.torch.export.distribute.html#modelopt.torch.export.distribute.NFSWorkspace.__init__">(NFSWorkspace method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.nas.utils.html#modelopt.torch.nas.utils.no_modelopt_patches.__init__">(no_modelopt_patches method)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.ParallelState.__init__">(ParallelState method)</a>
 </li>
         <li><a href="reference/generated/modelopt.onnx.quantization.operators.html#modelopt.onnx.quantization.operators.QDQConvTranspose.__init__">(QDQConvTranspose method)</a>
 </li>
@@ -298,6 +306,8 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.AcceptanceRateValidation">AcceptanceRateValidation (class in modelopt.torch.speculative.utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer">AccumulatingTimer (class in modelopt.torch.utils.perf)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.LinearConfig.activation_scaling_factor">activation_scaling_factor (LinearConfig attribute)</a>
 
@@ -375,6 +385,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.architecture">architecture (ModelConfig attribute)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.assert_compatibility_as_next_mode_of">assert_compatibility_as_next_mode_of() (ModeDescriptor method)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.attention">attention (DecoderLayerConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.attention_head_size">attention_head_size (DecoderLayerConfig attribute)</a>
@@ -424,15 +436,17 @@
       <li><a href="reference/generated/modelopt.torch.quantization.nn.functional.html#modelopt.torch.quantization.nn.functional.ClipFunction.backward">backward() (ClipFunction static method)</a>
 
       <ul>
-        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.backward">(DynamicBlockQuantizationFunction static method)</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction.backward">(FakeAffineTensorQuantFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.backward">(FakeTensorQuantFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.nn.functional.html#modelopt.torch.quantization.nn.functional.FastHadamardTransform.backward">(FastHadamardTransform static method)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.backward">(FP4DynamicBlockQuantizationFunction static method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.backward">(LegacyFakeTensorQuantFunction static method)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.backward">(MXFP8DynamicBlockQuantizationFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.backward">(ScaledE4M3Function static method)</a>
 </li>
@@ -442,6 +456,8 @@
 </li>
       </ul></li>
       <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.barrier">barrier() (in module modelopt.torch.utils.distributed)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor">BaseCalibrateModeDescriptor (class in modelopt.torch.quantization.mode)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.image_processor.html#modelopt.torch.utils.image_processor.BaseImageProcessor">BaseImageProcessor (class in modelopt.torch.utils.image_processor)</a>
 </li>
@@ -482,6 +498,8 @@
       <li><a href="reference/generated/modelopt.torch.nas.autonas.html#modelopt.torch.nas.autonas.IterativeSearcher.best">best (IterativeSearcher attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.nas.autonas.html#modelopt.torch.nas.autonas.IterativeSearcher.best_history">best_history (IterativeSearcher attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.bfloat16_to_float32">bfloat16_to_float32() (in module modelopt.onnx.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ConvConfig.bias">bias (ConvConfig attribute)</a>
 
@@ -571,6 +589,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.calibrate">calibrate() (in module modelopt.torch.quantization.model_quant)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.calibrate_frequent_vocab">calibrate_frequent_vocab() (in module modelopt.torch.speculative.utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.calib.histogram.html#modelopt.torch.quantization.calib.histogram.calibrate_weights">calibrate_weights() (in module modelopt.torch.quantization.calib.histogram)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.calib_utils.html#modelopt.onnx.quantization.calib_utils.CalibrationDataProvider">CalibrationDataProvider (class in modelopt.onnx.quantization.calib_utils)</a>
@@ -584,6 +604,8 @@
       <li><a href="reference/generated/modelopt.torch.utils.random.html#modelopt.torch.utils.random.centroid">centroid() (in module modelopt.torch.utils.random)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.chatglm_version">chatglm_version (DecoderLayerConfig attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.AcceptanceRateValidation.check_data_consistancy_across_ranks">check_data_consistancy_across_ranks() (AcceptanceRateValidation method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.AcceptanceRateValidation.check_draft">check_draft() (AcceptanceRateValidation method)</a>
 </li>
@@ -600,8 +622,6 @@
       <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol.cl_type">cl_type (Symbol property)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.classify_partition_nodes">classify_partition_nodes() (in module modelopt.onnx.quantization.graph_utils)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.clean_up_after_set_from_modelopt_state">clean_up_after_set_from_modelopt_state() (TensorQuantizer method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.clear_cuda_cache">clear_cuda_cache() (in module modelopt.torch.utils.perf)</a>
 </li>
@@ -621,14 +641,16 @@
         <li><a href="reference/generated/modelopt.torch.utils.image_processor.html#modelopt.torch.utils.image_processor.MllamaImageProcessor.collate_function">(MllamaImageProcessor method)</a>
 </li>
       </ul></li>
-      <li><a href="reference/generated/modelopt.torch.quantization.calib.histogram.html#modelopt.torch.quantization.calib.histogram.HistogramCalibrator.collect">collect() (HistogramCalibrator method)</a>
+      <li><a href="reference/generated/modelopt.torch.quantization.calib.bias.html#modelopt.torch.quantization.calib.bias.BiasCalibrator.collect">collect() (BiasCalibrator method)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.calib.histogram.html#modelopt.torch.quantization.calib.histogram.HistogramCalibrator.collect">(HistogramCalibrator method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.calib.max.html#modelopt.torch.quantization.calib.max.MaxCalibrator.collect">(MaxCalibrator method)</a>
 </li>
-      </ul></li>
-      <li><a href="reference/generated/modelopt.torch.quantization.calib.bias.html#modelopt.torch.quantization.calib.bias.BiasCalibrator.collect_calib_bias">collect_calib_bias() (BiasCalibrator method)</a>
+        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.collect">(TensorQuantizer method)</a>
 </li>
+      </ul></li>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.compare_dict">compare_dict() (in module modelopt.torch.utils.network)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.CompressConfig.compress">compress (CompressConfig attribute)</a>
@@ -641,7 +663,11 @@
         <li><a href="reference/generated/modelopt.torch.quantization.calib.max.html#modelopt.torch.quantization.calib.max.MaxCalibrator.compute_amax">(MaxCalibrator method)</a>
 </li>
       </ul></li>
-      <li><a href="reference/generated/modelopt.torch.quantization.calib.bias.html#modelopt.torch.quantization.calib.bias.BiasCalibrator.compute_calib_bias">compute_calib_bias() (BiasCalibrator method)</a>
+      <li><a href="reference/generated/modelopt.torch.quantization.calib.bias.html#modelopt.torch.quantization.calib.bias.BiasCalibrator.compute_bias">compute_bias() (BiasCalibrator method)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.calib.bias.html#modelopt.torch.quantization.calib.bias.BiasCalibrator.compute_dynamic_bias">compute_dynamic_bias() (BiasCalibrator method)</a>
+</li>
+      <li><a href="reference/generated/modelopt.onnx.quantization.quant_utils.html#modelopt.onnx.quantization.quant_utils.compute_e8m0">compute_e8m0() (in module modelopt.onnx.quantization.quant_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.distill.distillation_model.html#modelopt.torch.distill.distillation_model.DistillationModel.compute_kd_loss">compute_kd_loss() (DistillationModel method)</a>
 </li>
@@ -664,6 +690,8 @@
       <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.AutoNASModeDescriptor.config_class">config_class (AutoNASModeDescriptor property)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.config_class">(BaseCalibrateModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.EagleModeDescriptor.config_class">(EagleModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.ExportModeDescriptor.config_class">(ExportModeDescriptor property)</a>
@@ -682,11 +710,9 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MedusaModeDescriptor.config_class">(MedusaModeDescriptor property)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.config_class">(ModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MTPModeDescriptor.config_class">(MTPModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.config_class">(QuantizeExportModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.config_class">(QuantizeModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseGPTModeDescriptor.config_class">(SparseGPTModeDescriptor property)</a>
 </li>
@@ -695,6 +721,8 @@
       </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.torch.quantization.export_onnx.html#modelopt.torch.quantization.export_onnx.configure_linear_module_onnx_quantizers">configure_linear_module_onnx_quantizers() (in module modelopt.torch.quantization.export_onnx)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.quantization.ort_utils.html#modelopt.onnx.quantization.ort_utils.configure_ort">configure_ort() (in module modelopt.onnx.quantization.ort_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.opt.searcher.html#modelopt.torch.opt.searcher.BaseSearcher.constraints">constraints (BaseSearcher attribute)</a>
@@ -720,6 +748,8 @@
       <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.AutoNASModeDescriptor.convert">convert (AutoNASModeDescriptor property)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.convert">(BaseCalibrateModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.EagleModeDescriptor.convert">(EagleModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.ExportModeDescriptor.convert">(ExportModeDescriptor property)</a>
@@ -734,11 +764,9 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MedusaModeDescriptor.convert">(MedusaModeDescriptor property)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.convert">(ModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MTPModeDescriptor.convert">(MTPModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.convert">(QuantizeExportModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.convert">(QuantizeModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.convert">(SparseMagnitudeModeDescriptor property)</a>
 </li>
@@ -774,6 +802,8 @@
       <li><a href="reference/generated/modelopt.torch.speculative.medusa.conversion.html#modelopt.torch.speculative.medusa.conversion.convert_to_medusa_model">convert_to_medusa_model() (in module modelopt.torch.speculative.medusa.conversion)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.mtp.conversion.html#modelopt.torch.speculative.mtp.conversion.convert_to_mtp_model">convert_to_mtp_model() (in module modelopt.torch.speculative.mtp.conversion)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.convert_to_single_quantizer">convert_to_single_quantizer() (SequentialQuantizer static method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.tensorrt_llm_utils.html#modelopt.torch.export.tensorrt_llm_utils.convert_to_tensorrt_llm_config">convert_to_tensorrt_llm_config() (in module modelopt.torch.export.tensorrt_llm_utils)</a>
 </li>
@@ -914,6 +944,8 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int4_tensor.html#modelopt.torch.quantization.qtensor.int4_tensor.INT4QTensor.dequantize">(INT4QTensor method)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int8_tensor.html#modelopt.torch.quantization.qtensor.int8_tensor.INT8QTensor.dequantize">(INT8QTensor method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.nf4_tensor.html#modelopt.torch.quantization.qtensor.nf4_tensor.NF4QTensor.dequantize">(NF4QTensor method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.dequantize">(TensorQuantizer method)</a>
@@ -926,8 +958,6 @@
       <li><a href="reference/generated/modelopt.torch.trace.modules.concat.html#modelopt.torch.trace.modules.concat.ConcatSymbol.disable">disable() (ConcatSymbol method)</a>
 
       <ul>
-        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.disable">(SequentialQuantizer method)</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol.disable">(Symbol method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.trace.modules.nn.html#modelopt.torch.trace.modules.nn.SymDepth.disable">(SymDepth method)</a>
@@ -937,6 +967,8 @@
       </ul></li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.disable_calib">disable_calib() (TensorQuantizer method)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.disable_pre_quant_scale">disable_pre_quant_scale() (TensorQuantizer method)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.disable_quant">disable_quant() (TensorQuantizer method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.disable_quantizer">disable_quantizer() (in module modelopt.torch.quantization.model_quant)</a>
@@ -945,7 +977,13 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.distill.distillation_model.html#modelopt.torch.distill.distillation_model.DistillationModel">DistillationModel (class in modelopt.torch.distill.distillation_model)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.MaxCalibConfig.distributed_sync">distributed_sync (MaxCalibConfig attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.DistributedProcessGroup">DistributedProcessGroup (class in modelopt.torch.utils.distributed)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.qtensor.nf4_tensor.html#modelopt.torch.quantization.qtensor.nf4_tensor.NF4QTensor.double_quantization">double_quantization() (NF4QTensor class method)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.draft_vocab_size">draft_vocab_size (EagleConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.dtype">dtype (ModelConfig attribute)</a>
 </li>
@@ -954,8 +992,6 @@
       <li><a href="reference/generated/modelopt.torch.export.layer_utils.html#modelopt.torch.export.layer_utils.dup_kv_weight">dup_kv_weight() (in module modelopt.torch.export.layer_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.duplicate_shared_constants">duplicate_shared_constants() (in module modelopt.onnx.utils)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction">DynamicBlockQuantizationFunction (class in modelopt.torch.quantization.tensor_quant)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.opt.dynamic.html#modelopt.torch.opt.dynamic.DynamicModule">DynamicModule (class in modelopt.torch.opt.dynamic)</a>
 </li>
@@ -967,6 +1003,12 @@
 <h2 id="E">E</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.eagle_aux_hidden_state_layer_ids">eagle_aux_hidden_state_layer_ids (EagleConfig attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.eagle_disable_moe">eagle_disable_moe (EagleConfig attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.eagle_hidden_state_distillation">eagle_hidden_state_distillation (EagleConfig attribute)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.eagle_num_layers">eagle_num_layers (EagleConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.EagleModeDescriptor">EagleModeDescriptor (class in modelopt.torch.speculative.mode)</a>
@@ -1029,10 +1071,10 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.eagle.utils.html#modelopt.torch.speculative.eagle.utils.expand_mask">expand_mask() (in module modelopt.torch.speculative.eagle.utils)</a>
 </li>
-      <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.expand_node_names_from_patterns">expand_node_names_from_patterns() (in module modelopt.onnx.quantization.graph_utils)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.expand_node_names_from_patterns">expand_node_names_from_patterns() (in module modelopt.onnx.quantization.graph_utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ExpertConfig">ExpertConfig (class in modelopt.torch.export.model_config)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MOEConfig.experts">experts (MOEConfig attribute)</a>
@@ -1072,11 +1114,13 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.mode.html#modelopt.torch.distill.mode.KnowledgeDistillationModeDescriptor.export_mode">(KnowledgeDistillationModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.export_mode">(QuantizeModeDescriptor property)</a>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.export_mode">(ModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.export_mode">(SparseMagnitudeModeDescriptor property)</a>
 </li>
       </ul></li>
+      <li><a href="reference/generated/modelopt.torch.quantization.export_onnx.html#modelopt.torch.quantization.export_onnx.export_mxfp8">export_mxfp8() (in module modelopt.torch.quantization.export_onnx)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.nas.autonas.html#modelopt.torch.nas.autonas.export_searchspace">export_searchspace() (in module modelopt.torch.nas.autonas)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.export_sparse">export_sparse() (in module modelopt.torch.sparsity.mode)</a>
@@ -1114,8 +1158,6 @@
       <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizerAttributeConfig.fake_quant">fake_quant (QuantizerAttributeConfig attribute)</a>
 
       <ul>
-        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.fake_quant">(SequentialQuantizer property)</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.fake_quant">(TensorQuantizer property)</a>
 </li>
       </ul></li>
@@ -1139,6 +1181,8 @@
         <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MOEConfig.fc">(MOEConfig property)</a>
 </li>
       </ul></li>
+      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.ffn_hidden_size">ffn_hidden_size (EagleConfig attribute)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.ffn_hidden_size_local">ffn_hidden_size_local (DecoderLayerConfig property)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.sparsity.magnitude.html#modelopt.torch.sparsity.magnitude.fill">fill() (in module modelopt.torch.sparsity.magnitude)</a>
@@ -1172,11 +1216,15 @@
       <li><a href="reference/generated/modelopt.onnx.quantization.partitioning.html#modelopt.onnx.quantization.partitioning.find_quantizable_nodes">find_quantizable_nodes() (in module modelopt.onnx.quantization.partitioning)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.fold_weight">fold_weight() (in module modelopt.torch.quantization.model_quant)</a>
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantModule.fold_weight">(QuantModule method)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_linear.html#modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear.fold_weight">(SVDQuantLinear method)</a>
+</li>
+      </ul></li>
       <li><a href="reference/generated/modelopt.torch.opt.dynamic.html#modelopt.torch.opt.dynamic.DynamicModule.force_assign">force_assign() (DynamicModule method)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.functional.html#modelopt.torch.quantization.nn.functional.ClipFunction.forward">forward() (ClipFunction static method)</a>
 
       <ul>
@@ -1186,19 +1234,21 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.distillation_model.html#modelopt.torch.distill.distillation_model.DistillationModel.forward">(DistillationModel method)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.forward">(DynamicBlockQuantizationFunction static method)</a>
-</li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction.forward">(FakeAffineTensorQuantFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.forward">(FakeTensorQuantFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.nn.functional.html#modelopt.torch.quantization.nn.functional.FastHadamardTransform.forward">(FastHadamardTransform static method)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.forward">(FP4DynamicBlockQuantizationFunction static method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.forward">(LegacyFakeTensorQuantFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.losses.html#modelopt.torch.distill.losses.LogitsDistillationLoss.forward">(LogitsDistillationLoss method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.losses.html#modelopt.torch.distill.losses.MGDLoss.forward">(MGDLoss method)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.forward">(MXFP8DynamicBlockQuantizationFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantInputBase.forward">(QuantInputBase method)</a>
 </li>
@@ -1216,6 +1266,8 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.loss_balancers.html#modelopt.torch.distill.loss_balancers.StaticLossBalancer.forward">(StaticLossBalancer method)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_linear.html#modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear.forward">(SVDQuantLinear method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.TensorQuantFunction.forward">(TensorQuantFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.forward">(TensorQuantizer method)</a>
@@ -1223,11 +1275,21 @@
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_rnn.html#modelopt.torch.quantization.nn.modules.quant_rnn.VFRNNForward.forward">(VFRNNForward method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.opt.searcher.html#modelopt.torch.opt.searcher.BaseSearcher.forward_loop">forward_loop (BaseSearcher attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.backends.utils.html#modelopt.torch.quantization.backends.utils.fp4_compatible">fp4_compatible() (in module modelopt.torch.quantization.backends.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.triton.fp4_kernel.html#modelopt.torch.quantization.triton.fp4_kernel.fp4_fake_quant_block">fp4_fake_quant_block() (in module modelopt.torch.quantization.triton.fp4_kernel)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction">FP4DynamicBlockQuantizationFunction (class in modelopt.torch.quantization.tensor_quant)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.quantization.qdq_utils.html#modelopt.onnx.quantization.qdq_utils.fp4qdq_to_2dq">fp4qdq_to_2dq() (in module modelopt.onnx.quantization.qdq_utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.backends.utils.html#modelopt.torch.quantization.backends.utils.fp8_compatible">fp8_compatible() (in module modelopt.torch.quantization.backends.utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.backends.fp8_per_tensor_gemm.html#modelopt.torch.quantization.backends.fp8_per_tensor_gemm">fp8_per_tensor_gemm() (in module modelopt.torch.quantization.backends)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.qtensor.fp8_tensor.html#modelopt.torch.quantization.qtensor.fp8_tensor.FP8QTensor">FP8QTensor (class in modelopt.torch.quantization.qtensor.fp8_tensor)</a>
 </li>
@@ -1261,6 +1323,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.gegelu_limit">gegelu_limit (DecoderLayerConfig attribute)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.backends.gemm_registry.html#modelopt.torch.quantization.backends.gemm_registry">gemm_registry (in module modelopt.torch.quantization.backends)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.gen_random_inputs">gen_random_inputs() (in module modelopt.onnx.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.nas.search_space.html#modelopt.torch.nas.search_space.SearchSpace.generate">generate() (SearchSpace method)</a>
@@ -1283,9 +1347,15 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_all_input_names">get_all_input_names() (in module modelopt.onnx.utils)</a>
 </li>
+      <li><a href="reference/generated/modelopt.onnx.quantization.quant_utils.html#modelopt.onnx.quantization.quant_utils.get_amax">get_amax() (in module modelopt.onnx.quantization.quant_utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_attribute">get_attribute() (in module modelopt.onnx.utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_batch_size">get_batch_size() (in module modelopt.onnx.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_batch_size_from_bytes">get_batch_size_from_bytes() (in module modelopt.onnx.utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer.get_call_count">get_call_count() (AccumulatingTimer class method)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_child_nodes">get_child_nodes() (in module modelopt.onnx.utils)</a>
 </li>
@@ -1305,11 +1375,11 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.trt_utils.html#modelopt.onnx.quantization.trt_utils.get_custom_layers">get_custom_layers() (in module modelopt.onnx.quantization.trt_utils)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.get_data_parallel_group">get_data_parallel_group() (in module modelopt.torch.utils.distributed)</a>
-</li>
       <li><a href="reference/generated/modelopt.torch.utils.dataset_utils.html#modelopt.torch.utils.dataset_utils.get_dataset_dataloader">get_dataset_dataloader() (in module modelopt.torch.utils.dataset_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.get_default_attention_mask_and_position_ids">get_default_attention_mask_and_position_ids() (in module modelopt.torch.speculative.utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.DistributedProcessGroup.get_dist_syncd_obj">get_dist_syncd_obj() (DistributedProcessGroup static method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.layer_utils.html#modelopt.torch.export.layer_utils.get_dtype">get_dtype() (in module modelopt.torch.export.layer_utils)</a>
 </li>
@@ -1355,6 +1425,8 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_input_shapes_from_bytes">get_input_shapes_from_bytes() (in module modelopt.onnx.utils)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.export.quant_utils.html#modelopt.torch.export.quant_utils.get_kv_cache_bias">get_kv_cache_bias() (in module modelopt.torch.export.quant_utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.export.quant_utils.html#modelopt.torch.export.quant_utils.get_kv_cache_dtype">get_kv_cache_dtype() (in module modelopt.torch.export.quant_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.quant_utils.html#modelopt.torch.export.quant_utils.get_kv_cache_scaling_factor">get_kv_cache_scaling_factor() (in module modelopt.torch.export.quant_utils)</a>
@@ -1365,6 +1437,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.get_model_attributes">get_model_attributes() (in module modelopt.torch.utils.network)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_utils.html#modelopt.torch.export.model_utils.get_model_type">get_model_type() (in module modelopt.torch.export.model_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.get_modelopt_state">get_modelopt_state() (SequentialQuantizer method)</a>
@@ -1373,8 +1447,6 @@
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.get_modelopt_state">(TensorQuantizer method)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.get_module_device">get_module_device() (in module modelopt.torch.utils.network)</a>
 </li>
       <li><a href="reference/generated/modelopt.deploy.llm.nemo_utils.html#modelopt.deploy.llm.nemo_utils.get_nemo_tokenizer">get_nemo_tokenizer() (in module modelopt.deploy.llm.nemo_utils)</a>
@@ -1391,13 +1463,13 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_node_names_from_bytes">get_node_names_from_bytes() (in module modelopt.onnx.utils)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.opt.dynamic.html#modelopt.torch.opt.dynamic.DynamicModule.get_original_cls_by_level">get_original_cls_by_level() (DynamicModule method)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_output_names">get_output_names() (in module modelopt.onnx.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_output_names_from_bytes">get_output_names_from_bytes() (in module modelopt.onnx.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_output_shapes">get_output_shapes() (in module modelopt.onnx.utils)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.get_parallel_state">get_parallel_state() (in module modelopt.torch.quantization.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.get_parent_nodes">get_parent_nodes() (in module modelopt.onnx.utils)</a>
 </li>
@@ -1449,13 +1521,13 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.get_tensor_consumer_nodes">get_tensor_consumer_nodes() (in module modelopt.onnx.quantization.graph_utils)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.get_tensor_parallel_group">get_tensor_parallel_group() (in module modelopt.torch.utils.distributed)</a>
-</li>
       <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.get_tensor_producer_nodes">get_tensor_producer_nodes() (in module modelopt.onnx.quantization.graph_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.distribute.html#modelopt.torch.export.distribute.get_tensors_parallel">get_tensors_parallel() (in module modelopt.torch.export.distribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.deploy.llm.nemo_utils.html#modelopt.deploy.llm.nemo_utils.get_tokenzier">get_tokenzier() (in module modelopt.deploy.llm.nemo_utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer.get_total_time">get_total_time() (AccumulatingTimer class method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.layer_utils.html#modelopt.torch.export.layer_utils.get_transformer_layers">get_transformer_layers() (in module modelopt.torch.export.layer_utils)</a>
 </li>
@@ -1497,9 +1569,13 @@
 <h2 id="H">H</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.has_attribute">has_attribute() (in module modelopt.onnx.utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.has_const_input">has_const_input() (in module modelopt.onnx.quantization.graph_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.has_path_type">has_path_type() (in module modelopt.onnx.quantization.graph_utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.onnx.quantization.qdq_utils.html#modelopt.onnx.quantization.qdq_utils.has_qdq_nodes">has_qdq_nodes() (in module modelopt.onnx.quantization.qdq_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.opt.searcher.html#modelopt.torch.opt.searcher.BaseSearcher.has_score">has_score (BaseSearcher property)</a>
 </li>
@@ -1517,6 +1593,8 @@
         <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MOEConfig.hidden_act">(MOEConfig attribute)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.hidden_size">hidden_size (DecoderLayerConfig property)</a>
 
       <ul>
@@ -1525,8 +1603,6 @@
         <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.hidden_size">(ModelConfig property)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.distill.distillation_model.html#modelopt.torch.distill.distillation_model.DistillationModel.hide_loss_modules">hide_loss_modules() (DistillationModel method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.distill.distillation_model.html#modelopt.torch.distill.distillation_model.DistillationModel.hide_teacher_model">hide_teacher_model() (DistillationModel method)</a>
@@ -1579,8 +1655,6 @@
         <li><a href="reference/generated/modelopt.torch.nas.traced_hp.html#modelopt.torch.nas.traced_hp.TracedHpRegistry.initialize_from">(TracedHpRegistry class method)</a>
 </li>
       </ul></li>
-      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase.initialize_quantizer_with_dummy_states">initialize_quantizer_with_dummy_states() (QuantLinearConvBase static method)</a>
-</li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase.initialize_real_qtensor_with_dummy_weight">initialize_real_qtensor_with_dummy_weight() (QuantLinearConvBase static method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.RgLruConfig.input_gate">input_gate (RgLruConfig attribute)</a>
@@ -1604,6 +1678,8 @@
       <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int4_tensor.html#modelopt.torch.quantization.qtensor.int4_tensor.INT4QTensor">INT4QTensor (class in modelopt.torch.quantization.qtensor.int4_tensor)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.fp8.html#modelopt.onnx.quantization.fp8.int8_to_fp8">int8_to_fp8() (in module modelopt.onnx.quantization.fp8)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int8_tensor.html#modelopt.torch.quantization.qtensor.int8_tensor.INT8QTensor">INT8QTensor (class in modelopt.torch.quantization.qtensor.int8_tensor)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.sparsity.sparsegpt.html#modelopt.torch.sparsity.sparsegpt.invert">invert() (in module modelopt.torch.sparsity.sparsegpt)</a>
 </li>
@@ -1670,17 +1746,17 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.mode.html#modelopt.torch.distill.mode.ExportStudentModeDescriptor.is_export_mode">(ExportStudentModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.is_export_mode">(QuantizeExportModeDescriptor property)</a>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.is_export_mode">(ModeDescriptor property)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.trace.tracer.html#modelopt.torch.trace.tracer.GraphCollection.is_failed">is_failed() (GraphCollection method)</a>
 
       <ul>
         <li><a href="reference/generated/modelopt.torch.trace.tracer.html#modelopt.torch.trace.tracer.RobustTracer.is_failed">(RobustTracer method)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol.is_free">is_free (Symbol property)</a>
 </li>
       <li><a href="reference/generated/modelopt.onnx.op_types.html#modelopt.onnx.op_types.is_fusible_reduction_op">is_fusible_reduction_op() (in module modelopt.onnx.op_types)</a>
@@ -1693,8 +1769,12 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.distribute.html#modelopt.torch.export.distribute.NFSWorkspace.is_initialized">is_initialized (NFSWorkspace property)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.is_initialized">is_initialized() (in module modelopt.torch.utils.distributed)</a>
+      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.DistributedProcessGroup.is_initialized">is_initialized() (DistributedProcessGroup method)</a>
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.is_initialized">(in module modelopt.torch.utils.distributed)</a>
 </li>
+      </ul></li>
       <li><a href="reference/generated/modelopt.onnx.op_types.html#modelopt.onnx.op_types.is_irregular_mem_access_op">is_irregular_mem_access_op() (in module modelopt.onnx.op_types)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.layer_utils.html#modelopt.torch.export.layer_utils.is_layernorm">is_layernorm() (in module modelopt.torch.export.layer_utils)</a>
@@ -1736,6 +1816,8 @@
       <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.is_quantized_column_parallel_linear">is_quantized_column_parallel_linear() (in module modelopt.torch.quantization.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.is_quantized_layer_with_weight">is_quantized_layer_with_weight() (in module modelopt.torch.quantization.utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.is_quantized_linear">is_quantized_linear() (in module modelopt.torch.quantization.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.utils.html#modelopt.torch.quantization.utils.is_quantized_row_parallel_linear">is_quantized_row_parallel_linear() (in module modelopt.torch.quantization.utils)</a>
 </li>
@@ -1805,12 +1887,14 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.QKVConfig.k">k (QKVConfig attribute)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.k_cache_scaling_factor">k_cache_scaling_factor (AttentionConfig attribute)</a>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.k_cache_bias">k_cache_bias (AttentionConfig attribute)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.k_layernorm">k_layernorm (AttentionConfig attribute)</a>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.k_cache_scaling_factor">k_cache_scaling_factor (AttentionConfig attribute)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.k_layernorm">k_layernorm (AttentionConfig attribute)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig.keys">keys() (ModeloptBaseConfig method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.distill.mode.html#modelopt.torch.distill.mode.KnowledgeDistillationModeDescriptor">KnowledgeDistillationModeDescriptor (class in modelopt.torch.distill.mode)</a>
@@ -2029,8 +2113,22 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config_utils.html#modelopt.torch.export.model_config_utils.merge_qkv">merge_qkv() (in module modelopt.torch.export.model_config_utils)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizeAlgorithmConfig.method">method (QuantizeAlgorithmConfig attribute)</a>
+      <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQClipCalibConfig.method">method (AWQClipCalibConfig attribute)</a>
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQFullCalibConfig.method">(AWQFullCalibConfig attribute)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.AWQLiteCalibConfig.method">(AWQLiteCalibConfig attribute)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.MaxCalibConfig.method">(MaxCalibConfig attribute)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.QuantizeAlgorithmConfig.method">(QuantizeAlgorithmConfig attribute)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SmoothQuantCalibConfig.method">(SmoothQuantCalibConfig attribute)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.config.html#modelopt.torch.quantization.config.SVDQuantConfig.method">(SVDQuantConfig attribute)</a>
+</li>
+      </ul></li>
       <li><a href="reference/generated/modelopt.torch.distill.losses.html#modelopt.torch.distill.losses.MGDLoss">MGDLoss (class in modelopt.torch.distill.losses)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.prune.fastnas.html#modelopt.torch.prune.fastnas.BinarySearcher.middle_value">middle_value (BinarySearcher attribute)</a>
@@ -2058,6 +2156,8 @@
       <li><a href="reference/generated/modelopt.torch.export.tensorrt_llm_type.html#modelopt.torch.export.tensorrt_llm_type.MLPType">MLPType (class in modelopt.torch.export.tensorrt_llm_type)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.sparsity.magnitude.html#modelopt.torch.sparsity.magnitude.mn_1d_best">mn_1d_best() (in module modelopt.torch.sparsity.magnitude)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor">ModeDescriptor (class in modelopt.torch.opt.mode)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.opt.searcher.html#modelopt.torch.opt.searcher.BaseSearcher.model">model (BaseSearcher attribute)</a>
 </li>
@@ -2696,6 +2796,20 @@
 </li>
       </ul></li>
       <li>
+    modelopt.torch.quantization.backends
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.backends.html#module-modelopt.torch.quantization.backends">module</a>
+</li>
+      </ul></li>
+      <li>
+    modelopt.torch.quantization.backends.utils
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.backends.utils.html#module-modelopt.torch.quantization.backends.utils">module</a>
+</li>
+      </ul></li>
+      <li>
     modelopt.torch.quantization.calib
 
       <ul>
@@ -2906,12 +3020,21 @@
 </li>
       </ul></li>
       <li>
+    modelopt.torch.quantization.qtensor.int8_tensor
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int8_tensor.html#module-modelopt.torch.quantization.qtensor.int8_tensor">module</a>
+</li>
+      </ul></li>
+      <li>
     modelopt.torch.quantization.qtensor.nf4_tensor
 
       <ul>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.nf4_tensor.html#module-modelopt.torch.quantization.qtensor.nf4_tensor">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     modelopt.torch.quantization.quant_modules
 
@@ -2919,8 +3042,6 @@
         <li><a href="reference/generated/modelopt.torch.quantization.quant_modules.html#module-modelopt.torch.quantization.quant_modules">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     modelopt.torch.quantization.tensor_quant
 
@@ -3299,6 +3420,8 @@
         <li><a href="reference/generated/modelopt.torch.utils.vlm_dataset_utils.html#module-modelopt.torch.utils.vlm_dataset_utils">module</a>
 </li>
       </ul></li>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantModule.modelopt_post_restore">modelopt_post_restore() (QuantModule method)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.modelopt_state">modelopt_state() (in module modelopt.torch.opt.conversion)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptField">ModeloptField() (in module modelopt.torch.opt.config)</a>
@@ -3501,6 +3624,10 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.html#module-modelopt.torch.quantization">modelopt.torch.quantization</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.backends.html#module-modelopt.torch.quantization.backends">modelopt.torch.quantization.backends</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.backends.utils.html#module-modelopt.torch.quantization.backends.utils">modelopt.torch.quantization.backends.utils</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.calib.html#module-modelopt.torch.quantization.calib">modelopt.torch.quantization.calib</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.calib.bias.html#module-modelopt.torch.quantization.calib.bias">modelopt.torch.quantization.calib.bias</a>
@@ -3560,6 +3687,8 @@
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.fp8_tensor.html#module-modelopt.torch.quantization.qtensor.fp8_tensor">modelopt.torch.quantization.qtensor.fp8_tensor</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int4_tensor.html#module-modelopt.torch.quantization.qtensor.int4_tensor">modelopt.torch.quantization.qtensor.int4_tensor</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int8_tensor.html#module-modelopt.torch.quantization.qtensor.int8_tensor">modelopt.torch.quantization.qtensor.int8_tensor</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.nf4_tensor.html#module-modelopt.torch.quantization.qtensor.nf4_tensor">modelopt.torch.quantization.qtensor.nf4_tensor</a>
 </li>
@@ -3688,6 +3817,12 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.memory_monitor.html#modelopt.torch.utils.memory_monitor.GPUMemoryMonitor.monitor_thread">monitor_thread (GPUMemoryMonitor attribute)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantModule.mopt_ckpt_versn">mopt_ckpt_versn (QuantModule property)</a>
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.mopt_ckpt_versn">(TensorQuantizer property)</a>
+</li>
+      </ul></li>
       <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.MTPConfig.mtp_freeze_list">mtp_freeze_list (MTPConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.MTPConfig.mtp_num_layers">mtp_num_layers (MTPConfig attribute)</a>
@@ -3706,6 +3841,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.mup_width_multiplier">mup_width_multiplier (DecoderLayerConfig attribute)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction">MXFP8DynamicBlockQuantizationFunction (class in modelopt.torch.quantization.tensor_quant)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -3715,6 +3852,8 @@
       <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.AutoNASModeDescriptor.name">name (AutoNASModeDescriptor property)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.name">(BaseCalibrateModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.EagleModeDescriptor.name">(EagleModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.ExportModeDescriptor.name">(ExportModeDescriptor property)</a>
@@ -3733,11 +3872,9 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MedusaModeDescriptor.name">(MedusaModeDescriptor property)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.name">(ModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MTPModeDescriptor.name">(MTPModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.name">(QuantizeExportModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.name">(QuantizeModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseGPTModeDescriptor.name">(SparseGPTModeDescriptor property)</a>
 </li>
@@ -3783,11 +3920,13 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.mode.html#modelopt.torch.distill.mode.KnowledgeDistillationModeDescriptor.next_modes">(KnowledgeDistillationModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.next_modes">(QuantizeModeDescriptor property)</a>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.next_modes">(ModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.next_modes">(SparseMagnitudeModeDescriptor property)</a>
 </li>
       </ul></li>
+      <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.next_prohibited_modes">next_prohibited_modes (ModeDescriptor property)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.qtensor.nf4_tensor.html#modelopt.torch.quantization.qtensor.nf4_tensor.NF4QTensor">NF4QTensor (class in modelopt.torch.quantization.qtensor.nf4_tensor)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.distribute.html#modelopt.torch.export.distribute.NFSWorkspace">NFSWorkspace (class in modelopt.torch.export.distribute)</a>
@@ -3968,6 +4107,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.tensor.html#modelopt.torch.utils.tensor.numpy_to_torch">numpy_to_torch() (in module modelopt.torch.utils.tensor)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.backends.nvfp4_gemm.html#modelopt.torch.quantization.backends.nvfp4_gemm">nvfp4_gemm() (in module modelopt.torch.quantization.backends)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -4026,6 +4167,10 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.parallel_attention">parallel_attention (DecoderLayerConfig attribute)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.opt.dynamic.html#modelopt.torch.opt.dynamic.DynamicModule.parallel_state">parallel_state (DynamicModule property)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.ParallelState">ParallelState (class in modelopt.torch.utils.distributed)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.param_num">param_num() (in module modelopt.torch.utils.network)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.param_num_from_forward">param_num_from_forward() (in module modelopt.torch.utils.network)</a>
@@ -4041,6 +4186,8 @@
       <li><a href="reference/generated/modelopt.onnx.quantization.ort_patching.html#modelopt.onnx.quantization.ort_patching.patch_ort_modules">patch_ort_modules() (in module modelopt.onnx.quantization.ort_patching)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.memory_monitor.html#modelopt.torch.utils.memory_monitor.GPUMemoryMonitor.peak_memory">peak_memory (GPUMemoryMonitor attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.LinearConfig.per_channel_scale">per_channel_scale (LinearConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.pipeline_parallel">pipeline_parallel (ModelConfig attribute)</a>
 </li>
@@ -4060,10 +4207,10 @@
         <li><a href="reference/generated/modelopt.torch.export.tensorrt_llm_type.html#modelopt.torch.export.tensorrt_llm_type.LayerNormPositionType.post_layernorm">(LayerNormPositionType attribute)</a>
 </li>
       </ul></li>
-      <li><a href="reference/generated/modelopt.torch.trace.modules.concat.html#modelopt.torch.trace.modules.concat.ConcatNodeProcessor.post_process">post_process() (ConcatNodeProcessor method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.torch.trace.modules.concat.html#modelopt.torch.trace.modules.concat.ConcatNodeProcessor.post_process">post_process() (ConcatNodeProcessor method)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.postprocess_amax">postprocess_amax() (in module modelopt.torch.quantization.model_quant)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.postprocess.html#modelopt.torch.export.postprocess.postprocess_model_config">postprocess_model_config() (in module modelopt.torch.export.postprocess)</a>
@@ -4215,6 +4362,8 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int4_tensor.html#modelopt.torch.quantization.qtensor.int4_tensor.INT4QTensor.quantize">(INT4QTensor class method)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int8_tensor.html#modelopt.torch.quantization.qtensor.int8_tensor.INT8QTensor.quantize">(INT8QTensor class method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.nf4_tensor.html#modelopt.torch.quantization.qtensor.nf4_tensor.NF4QTensor.quantize">(NF4QTensor class method)</a>
 </li>
         <li><a href="reference/generated/modelopt.onnx.quantization.operators.html#modelopt.onnx.quantization.operators.QDQConvTranspose.quantize">(QDQConvTranspose method)</a>
@@ -4232,6 +4381,8 @@
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_rnn.html#modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.quantize_weight">(QuantRNNBase method)</a>
 </li>
       </ul></li>
+      <li><a href="reference/generated/modelopt.onnx.quantization.qdq_utils.html#modelopt.onnx.quantization.qdq_utils.quantize_weights_to_mxfp8">quantize_weights_to_mxfp8() (in module modelopt.onnx.quantization.qdq_utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_rnn.html#modelopt.torch.quantization.nn.modules.quant_rnn.quantized_cell_forward">quantized_cell_forward() (in module modelopt.torch.quantization.nn.modules.quant_rnn)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.qtensor.base_qtensor.html#modelopt.torch.quantization.qtensor.base_qtensor.BaseQuantizedTensor.quantized_data">quantized_data (BaseQuantizedTensor attribute)</a>
@@ -4241,13 +4392,11 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int4_tensor.html#modelopt.torch.quantization.qtensor.int4_tensor.INT4QTensor.quantized_data">(INT4QTensor attribute)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.quantization.qtensor.int8_tensor.html#modelopt.torch.quantization.qtensor.int8_tensor.INT8QTensor.quantized_data">(INT8QTensor attribute)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.qtensor.nf4_tensor.html#modelopt.torch.quantization.qtensor.nf4_tensor.NF4QTensor.quantized_data">(NF4QTensor attribute)</a>
 </li>
       </ul></li>
-      <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor">QuantizeExportModeDescriptor (class in modelopt.torch.quantization.mode)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor">QuantizeModeDescriptor (class in modelopt.torch.quantization.mode)</a>
-</li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_linear.html#modelopt.torch.quantization.nn.modules.quant_linear.QuantLinear">QuantLinear (class in modelopt.torch.quantization.nn.modules.quant_linear)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase">QuantLinearConvBase (class in modelopt.torch.quantization.nn.modules.quant_module)</a>
@@ -4257,6 +4406,8 @@
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_pooling.html#modelopt.torch.quantization.nn.modules.quant_pooling.QuantMaxPool2d">QuantMaxPool2d (class in modelopt.torch.quantization.nn.modules.quant_pooling)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_pooling.html#modelopt.torch.quantization.nn.modules.quant_pooling.QuantMaxPool3d">QuantMaxPool3d (class in modelopt.torch.quantization.nn.modules.quant_pooling)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantModule">QuantModule (class in modelopt.torch.quantization.nn.modules.quant_module)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_rnn.html#modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase">QuantRNNBase (class in modelopt.torch.quantization.nn.modules.quant_rnn)</a>
 </li>
@@ -4284,9 +4435,15 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.rank">rank (ModelConfig attribute)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.rank">rank() (in module modelopt.torch.utils.distributed)</a>
+      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.DistributedProcessGroup.rank">rank() (DistributedProcessGroup method)</a>
+
+      <ul>
+        <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.rank">(in module modelopt.torch.utils.distributed)</a>
 </li>
+      </ul></li>
       <li><a href="reference/generated/modelopt.torch.export.distribute.html#modelopt.torch.export.distribute.NFSWorkspace.read_configs_and_weights_from_rank">read_configs_and_weights_from_rank() (NFSWorkspace method)</a>
+</li>
+      <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.read_f16_tensor_as_fp32">read_f16_tensor_as_fp32() (in module modelopt.onnx.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.trace.tracer.html#modelopt.torch.trace.tracer.RobustTracer.record_call_module">record_call_module() (RobustTracer method)</a>
 </li>
@@ -4330,7 +4487,11 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.remove_bn">remove_bn() (in module modelopt.torch.utils.network)</a>
 </li>
+      <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.remove_output_initializers">remove_output_initializers() (in module modelopt.onnx.quantization.graph_utils)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.remove_partial_input_qdq">remove_partial_input_qdq() (in module modelopt.onnx.quantization.graph_utils)</a>
+</li>
+      <li><a href="reference/generated/modelopt.onnx.quantization.graph_utils.html#modelopt.onnx.quantization.graph_utils.remove_redundant_cast_nodes">remove_redundant_cast_nodes() (in module modelopt.onnx.quantization.graph_utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.opt.conversion.html#modelopt.torch.opt.conversion.ModeloptStateManager.remove_state">remove_state() (ModeloptStateManager class method)</a>
 </li>
@@ -4348,26 +4509,32 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.quantization.qdq_utils.html#modelopt.onnx.quantization.qdq_utils.replace_scale_values">replace_scale_values() (in module modelopt.onnx.quantization.qdq_utils)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.replace_sequential_quantizer_with_single_quantizer">replace_sequential_quantizer_with_single_quantizer() (SequentialQuantizer static method)</a>
+      <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer.report">report() (AccumulatingTimer class method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.report_memory">report_memory() (in module modelopt.torch.utils.perf)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.require_model_like">require_model_like (ModeDescriptor property)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.ResBlock">ResBlock (class in modelopt.torch.speculative.utils)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.trace.modules.concat.html#modelopt.torch.trace.modules.concat.ConcatNodeProcessor.reset">reset() (ConcatNodeProcessor method)</a>
+      <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer.reset">reset() (AccumulatingTimer class method)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.calib.bias.html#modelopt.torch.quantization.calib.bias.BiasCalibrator.reset">(BiasCalibrator method)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.trace.modules.concat.html#modelopt.torch.trace.modules.concat.ConcatNodeProcessor.reset">(ConcatNodeProcessor method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.quantization.calib.histogram.html#modelopt.torch.quantization.calib.histogram.HistogramCalibrator.reset">(HistogramCalibrator method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.calib.max.html#modelopt.torch.quantization.calib.max.MaxCalibrator.reset">(MaxCalibrator method)</a>
 </li>
       </ul></li>
-      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.reset_amax">reset_amax() (SequentialQuantizer method)</a>
-
-      <ul>
-        <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.reset_amax">(TensorQuantizer method)</a>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.reset_amax">reset_amax() (TensorQuantizer method)</a>
 </li>
-      </ul></li>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.reset_bias">reset_bias() (TensorQuantizer method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.opt.dynamic.html#modelopt.torch.opt.dynamic.DynamicModule.reset_dynamic_attributes">reset_dynamic_attributes() (DynamicModule method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.opt.searcher.html#modelopt.torch.opt.searcher.BaseSearcher.reset_search">reset_search() (BaseSearcher method)</a>
@@ -4376,8 +4543,6 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.residual_layernorm">residual_layernorm (DecoderLayerConfig attribute)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.residual_mlp">residual_mlp (DecoderLayerConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.quant_utils.html#modelopt.torch.export.quant_utils.resmooth_and_get_scale">resmooth_and_get_scale() (in module modelopt.torch.export.quant_utils)</a>
@@ -4387,6 +4552,8 @@
       <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.AutoNASModeDescriptor.restore">restore (AutoNASModeDescriptor property)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.restore">(BaseCalibrateModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.EagleModeDescriptor.restore">(EagleModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.ExportModeDescriptor.restore">(ExportModeDescriptor property)</a>
@@ -4401,11 +4568,9 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MedusaModeDescriptor.restore">(MedusaModeDescriptor property)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.restore">(ModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.speculative.mode.html#modelopt.torch.speculative.mode.MTPModeDescriptor.restore">(MTPModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeExportModeDescriptor.restore">(QuantizeExportModeDescriptor property)</a>
-</li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.restore">(QuantizeModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.restore">(SparseMagnitudeModeDescriptor property)</a>
 </li>
@@ -4437,8 +4602,6 @@
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.RecurrentConfig.rg_lru">rg_lru (RecurrentConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.RgLruConfig">RgLruConfig (class in modelopt.torch.export.model_config)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.speculative.utils.html#modelopt.torch.speculative.utils.right_padding">right_padding() (in module modelopt.torch.speculative.utils)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.eagle.utils.html#modelopt.torch.speculative.eagle.utils.RMSNorm">RMSNorm (class in modelopt.torch.speculative.eagle.utils)</a>
 </li>
@@ -4508,8 +4671,6 @@
       </ul></li>
       <li><a href="reference/generated/modelopt.torch.nas.autonas.html#modelopt.torch.nas.autonas.IterativeSearcher.samples">samples (IterativeSearcher attribute)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase.sanitize_dummy_weight">sanitize_dummy_weight() (QuantLinearConvBase static method)</a>
-</li>
       <li><a href="reference/generated/modelopt.torch.opt.searcher.html#modelopt.torch.opt.searcher.BaseSearcher.sanitize_search_config">sanitize_search_config() (BaseSearcher method)</a>
 
       <ul>
@@ -4553,6 +4714,8 @@
 </li>
         <li><a href="reference/generated/modelopt.torch.prune.mode.html#modelopt.torch.prune.mode.MCoreGPTMinitronModeDescriptor.search_algorithm">(MCoreGPTMinitronModeDescriptor property)</a>
 </li>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.search_algorithm">(ModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseGPTModeDescriptor.search_algorithm">(SparseGPTModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.search_algorithm">(SparseMagnitudeModeDescriptor property)</a>
@@ -4578,8 +4741,6 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer">SequentialQuantizer (class in modelopt.torch.quantization.nn.modules.tensor_quantizer)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.set_data_parallel_group">set_data_parallel_group() (in module modelopt.torch.utils.distributed)</a>
-</li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.set_from_attribute_config">set_from_attribute_config() (SequentialQuantizer method)</a>
 
       <ul>
@@ -4604,14 +4765,12 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.set_submodule">set_submodule() (in module modelopt.torch.utils.network)</a>
 </li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.SymMap.set_symbol">set_symbol() (SymMap method)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.set_tensor_parallel_group">set_tensor_parallel_group() (in module modelopt.torch.utils.distributed)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.layer_utils.html#modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts">set_zero_amax_for_uncalibrated_experts() (in module modelopt.torch.export.layer_utils)</a>
 </li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.prune.gradnas.html#modelopt.torch.prune.gradnas.GradientBinarySearcher.SETUP_GRADIENT_FUNC">SETUP_GRADIENT_FUNC (GradientBinarySearcher attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.share_embedding_table">share_embedding_table (ModelConfig attribute)</a>
@@ -4660,9 +4819,11 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.utils.network.html#modelopt.torch.utils.network.standardize_named_model_args">standardize_named_model_args() (in module modelopt.torch.utils.network)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.utils.memory_monitor.html#modelopt.torch.utils.memory_monitor.GPUMemoryMonitor.start">start() (GPUMemoryMonitor method)</a>
+      <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer.start">start() (AccumulatingTimer method)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.utils.memory_monitor.html#modelopt.torch.utils.memory_monitor.GPUMemoryMonitor.start">(GPUMemoryMonitor method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.Timer.start">(Timer method)</a>
 </li>
       </ul></li>
@@ -4684,9 +4845,11 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.step_size">step_size (TensorQuantizer property)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.utils.memory_monitor.html#modelopt.torch.utils.memory_monitor.GPUMemoryMonitor.stop">stop() (GPUMemoryMonitor method)</a>
+      <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.AccumulatingTimer.stop">stop() (AccumulatingTimer method)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.utils.memory_monitor.html#modelopt.torch.utils.memory_monitor.GPUMemoryMonitor.stop">(GPUMemoryMonitor method)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.utils.perf.html#modelopt.torch.utils.perf.Timer.stop">(Timer method)</a>
 </li>
       </ul></li>
@@ -4698,14 +4861,18 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.TensorQuantizer.svdquant_lora_b">svdquant_lora_b (TensorQuantizer property)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_linear.html#modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear">SVDQuantLinear (class in modelopt.torch.quantization.nn.modules.quant_linear)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol">Symbol (class in modelopt.torch.trace.symbols)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol.CLType">Symbol.CLType (class in modelopt.torch.trace.symbols)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.symbolic">symbolic() (DynamicBlockQuantizationFunction static method)</a>
+      <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.symbolic">symbolic() (FakeTensorQuantFunction static method)</a>
 
       <ul>
-        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FakeTensorQuantFunction.symbolic">(FakeTensorQuantFunction static method)</a>
+        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.symbolic">(FP4DynamicBlockQuantizationFunction static method)</a>
+</li>
+        <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.symbolic">(MXFP8DynamicBlockQuantizationFunction static method)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function.symbolic">(ScaledE4M3Function static method)</a>
 </li>
@@ -4737,8 +4904,6 @@
 </li>
       </ul></li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig.tensor_parallel">tensor_parallel (ModelConfig attribute)</a>
-</li>
-      <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.tensor_quantizer.html#modelopt.torch.quantization.nn.modules.tensor_quantizer.SequentialQuantizer.tensor_quantizer_iterator">tensor_quantizer_iterator() (SequentialQuantizer static method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.tensor_quant.html#modelopt.torch.quantization.tensor_quant.TensorQuantFunction">TensorQuantFunction (class in modelopt.torch.quantization.tensor_quant)</a>
 </li>
@@ -4821,11 +4986,13 @@
       <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.AutoNASModeDescriptor.update_for_new_mode">update_for_new_mode (AutoNASModeDescriptor property)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.update_for_new_mode">(BaseCalibrateModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.prune.mode.html#modelopt.torch.prune.mode.FastNASModeDescriptor.update_for_new_mode">(FastNASModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.distill.mode.html#modelopt.torch.distill.mode.KnowledgeDistillationModeDescriptor.update_for_new_mode">(KnowledgeDistillationModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.update_for_new_mode">(QuantizeModeDescriptor property)</a>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.update_for_new_mode">(ModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.update_for_new_mode">(SparseMagnitudeModeDescriptor property)</a>
 </li>
@@ -4835,9 +5002,11 @@
       <li><a href="reference/generated/modelopt.torch.nas.mode.html#modelopt.torch.nas.mode.AutoNASModeDescriptor.update_for_save">update_for_save (AutoNASModeDescriptor property)</a>
 
       <ul>
+        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor.update_for_save">(BaseCalibrateModeDescriptor property)</a>
+</li>
         <li><a href="reference/generated/modelopt.torch.prune.mode.html#modelopt.torch.prune.mode.FastNASModeDescriptor.update_for_save">(FastNASModeDescriptor property)</a>
 </li>
-        <li><a href="reference/generated/modelopt.torch.quantization.mode.html#modelopt.torch.quantization.mode.QuantizeModeDescriptor.update_for_save">(QuantizeModeDescriptor property)</a>
+        <li><a href="reference/generated/modelopt.torch.opt.mode.html#modelopt.torch.opt.mode.ModeDescriptor.update_for_save">(ModeDescriptor property)</a>
 </li>
         <li><a href="reference/generated/modelopt.torch.sparsity.mode.html#modelopt.torch.sparsity.mode.SparseMagnitudeModeDescriptor.update_for_save">(SparseMagnitudeModeDescriptor property)</a>
 </li>
@@ -4856,6 +5025,8 @@
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.use_alibi">use_alibi (DecoderLayerConfig attribute)</a>
 </li>
+      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.use_aux_hidden_state">use_aux_hidden_state (EagleConfig attribute)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig.use_cache">use_cache (DecoderLayerConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.use_input_layernorm_in_first_layer">use_input_layernorm_in_first_layer (EagleConfig attribute)</a>
@@ -4866,6 +5037,8 @@
         <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.MTPConfig.use_last_layernorm">(MTPConfig attribute)</a>
 </li>
       </ul></li>
+      <li><a href="reference/generated/modelopt.torch.speculative.config.html#modelopt.torch.speculative.config.EagleConfig.use_mtp_layernorm">use_mtp_layernorm (EagleConfig attribute)</a>
+</li>
       <li><a href="reference/generated/modelopt.onnx.quantization.qdq_utils.html#modelopt.onnx.quantization.qdq_utils.use_trt_qdq_ops">use_trt_qdq_ops() (in module modelopt.onnx.quantization.qdq_utils)</a>
 </li>
   </ul></td>
@@ -4875,6 +5048,8 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.QKVConfig.v">v (QKVConfig attribute)</a>
+</li>
+      <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.v_cache_bias">v_cache_bias (AttentionConfig attribute)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.AttentionConfig.v_cache_scaling_factor">v_cache_scaling_factor (AttentionConfig attribute)</a>
 </li>
@@ -4888,10 +5063,10 @@
 </li>
       <li><a href="reference/generated/modelopt.onnx.utils.html#modelopt.onnx.utils.validate_onnx">validate_onnx() (in module modelopt.onnx.utils)</a>
 </li>
-      <li><a href="reference/generated/modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseRule.validate_rule">validate_rule() (ModeloptBaseRule class method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="reference/generated/modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseRule.validate_rule">validate_rule() (ModeloptBaseRule class method)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.opt.config.html#modelopt.torch.opt.config.ModeloptBaseConfig.values">values() (ModeloptBaseConfig method)</a>
 </li>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_rnn.html#modelopt.torch.quantization.nn.modules.quant_rnn.VFRNNForward">VFRNNForward (class in modelopt.torch.quantization.nn.modules.quant_rnn)</a>
@@ -4928,14 +5103,14 @@
         <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.RelativeAttentionTableConfig.weight">(RelativeAttentionTableConfig attribute)</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase.weight_quantizer">weight_quantizer (QuantLinearConvBase attribute)</a>
 
       <ul>
         <li><a href="reference/generated/modelopt.torch.quantization.nn.modules.quant_rnn.html#modelopt.torch.quantization.nn.modules.quant_rnn.QuantRNNBase.weight_quantizer">(QuantRNNBase attribute)</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.LinearConfig.weights_scaling_factor">weights_scaling_factor (LinearConfig attribute)</a>
 
       <ul>
@@ -4948,6 +5123,8 @@
         <li><a href="reference/generated/modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.QKVConfig.weights_scaling_factor_2">(QKVConfig property)</a>
 </li>
       </ul></li>
+      <li><a href="reference/generated/modelopt.torch.utils.distributed.html#modelopt.torch.utils.distributed.DistributedProcessGroup.world_size">world_size() (DistributedProcessGroup method)</a>
+</li>
       <li><a href="reference/generated/modelopt.torch.export.distribute.html#modelopt.torch.export.distribute.NFSWorkspace.write_configs_and_weights">write_configs_and_weights() (NFSWorkspace method)</a>
 </li>
   </ul></td>

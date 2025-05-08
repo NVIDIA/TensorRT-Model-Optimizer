@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>quant_linear &mdash; Model Optimizer 0.27.1</title>
+  <title>quant_linear &mdash; Model Optimizer 0.29.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -101,6 +101,7 @@
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.backends.html">backends</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
@@ -176,6 +177,9 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.nn.modules.quant_linear.QuantLinear" title="modelopt.torch.quantization.nn.modules.quant_linear.QuantLinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">QuantLinear</span></code></a></p></td>
 <td><p>Quantized version of nn.Linear.</p></td>
 </tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear" title="modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SVDQuantLinear</span></code></a></p></td>
+<td><p>Base class for quantized linear modules with SVDQuant.</p></td>
+</tr>
 </tbody>
 </table>
 <dl class="py attribute">
@@ -193,6 +197,25 @@
 <dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.quant_linear.QuantLinear.default_quant_desc_weight">
 <span class="sig-name descname"><span class="pre">default_quant_desc_weight</span></span><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">QuantizerAttributeConfig(enable=True,</span> <span class="pre">num_bits=8,</span> <span class="pre">axis=0,</span> <span class="pre">fake_quant=True,</span> <span class="pre">unsigned=False,</span> <span class="pre">narrow_range=False,</span> <span class="pre">learn_amax=False,</span> <span class="pre">type='static',</span> <span class="pre">block_sizes=None,</span> <span class="pre">bias=None,</span> <span class="pre">trt_high_precision_dtype='Float',</span> <span class="pre">calibrator='max',</span> <span class="pre">rotate=False)</span></em><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_linear.QuantLinear.default_quant_desc_weight" title="Link to this definition"></a></dt>
 <dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">SVDQuantLinear</span></span><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear" title="Link to this definition"></a></dt>
+<dd><p>Bases: <a class="reference internal" href="modelopt.torch.quantization.nn.modules.quant_module.html#modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase" title="modelopt.torch.quantization.nn.modules.quant_module.QuantLinearConvBase"><code class="xref py py-class docutils literal notranslate"><span class="pre">QuantLinearConvBase</span></code></a></p>
+<p>Base class for quantized linear modules with SVDQuant.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear.fold_weight">
+<span class="sig-name descname"><span class="pre">fold_weight</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear.fold_weight" title="Link to this definition"></a></dt>
+<dd><p>Fold the weight for faster eval.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.nn.modules.quant_linear.SVDQuantLinear.forward" title="Link to this definition"></a></dt>
+<dd><p>SVDQuant layer forward function.</p>
+</dd></dl>
 
 </dd></dl>
 

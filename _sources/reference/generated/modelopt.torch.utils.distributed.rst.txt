@@ -26,6 +26,14 @@ distributed
    .. Overview table of available classes in the module
    
    
+   .. rubric:: Classes
+
+   .. autosummary::
+      :nosignatures:
+   
+      ParallelState
+      DistributedProcessGroup
+   
    
 
 
@@ -39,14 +47,10 @@ distributed
    
       backend
       barrier
-      get_data_parallel_group
-      get_tensor_parallel_group
       is_available
       is_initialized
       is_master
       rank
-      set_data_parallel_group
-      set_tensor_parallel_group
       size
    
    
