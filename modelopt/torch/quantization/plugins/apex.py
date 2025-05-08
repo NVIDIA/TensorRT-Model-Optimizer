@@ -28,11 +28,6 @@ from .custom import _ParallelLinear
 
 
 class _ApexParallelLinear(_ParallelLinear):
-    def initialize_parallel_state(self):
-        self._parallel_state = ParallelState(
-            get_data_parallel_group(), get_tensor_model_parallel_group()
-        )
-
     def _setup(self):
         quantized_linear_fn = partial(
             _QuantLinear.quantized_linear_fn,
@@ -41,6 +36,9 @@ class _ApexParallelLinear(_ParallelLinear):
             self,
         )
         self._forward_impl = quantized_linear_fn
+        self.parallel_state = ParallelState(
+            get_data_parallel_group(), get_tensor_model_parallel_group()
+        )
         super()._setup()
 
 

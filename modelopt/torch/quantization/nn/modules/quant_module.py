@@ -16,27 +16,103 @@
 """Base class for quantization modules."""
 
 import contextlib
+import warnings
 from typing import Union
 
 import torch
 
 from modelopt.torch.opt.dynamic import DynamicModule, _DMRegistryCls
 
-from ...qtensor import pack_real_quantize_weight
 from ...tensor_quant import QUANT_DESC_8BIT_PER_TENSOR
 from ...utils import is_torch_export_mode
 from .tensor_quantizer import SequentialQuantizer, TensorQuantizer
 
-__all__ = ["QuantInputBase", "QuantLinearConvBase", "QuantModuleRegistry"]
+__all__ = [
+    "QuantInputBase",
+    "QuantLinearConvBase",
+    "QuantModuleRegistry",
+    "QuantModule",
+]
 
-QuantModuleRegistry = _DMRegistryCls("Quant")
+
+class QuantModule(DynamicModule):
+    """A base class for quantized modules."""
+
+    @property
+    def mopt_ckpt_versn(self):
+        """Checkpoint version of the modelopt."""
+        for module in self.modules():
+            if isinstance(module, TensorQuantizer):
+                return module.mopt_ckpt_versn
+        return None
+
+    @mopt_ckpt_versn.setter
+    def mopt_ckpt_versn(self, version: str):
+        """Set the checkpoint version for the TensorQuantizer states."""
+
+        def _set_ckpt_version(module):
+            if isinstance(module, TensorQuantizer):
+                module.mopt_ckpt_versn = version
+
+        self.apply(_set_ckpt_version)
+
+    def modelopt_post_restore(self, prefix: str = ""):
+        """Post-restore to correctly configure the TensorQuantizer states.
+
+        TensorQuantizer states are restored to their shape before saving. Now we need to further configure them.
+            1. For non-sharded modules this simply involves moving the TensorQuantizer states to the right device and
+                dtype. This applies for regular Pytorch models and HuggingFace models.
+            2. For sharded modules the restored states of TensorQuantizer could be incorrect. This is because
+                parallelism such as TP might have been changed between saving and resoring. So we need to re-calculate
+                the state shapes. Hence such modules should override this and implement their own logic.
+        """
+        # Get a parameter or buffer that does not belong to a TensorQuantizer
+        non_tq_param_or_buffer = None
+        for name, param_or_buffer in self.state_dict().items():
+            parent = self.get_submodule(name.rsplit(".", 1)[0]) if "." in name else self
+            if not isinstance(parent, TensorQuantizer):
+                non_tq_param_or_buffer = param_or_buffer
+                break
+
+        if non_tq_param_or_buffer is None:
+            warnings.warn(
+                f"Could not identify the device and dtype for TensorQuantizer states of {prefix}. "
+                "Please move the model to the right device and dtype now. This can be done by calling "
+                "`model.to(device, dtype)`."
+            )
+            return
+
+        # Move the TensorQuantizer states to the right device and dtype
+        for module in self.modules():
+            if isinstance(module, TensorQuantizer):
+                module.to(non_tq_param_or_buffer.device, non_tq_param_or_buffer.dtype)
+
+    def fold_weight(self):
+        """Fold the weight for faster eval."""
+        if (
+            hasattr(self, "weight_quantizer")
+            and hasattr(self, "weight")
+            and self.weight_quantizer.fake_quant
+        ):
+            self.weight.data.copy_(self.weight_quantizer(self.weight.float()).to(self.weight.dtype))
+            self.weight_quantizer.disable()
+            _attrs = [
+                "_pre_quant_scale",
+                "_amax",
+            ]
+            for attr in _attrs:
+                if hasattr(self.weight_quantizer, attr):
+                    delattr(self.weight_quantizer, attr)
 
 
-class QuantInputBase(DynamicModule):
+QuantModuleRegistry = _DMRegistryCls("Quant", QuantModule)
+
+
+class QuantInputBase(QuantModule):
     """Base class for modules where the input is quantized."""
 
-    input_quantizer: Union[TensorQuantizer, SequentialQuantizer]
-    output_quantizer: Union[TensorQuantizer, SequentialQuantizer]
+    input_quantizer: TensorQuantizer
+    output_quantizer: TensorQuantizer
     default_quant_desc_input = QUANT_DESC_8BIT_PER_TENSOR
     default_quant_desc_output = QUANT_DESC_8BIT_PER_TENSOR
 
@@ -87,6 +163,27 @@ class QuantLinearConvBase(QuantInputBase):
         # self.quntize_weight() setting attributes is not allowed for torch.export.
         if is_torch_export_mode():
             return super().forward(input, *args, **kwargs)
+
+        # Check if real-quant GEMM is available
+        if hasattr(self, "_use_real_quant_gemm") and self._use_real_quant_gemm:
+            from ...backends.gemm_registry import gemm_registry
+
+            real_quant_gemm = (
+                self._real_quant_gemm_cache
+                if hasattr(self, "_real_quant_gemm_cache")
+                else gemm_registry.find_match(self, input, args, kwargs)
+            )
+
+            # Note: We cache the real-quant GEMM function to avoid matching overhead.
+            # This assumes that the function will not change after the first call.
+            if real_quant_gemm:
+                self._real_quant_gemm_cache = real_quant_gemm
+                output = real_quant_gemm(self, input, self.weight, self.bias, *args, **kwargs)
+                return (
+                    self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
+                )
+
+        # Otherwise, fallback to the default GEMM
         with self.quantize_weight():
             return super().forward(input, *args, **kwargs)
 
@@ -99,72 +196,11 @@ class QuantLinearConvBase(QuantInputBase):
         self._register_dynamic_attribute("weight", self._get_quantized_weight)
 
     @staticmethod
-    def initialize_quantizer_with_dummy_states(module):
-        """Initialize the quantizer states with dummy values with the correct type and device."""
-        # # Import in the function to avoid circular imports
-        from ...model_calib import max_calibrate
-
-        # TODO: Fix device for svdquant
-
-        def _initialize_activation_quantizer_amax(quantizer, device, dtype):
-            if not getattr(quantizer, "_has_amax", False):
-                return
-            # We need the outputs to initialize the amax in this case; Weights alone are not enough
-            if (
-                quantizer.block_sizes is not None
-                and quantizer.block_sizes.get("type", None) != "dynamic"
-            ):
-                return
-            if quantizer.axis is not None:
-                return
-            quantizer.amax = torch.tensor(1, device=device, dtype=dtype)
-
-        device, dtype = module.weight.device, module.weight.dtype
-
-        for input_quantizer in SequentialQuantizer.tensor_quantizer_iterator(
-            getattr(module, "input_quantizer", None)
-        ):
-            if getattr(input_quantizer, "_has_pre_quant_scale", False):
-                input_quantizer.pre_quant_scale = torch.ones(
-                    module.weight.shape[1], device=device, dtype=dtype
-                )
-
-            _initialize_activation_quantizer_amax(input_quantizer, device, dtype)
-
-        for output_quantizer in SequentialQuantizer.tensor_quantizer_iterator(
-            getattr(module, "output_quantizer", None)
-        ):
-            _initialize_activation_quantizer_amax(output_quantizer, device, dtype)
-
-        for weight_quantizer in SequentialQuantizer.tensor_quantizer_iterator(
-            getattr(module, "weight_quantizer", None)
-        ):
-            if getattr(weight_quantizer, "_has_amax", False):
-                # [IMPORTANT] max_calibrate will perform distributed sync on amax; hence should
-                # not be called here. When parallel_state is not found, distributed sync will
-                # result in deadlock.
-                max_calibrate(
-                    weight_quantizer,
-                    lambda weight_quantizer: weight_quantizer(module.weight),
-                    distributed_sync=False,
-                )
-
-    @staticmethod
     def initialize_real_qtensor_with_dummy_weight(module):
         """Initalize the real qunatized tensors."""
-        pack_real_quantize_weight(module, force_quantize=True)
+        from ...qtensor import pack_real_quantize_weight
 
-    @staticmethod
-    def sanitize_dummy_weight(module):
-        """Replace nan values with ones in dummy tensors."""
-        with torch.no_grad():
-            for _, m in module.named_modules():
-                if (
-                    hasattr(m, "weight")
-                    and hasattr(m, "weight_quantizer")
-                    and m.weight_quantizer.is_enabled
-                ):
-                    m.weight[torch.isnan(m.weight)] = 1
+        pack_real_quantize_weight(module, force_quantize=True)
 
 
 class _LegacyQuantInputBaseMixin:

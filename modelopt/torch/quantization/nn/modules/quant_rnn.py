@@ -24,11 +24,9 @@ import torch._VF as _VF
 import torch.nn as nn
 import torch.nn.functional as F
 
-from modelopt.torch.opt.dynamic import DynamicModule
-
 from ...tensor_quant import QUANT_DESC_8BIT_PER_TENSOR
 from ...utils import is_torch_export_mode, multi_context, replace_function
-from .quant_module import QuantModuleRegistry
+from .quant_module import QuantModule, QuantModuleRegistry
 from .tensor_quantizer import SequentialQuantizer, TensorQuantizer
 
 _cell_call_map = {
@@ -45,7 +43,7 @@ _layer_call_name_map = {
 }
 
 
-class QuantRNNBase(DynamicModule):
+class QuantRNNBase(QuantModule):
     """Base class for quantized RNN modules."""
 
     weight_quantizer: Union[TensorQuantizer, SequentialQuantizer]

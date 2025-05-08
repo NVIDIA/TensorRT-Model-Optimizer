@@ -57,7 +57,6 @@ class ORTLocalClient(RuntimeClient):
     @property
     def deployment_table(self) -> DeploymentTable:
         return {
-            "version": ["1.16"],
             "accelerator": list(self._accelerator_to_provider.keys()),
             "precision": ["fp32"],
             "onnx_opset": ["13"],

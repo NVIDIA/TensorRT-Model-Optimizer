@@ -15,13 +15,12 @@
 
 import os
 
+from _test_utils.opt_utils import apply_mode_with_sampling
 from _test_utils.torch_model.transformers_models import (
     create_tiny_bert_dir,
     tf_modelopt_state_and_output_tester,
 )
 from transformers import AutoModelForQuestionAnswering, BertForQuestionAnswering
-
-import modelopt.torch.nas as mtn
 
 
 def test_pruned_transformers_save_restore(tmp_path):
@@ -29,9 +28,7 @@ def test_pruned_transformers_save_restore(tmp_path):
     model_ref = BertForQuestionAnswering.from_pretrained(tiny_bert_dir)
 
     # Export a random subnet (proxy for search / prune)
-    model_ref = mtn.convert(model_ref, "fastnas")
-    mtn.sample(model_ref)
-    model_ref = mtn.export(model_ref)
+    model_ref = apply_mode_with_sampling(model_ref, ["fastnas", "export"])
 
     model_ref.save_pretrained(tiny_bert_dir / "modelopt_model")
     assert os.path.exists(tiny_bert_dir / "modelopt_model/modelopt_state.pth")

@@ -40,3 +40,8 @@ if __version__.split(".")[:2] != __core_version__.split(".")[:2]:
         f"Version mismatch between nvidia-modelopt ({__version__}) and nvidia-modelopt-core"
         f" ({__core_version__}). Please ensure both versions are the same for compatibility."
     )
+
+if _sys.version_info < (3, 10):
+    _warnings.warn(
+        "Python 3.9 support will be dropped in a future release. Please upgrade your python version."
+    )

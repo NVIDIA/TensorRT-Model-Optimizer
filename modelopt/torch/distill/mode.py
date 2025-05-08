@@ -30,9 +30,9 @@ from modelopt.torch.opt.mode import (
     ConvertEntrypoint,
     ConvertReturnType,
     MetadataDict,
+    ModeDescriptor,
     RestoreEntrypoint,
     UpdateEntrypoint,
-    _ModeDescriptor,
     _ModeRegistryCls,
 )
 from modelopt.torch.utils import init_model_from_model_like, unwrap_model
@@ -45,7 +45,7 @@ DistillModeRegistry = _ModeRegistryCls("distill")
 
 
 @DistillModeRegistry.register_mode
-class KnowledgeDistillationModeDescriptor(_ModeDescriptor):
+class KnowledgeDistillationModeDescriptor(ModeDescriptor):
     """Class to describe the Knowledge-Distillation mode.
 
     The properties of this mode can be inspected via the source code.
@@ -88,7 +88,7 @@ class KnowledgeDistillationModeDescriptor(_ModeDescriptor):
 
 
 @DistillModeRegistry.register_mode
-class ExportStudentModeDescriptor(_ModeDescriptor):
+class ExportStudentModeDescriptor(ModeDescriptor):
     """Class to describe the specific Export mode to be used with Knowledge Distillation.
 
     The properties of this mode can be inspected via the source code.

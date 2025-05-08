@@ -16,23 +16,29 @@
 """Various utils to support inserting Q/DQ nodes."""
 
 import logging
-from typing import Any, Sequence, Union
+from typing import Any, Dict, List, Sequence, Tuple, Union
 
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+from onnx import numpy_helper
 from onnx.reference.custom_element_types import float8e4m3fn
 from onnx.reference.ops.op_cast import Cast_19 as Cast
 
+from modelopt.onnx import utils
 from modelopt.onnx.quantization.graph_utils import (
     get_tensor_consumer_nodes,
     get_tensor_producer_nodes,
+    remove_redundant_cast_nodes,
 )
 from modelopt.onnx.quantization.quant_utils import (
+    compute_e8m0,
+    get_amax,
     get_weights_scaling_factor,
     get_weights_scaling_factor_2,
     quantize,
 )
+from modelopt.onnx.utils import get_attribute, has_attribute
 
 QUANTIZE_NODE_NAME = "QuantizeLinear"
 DEQUANTIZE_NODE_NAME = "DequantizeLinear"
@@ -110,7 +116,7 @@ def make_gs_zp(name: str, shape: Sequence[int], dtype) -> gs.Constant:
     """
     return gs.make_constant(
         _zp_name(name),
-        np.zeros(shape, dtype=onnx.mapping.TENSOR_TYPE_MAP[int(dtype)].np_dtype),
+        np.zeros(shape, dtype=onnx.helper.tensor_dtype_to_np_dtype(dtype)),
         dtype,
     )
 
@@ -382,227 +388,392 @@ def insert_qdq_nodes(
     )
 
 
-def replace_scale_values(graph: onnx.onnx_ml_pb2.GraphProto, act_scales_dict: dict[str, float]):
-    """Replaces the scales values from calibration cache."""
-    initializers = graph.initializer
-    initializer_indices = {
-        initializer.name: idx for idx, initializer in enumerate(graph.initializer)
-    }
-
-    for node in graph.node:
-        if node.op_type == "QuantizeLinear":
-            scale_input_name = node.input[1]
-            if scale_input_name in act_scales_dict:
-                idx = initializer_indices.get(scale_input_name, None)
-                assert idx is not None, (
-                    f"Expected '{scale_input_name}' to be found in 'graph.initializer', but it was not present."
-                )
-                scale = onnx.numpy_helper.from_array(
-                    np.float32(act_scales_dict[scale_input_name]), scale_input_name
-                )
-                initializers[idx].CopyFrom(scale)
-            else:
-                # If the scale is not present in the act_scales_dict
-                # then the current node must be an weight quantizer and
-                # the weight should be available in the graph initializer
-                assert initializer_indices.get(node.input[0], None) is not None, (
-                    f"Tensor {node.input[0]} not found in initializers."
-                )
-
-
-def qdq_to_dq(
-    onnx_model: onnx.onnx_pb.ModelProto, verbose: bool = False
-) -> onnx.onnx_pb.ModelProto:
-    """Convert FP32/FP16 weights of the given ONNX model to INT8/FP8 weights.
-
-    Q nodes will get removed from the weights and have only DQ nodes with those converted INT8/FP8
-    weights in the output model. Also dangling Q nodes get fused and update its consumer's weight.
+def replace_scale_values(graph: onnx.GraphProto, act_scales_dict: dict[str, float]) -> None:
+    """Replace scale values in the graph with values from calibration cache.
 
     Args:
-        onnx_model: ONNX model protobuf.
+        graph: ONNX graph to modify
+        act_scales_dict: Dictionary mapping scale tensor names to their new values
+    """
+    initializer_indices = {init.name: idx for idx, init in enumerate(graph.initializer)}
+
+    for node in graph.node:
+        if node.op_type != "QuantizeLinear":
+            continue
+
+        scale_name = node.input[1]
+        if scale_name in act_scales_dict:
+            if scale_name not in initializer_indices:
+                raise ValueError(f"Scale tensor '{scale_name}' not found in graph initializers")
+
+            scale = onnx.numpy_helper.from_array(
+                np.float32(act_scales_dict[scale_name]), scale_name
+            )
+            graph.initializer[initializer_indices[scale_name]].CopyFrom(scale)
+        else:
+            # For weight quantizers, verify the weight tensor exists
+            weight_name = node.input[0]
+            if weight_name not in initializer_indices:
+                raise ValueError(f"Weight tensor '{weight_name}' not found in graph initializers")
+
+
+def has_qdq_nodes(onnx_model: onnx.ModelProto):
+    """Check if the onnx graph already has QDQ nodes."""
+    qdq_ops = {QUANTIZE_NODE_NAME, DEQUANTIZE_NODE_NAME}
+    for node in onnx_model.graph.node:
+        if node.op_type in qdq_ops:
+            return True
+    return False
+
+
+def _get_graph_metadata(
+    graph: onnx.GraphProto,
+) -> Tuple[Dict[str, onnx.TensorProto], Dict[str, onnx.NodeProto], Dict[str, List[onnx.NodeProto]]]:
+    """Get helper dictionaries for efficient graph traversal and node analysis.
+
+    Args:
+        graph: ONNX graph to analyze
 
     Returns:
-        ONNX model protobuf with only DQ nodes for weights and QDQ nodes for activations.
+        Tuple containing:
+            - initializers: Maps initializer names to their TensorProto objects
+            - tensor_producers: Maps tensor names to their producer nodes
+            - tensor_consumers: Maps tensor names to their consumer nodes
     """
-    graph = onnx_model.graph
-    initializers = graph.initializer
-    initializer_indices = {
-        initializer.name: idx for idx, initializer in enumerate(graph.initializer)
-    }
-
-    def _get_tensor_type(tensor_name):
-        for value_info in graph.value_info:
-            if value_info.name == tensor_name:
-                return value_info.type.tensor_type.elem_type
-        return None
-
-    def _remove_unnecessary_cast():
-        # Remove two pattern of unnecessary Cast node
-        cast_indices = []
-
-        tensor_consumers = get_tensor_consumer_nodes(graph)
-        output_names = [output.name for output in graph.output]
-
-        # find all Cast node with same input and output type
-        for node_idx, node in enumerate(graph.node):
-            if node.op_type != "Cast":
-                continue
-
-            if any(out_name in output_names for out_name in node.output):
-                continue
-
-            # if input type matches attribute "to", this is a useless Cast node
-            assert len(node.input) == 1
-            input_name = node.input[0]
-            idx = initializer_indices.get(input_name, None)
-            if idx is not None:
-                data_type = initializers[idx].data_type
-            else:
-                data_type = _get_tensor_type(input_name)
-
-            attr = node.attribute[0]
-            assert attr.name == "to"
-
-            # Pattern 1: Input and Output Type are the same.
-            if data_type == attr.i:
-                cast_indices.append(node_idx)
-            else:
-                # Pattern 2: Input and Output Type differ but Cast node doesn't have a producer
-                # We do the conversion and fuse Cast node.
-                if idx is not None:
-                    cast_indices.append(node_idx)
-                    # Replace Q node input with new input
-                    cast_input = onnx.numpy_helper.to_array(initializers[idx])
-
-                    dtype = onnx.helper.tensor_dtype_to_np_dtype(attr.i)
-                    converted_tensor = onnx.numpy_helper.from_array(
-                        cast_input.astype(dtype), input_name
-                    )
-
-                    initializers[idx].CopyFrom(converted_tensor)
-                else:
-                    continue
-
-            # Renew input of consumer nodes
-            output_name = node.output[0]
-            consumers = tensor_consumers[output_name]
-            for q_node in consumers:
-                for i in range(len(q_node.input)):
-                    if q_node.input[i] == output_name:
-                        q_node.input[i] = input_name
-                        break
-
-        # Delete Cast node
-        for node_idx in sorted(cast_indices, reverse=True):
-            del graph.node[node_idx]
-
-    def _convert(node: onnx.onnx_ml_pb2.NodeProto):
-        if verbose:
-            logging.info(f"Processing {node.name}")
-
-        idx1 = initializer_indices.get(node.input[0], None)
-        assert idx1 is not None, (
-            f"Expected '{node.input[0]}' to be found in 'graph.initializer', but it was not present."
-        )
-        w = initializers[idx1]
-
-        w32 = onnx.numpy_helper.to_array(w)
-
-        idx2 = initializer_indices.get(node.input[1], None)
-        if idx2 is not None:
-            y_scale = initializers[idx2]
-        else:
-            producer_node = tensor_producers[node.input[1]]
-            attr = producer_node.attribute[0]
-            assert attr.name == "value"
-            y_scale = attr.t
-
-        np_y_scale = onnx.numpy_helper.to_array(y_scale)
-
-        idx3 = initializer_indices.get(node.input[2], None)
-        if idx3 is not None:
-            zero_point = initializers[idx3]
-        else:
-            producer_node = tensor_producers[node.input[2]]
-            attr = producer_node.attribute[0]
-            assert attr.name == "value"
-            zero_point = attr.t
-
-        np_zero_point = onnx.numpy_helper.to_array(zero_point)
-
-        dq_node = tensor_consumers[node.output[0]][0]
-        next_node = tensor_consumers[dq_node.output[0]][0]
-
-        # No transpose is needed for 2D "MatMul", only for 3D (fails with PETR otherwise)
-        transpose_nodes = ["Conv", "Transpose", "Gemm"]
-        is_3d_matmul = next_node.op_type in "MatMul" and len(np.shape(w32)) == 3
-        do_transpose = next_node.op_type in transpose_nodes or is_3d_matmul
-
-        if do_transpose:
-            w32 = np.transpose(w32, axes=[0, 2, 1]) if is_3d_matmul else np.transpose(w32)
-
-        # Scale should be a scaler or vector with the same length as the last dimension of the weight
-        assert not np_y_scale.shape or w32.shape[-1] == np_y_scale.shape[0]
-
-        fp8 = np_zero_point.dtype == float8e4m3fn
-
-        if fp8:
-            scaled = np.asarray(w32 / np_y_scale) + np_zero_point
-        else:
-            scaled = np.asarray((w32 / np_y_scale).round())
-            np.clip(scaled + np_zero_point, -128, 127, out=scaled)
-
-        if do_transpose:
-            scaled = np.transpose(scaled, axes=[0, 2, 1]) if is_3d_matmul else np.transpose(scaled)
-
-        if fp8:
-            w8 = onnx.numpy_helper.from_array(
-                Cast.eval(scaled, to=onnx.TensorProto.FLOAT8E4M3FN), w.name
-            )
-        else:
-            w8 = onnx.numpy_helper.from_array(scaled.astype("int8"), w.name)
-
-        initializers[idx1].CopyFrom(w8)
-
-        return idx2, idx3
-
-    _remove_unnecessary_cast()
-
+    initializers = {init.name: init for init in graph.initializer}
     tensor_producers = get_tensor_producer_nodes(graph)
     tensor_consumers = get_tensor_consumer_nodes(graph)
+    return initializers, tensor_producers, tensor_consumers
 
-    dangling_q_indices = []
-    dangling_init_indices = []
 
-    for node_idx, node in enumerate(graph.node):
-        if node.op_type == "QuantizeLinear":
-            weight_name = node.input[0]
+def _get_scale_and_zp(
+    node: onnx.NodeProto,
+    initializers: Dict[str, onnx.TensorProto],
+    tensor_producers: Dict[str, onnx.NodeProto],
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Get scale and zero point tensors for a node.
 
-            # Const input to quantize linear means weighted layer
-            if weight_name not in tensor_producers:
-                scale_init_idx, zp_init_idx = _convert(node)
-                dangling_q_indices.append(node_idx)
-                dangling_init_indices.extend([scale_init_idx, zp_init_idx])
+    Args:
+        node: ONNX node to get scale and zero point for
+        initializers: Dictionary of initializers
+        tensor_producers: Dictionary of tensor producers
 
-                # Update following DQ nodes input name, each q should only have one dq consumer
-                consumers = tensor_consumers[node.output[0]]
-                assert len(consumers) == 1
-                dq_node = consumers[0]
-                assert dq_node.op_type == "DequantizeLinear"
-                dq_node.input[0] = weight_name
+    Returns:
+        Tuple of (scale_array, zero_point_array)
 
-    # Remove Q nodes
-    for node_idx in sorted(dangling_q_indices, reverse=True):
+    Raises:
+        ValueError: If scale or zero point cannot be found
+    """
+    # Get scale tensor
+    scale_name = node.input[1]
+    if scale_name in initializers:
+        scale = initializers[scale_name]
+    else:
+        producer = tensor_producers.get(scale_name)
+        if not producer or not producer.attribute:
+            raise ValueError(f"Invalid scale producer for {scale_name}")
+        scale = producer.attribute[0].t
+    scale_array = onnx.numpy_helper.to_array(scale)
+
+    # Get zero point tensor
+    zp_name = node.input[2]
+    if zp_name in initializers:
+        zp = initializers[zp_name]
+    else:
+        producer = tensor_producers.get(zp_name)
+        if not producer or not producer.attribute:
+            raise ValueError(f"Invalid zero point producer for {zp_name}")
+        zp = producer.attribute[0].t
+    zp_array = onnx.numpy_helper.to_array(zp)
+
+    return scale_array, zp_array
+
+
+def _get_succesive_consumers(
+    node: onnx.NodeProto, tensor_consumers: dict[str, List[onnx.NodeProto]]
+) -> tuple[onnx.NodeProto, onnx.NodeProto]:
+    """Get the DequantizeLinear node and its consumer node for a given QuantizeLinear node.
+
+    This function validates and retrieves the next two nodes in the quantization chain:
+    QuantizeLinear -> DequantizeLinear -> Operation
+
+    Args:
+        node: The QuantizeLinear node to find consumers for
+        tensor_consumers: Dictionary mapping tensor names to their consumer nodes
+
+    Returns:
+        Tuple containing:
+            - dq_node: The DequantizeLinear node that consumes the QuantizeLinear output
+            - quantized_node: The operation node that consumes the DequantizeLinear output
+    """
+    dq_node = tensor_consumers.get(node.output[0], [None])[0]
+    if not dq_node or dq_node.op_type != "DequantizeLinear":
+        raise ValueError(f"Invalid consumer for {node.name}")
+
+    quantized_node = tensor_consumers.get(dq_node.output[0], [None])[0]
+    if not quantized_node:
+        raise ValueError(f"No consumer found for {dq_node.name}")
+
+    return dq_node, quantized_node
+
+
+def _convert_weight(
+    weight_array: np.ndarray,
+    scale_array: np.ndarray,
+    zp_array: np.ndarray,
+    next_node: onnx.NodeProto,
+) -> np.ndarray:
+    """Convert a weight tensor to INT8/FP8 format based on scale and zero point.
+
+    Args:
+        weight_array: The weight tensor to convert
+        scale_array: The scale tensor for quantization
+        zp_array: The zero point tensor for quantization
+        next_node: The operation node that will use the converted weight
+
+    Returns:
+        The converted weight tensor as a numpy array
+
+    Raises:
+        ValueError: If scale shape doesn't match weight shape for the operation
+
+    Note:
+        - For ConvTranspose, scale and zp are reshaped to [1, 1, out_channels, 1]
+        - For other ops, scale and zp should match the last dimension of weight
+        - INT8 weights are clipped to [-128, 127]
+        - FP8 weights use float8e4m3fn format
+    """
+    # Handle weight transpose for specific operations
+    weight_transpose_ops = {"Conv", "Transpose", "Gemm"}
+    is_3d_matmul = next_node.op_type == "MatMul" and len(weight_array.shape) == 3
+    do_transpose = next_node.op_type in weight_transpose_ops or is_3d_matmul
+
+    if do_transpose:
+        weight_array = np.transpose(weight_array, axes=[0, 2, 1] if is_3d_matmul else None)
+
+    # Handle scale/zp reshaping based on op type
+    if next_node.op_type == "ConvTranspose":
+        assert len(weight_array.shape) >= 3, "ConvTranspose weight must have at least 3 dimensions"
+        # ConvTranspose: scale aligns with out_channels (weight.shape[1])
+        if scale_array.shape and weight_array.shape[1] != scale_array.shape[0]:
+            raise ValueError(
+                f"Scale shape {scale_array.shape} does not match ConvTranspose weight shape {weight_array.shape}"
+            )
+        reshape_dims = [1, scale_array.shape[0]] + [1] * (weight_array.ndim - 2)
+        scale_array = scale_array.reshape(*reshape_dims)
+        zp_array = zp_array.reshape(*reshape_dims)
+    else:
+        # Conv/Gemm/MatMul: scale aligns with last dim
+        if scale_array.shape and weight_array.shape[-1] != scale_array.shape[0]:
+            raise ValueError(
+                f"Scale shape {scale_array.shape} does not match weight shape {weight_array.shape}"
+            )
+        reshape_dims = [1] * (weight_array.ndim - 1) + [scale_array.shape[0]]
+        scale_array = scale_array.reshape(*reshape_dims)
+        zp_array = zp_array.reshape(*reshape_dims)
+
+    # Convert to INT8/FP8
+    if zp_array.dtype == float8e4m3fn:
+        scaled = np.asarray(weight_array / scale_array) + zp_array
+    else:
+        scaled = np.asarray((weight_array / scale_array).round())
+        np.clip(scaled + zp_array, -128, 127, out=scaled)
+
+    if do_transpose:
+        scaled = np.transpose(scaled, axes=[0, 2, 1] if is_3d_matmul else None)
+
+    return scaled
+
+
+def _create_fp8_tensor(scaled: np.ndarray, weight_name: str) -> onnx.TensorProto:
+    """Create a FLOAT8E4M3FN tensor directly from numpy array.
+
+    This function uses ONNX's reference implementation but it is not efficient.
+    TODO: Use a more efficient implementation.
+    """
+    # Use ONNX's reference implementation for correct float8e4m3fn conversion
+    fp8_data = Cast.eval(scaled, to=onnx.TensorProto.FLOAT8E4M3FN)
+    return onnx.numpy_helper.from_array(fp8_data, weight_name)
+
+
+def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
+    """Convert FP32/FP16 weights of the given ONNX model to INT8/FP8 weights.
+
+    This function converts a model with QDQ (QuantizeLinear-DequantizeLinear) nodes to a model
+    with only DQ nodes for weights. It:
+    1. Converts FP32/FP16 weights to INT8/FP8
+    2. Updates the graph to maintain proper connections
+    3. Removes redundant cast nodes in the quantized model (additional optimization for diffusers)
+
+    Args:
+        onnx_model: ONNX model protobuf to convert
+
+    Returns:
+        ONNX model protobuf with only DQ nodes for weights
+
+    Raises:
+        ValueError: If the model is invalid or conversion fails
+        RuntimeError: If graph operations fail
+    """
+    if not isinstance(onnx_model, onnx.ModelProto):
+        raise ValueError("Input must be an ONNX model protobuf")
+
+    graph = onnx_model.graph
+    if not graph.node:
+        raise ValueError("Model graph is empty")
+
+    initializers, tensor_producers, tensor_consumers = _get_graph_metadata(graph)
+    q_nodes = [
+        (idx, node) for idx, node in enumerate(graph.node) if node.op_type == "QuantizeLinear"
+    ]
+    q_indices = []
+
+    for node_idx, node in q_nodes:
+        weight_name = node.input[0]
+
+        # Nothing to do for non-const weight inputs
+        if weight_name in tensor_producers:
+            continue
+
+        try:
+            # Get weight tensor
+            if weight_name not in initializers:
+                raise ValueError(f"Weight {weight_name} not found in initializers")
+            weight = initializers[weight_name]
+            weight_array = onnx.numpy_helper.to_array(weight)
+
+            # Get scale and zero point
+            scale_array, zp_array = _get_scale_and_zp(node, initializers, tensor_producers)
+
+            # Validate Q->DQ->Op pattern and get consumers
+            dq_node, quantized_node = _get_succesive_consumers(node, tensor_consumers)
+
+            # Convert weight
+            scaled = _convert_weight(weight_array, scale_array, zp_array, quantized_node)
+
+            # Create and update new weight tensor
+            if zp_array.dtype == float8e4m3fn:
+                new_weight = _create_fp8_tensor(scaled, weight_name)
+            else:
+                new_weight = onnx.numpy_helper.from_array(scaled.astype("int8"), weight_name)
+            weight.CopyFrom(new_weight)
+
+            # Track QuantizeLinear node indices for cleanup
+            # Note. Scale and zero point tensors are shared between Q and DQ nodes and should not be deleted
+            q_indices.append(node_idx)
+
+            # Update following DQ nodes input name, each q should only have one dq consumer
+            consumers = tensor_consumers[node.output[0]]
+            assert len(consumers) == 1, f"Expected exactly one consumer for {node.name}"
+            dq_node = consumers[0]
+            assert dq_node.op_type == "DequantizeLinear", (
+                f"Expected DequantizeLinear consumer for {node.name}"
+            )
+            dq_node.input[0] = weight_name
+
+        except Exception as e:
+            raise RuntimeError(f"Failed to convert node {node.name}: {str(e)}")
+
+    # Remove processed nodes
+    for node_idx in sorted(q_indices, reverse=True):
         del graph.node[node_idx]
+
+    # Remove redundant cast nodes in the quantized model
+    # Note. This optimization is used by diffusers through --dq_only option, so keeping it here as well
+    remove_redundant_cast_nodes(graph)
+
+    return onnx_model
+
+
+def quantize_weights_to_mxfp8(
+    onnx_model: onnx.ModelProto,
+) -> onnx.ModelProto:
+    """Converts the weights to FP8 precision using MXFP8 quantization.
+
+    For TRT_MXFP8DynamicQuantize, we update the output type to FP8.
+    For TRT_MXFP8DequantizeLinear, we compute the scales in e8m0 format and saves them as a new initializer.
+    We then expand the scale to the same shape as the weight and divide the weight by the scale to get the FP8 weights.
+
+    Args:
+        graph: ONNX model protobuf.
+
+    Returns:
+        ONNX model protobuf with weights quantized to FP8 precision using MXFP8 quantization.
+    """
+    graph = onnx_model.graph
+    initializers = {initializer.name: initializer for initializer in graph.initializer}
+    tensor_producers = get_tensor_producer_nodes(graph)
+    e8_m0_bias = 127
+    weight_dq_nodes = [
+        node
+        for node in graph.node
+        if node.op_type == "TRT_MXFP8DequantizeLinear"
+        and any(".weight" in input for input in node.input)
+    ]
+    gelu_nodes = [node for node in graph.node if node.op_type == "Gelu"]
+    for node in weight_dq_nodes:
+        # Get weights and node attributes
+        weight_name = node.input[0]
+        weight = numpy_helper.to_array(initializers[weight_name])
+        if has_attribute(node, "axis"):
+            quant_axis = int(get_attribute(node, "axis"))
+        else:
+            quant_axis = -1
+            print(
+                "Warning: axis attribute not found for MXFP8DequantizeLinear node. Setting axis to -1."
+            )
+
+        if has_attribute(node, "block_size"):
+            block_size = int(get_attribute(node, "block_size"))
+        else:
+            block_size = 32
+            print(
+                "Warning: block_size attribute not found for MXFP8DequantizeLinear node. Setting block_size to 32."
+            )
+
+        # Compute and save scales as uint8
+        amax = get_amax(weight, quant_axis, block_size)
+        se8m0_fp32 = compute_e8m0(amax, weight.shape, quant_axis, block_size)
+        se8m0 = se8m0_fp32.astype(np.uint8)
+
+        # Remove scale producer if it's a Constant node
+        scale_name = node.input[1]
+        scale_producer = tensor_producers[scale_name]
+        if scale_producer.op_type == "Constant":
+            graph.node.remove(scale_producer)
+
+        # Create a new scale tensor
+        scale_name = scale_name.replace("Constant_output_0", "scale")
+        scale_tensor = onnx.numpy_helper.from_array(se8m0, scale_name)
+        graph.initializer.append(scale_tensor)
+        node.input[1] = scale_name
+
+        # Convert weights to FP8
+
+        # Expand block array so that it can be broadcasted with weight
+        se8m0_fp32 = np.repeat(se8m0_fp32, block_size, axis=quant_axis)
+        scaled_weight = weight / np.exp2(se8m0_fp32 - e8_m0_bias)
+        # TODO: replace with an efficient kernel
+        weights_e4m3 = onnx.numpy_helper.from_array(
+            Cast.eval(scaled_weight, to=onnx.TensorProto.FLOAT8E4M3FN), weight_name
+        )
+        initializers[weight_name].CopyFrom(weights_e4m3)
+        print(f"Replaced {node.name} with MXFP8DQ.")
+
+    # Currently only tanh approximation is supported for Gelu
+    for node in gelu_nodes:
+        for attr in node.attribute:
+            if attr.name == "approximate":
+                attr.s = b"tanh"
 
     return onnx_model
 
 
 def replace_fp4qdq_with_2dq(
-    graph: onnx.onnx_ml_pb2.GraphProto,
-    node: onnx.onnx_ml_pb2.NodeProto,
+    graph: onnx.GraphProto,
+    node: onnx.NodeProto,
     initializer_indices: dict[str, int],
-    value_info_map: dict[str, onnx.onnx_ml_pb2.ValueInfoProto],
+    value_info_map: dict[str, onnx.ValueInfoProto],
     graph_inputs: set[str],
     w_f4: np.ndarray,
     sw_f32_per_tensor: np.ndarray,
@@ -706,7 +877,7 @@ def replace_fp4qdq_with_2dq(
     graph.node.extend([dequant1, dequant2])
 
 
-def fp4qdq_to_2dq(onnx_model: onnx.onnx_pb.ModelProto) -> onnx.onnx_pb.ModelProto:
+def fp4qdq_to_2dq(onnx_model: onnx.ModelProto, verbose: bool = False) -> onnx.ModelProto:
     """Convert FP32/FP16 weights of the given ONNX model to FP4 weights and scaling factors.
 
     TRT_FP4QDQ nodes will get removed from the weights and have two DQ nodes with those converted FP4
@@ -728,7 +899,7 @@ def fp4qdq_to_2dq(onnx_model: onnx.onnx_pb.ModelProto) -> onnx.onnx_pb.ModelProt
     value_info_map = {vi.name: vi for vi in graph.value_info}
     graph_inputs = {inp.name for inp in graph.input}
 
-    def _cast_input_dtypes(node: onnx.onnx_ml_pb2.NodeProto, precision_dtype: str):
+    def _cast_input_dtypes(node: onnx.NodeProto, precision_dtype: str):
         # Change the input types to match weight precision (precision_dtype)
         if node.op_type == "Transpose":
             maybe_matmul = tensor_consumers[node.output[0]][0]
@@ -763,22 +934,8 @@ def fp4qdq_to_2dq(onnx_model: onnx.onnx_pb.ModelProto) -> onnx.onnx_pb.ModelProt
 
         return precision_dtype
 
-    def _bfloat16_to_float32(bf16_array):
-        uint32_array = bf16_array.astype(np.uint32) << 16
-        return uint32_array.view(np.float32)
-
-    def _read_f16_tensor_as_fp32(tensor):
-        if tensor.data_type == onnx.TensorProto.BFLOAT16:
-            raw_data = tensor.raw_data
-            uint16_array = np.frombuffer(raw_data, dtype=np.uint16)
-            float32_array = _bfloat16_to_float32(uint16_array)
-            tensor_shape = tuple(dim for dim in tensor.dims)
-            return float32_array.reshape(tensor_shape)
-
-        # Read FLOAT16 tensor and return
-        return onnx.numpy_helper.to_array(tensor).astype(np.float32)
-
-    print("Post-processing TRT_FP4QDQ nodes for TRT deployment...")
+    if verbose:
+        logging.info("Post-processing TRT_FP4QDQ nodes for TRT deployment...")
     precision_dtype = _get_precision_dtype()
     fp4_qdq_nodes = [node for node in graph.node if node.op_type == "TRT_FP4QDQ"]
 
@@ -789,7 +946,7 @@ def fp4qdq_to_2dq(onnx_model: onnx.onnx_pb.ModelProto) -> onnx.onnx_pb.ModelProt
         initializers_to_delete.append(initializers[idx1].name)
 
         tensor = initializers[idx1]
-        w32 = _read_f16_tensor_as_fp32(tensor)
+        w32 = utils.read_f16_tensor_as_fp32(tensor)
         sw_f32_per_tensor = get_weights_scaling_factor_2(w32)
         sw_f32_per_block = get_weights_scaling_factor(w32, block_size, sw_f32_per_tensor)
         w_f32 = quantize(w32, block_size, sw_f32_per_block, sw_f32_per_tensor)
@@ -815,7 +972,8 @@ def fp4qdq_to_2dq(onnx_model: onnx.onnx_pb.ModelProto) -> onnx.onnx_pb.ModelProt
         next_node = tensor_consumers[node.output[0]][0]
         _cast_input_dtypes(next_node, precision_dtype)
 
-        print(f"Replaced {node.name} with 2 DQ nodes.")
+        if verbose:
+            logging.info(f"Replaced {node.name} with 2 DQ nodes.")
 
     new_initializers = [
         init for init in graph.initializer if init.name not in initializers_to_delete

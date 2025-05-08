@@ -42,7 +42,6 @@ class TRTLocalClient(RuntimeClient):
     @property
     def deployment_table(self) -> DeploymentTable:
         return {
-            "version": ["8.6", "9.1", "9.2", "9.3", "10.0", "10.1", "10.2", "10.3"],
             "accelerator": ["GPU"],
             "precision": [
                 "fp32",

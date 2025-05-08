@@ -16,23 +16,23 @@
 """ModelOpt plugin for enabling automatic save/restore of ModelOpt state for `peft` library."""
 
 import os
+from typing import Callable
 
 import torch
 from peft import PeftModel
 
-from modelopt.torch.utils import get_unwrapped_name, silence_matched_warnings
+from modelopt.torch.utils import get_unwrapped_name, print_rank_0
 
-from ..conversion import ModeloptStateManager, restore_from_modelopt_state
-from .huggingface import (
-    _MODELOPT_STATE_SAVE_NAMES,
-    _get_modelopt_state_path,
-    _new_save_pretrained,
-    patch_pretrained_methods,
-)
+from ..conversion import ModeloptStateManager, modelopt_state, restore_from_modelopt_state
+from .huggingface import register_for_patching
 
 __all__ = []
 
-_MODELOPT_STATE_SAVE_NAMES[PeftModel] = "peft_modelopt_state.pth"
+_MODELOPT_STATE_SAVE_NAME = "peft_modelopt_state.pth"
+
+
+def _get_modelopt_state_path(model_name_or_path: str) -> str:
+    return os.path.join(model_name_or_path, _MODELOPT_STATE_SAVE_NAME)
 
 
 def _get_quantizer_state_save_path(dir):
@@ -40,9 +40,15 @@ def _get_quantizer_state_save_path(dir):
 
 
 def _new_save_pretrained_peft(self, save_directory, *args, **kwargs):
-    _new_save_pretrained(self, save_directory, *args, **kwargs)
+    outputs = self._modelopt_cache["save_pretrained"](self, save_directory, *args, **kwargs)
     if not ModeloptStateManager.is_converted(self):
-        return
+        return outputs
+    path = _get_modelopt_state_path(save_directory)
+    torch.save(modelopt_state(self), path)
+    print_rank_0(f"Saved ModelOpt state to {path}")
+
+    if not ModeloptStateManager.has_state_for_mode_type("quantization", model=self):
+        return outputs
 
     # Lets save the quantizer state_dict separately
     # PEFT save_pretrained only saves the state_dict corresponding to the adapters
@@ -61,10 +67,11 @@ def _new_save_pretrained_peft(self, save_directory, *args, **kwargs):
             quantizer_state_dict[get_unwrapped_name(name)] = module.state_dict()
     if len(quantizer_state_dict) > 0:
         torch.save(quantizer_state_dict, _get_quantizer_state_save_path(save_directory))
+    return outputs
 
 
 def _new_load_adapter(self, model_id, adapter_name, *args, **kwargs):
-    modelopt_state_path = _get_modelopt_state_path(self, model_id)
+    modelopt_state_path = _get_modelopt_state_path(model_id)
 
     if os.path.isfile(modelopt_state_path):
         assert adapter_name in self.peft_config, (
@@ -74,11 +81,10 @@ def _new_load_adapter(self, model_id, adapter_name, *args, **kwargs):
             self, torch.load(modelopt_state_path, map_location="cpu", weights_only=False)
         )
 
-    # The adapter state_dictionary does not contain the quantizer weights for the layers which are not LoraLinear
-    # However this is okay since the quantizer weights have been loaded from the quantizer_state_dict.pth in
-    # the previous step
-    with silence_matched_warnings(": No amax in state_dict."):
-        self._modelopt_cache["load_adapter"](self, model_id, adapter_name, *args, **kwargs)
+    outputs = self._modelopt_cache["load_adapter"](self, model_id, adapter_name, *args, **kwargs)
+
+    if not ModeloptStateManager.has_state_for_mode_type("quantization", model=self):
+        return outputs
 
     # TODO: Move this to modelopt.torch.quantization.plugins.peft
     if os.path.isfile(_get_quantizer_state_save_path(model_id)):
@@ -91,12 +97,12 @@ def _new_load_adapter(self, model_id, adapter_name, *args, **kwargs):
             if isinstance(module, TensorQuantizer):
                 module.load_state_dict(quantizer_state_dict[get_unwrapped_name(name)])
 
+    return outputs
 
-patch_pretrained_methods(
-    PeftModel,
-    "peft",
-    patch_methods_map={
-        "save_pretrained": _new_save_pretrained_peft,
-        "load_adapter": _new_load_adapter,
-    },
-)
+
+patch_methods: list[tuple[str, Callable]] = [
+    ("save_pretrained", _new_save_pretrained_peft),
+    ("load_adapter", _new_load_adapter),
+]
+
+register_for_patching("peft", PeftModel, patch_methods)

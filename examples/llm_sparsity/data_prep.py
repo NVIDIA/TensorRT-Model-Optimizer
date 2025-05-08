@@ -28,17 +28,11 @@ instruction_template = "Summarize the following news article:"
 
 def preprocess_function(sample):
     # create list of samples
-    inputs = []
-
-    for i in range(0, len(sample[text_column])):
-        x = dict()
-        x["instruction"] = instruction_template
-        x["input"] = sample[text_column][i]
-        x["output"] = sample[summary_column][i]
-        inputs.append(x)
-    model_inputs = dict()
-    model_inputs["text"] = inputs
-
+    inputs = [
+        {"instruction": instruction_template, "input": text, "output": summary}
+        for text, summary in zip(sample[text_column], sample[summary_column])
+    ]
+    model_inputs = {"text": inputs}
     return model_inputs
 
 
@@ -60,8 +54,7 @@ def main():
     )
 
     # save dataset to disk
-    if not os.path.isdir(args.save_path):
-        os.makedirs(args.save_path)
+    os.makedirs(args.save_path, exist_ok=True)
 
     with open(os.path.join(args.save_path, "cnn_train.json"), "w") as write_f:
         json.dump(tokenized_dataset["train"]["text"], write_f, indent=4, ensure_ascii=False)

@@ -24,9 +24,9 @@ from modelopt.torch.nas.mode import NASModeRegistry
 from modelopt.torch.opt.config import ModeloptBaseConfig
 from modelopt.torch.opt.mode import (
     ConvertEntrypoint,
+    ModeDescriptor,
     RestoreEntrypoint,
     UpdateEntrypoint,
-    _ModeDescriptor,
     _ModeRegistryCls,
 )
 from modelopt.torch.opt.searcher import BaseSearcher
@@ -46,7 +46,7 @@ PruneModeRegistry = _ModeRegistryCls("prune")
 
 @NASModeRegistry.register_mode
 @PruneModeRegistry.register_mode
-class FastNASModeDescriptor(_ModeDescriptor):
+class FastNASModeDescriptor(ModeDescriptor):
     """Class to describe the ``"fastnas"`` mode.
 
     The properties of this mode can be inspected via the source code.

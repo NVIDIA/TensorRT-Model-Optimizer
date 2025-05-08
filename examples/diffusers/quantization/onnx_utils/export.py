@@ -32,6 +32,7 @@
 import os
 import shutil
 import tempfile
+from contextlib import nullcontext
 from pathlib import Path
 
 import onnx
@@ -43,6 +44,7 @@ from onnxconverter_common import convert_float_to_float16
 from torch.onnx import export as onnx_export
 
 from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
+from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
 from modelopt.torch.utils import torch_to
 
 from .fp8_onnx_graphsurgeon import cast_resize_io, convert_fp16_io, convert_zp_fp8
@@ -342,13 +344,6 @@ def save_onnx(onnx_model, output):
     print(f"ONNX model saved to {output}")
 
 
-def set_onnx_export_attr(model):
-    for _, module in model.named_modules():
-        if isinstance(module, torch.nn.Linear):
-            module.input_quantizer._onnx_quantizer_type = "dynamic"
-            module.weight_quantizer._onnx_quantizer_type = "static"
-
-
 def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     model_file_name = "model.onnx"
     os.makedirs(f"{onnx_dir}", exist_ok=True)
@@ -356,8 +351,9 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     tmp_output = Path(f"{tmp_subfolder}/{model_file_name}")
     q_output = Path(f"{onnx_dir}/{model_file_name}")
 
-    if precision == "fp4":
-        set_onnx_export_attr(backbone)
+    quantizer_context = (
+        configure_linear_module_onnx_quantizers(backbone) if precision == "fp4" else nullcontext()
+    )
 
     dummy_inputs, dynamic_axes, _ = generate_dummy_inputs_and_dynamic_axes_and_shapes(
         model_name, backbone
@@ -387,16 +383,17 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     do_constant_folding = True
     opset_version = 20
 
-    onnx_export(
-        backbone,
-        dummy_inputs,
-        f=tmp_output.as_posix(),
-        input_names=input_names,
-        output_names=output_names,
-        dynamic_axes=dynamic_axes,
-        do_constant_folding=do_constant_folding,
-        opset_version=opset_version,
-    )
+    with quantizer_context, torch.inference_mode():
+        onnx_export(
+            backbone,
+            dummy_inputs,
+            f=tmp_output.as_posix(),
+            input_names=input_names,
+            output_names=output_names,
+            dynamic_axes=dynamic_axes,
+            do_constant_folding=do_constant_folding,
+            opset_version=opset_version,
+        )
     print(f"Saved at {tmp_output}")
     onnx_model = onnx.load(str(tmp_output), load_external_data=True)
     if precision == "fp8":

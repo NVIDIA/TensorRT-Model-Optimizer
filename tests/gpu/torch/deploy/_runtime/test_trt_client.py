@@ -34,9 +34,8 @@ from modelopt.torch._deploy.compilation import compile
 deployment = {
     "runtime": "TRT",
     "accelerator": "GPU",
-    "version": "8.6",
     "precision": "fp16",
-    "onnx_opset": "14",
+    "onnx_opset": "20",
 }
 
 vision_models = get_vision_models()
@@ -60,7 +59,7 @@ def test_compile_and_profile_lenet5(model, args, kwargs):
     _compile_and_profile(model, args, kwargs)
 
 
-@pytest.mark.slow
+@pytest.mark.manual(reason="slow test, run with --run-manual")
 @pytest.mark.parametrize("get_model_and_input", vision_models.values(), ids=vision_models.keys())
 def test_compile_and_profile_benchmark_models(get_model_and_input):
     model, args, kwargs = get_model_and_input(on_gpu=True)

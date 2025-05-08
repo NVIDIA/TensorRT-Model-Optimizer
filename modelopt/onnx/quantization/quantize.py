@@ -53,6 +53,7 @@ from modelopt.onnx.quantization.graph_utils import (
     add_fp16_fp32_cast,
     find_nodes_from_mha_to_exclude,
     print_stat,
+    remove_redundant_cast_nodes,
 )
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
@@ -75,7 +76,7 @@ def _preprocess_onnx(
     enable_shared_constants_duplication: bool,
     trt_plugins: Optional[str],
     trt_plugins_precision: Optional[list[str]],
-    calibration_shapes: str,
+    override_shapes: str,
     simplify: bool = False,
 ) -> tuple[str, list[str], bool, bool]:
     intermediate_generated_files = []
@@ -86,7 +87,7 @@ def _preprocess_onnx(
     onnx_model, has_custom_op, custom_ops, onnx_path = load_onnx_model(
         onnx_path,
         trt_plugins,
-        calibration_shapes,
+        override_shapes,
         use_external_data_format,
         intermediate_generated_files,
     )
@@ -98,7 +99,7 @@ def _preprocess_onnx(
         )
         intermediate_generated_files.append(onnx_path)
     elif platform.system() != "Windows":
-        logging.warning(
+        logging.info(
             "No custom ops found. If that's not correct, please make sure that the 'tensorrt' python package"
             " is correctly installed and that the paths to 'libcudnn*.so' and TensorRT 'lib/' are in"
             " 'LD_LIBRARY_PATH'. If the custom op is not directly available as a plugin in TensorRT, please"
@@ -197,6 +198,7 @@ def quantize(
     calibration_cache_path: str = None,
     calibration_shapes: str = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
+    override_shapes: str = None,
     op_types_to_quantize: list[str] = None,
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
@@ -213,7 +215,7 @@ def quantize(
     dq_only: bool = True,
     block_size: Optional[int] = None,
     use_zero_point: bool = False,
-    passes: list[str] = None,
+    passes: list[str] = ["concat_elimination"],
     simplify: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -231,12 +233,16 @@ def quantize(
             fp8: 'max' (default) and int4: 'awq_clip' (default), 'awq_lite', 'awq_full' and 'rtn_dq'.
         calibration_cache_path:
             Path to pre-calculated activation tensor ranges, also known as calibration cache.
+        calibration_shapes:
+            Input shapes used for calibration process.
         calibration_eps:
             Priority order for the execution providers (EP) to calibrate the model.
             Any subset of ['trt', 'cuda:x', 'dml:x', 'cpu'], where 'x' is the device id.
 
             .. note::
                 If a custom op is detected in the model, 'trt' will automatically be added to the EP list.
+        override_shapes:
+            Override model input shapes with static shapes.
         op_types_to_quantize:
             List of op types to quantize. If None (default), all supported operators are quantized.
             This flag does not support regular expression.
@@ -333,7 +339,7 @@ def quantize(
         enable_shared_constants_duplication,
         trt_plugins,
         trt_plugins_precision,
-        calibration_shapes,
+        override_shapes,
         simplify,
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)
@@ -407,7 +413,11 @@ def quantize(
     if onnx_model:
         # Fuse Q nodes for INT8/FP8 mode
         if quantize_mode in ["int8", "fp8"] and dq_only:
-            onnx_model = qdq_to_dq(onnx_model, verbose=verbose)
+            logging.info("Fusing Q nodes for INT8/FP8 mode")
+            onnx_model = qdq_to_dq(onnx_model)
+        else:
+            # Remove redundant cast nodes in the quantized model
+            remove_redundant_cast_nodes(onnx_model.graph)
 
         # Collect and print stats of the quantized model
         print_stat(gs.import_onnx(onnx_model), verbose)

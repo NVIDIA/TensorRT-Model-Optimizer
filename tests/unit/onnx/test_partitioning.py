@@ -36,7 +36,7 @@ def test_partitioning(tmp_path):
     model, args, kwargs = get_tiny_resnet_and_input()
     assert not kwargs
     onnx_path = os.path.join(tmp_path, "tiny_resnet.onnx")
-    onnx_path = export_as_onnx(model, args, onnx_filename=onnx_path)
+    export_as_onnx(model, args, onnx_filename=onnx_path)
 
     onnx_model = onnx.load(onnx_path)
     graph = gs.import_onnx(onnx_model)

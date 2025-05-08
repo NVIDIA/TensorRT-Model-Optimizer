@@ -20,19 +20,17 @@ from contextlib import ExitStack, contextmanager
 import torch
 import torch.nn.functional as F
 
-from modelopt.torch.utils.distributed import ParallelState
-
 __all__ = [
     "convert_quantization_axis_to_reduce_axis",
     "reduce_amax",
     "is_quantized",
     "is_quantized_layer_with_weight",
+    "is_quantized_linear",
     "is_quantized_column_parallel_linear",
     "is_quantized_row_parallel_linear",
     "replace_function",
     "EXPORT_MODE",
     "export_torch_mode",
-    "get_parallel_state",
 ]
 
 
@@ -197,8 +195,11 @@ def is_quantized_layer_with_weight(module):
 
 def is_quantized_linear(module):
     """Check if a module is a quantized linear module."""
+    from .nn import QuantModule, TensorQuantizer
+
     return (
-        hasattr(module, "input_quantizer")
+        isinstance(module, QuantModule)
+        and isinstance(getattr(module, "input_quantizer", None), TensorQuantizer)
         and hasattr(module, "weight_quantizer")
         and getattr(module, "weight", None) is not None
         and module.weight.dim() == 2
@@ -251,25 +252,6 @@ def export_torch_mode():
 def is_torch_export_mode():
     """Check whether in the context of exporting model to torch."""
     return EXPORT_MODE
-
-
-def get_parallel_state(model, name=None) -> ParallelState:
-    """Get the parallel state.
-
-    Args:
-        model: Pytorch model.
-        name: The name of the submodule of the model to get the parallel state from. If None,
-            the parallel state of the model is returned.
-    """
-    if name is None:
-        return getattr(model, "_parallel_state", ParallelState())
-
-    # If the submodule does not have a parallel state, get the parallel state of the parent module
-    module = model.get_submodule(name)
-    if hasattr(module, "_parallel_state"):
-        return module._parallel_state
-    parent_module = model.get_submodule(name.rpartition(".")[0])
-    return getattr(parent_module, "_parallel_state", ParallelState())
 
 
 def is_pow2(n):

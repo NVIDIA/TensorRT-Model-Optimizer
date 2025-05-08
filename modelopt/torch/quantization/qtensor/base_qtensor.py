@@ -118,6 +118,8 @@ class QTensorWrapper(torch.nn.Parameter):
 
 def pack_real_quantize_weight(module, force_quantize: bool = False):
     """Pack real quantized tensors to a compressed format and set proper load_state_dict function."""
+    # Import SequentialQuantizer here to avoid circular import
+    from ..nn import SequentialQuantizer
 
     # Function to dynamically override load_state_dict
     def dynamically_update_state_methods(module):
@@ -145,7 +147,7 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
 
         module._load_from_state_dict = custom_load_from_state_dict.__get__(module, type(module))
 
-    with torch.no_grad():
+    with SequentialQuantizer.convert_to_single_quantizer(module), torch.no_grad():
         for _, m in module.named_modules():
             if (
                 hasattr(m, "weight_quantizer")

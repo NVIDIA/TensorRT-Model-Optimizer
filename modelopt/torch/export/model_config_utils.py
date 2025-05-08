@@ -23,6 +23,7 @@ import numpy as np
 import torch
 
 from .model_config import (
+    QUANTIZATION_FP8_PC_PT,
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_W4A8_AWQ,
     DecoderLayerConfig,
@@ -338,7 +339,14 @@ def pack_linear_weights(model_config: ModelConfig):
                     if linear_layer.quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
                         linear_layer.weight = linear_layer.weight.view(torch.int8)
 
-                    linear_layer.weights_scaling_factor = linear_layer.weights_scaling_factor.cpu()
+                    # TensorRT-LLM uses per_channel_scale for FP8 per channel weight quantization.
+                    if linear_layer.quantization == QUANTIZATION_FP8_PC_PT:
+                        linear_layer.per_channel_scale = linear_layer.weights_scaling_factor.cpu()
+                        linear_layer.weights_scaling_factor = None
+                    else:
+                        linear_layer.weights_scaling_factor = (
+                            linear_layer.weights_scaling_factor.cpu()
+                        )
 
     if not model_config.quantization:
         return
@@ -386,7 +394,3 @@ def pack_linear_weights(model_config: ModelConfig):
                 linear_layers.append(layer.linear)
 
         _linear_layer_to_quantized_weight(linear_layers)
-
-    # lm_head can be quantized by AutoQuant
-    if model_config.lm_head is not None:
-        _linear_layer_to_quantized_weight([model_config.lm_head])

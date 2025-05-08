@@ -19,23 +19,20 @@ import functools
 import io
 import os
 import time
-import warnings
 from typing import Any, Callable, Optional, Union
 
 import torch
 import torch.distributed
 
 __all__ = [
+    "ParallelState",
+    "DistributedProcessGroup",
     "backend",
     "barrier",
-    "get_data_parallel_group",
-    "get_tensor_parallel_group",
     "is_available",
     "is_initialized",
     "is_master",
     "rank",
-    "set_data_parallel_group",
-    "set_tensor_parallel_group",
     "size",
 ]
 
@@ -189,7 +186,7 @@ def master_only(func):
 class DistributedProcessGroup:
     """A convenient wrapper around torch.distributed.ProcessGroup objects."""
 
-    def __init__(self, group=None):
+    def __init__(self, group: Optional[Union[torch.distributed.ProcessGroup, int]] = None):
         """Initialize the distributed process group."""
         self.group = group
 
@@ -230,43 +227,24 @@ class DistributedProcessGroup:
 
 
 class ParallelState:
-    """A class to manage various parallel groups such as data parallel, tensor parallel etc."""
+    """A class to manage various parallel groups such as data parallel, tensor parallel etc.
 
-    def __init__(self, data_parallel_group=None, tensor_parallel_group=-1):
+    Specify the parallel groups of type :class:`torch.distributed.ProcessGroup` for the current module.
+    If the parallel group is not used, it should be set to `-1`.
+    if a parallel group is `None`, it will use the default PyTorch distributed process group which is the whole world.
+    """
+
+    def __init__(
+        self,
+        data_parallel_group: Optional[Union[torch.distributed.ProcessGroup, int]] = None,
+        tensor_parallel_group: Optional[Union[torch.distributed.ProcessGroup, int]] = -1,
+    ):
+        """Initialize the parallel state."""
         self.data_parallel_group = DistributedProcessGroup(data_parallel_group)
         self.tensor_parallel_group = DistributedProcessGroup(tensor_parallel_group)
 
-
-def set_data_parallel_group(group):
-    """Deprecated method."""
-    warnings.warn(
-        "`set_data_parallel_group` is a no-op and has been deprecated. It will be removed in a future version.",
-        DeprecationWarning,
-    )
-
-
-def set_tensor_parallel_group(group):
-    """Deprecated method."""
-    warnings.warn(
-        "`set_tensor_parallel_group` is a no-op and has been deprecated. It will be removed in a future version.",
-        DeprecationWarning,
-    )
-
-
-def get_data_parallel_group() -> None:
-    """Deprecated method."""
-    warnings.warn(
-        "`get_data_parallel_group` is a no-op and has been deprecated. It will be removed in a future version.",
-        DeprecationWarning,
-    )
-
-
-def get_tensor_parallel_group() -> None:
-    """Deprecated method."""
-    warnings.warn(
-        "`get_tensor_parallel_group` is a no-op and has been deprecated. It will be removed in a future version.",
-        DeprecationWarning,
-    )
+    def __repr__(self) -> str:
+        return f"data_parallel_group: {self.data_parallel_group}, tensor_parallel_group: {self.tensor_parallel_group}"
 
 
 def get_group(ranks: list[int]):

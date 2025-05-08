@@ -14,6 +14,7 @@
 # limitations under the License.
 
 from pathlib import Path
+from typing import Union
 
 import pytest
 import torch
@@ -22,9 +23,9 @@ pytest.importorskip("transformers")
 from transformers import (
     BertConfig,
     BertForQuestionAnswering,
-    GPT2Tokenizer,
     LlamaConfig,
     LlamaForCausalLM,
+    LlamaTokenizer,
 )
 
 import modelopt.torch.opt as mto
@@ -36,7 +37,7 @@ def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:
         "intermediate_size": 32,
         "num_hidden_layers": 2,
         "num_attention_heads": 16,
-        "num_key_value_heads": 8,
+        "num_key_value_heads": 2,
         "max_position_embeddings": 32,
         "vocab_size": 32,
     }
@@ -46,16 +47,21 @@ def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:
     return tiny_llama
 
 
-def create_tiny_llama_dir(tmp_path: Path, with_tokenizer: bool = False, **config_kwargs) -> Path:
+def create_tiny_llama_dir(
+    tmp_path: Union[Path, str], with_tokenizer: bool = False, **config_kwargs
+) -> Path:
+    llama_dir = Path(tmp_path) / "tiny_llama"
     if with_tokenizer:
-        tokenizer = GPT2Tokenizer.from_pretrained("hf-internal-testing/tiny-random-gpt2")
-        tokenizer.save_pretrained(tmp_path / "tiny_llama")
+        tokenizer = LlamaTokenizer.from_pretrained(
+            "hf-internal-testing/tiny-random-LlamaForCausalLM"
+        )
+        tokenizer.save_pretrained(llama_dir)
         config_kwargs["vocab_size"] = tokenizer.vocab_size
 
     tiny_llama = get_tiny_llama(**config_kwargs)
     tiny_llama = tiny_llama.to(torch.bfloat16)  # Use same dtype as TinyLlama-1.1B-Chat-v1.0
-    tiny_llama.save_pretrained(tmp_path / "tiny_llama")
-    return tmp_path / "tiny_llama"
+    tiny_llama.save_pretrained(llama_dir)
+    return llama_dir
 
 
 def create_tiny_bert_dir(tmp_path: Path) -> Path:
@@ -90,7 +96,11 @@ def tf_modelopt_state_and_output_tester(model_ref, model_test):
     # Huggingface adds a _is_hf_initialized attribute to the model's modules
     for module in model_test.modules():
         if hasattr(module, "_is_hf_initialized"):
-            delattr(module, "_is_hf_initialized")
+            try:
+                delattr(module, "_is_hf_initialized")
+            except AttributeError:
+                # Happens for PEFT models, PEFT models get `_is_hf_initialized` from model.base_model
+                pass
 
     model_ref_state = mto.modelopt_state(model_ref)
     model_test_state = mto.modelopt_state(model_test)

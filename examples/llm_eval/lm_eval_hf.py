@@ -36,7 +36,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import warnings
 from typing import Optional
 
 from lm_eval import utils
@@ -44,6 +44,9 @@ from lm_eval.__main__ import cli_evaluate, parse_eval_args, setup_parser
 from lm_eval.api.model import T
 from lm_eval.models.huggingface import HFLM
 from quantization_utils import quantize_model
+
+import modelopt.torch.opt as mto
+from modelopt.torch.quantization.utils import is_quantized
 
 
 def create_from_arg_obj(
@@ -55,12 +58,20 @@ def create_from_arg_obj(
     auto_quantize_bits = arg_dict.pop("auto_quantize_bits", None)
     calib_batch_size = arg_dict.pop("calib_batch_size", None)
     calib_size = arg_dict.pop("calib_size", 512)
+    compress = arg_dict.pop("compress", False)
 
     additional_config = {} if additional_config is None else additional_config
     additional_config = {k: v for k, v in additional_config.items() if v is not None}
 
+    # Enable automatic save/load of modelopt state huggingface checkpointing
+    mto.enable_huggingface_checkpointing()
+
     model_obj = cls(**arg_dict, **additional_config)
     model_obj.tokenizer.padding_side = "left"
+    if is_quantized(model_obj.model):
+        # return if model is already quantized
+        warnings.warn("Skipping quantization: model is already quantized.")
+        return model_obj
 
     if quant_cfg:
         if not calib_batch_size:
@@ -74,6 +85,7 @@ def create_from_arg_obj(
             calib_size=calib_size,
             auto_quantize_bits=auto_quantize_bits,
             test_generated=False,
+            compress=compress,
         )
 
     return model_obj
@@ -106,6 +118,11 @@ def setup_parser_with_modelopt_args():
     parser.add_argument(
         "--calib_size", type=int, help="Calibration size for quantization", default=512
     )
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        help="Compress the model after quantization",
+    )
     return parser
 
 
@@ -127,6 +144,7 @@ if __name__ == "__main__":
             "auto_quantize_bits": args.auto_quantize_bits,
             "calib_batch_size": args.calib_batch_size,
             "calib_size": args.calib_size,
+            "compress": args.compress,
         }
     )
 

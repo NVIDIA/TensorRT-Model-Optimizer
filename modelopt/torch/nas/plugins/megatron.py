@@ -942,7 +942,7 @@ def drop_mcore_gpt_layers(model: nn.Module, *, layers_to_drop: list[int]) -> Non
             dropped_layers.append(layer)
         else:
             layer.layer_number = layer_number
-            layer._get_layer_offset = lambda: layer_offset
+            layer.get_transformer_layer_offset = lambda: layer_offset
             layer_number += 1
 
     # remove dropped layers from the modulelist

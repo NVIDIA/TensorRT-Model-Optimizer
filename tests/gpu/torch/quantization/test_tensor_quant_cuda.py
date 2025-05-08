@@ -42,7 +42,7 @@ class TestFakeTensorQuantCuda(FakeTensorQuantTester):
         device = torch.cuda.device_count() - 1
         assert torch.cuda.current_device() != device
         x = torch.randn(3, 4).cuda(device)
-        quant_x = tensor_quant.fake_tensor_quant(x, torch.max(torch.abs(x)))
+        quant_x = tensor_quant.fake_tensor_quant(x, torch.max(torch.abs(x)), None)
         quant_x_ref = quant(x, torch.max(torch.abs(x)), fake=True)
         assert torch.allclose(quant_x, quant_x_ref)
 
@@ -61,7 +61,7 @@ class TestCudaExt:
             x = x.abs()
         assert torch.allclose(
             get_cuda_ext().fake_tensor_quant(x, torch.max(torch.abs(x)), num_bits, unsigned),
-            tensor_quant.fake_tensor_quant(x, torch.max(torch.abs(x)), num_bits, unsigned),
+            tensor_quant.fake_tensor_quant(x, torch.max(torch.abs(x)), None, num_bits, unsigned),
             rtol=0,
             atol=0,
         )
@@ -73,7 +73,9 @@ class TestCudaExt:
         cuda_ext_out = (
             get_cuda_ext().fake_tensor_quant(x, torch.max(torch.abs(x))).to(torch.float32)
         )
-        pytorch_out = tensor_quant.fake_tensor_quant(x, torch.max(torch.abs(x))).to(torch.float32)
+        pytorch_out = tensor_quant.fake_tensor_quant(x, torch.max(torch.abs(x)), None).to(
+            torch.float32
+        )
         assert torch.allclose(cuda_ext_out, pytorch_out, rtol=0, atol=0)
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.float16, torch.bfloat16])
@@ -93,7 +95,7 @@ class TestCudaExt:
             .to(torch.float32)
         )
         pytorch_out = tensor_quant.fake_tensor_quant(
-            x, amax_torch.view(1, -1, 1, 1), num_bits, unsigned
+            x, amax_torch.view(1, -1, 1, 1), None, num_bits, unsigned
         ).to(torch.float32)
         assert torch.allclose(cuda_ext_out, pytorch_out, rtol=0, atol=0)
 
@@ -143,7 +145,7 @@ class TestScaledE4M3:
     def test_e4m3_no_scale(self, device):
         x = torch.tensor(TestScaledE4M3.x).to(device)
         xq_ref = torch.tensor(TestScaledE4M3.xq_unscaled).to(device)
-        e4m3_x = tensor_quant.scaled_e4m3(x, None, 4, 3)
+        e4m3_x = tensor_quant.scaled_e4m3(x, None, None, 4, 3)
         assert torch.allclose(e4m3_x, xq_ref, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("device", ["cuda", "cpu"])
@@ -153,7 +155,7 @@ class TestScaledE4M3:
 
         amax = quant_utils.reduce_amax(x, axis=None, keepdims=True)
 
-        e4m3_x = tensor_quant.scaled_e4m3(x, amax, 4, 3)
+        e4m3_x = tensor_quant.scaled_e4m3(x, amax, None, 4, 3)
 
         assert torch.allclose(e4m3_x, xq_ref, atol=1e-4, rtol=1e-4)
 
@@ -161,14 +163,14 @@ class TestScaledE4M3:
         x = torch.tensor(TestScaledE4M3.x).cuda().transpose(1, 0)
         xq_ref = torch.tensor(TestScaledE4M3.xq_unscaled).cuda().transpose(1, 0)
         assert not x.is_contiguous()
-        e4m3_x = tensor_quant.scaled_e4m3(x, None, 4, 3)
+        e4m3_x = tensor_quant.scaled_e4m3(x, None, None, 4, 3)
         assert torch.allclose(e4m3_x, xq_ref, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("device", ["cuda", "cpu"])
     def test_backward(self, device):
         x = torch.randn(3, 7, requires_grad=True).to(device)
         labels = torch.randint(6, (3,)).type(torch.LongTensor).to(device)
-        quant_x = tensor_quant.scaled_e4m3(x, None, 4, 3)
+        quant_x = tensor_quant.scaled_e4m3(x, None, None, 4, 3)
         x.retain_grad()
         quant_x.retain_grad()
         criterion = torch.nn.CrossEntropyLoss().to(device)
@@ -180,9 +182,9 @@ class TestScaledE4M3:
         device = torch.cuda.device_count() - 1
         assert torch.cuda.current_device() != device
         x = torch.randn(3, 4).cuda()
-        quant_x_ref = tensor_quant.scaled_e4m3(x, x.amax(), 4, 3)
+        quant_x_ref = tensor_quant.scaled_e4m3(x, x.amax(), None, 4, 3)
         x = x.cuda(device)
-        quant_x = tensor_quant.scaled_e4m3(x, x.amax(), 4, 3)
+        quant_x = tensor_quant.scaled_e4m3(x, x.amax(), None, 4, 3)
         assert torch.allclose(quant_x, quant_x_ref.cuda(device))
 
     def test_fused_e4m3_kernel(self):
@@ -197,7 +199,7 @@ class TestScaledE4M3:
         x = torch.tensor(TestScaledE4M3.x).cuda()
         xq_ref = torch.tensor(TestScaledE4M3.xq_scaled).cuda()
         amax = torch.ones(x.shape[0], 1).cuda() * x.abs().amax()
-        e4m3_x = tensor_quant.scaled_e4m3(x, amax, 4, 3)
+        e4m3_x = tensor_quant.scaled_e4m3(x, amax, None, 4, 3)
         assert torch.allclose(e4m3_x, xq_ref, atol=1e-4, rtol=1e-4)
 
 

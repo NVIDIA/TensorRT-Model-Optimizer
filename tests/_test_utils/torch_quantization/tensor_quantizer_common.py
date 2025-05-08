@@ -21,6 +21,7 @@ from _test_utils.torch_quantization.quant_utils import quant
 from modelopt.torch.quantization import tensor_quant
 from modelopt.torch.quantization import utils as quant_utils
 from modelopt.torch.quantization.config import QuantizerAttributeConfig
+from modelopt.torch.quantization.model_calib import max_calibrate
 from modelopt.torch.quantization.nn import QuantLinear, SequentialQuantizer, TensorQuantizer
 
 
@@ -31,7 +32,7 @@ class TensorQuantizerTester:
         """Quantizer calls fake_tensor_quant by default"""
         x = torch.randn(3, 7).to(self.device)
         amax_x = torch.max(torch.abs(x))
-        fn_quant_x = tensor_quant.fake_tensor_quant(x, amax_x)
+        fn_quant_x = tensor_quant.fake_tensor_quant(x, amax_x, None)
         quantizer = TensorQuantizer()
         module_quant_x = quantizer(x)
         assert torch.allclose(fn_quant_x, module_quant_x)
@@ -143,7 +144,7 @@ class TensorQuantizerTester:
             rtol=0,
         )
 
-    @pytest.mark.slow
+    @pytest.mark.manual(reason="slow test, run with --run-manual")
     def test_entropy_and_percentile_calib(self):
         """Don't really have a good way to test it."""
         quant_attr_cfg1 = QuantizerAttributeConfig(calib_method="histogram")
@@ -219,7 +220,11 @@ class TensorQuantizerTester:
             assert k in state_dict
             assert state_dict[k] == getattr(tensor_quantizer_ref, k)
 
-        assert "_amax" not in state_dict and "_has_amax" in state_dict
+        assert "_pytorch_state_metadata" in state_dict
+        assert (
+            "_amax" not in state_dict
+            and "_amax" in state_dict["_pytorch_state_metadata"]["buffers"]
+        )
 
         tensor_quantizer_test.set_from_modelopt_state(state_dict)
         tensor_quantizer_test.load_state_dict(tensor_quantizer_ref.state_dict())
@@ -345,7 +350,7 @@ class BlockQuantTester:
         a = torch.randn(8, 4).to(self.device)
         amax_ref = a.view(-1, 2).abs().amax(dim=-1, keepdim=True)
         a_quant_ref = tensor_quant.fake_tensor_quant(
-            a.view(-1, 2), amax_ref, 8, False, False
+            a.view(-1, 2), amax_ref, None, 8, False, False
         ).view_as(a)
 
         block_desc = QuantizerAttributeConfig(num_bits=8, block_sizes={-1: 2})
@@ -372,7 +377,7 @@ class BlockQuantTester:
         a = torch.randn(2, 6, 4).to(self.device)
         a_max = a.reshape(2, 2, 3, 2, 2).abs().amax(dim=(2, 4), keepdim=True)
         a_quant_ref = tensor_quant.fake_tensor_quant(
-            a.reshape(2, 2, 3, 2, 2), a_max, 8, False, False
+            a.reshape(2, 2, 3, 2, 2), a_max, None, 8, False, False
         ).view_as(a)
 
         block_desc = QuantizerAttributeConfig(num_bits=8, block_sizes={-1: 2, 1: 3})
@@ -393,7 +398,7 @@ class BlockQuantTester:
         a_padded = F.pad(a, (0, 1), mode="constant", value=0)
         amax = a_padded.view(-1, 2).abs().amax(dim=-1, keepdim=True)
         a_quant_ref = tensor_quant.fake_tensor_quant(
-            a_padded.view(-1, 2), amax, 8, False, False
+            a_padded.view(-1, 2), amax, None, 8, False, False
         ).view_as(a_padded)[:, :, :5]
 
         block_desc = QuantizerAttributeConfig(num_bits=8, block_sizes={-1: 2})
@@ -422,7 +427,7 @@ class BlockQuantTester:
         a_padded = F.pad(a, (0, 1, 0, 2), mode="constant", value=0)
         amax = a_padded.view(2, 4, 3, 3, 2).abs().amax(dim=(2, 4), keepdim=True)
         a_quant_ref = tensor_quant.fake_tensor_quant(
-            a_padded.view(2, 4, 3, 3, 2), amax, 8, False, False
+            a_padded.view(2, 4, 3, 3, 2), amax, None, 8, False, False
         ).view_as(a_padded)[:, :10, :5]
 
         block_desc = QuantizerAttributeConfig(num_bits=8, block_sizes={-1: 2, 1: 3})
@@ -478,7 +483,7 @@ class SequentialQuantizerTester:
         )
         sequential_quantizer = model.model[0].weight_quantizer
 
-        with SequentialQuantizer.replace_sequential_quantizer_with_single_quantizer(model):
+        with SequentialQuantizer.convert_to_single_quantizer(model):
             for name, module in model.model.named_modules():
                 assert not isinstance(module, SequentialQuantizer)
 
@@ -487,3 +492,22 @@ class SequentialQuantizerTester:
             and model.model[0].weight_quantizer is sequential_quantizer
         )
         assert not hasattr(model.model[0], "_original_weight_quantizer")
+
+    def test_sequential_quantizer_attribute(self):
+        sq = SequentialQuantizer(
+            TensorQuantizer(QuantizerAttributeConfig()),
+            TensorQuantizer(QuantizerAttributeConfig()),
+        )
+
+        sq.disable()
+        assert sq[0].is_enabled is False and sq[1].is_enabled is False
+        sq.enable()
+        assert sq[0].is_enabled is True and sq[1].is_enabled is True
+
+        max_calibrate(sq, lambda x: x(torch.randn(1, 4)))
+        sq.reset_amax()
+        assert sq[0].amax is None and sq[1].amax is None
+
+        assert sq.fake_quant is True
+        sq[0]._fake_quant = False
+        assert sq.fake_quant is False and sq[1]._fake_quant is True

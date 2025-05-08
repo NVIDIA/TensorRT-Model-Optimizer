@@ -57,7 +57,7 @@ def main():
     parser.add_argument(
         "--quantize_mode",
         type=str,
-        default="best",
+        default="stronglyTyped",
         choices=["fp8", "fp16", "fp32", "int4", "int8", "int8_iq", "bf16", "best", "stronglyTyped"],
         help="Quantization mode for the TensorRT engine. \
             Supported options: fp8, fp16, fp32, int8, int8_iq(implicit quantization), bf16, best, stronglyTyped",
@@ -70,7 +70,6 @@ def main():
 
     deployment = {
         "runtime": "TRT",
-        "version": "10.3",
         "precision": args.quantize_mode,
     }
 
@@ -80,12 +79,8 @@ def main():
     # Get the runtime client
     client = RuntimeRegistry.get(deployment)
 
-    # Compile the TRT model
+    # Compile the ONNX model to TRT engine and create the device model
     compiled_model = client.ir_to_compiled(onnx_bytes)
-
-    print(f"Size of the TensorRT engine: {len(compiled_model) / (1024**2)} MB")
-
-    # Create the device model
     device_model = DeviceModel(client, compiled_model, metadata={})
 
     top1_accuracy, top5_accuracy = 0.0, 0.0

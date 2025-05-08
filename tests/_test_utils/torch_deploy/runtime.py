@@ -41,14 +41,14 @@ class FakeClient(RuntimeClient):
     @property
     def deployment_table(self):
         return {
-            "version": ["1.0"],
+            "runtime": [__file__ + ".fake"],
         }
 
     def _compile(self, model: torch.nn.Module) -> bytes:
         pass
 
 
-FAKE_DEPLOYMENT = {"runtime": __file__ + ".fake", "version": "1.0"}
+FAKE_DEPLOYMENT = {"runtime": __file__ + ".fake"}
 
 
 @contextmanager

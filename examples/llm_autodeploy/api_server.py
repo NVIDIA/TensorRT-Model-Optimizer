@@ -31,6 +31,8 @@ from tensorrt_llm.serve.openai_protocol import (
     UsageInfo,
 )
 
+import modelopt.torch.opt as mto
+
 # global vars
 app = FastAPI()
 model_runner = None
@@ -41,24 +43,18 @@ model = "autodeploy_demo"
 
 def build_runner_from_config(args) -> LLM:
     """Builds a model runner from our config."""
-    # sanitize the args
-    model_kwargs = {"max_position_embeddings": 4096, "use_cache": False}
-
-    # use min instead of max to avoid OOM for large batch size
-    model_kwargs["max_position_embeddings"] = min(
-        args.max_seq_len,
-        model_kwargs["max_position_embeddings"],
-    )
-
+    mto.enable_huggingface_checkpointing()
+    model_kwargs = {"max_position_embeddings": args.max_seq_len, "use_cache": False}
     build_config = BuildConfig(max_seq_len=args.max_seq_len, max_batch_size=args.max_batch_size)
-    build_config.plugin_config.tokens_per_block = args.page_size
+    build_config.plugin_config.tokens_per_block = args.max_seq_len
 
     # setup AD config
     ad_config = AutoDeployConfig(
         use_cuda_graph=args.compile_backend == "torch-opt",
         torch_compile_enabled=args.compile_backend == "torch-opt",
         model_kwargs=model_kwargs,
-        attn_backend="FlashInfer",
+        attn_backend="TritonWithFlattenedInputs",
+        mla_backend="MultiHeadLatentAttention",
         skip_loading_weights=False,
     )
     llm = LLM(
@@ -178,12 +174,6 @@ def get_server_args():
         help=("max sequence length for inference/cache"),
     )
     parser.add_argument(
-        "--page_size",
-        type=int,
-        default=64,
-        help=("page size for attention."),
-    )
-    parser.add_argument(
         "--max_num_tokens",
         type=int,
         default=128,
@@ -198,7 +188,7 @@ def get_server_args():
     parser.add_argument(
         "--compile_backend",
         type=str,
-        default=200,
+        default="torch-opt",
         help=("backend to compile the torch graph."),
     )
     return parser.parse_args()

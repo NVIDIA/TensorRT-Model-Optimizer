@@ -124,6 +124,12 @@ def main():
     )
     args = parser.parse_args()
 
+    # Temporary fix TRT-LLM 0.18
+    # TODO: remove this after TRT-LLM has changed the engine name of visual encoder of Mllama to "model.engine"
+    if args.visual_engine_dir is not None:
+        if "llama" in args.hf_model_dir.lower():
+            args.visual_engine_name = "visual_encoder.engine"
+
     # Load data
     instances = load_dataset(
         "lmms-lab/GQA", "testdev_balanced_instructions", split="testdev", token=True
@@ -158,6 +164,8 @@ def main():
                 input_text = ["<image>\n" + question for question in questions]
             elif model.model_type in ["phi-3-vision"]:
                 input_text = questions[0]
+            elif model.model_type in ["mllama"]:
+                input_text = ["<|image|><|begin_of_text|>" + question for question in questions]
             _, output_text = model.run(input_text, raw_images, args.max_new_tokens)
             outputs.extend(
                 [

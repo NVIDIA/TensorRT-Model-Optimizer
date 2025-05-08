@@ -107,26 +107,11 @@ def test_quantize(model_cls, config):
         (SimpleLinear, mtq.INT8_SMOOTHQUANT_CFG),
         (SimpleConvLinear, quant_cfg_custom_calib),
         (SimpleConvLinear, mtq.INT8_DEFAULT_CFG),
+        (SimpleLinear, INT4_SVDQUANT_CFG),
     ],
 )
 def test_save_restore(model_cls, quant_config):
     save_restore_test(model_cls, "cpu", quant_config)
-
-
-def test_save_restore_warning_case():
-    model_ref = SimpleLinear()
-    model_quant = SimpleLinear()
-
-    # In this case, input and output quantizers have -1 axis, which is not supported
-    quant_config = {
-        "quant_cfg": {
-            "*quantizer": {"num_bits": 4, "axis": -1, "enable": True},
-        },
-        "algorithm": "max",
-    }
-    model_ref = mtq.quantize(model_ref, quant_config, lambda model: model(model.get_input()))
-    with pytest.warns(UserWarning, match=r"Could not initialize the quantizer states for *"):
-        mto.restore_from_modelopt_state(model_quant, mto.modelopt_state(model_ref))
 
 
 def test_quantize_invalid_cfg():

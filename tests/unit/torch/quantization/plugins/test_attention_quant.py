@@ -20,57 +20,79 @@ import torch.nn.functional as F
 from _test_utils.torch_model.transformers_models import get_tiny_llama
 
 import modelopt.torch.quantization as mtq
+from modelopt.torch.quantization.plugins.huggingface import _QuantAttention
 
 transformers = pytest.importorskip("transformers")
 
 
 class MatmulAttention(nn.Module):
-    def forward(self, x):
-        q, k, v = x
+    def forward(self, hidden_states, **kwargs):
+        q, k, v = hidden_states, hidden_states, hidden_states
         a = torch.softmax(torch.matmul(q, k.transpose(-2, -1)), dim=-1)
-        return torch.matmul(a, v)
-
-    def get_input(self):
-        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
+        return torch.matmul(a, v), None
 
 
 class BMMAttention(nn.Module):
-    def forward(self, x):
-        q, k, v = x
+    def forward(self, hidden_states, **kwargs):
+        q, k, v = hidden_states, hidden_states, hidden_states
         a = torch.softmax(torch.bmm(q, k.transpose(-2, -1)), dim=-1)
-        return torch.bmm(a, v)
-
-    def get_input(self):
-        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
+        return torch.bmm(a, v), None
 
 
 class BinMatmulAttention(nn.Module):
-    def forward(self, x):
-        q, k, v = x
-        return torch.softmax(q @ k.transpose(-2, -1), dim=-1) @ v
-
-    def get_input(self):
-        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
+    def forward(self, hidden_states, **kwargs):
+        q, k, v = hidden_states, hidden_states, hidden_states
+        return torch.softmax(q @ k.transpose(-2, -1), dim=-1) @ v, None
 
 
 class SDPAAttention(nn.Module):
-    def forward(self, x):
-        q, k, v = x
-        return F.scaled_dot_product_attention(q, k, v)
-
-    def get_input(self):
-        return torch.randn(1, 4, 8), torch.randn(1, 4, 8), torch.randn(1, 4, 8)
+    def forward(self, hidden_states, **kwargs):
+        q, k, v = hidden_states, hidden_states, hidden_states
+        return F.scaled_dot_product_attention(q, k, v), None
 
 
-def test_kv_quant_hf():
+kv_cache_config = {
+    "quant_cfg": {
+        "*[kv]_bmm_quantizer": {"num_bits": 4, "enable": True},
+    },
+    "algorithm": "max",
+}
+
+
+@pytest.mark.parametrize(
+    "attn_cls", [None, MatmulAttention, BMMAttention, BinMatmulAttention, SDPAAttention]
+)
+def test_kv_quant_hf(attn_cls):
     model_test = get_tiny_llama()
-    attn_cls = model_test.model.layers[0].self_attn.__class__
+    input_ids = torch.randint(0, model_test.vocab_size, (1, 4))
 
-    mtq.replace_quant_module(model_test)
-    for module in model_test.modules():
-        if isinstance(module, attn_cls):
+    original_is_compatible_attention = None
+    if attn_cls is not None:
+        # Test case for transformers < 4.48
+        # This needs:
+        # 1) replace the attention class with the test attention class
+        # 2) set _QuantAttention.is_compatible_attention output to False to fall back to the transformers < 4.48 support
+        for name, module in model_test.named_modules():
+            if name.endswith("self_attn"):
+                if original_is_compatible_attention is None:
+                    original_is_compatible_attention = _QuantAttention.is_compatible_attention
+                    _QuantAttention.is_compatible_attention = classmethod(lambda cls, x: False)
+
+                parent = model_test.get_submodule(name.split(".self_attn")[0])
+                parent.self_attn = attn_cls()
+
+    model_test(input_ids)
+    mtq.quantize(model_test, kv_cache_config, lambda model: model(input_ids))
+
+    for name, module in model_test.named_modules():
+        if name.endswith("self_attn"):
             assert hasattr(module, "k_bmm_quantizer")
             assert hasattr(module, "v_bmm_quantizer")
+            assert module.k_bmm_quantizer.amax is not None
+            assert module.v_bmm_quantizer.amax is not None
 
-    input_ids = torch.randint(0, 1, (1, 4))
     model_test(input_ids)
+
+    if attn_cls is not None:
+        _QuantAttention.is_compatible_attention = original_is_compatible_attention
+        mtq.unregister(attn_cls)

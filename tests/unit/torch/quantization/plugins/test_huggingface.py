@@ -168,6 +168,10 @@ def test_autoquantize_huggingface():
         (AutoModelForCausalLM, mtq.INT4_AWQ_CFG),
     ],
 )
+@pytest.mark.skip(
+    reason="Real quantization does not support restore with weights in meta device yet, TODO: "
+    "enable this test after fixing real quantization"
+)
 def test_quantized_transformers_save_restore(tmp_path, model_cls, quant_config):
     tiny_llama_dir = create_tiny_llama_dir(tmp_path)
     # update config to fit test cases

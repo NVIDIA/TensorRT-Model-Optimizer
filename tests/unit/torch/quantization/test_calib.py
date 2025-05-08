@@ -15,14 +15,12 @@
 
 """Unittests for AWQ and SVDQuant"""
 
-import copy
-import io
 from functools import partial
 
 import torch
 import torch.nn as nn
+from _test_utils.torch_quantization.quantize_common import get_awq_config
 
-import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.config import QuantizerAttributeConfig
 from modelopt.torch.quantization.model_calib import (
@@ -175,14 +173,6 @@ def forward_loop(model, dataloader):
         model(data)
 
 
-def get_config(algorithm="awq_lite"):
-    config = copy.deepcopy(mtq.INT4_AWQ_CFG)
-    config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {-1: 8}
-    config["algorithm"]["method"] = algorithm
-    config["algorithm"]["debug"] = True
-    return config
-
-
 def get_test_args(config):
     torch.manual_seed(0)
     model = _SimpleMLP()
@@ -252,20 +242,20 @@ def _awq_clip_tester(model, model_ref, data, config):
 
 def test_awq_lite():
     """Test awq_lite."""
-    model, model_ref, dataloader, ref_data = get_test_args(get_config("awq_lite"))
+    model, model_ref, dataloader, ref_data = get_test_args(get_awq_config("awq_lite"))
     _awq_lite_tester(model, model_ref, ref_data)
 
 
 def test_awq_clip():
     """Test awq_clip."""
-    config = get_config("awq_clip")
+    config = get_awq_config("awq_clip")
     model, model_ref, dataloader, ref_data = get_test_args(config)
     _awq_clip_tester(model, model_ref, ref_data, config)
 
 
 def test_awq_full():
     """Test awq."""
-    config = get_config("awq_full")
+    config = get_awq_config("awq_full")
     model, model_ref, dataloader, ref_data = get_test_args(config)
 
     scale_dict = _awq_lite_tester(model, model_ref, ref_data)
@@ -294,7 +284,7 @@ def test_awq_multi_batch():
     states = model.state_dict()
 
     # Multi batch test
-    config = get_config("awq_full")
+    config = get_awq_config("awq_full")
 
     dataloader = [torch.randn(2, 16, 16) for _ in range(4)]
     dataloader_sb = [torch.cat(dataloader, dim=0)]
@@ -315,7 +305,7 @@ def test_awq_multi_batch():
 def test_padded_awq():
     """Test awq when padding is needed."""
     model = _SimpleMLP(f1=13, f2=19)
-    config = get_config("awq_full")
+    config = get_awq_config("awq_full")
     model = mtq.quantize(model, config, partial(forward_loop, dataloader=[torch.randn(2, 16, 16)]))
     model(torch.randn(2, 16, 16))
 
@@ -385,23 +375,3 @@ def test_svdquant_lora_weights():
                 module.weight_quantizer.svdquant_lora_b @ module.weight_quantizer.svdquant_lora_a
             )
             assert lora_residual.shape == module.weight.shape
-
-
-def test_svdquant_save_restore():
-    model = _SimpleMLP(64, 64, 64, 64)
-    sample_input = torch.randn(2, 64, 64)
-
-    quant_config = mtq.INT8_SMOOTHQUANT_CFG.copy()
-    quant_config["algorithm"] = "svdquant"
-
-    mtq.quantize(model, quant_config, partial(forward_loop, dataloader=[sample_input]))
-
-    buffer = io.BytesIO()
-    mto.save(model, buffer)
-    buffer.seek(0)
-    new_model = _SimpleMLP(64, 64, 64, 64)
-    new_model = mto.restore(new_model, buffer)
-
-    output_ref = model(sample_input)
-    output_test = new_model(sample_input)
-    assert torch.allclose(output_ref, output_test)

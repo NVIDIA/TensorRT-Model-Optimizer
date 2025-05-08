@@ -39,7 +39,7 @@ from warnings import warn
 from ..conversion import register
 from ..nn import TensorQuantizer
 
-__all__ = ["register_attention_for_kv_quant", "register_hf_attention_for_kv_quant"]
+__all__ = ["register_attention_for_kv_quant"]
 
 
 def register_attention_for_kv_quant(attention_cls: type) -> bool:
@@ -208,89 +208,6 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
     org_class = model_module.__dict__[org_class_name]
 
     quant_class = _create_quantized_class_from_ast(head, org_class, new_class_name, model_module)
-    register(original_cls=org_class, quantized_cls=quant_class)
-    print(f"Successfully registered {org_class_name} for quantization")
-    return True
-
-
-def register_hf_attention_for_kv_quant(attention_cls: type) -> bool:
-    """Register attention layer for quantization of KV Cache, specifically for attention_interface.
-
-    Generate a quantized version of the attention class on the fly,
-    and register it with the original class for quantization.
-    """
-    source_code = inspect.getsource(attention_cls)
-    model_module = inspect.getmodule(attention_cls)
-    head = ast.parse(source_code)
-
-    def is_attention_interface_call(node):
-        return (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "attention_interface"
-        )
-
-    nodes = list(ast.walk(head))
-    org_class_name = nodes[1].name  # type: ignore[attr-defined]
-    new_class_name = nodes[1].name = "_Quant" + nodes[1].name  # type: ignore[attr-defined]
-
-    attention_calls = []
-    for node in ast.walk(head):
-        if is_attention_interface_call(node):
-            attention_calls.append(node)
-
-    if len(attention_calls) != 1:
-        print(
-            f"Expect 1 attention_interface call in {org_class_name}, found {len(attention_calls)}"
-        )
-        print("Auto quantization of KV Cache fails")
-        return False
-
-    # Patch the attention_interface call arguments
-    call_node: ast.Call = attention_calls[0]
-    if len(call_node.args) < 4:  # self, query, key, value
-        print("attention_interface call must have at least 4 arguments")
-        return False
-
-    # Add quantization to key and value arguments (args[2] and args[3])
-    query_arg = call_node.args[1]
-    key_arg = call_node.args[2]
-    value_arg = call_node.args[3]
-
-    # Wrap query, key, and value with quantizers
-    call_node.args[1] = ast.Call(
-        func=ast.Attribute(
-            value=ast.Name(id="self", ctx=ast.Load()),
-            attr="q_bmm_quantizer",
-            ctx=ast.Load(),
-        ),
-        args=[query_arg],
-        keywords=[],
-    )
-    call_node.args[2] = ast.Call(
-        func=ast.Attribute(
-            value=ast.Name(id="self", ctx=ast.Load()),
-            attr="k_bmm_quantizer",
-            ctx=ast.Load(),
-        ),
-        args=[key_arg],
-        keywords=[],
-    )
-    call_node.args[3] = ast.Call(
-        func=ast.Attribute(
-            value=ast.Name(id="self", ctx=ast.Load()),
-            attr="v_bmm_quantizer",
-            ctx=ast.Load(),
-        ),
-        args=[value_arg],
-        keywords=[],
-    )
-
-    head = ast.fix_missing_locations(head)
-    org_class = model_module.__dict__[org_class_name]
-
-    quant_class = _create_quantized_class_from_ast(head, org_class, new_class_name, model_module)
-
     register(original_cls=org_class, quantized_cls=quant_class)
     print(f"Successfully registered {org_class_name} for quantization")
     return True

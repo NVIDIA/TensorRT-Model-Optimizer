@@ -15,6 +15,7 @@
 
 """Utility functions for performance measurement."""
 
+import time
 from contextlib import ContextDecorator
 
 import torch
@@ -22,7 +23,13 @@ import torch
 from . import distributed as dist
 from .logging import print_rank_0
 
-__all__ = ["clear_cuda_cache", "get_cuda_memory_stats", "report_memory", "Timer"]
+__all__ = [
+    "clear_cuda_cache",
+    "get_cuda_memory_stats",
+    "report_memory",
+    "Timer",
+    "AccumulatingTimer",
+]
 
 
 def clear_cuda_cache():
@@ -88,3 +95,80 @@ class Timer(ContextDecorator):
     def __exit__(self, type, value, traceback):
         self.stop()
         print_rank_0(f"{self.name} took {self.estimated_time:.3e} ms")
+
+
+class AccumulatingTimer(ContextDecorator):
+    """A timer that accumulates time across multiple calls and works for both CUDA and non-CUDA operations."""
+
+    # Class-level dictionary to store accumulated times by name
+    _accumulated_times = {}
+    _call_counts = {}
+    _prefix = []
+
+    def __init__(self, name=""):
+        """Initialize AccumulatingTimer.
+
+        Args:
+            name: Name of the timer for reporting
+            use_cuda: Whether to synchronize CUDA before timing
+        """
+        super().__init__()
+        self.name = name
+        self.use_cuda = torch.cuda.is_available()
+        self._start_time = None
+
+    def start(self) -> None:
+        """Start the timer."""
+        if self.use_cuda:
+            # Synchronize CUDA before measuring start time
+            torch.cuda.synchronize()
+        self._start_time = time.time()
+
+    def stop(self) -> float:
+        """End the timer and return the elapsed time in milliseconds."""
+        if self.use_cuda:
+            # Synchronize CUDA before measuring stop time
+            torch.cuda.synchronize()
+
+        elapsed_time = (time.time() - self._start_time) * 1000  # in milliseconds
+
+        # Update the accumulated time and call count
+        name = self.name if not AccumulatingTimer._prefix else "->".join(AccumulatingTimer._prefix)
+        if name not in AccumulatingTimer._accumulated_times:
+            AccumulatingTimer._accumulated_times[name] = 0.0
+            AccumulatingTimer._call_counts[name] = 0
+        AccumulatingTimer._accumulated_times[name] += elapsed_time
+        AccumulatingTimer._call_counts[name] += 1
+
+        return elapsed_time
+
+    @classmethod
+    def get_total_time(cls, name):
+        """Get the total accumulated time for a timer in milliseconds."""
+        return cls._accumulated_times.get(name, 0.0)
+
+    @classmethod
+    def get_call_count(cls, name):
+        """Get the number of calls for a timer."""
+        return cls._call_counts.get(name, 0)
+
+    @classmethod
+    def reset(cls):
+        """Reset the accumulated times and call counts."""
+        cls._accumulated_times = {}
+        cls._call_counts = {}
+
+    @classmethod
+    def report(cls):
+        """Report the accumulated times and call counts."""
+        for name, t in cls._accumulated_times.items():
+            print(f"{name}: {t:0.3f} ms (avg: {t / cls._call_counts[name]:0.3f} ms)")
+
+    def __enter__(self):
+        AccumulatingTimer._prefix.append(self.name)
+        self.start()
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.stop()
+        AccumulatingTimer._prefix.pop()

@@ -16,11 +16,10 @@
 """ModelOpt plugin for enabling automatic save/restore of ModelOpt state for HuggingFace models."""
 
 import functools
-import inspect
 import os
 import threading
-import types
-from contextlib import contextmanager
+import warnings
+from contextlib import contextmanager, nullcontext
 from typing import Any
 
 import torch
@@ -31,37 +30,52 @@ from ..conversion import ModeloptStateManager, modelopt_state, restore_from_mode
 
 __all__ = ["enable_huggingface_checkpointing"]
 
-_PATCHED_LIBRARIES = set()
-_MODELOPT_STATE_SAVE_NAMES = {
-    "default": "modelopt_state.pth",
-}
+
+_MODELOPT_STATE_SAVE_NAME = "modelopt_state.pth"
+_LIBRARY_CLASSES_FOR_PATCHING: dict[str, tuple[list[type], list[list[tuple[str, Any]]]]] = {}
+_PATCHED_CLASSES = set()
 
 
-def _get_modelopt_state_path(obj: Any, model_name_or_path: str) -> str:
-    modelopt_state_save_name = _MODELOPT_STATE_SAVE_NAMES["default"]
-    for type, value in _MODELOPT_STATE_SAVE_NAMES.items():
-        if type == "default":
-            continue
-        if isinstance(obj, type):  # type: ignore [arg-type]
-            modelopt_state_save_name = value
-    return os.path.join(model_name_or_path, modelopt_state_save_name)
+def register_for_patching(name: str, cls: type, patch_methods: list[tuple[str, Any]]):
+    """Register a HuggingFace class for patching with ModelOpt functionality.
+
+    This function registers a class from a HuggingFace library to be patched with ModelOpt's
+    save/restore functionality. This allows ModelOpt state to be automatically preserved
+    during saving and loading of models created from this class.
+
+    Args:
+        name: The name of the HuggingFace library to patch (e.g., 'transformers', 'diffusers').
+        cls: The class within the library to patch (e.g., PreTrainedModel).
+        patch_methods: List of tuples containing method names and their patch methods.
+    """
+    if name not in _LIBRARY_CLASSES_FOR_PATCHING:
+        _LIBRARY_CLASSES_FOR_PATCHING[name] = ([], [])
+
+    classes, methods_list = _LIBRARY_CLASSES_FOR_PATCHING[name]
+    classes.append(cls)
+    methods_list.append(patch_methods)
+
+
+def _get_modelopt_state_path(model_name_or_path: str) -> str:
+    return os.path.join(model_name_or_path, _MODELOPT_STATE_SAVE_NAME)
 
 
 @contextmanager
-def _patch_model_init_for_modelopt(cls, model_path):
+def _patch_model_init_for_modelopt(cls, model_path, extra_context=None):
     """Patch for `cls.init` method to restore ModelOpt state after `init`."""
     # Note: Keeping original config in local as the package will be shared among threads
     _original__init__ = cls.__init__
 
     @functools.wraps(_original__init__)
     def new_init_fn(self, *args, **kwargs):
-        modelopt_state_path = _get_modelopt_state_path(self, model_path)
+        modelopt_state_path = _get_modelopt_state_path(model_path)
         _original__init__(self, *args, **kwargs)
         if os.path.isfile(modelopt_state_path):
             modelopt_state = torch.load(modelopt_state_path, map_location="cpu", weights_only=False)
-            if not ModeloptStateManager.has_state_for_mode_type("nas", state=modelopt_state):
+            with extra_context() if extra_context else nullcontext():
                 restore_from_modelopt_state(self, modelopt_state)
-                print_rank_0(f"Restored ModelOpt state from {modelopt_state_path}")
+
+            print_rank_0(f"Restored ModelOpt state from {modelopt_state_path}")
 
     cls.__init__ = new_init_fn
     try:
@@ -70,95 +84,35 @@ def _patch_model_init_for_modelopt(cls, model_path):
         cls.__init__ = _original__init__
 
 
-def _new_from_pretrained(cls, /, pretrained_model_name_or_path, *args, **kwargs):
-    """Patch for `cls.from_pretrained` method to restore ModelOpt state.
-
-    NOTE: This does not work with NAS/Pruned model in Bert example probably due to using accelerate.
-    (Error during tracing when restoring since __init__ is called under a context manager that disables weight init).
-    Hence, we defer the restoration to the `_load_pretrained_model` method.
-    """
-    with _patch_model_init_for_modelopt(cls, pretrained_model_name_or_path):
-        model = types.MethodType(cls._modelopt_cache["from_pretrained"].__func__, cls)(
-            pretrained_model_name_or_path, *args, **kwargs
-        )
-    return model
-
-
-def _new_from_config(cls, /, config, **kwargs):
-    """Patch for `cls.from_config` method to restore ModelOpt state."""
-    with _patch_model_init_for_modelopt(cls, config._name_or_path):
-        model = types.MethodType(cls._modelopt_cache["_from_config"].__func__, cls)(
-            config, **kwargs
-        )
-    return model
-
-
-def _new__load_pretrained_model(cls, *args, **kwargs):
-    """Patch for `cls._load_pretrained_model` method to restore ModelOpt state for NAS/Pruned models."""
-    # Get the original function signature
-    original_func = cls._modelopt_cache["_load_pretrained_model"].__func__
-    sig = inspect.signature(original_func)
-    param_names = list(sig.parameters.keys())
-
-    # Extract model from args (first positional param)
-    model = args[0] if args else kwargs.get("model")
-
-    # Check if pretrained_model_name_or_path was passed as positional or keyword argument
-    idx = param_names.index("pretrained_model_name_or_path") - 1  # -1 for cls
-    if idx < len(args):
-        pretrained_model_name_or_path = args[idx]
-    else:
-        pretrained_model_name_or_path = kwargs.get("pretrained_model_name_or_path")
-
-    modelopt_state_path = _get_modelopt_state_path(model, pretrained_model_name_or_path)
-    if os.path.isfile(modelopt_state_path) and not ModeloptStateManager.is_converted(model):
-        modelopt_state_dict = torch.load(
-            modelopt_state_path, map_location="cpu", weights_only=False
-        )
-        restore_from_modelopt_state(model, modelopt_state_dict)
-        print_rank_0(f"Restored ModelOpt state after init from {modelopt_state_path}")
-
-    return types.MethodType(original_func, cls)(*args, **kwargs)
-
-
 def _new_save_pretrained(self, save_directory, *args, **kwargs):
-    self._modelopt_cache["save_pretrained"](self, save_directory, *args, **kwargs)
+    """Patch for `cls.save_pretrained` method to save ModelOpt state."""
+    outputs = self._modelopt_cache["save_pretrained"](self, save_directory, *args, **kwargs)
     if ModeloptStateManager.is_converted(self) and not getattr(
         self, "_disable_modelopt_save", False
     ):
-        path = _get_modelopt_state_path(self, save_directory)
+        path = _get_modelopt_state_path(save_directory)
         torch.save(modelopt_state(self), path)
         print_rank_0(f"Saved ModelOpt state to {path}")
 
-
-_DEFAULT_PATCH_METHODS_MAP = {
-    "from_pretrained": classmethod(_new_from_pretrained),
-    "_load_pretrained_model": classmethod(_new__load_pretrained_model),  # type: ignore [arg-type]
-    "save_pretrained": _new_save_pretrained,
-    "_from_config": classmethod(_new_from_config),
-}
+    return outputs
 
 
 _patch_lock = threading.Lock()
 
 
-def patch_pretrained_methods(cls, library_name: str, patch_methods_map: dict = None):
-    if hasattr(cls, "_modelopt_cache"):
-        return
-
+def patch_pretrained_methods(cls: type, patch_methods: list[tuple[str, Any]]):
+    """Patch the pretrained methods of a library."""
     with _patch_lock:
         # in case multiple threads patch the same library
-        if library_name in _PATCHED_LIBRARIES:
+        if hasattr(cls, "_modelopt_cache"):
             return
-        cls._modelopt_cache = {}
-        patch_methods_map = patch_methods_map or _DEFAULT_PATCH_METHODS_MAP
-        for method_name in patch_methods_map:
+        cls._modelopt_cache = {}  # type: ignore
+        for method_name, patch_method in patch_methods:
             if not hasattr(cls, method_name):
+                warnings.warn(f"Method {method_name} not found in {cls.__name__}")
                 continue
-            cls._modelopt_cache[method_name] = getattr(cls, method_name)
-            setattr(cls, method_name, patch_methods_map[method_name])
-
-        _PATCHED_LIBRARIES.add(library_name)
+            cls._modelopt_cache[method_name] = getattr(cls, method_name)  # type: ignore
+            setattr(cls, method_name, patch_method)
 
 
 def enable_huggingface_checkpointing():
@@ -190,6 +144,10 @@ def enable_huggingface_checkpointing():
         model = AutoModelForCausalLM.from_pretrained(model_path).cuda()
 
     """
-    # This method simply prints if ModelOpt save/restore is enabled for the HuggingFace libraries.
-    for library_name in _PATCHED_LIBRARIES:
-        print_rank_0(f"ModelOpt save/restore enabled for `{library_name}` library.")
+    for name, (classes, methods_list) in _LIBRARY_CLASSES_FOR_PATCHING.items():
+        for cls, patch_methods in zip(classes, methods_list):
+            if cls in _PATCHED_CLASSES:
+                continue
+            patch_pretrained_methods(cls, patch_methods)
+            _PATCHED_CLASSES.add(cls)
+        print_rank_0(f"ModelOpt save/restore enabled for `{name}` library.")

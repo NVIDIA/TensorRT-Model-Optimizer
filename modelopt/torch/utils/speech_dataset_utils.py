@@ -83,6 +83,7 @@ def get_speech_dataset_dataloader(
     batch_size: int = 1,
     num_samples: int = 512,
     device: Optional[str] = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> DataLoader:
     """Get a dataloader with the dataset name and processor of the target model.
 
@@ -91,6 +92,8 @@ def get_speech_dataset_dataloader(
         processor: Processor used for encoding images and text data.
         batch_size: Batch size of the returned dataloader.
         num_samples: Number of samples from the dataset.
+        device: Target device for the returned dataloader.
+        dtype: dtype of the returned dataset.
 
     Returns:
         An instance of dataloader.
@@ -113,6 +116,8 @@ def get_speech_dataset_dataloader(
 
         # Move input_features to the GPU (cuda)
         input_features = inputs.input_features[0].to(device)
+        if dtype:
+            input_features = input_features.to(dtype)
 
         return {"input_features": input_features}
 

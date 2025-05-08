@@ -215,6 +215,8 @@ def configure_ort(
         "Concat",
         "EmbedLayerNormalization",
         "Gather",
+        "GatherElements",
+        "GatherND",
         "InstanceNormalization",
         "LeakyRelu",
         "Pad",
@@ -244,7 +246,7 @@ def configure_ort(
             "Conv": 0,
             "ConvTranspose": 1,
         },  # per_channel should be True
-        "DedicatedQDQPair": True,
+        "DedicatedQDQPair": False,
         "ForceQuantizeNoInputCheck": (
             # By default, for some latent operators like MaxPool, Transpose, etc.,
             # ORT does not quantize if their input is not quantized already.

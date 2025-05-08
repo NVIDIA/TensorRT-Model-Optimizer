@@ -51,7 +51,7 @@ class TestTensorQuantizerE4M3:
             x = torch.rand(3, 6, 7, 7).cuda()
 
             e4m3_x = e4m3_quantizer(x)
-            ref = tensor_quant.scaled_e4m3(x, e4m3_quantizer._get_amax(x), E, M)
+            ref = tensor_quant.scaled_e4m3(x, e4m3_quantizer._get_amax(x), None, E, M)
             assert torch.allclose(e4m3_x, ref)
 
 
@@ -67,7 +67,7 @@ class TestTensorQuantizerfp4:
         x = torch.rand(2, 1, 16).cuda()
 
         fp4_x = fp4_quantizer(x)
-        ref = tensor_quant.dynamic_block_quant(x, 16, x.abs().amax(), (2, 1), (4, 3))
+        ref = tensor_quant.nvfp4_dynamic_block_quant(x, 16, x.abs().amax(), None, (2, 1), (4, 3))
         assert torch.allclose(fp4_x, ref)
 
         assert fp4_quantizer._get_amax(x) == x.abs().amax()
@@ -121,6 +121,7 @@ class TestTensorQuantizerBlockQuant:
         outputs = static_block_quant(
             inputs,
             torch.tensor([1.0]).cuda(),
+            None,
             4,
             False,
             True,
@@ -132,6 +133,7 @@ class TestTensorQuantizerBlockQuant:
         ref_outputs = fake_tensor_quant(
             inputs.reshape(-1, block_size),
             torch.tensor([1.0]).cuda(),
+            None,
             4,
             False,
             True,

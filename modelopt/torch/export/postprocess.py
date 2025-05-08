@@ -719,11 +719,14 @@ def update_lm_head_quantization(
 
     # check if weight shape is not multiples of block size
     awq_block_size = 0
-    for quantizer in SequentialQuantizer.tensor_quantizer_iterator(weight_quantizer):
-        if hasattr(weight_quantizer, "block_sizes") and weight_quantizer.block_sizes is not None:
-            awq_block_size = weight_quantizer.block_sizes[-1]
-            weight_quantizer = quantizer
-            break
+    weight_quantizer = (
+        weight_quantizer[0]
+        if isinstance(weight_quantizer, SequentialQuantizer)
+        else weight_quantizer
+    )
+    if hasattr(weight_quantizer, "block_sizes") and weight_quantizer.block_sizes is not None:
+        awq_block_size = weight_quantizer.block_sizes[-1]
+
     if (
         awq_block_size > 0
         and weight_quantizer.is_enabled
@@ -736,8 +739,7 @@ def update_lm_head_quantization(
         if hasattr(input_quantizer, "_pre_quant_scale"):
             disable_pre_quant_scale_and_resmooth(lm_head, delete_pre_quant_scale=True)
 
-        for quantizer in SequentialQuantizer.tensor_quantizer_iterator(lm_head.weight_quantizer):
-            quantizer.disable()
+        lm_head.weight_quantizer.disable()
 
         input_quantizer.disable()
         print("Disable lm_head quantization for TRT-LLM export due to deployment limitations.")

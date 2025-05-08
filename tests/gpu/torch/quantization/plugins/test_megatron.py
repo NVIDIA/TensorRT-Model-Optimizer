@@ -17,7 +17,7 @@ from functools import partial
 
 import pytest
 import torch
-from _test_utils.import_helper import skip_if_mcore_dist_ckpt_is_not_supported, skip_if_no_megatron
+from _test_utils.import_helper import skip_if_no_megatron
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
     MegatronModel,
@@ -33,7 +33,6 @@ from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     tensor_parallel_test_helper,
 )
-from packaging.version import Version
 
 skip_if_no_megatron()
 
@@ -133,8 +132,13 @@ def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64):
 
 
 def _test_sharded_state_dict(tmp_path, config, hidden_size, modelopt_version, rank, size):
-    mto.conversion.__version__ = modelopt_version
-    mtq.plugins.megatron.__version__ = modelopt_version
+    # Must disable output_layer quantization since output_layer amax cannot be restore via
+    # sharded_state_dict. All output_layer quantizers state are removed.
+    config["quant_cfg"]["*output_layer*"] = {"enable": False}
+
+    if modelopt_version is not None:
+        mto.conversion.__version__ = modelopt_version
+        mtq.plugins.megatron.__version__ = modelopt_version
 
     initialize_for_megatron(tensor_model_parallel_size=size, seed=SEED)
 
@@ -153,23 +157,17 @@ def _test_sharded_state_dict(tmp_path, config, hidden_size, modelopt_version, ra
         if hasattr(module, "_amax_for_smoothing"):
             delattr(module, "_amax_for_smoothing")
 
-    sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn)
+    sharded_state_dict_test_helper(
+        tmp_path, model_ref, model_test, forward_fn, version=modelopt_version
+    )
 
-    mto.conversion.__version__ = modelopt.__version__
-    mtq.plugins.megatron.__version__ = modelopt.__version__
+    if modelopt_version is not None:
+        mto.conversion.__version__ = modelopt.__version__
+        mtq.plugins.megatron.__version__ = modelopt.__version__
 
     # Make sure all ranks have arrived before destroying NCCL
     torch.distributed.barrier()
 
-
-partial_quant_config = copy.deepcopy(mtq.NVFP4_DEFAULT_CFG)
-partial_quant_config["quant_cfg"].update(
-    {
-        "*.0.*": {"enable": False},
-        "*.3.*": {"enable": False},
-        "*.1.*linear_fc2.weight_quantizer": {"enable": False},
-    }
-)
 
 mixed_precision_config = copy.deepcopy(mtq.W4A8_AWQ_BETA_CFG)
 mixed_precision_config["quant_cfg"].update(
@@ -190,22 +188,9 @@ mixed_block_size_config["quant_cfg"].update(
         "*.1.*": {"enable": False},
         "*.2.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 64}, "enable": True},
         "*.2.*input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*.3.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
+        "*.3.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128, -2: 64}, "enable": True},
         "*.3.*input_quantizer": {"num_bits": 8, "axis": None},
     }
-)
-
-block2d_quant_config = {
-    "quant_cfg": {
-        "*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128, -2: 128}},
-        "input_quantizer": {"num_bits": 8, "axis": None},
-    },
-    "algorithm": "max",
-}
-
-mixed_block2d_quant_config = copy.deepcopy(mixed_block_size_config)
-mixed_block2d_quant_config["quant_cfg"].update(
-    {"*.0.*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 64, -2: 128}}}
 )
 
 
@@ -218,45 +203,37 @@ mixed_block2d_quant_config["quant_cfg"].update(
         mtq.INT4_AWQ_CFG,
         mtq.W4A8_AWQ_BETA_CFG,
         mtq.NVFP4_DEFAULT_CFG,
-        partial_quant_config,
+        mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
         mixed_precision_config,
         mixed_block_size_config,
-        block2d_quant_config,
-        mixed_block2d_quant_config,
     ],
 )
-@pytest.mark.parametrize("hidden_size", [256, 320])
-@pytest.mark.parametrize("modelopt_version", ["0.25", "0.27"])
-def test_sharded_state_dict(need_2_gpus, tmp_path, config, hidden_size, modelopt_version):
-    if Version(modelopt_version) >= Version("0.27") and hidden_size == 320:
-        pytest.skip(
-            "ModelOpt version 0.27 does not support sharded state dict for padded quantization."
-        )
-
-    if Version(modelopt_version) < Version("0.27"):
-        if config in [block2d_quant_config, mixed_block2d_quant_config]:
-            pytest.skip("Block2D quantization requires ModelOpt version 0.27 or later")
-        if config == mixed_block_size_config:
-            pytest.skip("Mixed blocksize quantization requires ModelOpt version 0.27 or later")
-
-    skip_if_mcore_dist_ckpt_is_not_supported()
-
-    # Must disable output_layer quantization since output_layer amax cannot be restore via
-    # sharded_state_dict. All output_layer quantizers state are removed.
-    if "*output_layer*" not in config["quant_cfg"]:
-        config["quant_cfg"]["*output_layer*"] = {"enable": False}
-
+def test_sharded_state_dict(need_2_gpus, tmp_path, config):
     spawn_multiprocess_job(
         size=2,
-        job=partial(_test_sharded_state_dict, tmp_path, config, hidden_size, modelopt_version),
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None),
         backend="nccl",
     )
 
 
 @pytest.mark.parametrize(
-    "hidden_size",
-    [256, 320],
+    "config",
+    [
+        mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+        mixed_precision_config,
+    ],
 )
+@pytest.mark.parametrize("modelopt_version", ["0.25", "0.27"])
+def test_sharded_state_dict_old_checkpoints(need_2_gpus, tmp_path, config, modelopt_version):
+    spawn_multiprocess_job(
+        size=2,
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, modelopt_version),
+        backend="nccl",
+    )
+
+
+@pytest.mark.parametrize("hidden_size", [256, 320])
 def test_regular_state_dict(distributed_setup_size_1, hidden_size):
     initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=SEED)
 
@@ -331,10 +308,9 @@ def test_fp8_real_quantize(need_2_gpus):
 
 def test_real_quantize_sharded_state_dict(need_2_gpus, distributed_setup_size_1, tmp_path):
     config = mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG
-    skip_if_mcore_dist_ckpt_is_not_supported()
 
     spawn_multiprocess_job(
         size=2,
-        job=partial(_test_sharded_state_dict, tmp_path, config, 256, modelopt.__version__),
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None),
         backend="nccl",
     )

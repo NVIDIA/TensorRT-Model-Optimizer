@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 MODEL_NAME_TO_HF_ARCH_MAP = {
     "llama": "LlamaForCausalLM",
     "gemma": "GemmaForCausalLM",
+    "gemma3": "Gemma3ForCausalLM",
     "gpt": "GPTForCausalLM",
     "enc": "EncoderModel",
     "dec": "DecoderModel",
@@ -93,18 +94,24 @@ def convert_to_tensorrt_llm_config(
 
     first_attention_config = None
     first_attention_decoder_config = None
+    first_mlp_decoder_config = None
     for decoder_layer in model_config.layers:
         first_attention_config = (
             decoder_layer.attention or decoder_layer.self_attention or decoder_layer.cross_attention
         )
-
-        if first_attention_config is not None:
+        if first_attention_config and not first_attention_decoder_config:
             first_attention_decoder_config = decoder_layer
+
+        first_mlp_decoder_config = decoder_layer if decoder_layer.mlp else None
+
+        if first_attention_decoder_config and first_mlp_decoder_config:
             break
 
-    assert first_attention_config is not None and first_attention_decoder_config is not None, (
-        "Model must have at least one attention block"
-    )
+    assert (
+        first_attention_config is not None
+        and first_attention_decoder_config is not None
+        and first_mlp_decoder_config is not None
+    ), "Model must have at least one attention block and one MLP block"
 
     mapping = {
         "world_size": tp_size * pp_size,
@@ -140,7 +147,7 @@ def convert_to_tensorrt_llm_config(
         "num_hidden_layers": len(model_config.layers) * pp_size,
         "num_attention_heads": model_config.num_attention_heads,
         "num_key_value_heads": model_config.num_kv_heads,
-        "hidden_size": model_config.hidden_size,
+        "hidden_size": first_mlp_decoder_config.hidden_size,
         "norm_epsilon": (
             first_attention_decoder_config.mlp_layernorm.eps
             if is_enc_dec
@@ -148,11 +155,11 @@ def convert_to_tensorrt_llm_config(
         ),
         "vocab_size": model_config.vocab_size,
         "max_position_embeddings": model_config.max_position_embeddings,
-        "hidden_act": model_config.hidden_act,
+        "hidden_act": first_mlp_decoder_config.mlp.hidden_act,
         "use_parallel_embedding": True,
         "embedding_sharding_dim": 0,
         "head_size": first_attention_decoder_config.attention_head_size,
-        "intermediate_size": first_attention_decoder_config.ffn_hidden_size_local * tp_size,
+        "intermediate_size": first_mlp_decoder_config.ffn_hidden_size_local * tp_size,
         "position_embedding_type": (
             "alibi"
             if first_attention_decoder_config.use_alibi

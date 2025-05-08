@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,14 +15,18 @@
 
 """Custom plugin base modules and utilities for quantization."""
 
+import warnings
 from functools import partial
 from types import ModuleType
 from typing import Callable, Iterator
 
-from modelopt.torch.opt.dynamic import DynamicModule
+import torch
+from packaging.version import Version
+
+from modelopt import __version__
 from modelopt.torch.utils.distributed import ParallelState
 
-from ..nn import TensorQuantizer
+from ..nn import QuantModule, SequentialQuantizer, TensorQuantizer
 from ..nn.modules.quant_linear import _QuantLinear
 from ..utils import multi_context, replace_function
 
@@ -51,7 +55,7 @@ def register_custom_model_plugins_on_the_fly(model):
     register_hf_attentions_on_the_fly(model)
 
 
-class _QuantFunctionalMixin(DynamicModule):
+class _QuantFunctionalMixin(QuantModule):
     """Mixin class for quantized functionals.
 
     Often we need to replace a functional with a quantized version. This class provides a way to do that.
@@ -78,7 +82,7 @@ class _QuantFunctionalMixin(DynamicModule):
             return super().forward(*args, **kwargs)
 
 
-class _ParallelLinear(_QuantFunctionalMixin):
+class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
     """Quantized base class for ParallelLinear type classes.
 
     For this type of modules, we need to quantize the inputs and weights just before calling the actual linear
@@ -109,12 +113,85 @@ class _ParallelLinear(_QuantFunctionalMixin):
                 quantized_func.__dict__.update(getattr(package, func_name).__dict__)
             yield package, func_name, quantized_func
 
-    def initialize_parallel_state(self):
-        self._parallel_state = ParallelState()
-
     def _setup(self):
-        self.initialize_parallel_state()
         self.input_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_input)
         self.weight_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_weight)
         self.output_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_output)
         self.output_quantizer.disable()
+
+    def modelopt_post_restore(self, prefix: str = ""):
+        """Post restore to correctly configure the TensorQuantizer states for MCore/distributed frameworks.
+
+        ModelOpt restores the TensorQuantizer states such as `_amax` and `_pre_quant_scale` to their
+        shape before saving. However this is not enough for MCore/distributed frameworks since the tensor parallelism
+        could change between saving and restoring. If the tensor parallelism changes, the shape of the quantizer
+        states also changes. So we need to re-calculate the quantizer states.
+        """
+        from modelopt.torch.quantization.model_calib import max_calibrate
+
+        def _check_unsupported_states(quantizer: TensorQuantizer):
+            for k in quantizer.state_dict().keys():
+                if k not in ["_amax", "_pre_quant_scale"]:
+                    warnings.warn(
+                        f"Restore of {k} for {prefix} is not supported. The restore of this layer might be "
+                        f"incorrect. Please implement a custom restore for {k}."
+                    )
+
+        def _has_state(quantizer, name):
+            # Handling for SequentialQuantizer
+            quantizer = quantizer[0] if isinstance(quantizer, SequentialQuantizer) else quantizer
+            if self.is_version_less_than("0.29"):
+                # For backward compatibility, previously we used to save a boolean attribute "_has_amax"
+                # to indicate if the quantizer has amax.
+                return hasattr(quantizer, "_has" + name)
+            return hasattr(quantizer, name)
+
+        if self.weight is None:
+            return
+
+        for quantizer in [self.weight_quantizer, self.input_quantizer, self.output_quantizer]:
+            _check_unsupported_states(
+                quantizer if isinstance(quantizer, TensorQuantizer) else quantizer[0]
+            )
+
+        if _has_state(self.weight_quantizer, "_amax"):
+            self.weight_quantizer.reset_amax()
+            max_calibrate(self.weight_quantizer, lambda wq: wq(self.weight), distributed_sync=False)
+        if _has_state(self.input_quantizer, "_pre_quant_scale"):
+            if hasattr(self.input_quantizer, "_pre_quant_scale"):
+                delattr(self.input_quantizer, "_pre_quant_scale")
+            pqs = torch.zeros(
+                (self.weight.shape[1]), device=self.weight.device, dtype=self.weight.dtype
+            )
+            self.input_quantizer.register_buffer("_pre_quant_scale", pqs)
+        if _has_state(self.input_quantizer, "_amax"):
+            self.input_quantizer.reset_amax()
+            dummy_input = torch.randn(
+                (1, 1, self.weight.shape[1]), device=self.weight.device, dtype=self.weight.dtype
+            )
+            max_calibrate(self.input_quantizer, lambda iq: iq(dummy_input), distributed_sync=False)
+        if _has_state(self.output_quantizer, "_amax"):
+            self.output_quantizer.reset_amax()
+            dummy_input = torch.randn(
+                (1, 1, self.weight.shape[0]), device=self.weight.device, dtype=self.weight.dtype
+            )
+            max_calibrate(self.output_quantizer, lambda oq: oq(dummy_input), distributed_sync=False)
+
+        # If there are any other states, lets move them to the correct device
+        super().modelopt_post_restore(prefix=prefix)
+
+    def is_version_less_than(self, version: str) -> bool:
+        self_version = (
+            Version(self.mopt_ckpt_versn)
+            if self.mopt_ckpt_versn is not None
+            else Version(__version__)
+        )
+
+        # version in NeMo container is 0.0.0 if installed from source without history
+        if self_version < Version(version) and self_version != Version("0.0.0"):
+            warnings.warn(
+                f"Checkpoint version {self_version} is less than {version}. "
+                "Please re-save model to avoid this warning."
+            )
+            return True
+        return False

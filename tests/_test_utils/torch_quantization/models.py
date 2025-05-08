@@ -135,3 +135,19 @@ class RegularQuantModelForTP(nn.Module):
             if isinstance(x, tuple):
                 x = x[0]
         return x
+
+
+class OneLayerLinear(torch.nn.Module):
+    """Linear model for testing."""
+
+    def __init__(self, in_features=32, out_features=64, bias=True):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.net = nn.Sequential(nn.Linear(in_features, out_features, bias=bias))
+
+    def forward(self, x):
+        return self.net(x)
+
+    def get_input(self, batch_size=2):
+        return torch.randn(batch_size, self.in_features)

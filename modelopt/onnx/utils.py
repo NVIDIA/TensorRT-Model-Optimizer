@@ -25,6 +25,7 @@ import onnx
 import onnx.onnx_cpp2py_export.checker as C  # noqa: N812
 import onnx_graphsurgeon as gs
 from onnx import numpy_helper
+from onnx.helper import get_attribute_value
 from onnx_graphsurgeon import Constant, Node, Variable
 
 
@@ -41,18 +42,16 @@ def get_input_names_from_bytes(model_bytes: bytes, external_inputs_only: bool = 
     return get_input_names(model, external_inputs_only)
 
 
-def get_all_input_names(model: onnx.onnx_ml_pb2.ModelProto) -> list[str]:
+def get_all_input_names(model: onnx.ModelProto) -> list[str]:
     """This function returns the inputs names of the given onnx model."""
     return [graph_input.name for graph_input in model.graph.input]
 
 
-def _get_initializer_names(model: onnx.onnx_ml_pb2.ModelProto) -> list[str]:
+def _get_initializer_names(model: onnx.ModelProto) -> list[str]:
     return [initializer.name for initializer in model.graph.initializer]
 
 
-def get_input_names(
-    model: onnx.onnx_ml_pb2.ModelProto, external_inputs_only: bool = True
-) -> list[str]:
+def get_input_names(model: onnx.ModelProto, external_inputs_only: bool = True) -> list[str]:
     """This function returns the external inputs names of the given onnx model.
 
     Note: external_input_names = input_names - initializer_names
@@ -85,7 +84,7 @@ def get_output_names_from_bytes(model_bytes: bytes) -> list[str]:
     return get_output_names(model)
 
 
-def get_output_names(model: onnx.onnx_ml_pb2.ModelProto) -> list[str]:
+def get_output_names(model: onnx.ModelProto) -> list[str]:
     """This function returns the output names of the given onnx model.
 
     Args:
@@ -110,7 +109,7 @@ def get_node_names_from_bytes(model_bytes: bytes) -> list[str]:
     return get_node_names(model)
 
 
-def get_node_names(model: onnx.onnx_ml_pb2.ModelProto) -> list[str]:
+def get_node_names(model: onnx.ModelProto) -> list[str]:
     """This function returns all node names from the given onnx model.
 
     Args:
@@ -122,11 +121,11 @@ def get_node_names(model: onnx.onnx_ml_pb2.ModelProto) -> list[str]:
     return [node.name for node in model.graph.node]
 
 
-def _get_tensor_shape(tensor: onnx.onnx_ml_pb2.ValueInfoProto) -> list[int]:
+def _get_tensor_shape(tensor: onnx.ValueInfoProto) -> list[int]:
     """This function returns the shape of the input onnx tensor.
 
     Onnx tensors are of type ValueInfoProto and their dimensions are stored in a
-    RepeatedCompositeContainer. Each of these dimensions is of type onnx.onnx_ml_pb2.Dimension.
+    RepeatedCompositeContainer. Each of these dimensions is of type onnx.Dimension.
     In a loop we access each of the Dimension object and create a shape list to return.
     Dynamic dimensions (i.e. with "dim_param" field) are replaced with 1.
 
@@ -217,7 +216,7 @@ def get_input_shapes_from_bytes(model_bytes: bytes) -> dict[str, list[int]]:
 
 
 def get_input_shapes(
-    model: onnx.onnx_ml_pb2.ModelProto, external_inputs_only: bool = True
+    model: onnx.ModelProto, external_inputs_only: bool = True
 ) -> dict[str, list[int]]:
     """This function returns the inputs shapes for the given onnx model."""
     if external_inputs_only:
@@ -225,7 +224,7 @@ def get_input_shapes(
     return _get_all_shapes(model.graph.input)
 
 
-def get_output_shapes(model: onnx.onnx_ml_pb2.ModelProto) -> dict[str, list[int]]:
+def get_output_shapes(model: onnx.ModelProto) -> dict[str, list[int]]:
     """This function returns the output shapes for the given onnx model."""
     return _get_all_shapes(model.graph.output)
 
@@ -246,7 +245,7 @@ def parse_shapes_spec(shapes_spec: str) -> dict[str, list[int]]:
     return shape_dict
 
 
-def _get_tensor_type(tensor: onnx.onnx_ml_pb2.ValueInfoProto) -> int:
+def _get_tensor_type(tensor: onnx.ValueInfoProto) -> int:
     if not hasattr(tensor.type, "tensor_type"):
         raise NotImplementedError("Only tensor type inputs are supported.")
     type_ = tensor.type.tensor_type.elem_type
@@ -266,14 +265,12 @@ def _get_container_types(
     return results
 
 
-def _get_input_types(
-    model: onnx.onnx_ml_pb2.ModelProto, external_inputs_only: bool = True
-) -> dict[str, int]:
+def _get_input_types(model: onnx.ModelProto, external_inputs_only: bool = True) -> dict[str, int]:
     inputs_to_include = get_input_names(model, external_inputs_only)
     return _get_container_types(model.graph.input, inputs_to_include)
 
 
-def _get_output_types(model: onnx.onnx_ml_pb2.ModelProto) -> dict[str, int]:
+def _get_output_types(model: onnx.ModelProto) -> dict[str, int]:
     results = _get_container_types(model.graph.output)
     return results
 
@@ -290,9 +287,7 @@ def _convert_types_to_np(types: Union[dict[str, int], list[int], int]) -> Any:
         return onnx.helper.tensor_dtype_to_np_dtype(types)
 
 
-def gen_random_inputs(
-    model: onnx.onnx_ml_pb2.ModelProto, shapes_spec: str = None
-) -> dict[str, np.ndarray]:
+def gen_random_inputs(model: onnx.ModelProto, shapes_spec: str = None) -> dict[str, np.ndarray]:
     """This function generates random inputs for an onnx model.
 
     Args:
@@ -419,7 +414,7 @@ def validate_batch_size(onnx_bytes: bytes, batch_size: int) -> bool:
     return True
 
 
-def get_batch_size(model: onnx.onnx_ml_pb2.ModelProto) -> int:
+def get_batch_size(model: onnx.ModelProto) -> int:
     """Returns the batch size of the given onnx model.
 
     Assertion will fail if batch size is not same over all the inputs.
@@ -456,7 +451,7 @@ def save_onnx_bytes_to_dir(onnx_bytes: bytes, onnx_dir: str, onnx_name: str) -> 
         print(f"Onnx model exporting as {file_path} failed, error {str(e)}")
 
 
-def name_onnx_nodes(graph: onnx.onnx_ml_pb2.GraphProto) -> bool:
+def name_onnx_nodes(graph: onnx.GraphProto) -> bool:
     """Assigns name to the onnx nodes if not present and return the modified status."""
     is_modified = False
     node_names = set([node.name for node in graph.node])
@@ -605,9 +600,7 @@ def get_variable_inputs(node: Node) -> list[Variable]:
     return var_inputs
 
 
-def save_onnx(
-    model: onnx.onnx_ml_pb2.ModelProto, onnx_path: str, save_as_external_data: bool = False
-):
+def save_onnx(model: onnx.ModelProto, onnx_path: str, save_as_external_data: bool = False):
     """Save an ONNX model to given path. If a model is larger than 2GB, will save with external data."""
     size_threshold = 2 * 1024 * 1024 * 1024
     try:
@@ -635,12 +628,42 @@ def save_onnx(
         onnx.save(model, onnx_path)
 
 
-def udpate_domain(
-    onnx_model: onnx.onnx_ml_pb2.ModelProto, op_type: str, domain: str
-) -> onnx.onnx_ml_pb2.ModelProto:
+def udpate_domain(onnx_model: onnx.ModelProto, op_type: str, domain: str) -> onnx.ModelProto:
     """Updates the domain of all the nodes of the specified op_type to the specified domain."""
     for node in onnx_model.graph.node:
         if node.op_type == op_type:
             node.domain = domain
 
     return onnx_model
+
+
+def bfloat16_to_float32(bf16_array):
+    """Converts a bfloat16 array (as raw data) to a float32 array."""
+    uint32_array = bf16_array.astype(np.uint32) << 16
+    return uint32_array.view(np.float32)
+
+
+def read_f16_tensor_as_fp32(tensor):
+    """Reads a float16 or bfloat16 tensor as a float32 numpy ndarray."""
+    if tensor.data_type == onnx.TensorProto.BFLOAT16:
+        raw_data = tensor.raw_data
+        uint16_array = np.frombuffer(raw_data, dtype=np.uint16)
+        float32_array = bfloat16_to_float32(uint16_array)
+        tensor_shape = tuple(dim for dim in tensor.dims)
+        return float32_array.reshape(tensor_shape)
+
+    # Read FLOAT16 tensor and return
+    return onnx.numpy_helper.to_array(tensor).astype(np.float32)
+
+
+def has_attribute(node: onnx.NodeProto, attr_name: str) -> bool:
+    """Checks if the given node has the specified attribute."""
+    return any(attr.name == attr_name for attr in node.attribute)
+
+
+def get_attribute(node: onnx.NodeProto, attr_name: str) -> Any:
+    """Returns the value of the specified attribute."""
+    for attr in node.attribute:
+        if attr.name == attr_name:
+            return get_attribute_value(attr)
+    raise ValueError(f"Attribute {attr_name} not found in node {node.name}")

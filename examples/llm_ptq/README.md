@@ -56,6 +56,8 @@ scripts/huggingface_example.sh --model $HF_PATH --quant [fp8|nvfp4|int8_sq|int4_
 
 > *Calibration by default uses left padding_side for the Huggingface tokenizer as it usually leads to lower accuracy loss. The exported tokenizer files restores the default padding_side.*
 
+> *If a GPU OOM error occurs during model quantization despite sufficient memory, setting the --use_seq_device_map flag can help. This enforces sequential device mapping, distributing the model across GPUs and utilizing up to 80% of each GPU's memory.*
+
 #### Llama 4
 
 We support FP8 and NVFP4 quantized Llama 4 model Hugging Face checkpoint export using the following command:
@@ -76,13 +78,13 @@ NeMo PTQ requires the NeMo package installed. It's recommended to start from the
 export GPT_MODEL_FILE=Nemotron-3-8B-Base-4k.nemo
 
 # Reinstall latest modelopt and build the extensions if not already done.
-pip install -U "nvidia-modelopt[torch]" --extra-index-url https://pypi.nvidia.com
+pip install -U "nvidia-modelopt[torch]"
 python -c "import modelopt.torch.quantization.extensions as ext; ext.precompile()"
 
 scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant [fp8|nvfp4|int8_sq|int4_awq] --tp [1|2|4|8]
 ```
 
-> *If the TensorRT-LLM version in the NeMo container is older than the supported version, please continue building TRT-LLM engine with the `docker.io/library/modelopt_examples:latest` container built in the ModelOpt docker build step. Additionally you would also need to `pip install megatron-core "nemo-toolkit[all]" --extra-index-url https://pypi.nvidia.com` to install required NeMo dependencies*
+> *If the TensorRT-LLM version in the NeMo container is older than the supported version, please continue building TRT-LLM engine with the `docker.io/library/modelopt_examples:latest` container built in the ModelOpt docker build step. Additionally you would also need to `pip install megatron-core "nemo-toolkit[all]"` to install required NeMo dependencies*
 
 #### For Megatron-LM models:
 
@@ -115,9 +117,11 @@ ChatGLM2, 3 6B | No | No | Yes | No | -
 Bloom | Yes | Yes | Yes | Yes | -
 Phi-1,2,3,4 | Yes | Yes | Yes | Yes<sup>3</sup> |
 Phi-3.5 MOE | Yes | No | No | No | -
+Llama-Nemotron Super/Ultra | Yes | No | No | No | Yes
 Nemotron 8B | Yes | No | Yes | No | -
 Gemma 2B, 7B | Yes | No | Yes | Yes | -
 Gemma 2 9B, 27B | Yes<sup>2</sup> | No | Yes | No | -
+Gemma 3 1B | Yes<sup>2</sup> | No | Yes | No | -
 RecurrentGemma 2B | Yes | Yes | Yes | No | -
 StarCoder 2 | Yes | Yes | Yes | No | -
 QWen 2, 2.5 <sup>4</sup> | Yes | Yes | Yes | Yes | Yes
@@ -284,7 +288,21 @@ model = mtq.quantize(model, config, forward_loop)
 
 ### Export Quantized Model
 
-After the model is quantized, the TensorRT-LLM checkpoint can be stored. The user can specify the inference time TP and PP size and the export API will organize the weights to fit the target GPUs.
+We provide two APIs to export the quantized model. One is to export unified Hugging Face checkpoints, which can be deployed on TensorRT-LLM Pytorch or C++ backends, vLLM and SGLang.
+
+The export API is
+
+```python
+from modelopt.torch.export import export_hf_checkpoint
+
+with torch.inference_mode():
+    export_hf_checkpoint(
+        model,  # The quantized model.
+        export_dir,  # The directory where the exported files will be stored.
+    )
+```
+
+The second one is to export TensorRT-LLM checkpoints, which is a legacy format that works with TensorRT-LLM C++ backend only. The user can specify the inference time TP and PP size and the export API will organize the weights to fit the target GPUs.
 
 The export API is
 

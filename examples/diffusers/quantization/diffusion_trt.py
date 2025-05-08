@@ -139,7 +139,6 @@ def main():
     # Define deployment configuration
     deployment = {
         "runtime": "TRT",
-        "version": "10.3",
         "precision": "stronglyTyped",
         "onnx_opset": "17",
         "verbose": "false",

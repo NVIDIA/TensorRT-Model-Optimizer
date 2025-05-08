@@ -31,7 +31,7 @@ from _test_utils.torch_dist.plugins.megatron_common import (
 import modelopt.torch.prune as mtp
 
 
-def _test_mcore_gpt_width_pruning(
+def _test_mcore_gpt_pruning(
     num_attention_heads,
     num_query_groups,
     activation_func,
@@ -41,15 +41,31 @@ def _test_mcore_gpt_width_pruning(
     pruned_num_query_groups_div,
     pruned_hidden_size_div,
     pruned_num_layers_div,
+    uneven_pp,
     rank,
     size,
 ):
-    num_layers = min(size * 2, 8)
     hidden_size = 256
     ffn_hidden_size = 256
     max_sequence_length = 32
     vocab_size = 64
     batch_size = 2
+
+    num_layers = min(size * 2, 8)
+    num_layers_in_first_pipeline_stage = None
+    num_layers_in_last_pipeline_stage = None
+    if uneven_pp and size > 1:
+        num_layers = size * 2
+        if size == 2:  # [1, 3]
+            num_layers_in_first_pipeline_stage = 1
+        elif size == 4:  # [3, 2, 2, 1]
+            num_layers_in_first_pipeline_stage = 3
+            num_layers_in_last_pipeline_stage = 1
+        elif size == 8:  # [4, 1, 1, 1, 1, 1, 1, 6]
+            num_layers_in_first_pipeline_stage = 4
+            num_layers_in_last_pipeline_stage = 6
+        else:
+            raise ValueError(f"Unsupported size {size}")
 
     initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=size)
 
@@ -65,6 +81,8 @@ def _test_mcore_gpt_width_pruning(
         vocab_size=vocab_size,
         activation_func=activation_func,
         normalization=normalization,
+        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
+        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
     )
 
     def forward_loop(m):
@@ -125,16 +143,16 @@ def _test_mcore_gpt_width_pruning(
 
 
 @pytest.mark.parametrize(
-    "num_attention_heads, num_query_groups, activation_func, normalization, ffn_div, num_attention_heads_div, num_query_groups_div, hidden_size_div, num_layers_div",  # noqa: E501
+    "num_attention_heads, num_query_groups, activation_func, normalization, ffn_div, num_attention_heads_div, num_query_groups_div, hidden_size_div, num_layers_div, uneven_pp",  # noqa: E501
     [
-        (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1),  # MHA - pruned ffn/4
-        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1),  # GQA - pruned attention/2
-        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1),  # GQA - pruned hidden_size/4
-        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2),  # MHA - pruned num_layers/2
-        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2),  # GQA - pruned all/2
+        (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False),  # MHA - pruned ffn/4
+        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False),  # GQA - pruned attention/2
+        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False),  # GQA - pruned hidden_size/4
+        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False),  # MHA - pruned num_layers/2
+        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True),  # GQA - pruned all/2, uneven pp
     ],
 )
-def test_mcore_gpt_width_pruning(
+def test_mcore_gpt_pruning(
     num_attention_heads,
     num_query_groups,
     activation_func,
@@ -144,11 +162,12 @@ def test_mcore_gpt_width_pruning(
     num_query_groups_div,
     hidden_size_div,
     num_layers_div,
+    uneven_pp,
 ):
     spawn_multiprocess_job(
         size=torch.cuda.device_count(),
         job=partial(
-            _test_mcore_gpt_width_pruning,
+            _test_mcore_gpt_pruning,
             num_attention_heads,
             num_query_groups,
             activation_func,
@@ -158,6 +177,7 @@ def test_mcore_gpt_width_pruning(
             num_query_groups_div,
             hidden_size_div,
             num_layers_div,
+            uneven_pp,
         ),
         backend="nccl",
     )

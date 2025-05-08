@@ -54,10 +54,6 @@ class RuntimeClient(ABC):
         # check runtime
         assert self.runtime == deployment["runtime"], "Runtime mismatch!"
 
-        # check that version was provided
-        if "version" not in deployment:
-            raise KeyError("Runtime version must be provided!")
-
         # fill in default values and update
         deployment = {**self.default_deployment, **deployment}
 

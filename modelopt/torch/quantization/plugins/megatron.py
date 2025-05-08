@@ -19,15 +19,13 @@ import warnings
 from contextlib import contextmanager
 from itertools import product
 
+import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import torch
-from megatron.core.parallel_state import get_data_parallel_group, get_tensor_model_parallel_group
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
-from packaging.version import Version
 from torch.nn import functional as F
 
-from modelopt import __version__
 from modelopt.torch.opt.plugins.megatron import _MegatronMLP
 from modelopt.torch.utils.distributed import ParallelState
 
@@ -45,10 +43,12 @@ class _MegatronParallelLinear(_ParallelLinear):
 
     _QUANT_MIN_BLOCK_SIZE = 16
 
-    def initialize_parallel_state(self):
-        self._parallel_state = ParallelState(
-            get_data_parallel_group(), get_tensor_model_parallel_group()
+    def _setup(self):
+        self.parallel_state = ParallelState(
+            getattr(mcore_parallel, "get_expert_data_parallel_group", "get_data_parallel_group")(),
+            mcore_parallel.get_tensor_model_parallel_group(),
         )
+        super()._setup()
 
     def _process_weight_quantizer_amax(self, k, v, quantizer_state_dict):
         quantizer_state_dict[k] = v.view(self.weight.shape[0], -1) if v.numel() > 1 else v.view(-1)
@@ -267,7 +267,10 @@ class _MegatronParallelLinear(_ParallelLinear):
                 elif k == "input_quantizer._pre_quant_scale":
                     self._process_activation_quantizer_pre_quant_scale(k, v, quantizer_state_dict)
                 elif "quantizer" in k:
-                    raise NotImplementedError(f"Unsupported quantizer state: {k}")
+                    warnings.warn(
+                        f"Quantizer state {k} is not supported for sharded_state_dict. "
+                        "Please use regular state_dict."
+                    )
 
             sharded_state_dict.update(
                 **make_sharded_tensors_for_checkpoint(
@@ -298,7 +301,10 @@ class _MegatronParallelLinear(_ParallelLinear):
                 continue
 
             if "weight_quantizer" in k:
-                if "_amax" in k and state_dict[k].numel() != self.state_dict()[name].numel():
+                if (
+                    k.endswith("._amax")
+                    and state_dict[k].numel() != self.state_dict()[name].numel()
+                ):
                     # Sharded state dict
                     state_dict[k] = self._get_w_amax_for_load(
                         self.state_dict()[name],
@@ -307,27 +313,10 @@ class _MegatronParallelLinear(_ParallelLinear):
                     )
                 else:  # Regular state dict
                     state_dict[k] = state_dict[k].view_as(self.state_dict()[name])
-            elif "_amax" in name:
+            elif k.endswith("._amax"):
                 state_dict[k] = state_dict[k].view(-1)[0].view_as(self.state_dict()[name])
 
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
-
-    def _setup(self):
-        super()._setup()
-        self._modelopt_load_version = __version__  # Will get overwritten by `replace_quant_module`
-
-    def is_version_less_than(self, version: str) -> bool:
-        if (
-            self._modelopt_load_version
-            and Version(self._modelopt_load_version) < Version(version)
-            and Version(self._modelopt_load_version) != Version("0.0.0")
-        ):  # version in NeMo container is 0.0.0 if installed from source without history
-            warnings.warn(
-                f"Checkpoint version {self._modelopt_load_version} is less than {version}. "
-                "Please re-save model to avoid this warning."
-            )
-            return True
-        return False
 
 
 @QuantModuleRegistry.register(

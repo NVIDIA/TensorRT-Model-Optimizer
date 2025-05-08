@@ -43,14 +43,16 @@ ModeEntrypoint = Callable[
     [nn.Module, ModeloptBaseConfig, MetadataDict], tuple[nn.Module, MetadataDict]
 ]
 ConvertReturnType = tuple[nn.Module, MetadataDict]
-ConvertEntrypoint = Callable[[nn.Module, ModeloptBaseConfig], ConvertReturnType]
+_ConvertEntrypoint = Callable[[nn.Module, ModeloptBaseConfig], ConvertReturnType]
+_ConvertEntrypointWithKwargs = Callable[[nn.Module, ModeloptBaseConfig, Any], ConvertReturnType]
+ConvertEntrypoint = Union[_ConvertEntrypoint, _ConvertEntrypointWithKwargs]
 RestoreEntrypoint = Callable[[nn.Module, ModeloptBaseConfig, MetadataDict], nn.Module]
 UpdateEntrypoint = Callable[[nn.Module, ModeloptBaseConfig, MetadataDict], None]
 
-__all__ = []
+__all__ = ["ModeDescriptor"]
 
 
-class _ModeDescriptor(ABC):
+class ModeDescriptor(ABC):
     """Abstract class to describe a mode."""
 
     def __str__(self) -> str:
@@ -83,6 +85,19 @@ class _ModeDescriptor(ABC):
 
         Returns:
             A set of mode names that must immediately follow this mode. Defaults to None.
+        """
+        return None
+
+    @property
+    def next_prohibited_modes(self) -> Optional[set[str]]:
+        """Modes that should not be applied after this mode.
+
+        This is used to specify that certain modes should not be applied after this mode.
+        A ``None`` value indicates that incompatibitly check is skipped for this mode.
+        This is useful if there are many allowed modes but only a few prohibited modes.
+
+        Returns:
+            A set of mode names that should not be applied after this mode. Defaults to None.
         """
         return None
 
@@ -126,6 +141,7 @@ class _ModeDescriptor(ABC):
         Args:
             model: Model to be restored.
             config: Config used for the model that was also used during convert.
+            mode_kwargs: Additional keyword arguments to pass to the convert entrypoint.
 
         Returns:
             A tuple consisting of
@@ -158,16 +174,16 @@ class _ModeDescriptor(ABC):
                 the model can be instantly restored/modified from the provided state. This is
                 helpful when the ``convert`` entrypoint contains non-deterministic operations whose
                 outcome can be stored in the metadata to ensure that the model can be restored
-                reliably. A few examples of potential non-deterministic operations are provided
+                reliably.A few examples of potential non-deterministic operations are provided
                 below:
-                    * Latency measurements: if the conversion leverages latency measurements during
-                      conversion the conversion process may become non-deterministic.
-                    * Random operations: if the conversion leverages random operations during
-                      conversion, we should store the samples or random seed.
-                    * Module's train flag: the conversion process might be affected by the module's
-                      train flag (e.g. tracing is indirectly affected by train flag since the
-                      forward may be affected by the train flag). If so, we should store the train
-                      flag in the metadata and set the model into the correct mode.
+                (1) Latency measurements: if the conversion leverages latency measurements during
+                conversion the conversion process may become non-deterministic.
+                (2) Random operations: if the conversion leverages random operations during
+                conversion, we should store the samples or random seed.
+                (3) Module's train flag: the conversion process might be affected by the module's
+                train flag (e.g. tracing is indirectly affected by train flag since the
+                forward may be affected by the train flag). If so, we should store the train
+                flag in the metadata and set the model into the correct mode.
 
         Returns:
             The in-place modified and restored model. If the modification failed, the entrypoint can
@@ -225,15 +241,34 @@ class _ModeDescriptor(ABC):
         """
         return False
 
+    def assert_compatibility_as_next_mode_of(
+        self, other_mode: Union["ModeDescriptor", str]
+    ) -> None:
+        """Assert that this mode is compatible as a next mode of the other mode."""
+        if isinstance(other_mode, str):
+            other_mode = _ModeRegistryCls.get_from_any(other_mode)
 
-ModeType = Union[_ModeDescriptor, str]
+        if other_mode.next_modes is not None:
+            assert str(self) in other_mode.next_modes, (
+                f"Cannot add {self} after {other_mode}! Next modes of {other_mode} are"
+                f" {other_mode.next_modes}."
+            )
+
+        if other_mode.next_prohibited_modes is not None:
+            assert str(self) not in other_mode.next_prohibited_modes, (
+                f"Cannot add {self} after {other_mode}! {other_mode} does not allow {self} to be its next mode."
+            )
+
+
+ModeType = Union[ModeDescriptor, str]
 ModeLike = Union[ModeType, list[ModeType], ModeConfigList]
+ModeKwargsType = Union[dict[str, Any], list[dict[str, Any]]]
 
 
 class _ModeRegistryCls:
     """A registry to keep track of available modes."""
 
-    T = TypeVar("T", bound=_ModeDescriptor)
+    T = TypeVar("T", bound=ModeDescriptor)
 
     # global list to keep track of all registries we initialize
     _all_registries: list["_ModeRegistryCls"] = []
@@ -241,8 +276,9 @@ class _ModeRegistryCls:
     def __init__(self, registry_name: str) -> None:
         """Initialize the registry with the lookup dictionaries."""
         self._registry_name = registry_name  # quantization, distill, nas, prune, speculative, etc.
-        self._name2descriptor: dict[str, _ModeDescriptor] = {}
-        self._all_registries.append(self)
+        self._name2descriptor: dict[str, ModeDescriptor] = {}
+        # Add the registry to the global list of registries so that `mto.restore_from_modelopt_state` can find it
+        _ModeRegistryCls._all_registries.append(self)
 
     def register_mode(self, cls_descriptor: type[T]) -> type[T]:
         """Register a new mode with the given descriptor."""
@@ -267,11 +303,11 @@ class _ModeRegistryCls:
         # remove mode
         del self._name2descriptor[str(mode)]
 
-    def get(self, mode: ModeType) -> Optional[_ModeDescriptor]:
+    def get(self, mode: ModeType) -> Optional[ModeDescriptor]:
         """Get the mode by value or throw an error."""
         return self._name2descriptor.get(str(mode))
 
-    def __getitem__(self, mode: ModeType) -> _ModeDescriptor:
+    def __getitem__(self, mode: ModeType) -> ModeDescriptor:
         """Get the mode by value or throw an error."""
         return self._name2descriptor[str(mode)]
 
@@ -281,33 +317,35 @@ class _ModeRegistryCls:
 
     def __del__(self) -> None:
         """Remove the registry from the global list."""
-        self._all_registries.remove(self)
+        _ModeRegistryCls._all_registries.remove(self)
 
-    @classmethod
-    def contained_in_any(cls, mode: ModeType) -> bool:
+    @staticmethod
+    def contained_in_any(mode: ModeType) -> bool:
         """Check if mode is registered in any registry."""
-        for registry in cls._all_registries:
+        for registry in _ModeRegistryCls._all_registries:
             if str(mode) in registry._name2descriptor:
                 return True
         return False
 
-    @classmethod
-    def get_from_any(cls, mode: ModeType) -> _ModeDescriptor:
+    @staticmethod
+    def get_from_any(mode: ModeType) -> ModeDescriptor:
         """Get the mode by value from any registry or throw a KeyError.
 
         Adds a sanity check to ensure that the mode is not ambiguous, i.e., there is only one
         instance.
         """
-        mode_ds = [registry[mode] for registry in cls._all_registries if mode in registry]
+        mode_ds = [
+            registry[mode] for registry in _ModeRegistryCls._all_registries if mode in registry
+        ]
         if not mode_ds:
             raise KeyError(f"Mode {mode} not found in any registry.")
         assert all(mode_ds[0] == m_d for m_d in mode_ds), f"Mode {mode} is ambiguous."
         return mode_ds[0]
 
-    @classmethod
-    def get_registry_by_name(cls, registry_name: str) -> "_ModeRegistryCls":
+    @staticmethod
+    def get_registry_by_name(registry_name: str) -> "_ModeRegistryCls":
         """Get the registry by name."""
-        for registry in cls._all_registries:
+        for registry in _ModeRegistryCls._all_registries:
             if registry._registry_name == registry_name:
                 return registry
         raise KeyError(f"Registry {registry_name} not found.")

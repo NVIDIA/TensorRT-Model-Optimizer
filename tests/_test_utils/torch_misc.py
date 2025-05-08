@@ -23,7 +23,10 @@ from modelopt.torch.utils import flatten_tree
 def compare_outputs(out1, out2, rtol=1e-5, atol=1e-8):
     out1, _ = flatten_tree(out1)
     out2, _ = flatten_tree(out2)
-    assert all(torch.allclose(t1, t2, rtol, atol) for t1, t2 in zip(out1, out2))
+    assert all(
+        torch.allclose(t1.to(torch.float32), t2.to(torch.float32), rtol, atol)
+        for t1, t2 in zip(out1, out2)
+    )
 
 
 def set_seed(seed_value=42):

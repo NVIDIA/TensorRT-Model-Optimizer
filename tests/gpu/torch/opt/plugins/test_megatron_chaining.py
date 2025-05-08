@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from _test_utils.import_helper import skip_if_mcore_dist_ckpt_is_not_supported
 from _test_utils.sparsity_utils import sample_subnet_with_sparsity
 from _test_utils.torch_dist.plugins.megatron_common import (
     MegatronModel,
@@ -27,7 +26,6 @@ import modelopt.torch.sparsity as mts
 
 
 def test_sharded_state_dict(tmp_path, distributed_setup_size_1):
-    skip_if_mcore_dist_ckpt_is_not_supported()
     initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
 
     model_ref = MegatronModel().cuda()

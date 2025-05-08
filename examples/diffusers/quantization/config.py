@@ -35,6 +35,31 @@ FP8_DEFAULT_CONFIG = {
     "algorithm": "max",
 }
 
+NVFP4_DEFAULT_CONFIG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*output_quantizer": {"enable": False},
+        "*[qkv]_bmm_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*softmax_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
 NVFP4_FP8_MHA_FLUX_CONFIG = {
     "quant_cfg": {
         "*transformer_blocks*weight_quantizer": {
@@ -58,7 +83,7 @@ NVFP4_FP8_MHA_FLUX_CONFIG = {
             "num_bits": (4, 3),
             "axis": None,
         },
-        "transformer_blocks*bmm2_output_quantizer": {
+        "*bmm2_output_quantizer": {
             "num_bits": (4, 3),
             "axis": None,
         },

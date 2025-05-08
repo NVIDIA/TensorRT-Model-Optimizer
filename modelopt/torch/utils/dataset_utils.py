@@ -15,6 +15,7 @@
 
 """Utility functions for getting samples and forward loop function for different datasets."""
 
+import copy
 import math
 from typing import TYPE_CHECKING, Callable, Optional, Union
 from warnings import warn
@@ -135,6 +136,8 @@ def get_dataset_dataloader(
         A instance of dataloader.
     """
     assert tokenizer is not None, "Please provide a tokenizer."
+    # batch_encode_plus will modify the tokenizer in place, so we need to clone it.
+    tokenizer = copy.deepcopy(tokenizer)
 
     if tokenizer.padding_side != "left":
         warn(

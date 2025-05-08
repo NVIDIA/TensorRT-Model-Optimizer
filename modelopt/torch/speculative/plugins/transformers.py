@@ -279,7 +279,23 @@ class EagleModule(nn.Module):
 class HFEagleModel(EagleModel):
     """Eagle Model Class for huggingface models."""
 
-    def modify(self, eagle_num_layers, use_input_layernorm_in_first_layer, use_last_layernorm):
+    def _set_default_aux_hidden_state_layers(self):
+        num_layers = self.config.num_hidden_layers
+        self.eagle_aux_hidden_state_layer_ids = [1, num_layers // 2 - 1, num_layers - 4]
+
+    def modify(
+        self,
+        eagle_num_layers,
+        use_input_layernorm_in_first_layer,
+        use_last_layernorm,
+        eagle_hidden_state_distillation,
+        use_aux_hidden_state,
+        eagle_aux_hidden_state_layer_ids,
+        eagle_disable_moe,  # Not used in HFEagleModel
+        draft_vocab_size,
+        use_mtp_layernorm,
+        ffn_hidden_size=0,
+    ):
         """Constructor.
 
         Args:
@@ -289,6 +305,12 @@ class HFEagleModel(EagleModel):
             eagle_num_layers=eagle_num_layers,
             use_input_layernorm_in_first_layer=use_input_layernorm_in_first_layer,
             use_last_layernorm=use_last_layernorm,
+            eagle_hidden_state_distillation=eagle_hidden_state_distillation,
+            use_aux_hidden_state=use_aux_hidden_state,
+            eagle_aux_hidden_state_layer_ids=eagle_aux_hidden_state_layer_ids,
+            eagle_disable_moe=eagle_disable_moe,
+            draft_vocab_size=draft_vocab_size,
+            use_mtp_layernorm=use_mtp_layernorm,
         )
 
         self.config.eagle = {

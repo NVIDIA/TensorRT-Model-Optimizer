@@ -173,9 +173,8 @@ def test_search_constraints(flops_only: bool, bounded_latency: bool):
         constraints_func()
 
     # check counter one final time
-    # TODO: fails sometimes non-deterministically `if not flops_only`. Need to debug
-    if flops_only:
-        assert current_counter == _fake_latency.call_counter
+    # TODO: differs by 1 sometimes non-deterministically. Need to debug
+    assert current_counter <= _fake_latency.call_counter <= current_counter + 1
 
 
 @pytest.mark.parametrize(

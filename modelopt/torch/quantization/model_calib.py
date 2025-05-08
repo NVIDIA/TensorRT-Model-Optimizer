@@ -19,7 +19,7 @@ import math
 import types
 import warnings
 from functools import partial
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -29,10 +29,9 @@ import torch.nn.functional as F
 from modelopt.torch.opt.searcher import ForwardLoop
 from modelopt.torch.utils.distributed import ParallelState
 
-from .conversion import set_quantizer_by_cfg_context
+from .conversion import create_and_replace_svdquant_linear_on_the_fly, set_quantizer_by_cfg_context
 from .nn import SequentialQuantizer, TensorQuantizer
 from .utils import (
-    get_parallel_state,
     is_quantized_column_parallel_linear,
     is_quantized_layer_with_weight,
     is_quantized_linear,
@@ -46,7 +45,16 @@ __all__ = ["max_calibrate", "awq", "smoothquant", "svdquant"]
 def max_calibrate(
     model: nn.Module, forward_loop: Optional[ForwardLoop] = None, distributed_sync=True
 ):
-    """Calibrate the model using max."""
+    """Calibrate the model using max.
+
+    Args:
+        model: Model to be calibrated.
+        forward_loop: A callable which takes the model as argument and
+            forwards calibration data through the model.
+
+    See :class:`MaxCalibConfig <modelopt.torch.quantization.config.MaxCalibConfig>` for
+    details on the remaining arguments.
+    """
     enable_stats_collection(model)
     if forward_loop is None:
         # Lets do a weight only calibration
@@ -66,10 +74,12 @@ def max_calibrate(
         return
 
     for name, module in model.named_modules():
-        if isinstance(module, TensorQuantizer) and module.amax is not None:
-            module.sync_amax_across_distributed_group(
-                get_parallel_state(model, name).data_parallel_group
-            )
+        if getattr(module, "_parallel_state", None) is not None:
+            for child in module.children():
+                if isinstance(child, TensorQuantizer) and child.amax is not None:
+                    child.sync_amax_across_distributed_group(
+                        module.parallel_state.data_parallel_group
+                    )
 
     # TP sync:
     # Objective: the quantization parameters when TP = 8 then changed to TP=4 then back to TP=8 should be the same
@@ -84,12 +94,18 @@ def max_calibrate(
     #   weights:      TPG should have the same amax if axis in [None, 0]
 
     def sync_quantizer_amax_across_tp(
-        quantizer: TensorQuantizer,
+        quantizer: Union[TensorQuantizer, SequentialQuantizer],
         linear_name: str,
         quantizer_type: str,
         axes_for_sync: list,
         parallel_state: ParallelState,
     ):
+        if isinstance(quantizer, SequentialQuantizer):
+            for _q in quantizer:
+                sync_quantizer_amax_across_tp(
+                    _q, linear_name, quantizer_type, axes_for_sync, parallel_state
+                )
+            return
         # sync is not needed for block quantization
         if quantizer.block_sizes is not None:
             if hasattr(quantizer, "_padding"):
@@ -106,51 +122,42 @@ def max_calibrate(
             quantizer.sync_amax_across_distributed_group(parallel_state.tensor_parallel_group)
 
     for name, module in model.named_modules():
-        if is_quantized_column_parallel_linear(module):
-            for input_quantizer in SequentialQuantizer.tensor_quantizer_iterator(
-                module.input_quantizer
-            ):
-                sync_quantizer_amax_across_tp(
-                    input_quantizer,
-                    name,
-                    "input_quantizer",
-                    axes_for_sync=[None, -1],
-                    parallel_state=get_parallel_state(module),
-                )
+        if getattr(module, "_parallel_state", None) is None:
+            continue
 
-            for weight_quantizer in SequentialQuantizer.tensor_quantizer_iterator(
-                module.weight_quantizer
-            ):
-                sync_quantizer_amax_across_tp(
-                    weight_quantizer,
-                    name,
-                    "weight_quantizer",
-                    axes_for_sync=[None, -1],
-                    parallel_state=get_parallel_state(module),
-                )
+        if is_quantized_column_parallel_linear(module):
+            sync_quantizer_amax_across_tp(
+                module.input_quantizer,
+                name,
+                "input_quantizer",
+                axes_for_sync=[None, -1],
+                parallel_state=module.parallel_state,
+            )
+
+            sync_quantizer_amax_across_tp(
+                module.weight_quantizer,
+                name,
+                "weight_quantizer",
+                axes_for_sync=[None, -1],
+                parallel_state=module.parallel_state,
+            )
 
         if is_quantized_row_parallel_linear(module):
-            for input_quantizer in SequentialQuantizer.tensor_quantizer_iterator(
-                module.input_quantizer
-            ):
-                sync_quantizer_amax_across_tp(
-                    input_quantizer,
-                    name,
-                    "input_quantizer",
-                    axes_for_sync=[None],
-                    parallel_state=get_parallel_state(module),
-                )
+            sync_quantizer_amax_across_tp(
+                module.input_quantizer,
+                name,
+                "input_quantizer",
+                axes_for_sync=[None],
+                parallel_state=module.parallel_state,
+            )
 
-            for weight_quantizer in SequentialQuantizer.tensor_quantizer_iterator(
-                module.weight_quantizer
-            ):
-                sync_quantizer_amax_across_tp(
-                    weight_quantizer,
-                    name,
-                    "weight_quantizer",
-                    axes_for_sync=[None, 0],
-                    parallel_state=get_parallel_state(module),
-                )
+            sync_quantizer_amax_across_tp(
+                module.weight_quantizer,
+                name,
+                "weight_quantizer",
+                axes_for_sync=[None, 0],
+                parallel_state=module.parallel_state,
+            )
 
 
 def enable_stats_collection(model: nn.Module):
@@ -205,8 +212,9 @@ def disable_pre_quant_scale_and_resmooth(linear: nn.Module, delete_pre_quant_sca
 
     if linear.input_quantizer.amax is not None:
         assert hasattr(linear.input_quantizer, "_amax_for_smoothing")
+        device, dtype = linear.weight.device, linear.weight.dtype
         linear.input_quantizer.amax = linear.input_quantizer._amax_for_smoothing.amax().to(
-            linear.weight.dtype
+            device=device, dtype=dtype
         )
 
     if delete_pre_quant_scale:
@@ -267,15 +275,15 @@ def apply_pre_quant_scale_and_smooth(
 
     if linear.input_quantizer.amax is not None:
         assert hasattr(linear.input_quantizer, "_amax_for_smoothing")
-        linear.input_quantizer.amax = (
-            (linear.input_quantizer._amax_for_smoothing * pre_quant_scale)
-            .amax()
-            .to(linear.weight.dtype)
+        device, dtype = linear.weight.device, linear.weight.dtype
+        _amax_for_smoothing = linear.input_quantizer._amax_for_smoothing.to(
+            device=device, dtype=dtype
         )
+        linear.input_quantizer.amax = (_amax_for_smoothing * pre_quant_scale).amax().to(dtype)
 
         if is_quantized_column_parallel_linear(linear) or is_quantized_row_parallel_linear(linear):
             linear.input_quantizer.sync_amax_across_distributed_group(
-                get_parallel_state(linear).tensor_parallel_group
+                linear.parallel_state.tensor_parallel_group
             )
 
 
@@ -283,8 +291,13 @@ def apply_pre_quant_scale_and_smooth(
 def smoothquant(model: nn.Module, forward_loop: Optional[ForwardLoop] = None, alpha=1.0):
     """Smooth-Quant variant with per-channel weight scaling.
 
-    The parameters are as described in
-    :class:`SmoothQuantCalibConfig <modelopt.torch.quantization.config.SmoothQuantCalibConfig>`.
+    Args:
+        model: Model to be calibrated.
+        forward_loop: A callable which takes the model as argument and
+            forwards calibration data through the model.
+
+    See :class:`SmoothQuantCalibConfig <modelopt.torch.quantization.config.SmoothQuantCalibConfig>` for
+    details on the remaining arguments.
     """
     # distributed synchornization
     # max_calibrate performs amax sync for data parallel
@@ -331,7 +344,7 @@ def smoothquant(model: nn.Module, forward_loop: Optional[ForwardLoop] = None, al
             act_amax = module.input_quantizer.amax.float()
             weight_scale = module.weight.abs().amax(dim=0, keepdim=True)
 
-            parallel_group = get_parallel_state(module).tensor_parallel_group
+            parallel_group = module.parallel_state.tensor_parallel_group
             if is_quantized_column_parallel_linear(module) and parallel_group.is_initialized():
                 dist.all_reduce(act_amax, op=dist.ReduceOp.MAX, group=parallel_group.group)
                 dist.all_reduce(weight_scale, op=dist.ReduceOp.MAX, group=parallel_group.group)
@@ -339,10 +352,12 @@ def smoothquant(model: nn.Module, forward_loop: Optional[ForwardLoop] = None, al
             scale_a = (weight_scale.pow(1 - alpha) / act_amax.pow(alpha)).squeeze()
 
             # Now that activation per-channel amax have been collected, use per-tensor quantization for activation
-            module.input_quantizer._amax_for_smoothing = act_amax
+            # TODO: make this a buffer after we support only heterogeneous checkpointing for MCore
+            module.input_quantizer._amax_for_smoothing = act_amax.cpu()
             module.input_quantizer.reset_amax()
             module.input_quantizer.axis = None
-            module.input_quantizer.amax = act_amax.amax()
+            device, dtype = module.weight.device, module.weight.dtype
+            module.input_quantizer.amax = act_amax.amax().to(dtype=dtype, device=device)
 
             # Some channel could have 0 amax which causes scale_a to overflow. Explicitly mask them out here
             epsilon = 1.0 / (1 << 31)
@@ -403,41 +418,31 @@ def _smoothquant_fasteval(model: nn.Module):
 
 def awq(
     model: nn.Module,
-    algorithm: str = "awq_lite",
     forward_loop: Optional[ForwardLoop] = None,
+    algorithm: str = "awq_lite",
     **kwargs,
 ):
-    """Apply AWQ to the model."""
-    with SequentialQuantizer.replace_sequential_quantizer_with_single_quantizer(model):
+    """Apply AWQ to the model.
+
+    Args:
+        model: Model to be calibrated.
+        forward_loop: A callable which takes the model as argument and
+            forwards calibration data through the model.
+
+    See :class:`AWQFullCalibConfig <modelopt.torch.quantization.config.AWQFullCalibConfig>` for
+    details on the remaining arguments.
+    """
+    with SequentialQuantizer.convert_to_single_quantizer(model):
         if algorithm in ["awq_full", "awq_lite"]:
             awq_lite(model, forward_loop, **kwargs)
 
         if algorithm in ["awq_full", "awq_clip"]:
             awq_clip(model, forward_loop, **kwargs)
 
+    # Special handling for SequentialQuantizer
     for name, module in model.named_modules():
         if is_quantized_linear(module) and isinstance(module.weight_quantizer, SequentialQuantizer):
             max_calibrate(module, lambda linear: linear.weight_quantizer(module.weight))
-    # If there are any uncalibrated quantizers, calibrate them using max
-    if any(
-        not module._disabled and module.amax is None
-        for name, module in model.named_modules()
-        if isinstance(module, TensorQuantizer)
-    ):
-        from .model_quant import calibrate
-
-        for name, module in model.named_modules():
-            if isinstance(module, TensorQuantizer) and hasattr(module, "_amax"):
-                # Already calibrated modules should not be calibrated again
-                # This is true for the first weight quantizer of the sequential weight quantizers
-                assert module.is_enabled, "calibrated modules should be enabled"
-                module.disable()
-
-        calibrate(model, algorithm="max", forward_loop=forward_loop)
-
-        for name, module in model.named_modules():
-            if isinstance(module, TensorQuantizer) and hasattr(module, "_amax"):
-                module.enable()
 
 
 @torch.no_grad()
@@ -450,16 +455,13 @@ def awq_lite(
 ):
     """Lite version of AWQ.
 
-    The parameters are as described in
-    :class:`AWQLiteCalibConfig <modelopt.torch.quantization.config.AWQLiteCalibConfig>`.
-
     Args:
         model: Model to be calibrated.
         forward_loop: A callable which takes the model as argument and
             forwards calibration data through the model.
-        alpha_step: Step size for the searching awq_lite hyper parameter alpha. alpha is in [0, 1].
-        debug: If True, module's search metadata will be kept as a module attribute named `awq_lite`.
 
+    See :class:`AWQLiteCalibConfig <modelopt.torch.quantization.config.AWQLiteCalibConfig>` for
+    details on the remaining arguments.
     """
     assert forward_loop is not None, "forward_loop must be provided for awq_lite"
 
@@ -522,7 +524,7 @@ def awq_lite(
             self.awq_lite.weight_scale,
             self.awq_lite.best_alpha,
             (
-                get_parallel_state(self).tensor_parallel_group
+                self.parallel_state.tensor_parallel_group
                 if is_quantized_column_parallel_linear(self)
                 else None
             ),
@@ -545,9 +547,6 @@ def awq_lite(
             self.awq_lite.num_cache_steps += 1
             if self.awq_lite.is_input_quantized:
                 with set_quantizer_by_cfg_context(self.input_quantizer, {"*": {"enable": True}}):
-                    # TODO: Why? Calling max_calibrate on the linear layer instead of input_quantizer
-                    # is causing memory leakage due to the garbage collection not working as expected
-                    # max_calibrate(self, lambda linear: linear.input_quantizer(input))
                     max_calibrate(self.input_quantizer, lambda quantizer: quantizer(input))
             return out_actual
 
@@ -557,7 +556,7 @@ def awq_lite(
                 self.awq_lite.weight_scale,
                 alpha,
                 (
-                    get_parallel_state(self).tensor_parallel_group
+                    self.parallel_state.tensor_parallel_group
                     if is_quantized_column_parallel_linear(self)
                     else None
                 ),
@@ -591,10 +590,14 @@ def awq_lite(
     # Collect activation scale values
     AWQLiteHelper.cache_mode = True
     print("Caching activation statistics for awq_lite...")
+
+    # Lets enable stats collection
+    # This will collect amax for input_quantizers and KV quantizers during the caching mode forward pass
+    enable_stats_collection(model)
     forward_loop(model)
 
-    # If input_quantizers were enabled they would be calibrated in caching mode
-    # Call max_calibrate to sync amax across distributed groups
+    # Call max_calibrate to load the amax values collected during the caching mode forward pass
+    # This will also perform distributed amax sync for input_quantizers
     max_calibrate(model, lambda model: None)
 
     for name, module in model.named_modules():
@@ -623,11 +626,13 @@ def awq_lite(
                 delattr(module.input_quantizer, "_pre_quant_scale")
                 if module.awq_lite.is_input_quantized:
                     assert module.input_quantizer.amax is not None
-                    module.input_quantizer.to(module.weight.device)
-                    module.input_quantizer._amax_for_smoothing = module.input_quantizer.amax
+                    act_amax = module.input_quantizer.amax
+                    # TODO: make this a buffer after we support only heterogeneous checkpointing for MCore
+                    module.input_quantizer._amax_for_smoothing = act_amax.cpu()
                     module.input_quantizer.reset_amax()
                     module.input_quantizer.axis = None
-                    module.input_quantizer.amax = module.input_quantizer._amax_for_smoothing.amax()
+                    device, dtype = module.weight.device, module.weight.dtype
+                    module.input_quantizer.amax = act_amax.amax().to(dtype=dtype, device=device)
                     module.input_quantizer.enable()
 
                 apply_pre_quant_scale_and_smooth(module, 1.0 / module.awq_lite.best_scale)
@@ -653,21 +658,12 @@ def awq_clip(
 ):
     """AWQ-Clip variant.
 
-    The parameters are as described in
-    :class:`AWQClipCalibConfig <modelopt.torch.quantization.config.AWQClipCalibConfig>`.
-
     Args:
         model: Model to calibrate.
         forward_loop: A callable that runs the forward pass of the model.
-        max_co_batch_size: Maximum output channel batch size while searching clip values. Reduce this number if CUDA Out
-            of Memory error occurs.
-        max_tokens_per_batch: Maximum tokens per batch while searching clip values. The total tokens used for
-            clip search would be max_tokens_per_batch * number of batches. Original AWQ uses a total of 512 tokens to
-            search for clip values.
-        min_clip_ratio: Minimum clip ratio to search for. It should be in (0, 1.0). Clip will search for the optimal
-            clipping value in the range [original block amax * min_clip_ratio, original block amax].
-        shrink_step: Step size to search for clip values. It should be in range (0, 1.0].
-        debug: If True, module's search metadata will be kept as a module attribute named `awq_clip`.
+
+    See :class:`AWQClipCalibConfig <modelopt.torch.quantization.config.AWQClipCalibConfig>` for
+    details on the remaining arguments.
     """
     assert forward_loop is not None, "forward_loop must be provided for awq_clip"
 
@@ -700,6 +696,7 @@ def awq_clip(
             self.best_loss = None
 
             self.is_input_quantized = module.input_quantizer.is_enabled
+            module.weight_quantizer.disable()
 
         def is_per_tensor_clip(self, module):
             quantizer = module.weight_quantizer
@@ -779,7 +776,7 @@ def awq_clip(
                     # co_bsz, n_block
                     loss = (cur_out - org_out).float().pow(2).mean(dim=1)
 
-                    parallel_group = get_parallel_state(self).data_parallel_group
+                    parallel_group = self.parallel_state.data_parallel_group
                     if parallel_group.is_initialized():
                         dist.all_reduce(loss, op=dist.ReduceOp.SUM, group=parallel_group.group)
                         loss /= parallel_group.world_size()
@@ -793,8 +790,6 @@ def awq_clip(
     def forward(name, self, input, *args, **kwargs):
         # input shape : (..., cin)
         # weight shape : (cout, cin)
-        # Disable quantization
-        self.weight_quantizer.disable()
         if self.awq_clip.is_input_quantized:
             self.input_quantizer.enable()
             max_calibrate(self.input_quantizer, lambda input_quantizer: input_quantizer(input))
@@ -824,7 +819,13 @@ def awq_clip(
             module.awq_clip = AWQClipHelper(module)
 
     print("Estimating awq_clip parameters...")
+    # Lets enable stats collection
+    # This will collect amax for input_quantizers and KV quantizers during the caching mode forward pass
+    enable_stats_collection(model)
     forward_loop(model)
+    # Call max_calibrate to load the amax values collected during the caching mode forward pass
+    # This will also perform distributed amax sync for input_quantizers
+    max_calibrate(model, lambda model: None)
 
     for name, module in model.named_modules():
         if is_quantized_linear(module) and hasattr(module, "awq_clip"):
@@ -865,20 +866,16 @@ def svdquant(
 ):
     """Lite version of SVDQuant.
 
-    The parameters are as described in
-    :class:`SVDQuantConfig <modelopt.torch.quantization.config.SVDQuantConfig>`.
-
     Args:
         model: Model to be calibrated.
         forward_loop: A callable which takes the model as argument and
             forwards calibration data through the model.
 
+    See :class:`SVDQuantConfig <modelopt.torch.quantization.config.SVDQuantConfig>` for
+    details on the remaining arguments.
     """
-    # AWQ-Lite initially calibrates only linear quantizers, skipping FMHA quantizers.
-    # Enable calibration for BMM quantizers here, so AWQ can perform max calibration for BMMs.
-    # Otherwise, AWQ-Lite will require an additional calibration round to activate FMHA quantizers.
-    enable_stats_collection(model)
-    awq(model, "awq_lite", forward_loop, **kwargs)
+    create_and_replace_svdquant_linear_on_the_fly(model=model)
+    awq(model, forward_loop, "awq_lite", **kwargs)
 
     for name, module in model.named_modules():
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:

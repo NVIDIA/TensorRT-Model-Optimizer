@@ -15,6 +15,7 @@
 
 import pytest
 import torch
+from _test_utils.opt_utils import apply_mode_with_sampling
 from _test_utils.torch_misc import compare_outputs
 from torchvision.models.mobilenetv2 import InvertedResidual
 
@@ -22,7 +23,6 @@ import modelopt.torch.distill as mtd
 import modelopt.torch.nas as mtn
 import modelopt.torch.opt as mto
 import modelopt.torch.sparsity as mts
-from modelopt.torch.opt.utils import search_space_size
 from modelopt.torch.utils.distributed import _serialize
 
 
@@ -41,17 +41,6 @@ def get_kd_mode():
         "loss_balancer": mtd.StaticLossBalancer(),
     }
     return [("kd_loss", config)]
-
-
-def apply_mode_with_sampling(model, mode):
-    for i, m in enumerate(mode):
-        model = mto.apply_mode(model, mode=m, init_state=i == 0)
-        config = mtn.get_subnet_config(model)
-        ss_size = search_space_size(model)
-        if m in ["fastnas", "autonas", "gradnas"]:
-            while config == mtn.get_subnet_config(model) and ss_size > 1:
-                mtn.sample(model)
-    return model
 
 
 @pytest.mark.parametrize(
@@ -125,7 +114,9 @@ def test_chained_save_restore(mode):
         ),
         (
             ["quantize", "fastnas"],
-            ["Cannot add fastnas after quantize! Next modes of quantize are {'kd_loss'}."],
+            [
+                "Cannot add fastnas after quantize! quantize does not allow fastnas to be its next mode."
+            ],
         ),
         (
             ["fastnas", get_kd_mode(), "export", "export_student"],

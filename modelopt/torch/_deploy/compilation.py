@@ -90,7 +90,6 @@ def compile(
 
             * ``runtime``: the desired runtime for deployment (*required*);
             * ``accelerator``: the accelerator on the device to be used (*optional*);
-            * ``version``: the version of runtime to be used (*optional*);
             * ``precision``: the desired precision (*optional*);
             * ``onnx_opset``: the opset version (*optional*).
 
@@ -101,7 +100,6 @@ def compile(
                 deployment = {
                     "runtime": "ORT",
                     "accelerator": "CPU",
-                    "version": "1.11",
                     "precision": "fp32",
                     "onnx_opset": 13,
                     "verbose": "false",

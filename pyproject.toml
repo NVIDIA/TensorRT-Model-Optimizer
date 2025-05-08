@@ -95,9 +95,9 @@ ignore_errors = true
 # Default additional options
 # Show a short test summary info for all except passed tests with -ra flag
 # print execution time for 20 slowest tests and generate coverage reports
-addopts = "-ra --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml --cov-config=pyproject.toml --durations=20"
+addopts = "-ra --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml --cov-config=pyproject.toml --durations=20 --strict-markers"
 pythonpath = ["tests/"]
-markers = ["slow: Only run when --run-slow is given"]
+markers = ["manual: Only run when --run-manual is given"]
 
 
 [tool.coverage.run]

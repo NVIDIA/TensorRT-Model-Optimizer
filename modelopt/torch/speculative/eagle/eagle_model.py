@@ -25,8 +25,35 @@ class EagleModel(DynamicModule):
         self._register_temp_attribute("eagle_num_layers", 0)
         self._register_temp_attribute("eagle_module", None)
 
-    def modify(self, eagle_num_layers, use_input_layernorm_in_first_layer, use_last_layernorm):
+    def modify(
+        self,
+        eagle_num_layers,
+        use_input_layernorm_in_first_layer,
+        use_last_layernorm,
+        eagle_hidden_state_distillation,
+        use_aux_hidden_state,
+        eagle_aux_hidden_state_layer_ids,
+        eagle_disable_moe,
+        draft_vocab_size,
+        use_mtp_layernorm,
+    ):
         """Base Eagle Model modify function. Child class should implement the details."""
         self.eagle_num_layers = eagle_num_layers
         self.use_input_layernorm_in_first_layer = use_input_layernorm_in_first_layer
         self.use_last_layernorm = use_last_layernorm
+        self.eagle_hidden_state_distillation = eagle_hidden_state_distillation
+        self.use_aux_hidden_state = use_aux_hidden_state
+        self.eagle_aux_hidden_state_layer_ids = eagle_aux_hidden_state_layer_ids
+        self.eagle_disable_moe = eagle_disable_moe
+        self.draft_vocab_size = draft_vocab_size
+        self.use_mtp_layernorm = use_mtp_layernorm
+
+        # Use default aux_hidden_state layers if use_aux_hidden_state is True
+        # but no layer id is given
+        if self.use_aux_hidden_state and len(self.eagle_aux_hidden_state_layer_ids) == 0:
+            self._set_default_aux_hidden_state_layers()
+
+        if len(self.eagle_aux_hidden_state_layer_ids) > 0:
+            assert not self.eagle_hidden_state_distillation, (
+                "EAGLE-3 does not support hidden state distillation!"
+            )

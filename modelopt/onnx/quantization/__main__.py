@@ -78,6 +78,15 @@ def parse_args():
         ),
     )
     argparser.add_argument(
+        "--override_shapes",
+        type=str,
+        required=False,
+        help=(
+            "Override model input shapes with static shapes."
+            "Example input shapes spec: input0:1x3x256x256,input1:1x3x128x128"
+        ),
+    )
+    argparser.add_argument(
         "--op_types_to_quantize",
         type=str,
         default=[],
@@ -196,7 +205,7 @@ def parse_args():
         "--passes",
         type=str,
         choices=["concat_elimination"],
-        default=[],
+        default=["concat_elimination"],
         nargs="+",
         help=(
             "A space-separated list of optimization passes name, if set, appropriate pre/post-processing passes will "
@@ -217,6 +226,9 @@ def main():
     calibration_data = None
     if args.calibration_data_path:
         calibration_data = np.load(args.calibration_data_path, allow_pickle=True)
+        if args.calibration_data_path.endswith(".npz"):
+            # Convert the NpzFile object to a Python dictionary
+            calibration_data = {key: calibration_data[key] for key in calibration_data.files}
 
     default_high_precision_dtype = "fp32" if args.quantize_mode == "int8" else "fp16"
 
@@ -228,6 +240,7 @@ def main():
         calibration_cache_path=args.calibration_cache_path,
         calibration_shapes=args.calibration_shapes,
         calibration_eps=args.calibration_eps,
+        override_shapes=args.override_shapes,
         op_types_to_quantize=args.op_types_to_quantize,
         op_types_to_exclude=args.op_types_to_exclude,
         nodes_to_quantize=args.nodes_to_quantize,

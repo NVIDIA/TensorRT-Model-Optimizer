@@ -14,10 +14,13 @@
 # limitations under the License.
 
 import numpy as np
+import pytest
 import torch
 from onnx.helper import pack_float32_to_4bit
 
 from modelopt.onnx.quantization.quant_utils import (
+    compute_e8m0,
+    get_amax,
     pack_float32_to_4bit_cpp_based,
     pack_float32_to_4bit_optimized,
 )
@@ -185,3 +188,59 @@ def test_pack_float32_to_4bit_utils():
     test_output183 = pack_float32_to_4bit(np_uint4_boundary, False)
     _validate_results(test_output181, test_output182)
     _validate_results(test_output181, test_output183)
+
+
+@pytest.mark.parametrize(
+    "weight, weight_axis, block_size, expected_amax",
+    [
+        (np.array([[1, 2], [-3, 4]]), 0, 2, np.array([3, 4])),
+        (np.array([[1, 2], [-3, 4]]), 1, 2, np.array([2, 4])),
+        (
+            np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]),
+            1,
+            2,
+            np.array([[3, 4], [7, 8]]),
+        ),
+        (
+            np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]]),
+            2,
+            2,
+            np.array([[2, 4], [6, 8]]),
+        ),
+        (
+            np.array([[[1, 2, 3, 4], [5, 6, 7, 8]], [[9, 10, 11, 12], [13, 14, 15, 16]]]),
+            2,
+            2,
+            np.array([[2, 4, 6, 8], [10, 12, 14, 16]]),
+        ),
+    ],
+)
+def test_get_amax(weight, weight_axis, block_size, expected_amax):
+    amax = get_amax(weight, weight_axis, block_size)
+    assert np.array_equal(amax, expected_amax)
+
+
+@pytest.mark.parametrize(
+    "amax, weight_shape, axis, expected_e8m0",
+    [
+        (np.array([3, 4]), (2, 2), 0, np.array([[120, 121]])),
+        (np.array([3, 4]), (2, 2), 1, np.array([[120], [121]])),
+        (
+            np.array([[[3, 4]], [[7, 8]]]),
+            (2, 2, 2),
+            1,
+            np.array([[[120, 121]], [[121, 122]]]),
+        ),
+        (
+            np.array([[[3, 4]], [[7, 8]]]),
+            (2, 2, 2),
+            2,
+            np.array([[[120], [121]], [[121], [122]]]),
+        ),
+    ],
+)
+def test_compute_e8m0(amax, weight_shape, axis, expected_e8m0):
+    block_size = 2
+    e8m0 = compute_e8m0(amax, weight_shape, axis, block_size)
+    assert np.array_equal(e8m0, expected_e8m0)
+    assert e8m0.dtype == np.float64

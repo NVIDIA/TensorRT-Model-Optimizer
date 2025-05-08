@@ -232,48 +232,99 @@ Here is an example of creating a quantizer module:
 
 .. _customize_quantizer_config:
 
-Customize quantizer config
---------------------------
+Customizing Quantizer Configuration
+-----------------------------------
 
-ModelOpt inserts input quantizer, weight quantizer and output quantizer into common layers, but by default disables the output quantizer.
-Expert users who want to customize the default quantizer configuration can update the ``config`` dictionary provided to ``mtq.quantize`` using wildcard or filter function match.
+ModelOpt inserts input quantizer, weight quantizer and output quantizer into Pytorch building blocks such as ``nn.Linear``, ``nn.Conv<N>d`` layers.
+By default the output quantizer is disabled.
 
-Here is an example of specifying a custom quantizer configuration to ``mtq.quantize``:
+The following examples demonstrate how to customize quantization behavior.
+
+Basic Configuration Modification
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For debugging purposes or simple customizations, you can modify an existing configuration:
 
 .. code-block:: python
 
-    # Select quantization config
+    # Create a copy of the default INT8 configuration
     config = mtq.INT8_DEFAULT_CFG.copy()
-    config["quant_cfg"]["*.bmm.output_quantizer"] = {
-        "enable": True
-    }  # Enable output quantizer for bmm layer
 
-    # Perform PTQ/QAT;
-    model = mtq.quantize(model, config, forward_loop)
+    # Disable input quantizers for all layers
+    config["quant_cfg"]["*input_quantizer"]["enable"] = False
 
+    # Disable all quantizers for layers matching the pattern "layer1.*"
+    config["quant_cfg"]["*layer1.*"] = {"enable": False}
+
+Advanced Configuration Creation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For exploring new quantization recipes, you can compose a completely new configuration. The example below creates a custom configuration with INT4 block-wise weight quantization and INT8 token-wise dynamic activation quantization:
+
+.. code-block:: python
+
+    # Custom configuration for INT4 block-wise weights and INT8 dynamic activations
+    MY_CUSTOM_CONFIG = {
+        "quant_cfg": {
+            # Configure weight quantizers with 4-bit precision and 128-element blocks
+            "*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
+
+            # Configure input quantizers with 8-bit dynamic quantization
+            "*input_quantizer": {"num_bits": 8, "type": "dynamic", "block_sizes": {-1: None}},
+
+            # Include default disabled quantizer configurations
+            **_default_disabled_quantizer_cfg,
+        },
+        "algorithm": "max",
+    }
+
+.. note::
+
+    For a detailed explanation of each configuration field, please refer to the source code in
+    ``modelopt/torch/quantization/config.py``.
 
 .. _custom_quantied_module:
 
 Custom quantized module and quantizer placement
 -----------------------------------------------
 
-``modelopt.torch.quantization`` has a default set of quantized modules (see :mod:`modelopt.torch.quantization.nn.modules <modelopt.torch.quantization.nn.modules>` for a detailed list) and quantizer placement rules (input, output and weight quantizers). However, there might be cases where you want to define a custom quantized module and/or customize the quantizer placement.
+``modelopt.torch.quantization`` has a default set of quantized modules (see :mod:`modelopt.torch.quantization.nn.modules <modelopt.torch.quantization.nn.modules>` for a detailed list) and quantizer placement rules (input, output and weight quantizers).
+However, there might be cases where you want to define a custom quantized module and/or customize the quantizer placement.
 
 ModelOpt provides a way to define custom quantized modules and register them with the quantization framework. This allows you to:
 
 #. Handle unsupported modules, e.g., a subclassed Linear layer that require quantization.
 #. Customize the quantizer placement, e.g., placing the quantizer in special places like the KV Cache of an Attention layer.
 
-Here is an example of defining a custom quantized LayerNorm module:
+The custom quantized modules must have a ``_setup`` method which instantiates the quantizers that are called in the forward method.
+
+Here is an example of defining a custom quantized linear module:
+
+.. note::
+
+     ModelOpt assigns a ``parallel_state`` of type :class:`ParallelState <modelopt.torch.utils.distributed.ParallelState>`
+     to each module. The ``parallel_state`` of each module specifies its distributed parallelism such as ``data_parallel_group`` and ``tensor_parallel_group``.
+
+     The ``parallel_state`` groups are used to correctly synchronize the quantization parameters across different process groups during calibration.
+
+     The ``parallel_state`` by default configures the default PyTorch distributed process group as the ``data_parallel_group`` - the specialized process groups such as ``tensor_parallel_group`` are
+     set to ``-1`` which means this parallelism is not used.
+
+     When working with distributed training or inference with specialized parallelism like tensor parallelism,
+     you need to initialize the correct ``parallel_state`` in the ``_setup`` method. This will override the default ``parallel_state``
+     and use the correct parallel groups for that module. ModelOpt provides built-in support for common parallel libraries
+     like Megatron-LM, APEX, FairScale etc, through plugin modules :mod:`plugins <modelopt.torch.quantization.plugins>` that automatically handle
+     the correct parallel state initialization.
 
 .. code-block:: python
 
     from modelopt.torch.quantization.nn import TensorQuantizer
+    from modelopt.torch.utils.distributed import ParallelState
 
-
-    class QuantLayerNorm(nn.LayerNorm):
-        def __init__(self, normalized_shape):
-            super().__init__(normalized_shape)
+    # Quantized module for `CustomColumnParallelLinear`
+    class QuantColumnParallelLinear(CustomColumnParallelLinear):
+        def __init__(self, in_features, out_features):
+            super().__init__(in_features, out_features)
             self._setup()
 
         def _setup(self):
@@ -281,14 +332,20 @@ Here is an example of defining a custom quantized LayerNorm module:
             self.input_quantizer = TensorQuantizer()
             self.weight_quantizer = TensorQuantizer()
 
+            # Optional step for specialized distributed parallel training/inference
+            self.parallel_state = ParallelState(
+                data_parallel_group=data_parallel_group, # specify the data parallel group (user defined)
+                tensor_parallel_group=tensor_parallel_group, # specify the tensor parallel group (user defined)
+            )
+
         def forward(self, input):
             # You can customize the quantizer placement anywhere in the forward method
             input = self.input_quantizer(input)
             weight = self.weight_quantizer(self.weight)
-            return F.layer_norm(input, self.normalized_shape, weight, self.bias, self.eps)
+            # Call the unquantized forward method, for example
+            return custom_tensor_parallel_linear_func(input, weight, bias=self.bias)
 
 After defining the custom quantized module, you need to register this module so ``mtq.quantize`` API will automatically replace the original module with the quantized version.
-Note that the custom ``QuantLayerNorm`` must have a ``_setup`` method which instantiates the quantizer attributes that are called in the forward method.
 Here is the code to register the custom quantized module:
 
 .. code-block:: python
@@ -296,14 +353,63 @@ Here is the code to register the custom quantized module:
     import modelopt.torch.quantization as mtq
 
     # Register the custom quantized module
-    mtq.register(original_cls=nn.LayerNorm, quantized_cls=QuantLayerNorm)
+    mtq.register(original_cls=CustomColumnParallelLinear, quantized_cls=QuantColumnParallelLinear)
 
     # Perform PTQ
-    # nn.LayerNorm modules in the model will be replaced with the QuantLayerNorm module
+    # CustomColumnParallelLinear modules in the model will be replaced with the QuantColumnParallelLinear module
     model = mtq.quantize(model, config, forward_loop)
 
 The quantization config might need to be customized if you define a custom quantized module. Please see
 :ref:`customizing quantizer config <customize_quantizer_config>` for more details.
+
+.. _custom_calibration_algorithm:
+
+Custom calibration algorithm
+----------------------------
+
+ModelOpt provides a set of quantization calibration algorithms such as awq, smoothquant, and max calibration. However, there might be cases where you want to define a custom calibration algorithm for quantizing your model. You can do this by creating a custom calibration algorithm derived from :mod:`BaseCalibrateModeDescriptor <modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor>` and registering to :mod:`CalibrateModeRegistry <modelopt.torch.quantization.mode.CalibrateModeRegistry>`.
+Write a custom calibration class derived from :mod:`BaseCalibrateModeDescriptor <modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor>` and it should define attributes such as ``convert``, ``config_class``, ``restore`` etc. Find more details on these functions and their arguments in :mod:`BaseCalibrateModeDescriptor <modelopt.torch.quantization.mode.BaseCalibrateModeDescriptor>` and :mod:`ModeDescriptor <modelopt.torch.opt.mode.ModeDescriptor>`.
+
+Here is an example of creating custom calibration mode:
+
+.. code-block:: python
+
+    from modelopt.torch.opt.config import ModeloptField
+    from modelopt.torch.quantization.config import QuantizeAlgorithmConfig
+    from modelopt.torch.quantization.mode import CalibrateModeRegistry, BaseCalibrateModeDescriptor
+    # custom configuration comprising of method name and
+    # any other parameters required by custom calibration function
+    class CustomConfig(QuantizeAlgorithmConfig):
+        method: Literal["custom_calib"] = ModeloptField("custom_calib")
+        ...
+
+    # custom calibration mode class to register to base calibrator
+    @CalibrateModeRegistry.register_mode
+    class CustomCalibrateModeDescriptor(BaseCalibrateModeDescriptor):
+        @property
+        def config_class(self) -> QuantizeAlgorithmConfig:
+            """Specifies the config class."""
+            return CustomConfig
+
+        # define attributes such as `convert`, `restore`, `update_for_save`
+        # see `BaseCalibrateModeDescriptor` for more details
+        @property
+        def convert(self) -> ConvertEntrypoint:
+        ...
+
+
+You can specify ``custom_calib`` as ``algorithm`` in ``quant_cfg`` to use it. Here is an example of using a custom calibrator to quantize your model:
+
+.. code-block:: python
+
+    # create quantization configuration with "custom_calib" method
+    quant_cfg = {
+        'quant_cfg': {'*weight_quantizer': ..},
+        'algorithm':  {"method": 'custom_calib'},
+    }
+
+
+    model = mtq.quantize(model, quant_cfg, forward_loop)
 
 Fast evaluation
 ---------------

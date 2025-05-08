@@ -15,6 +15,7 @@
 
 """Implements FP8 quantization for efficient tensor storage and computation."""
 
+import math
 from typing import Union
 
 import torch
@@ -87,7 +88,14 @@ class FP8QTensor(BaseQuantizedTensor):
                 # The scales tensor is expected to have size equal to input.shape[dim] // block_size.
                 expected_shape[dim] = input.shape[dim] // block_size
 
-            # Verify that the provided scales shape matches the expected shape.
+            # If we get amax from tensor_quantizer, it might not be the expected shape but has the
+            # same number of elements, reshape it.
+            if scales.shape != tuple(expected_shape) and scales.numel() == math.prod(
+                expected_shape
+            ):
+                scales = scales.reshape(expected_shape)
+                expanded_scales = expanded_scales.reshape(expected_shape)
+
             assert scales.shape == tuple(expected_shape), (
                 f"Mismatch in expected scale shape: {scales.shape} vs {tuple(expected_shape)}"
             )

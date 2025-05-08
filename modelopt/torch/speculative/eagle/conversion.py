@@ -43,6 +43,13 @@ def convert_to_eagle_model(model: nn.Module, config: EagleConfig) -> ConvertRetu
         eagle_num_layers=config.eagle_num_layers,
         use_input_layernorm_in_first_layer=config.use_input_layernorm_in_first_layer,
         use_last_layernorm=config.use_last_layernorm,
+        eagle_hidden_state_distillation=config.eagle_hidden_state_distillation,
+        use_aux_hidden_state=config.use_aux_hidden_state,
+        eagle_aux_hidden_state_layer_ids=config.eagle_aux_hidden_state_layer_ids,
+        eagle_disable_moe=config.eagle_disable_moe,
+        draft_vocab_size=config.draft_vocab_size,
+        use_mtp_layernorm=config.use_mtp_layernorm,
+        ffn_hidden_size=config.ffn_hidden_size,
     )
 
     # no metadata, all specifed via config.

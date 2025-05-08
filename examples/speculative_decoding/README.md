@@ -26,6 +26,12 @@ git clone https://huggingface.co/datasets/nvidia/Daring-Anteater
 bash prepare_data.sh --data_path Daring-Anteater/train.jsonl --output_path finetune/data.jsonl --max_token 512
 ```
 
+To add a system prompt, use the `--system_prompt` argument:
+
+```sh
+bash prepare_data.sh --data_path Daring-Anteater/train.jsonl --output_path finetune/data.jsonl --max_token 512 --system_prompt <system_prompt_text>
+```
+
 ### Speculative Decoding Example Training Workflow
 
 Here is the recommended end-to-end speculative decoding training workflow:

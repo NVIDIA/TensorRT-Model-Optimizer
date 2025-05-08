@@ -35,82 +35,6 @@ class CustomModuleMapping:
         self.func_kwargs = func_kwargs
 
 
-gpt_model_export: Dict[str, CustomModuleMapping] = {
-    # MCore GPTModel
-    "word_embeddings": CustomModuleMapping("name_remapping", "embedding.word_embeddings."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "decoder.layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping(
-        "name_remapping",
-        "decoder.layers.{}.self_attention.linear_qkv.",
-        {"skip_output_scale": False},
-    ),
-    "linear_proj": CustomModuleMapping(
-        "name_remapping", "decoder.layers.{}.self_attention.linear_proj."
-    ),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "decoder.layers.{}.pre_mlp_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("name_remapping", "decoder.layers.{}.mlp.linear_fc1."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "decoder.layers.{}.mlp.linear_fc2."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "decoder.final_layernorm."),
-    "output_layer": CustomModuleMapping("name_remapping", "output_layer."),
-    # ModelOpt MedusaGPTModel support
-    "medusa_heads.lm_head": CustomModuleMapping(
-        "name_remapping", "medusa_heads.{}.1."
-    ),  # TODO: lm_head is hardcoded to .1 as currently only support using 1 layer in medusa head
-    # needs a fix
-    "medusa_heads.medusa_layers.linear": CustomModuleMapping(
-        "name_remapping", "medusa_heads.{}.{}.linear."
-    ),
-    # ModelOpt EagleGPTModel support
-    "eagle_module.fc": CustomModuleMapping("name_remapping", "eagle_module.fc."),
-    "eagle_module.input_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.decoder.layers.{}.input_layernorm."
-    ),
-    "eagle_module.linear_qkv": CustomModuleMapping(
-        "name_remapping",
-        "eagle_module.decoder.layers.{}.self_attention.linear_qkv.",
-        {"skip_output_scale": False},
-    ),
-    "eagle_module.linear_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.decoder.layers.{}.self_attention.linear_proj."
-    ),
-    "eagle_module.pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.decoder.layers.{}.pre_mlp_layernorm."
-    ),
-    "eagle_module.linear_fc1": CustomModuleMapping(
-        "name_remapping", "eagle_module.decoder.layers.{}.mlp.linear_fc1."
-    ),
-    "eagle_module.linear_fc2": CustomModuleMapping(
-        "name_remapping", "eagle_module.decoder.layers.{}.mlp.linear_fc2."
-    ),
-    # ModelOpt MTPGPTModel support
-    "mtp.fc": CustomModuleMapping("name_remapping", "mtp.{}.fc."),
-    "mtp.enorm": CustomModuleMapping("name_remapping", "mtp.{}.enorm."),
-    "mtp.hnorm": CustomModuleMapping("name_remapping", "mtp.{}.hnorm."),
-    "mtp.input_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.decoder.layers.{}.input_layernorm."
-    ),
-    "mtp.linear_qkv": CustomModuleMapping(
-        "name_remapping",
-        "mtp.{}.decoder.layers.{}.self_attention.linear_qkv.",
-        {"skip_output_scale": False},
-    ),
-    "mtp.linear_proj": CustomModuleMapping(
-        "name_remapping", "mtp.{}.decoder.layers.{}.self_attention.linear_proj."
-    ),
-    "mtp.pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.decoder.layers.{}.pre_mlp_layernorm."
-    ),
-    "mtp.linear_fc1": CustomModuleMapping(
-        "name_remapping", "mtp.{}.decoder.layers.{}.mlp.linear_fc1."
-    ),
-    "mtp.linear_fc2": CustomModuleMapping(
-        "name_remapping", "mtp.{}.decoder.layers.{}.mlp.linear_fc2."
-    ),
-}
-
-
 llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
     "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
     "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
@@ -126,53 +50,54 @@ llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
     "linear_fc2": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.down_proj."),
     "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
     "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+}
+
+medusa_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
     # MedusaForCausalLM support
-    "medusa_heads.lm_head": CustomModuleMapping(
+    "lm_head": CustomModuleMapping(
         "name_remapping", "medusa_heads.{}.1."
     ),  # TODO: lm_head is hardcoded to .1 as currently only support using 1 layer in medusa head
     # needs a fix
-    "medusa_heads.medusa_layers.linear": CustomModuleMapping(
-        "name_remapping", "medusa_heads.{}.{}.linear."
-    ),
-    # EagleForCausalLM support
-    "eagle_module.fc": CustomModuleMapping("name_remapping", "eagle_module.fc."),
-    "eagle_module.input_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.input_layernorm."
-    ),
-    "eagle_module.linear_qkv": CustomModuleMapping(
-        "qkv_slicing",
-        "eagle_module.layers.{}.self_attn.",
-    ),
-    "eagle_module.linear_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.o_proj."
-    ),
-    "eagle_module.pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.post_attention_layernorm."
-    ),
-    "eagle_module.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "eagle_module.layers.{}.mlp."
-    ),
-    "eagle_module.linear_fc2": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.mlp.down_proj."
-    ),
-    # MTPCausalLM support
-    "mtp.fc": CustomModuleMapping("name_remapping", "mtp.{}.fc."),
-    "mtp.enorm": CustomModuleMapping("name_remapping", "mtp.{}.enorm."),
-    "mtp.hnorm": CustomModuleMapping("name_remapping", "mtp.{}.hnorm."),
-    "mtp.input_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.input_layernorm."
-    ),
-    "mtp.linear_qkv": CustomModuleMapping(
-        "qkv_slicing",
-        "mtp.{}.layers.{}.self_attn.",
-    ),
-    "mtp.linear_proj": CustomModuleMapping("name_remapping", "mtp.{}.layers.{}.self_attn.o_proj."),
-    "mtp.pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.post_attention_layernorm."
-    ),
-    "mtp.linear_fc1": CustomModuleMapping("gated_mlp_slicing", "mtp.{}.layers.{}.mlp."),
-    "mtp.linear_fc2": CustomModuleMapping("name_remapping", "mtp.{}.layers.{}.mlp.down_proj."),
+    "linear": CustomModuleMapping("name_remapping", "medusa_heads.{}.{}.linear."),
 }
+
+eagle_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
+    "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
+    "enorm": CustomModuleMapping("name_remapping", "enorm."),
+    "hnorm": CustomModuleMapping("name_remapping", "hnorm."),
+    "fc": CustomModuleMapping("name_remapping", "fc."),
+    "input_layernorm": CustomModuleMapping("name_remapping", "layers.{}.input_layernorm."),
+    "linear_qkv": CustomModuleMapping("qkv_slicing", "layers.{}.self_attn."),
+    "linear_proj": CustomModuleMapping("name_remapping", "layers.{}.self_attn.o_proj."),
+    "pre_mlp_layernorm": CustomModuleMapping(
+        "name_remapping", "layers.{}.post_attention_layernorm."
+    ),
+    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "layers.{}.mlp."),
+    "linear_fc2": CustomModuleMapping("name_remapping", "layers.{}.mlp.down_proj."),
+    "final_layernorm": CustomModuleMapping("name_remapping", "norm."),
+    "d2t": CustomModuleMapping("name_remapping", "d2t"),
+    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+}
+
+#
+#
+eagle3_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
+    "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
+    "enorm": CustomModuleMapping("name_remapping", "midlayer.input_layernorm."),
+    "fc": CustomModuleMapping("name_remapping", "fc."),
+    "input_layernorm": CustomModuleMapping("name_remapping", "midlayer.hidden_norm."),
+    "linear_qkv": CustomModuleMapping("qkv_slicing", "midlayer.self_attn."),
+    "linear_proj": CustomModuleMapping("name_remapping", "midlayer.self_attn.o_proj."),
+    "pre_mlp_layernorm": CustomModuleMapping(
+        "name_remapping", "midlayer.post_attention_layernorm."
+    ),
+    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "midlayer.mlp."),
+    "linear_fc2": CustomModuleMapping("name_remapping", "midlayer.mlp.down_proj."),
+    "final_layernorm": CustomModuleMapping("name_remapping", "norm."),
+    "d2t": CustomModuleMapping("name_remapping", "d2t"),
+    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+}
+
 
 # Example on adding a new CausalLM.
 nemotron_causal_lm_export_delta: Dict[str, CustomModuleMapping] = {
@@ -356,9 +281,11 @@ deepseek_causal_lm_export: Dict[str, CustomModuleMapping] = {
 all_mcore_hf_export_mapping: Dict[str, Any] = {
     "DeepseekV2ForCausalLM": deepseek_causal_lm_export,
     "DeepseekV3ForCausalLM": deepseek_causal_lm_export,
-    "GPTModel": gpt_model_export,
     "LlamaForCausalLM": llama_causal_lm_export,
+    "Llama4ForConditionalGeneration": {},
     "NemotronForCausalLM": nemotron_causal_lm_export,
+    "LlamaForCausalLMEagle": eagle_llama_causal_lm_export,
+    "LlamaForCausalLMEagle3": eagle3_llama_causal_lm_export,
 }
 
 

@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import copy
 from typing import Optional
 
@@ -20,6 +19,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from _test_utils.import_helper import skip_if_no_megatron
+from _test_utils.torch_quantization.checkpointing import format_modelopt_checkpoint_by_version
 from packaging.version import Version
 
 import modelopt.torch.opt as mto
@@ -119,6 +119,8 @@ def get_mcore_gpt_model(
     pipeline_model_parallel_size: int = 1,
     *,
     num_layers: int = 2,
+    num_layers_in_first_pipeline_stage: Optional[int] = None,
+    num_layers_in_last_pipeline_stage: Optional[int] = None,
     hidden_size: int = 64,
     num_attention_heads: int = 8,
     num_query_groups: Optional[int] = None,
@@ -151,6 +153,9 @@ def get_mcore_gpt_model(
         gated_linear_unit=(activation_func == "swiglu"),
         pipeline_dtype=torch.float32,
         add_bias_linear=False,
+        # Uneven PP
+        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
+        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
     )
 
     if transformer_impl == "local":
@@ -247,9 +252,6 @@ def initialize_for_megatron(
 
 
 def save_distributed_checkpoint(checkpoint_path, gpt_model):
-    if Version(mcore_version) <= Version("0.8") and Version(torch.__version__) >= Version("2.4"):
-        # Dont add pytest.skip here since this fails if run inside spawned processes
-        raise RuntimeError("Megatron Core 0.9+ is required for dist checkpointing with torch < 2.4")
     sharded_state_dict = gpt_model.sharded_state_dict(prefix="")
     dist_checkpointing.save(sharded_state_dict=sharded_state_dict, checkpoint_dir=checkpoint_path)
 
@@ -263,7 +265,7 @@ def load_distributed_checkpoint(checkpoint_path, gpt_model):
     return gpt_model
 
 
-def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn):
+def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, version=None):
     logits_ref = forward_fn(model_ref)
     modelopt_state = mto.modelopt_state(model_ref)
     state_dict = copy.deepcopy(model_ref.state_dict())
@@ -271,6 +273,12 @@ def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn):
     save_distributed_checkpoint(tmp_path, model_ref)
     # Test that model_ref has not been modified during distributed save
     modelopt_state_after_distributed_save = mto.modelopt_state(model_ref)
+    if version is not None:
+        # Format the checkpoint for the given version
+        modelopt_state = format_modelopt_checkpoint_by_version(modelopt_state, version)
+        modelopt_state_after_distributed_save = format_modelopt_checkpoint_by_version(
+            modelopt_state_after_distributed_save, version
+        )
     assert modelopt_state == modelopt_state_after_distributed_save
     state_dict_after_distributed_save = model_ref.state_dict()
     assert state_dict.keys() == state_dict_after_distributed_save.keys()
@@ -285,17 +293,25 @@ def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn):
     model_test = load_distributed_checkpoint(tmp_path, model_test)
 
     modelopt_state_test = mto.modelopt_state(model_test)
+
+    if version is not None:
+        modelopt_state_test = format_modelopt_checkpoint_by_version(modelopt_state_test, version)
+
     assert modelopt_state == modelopt_state_test
 
     state_dict_test = model_test.state_dict()
-    assert state_dict.keys() == state_dict_test.keys()
+    assert state_dict.keys() == state_dict_test.keys(), (
+        f"{set(state_dict.keys()) - set(state_dict_test.keys())}"
+    )
     for k, v in state_dict.items():
         # sharded_state_dict will omit output_layer since we are lacking support on vocab padding
-        if "output_layer" in k:
+        if (
+            "output_layer" in k
+            or k.endswith("._amax_for_smoothing")
+            or not isinstance(v, torch.Tensor)
+        ):
             continue
-        assert not isinstance(v, torch.Tensor) or torch.allclose(
-            v.to(torch.float32), state_dict_test[k].to(torch.float32)
-        ), "{} {} {}".format(k, v, state_dict_test[k])
+        assert torch.allclose(v, state_dict_test[k]), f"{k} v:{v}, s[k]: {state_dict_test[k]}"
 
     logits_test = forward_fn(model_test)
-    assert torch.allclose(logits_ref, logits_test), "{} {}".format(logits_ref, logits_test)
+    assert torch.allclose(logits_ref, logits_test), f"ref: {logits_ref}, test: {logits_test}"

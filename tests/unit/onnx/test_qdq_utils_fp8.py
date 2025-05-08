@@ -28,7 +28,7 @@ def test_fused_q(tmp_path):
     input_tensor = torch.randn(2, 16, 16)
 
     onnx_path = os.path.join(tmp_path, "model.onnx")
-    onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
+    export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
 
     # Quantize the model and export with only DQ nodes for weights
     quantize(onnx_path, quantize_mode="fp8", dq_only=True)

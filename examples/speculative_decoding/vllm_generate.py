@@ -66,6 +66,7 @@ parser.add_argument("--num_threads", type=int, default=256)
 parser.add_argument("--temperature", type=float, default=0.0)
 parser.add_argument("--max_tokens", type=int, default=2048)
 parser.add_argument("--chat", action="store_true")
+parser.add_argument("--system_prompt", nargs="+", type=str, default="")
 args = parser.parse_args()
 
 
@@ -76,7 +77,7 @@ else:
     data = json.load(open(args.data_path, "r"))
 
 
-def generate_data(messages, idx):
+def generate_data(messages, idx, system_prompt):
     try:
         # load balanced
         openai.base_url = base_url_pool[idx % len(base_url_pool)]
@@ -85,6 +86,11 @@ def generate_data(messages, idx):
         if args.chat:
             converted_messages = []
             output_messages = []
+
+            if system_prompt and len(messages) > 0:
+                system_message = {"role": "system", "content": system_prompt}
+                converted_messages.append(system_message)
+                output_messages.append(system_message)
 
             for message in messages[::2]:
                 if message["from"].lower() != "user":
@@ -122,7 +128,7 @@ def generate_data(messages, idx):
                 except Exception as e:
                     print(e)
                     break
-            if len(output_messages) == 0:
+            if len(output_messages) == 0 or (system_prompt and len(output_messages) == 1):
                 return
             with open(args.output_path, "a") as f:
                 # write in share gpt format
@@ -161,12 +167,10 @@ if os.path.exists(args.output_path):
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=args.num_threads) as executor:
     futures = []
+    system_prompt = " ".join(args.system_prompt)
+
     for idx, sample in enumerate(data[start:]):
-        future = executor.submit(
-            generate_data,
-            sample["conversations"],
-            idx,
-        )
+        future = executor.submit(generate_data, sample["conversations"], idx, system_prompt)
         futures.append(future)
 
     for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(futures)):

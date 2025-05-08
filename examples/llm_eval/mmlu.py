@@ -40,6 +40,7 @@
 
 import os
 import random
+import warnings
 from argparse import Namespace
 from typing import Union
 
@@ -54,6 +55,8 @@ try:
     from modelopt.deploy.llm import LLM
 except ImportError:
     LLM = None  # type: ignore[misc]
+import modelopt.torch.opt as mto
+from modelopt.torch.quantization.utils import is_quantized
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -246,7 +249,10 @@ def main(
         subcat: [] for subcat_lists in get_subcategories().values() for subcat in subcat_lists
     }
     cat_cors = {cat: [] for cat in get_categories()}
+
     # Model Optimizer modification
+    # Enable automatic save/load of modelopt state huggingface checkpointing
+    mto.enable_huggingface_checkpointing()
     if vocab_file := kwargs.get("vocab_file", None):
         from modelopt.deploy.llm.nemo_utils import get_nemo_tokenizer
 
@@ -277,14 +283,19 @@ def main(
         assert isinstance(model, EvalModel)
         if quant_cfg:
             model.load()
-            quantize_model(
-                model=model,
-                quant_cfg=quant_cfg,
-                tokenizer=tokenizer,
-                batch_size=batch_size,
-                calib_size=calib_size,
-                auto_quantize_bits=auto_quantize_bits,
-            )
+
+            if is_quantized(model.model):
+                # Do not quantize the model if model is already quantized
+                warnings.warn("Skipping quantization: model is already quantized.")
+            else:
+                quantize_model(
+                    model=model,
+                    quant_cfg=quant_cfg,
+                    tokenizer=tokenizer,
+                    batch_size=batch_size,
+                    calib_size=calib_size,
+                    auto_quantize_bits=auto_quantize_bits,
+                )
 
     for subject in tqdm(subjects):
         dev_df = pd.read_csv(os.path.join(data_dir, "dev", subject + "_dev.csv"), header=None)[

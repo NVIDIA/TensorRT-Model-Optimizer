@@ -5,7 +5,7 @@
 #### A Library to Quantize and Compress Deep Learning Models for Optimized Inference on Native Windows RTX GPUs
 
 [![Documentation](https://img.shields.io/badge/Documentation-latest-brightgreen.svg?style=flat)](https://nvidia.github.io/TensorRT-Model-Optimizer/)
-[![version](https://img.shields.io/badge/v0.19.0-orange?label=Release)](https://pypi.org/project/nvidia-modelopt/0.19.0/)
+[![version](https://img.shields.io/badge/v0.27.0-orange?label=Release)](https://pypi.org/project/nvidia-modelopt/0.27.0/)
 [![license](https://img.shields.io/badge/License-Apache%202.0-blue)](../../LICENSE)
 
 [Examples](#examples) |

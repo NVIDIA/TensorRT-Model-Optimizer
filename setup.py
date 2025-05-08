@@ -23,7 +23,7 @@ import setuptools
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
 version = os.environ.get(
-    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.27.0" if platform.system() == "Windows" else "0.27.1"
+    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.29.0" if platform.system() == "Linux" else "0.27.0"
 )
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
@@ -40,10 +40,6 @@ required_deps = [
     "rich",
     "scipy",
     "tqdm",
-    # TODO: (temporary fix) Python 3.12+ venv does not install setuptools by default but it is
-    #   required to load cuda extensions using torch.utils.cpp_extension.load
-    # Torch will have a dependency on setuptools after github.com/pytorch/pytorch/pull/127921 (2.4+)
-    "setuptools ; python_version >= '3.12'",
 ]
 
 optional_deps = {
@@ -66,7 +62,7 @@ optional_deps = {
         "pynvml>=11.5.0",
         "regex",
         "safetensors",
-        "torch>=2.2",
+        "torch>=2.4",
         "torchprofile>=0.0.4",
         "torchvision",
     ],
@@ -76,16 +72,14 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.12.0",
-        # TODO: Upgrade to 4.51.0 after fixing unittests
-        # User can post install 4.51.0 to use the new transformers features
-        "transformers>=4.48.0,<4.51.0",
+        "transformers>=4.48.0,<4.52.0",
     ],
     # linter tools
     "dev-lint": [
         "bandit[toml]==1.7.9",  # security/compliance checks
-        "mypy==1.14.1",
-        "pre-commit==4.1.0",
-        "ruff==0.9.4",
+        "mypy==1.15.0",
+        "pre-commit==4.2.0",
+        "ruff==0.11.6",
     ],
     # testing
     "dev-test": [
@@ -108,6 +102,7 @@ optional_deps = {
         "nbsphinx>=0.9.3",
         "pypandoc",  # Required by nbsphinx
         "sphinx~=7.2.0",  # AttributeError for sphinx~=7.3.0
+        "snowballstemmer<3",  # 3.0 issue with Sphinx
         "sphinx-autobuild>=2024.10.3",
         "sphinx-copybutton>=0.5.2",
         "sphinx-inline-tabs>=2023.4.21",

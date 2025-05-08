@@ -16,7 +16,7 @@
 """Utils for quantization including scaling factors adjustments."""
 
 import logging
-from typing import Any, Generator, Optional, Union
+from typing import Any, Generator, List, Optional, Union
 from warnings import warn
 
 import torch
@@ -32,9 +32,11 @@ from .model_config import (
     KV_CACHE_FP8,
     KV_CACHE_INT8,
     KV_CACHE_NVFP4,
+    KV_CACHE_NVFP4_AFFINE,
     QUANTIZATION_FP8,
     QUANTIZATION_FP8_PB_REAL,
     QUANTIZATION_FP8_PB_WO,
+    QUANTIZATION_FP8_PC_PT,
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_INT8_SQ,
     QUANTIZATION_NONE,
@@ -256,7 +258,16 @@ def get_prequant_scaling_factor(module: nn.Module) -> torch.Tensor:
     return prequant_scaling_factor
 
 
-def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
+def get_kv_cache_bias(kv_module: nn.Module) -> List[torch.Tensor]:
+    """Returns the kv_cache bias if _bias_value is set. Else returns None."""
+    kv_bias = []
+    for quantizer in ["k_bmm_quantizer", "v_bmm_quantizer"]:
+        quantizer_module = getattr(kv_module, quantizer, None)
+        kv_bias.append(getattr(quantizer_module, "_bias_value", None))
+    return kv_bias
+
+
+def get_kv_cache_scaling_factor(kv_module: nn.Module) -> List[torch.Tensor]:
     """Returns the kv_cache scaling factor if output quantizer is set. Else returns None by default."""
     if not hasattr(kv_module, "k_bmm_quantizer") or not hasattr(kv_module, "v_bmm_quantizer"):
         return [None, None]
@@ -294,6 +305,7 @@ def get_kv_cache_dtype(modules: Union[list[nn.Module], nn.Module]) -> Optional[s
         str: The kv_cache dtype.
     """
     num_bits_list = []
+    is_affine = True
 
     if isinstance(modules, nn.Module):
         modules = [modules]
@@ -302,13 +314,17 @@ def get_kv_cache_dtype(modules: Union[list[nn.Module], nn.Module]) -> Optional[s
         # Case where the module has both k_bmm_quantizer and v_bmm_quantizer
         # Still check for output quantizer for the unified_megatron_export path
         for quantizer in ("k_bmm_quantizer", "v_bmm_quantizer", "output_quantizer"):
-            if hasattr(module, quantizer) and getattr(module, quantizer).is_enabled:
-                num_bits_list.append(getattr(module, quantizer).num_bits)
+            quantizer_attr = getattr(module, quantizer, None)
+            if quantizer_attr and quantizer_attr.is_enabled:
+                num_bits_list.append(quantizer_attr.num_bits)
+                is_affine &= hasattr(quantizer_attr, "_bias_value")
 
     if (4, 3) in num_bits_list:
         return KV_CACHE_FP8
     elif 8 in num_bits_list:
         return KV_CACHE_INT8
+    elif (2, 1) in num_bits_list and is_affine:
+        return KV_CACHE_NVFP4_AFFINE
     elif (2, 1) in num_bits_list:
         return KV_CACHE_NVFP4
     else:
@@ -342,13 +358,8 @@ def get_quantization_format(module) -> Optional[str]:
     The first non-None quantization string is returned.
     """
 
-    def _is_enabled(quantizer):
-        if isinstance(quantizer, SequentialQuantizer):
-            return any([_is_enabled(q) for q in quantizer])
-        return quantizer.is_enabled
-
     def _get_quantization_from_linear_layer(layer):
-        if not hasattr(layer, "weight_quantizer") or not _is_enabled(layer.weight_quantizer):
+        if not hasattr(layer, "weight_quantizer") or not layer.weight_quantizer.is_enabled:
             return QUANTIZATION_NONE
 
         w_quantizer = layer.weight_quantizer
@@ -385,6 +396,8 @@ def get_quantization_format(module) -> Optional[str]:
                     return QUANTIZATION_FP8_PB_WO
                 else:
                     return QUANTIZATION_FP8_PB_REAL
+            if w_quantizer.axis == 0:
+                return QUANTIZATION_FP8_PC_PT
             return QUANTIZATION_FP8
 
         if w_quantizer.num_bits == (2, 1):
@@ -502,6 +515,8 @@ def process_layer_quant_config(layer_config_dict):
         prefix = ".".join(k.rsplit(".", 1)[:-1])
         if v == "fp8":
             layer_config = {"quant_algo": "FP8"}
+        elif v == "fp8_pc_pt":
+            layer_config = {"quant_algo": "FP8_PER_CHANNEL_PER_TOKEN"}
         elif v == "int4_awq":
             layer_config = {
                 "quant_algo": "W4A16_AWQ",
@@ -620,6 +635,12 @@ def to_quantized_weight(
         return weight.data
 
     if quantization == QUANTIZATION_FP8:
+        # Fix RuntimeError: Promotion for Float8 Types is not supported, attempted to promote Float8_e4m3fn and Float
+        # in speculative decoding fp8 model export
+        if weight.dtype == torch.float8_e4m3fn:
+            warn("Skipping quantization: weight already in fp8 format")
+            return weight
+
         if weight.dim() == 3:
             # for MOE stacked weights
             return (weight / weights_scaling_factor.unsqueeze(-1)).to(torch.float8_e4m3fn)
@@ -632,6 +653,9 @@ def to_quantized_weight(
         return FP8QTensor.quantize(
             weight, weights_scaling_factor.squeeze(), block_sizes={-1: block_size, -2: block_size}
         )[0]._quantized_data
+
+    if quantization == QUANTIZATION_FP8_PC_PT:
+        return (weight / weights_scaling_factor.unsqueeze(-1)).to(torch.float8_e4m3fn)
 
     if quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
         return pack_int4_in_uint8(weight, weights_scaling_factor)
@@ -691,6 +715,8 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Opti
     replacements = {
         "k_bmm_quantizer._amax": "k_proj.k_scale",
         "v_bmm_quantizer._amax": "v_proj.v_scale",
+        "k_bmm_quantizer._bias_value": "k_proj.k_bias",
+        "v_bmm_quantizer._bias_value": "v_proj.v_bias",
         "input_quantizer._pre_quant_scale": "pre_quant_scale",
     }
 
@@ -701,6 +727,7 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Opti
         if (
             "output_quantizer" not in key
             and "_amax" not in key
+            and "_bias_value" not in key
             and "input_quantizer._pre_quant_scale" not in key
         ):
             post_state_dict[key] = value
@@ -712,7 +739,7 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Opti
                 prefix = key[: -len(old_suffix)]
 
                 if "_amax" in key:
-                    assert quantization in [KV_CACHE_FP8, KV_CACHE_NVFP4], (
+                    assert quantization in [KV_CACHE_FP8, KV_CACHE_NVFP4, KV_CACHE_NVFP4_AFFINE], (
                         "Invalid KV cache quantization format."
                     )
                     assert maxbound > 0, "Maxbound must be greater than zero."
@@ -796,7 +823,7 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
         if resmooth_only:
             return
 
-        if modules[0].input_quantizer.is_enabled:
+        if modules[0].input_quantizer.is_enabled and modules[0].input_quantizer.amax is not None:
             assert modules[0].input_quantizer.amax.numel() == 1, (
                 "Only support scalar input quant amax"
             )
@@ -942,12 +969,24 @@ def quantize_llama4_experts_for_hf_export(module: nn.Module):
 
             block_size = weight_quantizer.block_sizes[-1]
 
+            # For bmm, the weight shape is (num_experts, input_dim, output_dim), so let's first transpose
+            # the weight to (num_experts, output_dim, input_dim) before calculating scaling factor and quantization.
+            weight = weight.transpose(-2, -1)
             weight_scale = NVFP4QTensor.get_weights_scaling_factor(
                 weight,
                 block_size=block_size,
                 weights_scaling_factor_2=weight_scale_2,
             )[0]
-
+            quantized_weights = to_quantized_weight(
+                weight,
+                weight_scale,
+                quantization=QUANTIZATION_NVFP4,
+                weights_scaling_factor2=weight_scale_2,
+                block_size=block_size,
+            )
+            # After quantization, we transpose the weight and scales back to the original order.
+            quantized_weights = quantized_weights.transpose(-2, -1)
+            weight_scale = weight_scale.transpose(-2, -1)
             module.register_buffer(
                 f"{weight_name}_weight_scale",
                 weight_scale,
@@ -956,16 +995,7 @@ def quantize_llama4_experts_for_hf_export(module: nn.Module):
             setattr(
                 module,
                 weight_name,
-                nn.Parameter(
-                    to_quantized_weight(
-                        weight,
-                        weight_scale,
-                        quantization=QUANTIZATION_NVFP4,
-                        weights_scaling_factor2=weight_scale_2,
-                        block_size=block_size,
-                    ),
-                    requires_grad=False,
-                ),
+                nn.Parameter(quantized_weights, requires_grad=False),
             )
 
     for input_name in ["gate_up_proj", "down_proj"]:

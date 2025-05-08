@@ -45,6 +45,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       MODELOPT_RESTORE_PATH="${1#*=}"
       ;;
+    --data_path*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      DATA_PATH="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
@@ -62,12 +66,13 @@ NUM_EPOCHS=${NUM_EPOCHS:-1}
 TRAIN_BS=${TRAIN_BS:-1}
 EVAL_BS=${EVAL_BS:-4}
 MODELOPT_RESTORE_PATH=${MODELOPT_RESTORE_PATH:-"saved_models_Llama-2-7b-hf_sparsegpt_tp1_pp1/pts_modelopt_state.pth"}
+DATA_PATH=${DATA_PATH:-"data"}
 
 CMD="accelerate launch --multi_gpu --mixed_precision bf16 finetune.py \
     --model_name_or_path $MODEL \
     --model_max_length $MODEL_MAX_LENGTH \
-    --train_datapath data/cnn_train.json \
-    --val_datapath data/cnn_eval.json \
+    --train_datapath $DATA_PATH/cnn_train.json \
+    --val_datapath $DATA_PATH/cnn_eval.json \
     --dataloader_drop_last True \
     --bf16 True \
     --do_train \

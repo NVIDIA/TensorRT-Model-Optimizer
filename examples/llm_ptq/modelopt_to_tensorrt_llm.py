@@ -23,6 +23,7 @@ from typing import Optional, Union
 
 import tensorrt_llm
 import torch
+from packaging import version
 from packaging.version import parse
 from tensorrt_llm.llmapi import BuildConfig
 from tensorrt_llm.models import PretrainedConfig
@@ -126,6 +127,12 @@ def build_tensorrt_llm(
         "NVFP4",
         None,
     ]
+
+    # FP8 FMHA for gemma is not supported in tensorrt_llm < 0.19.0
+    if "GemmaForCausalLM" in config.architecture and version.parse(
+        tensorrt_llm.__version__
+    ) < version.parse("0.19.0"):
+        use_paged_context_fmha = False
 
     use_fused_mlp = "RecurrentGemma" not in config.architecture
     if config.quantization.exclude_modules:

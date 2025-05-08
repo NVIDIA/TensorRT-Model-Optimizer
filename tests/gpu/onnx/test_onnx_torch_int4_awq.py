@@ -22,6 +22,7 @@ from functools import partial
 import torch
 from _test_utils.import_helper import skip_if_no_libcudnn
 from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_onnx, find_init
+from _test_utils.torch_quantization.quantize_common import get_awq_config
 
 import modelopt.onnx.quantization.int4 as int4
 import modelopt.torch.quantization as mtq
@@ -42,19 +43,12 @@ def test_int4_awq(tmp_path):
 
     block_size = 128
 
-    def _get_config(algorithm="awq_lite"):
-        config = copy.deepcopy(mtq.INT4_AWQ_CFG)
-        config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {-1: block_size}
-        config["algorithm"]["method"] = algorithm
-        config["algorithm"]["debug"] = True
-        return config
-
     model_torch = SimpleMLP().cuda()
     input_tensor = torch.randn(2, 16, 16).cuda()
     dataloader = [torch.randn(2, 16, 16).cuda()]
 
     onnx_path = os.path.join(tmp_path, "model.onnx")
-    onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
+    export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
 
     onnx_dataloader = [{"input": dataloader[0].cpu().numpy()}]
     onnx_model_awq_lite = quantize_int4(
@@ -80,12 +74,12 @@ def test_int4_awq(tmp_path):
     model_torch_copy = copy.deepcopy(model_torch)
     mtq.quantize(
         model_torch,
-        _get_config(algorithm="awq_lite"),
+        get_awq_config(algorithm="awq_lite", block_size=block_size),
         partial(_forward_loop, model_torch, dataloader),
     )
     mtq.quantize(
         model_torch_copy,
-        _get_config(algorithm="awq_clip"),
+        get_awq_config(algorithm="awq_clip", block_size=block_size),
         partial(_forward_loop, model_torch_copy, dataloader),
     )
     for i in [0, 1, 2]:
@@ -123,7 +117,7 @@ def test_int4_awq_cuda(tmp_path):
     input_tensor = torch.randn(2, 16, 16).cuda()
 
     onnx_path = os.path.join(tmp_path, "model.onnx")
-    onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
+    export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
 
     onnx_model = quantize_int4(
         onnx_path,

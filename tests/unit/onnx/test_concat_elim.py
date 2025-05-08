@@ -68,19 +68,19 @@ def _check_concat_qdq_status(onnx_path, quantize_mode):
     assert check_num == 2
 
 
-def test_concat_elim_int8(tmpdir):
-    # Copy the test model to the tmpdir
+def test_concat_elim_int8(tmp_path):
+    # Copy the test model to the tmp_path
     model = build_conv_concat_model()
     this_function_name = sys._getframe().f_code.co_name
-    onnx_path = os.path.join(tmpdir, f"{this_function_name}.onnx")
+    onnx_path = os.path.join(tmp_path, f"{this_function_name}.onnx")
     onnx.save(model, onnx_path)
     _check_concat_qdq_status(onnx_path, "int8")
 
 
-def test_concat_elim_fp8(tmpdir):
-    # Copy the test model to the tmpdir
+def test_concat_elim_fp8(tmp_path):
+    # Copy the test model to the tmp_path
     model = build_conv_concat_model()
     this_function_name = sys._getframe().f_code.co_name
-    onnx_path = os.path.join(tmpdir, f"{this_function_name}.onnx")
+    onnx_path = os.path.join(tmp_path, f"{this_function_name}.onnx")
     onnx.save(model, onnx_path)
     _check_concat_qdq_status(onnx_path, "fp8")

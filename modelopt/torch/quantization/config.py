@@ -137,7 +137,6 @@ the layer named ``lm_head``,  you can create a custom config and quantize your m
 """
 
 import warnings
-from fnmatch import fnmatch
 from typing import Callable, Dict, Literal, Optional, Tuple, Union
 
 from pydantic import ValidationInfo, field_validator, model_validator
@@ -283,7 +282,9 @@ FP8_KV_CFG = {
             "axis": None,
             "enable": True,
         },
-    }
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
 }
 
 FP8_AFFINE_KV_CFG = {
@@ -293,6 +294,7 @@ FP8_AFFINE_KV_CFG = {
             "axis": None,
             "bias": {-2: None, -4: None, "type": "static"},
         },
+        "default": {"enable": False},
     },
     "algorithm": "max",
 }
@@ -326,7 +328,6 @@ choices: set[str] = {
     "INT8_SMOOTHQUANT_CFG",
     "FP8_DEFAULT_CFG",
     "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
-    "FP8_PER_CHANNEL_WEIGHT_CFG",
     "FP8_PER_CHANNEL_PER_TOKEN_CFG",
     "INT4_BLOCKWISE_WEIGHT_ONLY_CFG",
     "INT4_AWQ_CFG",
@@ -438,10 +439,15 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
     axis: Optional[Union[int, tuple[int, ...]]] = ModeloptField(
         default=None,
         title="None, integer or a tuple of integers specifying the axis to quantize.",
-        description="""The specified axis/axes will have its own amax for
-            computing scaling factor. If None (the default), use per tensor scale. Must be in the
-            range [-rank(input_tensor), rank(input_tensor)). E.g. For a KCRS weight tensor,
-            ``quant_axis=(0)`` will yield per channel scaling.""",
+        description="""This field is for static per-channel quantization. *It cannot coexist with `block_sizes`*.
+            You should set axis if you want a fixed shape of scale factor.
+
+            For example, if axis is set to None, the scale factor will be a scalar (per-tensor quantization)
+            if the axis is set to 0, the scale factor will be a vector of shape (dim0, ) (per-channel quantization).
+            if the axis is set to (-2, -1), the scale factor will be a vector of shape (dim-2, dim-1)
+
+            axis value must be in the range [-rank(input_tensor), rank(input_tensor))
+        """,
     )
 
     fake_quant: bool = ModeloptField(
@@ -489,7 +495,10 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
     ] = ModeloptField(
         default=None,
         title="Optional dictionary specifying block quantization parameters.",
-        description="""The keys are the axes for block quantization and the
+        description="""This field is for static or dynamic block quantization. *It cannot coexist with ``axis``*.
+            You should set block_sizes if you want fixed number of elements to share every scale factor.
+
+            The keys are the axes for block quantization and the
             values are block sizes for quantization along the respective axes. Keys must be in the
             range ``[-tensor.dim(), tensor.dim())``. Values, which are the block sizes for quantization must be
             positive integers or ``None``. A positive block size specifies the block size for quantization along that
@@ -510,11 +519,10 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
             By default per-block quantization scale is not quantized.
 
             For example, ``block_sizes = {-1: 32}`` will quantize the last axis of the input tensor in
-            blocks of size 32 with static calibration and ``block_sizes = {-1: 32, "type": "dynamic"}``
-            will perform dynamic block quantization. ``block_sizes = {-1: None, "type": "dynamic"}`` can be used to
+            blocks of size 32 with static calibration, with a total of ``numel(tensor) / 32`` scale factors.
+            ``block_sizes = {-1: 32, "type": "dynamic"}`` will perform dynamic block quantization.
+            ``block_sizes = {-1: None, "type": "dynamic"}`` can be used to
             specify per-token dynamic quantization.
-
-            If None, block quantization is not performed. ``axis`` must be None when ``block_sizes`` is not None.
         """,
     )
 
@@ -523,7 +531,7 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
     ] = ModeloptField(
         default=None,
         title="Bias configuration.",
-        description="""Configuration for bias handling in quantization. The keys are:
+        description="""Configuration for bias handling in affine quantization. The keys are:
             - "enable": Boolean to enable/disable bias handling, default is False
             - "type": Specify the type of bias ["static", "dynamic"], default is "static"
             - "method": Specify the method of bias calibration ["mean", "max_min"], default is "mean"
@@ -633,11 +641,9 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
 class QuantizeAlgorithmConfig(ModeloptBaseConfig):
     """Calibration algorithm config base."""
 
-    method: str = ModeloptField(
-        default="max",
-        title="The calibration algorithm.",
-        description="""The algorithm used for calibration. Supported algorithms include
-        ``"max", "smoothquant", "awq_lite", "awq_full", and "awq_clip"``.""",
+    method: Literal[None] = ModeloptField(
+        None,
+        title="This field specifies the name of the calibration algorithm. If None, no calibration is performed.",
     )
 
 
@@ -649,6 +655,14 @@ class MaxCalibConfig(QuantizeAlgorithmConfig):
     See `Integer Quantization <https://arxiv.org/pdf/2004.09602>`_ for the concepts.
     """
 
+    method: Literal["max"] = ModeloptField("max")
+
+    distributed_sync: Optional[bool] = ModeloptField(
+        default=True,
+        title="Whether to sync the amax across the distributed processes.",
+        description="If True, the amax will be synced across the distributed processes.",
+    )
+
 
 class SmoothQuantCalibConfig(QuantizeAlgorithmConfig):
     """The config for ``smoothquant`` algorithm (SmoothQuant).
@@ -656,6 +670,8 @@ class SmoothQuantCalibConfig(QuantizeAlgorithmConfig):
     SmoothQuant applies a smoothing factor which balances the scale of outliers in weights and activations.
     See `SmoothQuant paper <https://arxiv.org/pdf/2211.10438>`_ for more details.
     """
+
+    method: Literal["smoothquant"] = ModeloptField("smoothquant")
 
     alpha: Optional[float] = ModeloptField(
         default=1.0,
@@ -676,6 +692,8 @@ class AWQLiteCalibConfig(QuantizeAlgorithmConfig):
     AWQ lite applies a channel-wise scaling factor which minimizes the output difference after quantization.
     See `AWQ paper <https://arxiv.org/pdf/2306.00978>`_ for more details.
     """
+
+    method: Literal["awq_lite"] = ModeloptField("awq_lite")
 
     alpha_step: Optional[float] = ModeloptField(
         default=0.1,
@@ -699,6 +717,8 @@ class AWQClipCalibConfig(QuantizeAlgorithmConfig):
     compared to AWQ lite. To avoid any OOM, the linear layer weights are batched along the ``out_features``
     dimension of batch size ``max_co_batch_size``. AWQ clip calibration also takes longer than AWQ lite.
     """
+
+    method: Literal["awq_clip"] = ModeloptField("awq_clip")
 
     max_co_batch_size: Optional[int] = ModeloptField(
         default=1024,
@@ -744,6 +764,8 @@ class AWQFullCalibConfig(AWQLiteCalibConfig, AWQClipCalibConfig):
     AWQ full performs ``awq_lite`` followed by ``awq_clip``.
     """
 
+    method: Literal["awq_full"] = ModeloptField("awq_full")
+
     debug: Optional[bool] = ModeloptField(
         default=False,
         title="Debug mode.",
@@ -759,6 +781,8 @@ class SVDQuantConfig(QuantizeAlgorithmConfig):
 
     Refer to the `SVDQuant paper <https://arxiv.org/pdf/2411.05007>`_ for more details.
     """
+
+    method: Literal["svdquant"] = ModeloptField("svdquant")
 
     lowrank: Optional[int] = ModeloptField(
         default=32,
@@ -782,14 +806,9 @@ QuantizeQuantCfgType = dict[
     ],
 ]
 
-CalibAlgorithmCfgType = Union[
-    MaxCalibConfig,
-    SmoothQuantCalibConfig,
-    AWQLiteCalibConfig,
-    AWQClipCalibConfig,
-    AWQFullCalibConfig,
-    SVDQuantConfig,
-]
+_QuantizeAlgoCfgType = Union[None, str, dict, QuantizeAlgorithmConfig]
+
+QuantizeAlgoCfgType = Union[None, _QuantizeAlgoCfgType, list[_QuantizeAlgoCfgType]]
 
 
 class QuantizeConfig(ModeloptBaseConfig):
@@ -801,45 +820,25 @@ class QuantizeConfig(ModeloptBaseConfig):
         validate_default=True,
     )
 
-    algorithm: Union[None, str, CalibAlgorithmCfgType] = ModeloptField(
+    algorithm: QuantizeAlgoCfgType = ModeloptField(
         default="max",
-        title="Calibration algorithm",
+        title="Calibration algorithm, see :meth:`calibrate <modelopt.torch.quantization.model_quant.calibrate>` "
+        "for more details.",
         validate_default=True,
     )
-
-    @field_validator("algorithm")
-    @classmethod
-    def validate_calibrator(cls, v, info: ValidationInfo):
-        """Validate algorithm."""
-        if isinstance(v, str):
-            assert v in ["max", "smoothquant", "awq_lite", "awq_clip", "awq_full", "svdquant"]
-        return v
-
-    @field_validator("quant_cfg")
-    @classmethod
-    def validate_quant_cfg(cls, v, info: ValidationInfo):
-        """Validate algorithm."""
-        q_rotate_enabled = False
-        k_rotate_enabled = False
-        for key, value in v.items():
-            if fnmatch(".q_bmm_quantizer", key):
-                q_rotate_enabled = value.get("rotate", False)
-            if fnmatch(".k_bmm_quantizer", key):
-                k_rotate_enabled = value.get("rotate", False)
-        assert q_rotate_enabled == k_rotate_enabled, (
-            "Query and Key rotation must be enabled or disabled at the same time."
-        )
-        return v
 
 
 class CompressConfig(ModeloptBaseConfig):
     """Default configuration for ``compress`` mode."""
 
     compress: dict[str, bool] = ModeloptField(
-        default={"*": False},
+        default={"*": True},
         title="""Enable weight compression for the given pattern. Default is False for all weights.
         Call `compress` function to compress the model weights.""",
     )
+
+
+CompressCfgType = Union[dict[str, bool], None, CompressConfig]
 
 
 class _QuantizeExportConfig(ModeloptBaseConfig):

@@ -18,6 +18,7 @@
 
 ## Latest News
 
+- [2025/04/21] [Adobe optimized deployment using TensorRT-Model-Optimizer + TensorRT leading to a 60% reduction in diffusion latency, a 40% reduction in total cost of ownership](https://developer.nvidia.com/blog/optimizing-transformer-based-diffusion-models-for-video-generation-with-nvidia-tensorrt/)
 - [2025/04/05] [NVIDIA Accelerates Inference on Meta Llama 4 Scout and Maverick](https://developer.nvidia.com/blog/nvidia-accelerates-inference-on-meta-llama-4-scout-and-maverick/). Check out how to quantize Llama4 for deployment acceleration [here](./examples/llm_ptq/README.md#llama-4)
 - [2025/03/18] [World's Fastest DeepSeek-R1 Inference with Blackwell FP4 & Increasing Image Generation Efficiency on Blackwell](https://developer.nvidia.com/blog/nvidia-blackwell-delivers-world-record-deepseek-r1-inference-performance/)
 - [2025/02/25] Model Optimizer quantized NVFP4 models available on Hugging Face for download: [DeepSeek-R1-FP4](https://huggingface.co/nvidia/DeepSeek-R1-FP4), [Llama-3.3-70B-Instruct-FP4](https://huggingface.co/nvidia/Llama-3.3-70B-Instruct-FP4), [Llama-3.1-405B-Instruct-FP4](https://huggingface.co/nvidia/Llama-3.1-405B-Instruct-FP4)
@@ -95,13 +96,13 @@ python -c "import modelopt; print(modelopt.__version__)"
 Alternatively, you can install it from [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/) without TRT-LLM etc.
 
 ```bash
-pip install "nvidia-modelopt[all]" -U --extra-index-url https://pypi.nvidia.com
+pip install -U "nvidia-modelopt[all]"
 ```
 
 To install from source for local development, you can install it as follows:
 
 ```bash
-pip install -e ".[all]" --extra-index-url https://pypi.nvidia.com
+pip install -e ".[all]"
 ```
 
 When installing from source, please make sure to re-run the install command everytime you pull new changes in the repository so dependencies are also updated.

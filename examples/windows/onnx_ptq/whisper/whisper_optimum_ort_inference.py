@@ -156,7 +156,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default="E:\\G_script\\cache",
         help="cache directory for HuggingFace files",
     )
     parser.add_argument(

@@ -38,7 +38,9 @@ class TestQuantMaxPool:
 
         test_input = torch.randn(input_shape)
 
-        quant_input = tensor_quant.fake_tensor_quant(test_input, torch.max(torch.abs(test_input)))
+        quant_input = tensor_quant.fake_tensor_quant(
+            test_input, torch.max(torch.abs(test_input)), None
+        )
 
         out1 = f_pool(quant_input, 3, 1, 0, 1, False, False)
         out2 = quant_pooling_object(test_input)
@@ -55,7 +57,7 @@ class TestQuantMaxPool:
             test_input = torch.randn(1, 5, 5, 5)
 
             quant_input = tensor_quant.fake_tensor_quant(
-                test_input, torch.max(torch.abs(test_input)), bits
+                test_input, torch.max(torch.abs(test_input)), None, bits
             )
 
             out1 = F.max_pool2d(quant_input, 3, 1, 0, 1, False, False)
@@ -81,7 +83,7 @@ class TestQuantMaxPool:
 
         test_input = torch.randn(2, 7, 5, 5, dtype=torch.double)
         input_amax = torch.amax(torch.abs(test_input), dim=(2, 3), keepdim=True)
-        quant_input = tensor_quant.fake_tensor_quant(test_input, input_amax)
+        quant_input = tensor_quant.fake_tensor_quant(test_input, input_amax, None)
 
         out1 = F.max_pool2d(quant_input, 3, 1, 0, 1, False, False)
         out2 = quant_pooling_object(test_input)
@@ -102,7 +104,9 @@ class TestQuantAvgPoolNd:
 
         test_input = torch.randn(input_shape)
 
-        quant_input = tensor_quant.fake_tensor_quant(test_input, torch.max(torch.abs(test_input)))
+        quant_input = tensor_quant.fake_tensor_quant(
+            test_input, torch.max(torch.abs(test_input)), None
+        )
 
         out1 = f_pool(quant_input, 3, 1, 0, False, True)
         out2 = quant_pooling_object(test_input)
@@ -119,7 +123,7 @@ class TestQuantAvgPoolNd:
         test_input = torch.randn(1, 5, 5, 5, dtype=torch.double)
 
         quant_input = tensor_quant.fake_tensor_quant(
-            test_input, torch.max(torch.abs(test_input)), bits
+            test_input, torch.max(torch.abs(test_input)), None, bits
         )
 
         out1 = F.avg_pool2d(quant_input, 3, 1, 0, False, True, None)
@@ -152,7 +156,9 @@ class TestQuantAdaptiveAvgPoolNd:
 
         test_input = torch.randn(input_shape)
 
-        quant_input = tensor_quant.fake_tensor_quant(test_input, torch.max(torch.abs(test_input)))
+        quant_input = tensor_quant.fake_tensor_quant(
+            test_input, torch.max(torch.abs(test_input)), None
+        )
 
         out1 = f_pool(quant_input, 3)
         out2 = quant_pooling_object(test_input)
@@ -169,7 +175,7 @@ class TestQuantAdaptiveAvgPoolNd:
             test_input = torch.randn(1, 5, 5, 5, dtype=torch.double)
 
             quant_input = tensor_quant.fake_tensor_quant(
-                test_input, torch.max(torch.abs(test_input)), bits
+                test_input, torch.max(torch.abs(test_input)), None, bits
             )
 
             out1 = F.adaptive_avg_pool2d(quant_input, 3)

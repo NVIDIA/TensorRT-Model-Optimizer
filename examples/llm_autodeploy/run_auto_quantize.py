@@ -19,6 +19,7 @@ from collections import defaultdict
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.utils import create_forward_loop
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
@@ -157,6 +158,9 @@ def modelopt_ptq(
     # 2. update the weight amax, as the modules will be fused during deployment
     # This is required for nvfp4, fp8 for gemm fusion
     update_weight_quantizer_amax_for_fusion(model)
+
+    # enable huggingface checkpointing for ModelOpt
+    mto.enable_huggingface_checkpointing()
 
     print(f"Saving the quantized model to {output_dir}.")
     tokenizer.save_pretrained(output_dir)

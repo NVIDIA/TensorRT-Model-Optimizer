@@ -23,9 +23,9 @@ from typing import Optional
 from modelopt.torch.opt.config import ModeloptBaseConfig
 from modelopt.torch.opt.mode import (
     ConvertEntrypoint,
+    ModeDescriptor,
     RestoreEntrypoint,
     UpdateEntrypoint,
-    _ModeDescriptor,
     _ModeRegistryCls,
 )
 from modelopt.torch.opt.searcher import BaseSearcher
@@ -46,7 +46,7 @@ NASModeRegistry = _ModeRegistryCls("nas")
 
 
 @NASModeRegistry.register_mode
-class AutoNASModeDescriptor(_ModeDescriptor):
+class AutoNASModeDescriptor(ModeDescriptor):
     """Class to describe the ``"autonas"`` mode.
 
     The properties of this mode can be inspected via the source code.
@@ -99,7 +99,7 @@ class AutoNASModeDescriptor(_ModeDescriptor):
 
 
 @NASModeRegistry.register_mode
-class ExportModeDescriptor(_ModeDescriptor):
+class ExportModeDescriptor(ModeDescriptor):
     """Class to describe the ``"export"`` mode.
 
     The properties of this mode can be inspected via the source code.

@@ -28,7 +28,6 @@ def sanitize_deployment_config(deployment):
     [
         ({"runtime": "invalid_runtime"}, "Runtime invalid_runtime is not supported."),
         ({}, "Runtime was not set."),
-        ({"runtime": "ORT"}, "Runtime version must be provided!"),
     ],
 )
 def test_invalid_device(invalid_deployment, error_msg) -> None:
@@ -39,7 +38,7 @@ def test_invalid_device(invalid_deployment, error_msg) -> None:
 @pytest.mark.parametrize(
     "invalid_deployment",
     [
-        ({"runtime": "ORT", "version": "1.16", "accelerator": "GPU"}),
+        ({"runtime": "ORT", "accelerator": "GPU"}),
     ],
 )
 def test_accelerator_not_found(invalid_deployment) -> None:

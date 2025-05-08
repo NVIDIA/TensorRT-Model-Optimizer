@@ -25,11 +25,6 @@ from _test_utils.torch_dist.dist_utils import (
     spawn_multiprocess_job,
     synchronize_state_dict,
 )
-from packaging.version import Version
-
-if Version(torch.__version__) < Version("2.4"):
-    pytest.skip("FSDP2 is only supported in torch >= 2.4", allow_module_level=True)
-
 from torch.distributed._composable.fsdp.fully_shard import fully_shard
 
 import modelopt.torch.quantization as mtq

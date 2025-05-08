@@ -15,6 +15,8 @@
 
 """User-facing API for converting a model into a `modelopt.torch.speculative.MedusaModel`."""
 
+from typing import Any, Dict, Union
+
 import torch.nn as nn
 
 from modelopt.torch.opt.conversion import apply_mode
@@ -25,7 +27,7 @@ from .mode import SpeculativeDecodingModeRegistry
 __all__ = ["convert"]
 
 
-def convert(model: nn.Module, mode: ModeLike) -> nn.Module:
+def convert(model: nn.Module, mode: Union[ModeLike, Dict[str, Any]]) -> nn.Module:
     """Main conversion function to turn a base model into a speculative decoding model.
 
     Args:
@@ -52,4 +54,6 @@ def convert(model: nn.Module, mode: ModeLike) -> nn.Module:
         :class:`EagleModel <modelopt.torch.distill.EagleModel` its subclass.
 
     """
+    if isinstance(mode, Dict):
+        mode = [(mode["algorithm"], mode["config"])]
     return apply_mode(model, mode=mode, registry=SpeculativeDecodingModeRegistry)

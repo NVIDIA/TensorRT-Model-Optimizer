@@ -15,44 +15,36 @@
 
 import argparse
 import os
+import subprocess
 
 import timm
 import torch
-from onnx import load_model, save_model
-from onnxmltools.utils import float16_converter
-from optimum.onnxruntime import ORTModelForCausalLM
+
+from modelopt.torch._deploy.utils import get_onnx_bytes
 
 
-def torch_to_onnx(
-    model,
-    input_tensor,
-    onnx_path,
-    fp16,
-    input_names=["input"],
-    output_names=["output"],
-    opset=20,
-    do_constant_folding=True,
+def export_to_onnx(
+    model, input_shape, onnx_save_path, device, weights_dtype="float32", use_autocast=False
 ):
-    model.eval()
-    torch.onnx.export(
-        model,
-        input_tensor,
-        onnx_path,
-        input_names=input_names,
-        output_names=output_names,
-        opset_version=opset,
-        do_constant_folding=do_constant_folding,
+    """Export the torch model to ONNX format."""
+    # Create input tensor with same precision as model's first parameter
+    input_dtype = model.parameters().__next__().dtype
+    input_tensor = torch.randn(input_shape, dtype=input_dtype).to(device)
+
+    onnx_model_bytes = get_onnx_bytes(
+        model=model,
+        dummy_input=(input_tensor,),
+        weights_dtype=weights_dtype,
+        use_autocast=use_autocast,
     )
-    if fp16:
-        onnx_fp32_model = load_model(onnx_path)
-        onnx_fp16_model = float16_converter.convert_float_to_float16(
-            onnx_fp32_model, keep_io_types=False
-        )
-        save_model(onnx_fp16_model, onnx_path)
+
+    # Write ONNX model to disk
+    with open(onnx_save_path, "wb") as f:
+        f.write(onnx_model_bytes)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Quantize llama model in INT4 mode.")
+    parser = argparse.ArgumentParser(description="Download and export example models to ONNX.")
 
     parser.add_argument(
         "--vit",
@@ -62,26 +54,72 @@ if __name__ == "__main__":
     parser.add_argument(
         "--llama",
         action="store_true",
-        help="Export meta-llama/Llama-2-7b-chat-hf to ONNX.",
+        help="Export meta-llama/Llama-3.1-8B-Instruct to ONNX with KV cache.",
     )
-    parser.add_argument("--fp16", action="store_true", help="Export model in FP16 format.")
-    parser.add_argument("--batch_size", type=int, default=1, help="Output ONNX model batch size.")
     parser.add_argument(
-        "--output_path", type=str, required=True, help="Path to save the ONNX model."
+        "--onnx_save_path", type=str, required=False, help="Path to save the final ONNX model."
     )
-
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="Batch size for the exported ViT model.",
+    )
+    parser.add_argument(
+        "--fp16",
+        action="store_true",
+        help="Whether to export the ONNX model in FP16.",
+    )
     args = parser.parse_args()
 
     if args.vit:
-        model = timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=1000)
-        input = torch.randn(args.batch_size, 3, 224, 224)
-        torch_to_onnx(model, input, args.output_path, args.fp16)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = timm.create_model("vit_base_patch16_224", pretrained=True, num_classes=1000).to(
+            device
+        )
+        data_config = timm.data.resolve_model_data_config(model)
+        input_shape = (args.batch_size,) + data_config["input_size"]
+
+        vit_save_path = args.onnx_save_path or "vit_base_patch16_224.onnx"
+        weights_dtype = "float16" if args.fp16 else "float32"
+        export_to_onnx(
+            model,
+            input_shape,
+            vit_save_path,
+            device,
+            weights_dtype=weights_dtype,
+        )
+        print(f"ViT model exported to {vit_save_path}")
 
     if args.llama:
-        model_name = "meta-llama/Llama-2-7b-chat-hf"
-        model = ORTModelForCausalLM.from_pretrained(
+        model_name = "meta-llama/Llama-3.1-8B-Instruct"
+        if not args.onnx_save_path:
+            args.onnx_save_path = "Llama-3.1-8B-Instruct/model.onnx"
+
+        output_dir = os.path.dirname(args.onnx_save_path)
+        if not output_dir:  # Handle cases where only filename is given (save in current dir)
+            output_dir = "."
+        os.makedirs(output_dir, exist_ok=True)
+
+        command = [
+            "python",
+            "-m",
+            "optimum.commands.optimum_cli",
+            "export",
+            "onnx",
+            "--model",
             model_name,
-            export=True,
-            use_auth_token=True,
-        )
-        model.save_pretrained(os.path.dirname(args.output_path))
+            "--task",
+            "causal-lm-with-past",
+            "--device",
+            "cuda",
+            "--fp16" if args.fp16 else "",
+            output_dir,
+        ]
+
+        try:
+            print(f"Running optimum-cli export to {output_dir}...")
+            subprocess.run(command, check=True, capture_output=True, text=True, encoding="utf-8")
+            print(f"Llama model exported to {output_dir}")
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(f"Failed to export model: {e.stderr}")

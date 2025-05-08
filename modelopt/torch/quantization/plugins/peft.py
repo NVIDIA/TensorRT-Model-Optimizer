@@ -18,15 +18,13 @@
 import torch.nn.functional as F
 from peft.tuners.lora.layer import Linear as LoraLinear
 
-from modelopt.torch.opt.dynamic import DynamicModule
-
-from ..nn import QuantModuleRegistry, TensorQuantizer
+from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
 
 __all__ = []
 
 
 @QuantModuleRegistry.register({LoraLinear: "LoraLinear"})
-class _QuantLoraLinear(DynamicModule):
+class _QuantLoraLinear(QuantModule):
     def _setup(self):
         self.input_quantizer = TensorQuantizer()
         self.weight_quantizer = TensorQuantizer()

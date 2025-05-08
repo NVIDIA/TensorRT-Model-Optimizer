@@ -66,6 +66,7 @@ from .model_config_utils import pad_weights
 from .postprocess import view_as_float8_e4m3fn_if_needed, view_as_uint8_if_needed
 from .quant_utils import (
     get_activation_scaling_factor,
+    get_kv_cache_bias,
     get_kv_cache_dtype,
     get_kv_cache_scaling_factor,
     get_prequant_scaling_factor,
@@ -278,7 +279,7 @@ def build_layernorm_config(module: nn.Module) -> LayernormConfig:
     def _weights_plus_one(module):
         if any(
             name in type(module).__name__
-            for name in ["LayerNorm1P", "GemmaRMSNorm", "Gemma2RMSNorm"]
+            for name in ["LayerNorm1P", "GemmaRMSNorm", "Gemma2RMSNorm", "Gemma3RMSNorm"]
         ):
             return True
 
@@ -343,9 +344,13 @@ def dup_kv_weight(v: torch.Tensor, head_size: int, num_head: int, tp_size: int) 
     """Repeat kv heads if tp_size > num_kv_heads."""
     assert tp_size % num_head == 0
     reps = tp_size // num_head
-    v = v.view(-1, head_size, v.size(-1))
+
+    is_1d = len(v.shape) == 1
+    v_1 = v.size(-1) if not is_1d else 1
+
+    v = v.view(-1, head_size, v_1)
     v = v.repeat_interleave(reps, dim=0)
-    v = v.view(-1, v.size(-1))
+    v = v.view(-1, v_1) if not is_1d else v.reshape(-1)
     return v.contiguous()
 
 
@@ -485,10 +490,8 @@ def build_qkv(
                 [
                     k_activation_scaling_factor,
                     k_weight_scaling_factor_2,
-                    k_bias,
                     v_activation_scaling_factor,
                     v_weight_scaling_factor_2,
-                    v_bias,
                 ],
             )
         ):
@@ -516,6 +519,11 @@ def build_qkv(
             v_weight_scaling_factor = dup_kv_weight(
                 v_weight_scaling_factor, head_size, num_kv_heads, tp_size
             )
+
+        if k_bias is not None:
+            k_bias = dup_kv_weight(k_bias, head_size, num_kv_heads, tp_size)
+        if v_bias is not None:
+            v_bias = dup_kv_weight(v_bias, head_size, num_kv_heads, tp_size)
 
     config.q = LinearConfig(linear_type=LINEAR_COLUMN)
     config.q.weight = q_weight
@@ -665,6 +673,7 @@ def build_attention_config(
     config.k_cache_scaling_factor, config.v_cache_scaling_factor = get_kv_cache_scaling_factor(
         module
     )
+    config.k_cache_bias, config.v_cache_bias = get_kv_cache_bias(module)
 
     if config.k_cache_scaling_factor is not None:
         assert config.v_cache_scaling_factor is not None
@@ -1385,11 +1394,17 @@ def build_decoder_config(
             else:
                 if name in ["ln_mlp"]:
                     config.mlp_layernorm = layernorm_config
-                elif config.decoder_type == "gemma2" and "post_attention_layernorm" in name:
+                elif (
+                    config.decoder_type in ["gemma2", "gemma3"]
+                ) and "post_attention_layernorm" in name:
                     config.post_layernorm = layernorm_config
-                elif config.decoder_type == "gemma2" and "pre_feedforward_layernorm" in name:
+                elif (
+                    config.decoder_type in ["gemma2", "gemma3"]
+                ) and "pre_feedforward_layernorm" in name:
                     config.pre_feedforward_layernorm = layernorm_config
-                elif config.decoder_type == "gemma2" and "post_feedforward_layernorm" in name:
+                elif (
+                    config.decoder_type in ["gemma2", "gemma3"]
+                ) and "post_feedforward_layernorm" in name:
                     config.post_feedforward_layernorm = layernorm_config
                 elif config.input_layernorm is None:
                     config.input_layernorm = layernorm_config
@@ -1428,6 +1443,12 @@ def build_decoder_config(
                         config.self_attention = attention_config
                 else:
                     config.attention = attention_config
+                    if decoder_type == "gemma3":
+                        # Gemma3 has q_norm and k_norm within self_attn
+                        q_layernorm_config = build_layernorm_config(layer.q_norm)
+                        k_layernorm_config = build_layernorm_config(layer.k_norm)
+                        config.attention.q_layernorm = q_layernorm_config
+                        config.attention.k_layernorm = k_layernorm_config
 
         elif is_moe(layer):
             if quantization not in [QUANTIZATION_NONE, QUANTIZATION_FP8]:

@@ -22,4 +22,4 @@ deploy_benchmark = get_deploy_models()
 
 @pytest.mark.parametrize("model", deploy_benchmark.values(), ids=deploy_benchmark.keys())
 def test_ort_device_model(model: BaseDeployModel):
-    return device_model_tester(model, {"runtime": "TRT", "version": "9.2"})
+    return device_model_tester(model, {"runtime": "TRT"})

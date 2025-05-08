@@ -26,9 +26,9 @@ from modelopt.torch.opt.mode import (
     ConvertEntrypoint,
     ConvertReturnType,
     MetadataDict,
+    ModeDescriptor,
     RestoreEntrypoint,
     UpdateEntrypoint,
-    _ModeDescriptor,
     _ModeRegistryCls,
 )
 from modelopt.torch.opt.searcher import BaseSearcher
@@ -102,7 +102,7 @@ def restore_export_sparse(
 
 
 @SparsityModeRegistry.register_mode
-class SparseMagnitudeModeDescriptor(_ModeDescriptor):
+class SparseMagnitudeModeDescriptor(ModeDescriptor):
     """Class to define and describe magnitude-based sparsification."""
 
     @property
@@ -172,7 +172,7 @@ class SparseGPTModeDescriptor(SparseMagnitudeModeDescriptor):
 
 
 @SparsityModeRegistry.register_mode
-class ExportSparseModeDescriptor(_ModeDescriptor):
+class ExportSparseModeDescriptor(ModeDescriptor):
     """Class to describe the ``"export_sparse"`` mode.
 
     The properties of this mode can be inspected via the source code.

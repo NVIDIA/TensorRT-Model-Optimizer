@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import json
-import sys
 from contextlib import nullcontext
 
 import numpy as np
@@ -26,7 +25,6 @@ import torch.nn as nn
 from _test_utils.torch_model.deploy_models import BaseDeployModel, get_deploy_models
 from _test_utils.torch_model.vision_models import get_tiny_resnet_and_input
 from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
-from packaging.version import Version
 
 from modelopt.onnx.utils import (
     get_batch_size_from_bytes,
@@ -52,10 +50,6 @@ deploy_benchmark_dynamo = get_deploy_models(dynamic_control_flow=False)
 
 @pytest.mark.parametrize(
     "model", deploy_benchmark_dynamo.values(), ids=deploy_benchmark_dynamo.keys()
-)
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12) and Version(torch.__version__) < Version("2.4"),
-    reason="torch.compile is not supported for Python 3.12+ with torch < 2.4",
 )
 def test_onnx_dynamo_export(model: BaseDeployModel):
     # try it for all potential numeric types

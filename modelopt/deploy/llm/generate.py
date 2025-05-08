@@ -88,7 +88,9 @@ class LLM(TRT_LLM):
         )
 
     def _build_torch_llm_from_config(self, checkpoint_dir, tokenizer, tp, trust_remote_code):
-        pytorch_config = PyTorchConfig(use_cuda_graph=True)
+        pytorch_config = PyTorchConfig(
+            use_cuda_graph=True, cuda_graph_padding_enabled=True, enable_overlap_scheduler=True
+        )
 
         kwargs = {}
         if tokenizer is not None:

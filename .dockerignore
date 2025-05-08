@@ -41,8 +41,9 @@ docs/source/reference/generated
 env/
 venv/
 
-# mypy
+# Linters
 **/.mypy_cache
+**/.ruff_cache
 
 # Vscode
 .vscode/*
@@ -62,11 +63,6 @@ venv/
 **.safetensors
 **.bin
 **.pkl
+**.pickle
 **.tar.gz
 **.nemo
-
-# Ignore temporary files created by tox
-pyproject.toml.bak
-
-# Ignore git clones for tests
-medusa-vicuna-7b-v1.3/

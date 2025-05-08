@@ -123,16 +123,16 @@ def infer_types_shapes(graph: gs.Graph, all_tensor_info: Dict) -> None:
 def load_onnx_model(
     onnx_path: str,
     trt_plugins: Optional[str] = None,
-    calibrations_shapes: str = None,
+    override_shapes: str = None,
     use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = None,
-) -> tuple[onnx.onnx_pb.ModelProto, bool, list[str], str]:
+) -> tuple[onnx.ModelProto, bool, list[str], str]:
     """Load ONNX model. If 'tensorrt' is installed, check if the model has custom ops and ensure it's supported by ORT.
 
     Args:
         onnx_path: Path to the input ONNX model.
         trt_plugins: Paths to custom TensorRT plugins.
-        calibrations_shapes: Static shapes for graph inputs.
+        override_shapes: Override model input shapes with static shapes.
         use_external_data_format: If True, separate data path will be used to store the weights of the quantized model.
         intermediate_generated_files: List of paths of intermediate ONNX files, generated during quantization.
 
@@ -148,19 +148,19 @@ def load_onnx_model(
     # Load the model and weights
     onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
 
-    # If inputs are dynamic and calibration shapes are given, set them as static
+    # If inputs are dynamic and override shapes are given, set them as static
     dynamic_inputs = get_dynamic_graph_inputs(onnx_model)
     onnx_path_static_shapes = None
     if len(dynamic_inputs) > 0:
         input_names = [inp.name for inp in dynamic_inputs]
         logging.info(f"Model has dynamic inputs: {input_names}!")
 
-        if calibrations_shapes:
-            calibration_shapes_arr = parse_shapes_spec(calibrations_shapes)
+        if override_shapes:
+            override_shapes_arr = parse_shapes_spec(override_shapes)
             for graph_input in onnx_model.graph.input:
                 if graph_input.name not in input_names:
                     continue
-                inp_shapes = calibration_shapes_arr[graph_input.name]
+                inp_shapes = override_shapes_arr[graph_input.name]
                 logging.info(f" Setting '{graph_input.name}' shape to {inp_shapes}!")
                 for idx, (d, s) in enumerate(
                     zip(graph_input.type.tensor_type.shape.dim, inp_shapes)

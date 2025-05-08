@@ -38,11 +38,13 @@ from modelopt.onnx.quantization.graph_utils import (
     get_resize_scales,
     get_tensor_producer_nodes,
     insert_fp8_mha_casts,
+    remove_output_initializers,
     remove_partial_input_qdq,
     replace_resize_scales,
 )
 from modelopt.onnx.quantization.ort_patching import _quantize_static as quantize_static
 from modelopt.onnx.quantization.ort_utils import configure_ort
+from modelopt.onnx.quantization.qdq_utils import has_qdq_nodes
 
 
 def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
@@ -62,6 +64,14 @@ def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
     for node in graph.nodes:
         if node.op == "Conv":
             weight = node.inputs[1]
+
+            # If weight.shape is None, it means the weight is not a constant tensor.
+            # Skip the convs with non-constant weights.
+            if weight.shape is None:
+                logging.info(f"Skipped quantizing conv: {node.name} due to non-constant weight.")
+                unsupported_conv_nodes.append(node.name)
+                continue
+
             assert 3 <= len(weight.shape) <= 5, (
                 f"Invalid weight shape {weight.shape}. Only 1D, 2D, and 3D convolutions are supported."
             )
@@ -85,7 +95,7 @@ def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
     return unsupported_conv_nodes
 
 
-def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.onnx_pb.ModelProto:
+def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.ModelProto:
     """Converts the INT8 quantized model to FP8 quantized model.
 
     Note. This conversion works only for max calibrated INT8 models.
@@ -112,7 +122,7 @@ def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.onnx_pb.ModelProt
         dtype = onnx.helper.tensor_dtype_to_np_dtype(scale.data_type)
         return numpy_helper.from_array(np_fp8_scale.astype(dtype), scale_name)
 
-    def _convert(node: onnx.onnx_ml_pb2.NodeProto):
+    def _convert(node: onnx.NodeProto):
         if verbose:
             logging.info(f"Processing {node.name}")
 
@@ -155,7 +165,7 @@ def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.onnx_pb.ModelProt
     return onnx_model
 
 
-def upgrade_opset_21(onnx_model: onnx.onnx_pb.ModelProto) -> onnx.onnx_pb.ModelProto:
+def upgrade_opset_21(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     """Modifies the ONNX graph such that it follows the opset 21 requirements.
 
     This is necessary for FP8+FP16 quantization since FP8 QuantizeLinear/DequantizeLinear ops do not support FP16
@@ -198,15 +208,15 @@ def quantize(
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
     nodes_to_exclude: list[str] = None,
-    use_external_data_format: bool = True,
+    use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = [],
     verbose: bool = False,
     trt_extra_plugin_lib_paths: str = None,
     high_precision_dtype: str = "fp16",
     mha_accumulation_dtype: str = "fp16",
-    passes: list[str] = None,
+    passes: list[str] = ["concat_elimination"],
     **kwargs,
-) -> onnx.onnx_pb.ModelProto:
+) -> onnx.ModelProto:
     """Applies FP8 GEMM only quantization to an ONNX file.
 
     Currently, ['Conv', 'Gemm', 'MatMul'] quantization is supported.
@@ -219,6 +229,11 @@ def quantize(
     onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
     graph = gs.import_onnx(onnx_model)
     graph.toposort()
+
+    # If the model already has QDQ nodes, skip the quantization process
+    if has_qdq_nodes(onnx_model):
+        logging.info("Model already has QDQ nodes, skipping quantization.")
+        return onnx_model
 
     # The quantizable op types for FP8 are limited to Conv, Gemm, and Matmul
     fp8_supported_op_types = ["Gemm", "MatMul", "Conv"]
@@ -304,6 +319,7 @@ def quantize(
         # We need to convert float to float16 so as to speed up layers like LayerNorm or GroupNorm.
         logging.info("Converting float tensors to float16")
         graph = gs.import_onnx(onnx_model)
+        remove_output_initializers(graph, onnx_model.graph.initializer)
         convert_fp16_io(graph)
         onnx_model = gs.export_onnx(graph)
 

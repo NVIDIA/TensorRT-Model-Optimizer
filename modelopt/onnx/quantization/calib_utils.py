@@ -102,9 +102,7 @@ class CalibrationDataProvider(CalibrationDataReader):
 class RandomDataProvider(CalibrationDataReader):
     """Calibration data reader class with random data provider."""
 
-    def __init__(
-        self, onnx_model: Union[str, onnx.onnx_pb.ModelProto], calibration_shapes: str = None
-    ):
+    def __init__(self, onnx_model: Union[str, onnx.ModelProto], calibration_shapes: str = None):
         """Initializes the data reader class with random calibration data."""
         if isinstance(onnx_model, str):
             onnx_path = onnx_model

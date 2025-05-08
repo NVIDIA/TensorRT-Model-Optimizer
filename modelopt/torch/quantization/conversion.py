@@ -22,7 +22,7 @@ from typing import Any, Callable, Union
 import torch.nn as nn
 
 from modelopt.torch.opt.conversion import ApplyModeError, ModelLikeModule, ModeloptStateManager
-from modelopt.torch.opt.dynamic import DynamicModule
+from modelopt.torch.opt.dynamic import _DMRegistryCls
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 from modelopt.torch.utils import get_unwrapped_name
 
@@ -32,8 +32,14 @@ from .config import (
     QuantizerAttributeConfig,
     _QuantizeExportConfig,
 )
-from .nn import QuantLinearConvBase, QuantModuleRegistry, SequentialQuantizer, TensorQuantizer
-from .utils import is_quantized, is_quantized_layer_with_weight
+from .nn import (
+    QuantModule,
+    QuantModuleRegistry,
+    SequentialQuantizer,
+    SVDQuantLinear,
+    TensorQuantizer,
+)
+from .utils import is_quantized, is_quantized_linear
 
 __all__ = [
     "replace_quant_module",
@@ -45,7 +51,7 @@ __all__ = [
 ]
 
 
-def convert_to_quantized_model(model: nn.Module, config: QuantizeConfig) -> ConvertReturnType:
+def convert_to_quantized_model(model: ModelLikeModule, config: QuantizeConfig) -> ConvertReturnType:
     """Convert the model to a quantized one as per `config`."""
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
@@ -53,25 +59,53 @@ def convert_to_quantized_model(model: nn.Module, config: QuantizeConfig) -> Conv
     replace_quant_module(model, version=ModeloptStateManager(model).state_version)
     set_quantizer_by_cfg(model, config["quant_cfg"])
 
-    metadata = {"quantizer_state": quantizer_state(model)}
+    metadata = {}
+    update_quantize_metadata(model, config, metadata)
+
+    return model, metadata
+
+
+def convert_to_quantized_model_svdquant(
+    model: ModelLikeModule, config: QuantizeConfig
+) -> ConvertReturnType:
+    """Convert the model to a quantized one as per `config`."""
+    # initialize the true module if necessary
+    model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
+
+    create_and_replace_svdquant_linear_on_the_fly(model)
+    set_quantizer_by_cfg(model, config["quant_cfg"])
+
+    metadata = {}
+    update_quantize_metadata(model, config, metadata)
 
     return model, metadata
 
 
 def restore_quantized_model(
-    model: nn.Module, config: QuantizeConfig, metadata: MetadataDict
+    model: ModelLikeModule, config: QuantizeConfig, metadata: MetadataDict
 ) -> nn.Module:
-    """Restores the quantizer states from the given state dict."""
+    """Insert quantizers to the model and restore the quantizer states from the given state dict."""
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
     assert not is_quantized(model), "Model must not be quantized!"
 
-    quantizer_state_dict = metadata["quantizer_state"]
-
     replace_quant_module(model, version=ModeloptStateManager(model).state_version)
-    set_quantizer_by_cfg(model, config["quant_cfg"])
+    set_quantizer_by_cfg(model, config["quant_cfg"] if "quant_cfg" in config else {})
 
+    return restore_quantizer_state(model, config, metadata)
+
+
+def restore_quantizer_state(model: nn.Module, config: QuantizeConfig, metadata: MetadataDict):
+    """Restore the quantizer states from the given state dict."""
+    if "quantizer_state" not in metadata:
+        # A temporary soln for MCore checkpointing
+        # MCore checkpointing assumes that only one `quantizer_state` is present in the metadata
+        # However, metadata for various modes such as `quantize`, `max_calibrate`, etc. have
+        # `quantizer_state` in its metadata
+        # TODO: Fix MCore checkpointing
+        return
+    quantizer_state_dict = metadata["quantizer_state"]
     unmatched_keys = quantizer_state_dict.keys() - quantizer_state(model).keys()
     extra_keys = quantizer_state(model).keys() - quantizer_state_dict.keys()
 
@@ -82,20 +116,33 @@ def restore_quantized_model(
 
     for name, module in model.named_modules():
         if isinstance(module, TensorQuantizer):
-            module.set_from_modelopt_state(quantizer_state_dict[name], name)
+            module.set_from_modelopt_state(quantizer_state_dict[name])
 
     for name, module in model.named_modules():
-        if is_quantized_layer_with_weight(module):
-            with SequentialQuantizer.replace_sequential_quantizer_with_single_quantizer(module):
-                QuantLinearConvBase.sanitize_dummy_weight(module)
-            # Disable fake_quant for real quantization because we need to calibrate the model
-            with set_quantizer_by_cfg_context(model, {"*weight_quantizer": {"fake_quant": True}}):
-                QuantLinearConvBase.initialize_quantizer_with_dummy_states(module)
-            with SequentialQuantizer.replace_sequential_quantizer_with_single_quantizer(module):
-                QuantLinearConvBase.initialize_real_qtensor_with_dummy_weight(module)
-        if isinstance(module, TensorQuantizer):
-            module.clean_up_after_set_from_modelopt_state(name)
+        if isinstance(module, QuantModule):
+            module.modelopt_post_restore(name)
 
+    return model
+
+
+SVDQuantModuleRegistry = _DMRegistryCls("SVDQuant")
+
+
+def create_and_replace_svdquant_linear_on_the_fly(model):
+    for name, module in model.named_modules():
+        if is_quantized_linear(module) and type(module) not in SVDQuantModuleRegistry:
+            SVDQuantModuleRegistry.register({type(module): module.__class__.__name__})(
+                SVDQuantLinear
+            )
+    print("Replacing instances of QuantLinear with SVDQuantLinear.")
+    _replace_quant_module(
+        model, version=ModeloptStateManager(model).state_version, registry=SVDQuantModuleRegistry
+    )
+
+
+def restore_svdquant_model(model: nn.Module, config: QuantizeConfig, metadata: MetadataDict):
+    """Restore the svdquant states from the given state dict."""
+    create_and_replace_svdquant_linear_on_the_fly(model)
     return model
 
 
@@ -115,33 +162,33 @@ def quantizer_state(model: nn.Module) -> dict[str, Any]:
     }
 
 
-def replace_quant_module(model: nn.Module, version=None):
+def replace_quant_module(model: nn.Module, version=None, registry=QuantModuleRegistry):
     """Recursively replace the module with quantized module."""
     from .plugins.custom import register_custom_model_plugins_on_the_fly
 
     assert not is_quantized(model), "Model must not be quantized!"
-
     register_custom_model_plugins_on_the_fly(model)
 
-    # If the model has a corresponding quantization module, replace it with it's quantized module
-    if type(model) in QuantModuleRegistry:
-        model = QuantModuleRegistry.convert(model)
+    if type(model) in registry:
+        model = registry.convert(model)
 
-    def _replace_quant_module(model):
-        for name, module in model.named_children():
-            if type(module) in QuantModuleRegistry:
-                setattr(model, name, QuantModuleRegistry.convert(module))
-                # Setting version for MCore checkpointing
-                if hasattr(module, "_modelopt_load_version"):
-                    module._modelopt_load_version = version
-
-            # Continue replacing in case of nested quantization as well
-            _replace_quant_module(getattr(model, name))
-
-    _replace_quant_module(model)
+    _replace_quant_module(model, version=version, registry=registry)
 
     replaced_modules = sum(isinstance(m, TensorQuantizer) for _, m in model.named_modules())
     print(f"Inserted {replaced_modules} quantizers")
+
+
+def _replace_quant_module(model: nn.Module, version=None, registry=QuantModuleRegistry):
+    """Helper function of replace_quant_module."""
+    for name, child in model.named_children():
+        if type(child) in registry:
+            # REPLACE on the parent (model), not on child
+            quantized = registry.convert(child)
+            setattr(model, name, quantized)
+            quantized.mopt_ckpt_versn = version
+
+        # now recurse into whichever module is now at `model.name`
+        _replace_quant_module(getattr(model, name), version=version, registry=registry)
 
 
 def set_quantizer_by_cfg(quant_model: nn.Module, quant_cfg: Union[QuantizeQuantCfgType, dict]):
@@ -264,7 +311,7 @@ def set_quantizer_by_cfg_context(
     yield
     for name, module in quant_model.named_modules():
         if isinstance(module, TensorQuantizer):
-            module.set_from_modelopt_state(original_attributes[name], name)
+            module.set_from_modelopt_state(original_attributes[name], properties_only=True)
 
 
 def register(original_cls: nn.Module, quantized_cls: nn.Module):
@@ -308,11 +355,7 @@ def register(original_cls: nn.Module, quantized_cls: nn.Module):
         "Quantized class must have a _setup method which initializes various quantizers."
     )
 
-    quantized_dm_cls = type(
-        quantized_cls.__name__, (quantized_cls, DynamicModule, original_cls), {}
-    )
-
-    QuantModuleRegistry.register({original_cls: original_cls.__name__})(quantized_dm_cls)
+    QuantModuleRegistry.register({original_cls: original_cls.__name__})(quantized_cls)
 
 
 def unregister(original_cls: nn.Module):

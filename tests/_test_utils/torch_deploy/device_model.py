@@ -26,7 +26,7 @@ from modelopt.torch.utils import flatten_tree, standardize_model_args
 
 
 def device_model_tester(model: BaseDeployModel, deployment: dict[str, str]):
-    deployment = {"runtime": "ORT", "version": "1.16", "verbose": "false"}
+    deployment = {"runtime": "ORT", "verbose": "false"}
 
     # Helper
     def _compare(out_torch, out_local):

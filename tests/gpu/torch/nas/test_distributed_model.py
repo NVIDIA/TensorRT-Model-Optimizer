@@ -24,7 +24,6 @@ from _test_utils.torch_dist.dist_utils import (
     synchronize_state_dict,
 )
 from _test_utils.torch_dist.fsdp_test import run_fsdp2_test, run_fsdp_test
-from packaging.version import Version
 from torch import nn
 from torchvision.models.resnet import Bottleneck
 
@@ -85,9 +84,6 @@ def test_fsdp(device_count, use_orig_params):
     )
 
 
-@pytest.mark.skipif(
-    Version(torch.__version__) < Version("2.4"), reason="FSDP2 requires torch_version >= 2.4"
-)
 @pytest.mark.parametrize("device_count", get_device_counts())
 def test_fsdp2(device_count):
     # run test

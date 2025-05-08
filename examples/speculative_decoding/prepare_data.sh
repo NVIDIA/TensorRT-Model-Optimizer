@@ -18,6 +18,9 @@ set -e
 set -x
 set -o pipefail
 
+# Initialize system_prompt as empty
+SYSTEM_PROMPT=""
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --data*)
@@ -32,6 +35,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       MAX_TOKEN="${1#*=}"
       ;;
+    --system_prompt*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      SYSTEM_PROMPT="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
@@ -43,6 +50,12 @@ done
 OUTPUT_DIR="$(dirname "${OUTPUT_PATH}")"
 mkdir -p $OUTPUT_DIR
 
+# Base command without system prompt
 CMD="python vllm_generate.py --data_path $DATA --output_path $OUTPUT_PATH --num_threads 8 --max_tokens $MAX_TOKEN --temperature 0.0 --chat"
+
+# Add system prompt to command if it's provided
+if [ ! -z "$SYSTEM_PROMPT" ]; then
+    CMD="$CMD --system_prompt \"$SYSTEM_PROMPT\""
+fi
 
 sh -c "$CMD"

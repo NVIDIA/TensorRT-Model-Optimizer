@@ -20,16 +20,19 @@ import inspect
 import json
 import os
 import shutil
+import tempfile
+from contextlib import nullcontext
 from typing import Any, Union
 
 import onnx
 import torch
 import torch.nn as nn
 from onnx import ModelProto
+from onnxconverter_common import convert_float_to_float16
 from packaging.version import Version
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
-from modelopt.onnx.quantization.qdq_utils import qdq_to_dq
+from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq, qdq_to_dq, quantize_weights_to_mxfp8
 from modelopt.onnx.utils import (
     get_input_names,
     get_input_shapes,
@@ -37,6 +40,7 @@ from modelopt.onnx.utils import (
     get_output_names,
     get_output_shapes,
 )
+from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
 from modelopt.torch.utils import flatten_tree, standardize_named_model_args
 from modelopt.torch.utils._pytree import TreeSpec
 
@@ -48,7 +52,7 @@ ModelType = Any
 ValueInfoType = Any
 
 # a few constants...
-DEFAULT_ONNX_OPSET = 13
+DEFAULT_ONNX_OPSET = 20
 ONNX_EXPORT_OUT_PREFIX = "out"
 TWO_GB = 2 * 1024 * 1024 * 1024
 
@@ -72,7 +76,6 @@ class OnnxBytes:
         self.onnx_load_path = os.path.abspath(onnx_load_path)
         self.onnx_model = {}
         self.model_name = ""
-        print("Loading onnx model from path:", self.onnx_load_path)
         onnx_model = onnx.load(self.onnx_load_path, load_external_data=False)
 
         # Check for external data
@@ -98,15 +101,15 @@ class OnnxBytes:
                 self.onnx_model[onnx_model_file] = f.read()
             self.model_name = onnx_model_file.replace(".onnx", "")
 
-    def write_to_disk(self, onnx_save_path: str) -> None:
-        """Writes the onnx model to the specified path."""
-        if os.path.exists(onnx_save_path):
-            print(f"Removing existing directory: {onnx_save_path}")
-            shutil.rmtree(onnx_save_path)
-        os.makedirs(onnx_save_path)
-        print("Writing onnx model to path:", onnx_save_path)
+    def write_to_disk(self, onnx_save_dir: str) -> None:
+        """Writes the onnx model into the specified directory."""
+        if os.path.exists(onnx_save_dir):
+            print(f"Removing existing directory: {onnx_save_dir}")
+            shutil.rmtree(onnx_save_dir)
+        os.makedirs(onnx_save_dir)
+        print("Writing onnx model to path:", onnx_save_dir)
         for onnx_model_file, onnx_model_bytes in self.onnx_model.items():
-            with open(os.path.join(onnx_save_path, onnx_model_file), "wb") as f:
+            with open(os.path.join(onnx_save_dir, onnx_model_file), "wb") as f:
                 f.write(onnx_model_bytes)
 
     def to_bytes(self) -> bytes:
@@ -278,6 +281,28 @@ def split_args_kwargs(args_tuple):
     return pos_args, kw_args
 
 
+def is_fp4_quantized(model: nn.Module) -> bool:
+    """Check if the model is quantized in NVFP4 mode."""
+    for _, module in model.named_modules():
+        if hasattr(module, "input_quantizer"):
+            if module.input_quantizer.block_sizes and module.input_quantizer.block_sizes.get(
+                "scale_bits", None
+            ) == (4, 3):
+                return True
+    return False
+
+
+def is_mxfp8_quantized(model: nn.Module) -> bool:
+    """Check if the model is quantized in MXFP8 mode."""
+    for _, module in model.named_modules():
+        if hasattr(module, "input_quantizer"):
+            if module.input_quantizer.block_sizes and module.input_quantizer.block_sizes.get(
+                "scale_bits", None
+            ) == (8, 0):
+                return True
+    return False
+
+
 def get_onnx_bytes_and_metadata(
     model: nn.Module,
     dummy_input: Union[Any, tuple],
@@ -287,6 +312,8 @@ def get_onnx_bytes_and_metadata(
     dynamo_export: bool = False,
     onnx_opset: int = DEFAULT_ONNX_OPSET,
     dq_only: bool = False,
+    weights_dtype: str = "float32",
+    use_autocast: bool = False,
 ) -> tuple[bytes, ModelMetadata]:
     """Get onnx model in bytes from input pytorch model together with the input/output of model.
 
@@ -302,7 +329,9 @@ def get_onnx_bytes_and_metadata(
         dynamo_export: If True, the model is exported using `dynamo=True` in
             `torch.onnx.export <https://pytorch.org/docs/stable/onnx.html#torch.onnx.export>`_.
         onnx_opset: The onnx opset version to use for exporting the model.
-        dq_only: If True, the exported ONNX model is converted to a dq_only model.
+        dq_only: If True, the exported onnx model is converted to a dq_only model.
+        weights_dtype: The dtype of the weights in the onnx model.
+        use_autocast: If True, the model is exported using torch.autocast().
 
     Returns:
         bytes: Onnx model in bytes.
@@ -313,6 +342,10 @@ def get_onnx_bytes_and_metadata(
     """
     if not isinstance(model, nn.Module):
         raise ValueError("Only PyTorch model compilation is supported.")
+
+    assert weights_dtype in ["float32", "float16"], (
+        "weights_dtype must be one of float32, or float16"
+    )
 
     # unwrap DDP and DP models
     if isinstance(model, (DataParallel, DistributedDataParallel)):
@@ -340,28 +373,16 @@ def get_onnx_bytes_and_metadata(
     input_none_names = list(set(tree_spec_input.names) - set(input_names))
 
     # Get output once (we export in inference mode - so also using inference mode here!)
-    with torch.inference_mode():
-        # We enable mixed precision for cases where some outputs may have a different data type than others
-        with torch.autocast("cuda"):
-            output = model(*named_args.values())
+    autocast = torch.autocast("cuda") if use_autocast else nullcontext()
+
+    with torch.inference_mode(), autocast:
+        output = model(*named_args.values())
 
     # Get output tree spec
     flat_output, tree_spec_output = flatten_tree(output, prefix=ONNX_EXPORT_OUT_PREFIX)
 
     # output names are the names of the flattened input tree spec but without None values
     output_names = [k for k, v in zip(tree_spec_output.names, flat_output) if v is not None]
-
-    model_name = model.__class__.__name__
-    onnx_build_folder = os.path.abspath("./build/onnx/")
-    onnx_path = os.path.join(onnx_build_folder, model_name)
-    os.makedirs(onnx_path, exist_ok=True)
-    onnx_save_path = os.path.join(onnx_path, f"{model_name}.onnx")
-
-    # If the onnx_load path is specified by the user or if an onnx model exists at the default path
-    # then the model is loaded from this path and returned along with the metadata
-    if os.path.exists(onnx_save_path) and onnx_load_path == "":
-        print(f"Overriding onnx load path to {onnx_save_path}")
-        onnx_load_path = onnx_save_path
 
     if onnx_load_path != "":
         onnx_model = OnnxBytes(onnx_load_path)
@@ -373,7 +394,19 @@ def get_onnx_bytes_and_metadata(
 
     # Export onnx model from pytorch model
     # As the maximum size of protobuf is 2GB, we cannot use io.BytesIO() buffer during export.
-    with torch.inference_mode():
+    model_name = model.__class__.__name__
+    onnx_build_folder = os.path.join(tempfile.gettempdir(), "modelopt_build/onnx/")
+    onnx_path = os.path.join(onnx_build_folder, model_name)
+    os.makedirs(onnx_path, exist_ok=True)
+    onnx_save_path = os.path.join(onnx_path, f"{model_name}.onnx")
+
+    # Configure quantizers if the model is quantized in NVFP4 or MXFP8 mode
+    quantizer_context = (
+        configure_linear_module_onnx_quantizers(model)
+        if is_fp4_quantized(model) or is_mxfp8_quantized(model)
+        else nullcontext()
+    )
+    with torch.inference_mode(), autocast, quantizer_context:
         if not dynamo_export or Version(torch.__version__) >= Version("2.6"):
             torch.onnx.export(
                 model,
@@ -410,11 +443,23 @@ def get_onnx_bytes_and_metadata(
         tree_spec_input, tree_spec_output, input_none_names, onnx_opt_graph, model
     )
 
-    # Change the ONNX IR version to 9 to be compatible with ONNXRuntime
+    # Change the onnx IR version to 9 to be compatible with ONNXRuntime
     onnx_opt_graph.ir_version = 9
+
+    # Convert dummy TRT_FP4QDQ nodes to 2DQ format if the model is quantized in FP4 mode
+    # Or convert weights to MXFP8 format if the model is quantized in MXFP8 mode
+    if is_fp4_quantized(model):
+        onnx_opt_graph = fp4qdq_to_2dq(onnx_opt_graph)
+    elif is_mxfp8_quantized(model):
+        onnx_opt_graph = quantize_weights_to_mxfp8(onnx_opt_graph)
 
     if dq_only:
         onnx_opt_graph = qdq_to_dq(onnx_opt_graph)
+
+    if weights_dtype == "float16":
+        onnx_opt_graph = convert_float_to_float16(
+            onnx_opt_graph, keep_io_types=False, disable_shape_infer=True
+        )
 
     # If the onnx model contains external data store the external tensors in one file and save the onnx model
     if has_external_data(onnx_save_path):

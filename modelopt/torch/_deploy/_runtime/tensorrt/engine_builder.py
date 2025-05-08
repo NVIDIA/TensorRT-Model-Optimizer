@@ -16,8 +16,9 @@
 import logging
 import os
 import subprocess  # nosec
-from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Optional
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory, gettempdir
+from typing import Optional, Union
 
 from ..._runtime.common import read_bytes, timeit, write_bytes, write_string
 from ..._runtime.tensorrt.layerwise_profiling import process_layerwise_result
@@ -150,6 +151,7 @@ def build_engine(
     dynamic_shapes: dict = None,
     plugin_config: dict = None,
     builder_optimization_level: str = "3",
+    output_dir: Union[str, Path, None] = None,
     draw_engine: bool = False,
     verbose: bool = False,
 ) -> tuple[Optional[bytes], bytes, Optional[bytes]]:
@@ -197,19 +199,22 @@ def build_engine(
         The generated TensorRT engine graph as svg.
     """
     with TemporaryDirectory() as working_dir:
-        onnx_path = os.path.join(working_dir, "onnx")
-        calib_cache_path = os.path.join(working_dir, "calib_cache")
+        tmp_onnx_dir = os.path.join(working_dir, "onnx")
+        onnx_bytes.write_to_disk(tmp_onnx_dir)
+        onnx_path = os.path.join(tmp_onnx_dir, f"{onnx_bytes.model_name}.onnx")
 
-        onnx_bytes.write_to_disk(onnx_path)
+        # Save engine and trtexec artifacts in modelopt_build directory or in the output_dir if it is provided
+        if output_dir is None:
+            output_dir = os.path.join(gettempdir(), "modelopt_build/engine/")
+        else:
+            output_dir = Path(output_dir)
+        calib_cache_path = os.path.join(output_dir, "calib_cache")
         engine_path = os.path.join(
-            working_dir, f"{onnx_bytes.model_name}/{onnx_bytes.model_name}.engine"
+            output_dir, f"{onnx_bytes.model_name}/{onnx_bytes.model_name}.engine"
         )
         # TODO: Enable timing cache
 
-        cmd = [
-            TRTEXEC_PATH,
-            "--onnx=" + onnx_path + f"/{onnx_bytes.model_name}.onnx",
-        ]
+        cmd = [TRTEXEC_PATH, "--onnx=" + onnx_path]
         cmd.extend(TRT_MODE_FLAGS[trt_mode])
         if trt_mode == TRTMode.INT8 and calib_cache:
             write_string(calib_cache, calib_cache_path)

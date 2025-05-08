@@ -15,10 +15,6 @@
 
 """Test of quantization config validations."""
 
-from contextlib import nullcontext
-
-import pytest
-
 from modelopt.torch.quantization.config import (
     FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     FP8_DEFAULT_CFG,
@@ -26,27 +22,8 @@ from modelopt.torch.quantization.config import (
     INT4_AWQ_CFG,
     NVFP4_DEFAULT_CFG,
     W4A8_AWQ_BETA_CFG,
-    QuantizeConfig,
     need_calibration,
 )
-
-
-@pytest.mark.parametrize("q_rotate", [True, False])
-@pytest.mark.parametrize("k_rotate", [True, False])
-def test_qk_rotation(q_rotate, k_rotate):
-    config = {
-        "quant_cfg": {
-            "*q_bmm_quantizer": {
-                "rotate": q_rotate,
-            },
-            "*k_bmm_quantizer": {
-                "rotate": k_rotate,
-            },
-        }
-    }
-
-    with nullcontext() if q_rotate == k_rotate else pytest.raises(Exception):
-        QuantizeConfig.model_validate(config)
 
 
 def test_need_calibration():

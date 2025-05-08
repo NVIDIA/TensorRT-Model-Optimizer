@@ -17,6 +17,8 @@ import os
 import sys
 
 import torch
+from accelerate import infer_auto_device_map, init_empty_weights
+from accelerate.utils import get_max_memory
 from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
@@ -25,10 +27,10 @@ SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
 
 
 def is_speculative(hf_config):
-    for name in SPECULATIVE_MODEL_LIST:
-        if name in hf_config.architectures[0]:
-            return True
-    return False
+    """Check if the model architecture is a speculative model."""
+    return hf_config.architectures and any(
+        name in hf_config.architectures[0] for name in SPECULATIVE_MODEL_LIST
+    )
 
 
 def get_mode_type_from_engine_dir(engine_dir_str):
@@ -119,7 +121,13 @@ def get_dtype(dtype):
     return dtype
 
 
-def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8, trust_remote_code=False):
+def get_model(
+    ckpt_path,
+    device="cuda",
+    gpu_mem_percentage=0.8,
+    trust_remote_code=False,
+    use_seq_device_map=False,
+):
     print(f"Initializing model from {ckpt_path}")
 
     device_map = "auto"
@@ -142,6 +150,13 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8, trust_remote_cod
         model = hf_vila.llm
     else:
         hf_config = AutoConfig.from_pretrained(ckpt_path, trust_remote_code=trust_remote_code)
+
+        if use_seq_device_map:
+            device_map = "sequential"
+            # If we use sequential, set max_memory limit to ensure that the model does not occupy the full GPU
+            max_memory = get_max_memory()
+            max_memory = {key: value * gpu_mem_percentage for key, value in max_memory.items()}
+            model_kwargs["max_memory"] = max_memory
 
         if is_speculative(hf_config):
             model = AutoModelForCausalLM.from_pretrained(
@@ -198,11 +213,7 @@ def get_model(ckpt_path, device="cuda", gpu_mem_percentage=0.8, trust_remote_cod
                 **model_kwargs,
                 trust_remote_code=trust_remote_code,
             )
-
         else:
-            from accelerate import infer_auto_device_map, init_empty_weights
-            from accelerate.utils import get_max_memory
-
             with init_empty_weights():
                 # When computing the device_map, assuming half precision by default,
                 # unless specified by the hf_config.

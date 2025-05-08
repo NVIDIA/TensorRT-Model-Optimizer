@@ -15,8 +15,11 @@
 
 """Support quantization for huggingface layers."""
 
+import inspect
 import warnings
 from contextlib import contextmanager
+from functools import partial
+from types import ModuleType
 
 import torch
 import torch.nn as nn
@@ -25,11 +28,140 @@ import transformers
 from modelopt.core.torch.quantization.algorithms import AutoQuantizeSearcher
 from modelopt.torch.opt.dynamic import DynamicModule
 
-from ..nn import QuantModuleRegistry, TensorQuantizer
+from ..conversion import register
+from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import _QuantLinear
-from .attention import register_attention_for_kv_quant, register_hf_attention_for_kv_quant
+from .attention import register_attention_for_kv_quant
 
 __all__ = ["register_hf_attentions_on_the_fly"]
+
+
+class _QuantAttention(QuantModule):
+    """Attention class for KV Cache quantization compatible with new_attention_interface in transformers >= 4.48.0."""
+
+    def _setup(self):
+        self.q_bmm_quantizer = TensorQuantizer()
+        self.k_bmm_quantizer = TensorQuantizer()
+        self.v_bmm_quantizer = TensorQuantizer()
+
+    @staticmethod
+    def _quantized_attention(
+        original_attention_interface, self, query_states, key_states, value_states, *args, **kwargs
+    ):
+        query_states = self.q_bmm_quantizer(query_states)
+        key_states = self.k_bmm_quantizer(key_states)
+        value_states = self.v_bmm_quantizer(value_states)
+        return original_attention_interface(
+            self, query_states, key_states, value_states, *args, **kwargs
+        )
+
+    def forward(self, *args, **kwargs):
+        def _is_eager_attention():
+            if self.config._attn_implementation == "eager":
+                return True
+            if self.config._attn_implementation == "sdpa" and kwargs.get(
+                "output_attentions", False
+            ):
+                return True
+            return False
+
+        # Get the original transformers module before wrapped in any ModelOpt DynamicModule
+        module: ModuleType = inspect.getmodule(self.get_attn_type(self))
+
+        if _is_eager_attention():
+            if not hasattr(module, "eager_attention_forward"):
+                raise AssertionError(
+                    f"Module {module} does not have `eager_attention_forward` to enable KV Cache quantization. "
+                    "Please use a different attention implementation such as `sdpa` by setting "
+                    "`model.config._attn_implementation = 'sdpa'` before quantization."
+                )
+            original_attention_interface = module.eager_attention_forward
+            module.eager_attention_forward = partial(  # type: ignore[attr-defined]
+                self._quantized_attention, original_attention_interface
+            )
+        else:
+            original_attention_interface = module.ALL_ATTENTION_FUNCTIONS[
+                self.config._attn_implementation
+            ]
+            module.ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation] = partial(
+                self._quantized_attention, original_attention_interface
+            )
+
+        outputs = super().forward(*args, **kwargs)
+
+        if _is_eager_attention():
+            module.eager_attention_forward = original_attention_interface  # type: ignore[attr-defined]
+        else:
+            module.ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation] = (
+                original_attention_interface
+            )
+
+        return outputs
+
+    @staticmethod
+    def is_compatible_attention(attn):
+        # The new_attention_interface is only available in transformers >= 4.48.0
+        # In addition, the new attention interface is not available for some models such as T5
+        # Hence lets do a crude check here to see if the attention module is using the new_attention_interface
+        # This is not foolproof but should work for most cases
+        if transformers.__version__ < "4.48.0":
+            return False
+        module = inspect.getmodule(attn)
+        if getattr(module, "ALL_ATTENTION_FUNCTIONS", None) is None:
+            return False
+        return True
+
+    @staticmethod
+    def get_attn_type(attn_module) -> type:
+        # If this is a DynamicModule, it means that the module class has been wrapped by ModelOpt
+        # Hence, we need to get the original class by level=0
+        return (
+            attn_module.get_original_cls_by_level(level=0)
+            if isinstance(attn_module, DynamicModule)
+            else type(attn_module)
+        )
+
+
+def register_hf_attentions_on_the_fly(model):
+    """Find HF Attention modules in the model and register them for KV Cache quantization.
+
+    This function attempts to find child modules ending with "Attention" in the name.
+    If such child modules are not found, or the corresponding class does not contain
+    identifiable attention patterns, the function will not register any new modules.
+    """
+    if not _is_supported_hf_model(model):
+        return
+
+    attention_cls = {}
+    for name, module in model.named_modules():
+        # Only register attention classes that are from Huggingface transformers
+        if type(module).__name__.endswith("Attention"):
+            attention_type = _QuantAttention.get_attn_type(module)
+            # Add modules to be registered only if they arent already registered
+            if QuantModuleRegistry.get(attention_type) is None:
+                if _QuantAttention.is_compatible_attention(attention_type):
+                    # Lets register the attention class for KV Cache quantization
+                    register(attention_type, _QuantAttention)
+                    print(f"Registered {attention_type} for KV Cache quantization")
+                else:
+                    attention_cls[attention_type] = type(module).__name__
+
+    # Check if there is any attention class to register,
+    # this is the case for models that do not use the new_attention_interface
+    # or transformers version < 4.48.0
+    if not attention_cls:
+        return
+
+    # Register the attention class for KV Cache quantization
+    success = any([register_attention_for_kv_quant(cls) for cls in attention_cls])
+    if not success:
+        warnings.warn(
+            f"Could not create a quantized attention class for  {attention_cls} from this model. "
+            "To enable KV Cache quantization, please create a custom quantized attention class for this model and "
+            "register it to ModelOpt using `mtq.register` "
+            "(see https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_pytorch_quantization.html#custom-quantized-module-and-quantizer-placement)"
+        )
+
 
 if transformers.modeling_utils.Conv1D not in QuantModuleRegistry:
     # transformers.modeling_utils.Conv1D used in HF-GPT2 is not a real Conv1D
@@ -42,11 +174,11 @@ if transformers.modeling_utils.Conv1D not in QuantModuleRegistry:
             module.weight = nn.Parameter(module.weight.T.contiguous())
             module.out_features, module.in_features = module.weight.shape
             # We want the forward method of nn.Linear to be called instead of the forward method of Conv1D
-            dyn_cls: DynamicModule = QuantModuleRegistry.get(nn.Linear)
+            dyn_cls: QuantModule = QuantModuleRegistry.get(nn.Linear)
             return dyn_cls.convert(module)
 
 
-class _QuantLlama4TextExperts(DynamicModule):
+class _QuantLlama4TextExperts(QuantModule):
     def _setup(self):
         self.gate_up_proj_input_quantizer = TensorQuantizer()
         self.gate_up_proj_weight_quantizer = TensorQuantizer()
@@ -69,7 +201,7 @@ class _QuantLlama4TextExperts(DynamicModule):
 
 
 # For more information on DbrxExpert, see https://github.com/huggingface/transformers/blob/dcdda532/src/transformers/models/dbrx/modeling_dbrx.py#L756
-class _QuantDbrxExperts(DynamicModule):
+class _QuantDbrxExperts(QuantModule):
     def _setup(self):
         """Modify the DbrxExpert."""
         # No setup is needed for DbrxExpert, we only need to update DbrxExpertGLU
@@ -109,7 +241,7 @@ class _QuantDbrxExperts(DynamicModule):
         return out
 
 
-class _QuantDbrxExpertGLU(DynamicModule):
+class _QuantDbrxExpertGLU(QuantModule):
     def _setup(self):
         """Modify the DbrxExpertGLU by using nn.Linear layers."""
         dtype, device = self.w1.dtype, self.w1.device
@@ -219,49 +351,6 @@ def register_falcon_linears_on_the_fly(model):
         # Create a QuantFalconLinear class on the fly
         if QuantModuleRegistry.get(linear_type) is None:
             QuantModuleRegistry.register({linear_type: linear_type.__name__})(_QuantLinear)
-
-
-def register_hf_attentions_on_the_fly(model):
-    """Find HF Attention modules in the model and register them for KV Cache quantization.
-
-    This function attempts to find child modules ending with "Attention" in the name.
-    If such child modules are not found, or the corresponding class does not contain
-    identifiable attention patterns, the function will not register any new modules.
-    """
-    attention_cls = {}
-    for name, module in model.named_modules():
-        # Only register attention classes that are from Huggingface transformers
-        if type(module).__name__.endswith("Attention"):
-            attention_type = type(module)
-            # Add modules to be registered only if they arent already registered
-            if QuantModuleRegistry.get(attention_type) is None:
-                attention_cls[attention_type] = type(module).__name__
-
-    # Check if the attention class is already registered
-    for cls in list(attention_cls.keys()):
-        if QuantModuleRegistry.get(cls) is not None:
-            print(f"Attention class {cls} already registered")
-            del attention_cls[cls]
-
-    # Check if there is any attention class to register
-    if not attention_cls:
-        print("No module ending with Attention found")
-        return
-
-    if not _is_supported_hf_model(model):
-        return
-
-    # Register the attention class for KV Cache quantization
-    success = any([register_hf_attention_for_kv_quant(cls) for cls in attention_cls])
-    if not success:
-        success = any([register_attention_for_kv_quant(cls) for cls in attention_cls])
-    if not success:
-        warnings.warn(
-            f"Could not create a quantized attention class for  {attention_cls} from this model. "
-            "To enable KV Cache quantization, please create a custom quantized attention class for this model and "
-            "register it to ModelOpt using `mtq.register` "
-            "(see https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_pytorch_quantization.html#custom-quantized-module-and-quantizer-placement)"
-        )
 
 
 def _is_supported_hf_model(model):

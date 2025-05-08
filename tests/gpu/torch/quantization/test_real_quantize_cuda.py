@@ -147,7 +147,7 @@ def test_compress_config(model_cls, quant_config, compress_config):
                 output.sum().backward()
 
     mtq.quantize(model, quant_config, forward_loop)
-    mtq.compress(model, compress_config=compress_config)
+    mtq.compress(model, config={"compress": compress_config})
 
     # Verify compression based on config
     for name, module in model.named_modules():

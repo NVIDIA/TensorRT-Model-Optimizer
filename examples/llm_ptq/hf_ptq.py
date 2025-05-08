@@ -33,6 +33,8 @@ from modelopt.torch.export import (
     export_tensorrt_llm_checkpoint,
     get_model_type,
 )
+from modelopt.torch.quantization.config import need_calibration
+from modelopt.torch.quantization.utils import is_quantized
 from modelopt.torch.utils.dataset_utils import (
     create_forward_loop,
     get_dataset_dataloader,
@@ -54,11 +56,14 @@ QUANT_CFG_CHOICES = {
     "nvfp4": "NVFP4_DEFAULT_CFG",
     "nvfp4_awq": "NVFP4_AWQ_LITE_CFG",
     "fp8_pb_wo": "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
+    "fp8_pc_pt": "FP8_PER_CHANNEL_PER_TOKEN_CFG",
 }
 
 KV_QUANT_CFG_CHOICES = {
+    "none": "none",
     "fp8": "FP8_KV_CFG",
     "nvfp4": "NVFP4_KV_CFG",
+    "nvfp4_affine": "NVFP4_AFFINE_KV_CFG",
 }
 
 mto.enable_huggingface_checkpointing()
@@ -104,6 +109,7 @@ def auto_quantize(
     print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
     if enable_quant_kv_cache:
         kv_cache_quant_cfg = getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
+        kv_cache_quant_cfg.pop("default")  # keep other quantizers from auto_quantize
 
         mtq.set_quantizer_by_cfg(
             model,
@@ -137,7 +143,11 @@ def quantize_model(model, quant_cfg, args, calib_dataloader=None):
     #
     # We also provided a util method to generate the forward_loop with additional error handlings.
 
-    calibrate_loop = create_forward_loop(dataloader=calib_dataloader)
+    use_calibration = args.auto_quantize_bits or need_calibration(quant_cfg)
+
+    if not use_calibration:
+        warnings.warn("Dynamic quantization. Calibration skipped.")
+    calibrate_loop = create_forward_loop(dataloader=calib_dataloader) if use_calibration else None
 
     assert not (args.auto_quantize_bits and args.inference_pipeline_parallel > 1), (
         "Auto Quantization is not supported for pipeline parallel size > 1"
@@ -184,18 +194,26 @@ def main(args):
         )
 
         if not args.auto_quantize_bits:
-            assert args.qformat in [
-                "int4_awq",
-                "fp8",
-                "nvfp4",
-                "nvfp4_awq",
-                "w4a8_awq",
-                "fp8_pb_wo",
-            ] or args.kv_cache_qformat in ["fp8", "nvfp4", "none", ""], (
-                f"Quantization format {args.qformat} not supported for HF export path"
-            )
+            assert (
+                args.qformat
+                in [
+                    "int4_awq",
+                    "fp8",
+                    "nvfp4",
+                    "nvfp4_awq",
+                    "w4a8_awq",
+                    "fp8_pb_wo",
+                ]
+                or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES.keys()
+            ), f"Quantization format {args.qformat} not supported for HF export path"
 
-    model = get_model(args.pyt_ckpt_path, args.device, trust_remote_code=args.trust_remote_code)
+    model = get_model(
+        args.pyt_ckpt_path,
+        args.device,
+        gpu_mem_percentage=args.gpu_max_mem_percentage,
+        trust_remote_code=args.trust_remote_code,
+        use_seq_device_map=args.use_seq_device_map,
+    )
     model_type = get_model_type(model)
 
     device = model.device
@@ -295,7 +313,7 @@ def main(args):
                 max_sample_length = 3000
                 num_mel_bins = model.config.num_mel_bins
                 sample_input_single_batch = (
-                    torch.ones([1, num_mel_bins, max_sample_length], dtype=torch.float32).to(
+                    torch.ones([1, num_mel_bins, max_sample_length], dtype=model.dtype).to(
                         model.device
                     )
                     * 100
@@ -333,6 +351,7 @@ def main(args):
                 batch_size=args.batch_size,
                 num_samples=args.calib_size,
                 device=device,
+                dtype=model.dtype,
             )
         else:
             assert tokenizer is not None and isinstance(
@@ -388,65 +407,69 @@ def main(args):
             if model_type == "gemma" and "int8_sq" in args.qformat:
                 quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
 
-        # Only run single sample for preview
-        input_ids = next(iter(calib_dataloader))[
-            "input_features" if model_type == "whisper" else "input_ids"
-        ][0:1]
-        generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
+        if not is_quantized(model):
+            # Only run single sample for preview
+            input_ids = next(iter(calib_dataloader))[
+                "input_features" if model_type == "whisper" else "input_ids"
+            ][0:1]
+            generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
 
-        model = quantize_model(model, quant_cfg, args, calib_dataloader)
-        if args.compress:
-            mtq.compress(model)
-            # Lets print the quantization summary
-        if args.verbose:
-            mtq.print_quant_summary(model)
+            # quantize the model
+            model = quantize_model(model, quant_cfg, args, calib_dataloader)
+            if args.compress:
+                mtq.compress(model)
+                # Lets print the quantization summary
+            if args.verbose:
+                mtq.print_quant_summary(model)
 
-        # Run some samples
-        torch.cuda.empty_cache()
-        generated_ids_after_ptq = None
-        if model_type != "llama4":
-            generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
-        else:
-            warnings.warn(
-                "Llama4 Maverick generation after quantization has a bug. Skipping generation sample."
-            )
-
-        def input_decode(input_ids):
-            if processor is not None and isinstance(processor, MllamaImageProcessor):
-                return processor.tokenizer.batch_decode(input_ids)
-            elif processor is not None and isinstance(processor, WhisperProcessor):
-                return first_text
-            elif tokenizer is not None:
-                return tokenizer.batch_decode(input_ids)
+            # Run some samples
+            torch.cuda.empty_cache()
+            generated_ids_after_ptq = None
+            if model_type != "llama4":
+                generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
             else:
-                raise ValueError("The processor or tokenizer must be set")
+                warnings.warn(
+                    "Llama4 Maverick generation after quantization has a bug. Skipping generation sample."
+                )
 
-        def output_decode(generated_ids, input_shape):
-            if is_enc_dec(model_type):
-                if processor is not None and isinstance(processor, WhisperProcessor):
-                    return processor.tokenizer.batch_decode(
-                        generated_ids, skip_special_tokens=True
-                    )[0]
+            def input_decode(input_ids):
+                if processor is not None and isinstance(processor, MllamaImageProcessor):
+                    return processor.tokenizer.batch_decode(input_ids)
+                elif processor is not None and isinstance(processor, WhisperProcessor):
+                    return first_text
                 elif tokenizer is not None:
-                    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-            elif processor is not None and isinstance(processor, MllamaImageProcessor):
-                return processor.tokenizer.batch_decode(generated_ids[:, input_shape:])
-            elif tokenizer is not None:
-                return tokenizer.batch_decode(generated_ids[:, input_shape:])
-            else:
-                raise ValueError("The processor or tokenizer must be set")
+                    return tokenizer.batch_decode(input_ids)
+                else:
+                    raise ValueError("The processor or tokenizer must be set")
 
-        if generated_ids_after_ptq is not None:
-            print("--------")
-            print(f"example test input: {input_decode(input_ids)}")
-            print("--------")
-            print(
-                f"example outputs before ptq: {output_decode(generated_ids_before_ptq, input_ids.shape[1])}"
-            )
-            print("--------")
-            print(
-                f"example outputs after ptq: {output_decode(generated_ids_after_ptq, input_ids.shape[1])}"
-            )
+            def output_decode(generated_ids, input_shape):
+                if is_enc_dec(model_type):
+                    if processor is not None and isinstance(processor, WhisperProcessor):
+                        return processor.tokenizer.batch_decode(
+                            generated_ids, skip_special_tokens=True
+                        )[0]
+                    elif tokenizer is not None:
+                        return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+                elif processor is not None and isinstance(processor, MllamaImageProcessor):
+                    return processor.tokenizer.batch_decode(generated_ids[:, input_shape:])
+                elif tokenizer is not None:
+                    return tokenizer.batch_decode(generated_ids[:, input_shape:])
+                else:
+                    raise ValueError("The processor or tokenizer must be set")
+
+            if generated_ids_after_ptq is not None:
+                print("--------")
+                print(f"example test input: {input_decode(input_ids)}")
+                print("--------")
+                print(
+                    f"example outputs before ptq: {output_decode(generated_ids_before_ptq, input_ids.shape[1])}"
+                )
+                print("--------")
+                print(
+                    f"example outputs after ptq: {output_decode(generated_ids_after_ptq, input_ids.shape[1])}"
+                )
+        else:
+            warnings.warn("Skipping quantization: model is already quantized.")
 
     else:
         assert model_type != "dbrx", f"Does not support export {model_type} without quantizaton"
@@ -476,6 +499,10 @@ def main(args):
             if "w4a8_awq" in args.qformat:
                 # TensorRT-LLM w4a8 only support fp16 as the dtype.
                 dtype = torch.float16
+
+            # For Gemma2-27B, TRT-LLM only works with bfloat16 as the dtype.
+            if model_type == "gemma2":
+                dtype = torch.bfloat16
 
             export_tensorrt_llm_checkpoint(
                 model,
@@ -553,7 +580,7 @@ if __name__ == "__main__":
         "--kv_cache_qformat",
         required=False,
         default="fp8",
-        choices=["fp8", "nvfp4", "none"],
+        choices=KV_QUANT_CFG_CHOICES.keys(),
         help="Specify KV cache quantization format, default to fp8 if not provided",
     )
     parser.add_argument(
@@ -572,6 +599,26 @@ if __name__ == "__main__":
     parser.add_argument(
         "--trust_remote_code",
         help="Set trust_remote_code for Huggingface models and tokenizers",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--gpu_max_mem_percentage",
+        help=(
+            "Specify the percentage of available GPU memory to use for loading the model when "
+            "device_map is set to sequential. "
+            "By default, 80% of the available GPU memory is used."
+        ),
+        type=float,
+        default=0.8,
+    )
+    parser.add_argument(
+        "--use_seq_device_map",
+        help=(
+            "Use device_map=sequential to load the model onto GPUs. This ensures the model is loaded "
+            "utilizing the percentage of available GPU memory as specified by the value passed with gpu_max_mem flag."
+            "Helpful in cases where device_map=auto loads model unevenly on GPUs causing GPU OOM during quantization."
+        ),
         default=False,
         action="store_true",
     )

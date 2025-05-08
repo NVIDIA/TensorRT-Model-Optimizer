@@ -31,6 +31,7 @@ from torch.fx.proxy import Proxy
 from torch.nn.parameter import Parameter
 
 from modelopt.torch.utils import get_unwrapped_name, is_channels_last, unwrap_model
+from modelopt.torch.utils.distributed import ParallelState
 
 from .config import ModeloptBaseRule, RulesDict
 from .hparam import Hparam
@@ -358,10 +359,14 @@ class DynamicModule(nn.Module):
     should ensure only to expose ``hparams`` in the outermost class and handle other ``hparams``
     internally including ``hparams`` of child modules that are exposed on their own usually
     (e.g. block module implementations containing DynamicLinear).
+
+    In addition, the class also provides ``parallel_state`` attribute that can be used to access
+    the parallel state of the module.
     """
 
     # this is needed to store the special attributes for dynamic modules
     _dm_attribute_manager: _DMAttributeManager
+    _parallel_state: ParallelState
 
     def __init__(self, *args, **kwargs):
         """Initializing a dynamic module is not allowed!"""
@@ -670,6 +675,10 @@ class DynamicModule(nn.Module):
         # setup new hparams and dynamic attributes
         module._setup()
 
+        # setup parallel state now that the module is converted
+        if module.parallel_state is None:
+            module._initialize_parallel_state()
+
         return module
 
     def _setup(self):
@@ -867,8 +876,53 @@ class DynamicModule(nn.Module):
 
     @property
     def original_cls(self) -> type[nn.Module]:
-        """Return the original class of the dynamic module."""
+        """Return the original class of the dynamic module.
+
+        Returns:
+            The original class of the dynamic module at the current level.
+        """
         return self._get_dm_attribute_manager().og_cls
+
+    @property
+    def parallel_state(self) -> Optional[ParallelState]:
+        """Return the parallel state of the dynamic module."""
+        return getattr(self, "_parallel_state", None)
+
+    @parallel_state.setter
+    def parallel_state(self, parallel_state: ParallelState):
+        """Set the parallel state of the dynamic module."""
+        assert isinstance(parallel_state, ParallelState), (
+            "parallel_state must be a ParallelState object!"
+        )
+        self._parallel_state = parallel_state
+
+    def _initialize_parallel_state(self):
+        """Initialize the parallel state of the dynamic module.
+
+        This method is called only if the `DynamicModule` does not have a `parallel_state` attribute
+        after `_setup` is called.
+        """
+        if torch.distributed.is_initialized():
+            warnings.warn(
+                f"Distributed training is initialized but no parallel_state is set for {type(self)}. "
+                "Using default parallel_state which has data_parallel_group set to the default process group and "
+                "tensor_parallel_group is unspecified. "
+                "If you are using tensor parallelism for this module, you should set the parallel_state "
+                "in its `_setup` method."
+            )
+
+        self.parallel_state = ParallelState(data_parallel_group=None)
+
+    def get_original_cls_by_level(self, level: int = -1) -> type[nn.Module]:
+        """Return the original class of the dynamic module.
+
+        Args:
+            level: The level of inheritance to get the original class from.
+
+        Returns:
+            The original class of the dynamic module at the specified level.
+        """
+        return self._get_dm_attribute_manager()._og_cls_all[level]
 
 
 class _DMRegistryCls:
@@ -880,10 +934,19 @@ class _DMRegistryCls:
 
     T = TypeVar("T", bound=DynamicModule)
 
-    def __init__(self, prefix: str):
+    def __init__(self, prefix: str, dm_base_cls: Optional[type[DynamicModule]] = None):
+        """Initialize the registry.
+
+        Args:
+            prefix: The prefix to use while creating dynamic classes.
+            dm_base_cls: The common base class for creating dynamic classes. If None, `DynamicModule`
+                is used as the common base class.
+        """
         super().__init__()
 
         self._prefix = prefix  # global prefix to use to register dynamic classes
+
+        self._dm_base_cls = DynamicModule if dm_base_cls is None else dm_base_cls
 
         self._registry: dict[type[nn.Module], type[DynamicModule]] = {}  # registered classes
         self._key_registry: dict[type[nn.Module], str] = {}  # registered str-keys for classes
@@ -943,6 +1006,21 @@ class _DMRegistryCls:
             raise KeyError(f"{nn_cls} is not registered for a dynamic module!")
         return dm_cls
 
+    def _create_new_dynamic_class(
+        self, dm_class: type, nn_cls: type[nn.Module]
+    ) -> type[DynamicModule]:
+        """Create a new dynamic class.
+
+        This method creates a new dynamic class that inherits from the registered dynamic class,
+        the common dynamic base class and the original nn_cls (in this order).
+        """
+        clses = [dm_class]
+        if not issubclass(clses[-1], self._dm_base_cls):
+            clses.append(self._dm_base_cls)
+        clses.append(nn_cls)
+        name = self._get_dynamic_class_name(nn_cls)
+        return type(name, tuple(clses), {})
+
     def get(
         self, nn_cls: Union[type[nn.Module], str], default: Any = None
     ) -> Optional[type[DynamicModule]]:
@@ -963,9 +1041,8 @@ class _DMRegistryCls:
         # see if we can generate a new dynamic class and then return
         nn_cls_ = self._get_registered_nn_class(nn_cls)
         if nn_cls_:
-            name = self._get_dynamic_class_name(nn_cls)
-            dm_base_class = self._registry[nn_cls_]
-            dm_class = type(name, (dm_base_class, nn_cls), {})
+            dm_cls_from_registry = self._registry[nn_cls_]
+            dm_class = self._create_new_dynamic_class(dm_cls_from_registry, nn_cls)
             self._dynamic_classes[nn_cls] = dm_class
             self._rule_classes[dm_class] = self._generate_rule_class(dm_class)
             return self.get(nn_cls, default)

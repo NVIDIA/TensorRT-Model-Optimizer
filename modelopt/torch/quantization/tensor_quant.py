@@ -20,14 +20,13 @@ from typing import Optional
 
 import torch
 import torch.nn.functional as F
-from packaging.version import Version
 from torch.autograd import Function
 from torch.onnx import symbolic_helper
 
 import modelopt.torch.quantization.triton as triton_kernel
 
 from .config import QuantizerAttributeConfig
-from .export_onnx import export_fp4, export_fp8, export_int8
+from .export_onnx import export_fp4, export_fp8, export_int8, export_mxfp8
 from .extensions import get_cuda_ext, get_cuda_ext_fp8, get_cuda_ext_mx
 
 mx_format_map = {
@@ -237,20 +236,42 @@ try:
         "(Tensor input, int block_size, Tensor amax, int num_bits, int exponent_bits, "
         "int scale_num_bits, int scale_exponent_bits) -> Tensor",
     )
+    torch.library.define(
+        "tensorrt::dynamic_block_quantize_op.overload",
+        "(Tensor input, int block_size, None amax, int num_bits, int exponent_bits, "
+        "int scale_num_bits, int scale_exponent_bits) -> Tensor",
+    )
+
+    # Implement the None amax case
+    def _dynamic_block_quantize_impl_none_amax(
+        inputs: torch.Tensor,
+        block_size: int,
+        amax: None,
+        num_bits: int,
+        exponent_bits: int,
+        scale_num_bits: int,
+        scale_exponent_bits: int,
+    ):
+        return torch.empty_like(inputs)
+
+    # Register the implementation for both CPU and CUDA
     torch.library.impl("tensorrt::quantize_op", ["cpu", "cuda"])(_quantize_impl)
     torch.library.impl("tensorrt::dynamic_block_quantize_op", ["cpu", "cuda"])(
         _dynamic_block_quantize_impl
     )
-    if Version(torch.__version__) < Version("2.4.0"):
-        torch.library.impl_abstract("tensorrt::quantize_op")(_quantize_impl_abstract)
-        torch.library.impl_abstract("tensorrt::dynamic_block_quantize_op")(
-            _dynamic_block_quantize_impl_abstract
-        )
-    else:
-        torch.library.register_fake("tensorrt::quantize_op")(_quantize_impl_abstract)
-        torch.library.register_fake("tensorrt::dynamic_block_quantize_op")(
-            _dynamic_block_quantize_impl_abstract
-        )
+    torch.library.impl("tensorrt::dynamic_block_quantize_op.overload", ["cpu", "cuda"])(
+        _dynamic_block_quantize_impl_none_amax
+    )
+
+    # Register the fake implementation
+    torch.library.register_fake("tensorrt::quantize_op")(_quantize_impl_abstract)
+    torch.library.register_fake("tensorrt::dynamic_block_quantize_op")(
+        _dynamic_block_quantize_impl_abstract
+    )
+    torch.library.register_fake("tensorrt::dynamic_block_quantize_op.overload")(
+        _dynamic_block_quantize_impl_abstract
+    )
+
     quantize_op = torch.ops.tensorrt.quantize_op
     dynamic_block_quantize_op = torch.ops.tensorrt.dynamic_block_quantize_op
 except (AttributeError, RuntimeError) as e:
@@ -287,11 +308,12 @@ class FakeTensorQuantFunction(Function):
     """Fake version of TensorQuantFunction use CUDA extension."""
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "t", "i", "b", "b", "s")
+    @symbolic_helper.parse_args("v", "t", "t", "i", "b", "b", "s")
     def symbolic(
         g,
         inputs,
         amax,
+        bias=None,
         num_bits=8,
         unsigned=False,
         narrow_range=True,
@@ -307,12 +329,16 @@ class FakeTensorQuantFunction(Function):
         ctx,
         inputs,
         amax,
+        bias=None,
         num_bits=8,
         unsigned=False,
         narrow_range=True,
         trt_high_precision_dtype="Float",
     ):
         """Forward method."""
+        if bias is not None:
+            inputs = inputs - bias
+
         ctx.save_for_backward(inputs, amax)
 
         def legacy_quant_func():
@@ -337,36 +363,54 @@ class FakeTensorQuantFunction(Function):
                 # ValueError: cuda_ext is installed, but trying to perform multidimensional quantization (amax dim > 1)
                 outputs = legacy_quant_func()
 
+        if bias is not None:
+            outputs = outputs + bias
+
         return outputs
 
     @staticmethod
     def backward(ctx, grad_outputs):
         """Implements straight through estimation with clipping."""
         inputs, amax = ctx.saved_tensors
-        return _fake_tensor_quant_backward(inputs, amax, grad_outputs), None, None, None, None, None
+        return (
+            _fake_tensor_quant_backward(inputs, amax, grad_outputs),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 class ScaledE4M3Function(Function):
     """E4M3fy input with scale."""
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "t", "i", "b", "b", "s")
-    def symbolic(g, inputs, amax=None, E=4, M=3, trt_high_precision_dtype="Float"):  # noqa: N803
+    @symbolic_helper.parse_args("v", "t", "t", "i", "i", "s")
+    def symbolic(g, inputs, amax=None, bias=None, E=4, M=3, trt_high_precision_dtype="Float"):  # noqa: N803
         """ONNX symbolic function."""
         return export_fp8(g, inputs, amax, trt_high_precision_dtype)
 
     @staticmethod
     # Default values could cause errors from TorchDynamo during torch.export
-    def forward(ctx, inputs, amax, E, M, trt_high_precision_dtype="Float"):  # noqa: N803
+    def forward(ctx, inputs, amax, bias, E, M, trt_high_precision_dtype="Float"):  # noqa: N803
         """Forward method."""
         if E != 4 or M != 3:
             raise NotImplementedError("Only support E=4 & M=3 for now.")
 
+        if bias is not None:
+            inputs = inputs - bias
+
         ctx.save_for_backward(inputs)
         ctx.amax = amax
+
         outputs = quantize_op(
             inputs, amax, num_bits=8, exponent_bits=4, unsigned=False, narrow_range=False
         )
+
+        if bias is not None:
+            outputs = outputs + bias
 
         return outputs
 
@@ -378,19 +422,116 @@ class ScaledE4M3Function(Function):
             ctx.amax if ctx.amax is not None else 448.0, dtype=torch.float32, device=inputs.device
         )
         grad_inputs = _fake_tensor_quant_backward(inputs, amax, grad_outputs)
-        return grad_inputs, None, None, None, None
+        return grad_inputs, None, None, None, None, None
 
 
-class DynamicBlockQuantizationFunction(Function):
-    """Dynamic block quantization functional."""
+def _dynamic_block_quantize_forward(
+    ctx,
+    inputs,
+    block_size,
+    amax,
+    num_bits,
+    scale_bits,
+    trt_high_precision_dtype="Half",
+    onnx_quantizer_type="dynamic",
+):
+    """Forward method."""
+    ctx.save_for_backward(inputs, amax)
+
+    assert isinstance(num_bits, tuple) and len(num_bits) == 2
+    exponent_bits = num_bits[0]
+    num_bits = num_bits[0] + num_bits[1] + 1
+    assert isinstance(scale_bits, tuple) and len(scale_bits) == 2
+    scale_exponent_bits = scale_bits[0]
+    scale_num_bits = scale_bits[0] + scale_bits[1] + 1
+    outputs = dynamic_block_quantize_op(
+        inputs, block_size, amax, num_bits, exponent_bits, scale_num_bits, scale_exponent_bits
+    )
+    return outputs
+
+
+class MXFP8DynamicBlockQuantizationFunction(Function):
+    """MXFP8 dynamic block quantization functional."""
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "i", "v", "is", "is", "s", "s")
+    @symbolic_helper.parse_args("v", "i", "n", "is", "is", "is", "is", "s", "s")
     def symbolic(
         g,
         inputs,
         block_size,
         amax,
+        num_bits,
+        exponent_bits,
+        scale_num_bits,
+        scale_exponent_bits,
+        onnx_quantizer_type,
+        trt_high_precision_dtype="Half",
+    ):
+        """ONNX symbolic function."""
+        return export_mxfp8(
+            g,
+            inputs,
+            onnx_quantizer_type,
+            block_size,
+        )
+
+    @staticmethod
+    def forward(
+        ctx,
+        inputs,
+        block_size,
+        amax,
+        num_bits,
+        exponent_bits,
+        scale_num_bits,
+        scale_exponent_bits,
+        onnx_quantizer_type,
+        trt_high_precision_dtype="Half",
+    ):
+        """Forward method."""
+        scale_bits = (scale_num_bits, scale_exponent_bits)
+        num_bits = (num_bits, exponent_bits)
+        return _dynamic_block_quantize_forward(
+            ctx,
+            inputs,
+            block_size,
+            amax,
+            num_bits,
+            scale_bits,
+            trt_high_precision_dtype,
+            onnx_quantizer_type,
+        )
+
+    @staticmethod
+    def backward(ctx, grad_outputs):
+        """Implements straight through estimation with clipping."""
+        # Dynamic block quantization does not clip the tensors (i.e in effect) in the forward loop
+        # as the block quantization amax is always the block amax. So we dont need to clip the gradients for STE
+        inputs, amax = ctx.saved_tensors
+        return (
+            _fake_tensor_quant_backward(inputs, amax, grad_outputs),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+
+
+class FP4DynamicBlockQuantizationFunction(Function):
+    """Dynamic block quantization functional."""
+
+    @staticmethod
+    @symbolic_helper.parse_args("v", "i", "v", "t", "is", "is", "s", "s")
+    def symbolic(
+        g,
+        inputs,
+        block_size,
+        amax,
+        bias,
         num_bits,
         scale_bits,
         trt_high_precision_dtype="Half",
@@ -413,24 +554,23 @@ class DynamicBlockQuantizationFunction(Function):
         inputs,
         block_size,
         amax,
+        bias,
         num_bits,
         scale_bits,
         trt_high_precision_dtype="Half",
         onnx_quantizer_type="dynamic",
     ):
         """Forward method."""
-        ctx.save_for_backward(inputs, amax)
-
-        assert isinstance(num_bits, tuple) and len(num_bits) == 2
-        exponent_bits = num_bits[0]
-        num_bits = num_bits[0] + num_bits[1] + 1
-        assert isinstance(scale_bits, tuple) and len(scale_bits) == 2
-        scale_exponent_bits = scale_bits[0]
-        scale_num_bits = scale_bits[0] + scale_bits[1] + 1
-        outputs = dynamic_block_quantize_op(
-            inputs, block_size, amax, num_bits, exponent_bits, scale_num_bits, scale_exponent_bits
+        return _dynamic_block_quantize_forward(
+            ctx,
+            inputs,
+            block_size,
+            amax,
+            num_bits,
+            scale_bits,
+            trt_high_precision_dtype,
+            onnx_quantizer_type,
         )
-        return outputs
 
     @staticmethod
     def backward(ctx, grad_outputs):
@@ -440,6 +580,7 @@ class DynamicBlockQuantizationFunction(Function):
         inputs, amax = ctx.saved_tensors
         return (
             _fake_tensor_quant_backward(inputs, amax, grad_outputs),
+            None,
             None,
             None,
             None,
@@ -457,6 +598,7 @@ class StaticBlockQuantizationFunction(FakeTensorQuantFunction):
         ctx,
         inputs,
         amax,
+        bias,
         num_bits=8,
         unsigned=False,
         narrow_range=True,
@@ -464,7 +606,6 @@ class StaticBlockQuantizationFunction(FakeTensorQuantFunction):
         block_size=None,
     ):
         """Forward method."""
-        ctx.save_for_backward(inputs, amax)
 
         def legacy_quant_func():
             # The LegacyFakeTensorQuantFunction support cpu and amax with any shape that can be broadcasted to inputs.
@@ -483,6 +624,11 @@ class StaticBlockQuantizationFunction(FakeTensorQuantFunction):
                 inputs = _pad_to_block_size(inputs, block_size)
             inputs = inputs.reshape(-1, block_size)
 
+        if bias is not None:
+            inputs = inputs - bias
+
+        ctx.save_for_backward(inputs, amax)
+
         if not inputs.is_cuda:
             outputs = legacy_quant_func()
         else:
@@ -500,6 +646,9 @@ class StaticBlockQuantizationFunction(FakeTensorQuantFunction):
                 # ValueError: cuda_ext is installed, but trying to perform multidimensional quantization (amax dim > 1)
                 outputs = legacy_quant_func()
 
+        if bias is not None:
+            outputs = outputs + bias
+
         # restore the original shape
         if block_size is not None and original_shape != outputs.shape:
             outputs = outputs.reshape(original_shape)
@@ -510,7 +659,16 @@ class StaticBlockQuantizationFunction(FakeTensorQuantFunction):
     def backward(ctx, grad_outputs):
         """Implements straight through estimation with clipping."""
         inputs, amax = ctx.saved_tensors
-        return _fake_tensor_quant_backward(inputs, amax, grad_outputs), None, None, None, None, None
+        return (
+            _fake_tensor_quant_backward(inputs, amax, grad_outputs),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
 
 
 class TensorQuantFunction(Function):
@@ -525,11 +683,12 @@ class TensorQuantFunction(Function):
     """
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "t", "i", "b", "b", "s")
+    @symbolic_helper.parse_args("v", "t", "t", "i", "b", "b", "s")
     def symbolic(
         g,
         inputs,
         amax,
+        bias=None,
         num_bits=8,
         unsigned=False,
         narrow_range=True,
@@ -545,6 +704,7 @@ class TensorQuantFunction(Function):
         ctx,
         inputs,
         amax,
+        bias=None,
         num_bits=8,
         unsigned=False,
         narrow_range=True,
@@ -574,11 +734,19 @@ class TensorQuantFunction(Function):
         Raises:
             ValueError:
         """
+        if bias is not None:
+            inputs = inputs - bias
+
         ctx.save_for_backward(inputs, amax)
+
         outputs, scale = _tensor_quant(inputs, amax, num_bits, unsigned, narrow_range)
         # Check if scale overflows FP16
         if outputs.dtype == torch.half and scale.max() > 65504:
             raise ValueError(f"scale is too large for FP16 with amax={amax}")
+
+        if bias is not None:
+            outputs = outputs + bias
+
         return outputs, scale.to(inputs.dtype)
 
     @staticmethod
@@ -598,7 +766,7 @@ class TensorQuantFunction(Function):
         inputs, amax = ctx.saved_tensors
         zero = grad_outputs.new_zeros(1)  # create a zero tensor with the same type and device
         grad_inputs = torch.where(inputs.abs() <= amax, grad_outputs, zero)
-        return grad_inputs, None, None, None, None, None
+        return grad_inputs, None, None, None, None, None, None
 
 
 class LegacyFakeTensorQuantFunction(Function):
@@ -608,10 +776,18 @@ class LegacyFakeTensorQuantFunction(Function):
     """
 
     @staticmethod
-    def forward(ctx, inputs, amax, num_bits=8, unsigned=False, narrow_range=True):
+    def forward(ctx, inputs, amax, bias, num_bits=8, unsigned=False, narrow_range=True):
         """Forward method."""
+        if bias is not None:
+            inputs = inputs - bias
+
         ctx.save_for_backward(inputs, amax)
+
         outputs, scale = _tensor_quant(inputs, amax, num_bits, unsigned, narrow_range)
+
+        if bias is not None:
+            outputs = outputs + bias
+
         return outputs / scale.to(inputs.dtype)
 
     @staticmethod
@@ -620,7 +796,7 @@ class LegacyFakeTensorQuantFunction(Function):
         inputs, amax = ctx.saved_tensors
         zero = grad_outputs.new_zeros(1)
         grad_inputs = torch.where(inputs.abs() <= amax, grad_outputs, zero)
-        return grad_inputs, None, None, None, None
+        return grad_inputs, None, None, None, None, None
 
 
 def _tensor_quant(inputs, amax, num_bits=8, unsigned=False, narrow_range=True):
@@ -730,5 +906,6 @@ legacy_fake_tensor_quant = LegacyFakeTensorQuantFunction.apply
 fake_tensor_quant = FakeTensorQuantFunction.apply
 fake_affine_tensor_quant = FakeAffineTensorQuantFunction.apply
 scaled_e4m3 = ScaledE4M3Function.apply
-dynamic_block_quant = DynamicBlockQuantizationFunction.apply
+nvfp4_dynamic_block_quant = FP4DynamicBlockQuantizationFunction.apply
+mxfp8_dynamic_block_quant = MXFP8DynamicBlockQuantizationFunction.apply
 static_block_quant = StaticBlockQuantizationFunction.apply

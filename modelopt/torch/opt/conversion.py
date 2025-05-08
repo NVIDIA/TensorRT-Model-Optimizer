@@ -38,10 +38,11 @@ from modelopt.torch.utils import ModelLike, init_model_from_model_like, unwrap_m
 from .config import ConfigDict, ModeloptBaseConfig
 from .mode import (
     MetadataDict,
+    ModeDescriptor,
+    ModeKwargsType,
     ModeLike,
     ModeState,
     ModeType,
-    _ModeDescriptor,
     _ModeRegistryCls,
     get_mode_config,
 )
@@ -203,14 +204,14 @@ class ModeloptStateManager:
 
     def modes_with_states(
         self,
-    ) -> Iterator[tuple[_ModeDescriptor, ModeloptBaseConfig, MetadataDict]]:
+    ) -> Iterator[tuple[ModeDescriptor, ModeloptBaseConfig, MetadataDict]]:
         """Yield the mode together with the full config and metadata from the state."""
         for m_str, m_state in self._state:
             config = self.get_config_class(m_str, m_state["config"])
             yield _ModeRegistryCls.get_from_any(m_str), config, m_state["metadata"]
 
     @property
-    def last_mode(self) -> Optional[_ModeDescriptor]:
+    def last_mode(self) -> Optional[ModeDescriptor]:
         """Return the last mode applied to the model (last stored mode)."""
         return _ModeRegistryCls.get_from_any(self._state[-1][0]) if self._state else None
 
@@ -239,7 +240,7 @@ class ModeloptStateManager:
         """
         stack = deque()
         for m, _, _ in self.modes_with_states():
-            if m.export_mode:
+            if m.export_mode is not None:
                 stack.append((str(m), m.export_mode))
             elif m.is_export_mode:
                 assert str(m) == stack.pop()[1], "Inconsistent export stack!"
@@ -263,23 +264,17 @@ class ModeloptStateManager:
                 f"Cannot add {mode_d} according to the current export stack: {export_stack}."
             )
 
-        # sanity checks for next mode incompatibilities according to the current last mode
+        # sanity checks for next mode compatibilities according to the current last mode
         last_mode = self.last_mode
         if last_mode:
-            assert last_mode.next_modes is None or str(mode_d) in last_mode.next_modes, (
-                f"Cannot add {mode_d} after {last_mode}! Next modes of {last_mode} are"
-                f" {last_mode.next_modes}."
-            )
+            mode_d.assert_compatibility_as_next_mode_of(last_mode)
 
-        # sanity checks for next mode incompatible with last mode in the stack. These
-        # incompatibilities still apply since we did not apply corresponding export mode yet.
+        # sanity checks for next mode compatible with last mode in the stack. These
+        # compatibilities still apply since we did not apply corresponding export mode yet.
         if export_stack:
             # last_m_stack := last mode on the stack that has a corresponding export mode
             last_m_stack = _ModeRegistryCls.get_from_any(export_stack[-1][0])
-            assert last_m_stack.next_modes is None or str(mode_d) in last_m_stack.next_modes, (
-                f"Cannot add {mode_d} after {last_m_stack}! Next modes of {last_m_stack} are"
-                f" {last_m_stack.next_modes}."
-            )
+            mode_d.assert_compatibility_as_next_mode_of(last_m_stack)
 
     def add_mode(self, mode: ModeType, config: ModeloptBaseConfig, metadata: MetadataDict) -> None:
         """Add mode and update state in-place.
@@ -334,7 +329,7 @@ class ModelLikeModule(nn.Module):
         return model
 
 
-def _check_init_modellike(model: nn.Module, mode: _ModeDescriptor) -> nn.Module:
+def _check_init_modellike(model: nn.Module, mode: ModeDescriptor) -> nn.Module:
     """Utility to initialize a ModelLikeModule if needed according to the mode."""
     if mode.require_model_like:
         assert isinstance(model, ModelLikeModule), "Model must be a ModelLikeModule!"
@@ -348,6 +343,7 @@ def apply_mode(
     mode: ModeLike,
     registry: Optional[_ModeRegistryCls] = None,
     init_state: Optional[bool] = None,
+    mode_kwargs: Optional[ModeKwargsType] = None,
 ) -> nn.Module:
     """Apply the provided modes the model, record the changes, and return the model.
 
@@ -358,7 +354,7 @@ def apply_mode(
             ``model_cls(*args, **kwargs)``.
         mode: A mode, a list of modes or a list of tuples containing the mode and its config. The
             mode may be specified as a string or as the actual
-            :class:`_ModeDescriptor<modelopt.torch.opt.mode._ModeDescriptor>` class such as
+            :class:`ModeDescriptor<modelopt.torch.opt.mode.ModeDescriptor>` class such as
             :class:`QuantizeModeDescriptor<modelopt.torch.opt.quantization.QuantizeModeDescriptor>` class.
         registry: An optional mode registry from which to retrieve the mode. If not provided, all
             registries will be searched.
@@ -366,6 +362,11 @@ def apply_mode(
             not provided, it will be inferred from the model. This flag can be used to enforce a
             certain behavior. For example, for ``init_state=True`` the state manager will raise an
             error if the model already contains state.
+        mode_kwargs: Optional keyword arguments for mode conversion. Can be a single dictionary
+            (applied to all modes) or a list of dictionaries (one per mode). These arguments
+            are passed to each mode's convert entrypoint but are not saved in modelopt state.
+            This is useful for passing non-serializable objects (like custom functions) that aren't
+            needed when restoring the model.
 
     Returns:
         The converted model after applying the desired modes.
@@ -400,11 +401,20 @@ def apply_mode(
     # check whether a ModelLike should be initialized
     model = _check_init_modellike(model, get_mode(mode_and_config[0][0]))
 
+    if mode_kwargs is not None:
+        if isinstance(mode_kwargs, dict):
+            mode_kwargs = [mode_kwargs] * len(mode_and_config)
+        assert len(mode_kwargs) == len(mode_and_config), (
+            "Number of mode kwargs must match number of modes!"
+        )
+    else:
+        mode_kwargs = [{}] * len(mode_and_config)
+
     # loop through modes and call convert entrypoint for each mode and record data in manager.
-    for m, config in mode_and_config:
+    for (m, config), kwargs in zip(mode_and_config, mode_kwargs):
         manager.check_mode(m)
         config = manager.get_config_class(m, config)
-        model, metadata = get_mode(m).convert(model, config)
+        model, metadata = get_mode(m).convert(model, config, **kwargs)  # type: ignore  [call-arg]
         manager.add_mode(m, config, metadata)
 
     # If the existing mode is empty, create an model instance from ModelLikeModule.
@@ -418,7 +428,7 @@ def apply_mode(
     return model
 
 
-def get_mode(model: nn.Module) -> Optional[_ModeDescriptor]:
+def get_mode(model: nn.Module) -> Optional[ModeDescriptor]:
     """Get mode of converted network.
 
     model: A model that contains modelopt_state

@@ -32,6 +32,7 @@ from .layer_utils import get_experts_list, is_layernorm, is_moe, is_quantlinear
 from .model_config import (
     KV_CACHE_FP8,
     KV_CACHE_NVFP4,
+    KV_CACHE_NVFP4_AFFINE,
     QUANTIZATION_FP8,
     QUANTIZATION_FP8_PB_REAL,
     QUANTIZATION_NONE,
@@ -155,17 +156,19 @@ def _export_hf_checkpoint(
     """
     if dtype is None:
         dtype = model.config.torch_dtype
-    else:
+    elif dtype != model.config.torch_dtype:
         warnings.warn(
             f"Model's original dtype ({model.config.torch_dtype}) differs from target dtype "
             f"({dtype}), which may lead to numerical errors."
         )
 
-    # Base model layers
-    layer_pool = {
-        f"model.layers.{name}": sub_module
-        for name, sub_module in model.model.layers.named_modules()
-    }
+    # Create a model layer pool
+    # If `model.model` exists use that, otherwise use `model` itself, e.g., Nemotron-H
+    root = getattr(model, "model", model)
+    # If that has a `.layers`, use it, otherwise fall back to the object itself
+    root = getattr(root, "layers", root)
+    layer_pool = {f"model.layers.{name}": sub_module for name, sub_module in root.named_modules()}
+
     # NOTE: Speculative decoding models have extra modules that may be quantized
     # Need to add these modules to the layer_pool
     for key in SPECULATIVE_DECODING_MODULE_NAMES:
@@ -193,6 +196,7 @@ def _export_hf_checkpoint(
 
     cache_bound_mapping = {
         KV_CACHE_NVFP4: 6 * 448,
+        KV_CACHE_NVFP4_AFFINE: 6 * 448,
         KV_CACHE_FP8: 448,
     }
 
@@ -268,8 +272,10 @@ def _export_hf_checkpoint(
                     # Remove size-1 dimensions for blocked fp8 scales
                     sub_module.weight_scale.squeeze()
 
-                if hasattr(sub_module, "input_quantizer") and "disabled" not in repr(
-                    sub_module.input_quantizer
+                if (
+                    hasattr(sub_module, "input_quantizer")
+                    and "disabled" not in repr(sub_module.input_quantizer)
+                    and sub_module.input_quantizer.amax is not None
                 ):
                     sub_module.register_buffer(
                         "input_scale", get_activation_scaling_factor(sub_module).squeeze()

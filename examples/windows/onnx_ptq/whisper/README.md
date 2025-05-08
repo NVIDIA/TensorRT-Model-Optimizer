@@ -8,6 +8,7 @@ This repository contains an example to demontrate 8-bit quantization of Whisper 
 - [Inference script](#inference-script)
 - [Quantization script](#quantization-script)
 - [Validated Settings](#validated-settings)
+- [Troubleshoot](#troubleshoot)
 
 ## ONNX export
 
@@ -101,18 +102,19 @@ python .\whisper_onnx_quantization.py --model_name=openai/whisper-large --base_m
                                       --onnx_path=E:\whisper_large\base\encoder_model.onnx \
                                       --output_path=E:\whisper_large\quant_output\encoder_model.onnx
 
+```
+
+```bash
 python .\whisper_onnx_quantization.py --model_name=openai/whisper-large --base_model_dir=E:\whisper_large\base \
                                       --onnx_path=E:\whisper_large\base\decoder_model.onnx \
                                       --output_path=E:\whisper_large\quant_output\decoder_model.onnx
 ```
 
-- Make sure to use GPU-compatible version of dependencies (torch, torchaudio). For instance, installing cu128 binaries of torch and torchaudio can work for RTX 5090 Blackwell system. Example command-line for installing cu12.8-based nightly wheels of torch and torchaudio is provided below. One can switch to cu12.8 public wheels of torch/torchaudio for RTX-5090, when they are available.
-
-```bash
-    pip install torchaudio==2.6.0.dev20250306 --extra-index-url https://download.pytorch.org/whl/nightly/cu128
-```
+- Make sure to use GPU-compatible version of dependencies (torch, torchaudio etc.). For instance, installing cu128 binaries of torch and torchaudio should support RTX 5090 Blackwell GPUs.
 
 - The Whisper quantization script supports quantization of following Whisper ONNX files: `encoder_model.onnx`, `decoder_model.onnx`, `decoder_with_past_model.onnx`.
+
+- In case, ONNX installation unexpectedly throws error, then one can try with other ONNX versions.
 
 ## Validated Settings
 
@@ -129,7 +131,15 @@ These scripts are currently validated with following settings:
 - Quantization algos - INT8 with `Max` calibration (W8A8), FP8 with `Max` calibration (W8A8)
 - Calibration size - 32
 - Calibration EPs - \[`cuda`, `cpu`\]
-- Calibration data - `librispeech_asr` dataset
+- Audio dataset - `librispeech_asr` dataset (32 samples used for calibration, 100+ samples used for WER test)
   - `load_dataset("librispeech_asr", "clean", split="test", trust_remote_code=True)`
 - Quantization support for various ONNX files - `encoder_model.onnx`, `decoder_model.onnx`, `decoder_with_past_model.onnx`
 - The `use_merged` argument in optimum-ORT's Whisper model API is kept False.
+
+## Troubleshoot
+
+1. This example demonstrates quantization and inference using `librispeech_asr` dataset. In case of any issue with dataset or load-dataset, one can hookup loading any other dataset as needed.
+
+   - Try out streaming option in load_dataset API (see [this](https://github.com/huggingface/datasets/issues/4609) github issue about load-dataset of ASR dataset).
+   - Try out different splits for calibration and inference.
+   - Try out different ASR datasets etc.

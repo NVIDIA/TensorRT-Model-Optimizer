@@ -28,11 +28,10 @@ from modelopt.torch.opt import apply_mode
 from modelopt.torch.opt.searcher import ForwardLoop
 from modelopt.torch.quantization.conversion import set_quantizer_by_cfg
 
-from .config import CalibAlgorithmCfgType
+from .config import QuantizeAlgoCfgType
 from .conversion import set_quantizer_attribute
-from .mode import QuantizeModeRegistry
-from .model_calib import awq, max_calibrate, smoothquant, svdquant
-from .nn import TensorQuantizer
+from .mode import QuantizeModeRegistry, get_modelike_from_algo_cfg
+from .nn import QuantModule, TensorQuantizer
 
 __all__ = [
     "calibrate",
@@ -49,10 +48,13 @@ __all__ = [
 # TODO: Descriptors for the supported algorithms
 def calibrate(
     model: nn.Module,
-    algorithm: Union[str, CalibAlgorithmCfgType, None] = "max",
+    algorithm: QuantizeAlgoCfgType = "max",
     forward_loop: Optional[ForwardLoop] = None,
 ) -> nn.Module:
     """Adjusts weights and scaling factors based on selected algorithms.
+
+    In order to calibrate using custom user defined calibration algorithm, refer to
+    :ref:`custom calibration algorithm <custom_calibration_algorithm>`
 
     Args:
         model: A pytorch model with quantizer modules.
@@ -60,10 +62,12 @@ def calibrate(
             algorithms are ``"max"``, ``"smoothquant"``, ``"awq_lite"``, ``"awq_full"``, and
             ``"awq_clip"``. If a dictionary is passed, the key ``"method"`` should specify the
             calibration algorithm to use. Other key-value pairs  in this dictionary will be passed
-            as kwargs to the algorithm. An example dictionary argument:
-            ``{"method": "awq_clip", "max_co_batch_size": 4096}``. If ``None``, no calibration is
-            performed. For real quantization, the key ``method`` should be ``real_quantize``, and
-            the calibration algorithm used should be specified in ``additional_algorithm``.
+            as kwargs to the algorithm.
+
+            An example dictionary argument:
+            ``{"method": "awq_clip", "max_co_batch_size": 4096}``.
+
+            If ``None``, no calibration is performed.
         forward_loop: A callable which takes the model as argument and forwards calibration data
             through the model. This is not required for weight-only quantization with the ``"max"``
             algorithm.
@@ -86,33 +90,15 @@ def calibrate(
             def forward_loop(model):
                 return original_forward_loop()  # type: ignore[call-arg]
 
-    if algorithm is None:
-        return model
-
-    algorithm = algorithm if isinstance(algorithm, (str, dict)) else algorithm.model_dump()
-
-    if isinstance(algorithm, str):
-        kwargs = {}
-    elif isinstance(algorithm, dict):
-        kwargs = algorithm.copy()
-        algorithm = kwargs.pop("method")
-    else:
-        raise TypeError(f"Unsupported type for algorithm: {type(algorithm)}")
-
     # move the model to eval mode
     is_training = model.training
     model.eval()
 
-    if algorithm.startswith("awq"):  # type: ignore[union-attr]
-        awq(model, algorithm, forward_loop, **kwargs)  # type: ignore[arg-type]
-    elif algorithm == "smoothquant":
-        smoothquant(model, forward_loop, **kwargs)
-    elif algorithm == "max":
-        max_calibrate(model, forward_loop)
-    elif algorithm == "svdquant":
-        svdquant(model, forward_loop, **kwargs)
-    else:
-        raise ValueError(f"Unsupported calibration algorithm: {algorithm}")
+    apply_mode(
+        model,
+        mode=get_modelike_from_algo_cfg(algorithm),
+        mode_kwargs={"forward_loop": forward_loop},
+    )
 
     # TODO: Re-enable when the CUDA error: unspecified launch failure is fixed.
     # clear_cuda_cache()
@@ -440,21 +426,5 @@ def print_quant_summary(model: nn.Module):
 def fold_weight(model: nn.Module):
     """Fold weight quantizer for fast evaluation."""
     for name, module in model.named_modules():
-        if (
-            hasattr(module, "weight_quantizer")
-            and hasattr(module, "weight")
-            and module.weight_quantizer.fake_quant
-        ):
-            module.weight.data.copy_(
-                (module.weight_quantizer(module.weight.float())).to(module.weight.dtype)
-            )
-            module.weight_quantizer.disable()
-            _attrs = [
-                "_pre_quant_scale",
-                "_amax",
-                "_svdquant_lora_a",
-                "_svdquant_lora_b",
-            ]
-            for attr in _attrs:
-                if hasattr(module.weight_quantizer, attr):
-                    delattr(module.weight_quantizer, attr)
+        if isinstance(module, QuantModule):
+            module.fold_weight()

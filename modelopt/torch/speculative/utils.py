@@ -15,7 +15,11 @@
 
 """Utils for speculative decoding."""
 
+import copy
+from collections import Counter
+
 import torch
+import torch.distributed
 from torch import nn
 
 REMOVE_THINK_CHAT_TEMPLATE = (
@@ -23,49 +27,38 @@ REMOVE_THINK_CHAT_TEMPLATE = (
 )
 
 
+def calibrate_frequent_vocab(tokenizer, text, target_vocab_size, output_file=None):
+    """Given a calibration text, find the most common vocabs and return the mapping."""
+    conversations = tokenizer.apply_chat_template(text)
+    counter = Counter(conversations)
+    vocab = counter.most_common(target_vocab_size)
+    mapping = torch.zeros(target_vocab_size, dtype=torch.int64)
+    for i in range(target_vocab_size):
+        idx = vocab[i][0]
+        mapping[i] = idx - i
+    if output_file is not None:
+        torch.save(mapping, output_file)
+    return mapping
+
+
 def get_default_attention_mask_and_position_ids(input_ids: torch.Tensor):
     """Compute default attention_mask ans position_ids given input_ids."""
     seq_len = input_ids.shape[-1]
 
     position_ids = torch.arange(seq_len, dtype=torch.long, device=input_ids.device)
-    attention_mask = torch.tril(
-        torch.ones(
-            (input_ids.shape[0], seq_len, seq_len),
-            device=input_ids.device,
-        ),
-    ).view(input_ids.shape[0], 1, seq_len, seq_len)
-    attention_mask = attention_mask < 0.5
+    attention_mask = (
+        torch.triu(
+            torch.ones(
+                (input_ids.shape[0], seq_len, seq_len),
+                device=input_ids.device,
+            ),
+            diagonal=1,
+        )
+        .bool()
+        .view(input_ids.shape[0], 1, seq_len, seq_len)
+    )
 
     return attention_mask, position_ids
-
-
-def right_padding(input_ids: torch.Tensor, tp: int, hidden_states: torch.Tensor = None):
-    """Pad zeros to the right so that the padded_input_ids is a multiple of tp."""
-    seq_len = input_ids.shape[-1]
-    right_padding_len = 0 if seq_len % tp == 0 else (tp - seq_len % tp)
-
-    if right_padding_len > 0:
-        right_token_pad = torch.zeros(
-            (input_ids.shape[0], right_padding_len),
-            dtype=input_ids.dtype,
-            device=input_ids.device,
-        )
-        padded_input_ids = torch.cat((input_ids, right_token_pad), dim=-1)
-        if hidden_states is not None:
-            padding_zeros = torch.zeros(
-                (right_padding_len, hidden_states.shape[1], hidden_states.shape[2]),
-                dtype=hidden_states.dtype,
-                device=hidden_states.device,
-            )
-            padded_hidden_states = torch.cat((hidden_states, padding_zeros), dim=0)
-    else:
-        padded_input_ids = input_ids
-        padded_hidden_states = hidden_states
-
-    if hidden_states is not None:
-        return padded_input_ids, seq_len, padded_hidden_states
-    else:
-        return padded_input_ids, seq_len
 
 
 def tree_decode(draft_logits, tree):
@@ -129,13 +122,12 @@ class AcceptanceRateValidation:
     Note: currently it only supports TP.
     """
 
-    def __init__(self, model, tokenizer, tp):
+    def __init__(self, model, tokenizer):
         """Init function to take in the model and tokenizer."""
         tokenizer.chat_template = tokenizer.chat_template.replace(REMOVE_THINK_CHAT_TEMPLATE, "")
         self.model = model
         self.tokenizer = tokenizer
         self.end_token = tokenizer.convert_tokens_to_ids(tokenizer.eos_token)
-        self.tp = tp
 
         # Make sure the model is in eval mode
         self.model.eval()
@@ -195,6 +187,20 @@ class AcceptanceRateValidation:
 
         return input_ids
 
+    def check_data_consistancy_across_ranks(self, data, group=None):
+        """This function checks the data consistancy across all ranks in the group.
+
+        Use rank 0 data as the golden set to broadcast to all ranks.
+        Each rank will then compare to this data and through error if different.
+        """
+        golden_set = copy.deepcopy(data)
+        torch.distributed.broadcast(data, src=0, group=group)
+        if not torch.equal(data, golden_set):
+            raise ValueError(
+                "Data diverges across ranks. For Megatron, 'moe-token-dispatcher-type'"
+                "should set to 'alltoall'."
+            )
+
     def validate(
         self,
         osl,
@@ -212,6 +218,7 @@ class AcceptanceRateValidation:
 
         if ground_truth is None:
             ground_truth = self.get_ground_truth(input_ids, osl)
+        self.check_data_consistancy_across_ranks(ground_truth)
 
         cnt = 0
         draft_tokens = None
@@ -220,9 +227,9 @@ class AcceptanceRateValidation:
             input_ids = self.check_draft(ground_truth, input_ids, draft_tokens, tree)
             if input_ids.shape[1] == ground_truth.shape[1]:
                 break
-            input_id, draft_tokens = self.model.pseudo_speculative_generate(
-                input_ids, tp=self.tp, steps=steps
-            )
+            input_id, draft_tokens = self.model.pseudo_speculative_generate(input_ids, steps=steps)
+            self.check_data_consistancy_across_ranks(input_id)
+            self.check_data_consistancy_across_ranks(draft_tokens)
             input_ids = torch.cat((input_ids, input_id), dim=-1)
 
         ar = (ground_truth.shape[1] - isl) / cnt

@@ -29,9 +29,8 @@ from modelopt.torch._deploy.compilation import compile
 deployment = {
     "runtime": "TRT",
     "accelerator": "GPU",
-    "version": "8.6",
     "precision": "fp32",
-    "onnx_opset": "13",
+    "onnx_opset": "21",
 }
 
 ACCURACY: Final[str] = "accuracy"

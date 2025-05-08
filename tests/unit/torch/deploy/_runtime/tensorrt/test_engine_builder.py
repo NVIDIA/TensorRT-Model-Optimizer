@@ -88,7 +88,7 @@ def test_build_engine(setup_mock_tmp_path_and_engine_bytes):
     )
 
     engine_bytes, out, graph_svg = build_engine(
-        onnx_bytes=mock_onnx_bytes, draw_engine=True, verbose=True
+        onnx_bytes=mock_onnx_bytes, draw_engine=True, verbose=True, output_dir=tmp_path
     )
 
     mock_run_command.assert_called_once_with(
@@ -116,7 +116,10 @@ def test_build_engine_dynamic_shapes(setup_mock_tmp_path_and_engine_bytes):
     }
 
     engine_bytes, out, graph_svg = build_engine(
-        onnx_bytes=mock_onnx_bytes, draw_engine=True, dynamic_shapes=dynamic_shapes
+        onnx_bytes=mock_onnx_bytes,
+        draw_engine=True,
+        dynamic_shapes=dynamic_shapes,
+        output_dir=tmp_path,
     )
 
     mock_run_command.assert_called_once_with(

@@ -20,13 +20,11 @@ from _test_utils.torch_model.transformers_models import (
 )
 
 pytest.importorskip("peft")
+from _test_utils.opt_utils import apply_mode_with_sampling
 from peft import AutoPeftModelForCausalLM, LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM
 
-import modelopt.torch.quantization as mtq
 
-
-@pytest.mark.skip(reason="under investigation")
 def test_peft_save_restore(tmp_path):
     tiny_llama_dir = create_tiny_llama_dir(tmp_path)
     model_ref = AutoModelForCausalLM.from_pretrained(tiny_llama_dir)
@@ -34,12 +32,12 @@ def test_peft_save_restore(tmp_path):
     peft_config = LoraConfig(
         task_type="CAUSAL_LM",
         r=8,
-        lora_alpha=32,
-        lora_dropout=0.1,
         target_modules=["q_proj", "v_proj", "k_proj"],
     )
     model_ref = get_peft_model(model_ref, peft_config)
-    mtq.quantize(model_ref, mtq.INT8_DEFAULT_CFG, lambda model: model(**model.dummy_inputs))
+    model_ref = apply_mode_with_sampling(
+        model_ref, ["sparse_magnitude", "export_sparse", "quantize"]
+    )
     model_ref.save_pretrained(tiny_llama_dir / "modelopt_peft_model")
 
     model_test = AutoPeftModelForCausalLM.from_pretrained(tiny_llama_dir / "modelopt_peft_model")

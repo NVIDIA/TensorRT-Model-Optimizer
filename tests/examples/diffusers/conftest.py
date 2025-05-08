@@ -13,9 +13,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# This import overrides the benchmark executor and disable chunked_context
-import disable_bench_chunked_context  # noqa
-import tensorrt_llm.commands.bench as trtllm_bench
+import pytest
 
-if __name__ == "__main__":
-    trtllm_bench.main()
+
+@pytest.fixture(scope="session")
+def int8_args():
+    # fmt: off
+    return [
+        "--format", "int8",
+        "--calib-size", "8",
+        "--collect-method", "min-mean",
+        "--percentile", "1.0",
+        "--alpha", "0.8",
+        "--quant-level", "3.0",
+        "--n-steps", "20",
+        "--batch-size", "2",
+        "--quant-algo", "smoothquant",
+    ]
+    # fmt: on
+
+
+@pytest.fixture(scope="session")
+def fp8_args():
+    # fmt: off
+    return [
+        "--format", "fp8",
+        "--calib-size", "8",
+        "--quant-level", "3.0",
+        "--n-steps", "20",
+        "--batch-size", "2",
+    ]
+    # fmt: on

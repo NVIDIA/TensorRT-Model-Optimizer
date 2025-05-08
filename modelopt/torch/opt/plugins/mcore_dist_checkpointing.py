@@ -198,6 +198,8 @@ def _get_gpt_mamba_sharded_modelopt_state(
     num_medusa_heads: int = 0,
     num_eagle_layers: int = 0,
     num_mtp_module: int = 0,
+    eagle_disable_moe: bool = False,
+    draft_vocab_size: int = 0,
 ) -> dict[str, Any]:
     """Return the sharded modelopt_state for a GPTModel or MambaModel.
 
@@ -216,6 +218,10 @@ def _get_gpt_mamba_sharded_modelopt_state(
         num_eagle_layers = len(model.eagle_module.decoder.layers)
     if hasattr(model, "mtp") and model.mtp is not None:
         num_mtp_module = len(model.mtp)
+    if hasattr(model, "eagle_disable_moe") and model.eagle_disable_moe is not None:
+        eagle_disable_moe = model.eagle_disable_moe
+    if hasattr(model, "draft_vocab_size") and model.draft_vocab_size is not None:
+        draft_vocab_size = model.draft_vocab_size
 
     # Extract the quantizer_state and subnet_config (sparsity). When resuming,
     # the model has no modelopt_state, then those are empty sets.
@@ -301,7 +307,7 @@ def _get_gpt_mamba_sharded_modelopt_state(
             medusa_consolidate_state[medusa_head_prefix + "medusa_layers.0.linear."] = {}
         return medusa_consolidate_state
 
-    def _get_eagle_consolidate_state(model, num_eagle_layers):
+    def _get_eagle_consolidate_state(model, num_eagle_layers, eagle_disable_moe, draft_vocab_size):
         eagle_consolidate_state = {}
         if num_eagle_layers == 0:
             return eagle_consolidate_state
@@ -309,12 +315,27 @@ def _get_gpt_mamba_sharded_modelopt_state(
         eagle_consolidate_state["eagle_module.fc."] = {}
         eagle_decoder_prefix = "eagle_module.decoder.layers."
 
+        if draft_vocab_size > 0:
+            eagle_consolidate_state["eagle_module.eagle_output_layer."] = {}
+
         last_layer = model.decoder.layers[-1]
         for layer_id in range(num_eagle_layers):
-            for name, module in last_layer.named_modules():
-                if "Linear" in str(type(module)):
-                    key = "{}{}.{}.".format(eagle_decoder_prefix, layer_id, name)
-                    eagle_consolidate_state[key] = {}
+            if eagle_disable_moe:
+                for name, module in last_layer.self_attention.named_modules():
+                    if "Linear" in str(type(module)):
+                        key = "{}{}.self_attention.{}.".format(eagle_decoder_prefix, layer_id, name)
+                        eagle_consolidate_state[key] = {}
+                # Only support MLP (no MoE support)
+                fc1_key = "{}{}.mlp.linear_fc1.".format(eagle_decoder_prefix, layer_id)
+                fc2_key = "{}{}.mlp.linear_fc2.".format(eagle_decoder_prefix, layer_id)
+                eagle_consolidate_state[fc1_key] = {}
+                eagle_consolidate_state[fc2_key] = {}
+            else:
+                for name, module in last_layer.named_modules():
+                    if "Linear" in str(type(module)):
+                        key = "{}{}.{}.".format(eagle_decoder_prefix, layer_id, name)
+                        eagle_consolidate_state[key] = {}
+
         return eagle_consolidate_state
 
     def _get_mtp_consolidate_state(model, num_mtp_module):
@@ -360,7 +381,9 @@ def _get_gpt_mamba_sharded_modelopt_state(
         if get_pipeline_model_parallel_rank() == (get_pipeline_model_parallel_world_size() - 1):
             medusa_consolidate_state = _get_medusa_consolidate_state(model, num_medusa_heads)
             consolidate_state.update(medusa_consolidate_state)
-            eagle_consolidate_state = _get_eagle_consolidate_state(model, num_eagle_layers)
+            eagle_consolidate_state = _get_eagle_consolidate_state(
+                model, num_eagle_layers, eagle_disable_moe, draft_vocab_size
+            )
             consolidate_state.update(eagle_consolidate_state)
             mtp_consolidate_state = _get_mtp_consolidate_state(model, num_mtp_module)
             consolidate_state.update(mtp_consolidate_state)
@@ -503,6 +526,8 @@ def get_sharded_modelopt_state(
     num_medusa_heads: int = 0,
     num_eagle_layers: int = 0,
     num_mtp_module: int = 0,
+    eagle_disable_moe: bool = False,
+    draft_vocab_size: int = 0,
 ) -> dict[str, Any]:
     """Return the sharded modelopt_state.
 
@@ -542,6 +567,8 @@ def get_sharded_modelopt_state(
             num_medusa_heads=num_medusa_heads,
             num_eagle_layers=num_eagle_layers,
             num_mtp_module=num_mtp_module,
+            eagle_disable_moe=eagle_disable_moe,
+            draft_vocab_size=draft_vocab_size,
         )
     else:
         raise ValueError(
@@ -654,7 +681,13 @@ def restore_sharded_modelopt_state(
         if mode == "medusa":
             extra_kwargs.update({"num_medusa_heads": mode_cfg["config"]["medusa_num_heads"]})
         if mode == "eagle":
-            extra_kwargs.update({"num_eagle_layers": mode_cfg["config"]["eagle_num_layers"]})
+            extra_kwargs.update(
+                {
+                    "num_eagle_layers": mode_cfg["config"]["eagle_num_layers"],
+                    "eagle_disable_moe": mode_cfg["config"]["eagle_disable_moe"],
+                    "draft_vocab_size": mode_cfg["config"].get("draft_vocab_size", 0),
+                }
+            )
         if mode == "mtp":
             extra_kwargs.update({"num_mtp_module": mode_cfg["config"]["mtp_num_module"]})
 

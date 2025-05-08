@@ -375,7 +375,9 @@ def train():
             if isinstance(mod, torch.nn.Embedding):
                 mod.weight.requires_grad = False
 
-        trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+        trainer = Trainer(
+            model=model, processing_class=tokenizer, args=training_args, **data_module
+        )
 
         # modelopt sparsity
         if args.modelopt_restore_path:

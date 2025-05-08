@@ -103,4 +103,4 @@ def test_dynamic_batch_size(config):
             exported_program = torch.export.export(
                 model, (input_tensor,), dynamic_shapes=dynamic_shapes, strict=False
             )
-    return exported_program
+    assert exported_program

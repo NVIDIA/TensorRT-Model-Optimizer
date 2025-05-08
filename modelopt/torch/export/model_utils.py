@@ -29,6 +29,7 @@ MODEL_NAME_TO_TYPE = {
     "ChatGLM": "chatglm",
     "QWen": "qwen",
     "RecurrentGemma": "recurrentgemma",
+    "Gemma3": "gemma3",
     "Gemma2": "gemma2",
     "Gemma": "gemma",
     "phi3small": "phi3small",

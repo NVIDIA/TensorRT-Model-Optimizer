@@ -115,7 +115,7 @@ class BiasCalibrator(_Calibrator):
         self._cnt = 0
         self._method = method
 
-    def collect_calib_bias(self, x: torch.Tensor):
+    def collect(self, x: torch.Tensor):
         """Compute bias of input tensor along axis."""
         # For a 4D tensor with shape [batch, heads, seq_len, hidden_dim]:
         #   - None: reduce all dimensions (per-tensor bias)
@@ -155,6 +155,24 @@ class BiasCalibrator(_Calibrator):
         else:
             raise ValueError(f"Unsupported method: {self._method}")
 
-    def compute_calib_bias(self):
+    def compute_bias(self):
         """Return the bias of all tensors collected."""
         return self._calib_bias
+
+    def compute_dynamic_bias(self, inputs):
+        """Compute dynamic bias based on current inputs."""
+        if self._method == "mean":
+            # mean = (max + min) / 2
+            return compute_bias(inputs, self._axis, method="mean")
+        elif self._method == "max_min":
+            # mean = average(all tokens)
+            return compute_bias(inputs, self._axis, method="max_min")
+        else:
+            raise ValueError(f"Unknown bias method: {self._method}")
+
+    def reset(self):
+        """Reset the bias calibrator."""
+        self._calib_bias = None
+        self._calib_max = None
+        self._calib_min = None
+        self._cnt = 0

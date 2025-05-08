@@ -196,8 +196,8 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Optional[Node]:
 
 
 def get_tensor_producer_nodes(
-    graph: onnx.onnx_ml_pb2.GraphProto,
-) -> dict[str, onnx.onnx_ml_pb2.NodeProto]:
+    graph: onnx.GraphProto,
+) -> dict[str, onnx.NodeProto]:
     """Returns a dictionary of tensor name and their producer node object mapping.
 
     Note. we create a special Root type node as external inputs producer for ease of implementation.
@@ -237,8 +237,8 @@ def get_tensor_producer_nodes(
 
 
 def get_tensor_consumer_nodes(
-    graph: onnx.onnx_ml_pb2.GraphProto,
-) -> dict[str, list[onnx.onnx_ml_pb2.NodeProto]]:
+    graph: onnx.GraphProto,
+) -> dict[str, list[onnx.NodeProto]]:
     """Returns a dictionary of tensor name and their consumer node object mapping.
 
     Args:
@@ -280,10 +280,10 @@ def filter_quantizable_kgen_heads(
             return False
 
         for parent in get_parent_nodes(node):
-            if _is_following_cask_partition(parent):
-                return True
+            if not _is_following_cask_partition(parent):
+                return False
 
-        return False
+        return True
 
     def _is_mha_epilogue_pattern(node: Node):
         if head_node.op != "Add":
@@ -558,7 +558,7 @@ def _find_nodes_from_op_types_to_exclude(graph: Graph, op_types_to_exclude=None)
 
 
 def expand_node_names_from_patterns(
-    graph: Union[onnx.onnx_pb.GraphProto, Graph], name_patterns: list[str]
+    graph: Union[onnx.GraphProto, Graph], name_patterns: list[str]
 ) -> list[str]:
     """Expand the node names from the given patterns."""
     node_list = getattr(graph, "nodes", None) or getattr(graph, "node", None) or []
@@ -584,7 +584,7 @@ def find_nodes_to_exclude(
 
 def get_extended_model_outputs(
     onnx_path: str,
-    extended_model: onnx.onnx_pb.ModelProto,
+    extended_model: onnx.ModelProto,
     use_external_data_format: bool,
     intermediate_generated_files: list[str],
     calibration_data_reader: CalibrationDataReader,
@@ -917,6 +917,7 @@ def print_stat(graph: Graph, verbose: bool) -> None:
                 # if that node is also in final model output. Ex. CLIP-ViT-L-14-opset16.onnx
                 assert tensor.name in output_names or producer_node.op != "DequantizeLinear"
 
+    logging.info(f"Total number of nodes: {len(graph.nodes)}")
     if verbose:
         logging.info(f"Quantized nodes: {quantized_nodes}")
     logging.info(f"Total number of quantized nodes: {count}")
@@ -1122,6 +1123,23 @@ def convert_fp16_io(graph):
         )
 
 
+def remove_output_initializers(graph: gs.Graph, graph_initializers: list):
+    """Remove initializers that are also listed as graph outputs.
+
+    Having initializers (constant tensors) that are also marked as outputs can lead to ONNX Runtime
+    or conversion tool errors, particularly related to ambiguous 'dtype' or shape inference.
+    This step ensures compatibility by detaching such initializers from the graph's outputs.
+    """
+    init_names = [init.name for init in graph_initializers]
+    init_names_removed = []
+    for output_tensor in graph.outputs:
+        if output_tensor.name in init_names:
+            graph.outputs.remove(output_tensor)
+            init_names_removed.append(output_tensor.name)
+    if init_names_removed:
+        logging.info(f"Removed output initializers: {init_names_removed}")
+
+
 def get_resize_scales(onnx_model):
     r"""Record Resize op's old scale value before converting to fp16.
 
@@ -1159,7 +1177,7 @@ def replace_resize_scales(onnx_model, resize_scale_inits):
 
 
 def get_concat_eliminated_tensors(
-    onnx_model: onnx.onnx_pb.ModelProto,
+    onnx_model: onnx.ModelProto,
     nodes_to_quantize: list[str],
 ) -> dict[str, set[str]]:
     """Find the input tensors and output tensor of concat that will be quantized.
@@ -1255,3 +1273,88 @@ def get_concat_eliminated_tensors(
         root = find(tensor)
         result[tensor] = groups[root]
     return result
+
+
+def remove_redundant_cast_nodes(graph: onnx.GraphProto) -> None:
+    """Remove redundant Cast nodes from the ONNX graph to optimize model performance.
+
+    This function identifies and removes two types of redundant Cast nodes:
+
+    1. Cast nodes where input and output types are identical
+       - Before: t1 (dtype=fp16) -> cast (to=fp16) -> t2 -> Op
+       - After:  t1 (dtype=fp16) -> Op
+
+    2. Cast nodes that can be fused with initializers
+       - Before: (initializer) t1 (dtype=fp32) -> cast (to=fp16) -> t2 -> Op
+       - After:  (initializer) t1 (dtype=fp16) -> Op
+
+    The function preserves Cast nodes that:
+    - Have outputs that are graph outputs
+    - Are necessary for type conversion
+    - Have dynamic inputs (not initializers)
+
+    Args:
+        graph: ONNX graph to optimize. The graph will be modified in-place.
+
+    Note:
+        - This optimization is particularly useful for models with many Cast operations
+        - The function modifies the graph in-place
+        - All tensor consumers are updated to maintain graph connectivity
+        - Initializer data types are converted when possible to eliminate Cast nodes
+    """
+    initializers = {init.name: init for init in graph.initializer}
+    tensor_consumers = get_tensor_consumer_nodes(graph)
+    value_info_map = {info.name: info for info in graph.value_info}
+    cast_indices = []
+    output_names = {output.name for output in graph.output}
+
+    def _get_tensor_type(tensor_name: str) -> Optional[int]:
+        """Get the tensor type for a given tensor name."""
+        if tensor_name in value_info_map:
+            return value_info_map[tensor_name].type.tensor_type.elem_type
+        if tensor_name in initializers:
+            return initializers[tensor_name].data_type
+        return None
+
+    for node_idx, node in enumerate(graph.node):
+        if node.op_type != "Cast":
+            continue
+
+        # Skip if output is a graph output
+        if any(out_name in output_names for out_name in node.output):
+            continue
+
+        input_name = node.input[0]
+        input_type = _get_tensor_type(input_name)
+        if input_type is None:
+            continue
+
+        # Get target type from Cast node attributes
+        attr = next((attr for attr in node.attribute if attr.name == "to"), None)
+        if attr is None:
+            continue
+
+        # Pattern 1: Input and output types are the same
+        if input_type == attr.i:
+            cast_indices.append(node_idx)
+        # Pattern 2: Convert and fuse Cast node for initializers
+        elif input_name in initializers:
+            cast_indices.append(node_idx)
+            cast_input = onnx.numpy_helper.to_array(initializers[input_name])
+            dtype = onnx.helper.tensor_dtype_to_np_dtype(attr.i)
+            converted_tensor = onnx.numpy_helper.from_array(cast_input.astype(dtype), input_name)
+            initializers[input_name].CopyFrom(converted_tensor)
+        else:
+            continue
+
+        # Update consumer nodes
+        for consumer in tensor_consumers.get(node.output[0], []):
+            for i, input_tensor in enumerate(consumer.input):
+                if input_tensor == node.output[0]:
+                    consumer.input[i] = input_name
+                    break
+
+    # Remove Cast nodes in reverse order
+    logging.info(f"Removing {len(cast_indices)} redundant Cast nodes")
+    for node_idx in sorted(cast_indices, reverse=True):
+        del graph.node[node_idx]

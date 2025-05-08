@@ -37,9 +37,10 @@ parse_options() {
     TRUST_REMOTE_CODE=false
     KV_CACHE_FREE_GPU_MEMORY_FRACTION=0.8
     VERBOSE=true
+    USE_SEQ_DEVICE_MAP=false
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,kv_cache_free_gpu_memory_fraction:,no-verbose" -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,use_seq_device_map,gpu_max_mem_percentage:,kv_cache_free_gpu_memory_fraction:,no-verbose" -n "$0" -- "$@")
   eval set -- "$ARGS"
   while true; do
     case "$1" in
@@ -65,6 +66,8 @@ parse_options() {
       --simple_eval_tasks ) SIMPLE_EVAL_TASKS="$2"; shift 2;;
       --num_samples ) NUM_SAMPLES="$2"; shift 2;;
       --trust_remote_code ) TRUST_REMOTE_CODE=true; shift;;
+      --use_seq_device_map ) USE_SEQ_DEVICE_MAP=true; shift;;
+      --gpu_max_mem_percentage ) GPU_MAX_MEM_PERCENTAGE="$2"; shift 2;;
       --kv_cache_free_gpu_memory_fraction ) KV_CACHE_FREE_GPU_MEMORY_FRACTION="$2"; shift 2;;
       --no-verbose ) VERBOSE=false; shift;;
       -- ) shift; break ;;
@@ -146,6 +149,8 @@ parse_options() {
   echo "lm_eval_limit: $LM_EVAL_LIMIT"
   echo "simple_eval_tasks: $SIMPLE_EVAL_TASKS"
   echo "num_sample: $NUM_SAMPLES"
+  echo "use_seq_device_map: $USE_SEQ_DEVICE_MAP"
+  echo "gpu_max_mem_percentage: $GPU_MAX_MEM_PERCENTAGE"
   echo "kv_cache_free_gpu_memory_fraction: $KV_CACHE_FREE_GPU_MEMORY_FRACTION"
   echo "================="
 }

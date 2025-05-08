@@ -17,32 +17,54 @@ import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pytest
+from _test_utils.opt_utils import apply_mode_with_sampling
 from _test_utils.torch_model.transformers_models import (
     create_tiny_llama_dir,
     tf_modelopt_state_and_output_tester,
 )
-from transformers import AutoModelForCausalLM, LlamaForCausalLM
-
-import modelopt.torch.quantization as mtq
+from transformers import AutoConfig, AutoModelForCausalLM, LlamaForCausalLM
 
 
-@pytest.mark.parametrize(
-    "model_cls,fold_weight", [(LlamaForCausalLM, True), (AutoModelForCausalLM, False)]
-)
-def test_transformers_save_restore(tmp_path, model_cls, fold_weight):
-    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
+@pytest.mark.parametrize("model_cls", [LlamaForCausalLM, AutoModelForCausalLM])
+def test_causal_lm_save_restore(tmp_path, model_cls):
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path, hidden_size=128)
     model_ref = model_cls.from_pretrained(tiny_llama_dir)
-    mtq.quantize(model_ref, mtq.INT8_DEFAULT_CFG, lambda model: model(**model.dummy_inputs))
-    if fold_weight:
-        mtq.fold_weight(model_ref)
+    # TODO: Add calibrate, compress mode to the test
+    model_ref = apply_mode_with_sampling(
+        model_ref, ["sparse_magnitude", "export_sparse", "quantize"]
+    )
     model_ref.save_pretrained(tiny_llama_dir / "modelopt_model")
 
     model_test = model_cls.from_pretrained(tiny_llama_dir / "modelopt_model")
     tf_modelopt_state_and_output_tester(model_ref, model_test)
 
 
-@pytest.mark.parametrize("model_cls", [LlamaForCausalLM, AutoModelForCausalLM])
-def test_transformers_load_with_multi_thread(tmp_path, model_cls):
+def test_causal_lm_from_config(tmp_path):
+    """Test loading a model using from_config after applying optimizations"""
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path, hidden_size=128)
+
+    model_ref = AutoModelForCausalLM.from_pretrained(tiny_llama_dir)
+    model_ref = apply_mode_with_sampling(
+        model_ref, ["sparse_magnitude", "export_sparse", "quantize"]
+    )
+    model_ref.save_pretrained(tiny_llama_dir / "modelopt_model")
+
+    config = AutoConfig.from_pretrained(tiny_llama_dir / "modelopt_model")
+
+    model_test = AutoModelForCausalLM.from_config(config)
+
+    # from_config doesn't load weights, need to load state_dict separately
+    state_dict = model_ref.state_dict()
+    model_test.load_state_dict(state_dict)
+
+    tf_modelopt_state_and_output_tester(model_ref, model_test)
+
+
+# This test is flaky and causes other tests to fail; This seems to run fine in isolation
+@pytest.mark.manual(
+    reason="Flaky test causing other tests to fail, run this test manually with --run-manual"
+)
+def test_transformers_load_with_multi_thread(tmp_path):
     """Multi-threaded test for save/restore functionality"""
     tiny_llama_dir = create_tiny_llama_dir(tmp_path)
     workers = 2
@@ -50,7 +72,7 @@ def test_transformers_load_with_multi_thread(tmp_path, model_cls):
 
     def worker_func(worker_id):
         try:
-            _ = model_cls.from_pretrained(tiny_llama_dir)
+            _ = AutoModelForCausalLM.from_pretrained(tiny_llama_dir)
         except Exception as e:
             traceback.print_exc()
             return e

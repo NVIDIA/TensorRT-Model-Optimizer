@@ -15,10 +15,26 @@
 
 """ModelOpt plugin for enabling automatic save/restore of ModelOpt state for `diffusers` library."""
 
+import types
+
 from diffusers import ModelMixin
 
-from .huggingface import patch_pretrained_methods
+from .huggingface import _new_save_pretrained, _patch_model_init_for_modelopt, register_for_patching
 
 __all__ = []
 
-patch_pretrained_methods(ModelMixin, "diffusers")
+
+def _new_from_pretrained(cls, /, pretrained_model_name_or_path, *args, **kwargs):
+    """Patch for `cls.from_pretrained` method to restore ModelOpt state."""
+    with _patch_model_init_for_modelopt(cls, pretrained_model_name_or_path):
+        model = types.MethodType(cls._modelopt_cache["from_pretrained"].__func__, cls)(
+            pretrained_model_name_or_path, *args, **kwargs
+        )
+    return model
+
+
+modelmixin_patch_methods = [
+    ("from_pretrained", classmethod(_new_from_pretrained)),
+    ("save_pretrained", _new_save_pretrained),
+]
+register_for_patching("diffusers", ModelMixin, modelmixin_patch_methods)

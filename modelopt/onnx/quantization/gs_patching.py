@@ -20,7 +20,6 @@ from typing import Sequence, Union
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-from onnx.mapping import TENSOR_TYPE_MAP
 from onnx_graphsurgeon.ir.tensor import LazyValues
 
 from modelopt.onnx.quantization.quant_utils import pack_float32_to_4bit_cpp_based
@@ -38,7 +37,7 @@ def _make_constant(
 ) -> gs.Constant:
     """Creates a constant with a specified dtype."""
     converted_dtype = (
-        dtype if isinstance(values, LazyValues) else TENSOR_TYPE_MAP[int(dtype)].np_dtype
+        dtype if isinstance(values, LazyValues) else onnx.helper.tensor_dtype_to_np_dtype(dtype)
     )
     if values.dtype != converted_dtype:
         GS_LOGGER.critical(
@@ -54,7 +53,7 @@ def _make_variable(
     name: str, dtype: onnx.TensorProto.DataType, shape: Sequence[Union[int, str]]
 ) -> gs.Constant:
     """Creates a variable with a specified dtype."""
-    x = gs.Variable(name, TENSOR_TYPE_MAP[int(dtype)].np_dtype, shape)
+    x = gs.Variable(name, onnx.helper.tensor_dtype_to_np_dtype(dtype), shape)
     setattr(x, "explicit_dtype", dtype)
     return x
 

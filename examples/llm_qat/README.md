@@ -45,7 +45,7 @@ import modelopt.torch.quantization as mtq
 ...
 
 # [Not shown] load model, tokenizer, data loaders etc
-trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+trainer = Trainer(model=model, processing_class=tokenizer, args=training_args, **data_module)
 
 
 def forward_loop(model):
@@ -161,9 +161,39 @@ To fairly compare the PTQ and QAT, the fine-tuning in this experiment also has t
 
 > **_NOTE:_** If you only use part of the dataset for fine-tuning/QAT, we recommend to use different data samples for fine-tuning and QAT, otherwise there may appear overfitting issues during the QAT stage.
 
+#### Testing QAT model with LLM benchmarks for accuracy evaluation
+
+The model generated after QAT can be tested for LLM accuracy evaluation for various LLM benchmarks. After running the fine-tuning, following code can be used to run LLM evaluation for [supported tasks](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks).
+
+To run the llm_eval tasks on QAT model, run:
+
+```sh
+cd ../llm_eval
+
+python lm_eval_hf.py --model hf \
+    --tasks <comma separated tasks> \
+    --model_args pretrained=../llm_qat/llama2-qat \
+    --quant_cfg NVFP4_DEFAULT_CFG \
+    --batch_size 4
+```
+
+See more details on running LLM evaluation benchmarks [here](../llm_eval/README.md).
+
 #### Deployment
 
-The final model after QAT is similar in architecture to that of PTQ model. QAT model simply have updated weights as compared to the PTQ model. It can be deployed to TensorRT-LLM (TRTLLM) or to TensorRT just like a regular **ModelOpt** PTQ model if the quantization format is supported for deployment. See more details on deployment of quantized model to TRTLLM [here](../llm_ptq/README.md).
+The final model after QAT is similar in architecture to that of PTQ model. QAT model simply have updated weights as compared to the PTQ model. It can be deployed to TensorRT-LLM (TRTLLM) or to TensorRT just like a regular **ModelOpt** PTQ model if the quantization format is supported for deployment.
+
+To run QAT model with TRTLLM, run:
+
+```sh
+cd ../llm_ptq
+
+./scripts/huggingface_example.sh --model ../llm_qat/llama2-qat --quant w4a8_awq
+```
+
+Note: The QAT checkpoint for `w4a8_awq` config can be created by using `--quant_cfg W4A8_AWQ_BETA_CFG` in [QAT example](#end-to-end-qat-example).
+
+See more details on deployment of quantized model [here](../llm_ptq/README.md).
 
 ## Other Examples
 

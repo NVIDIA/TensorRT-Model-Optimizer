@@ -19,6 +19,7 @@ from typing import Any, Optional
 import torch
 from config import (
     FP8_DEFAULT_CONFIG,
+    NVFP4_DEFAULT_CONFIG,
     NVFP4_FP8_MHA_FLUX_CONFIG,
     get_int8_config,
     set_quant_config_attr,
@@ -272,11 +273,10 @@ def main() -> None:
                 raise NotImplementedError("Only 'default' collect method is implemented for fp8.")
             quant_config = FP8_DEFAULT_CONFIG
         elif args.format == "fp4":
-            if not args.model.startswith("flux"):
-                raise ValueError("This example only supports FP4 for flux-dev.")
-            quant_config = mtq.NVFP4_DEFAULT_CFG  # type: ignore[attr-defined]
-            if args.quant_level == 4.0:
+            if args.model.startswith("flux"):
                 quant_config = NVFP4_FP8_MHA_FLUX_CONFIG
+            else:
+                quant_config = NVFP4_DEFAULT_CONFIG
         else:
             raise NotImplementedError(f"Unknown format {args.format}.")
 

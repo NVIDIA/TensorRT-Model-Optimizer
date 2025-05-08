@@ -18,8 +18,8 @@
 from modelopt.torch.opt.config import ModeloptBaseConfig
 from modelopt.torch.opt.mode import (
     ConvertEntrypoint,
+    ModeDescriptor,
     RestoreEntrypoint,
-    _ModeDescriptor,
     _ModeRegistryCls,
 )
 
@@ -32,7 +32,7 @@ SpeculativeDecodingModeRegistry = _ModeRegistryCls("speculative")
 
 
 @SpeculativeDecodingModeRegistry.register_mode
-class MedusaModeDescriptor(_ModeDescriptor):
+class MedusaModeDescriptor(ModeDescriptor):
     """Class to describe the ``"medusa"`` mode.
 
     The properties of this mode can be inspected via the source code.
@@ -60,7 +60,7 @@ class MedusaModeDescriptor(_ModeDescriptor):
 
 
 @SpeculativeDecodingModeRegistry.register_mode
-class EagleModeDescriptor(_ModeDescriptor):
+class EagleModeDescriptor(ModeDescriptor):
     """Class to describe the ``"eagle"`` mode.
 
     The properties of this mode can be inspected via the source code.
@@ -88,7 +88,7 @@ class EagleModeDescriptor(_ModeDescriptor):
 
 
 @SpeculativeDecodingModeRegistry.register_mode
-class MTPModeDescriptor(_ModeDescriptor):
+class MTPModeDescriptor(ModeDescriptor):
     """Class to describe the ``"mtp"`` mode.
 
     The properties of this mode can be inspected via the source code.

@@ -160,7 +160,7 @@ def train():
     elif training_args.mode == "eagle":
         data_module = make_eagle_supervised_data_module(tokenizer, data_args)
 
-    trainer = Trainer(model=model, tokenizer=tokenizer, args=training_args, **data_module)
+    trainer = Trainer(model=model, processing_class=tokenizer, args=training_args, **data_module)
     trainer._move_model_to_device(model, trainer.args.device)
 
     # Manually enable this to return loss in eval

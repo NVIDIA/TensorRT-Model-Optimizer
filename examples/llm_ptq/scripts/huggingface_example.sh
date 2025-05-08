@@ -45,11 +45,11 @@ if [ "$EXPORT_FORMAT" = "hf" ]; then
     IFS=","
     for qformat in $QFORMAT; do
         case $qformat in
-        fp16|bf16|fp8|int4_awq|nvfp4|nvfp4_awq|w4a8_awq)
-            ;;
+        fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq) ;;
         *)
-            echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, int4_awq, nvfp4, nvfp4_awq, w4a8_awq]" >&2
+            echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq]" >&2
             exit 1
+            ;;
         esac
     done
     IFS=" "
@@ -63,40 +63,40 @@ else
 fi
 
 case $SPARSITY_FMT in
-    dense|sparsegpt)
-        ;;
-    *)
-        echo "Unknown sparsity argument: Expected one of: [dense, sparsegpt]" >&2
-        exit 1
+dense | sparsegpt) ;;
+*)
+    echo "Unknown sparsity argument: Expected one of: [dense, sparsegpt]" >&2
+    exit 1
+    ;;
 esac
 
 #Iterate over list of qformats provided and check if they are valid
 IFS=","
 for qformat in $QFORMAT; do
     case $qformat in
-        fp8|int8_sq|int4_awq|w4a8_awq|fp16|bf16|nvfp4|nvfp4_awq)
-            ;;
-        *)
-            echo "Unknown quant argument: Expected one of: [fp8, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq]" >&2
-            exit 1
+    fp8 | fp8_pc_pt | fp8_pb_wo | int8_sq | int4_awq | w4a8_awq | fp16 | bf16 | nvfp4 | nvfp4_awq) ;;
+    *)
+        echo "Unknown quant argument: Expected one of: [fp8, fp8_pc_pt, fp8_pb_wo, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq]" >&2
+        exit 1
+        ;;
     esac
 done
 IFS=" "
 
 case $TP in
-    1|2|4|8)
-        ;;
-    *)
-        echo "Unknown tp argument: Expected one of: [1, 2, 4, 8]" >&2
-        exit 1
+1 | 2 | 4 | 8) ;;
+*)
+    echo "Unknown tp argument: Expected one of: [1, 2, 4, 8]" >&2
+    exit 1
+    ;;
 esac
 
 case $PP in
-    1|2|4|8)
-        ;;
-    *)
-        echo "Unknown pp argument: Expected one of: [1, 2, 4, 8]" >&2
-        exit 1
+1 | 2 | 4 | 8) ;;
+*)
+    echo "Unknown pp argument: Expected one of: [1, 2, 4, 8]" >&2
+    exit 1
+    ;;
 esac
 
 GPU_NAME=$(nvidia-smi --id 0 --query-gpu=name --format=csv,noheader,nounits | sed 's/ /_/g')
@@ -150,6 +150,14 @@ if $TRUST_REMOTE_CODE; then
     PTQ_ARGS+=" --trust_remote_code "
 fi
 
+if $USE_SEQ_DEVICE_MAP; then
+    PTQ_ARGS+=" --use_seq_device_map "
+fi
+
+if [ -n "$GPU_MAX_MEM_PERCENTAGE" ]; then
+    PTQ_ARGS+=" --gpu_max_mem_percentage=$GPU_MAX_MEM_PERCENTAGE "
+fi
+
 if ! $VERBOSE; then
     PTQ_ARGS+=" --no-verbose "
 fi
@@ -168,11 +176,11 @@ fi
 if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
 
     if [ "$EXPORT_FORMAT" == "hf" ] && ([ "$qformat" == "bf16" ] || [ "$qformat" == "fp16" ]); then
-        if  [ -d "$MODEL_PATH" ]; then
+        if [ -d "$MODEL_PATH" ]; then
             MODEL_CONFIG_EXIST=true
             MODEL_CONFIG=$MODEL_PATH/config.json
             mkdir -p $ENGINE_DIR
-            for file in $MODEL_PATH/*; do ln -sf "$file" $ENGINE_DIR/; done;
+            for file in $MODEL_PATH/*; do ln -sf "$file" $ENGINE_DIR/; done
         else
             echo "Please use the model directory where the config.json file is present."
             exit 1
@@ -203,7 +211,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         exit 0
     fi
 
-    if [[ "$QFORMAT" == *"nvfp4"* ]]; then
+    if [[ "$QFORMAT" == *"nvfp4"* ]] || [[ "$KV_CACHE_QUANT" == *"nvfp4"* ]]; then
         cuda_major=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader -i 0 | cut -d. -f1)
 
         if [ "$cuda_major" -lt 10 ]; then
@@ -211,7 +219,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             exit 0
         fi
     fi
-
 
     if [ $EXPORT_FORMAT = "tensorrt_llm" ]; then
         echo "Building tensorrt_llm engine from Model Optimizer-quantized model..."
@@ -253,94 +260,93 @@ else
     MODEL_ABS_PATH=${MODEL_PATH}
 fi
 
-
 if [[ $TASKS =~ "lm_eval" ]]; then
 
-if [ -z "$LM_EVAL_TASKS" ]; then
-    echo "lm_eval_tasks not specified"
-    exit 1
-fi
+    if [ -z "$LM_EVAL_TASKS" ]; then
+        echo "lm_eval_tasks not specified"
+        exit 1
+    fi
 
-lm_eval_flags=""
-if [[ "$LM_EVAL_TASKS" == *"llama"* ]]; then
-  # Flags instructed by https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks/llama3#paper
-  lm_eval_flags+=" --fewshot_as_multiturn --apply_chat_template "
-fi
+    lm_eval_flags=""
+    if [[ "$LM_EVAL_TASKS" == *"llama"* ]]; then
+        # Flags instructed by https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks/llama3#paper
+        lm_eval_flags+=" --fewshot_as_multiturn --apply_chat_template "
+    fi
 
-if [ -n "$LM_EVAL_LIMIT" ]; then
-    lm_eval_flags+=" --limit $LM_EVAL_LIMIT "
-fi
+    if [ -n "$LM_EVAL_LIMIT" ]; then
+        lm_eval_flags+=" --limit $LM_EVAL_LIMIT "
+    fi
 
-if $TRUST_REMOTE_CODE; then
-    lm_eval_flags+=" --trust_remote_code "
-fi
+    if $TRUST_REMOTE_CODE; then
+        lm_eval_flags+=" --trust_remote_code "
+    fi
 
-LM_EVAL_RESULT=${ENGINE_DIR}/lm_eval.txt
-echo "Evaluating lm_eval, result saved to $LM_EVAL_RESULT..."
+    LM_EVAL_RESULT=${ENGINE_DIR}/lm_eval.txt
+    echo "Evaluating lm_eval, result saved to $LM_EVAL_RESULT..."
 
-pushd ../llm_eval/
+    pushd ../llm_eval/
 
-pip install -r requirements.txt
+    pip install -r requirements.txt
 
-python lm_eval_tensorrt_llm.py \
-    --model trt-llm \
-    --model_args tokenizer=$MODEL_PATH,engine_dir=$ENGINE_DIR,max_gen_toks=$BUILD_MAX_OUTPUT_LEN \
-    --tasks $LM_EVAL_TASKS \
-    --batch_size $BUILD_MAX_BATCH_SIZE $lm_eval_flags | tee $LM_EVAL_RESULT
+    python lm_eval_tensorrt_llm.py \
+        --model trt-llm \
+        --model_args tokenizer=$MODEL_PATH,engine_dir=$ENGINE_DIR,max_gen_toks=$BUILD_MAX_OUTPUT_LEN \
+        --tasks $LM_EVAL_TASKS \
+        --batch_size $BUILD_MAX_BATCH_SIZE $lm_eval_flags | tee $LM_EVAL_RESULT
 
-popd
+    popd
 
 fi
 
 if [[ $TASKS =~ "mmlu" ]]; then
 
-MMLU_RESULT=${ENGINE_DIR}/mmlu.txt
-echo "Evaluating MMLU, result saved to $MMLU_RESULT..."
+    MMLU_RESULT=${ENGINE_DIR}/mmlu.txt
+    echo "Evaluating MMLU, result saved to $MMLU_RESULT..."
 
-pushd ../llm_eval/
+    pushd ../llm_eval/
 
-pip install -r requirements.txt
+    pip install -r requirements.txt
 
-if [ -z "$MMLU_DATA_PATH" ]; then
-    MMLU_DATA_PATH=data/mmlu
-fi
-if [[ ! -d "$MMLU_DATA_PATH" ]] || [[ ! $(ls -A $MMLU_DATA_PATH) ]]; then
-    echo "Preparing the MMLU test data"
-    wget https://people.eecs.berkeley.edu/~hendrycks/data.tar -O /tmp/mmlu.tar
-    mkdir -p data
-    tar -xf /tmp/mmlu.tar -C data && mv data/data $MMLU_DATA_PATH
-fi
+    if [ -z "$MMLU_DATA_PATH" ]; then
+        MMLU_DATA_PATH=data/mmlu
+    fi
+    if [[ ! -d "$MMLU_DATA_PATH" ]] || [[ ! $(ls -A $MMLU_DATA_PATH) ]]; then
+        echo "Preparing the MMLU test data"
+        wget https://people.eecs.berkeley.edu/~hendrycks/data.tar -O /tmp/mmlu.tar
+        mkdir -p data
+        tar -xf /tmp/mmlu.tar -C data && mv data/data $MMLU_DATA_PATH
+    fi
 
-python mmlu.py \
-    --model_name causal \
-    --model_path $MODEL_ABS_PATH \
-    --engine_dir $ENGINE_DIR \
-    --data_dir $MMLU_DATA_PATH | tee $MMLU_RESULT
-popd
+    python mmlu.py \
+        --model_name causal \
+        --model_path $MODEL_ABS_PATH \
+        --engine_dir $ENGINE_DIR \
+        --data_dir $MMLU_DATA_PATH | tee $MMLU_RESULT
+    popd
 
 fi
 
 if [[ $TASKS =~ "mtbench" ]]; then
 
-pushd ../llm_eval/
+    pushd ../llm_eval/
 
-bash run_fastchat.sh -h $MODEL_ABS_PATH -e $ENGINE_DIR
-find data/mt_bench/model_answer/ -type f -name '*.jsonl' -exec mv {} $ENGINE_DIR \;
+    bash run_fastchat.sh -h $MODEL_ABS_PATH -e $ENGINE_DIR
+    find data/mt_bench/model_answer/ -type f -name '*.jsonl' -exec mv {} $ENGINE_DIR \;
 
-JSONL_PATH=$(readlink -f $(find $ENGINE_DIR -type f -name '*.jsonl'))
-echo "FastChat generation complete. The results are saved under $JSONL_PATH . Please run the judge(https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to evaluate the quality of the responses."
+    JSONL_PATH=$(readlink -f $(find $ENGINE_DIR -type f -name '*.jsonl'))
+    echo "FastChat generation complete. The results are saved under $JSONL_PATH . Please run the judge(https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to evaluate the quality of the responses."
 
-popd
+    popd
 
 fi
 
 if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     # Clean a previous session if exists
-    pkill -f "trtllm-serve" && while pgrep -f "trtllm-serve" > /dev/null; do sleep 1; done
+    pkill -f "trtllm-serve" && while pgrep -f "trtllm-serve" >/dev/null; do sleep 1; done
     HASH=$(echo -n "$ENGINE_DIR" | md5sum | awk '{print $1}')
     PORT=$((10000 + (0x${HASH:0:4} % 50001)))
     echo "Starting trtllm-serve on $PORT"
-    trtllm-serve $ENGINE_DIR --host 0.0.0.0 --port $PORT > $ENGINE_DIR/serve.txt 2>&1 &
+    trtllm-serve $ENGINE_DIR --host 0.0.0.0 --port $PORT >$ENGINE_DIR/serve.txt 2>&1 &
     SERVE_PID=$!
 
     tail -f $ENGINE_DIR/serve.txt | while read line; do
@@ -376,52 +382,52 @@ fi
 
 if [[ $TASKS =~ "benchmark" ]]; then
 
-if [ -z "$perf" ]; then
-    echo "!!!Warning: Not building tensorrt llm with optimized perf (e.g. context logits enabled). The benchmark result might be lower than optimal perf."
-    echo "Please rebuild the engine and not run accuracy evals where the context logits are needed (e.g. lm_eval)."
-fi
-
-if [ "$PP" -ne 1 ]; then
-    echo "Benchmark does not work with multi PP. Please run the c++ benchmark in the TensorRT-LLM repo..."
-    exit 1
-fi
-
-BENCHMARK_RESULT=${ENGINE_DIR}/benchmark.txt
-echo "Evaluating performance, result saved to $BENCHMARK_RESULT..."
-
-# Prepare datasets for TRT-LLM benchmark
-if [ -z "$TRT_LLM_CODE_PATH" ]; then
-    TRT_LLM_CODE_PATH=/workspace/tensorrt-llm
-    echo "Setting default TRT_LLM_CODE_PATH to $TRT_LLM_CODE_PATH."
-fi
-
-# Synthesize the tokenized benchmarking dataset
-TRT_LLM_PREPARE_DATASET=$TRT_LLM_CODE_PATH/benchmarks/cpp/prepare_dataset.py
-
-# Align with the official benchmark
-BENCHMARK_INPUT_LEN=$BUILD_MAX_INPUT_LEN
-BENCHMARK_OUTPUT_LEN=$BUILD_MAX_OUTPUT_LEN
-BENCHMARK_NUM_REQUESTS=256
-
-DATASET_TXT=${SAVE_PATH}/synthetic_${BENCHMARK_INPUT_LEN}_${BENCHMARK_OUTPUT_LEN}_${BENCHMARK_NUM_REQUESTS}.txt
-
-if [ -z "$TRT_LLM_PREPARE_DATASET" ]; then
-    echo "Unable to prepare dataset for benchmarking. Please set TRT_LLM_CODE_PATH to the TRT-LLM code path."
-else
-    if ! [ -f $DATASET_TXT ]; then
-        python $TRT_LLM_PREPARE_DATASET --stdout --tokenizer $MODEL_PATH token-norm-dist \
-            --input-mean $BENCHMARK_INPUT_LEN --output-mean $BENCHMARK_OUTPUT_LEN --input-stdev 0 --output-stdev 0 \
-            --num-requests $BENCHMARK_NUM_REQUESTS > $DATASET_TXT
-    else
-        echo "Use exisitng benchmark dataset in $DATASET_TXT."
+    if [ -z "$perf" ]; then
+        echo "!!!Warning: Not building tensorrt llm with optimized perf (e.g. context logits enabled). The benchmark result might be lower than optimal perf."
+        echo "Please rebuild the engine and not run accuracy evals where the context logits are needed (e.g. lm_eval)."
     fi
-fi
 
-if [ "$BUILD_MAX_BATCH_SIZE" -gt 1 ]; then
-    python benchmarks/benchmark_suite.py --model $MODEL_PATH throughput --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
-else
-    python benchmarks/benchmark_suite.py --model $MODEL_PATH latency --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee $BENCHMARK_RESULT
-fi
+    if [ "$PP" -ne 1 ]; then
+        echo "Benchmark does not work with multi PP. Please run the c++ benchmark in the TensorRT-LLM repo..."
+        exit 1
+    fi
+
+    BENCHMARK_RESULT=${ENGINE_DIR}/benchmark.txt
+    echo "Evaluating performance, result saved to $BENCHMARK_RESULT..."
+
+    # Prepare datasets for TRT-LLM benchmark
+    if [ -z "$TRT_LLM_CODE_PATH" ]; then
+        TRT_LLM_CODE_PATH=/workspace/tensorrt-llm
+        echo "Setting default TRT_LLM_CODE_PATH to $TRT_LLM_CODE_PATH."
+    fi
+
+    # Synthesize the tokenized benchmarking dataset
+    TRT_LLM_PREPARE_DATASET=$TRT_LLM_CODE_PATH/benchmarks/cpp/prepare_dataset.py
+
+    # Align with the official benchmark
+    BENCHMARK_INPUT_LEN=$BUILD_MAX_INPUT_LEN
+    BENCHMARK_OUTPUT_LEN=$BUILD_MAX_OUTPUT_LEN
+    BENCHMARK_NUM_REQUESTS=256
+
+    DATASET_TXT=${SAVE_PATH}/synthetic_${BENCHMARK_INPUT_LEN}_${BENCHMARK_OUTPUT_LEN}_${BENCHMARK_NUM_REQUESTS}.txt
+
+    if [ -z "$TRT_LLM_PREPARE_DATASET" ]; then
+        echo "Unable to prepare dataset for benchmarking. Please set TRT_LLM_CODE_PATH to the TRT-LLM code path."
+    else
+        if ! [ -f $DATASET_TXT ]; then
+            python $TRT_LLM_PREPARE_DATASET --stdout --tokenizer $MODEL_PATH token-norm-dist \
+                --input-mean $BENCHMARK_INPUT_LEN --output-mean $BENCHMARK_OUTPUT_LEN --input-stdev 0 --output-stdev 0 \
+                --num-requests $BENCHMARK_NUM_REQUESTS >$DATASET_TXT
+        else
+            echo "Use exisitng benchmark dataset in $DATASET_TXT."
+        fi
+    fi
+
+    if [ "$BUILD_MAX_BATCH_SIZE" -gt 1 ]; then
+        trtllm-bench --model $MODEL_PATH throughput --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
+    else
+        trtllm-bench --model $MODEL_PATH latency --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
+    fi
 
 fi
 

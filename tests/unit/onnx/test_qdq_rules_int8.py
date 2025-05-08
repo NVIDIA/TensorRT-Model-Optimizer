@@ -110,12 +110,12 @@ def _check_resnet_residual_connection(onnx_path):
 def test_resnet_residual_connections(tmp_path):
     model_torch, input_tensor = build_resnet_block()
     onnx_path = os.path.join(tmp_path, "model.onnx")
-    onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
+    export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
     _check_resnet_residual_connection(onnx_path)
 
 
 def test_resnet_residual_connection_with_downsample(tmp_path):
     model_torch, input_tensor = build_resnet_block_with_downsample()
     onnx_path = os.path.join(tmp_path, "model.onnx")
-    onnx_path = export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
+    export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
     _check_resnet_residual_connection(onnx_path)

@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--batch-size", type=int, default=2)
     parser.add_argument("--num-inference-steps", type=int, default=30)
     parser.add_argument("--num-iter", type=int, default=8)
+    parser.add_argument("--output-dir", type=str, default=".")
     args = parser.parse_args()
     for key, value in vars(args).items():
         if value is not None:
@@ -61,8 +62,8 @@ def main(args):
     compile(
         pipe,
         args.model_id,
-        onnx_path=Path("./onnx"),
-        engine_path=Path("./engine"),
+        onnx_path=Path(args.output_dir, "onnx"),
+        engine_path=Path(args.output_dir, "engine"),
         batch_size=args.batch_size,
     )
 

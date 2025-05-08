@@ -12,16 +12,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 
 import pytest
 import torch
 import torch.distributed
 import torch.distributed as dist
+from packaging.version import Version
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
+from modelopt.torch.quantization.backends.gemm_registry import enable_real_quant_gemm
 from modelopt.torch.quantization.utils import is_quantized_linear
 from modelopt.torch.utils import torch_to
+
+from .checkpointing import format_modelopt_checkpoint_by_version
 
 INT4_AWQ_FULL_CFG = mtq.INT4_AWQ_CFG.copy()
 
@@ -37,6 +42,16 @@ INT4_SVDQUANT_CFG["algorithm"] = {"method": "svdquant", "lowrank": 8}
 # SVDQuant test cfg
 FP4_SVDQUANT_CFG = mtq.NVFP4_AWQ_LITE_CFG.copy()
 FP4_SVDQUANT_CFG["algorithm"] = {"method": "svdquant", "lowrank": 8}
+
+
+def get_awq_config(algorithm="awq_lite", block_size=8):
+    config = copy.deepcopy(mtq.INT4_AWQ_CFG)
+    config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {-1: block_size}
+    config["algorithm"]["method"] = algorithm
+    config["algorithm"]["debug"] = True
+    if algorithm == "awq_clip":
+        config["algorithm"].pop("alpha_step")
+    return config
 
 
 def quantize_model_and_forward(model, config, calib_data, compress=False):
@@ -59,7 +74,7 @@ def quantize_model_and_forward(model, config, calib_data, compress=False):
     forward_loop(model, run_backward=True)
 
 
-def save_restore_test(model_cls, device, quant_config, compress=False):
+def save_restore_test(model_cls, device, quant_config, compress=False, version=None):
     # test restoring to an unquantized model
     model_quant = model_cls().to(device)
     model_ref = model_cls().to(device)
@@ -69,9 +84,16 @@ def save_restore_test(model_cls, device, quant_config, compress=False):
 
     state_dict = mto.modelopt_state(model_quant)
 
+    if version is not None:
+        state_dict = format_modelopt_checkpoint_by_version(state_dict, version)
+
     mto.restore_from_modelopt_state(model_ref, state_dict)
     model_ref.load_state_dict(model_quant.state_dict())
     assert torch.allclose(model_quant(calib_data[0]), model_ref(calib_data[0]))
+
+    if version is not None and Version(version) < Version("0.29"):
+        # Rest of the tests are not needed for version < 0.29
+        return
 
     # gpu: test restoring to a model on cpu. If the quantizer states are not initialized correctly,
     # the buffers will be created on cuda and this test will fail
@@ -148,3 +170,38 @@ def auto_quantize_helper(model):
     search_state_rank0 = search_state_list[0]
     for search_state in search_state_list[1:]:
         assert search_state == search_state_rank0
+
+
+def compute_backward_grad(
+    model,
+    input_tensor,
+    config=None,
+    quantize: bool = False,
+    enable_real_quant: bool = False,
+    compress: bool = False,
+):
+    if quantize:
+
+        def forward_loop(model, run_backward=False):
+            calib_data = [model.get_input().to(torch.float16).cuda() for _ in range(8)]
+            for batch in calib_data:
+                output = model(batch)
+                if run_backward:
+                    output.sum().backward()
+
+        mtq.quantize(model, config, forward_loop)
+
+        if enable_real_quant:
+            enable_real_quant_gemm(model)
+    if compress:
+        mtq.compress(model)
+    output = model(input_tensor).sum()
+    model.zero_grad()
+    output.backward()
+    weight_grads = []
+    bias_grads = []
+    for layer in model.net:
+        if isinstance(layer, torch.nn.Linear):
+            weight_grads.append(layer.weight.grad)
+            bias_grads.append(layer.bias.grad if layer.bias is not None else None)
+    return weight_grads, bias_grads

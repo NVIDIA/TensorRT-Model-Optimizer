@@ -46,7 +46,7 @@ from modelopt.onnx.quantization.partitioning import (
     find_quantizable_nodes,
     get_skiped_output_layers,
 )
-from modelopt.onnx.quantization.qdq_utils import replace_scale_values
+from modelopt.onnx.quantization.qdq_utils import has_qdq_nodes, replace_scale_values
 
 # Set logging level to info
 logging.getLogger().setLevel(logging.INFO)
@@ -123,14 +123,14 @@ def quantize(
     op_types_to_exclude: list[str] = None,
     nodes_to_quantize: list[str] = None,
     nodes_to_exclude: list[str] = None,
-    use_external_data_format: bool = True,
+    use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = [],
     verbose: bool = False,
     trt_extra_plugin_lib_paths: str = None,
     high_precision_dtype: str = "fp32",
-    passes: list[str] = None,
+    passes: list[str] = ["concat_elimination"],
     **kwargs,
-) -> onnx.onnx_pb.ModelProto:
+) -> onnx.ModelProto:
     """Applies INT8 quantization to an ONNX file using the compiler friendly heuristics.
 
     Quantization of ['Add', 'AveragePool', 'BatchNormalization', 'Clip', 'Conv', 'ConvTranspose',
@@ -142,6 +142,11 @@ def quantize(
     onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
     graph = gs.import_onnx(onnx_model)
     graph.toposort()
+
+    # If the model already has QDQ nodes, skip the quantization process
+    if has_qdq_nodes(onnx_model):
+        logging.info("Model already has QDQ nodes, skipping quantization.")
+        return onnx_model
 
     # Change the default configuration of ORT quantization
     op_types_to_quantize = op_types_to_quantize or []
@@ -224,7 +229,7 @@ def quantize(
         if group_qdq_tensors:
             trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
             if verbose:
-                logging.info("concat_elimination enable")
+                logging.info("concat_elimination enabled")
 
     # Create a temp file for intermediate model
     tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")

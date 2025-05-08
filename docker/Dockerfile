@@ -1,4 +1,4 @@
-FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
+FROM nvidia/cuda:12.8.1-devel-ubuntu22.04
 
 WORKDIR /workspace
 
@@ -15,7 +15,7 @@ RUN rm -rf /usr/lib/python3/dist-packages/setuptools* && \
     pip install --upgrade pip setuptools
 
 # Install TensorRT-LLM
-ARG TRT_LLM_VERSION=0.17.0
+ARG TRT_LLM_VERSION=0.18.1
 RUN pip install "tensorrt-llm~=$TRT_LLM_VERSION" -U
 RUN git clone --depth 1 --branch "v$TRT_LLM_VERSION" https://github.com/NVIDIA/TensorRT-LLM.git && \
     mkdir tensorrt-llm && \
@@ -28,7 +28,7 @@ ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/tensorrt_llm/libs:$L
 ENV LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/nvidia/cudnn/lib:$LD_LIBRARY_PATH
 
 # Install TensorRT dev environment
-ARG TENSORRT_URL=https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.8.0/tars/TensorRT-10.8.0.43.Linux.x86_64-gnu.cuda-12.8.tar.gz
+ARG TENSORRT_URL=https://developer.nvidia.com/downloads/compute/machine-learning/tensorrt/10.9.0/tars/TensorRT-10.9.0.34.Linux.x86_64-gnu.cuda-12.8.tar.gz
 RUN wget -q -O tensorrt.tar.gz $TENSORRT_URL && \
     tar -xf tensorrt.tar.gz && \
     cp TensorRT-*/bin/trtexec /usr/local/bin && \
@@ -40,8 +40,8 @@ ENV TRT_LIB_PATH=/usr/local/lib/python3.10/dist-packages/tensorrt_libs
 ENV LD_LIBRARY_PATH=$TRT_LIB_PATH:$LD_LIBRARY_PATH
 
 # Install modelopt with all optional dependencies and pre-compile CUDA extensions otherwise they take several minutes on every docker run
-RUN pip install "nvidia-modelopt[all]" -U
-ENV TORCH_CUDA_ARCH_LIST="8.0 8.6 8.7 8.9 9.0+PTX"
+RUN pip install -U "nvidia-modelopt[all,dev-test]"
+ENV TORCH_CUDA_ARCH_LIST="8.0 8.6 8.7 8.9 9.0 10.0+PTX"
 RUN python -c "import modelopt.torch.quantization.extensions as ext; ext.precompile()"
 
 # Find and install requirements.txt files for all examples excluding windows

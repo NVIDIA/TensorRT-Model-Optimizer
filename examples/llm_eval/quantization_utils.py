@@ -29,6 +29,20 @@ from modelopt.torch.utils.dataset_utils import (
 MAX_SEQ_LEN = 2048
 MAX_OUTPUT_LEN = 512
 
+# This is an example to customize the quantization config.
+# Modify your custom config for debugging or research purposes.
+CUSTOM_CONFIG = {
+    "MY_QUANT_CONFIG": {
+        "quant_cfg": {
+            "*weight_quantizer": {"num_bits": 4, "block_sizes": {-1: 128}, "enable": True},
+            "*input_quantizer": {"num_bits": 8, "type": "dynamic", "block_sizes": {-1: None}},
+            # Disable sensitive layers such as `lm_head`, gate layers in MoE etc.
+            **mtq.config._default_disabled_quantizer_cfg,
+        },
+        "algorithm": "max",
+    },
+}
+
 
 def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, trust_remote_code=False):
     """Returns the tokenizer from the model ckpt_path."""
@@ -52,7 +66,12 @@ def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, trust_remote_code=False):
 
 
 def _quantize_model_with_dataset(
-    lm, quant_cfg: Union[str, list[str]], calib_dataset, auto_quantize_bits=None, batch_size=1
+    lm,
+    quant_cfg: Union[str, list[str]],
+    calib_dataset,
+    auto_quantize_bits=None,
+    batch_size=1,
+    compress=False,
 ):
     if hasattr(lm, "gpt2"):
         net = lm.gpt2
@@ -79,7 +98,9 @@ def _quantize_model_with_dataset(
             verbose=True,
         )
     else:
-        mtq_cfg = getattr(mtq, quant_cfg)  # type: ignore [arg-type]
+        mtq_cfg = CUSTOM_CONFIG.get(quant_cfg, None)  # type: ignore [arg-type]
+        if mtq_cfg is None:
+            mtq_cfg = getattr(mtq, quant_cfg)  # type: ignore [arg-type]
 
         calibrate_loop = None
         use_calibration = need_calibration(mtq_cfg)
@@ -105,8 +126,11 @@ def _quantize_model_with_dataset(
 
         net = mtq.quantize(net, mtq_cfg, calibrate_loop)
     mtq.print_quant_summary(net)
-    # Fold weights for faster evaluation.
-    mtq.fold_weight(net)
+    # Compress or fold weights for faster evaluation.
+    if compress:
+        mtq.compress(net)
+    else:
+        mtq.fold_weight(net)
 
 
 def quantize_model(
@@ -118,6 +142,7 @@ def quantize_model(
     auto_quantize_bits=None,
     data="cnn_dailymail",
     test_generated=True,
+    compress=False,
 ):
     """Quantizes the model with the provided calibration dataset.
 
@@ -130,6 +155,7 @@ def quantize_model(
         auto_quantize_bits: The effective bits constraint for AutoQuantize.
         data: the name of the calibration dataset.
         test_generated:  If ``True``, test the generated text before and after quantization.
+        compress: If ``True``, compress the model after quantization.
     """
     if "AWQ" in quant_cfg:
         print(
@@ -166,7 +192,9 @@ def quantize_model(
         input_str = tokenizer.decode(next(iter(calib_dataloader))["input_ids"][0])
         generated_str_before_ptq = model.run(input_str)
 
-    _quantize_model_with_dataset(model, quant_cfg, calib_dataloader, auto_quantize_bits, batch_size)
+    _quantize_model_with_dataset(
+        model, quant_cfg, calib_dataloader, auto_quantize_bits, batch_size, compress
+    )
 
     if test_generated:
         generated_str_after_ptq = model.run(input_str)

@@ -106,9 +106,6 @@ def pack_float32_to_4bit_cpp_based(array: Union[np.ndarray, Sequence], signed: b
     assert inp_arr_len % 2 == 0, "input array length must be even at this point"
 
     if use_python_version:
-        print(
-            f"Using python optimized version for round_and_pack...input-array-dtype={array_flat.dtype}\n"
-        )
         numpy_out = pack_float32_to_4bit_optimized(array_flat, signed)
     else:
         numpy_out = np.zeros([1, int(inp_arr_len / 2)], dtype=np.int8)
@@ -172,3 +169,96 @@ def quantize(
 
     # Reshape weights to original and return
     return scaled_weight.reshape(scaled_weight.shape[0], -1)
+
+
+def get_amax(weight: np.ndarray, quant_axis: int, block_size: int) -> np.ndarray:
+    """Returns the amax of the weight tensor along the specified axis for a given block size.
+
+    Only 2D and 3D tensors are supported.
+
+    Args:
+        weight: The weight tensor.
+        quant_axis: The axis to quantize.
+        block_size: The block size.
+
+    Returns:
+        The amax of the weight tensor.
+    """
+    rank = weight.ndim
+    if quant_axis == -1:
+        quant_axis = rank - 1
+    assert rank in [2, 3], "Weight must be a 2D or 3D tensor"
+    if rank == 3:
+        d0, d1, d2 = weight.shape
+        if quant_axis == 2:
+            assert d2 % block_size == 0, (
+                f"Weight dimension {d2} must be divisible by block size {block_size}"
+            )
+            amax = np.abs(weight.reshape(d0, d1 * d2 // block_size, block_size)).max(axis=2)
+        elif quant_axis == 1:
+            assert d1 % block_size == 0, (
+                f"Weight dimension {d1} must be divisible by block size {block_size}"
+            )
+            amax = np.abs(weight.reshape(d0 * d1 // block_size, block_size, d2)).max(axis=1)
+        else:
+            raise ValueError(f"Unsupported weight axis: {quant_axis}")
+    else:
+        d0, d1 = weight.shape
+        if quant_axis == 1:
+            assert d1 % block_size == 0, (
+                f"Weight dimension {d1} must be divisible by block size {block_size}"
+            )
+            amax = np.abs(weight.reshape(d0 * d1 // block_size, block_size)).max(axis=1)
+        elif quant_axis == 0:
+            assert d0 % block_size == 0, (
+                f"Weight dimension {d0} must be divisible by block size {block_size}"
+            )
+            amax = np.abs(weight.reshape(block_size, d0 * d1 // block_size)).max(axis=0)
+        else:
+            raise ValueError(f"Unsupported weight axis: {quant_axis}")
+    return amax
+
+
+def compute_e8m0(
+    amax: np.ndarray, weight_shape: tuple[int, ...], quant_axis: int, block_size: int
+) -> np.ndarray:
+    """Computes the e8m0 value for the weight tensor.
+
+    Args:
+        amax: The amax of the weight tensor.
+        weight_shape: The shape of the weight tensor.
+        quant_axis: The axis to compute the e8m0 value.
+        block_size: The block size.
+
+    Returns:
+        The e8m0 value for the weight tensor.
+    """
+    rank = len(weight_shape)
+    if quant_axis == -1:
+        quant_axis = rank - 1
+    q_max = 448  # Largest value of FP8
+    e8m0_bias = 127
+    amax = amax / q_max
+    e8m0_unbiased_exp = np.ceil(np.log2(amax))  # round up power of 2
+    e8m0 = e8m0_unbiased_exp + e8m0_bias  # Add bias to the exponent
+    if not np.all((e8m0 >= 0) & (e8m0 <= 255)):
+        raise ValueError("e8m0 out of uint8 range [0, 255]")
+    if rank == 2:
+        d0, d1 = weight_shape
+        if quant_axis == 1:
+            e8m0 = e8m0.reshape(d0, d1 // block_size)
+        elif quant_axis == 0:
+            e8m0 = e8m0.reshape(d0 // block_size, d1)
+        else:
+            raise ValueError(f"Unsupported axis: {quant_axis}")
+    elif rank == 3:
+        d0, d1, d2 = weight_shape
+        if quant_axis == 2:
+            e8m0 = e8m0.reshape(d0, d1, d2 // block_size)
+        elif quant_axis == 1:
+            e8m0 = e8m0.reshape(d0, d1 // block_size, d2)
+        else:
+            raise ValueError(f"Unsupported axis: {quant_axis}")
+    else:
+        raise ValueError(f"Unsupported weight shape: {weight_shape}")
+    return e8m0

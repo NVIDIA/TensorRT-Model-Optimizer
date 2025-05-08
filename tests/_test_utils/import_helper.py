@@ -16,13 +16,11 @@
 import shutil
 
 import pytest
-import torch
-from packaging.version import Version
-
-from modelopt.onnx.quantization.ort_utils import _check_for_libcudnn, _check_for_tensorrt
 
 
 def skip_if_no_tensorrt():
+    from modelopt.onnx.quantization.ort_utils import _check_for_tensorrt
+
     try:
         _check_for_tensorrt()
     except (AssertionError, ImportError) as e:
@@ -35,6 +33,8 @@ def skip_if_no_trtexec():
 
 
 def skip_if_no_libcudnn():
+    from modelopt.onnx.quantization.ort_utils import _check_for_libcudnn
+
     try:
         _check_for_libcudnn()
     except FileNotFoundError as e:
@@ -63,10 +63,3 @@ def skip_if_no_megatron(apex_or_te_required: bool = False):
 
     if apex_or_te_required and not HAS_APEX and not HAS_TE:
         pytest.skip("Apex or TE required for Megatron test", allow_module_level=True)
-
-
-def skip_if_mcore_dist_ckpt_is_not_supported():
-    from megatron.core import __version__ as mcore_version
-
-    if Version(mcore_version) <= Version("0.8") and Version(torch.__version__) >= Version("2.4"):
-        pytest.skip("Megatron Core 0.9+ is required for dist checkpointing with torch < 2.4")

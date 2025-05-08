@@ -34,7 +34,7 @@ To install the ModelOpt-Windows wheel, run the following command:
 
 .. code-block:: bash
 
-    pip install "nvidia-modelopt[onnx]" --extra-index-url https://pypi.nvidia.com
+    pip install "nvidia-modelopt[onnx]"
 
 This command installs ModelOpt-Windows and its ONNX module, along with the *onnxruntime-directml* (v1.20.0) package. If ModelOpt-Windows is installed without the additional parameter, only the bare minimum dependencies will be installed, without the relevant module and dependencies.
 

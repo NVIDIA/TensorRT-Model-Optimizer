@@ -162,11 +162,11 @@ def dq_tensor(w: np.ndarray, s: np.ndarray, block_size: int, zp: np.ndarray = No
 
 
 def quantize_rtn(
-    onnx_model: onnx.onnx_pb.ModelProto,
+    onnx_model: onnx.ModelProto,
     gemm_io_type: onnx.TensorProto.DataType,
     block_size: int,
     dq_only: bool = False,
-) -> onnx.onnx_pb.ModelProto:
+) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the RTN (Round-to-Nearest) algorithm.
 
     This algorithm computes scale factors by computing s = max(abs(block)) / 8, for each block. The
@@ -203,7 +203,7 @@ def quantize_rtn(
     # Change the scale type to the expected type, fp16 by default
     for name, _ in scales.items():
         s = scales[name]
-        scales[name] = s.astype(onnx.mapping.TENSOR_TYPE_MAP[gemm_io_type].np_dtype)
+        scales[name] = s.astype(onnx.helper.tensor_dtype_to_np_dtype(gemm_io_type))
 
     # Change the input activation type to the expected type, fp16 by default
     for act_tensor in act_tensors:
@@ -339,9 +339,9 @@ def _clip_search(
 
 
 def _find_quantizable_weights(
-    graph: onnx.onnx_pb.GraphProto,
+    graph: onnx.GraphProto,
     nodes_to_exclude: list[str],
-) -> list[tuple[onnx.onnx_pb.ValueInfoProto, onnx.onnx_pb.ValueInfoProto, bool, int]]:
+) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int]]:
     """Finds the quantizable weights from the graph."""
     wa_pack = []
     gemm_nodes = [node for node in graph.node if node.op_type in ["Gemm", "MatMul"]]
@@ -385,7 +385,7 @@ def _find_quantizable_weights(
 
 
 def _augment_graph(
-    graph: onnx.onnx_pb.GraphProto,
+    graph: onnx.GraphProto,
     wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
 ):
     """Extend graph outputs with MatMuls activation input."""
@@ -397,7 +397,7 @@ def _augment_graph(
 
 
 def _change_input_type(
-    graph: onnx.onnx_pb.GraphProto, input_name: str, gemm_io_type: onnx.TensorProto.DataType
+    graph: onnx.GraphProto, input_name: str, gemm_io_type: onnx.TensorProto.DataType
 ):
     # Find the corresponding value info in the graph
     done = False
@@ -416,7 +416,7 @@ def _change_input_type(
 
 
 def _quantize_awq_clip(
-    onnx_model: onnx.onnx_pb.ModelProto,
+    onnx_model: onnx.ModelProto,
     data_reader: CalibrationDataReader,
     use_external_data_format: bool,
     calibration_eps: list[str],
@@ -424,7 +424,7 @@ def _quantize_awq_clip(
     force_fp16: bool = False,
     nodes_to_exclude: list[str] = [],
     **kwargs: Any,
-) -> onnx.onnx_pb.ModelProto:
+) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
     logging.info("Finding quantizable weights and augmenting graph output with input activations")
     t = time.time()
@@ -516,7 +516,7 @@ def _quantize_awq_clip(
             qw = qw.T
             scale = scale.T
         scales[weight_tensor.name] = scale.astype(
-            onnx.mapping.TENSOR_TYPE_MAP[gemm_io_type].np_dtype
+            onnx.helper.tensor_dtype_to_np_dtype(gemm_io_type)
         )
         gemm_weights_quantized[weight_tensor.name] = numpy.asarray(qw).astype(numpy.int8)
 
@@ -878,7 +878,7 @@ def run_awq_scale_search_per_subgraph(
 
 
 def get_parent_child_nodes_map(
-    graph: onnx.onnx_pb.GraphProto,
+    graph: onnx.GraphProto,
     wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
 ):
     """Get mapping of parent nodes to their MatMul/Gemm nodes with quantizable weights."""
@@ -897,7 +897,7 @@ def get_parent_child_nodes_map(
 
 
 def _quantize_awq_lite(
-    onnx_model: onnx.onnx_pb.ModelProto,
+    onnx_model: onnx.ModelProto,
     data_reader: CalibrationDataReader,
     use_external_data_format: bool,
     calibration_eps: list[str],
@@ -908,7 +908,7 @@ def _quantize_awq_lite(
     use_zero_point: bool = False,
     nodes_to_exclude: list[str] = [],
     **kwargs: Any,
-) -> onnx.onnx_pb.ModelProto:
+) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
     logging.info("Finding quantizable weights and augmenting graph output with input activations")
     t = time.time()
@@ -1088,7 +1088,7 @@ def _quantize_awq_lite(
             if zp is not None:
                 zp = np.asnumpy(zp)
         scales[weight_tensor.name] = scale.astype(
-            onnx.mapping.TENSOR_TYPE_MAP[gemm_io_type].np_dtype
+            onnx.helper.tensor_dtype_to_np_dtype(gemm_io_type)
         )
         weight_dtype = numpy.int8
         if zp is not None:
@@ -1099,7 +1099,7 @@ def _quantize_awq_lite(
         pqs_value = (
             awq_lite[i]
             .best_scale[:, np.newaxis]
-            .astype(onnx.mapping.TENSOR_TYPE_MAP[gemm_io_type].np_dtype)
+            .astype(onnx.helper.tensor_dtype_to_np_dtype(gemm_io_type))
         ).T
         if has_cupy:
             pqs_value = np.asnumpy(pqs_value)
@@ -1155,7 +1155,7 @@ def _quantize_awq_lite(
             else:
                 scale_tensor = onnx.helper.make_tensor(
                     name=parent.output[0] + "_pre_quant_scale",
-                    data_type=onnx.mapping.NP_TYPE_TO_TENSOR_TYPE[input_scale.dtype],
+                    data_type=onnx.helper.tensor_dtype_to_np_dtype(input_scale.dtype),
                     dims=input_scale.shape,
                     vals=(1.0 / input_scale).flatten().tolist(),
                 )
@@ -1210,7 +1210,7 @@ def _quantize_awq_lite(
 
 
 def quantize(
-    onnx_path: Union[str, onnx.onnx_pb.ModelProto],
+    onnx_path: Union[str, onnx.ModelProto],
     calibration_method: str = "awq_lite",
     calibration_data_reader: CalibrationDataReader = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
@@ -1219,7 +1219,7 @@ def quantize(
     block_size: Optional[int] = None,
     nodes_to_exclude: Optional[list[str]] = [r"/lm_head"],
     **kwargs: Any,
-) -> onnx.onnx_pb.ModelProto:
+) -> onnx.ModelProto:
     """Applies INT4 Weight-Only-Quantization (WoQ) to an ONNX model.
 
     Currently, only ``MatMul`` nodes quantization is supported.

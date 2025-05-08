@@ -168,9 +168,10 @@ def _test_unified_import_megatron(tiny_llama_dir, rank, size):
 
 
 def test_unified_import_megatron(tmp_path):
-    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
+    num_gpus = torch.cuda.device_count()
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path, num_key_value_heads=num_gpus)
     spawn_multiprocess_job(
-        size=torch.cuda.device_count(),
+        size=num_gpus,
         job=partial(_test_unified_import_megatron, tiny_llama_dir),
         backend="nccl",
     )

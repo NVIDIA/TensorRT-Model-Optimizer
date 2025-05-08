@@ -100,6 +100,7 @@
 
 """Utility to export a quantized torch model to quantized ONNX."""
 
+import contextlib
 from typing import Optional, Union
 
 import onnx
@@ -515,6 +516,60 @@ def _fp4_dequantize_2(
     return g.op("trt::DequantizeLinear", inputs, dyn_scale, axis_i=axis, block_size_i=block_size)
 
 
+def _mxfp8_dynamic_quantize(
+    g: torch.onnx._internal.jit_utils.GraphContext,
+    inputs: torch.Value,
+    block_size: int,
+    axis: int = -1,
+):
+    x_f8, sx_ui8 = g.op(
+        "trt::TRT_MXFP8DynamicQuantize",
+        inputs,
+        axis_i=axis,
+        block_size_i=block_size,
+        outputs=2,
+        output_dtype_i=onnx_dtype_map["Float8"],
+    )
+
+    return x_f8, sx_ui8
+
+
+def _mxfp8_dequantize(
+    g: torch.onnx._internal.jit_utils.GraphContext,
+    inputs: torch.Value,
+    scale: torch.Value,
+    block_size: int,
+    axis: int = -1,
+    input_dtype: str = "Half",
+):
+    return g.op(
+        "trt::TRT_MXFP8DequantizeLinear",
+        inputs,
+        scale,
+        axis_i=axis,
+        block_size_i=block_size,
+        output_dtype_i=onnx_dtype_map[input_dtype],
+    )
+
+
+def export_mxfp8(
+    g: torch.onnx._internal.jit_utils.GraphContext,
+    inputs: torch.Tensor,
+    onnx_quantizer_type: str,
+    block_size: int,
+    axis: int = -1,
+):
+    """Export quantized model to MXFP8 ONNX."""
+    input_dtype = inputs.type().scalarType()
+    if onnx_quantizer_type == "dynamic":
+        x_f8, sx_ui8 = _mxfp8_dynamic_quantize(g, inputs, block_size, axis=axis)
+
+        return _mxfp8_dequantize(g, x_f8, sx_ui8, block_size, axis=axis, input_dtype=input_dtype)
+    else:
+        scale = torch.tensor(1.0, dtype=torch_dtype_map[input_dtype])
+        return _mxfp8_dequantize(g, inputs, scale, block_size, axis=axis, input_dtype=input_dtype)
+
+
 def export_fp4(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
@@ -542,3 +597,13 @@ def export_fp4(
         # This is a dummy custom op, we post-process the exported ONNX model to replace this node
         # with two DQ nodes as described in the static double quantization recipe.
         return g.op("trt::TRT_FP4QDQ", inputs, block_size_i=block_size)
+
+
+@contextlib.contextmanager
+def configure_linear_module_onnx_quantizers(model):
+    """Sets the onnx export attributes for the given model."""
+    for _, module in model.named_modules():
+        if isinstance(module, torch.nn.Linear):
+            module.input_quantizer._onnx_quantizer_type = "dynamic"
+            module.weight_quantizer._onnx_quantizer_type = "static"
+    yield

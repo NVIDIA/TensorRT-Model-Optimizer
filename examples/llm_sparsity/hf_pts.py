@@ -119,11 +119,12 @@ def main(args):
     tokenizer = get_tokenizer(
         args.model_name_or_path, args.model_max_length, trust_remote_code=args.trust_remote_code
     )
-    smart_tokenizer_and_embedding_resize(
-        special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
-        tokenizer=tokenizer,
-        model=model,
-    )
+    if tokenizer.pad_token is None:
+        smart_tokenizer_and_embedding_resize(
+            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+            tokenizer=tokenizer,
+            model=model,
+        )
 
     calib_size = args.calib_size
 

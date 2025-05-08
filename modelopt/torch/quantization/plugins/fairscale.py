@@ -30,8 +30,9 @@ __all__ = []
 class _FairscaleParallelLinear(_ParallelLinear):
     _functionals_to_replace = [(F, "linear")]
 
-    def initialize_parallel_state(self):
-        self._parallel_state = ParallelState(get_data_parallel_group(), get_model_parallel_group())
+    def _setup(self):
+        self.parallel_state = ParallelState(get_data_parallel_group(), get_model_parallel_group())
+        super()._setup()
 
 
 @QuantModuleRegistry.register({ColumnParallelLinear: "fairscale_ColumnParallelLinear"})
