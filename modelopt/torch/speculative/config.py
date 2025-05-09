@@ -134,7 +134,7 @@ class EagleConfig(ModeloptBaseConfig):
     ffn_hidden_size: int = ModeloptField(
         default=0,
         description=(
-            "ffn_hidden_size of the eagle module. Using base model's ffn_hidden_size is set to None."
+            "ffn_hidden_size of the eagle module. Using base model's ffn_hidden_size is set to 0."
         ),
     )
 

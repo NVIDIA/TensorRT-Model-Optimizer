@@ -22,10 +22,12 @@ def format_modelopt_checkpoint_by_version(modelopt_state: dict, version: str):
     if Version(version) >= Version("0.29"):
         return modelopt_state
     modelopt_state = copy.deepcopy(modelopt_state)
+    modelopt_state["modelopt_version"] = version
     for mode, state in modelopt_state["modelopt_state_dict"]:
         if "quantizer_state" not in state["metadata"]:
             continue
         for quantizer_name, quantizer_state in state["metadata"]["quantizer_state"].items():
+            quantizer_state["_mopt_ckpt_versn"] = version
             pyt_states = quantizer_state.pop("_pytorch_state_metadata", None)
             if pyt_states is None:
                 continue

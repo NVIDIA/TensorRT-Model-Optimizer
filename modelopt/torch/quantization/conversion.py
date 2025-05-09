@@ -143,6 +143,7 @@ def create_and_replace_svdquant_linear_on_the_fly(model):
 def restore_svdquant_model(model: nn.Module, config: QuantizeConfig, metadata: MetadataDict):
     """Restore the svdquant states from the given state dict."""
     create_and_replace_svdquant_linear_on_the_fly(model)
+    restore_quantizer_state(model, config, metadata)
     return model
 
 

@@ -117,7 +117,8 @@ ChatGLM2, 3 6B | No | No | Yes | No | -
 Bloom | Yes | Yes | Yes | Yes | -
 Phi-1,2,3,4 | Yes | Yes | Yes | Yes<sup>3</sup> |
 Phi-3.5 MOE | Yes | No | No | No | -
-Llama-Nemotron Super/Ultra | Yes | No | No | No | Yes
+Llama-Nemotron Super | Yes | No | No | No | Yes
+Llama-Nemotron Ultra | Yes | No | No | No | No
 Nemotron 8B | Yes | No | Yes | No | -
 Gemma 2B, 7B | Yes | No | Yes | Yes | -
 Gemma 2 9B, 27B | Yes<sup>2</sup> | No | Yes | No | -
