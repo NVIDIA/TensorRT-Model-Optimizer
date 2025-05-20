@@ -10,4 +10,4 @@ optimum==1.23.3
 soundfile
 torch==2.7.0+cu128
 torchaudio==2.7.0+cu128
-transformers==4.48.0
+transformers==4.50.0
