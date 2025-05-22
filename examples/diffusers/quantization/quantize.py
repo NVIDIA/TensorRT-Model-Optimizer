@@ -219,6 +219,104 @@ def parse_args() -> argparse.Namespace:
 
     return parser.parse_args()
 
+def quantize_diffusion_model(pipe: DiffusionPipeline,
+                             backbone: torch.nn.Module,
+                             model_name: str = "flux-dev",
+                             precision: str = "fp8",
+                             quant_level: float = 3.0,
+                             calib_size: int = 128, 
+                             batch_size: int = 2, 
+                             calibration_source: str = "./calib/calib_prompts.txt",
+                             collect_method : str = "default",
+                             quant_algo : str = "smoothquant", 
+                             percentile: float = 1.0, 
+                             num_denoising_steps: int = 30, 
+                             trt_high_precision_dtype: str = "Half",
+                             alpha: float = 1.0,
+                             lowrank: int = 32) -> torch.nn.Module:
+    """
+    Quantize a diffusion model using the given quant_config.
+    """
+    if quant_level == 4.0 and format == "int8":
+        raise ValueError("Level 4 quantization is only supported for fp8, not int8.")
+    
+    # Validate model_name exists in one of the supported models
+    if model_name not in ["sd3-medium", "flux-dev", "flux-schnell"]:
+        raise ValueError(f"model_name must be one of ["sd3-medium", "flux-dev", "flux-schnell"], got {model_name}")
+
+    # Adjust calibration steps to be number of batches
+    calib_size = calib_size // batch_size
+
+    calibration_prompts = load_calib_prompts(
+            batch_size,
+            calibration_source,
+        )
+
+    # Build quant_config based on format
+    if precision == "int8":
+        if collect_method == "default":
+                raise ValueError(
+                    "You must specify an explicit --collect-method (e.g., 'global_min') for int8."
+                )
+        if quant_algo != "smoothquant":
+            raise ValueError(
+                "INT8 quantization only works well when combined with SmoothQuant;"
+                "otherwise, it will produce very poor quality results."
+            )
+        quant_config = get_int8_config(
+            backbone,
+            quant_level,
+            percentile,
+            num_denoising_steps,
+            collect_method=collect_method,
+        )
+    elif precision == "fp8":
+        if collect_method != "default":
+            raise NotImplementedError("Only 'default' collect method is implemented for fp8.")
+        quant_config = FP8_DEFAULT_CONFIG
+    elif precision == "fp4":
+        if model_name.startswith("flux"):
+            quant_config = NVFP4_FP8_MHA_FLUX_CONFIG
+        else:
+            quant_config = NVFP4_DEFAULT_CONFIG
+    else:
+        raise NotImplementedError(f"Unknown precision specified for quantization: {precision}.")
+    
+    # Set the quant config
+    set_quant_config_attr(
+        quant_config,
+        trt_high_precision_dtype,
+        quant_algo,
+        alpha=alpha,
+        lowrank=lowrank,
+    )
+
+    def forward_loop(mod):
+        if model_name not in ["sd3-medium", "flux-dev", "flux-schnell"]:
+            pipe.unet = mod
+        else:
+            pipe.transformer = mod
+
+        do_calibrate(
+            pipe=pipe,
+            calibration_prompts=calibration_prompts,
+            model_id=model_name,
+            calib_size=calib_size,
+            n_steps=num_denoising_steps,
+        )
+    
+    # Fuse LoRA layers, then quantize
+    check_lora(backbone)
+    mtq.quantize(backbone, quant_config, forward_loop)
+
+     # Additional quantization adjustments by level
+    quantize_lvl(model_name, backbone, quant_level)
+
+    # Disable some quantizers
+    mtq.disable_quantizer(backbone, filter_func)
+    
+    return backbone 
+
 
 def main() -> None:
     """
@@ -245,67 +343,21 @@ def main() -> None:
 
     # If restore_from is not specified, run calibration and quantize
     if not args.restore_from:
-        calibration_prompts = load_calib_prompts(
-            args.batch_size,
-            "./calib/calib_prompts.txt",
-        )
-
-        # Build quant_config based on format
-        if args.format == "int8":
-            if args.collect_method == "default":
-                raise ValueError(
-                    "You must specify an explicit --collect-method (e.g., 'global_min') for int8."
-                )
-            if args.quant_algo != "smoothquant":
-                raise ValueError(
-                    "INT8 quantization only works well when combined with SmoothQuant;"
-                    "otherwise, it will produce very poor quality results."
-                )
-            quant_config = get_int8_config(
-                backbone,
-                args.quant_level,
-                args.percentile,
-                args.n_steps,
-                collect_method=args.collect_method,
-            )
-        elif args.format == "fp8":
-            if args.collect_method != "default":
-                raise NotImplementedError("Only 'default' collect method is implemented for fp8.")
-            quant_config = FP8_DEFAULT_CONFIG
-        elif args.format == "fp4":
-            if args.model.startswith("flux"):
-                quant_config = NVFP4_FP8_MHA_FLUX_CONFIG
-            else:
-                quant_config = NVFP4_DEFAULT_CONFIG
-        else:
-            raise NotImplementedError(f"Unknown format {args.format}.")
-
-        # Adjust the quant config
-        set_quant_config_attr(
-            quant_config,
-            args.trt_high_precision_dtype,
-            args.quant_algo,
-            alpha=args.alpha,
-            lowrank=args.lowrank,
-        )
-
-        def forward_loop(mod):
-            # Switch the pipeline's backbone, run calibration
-            if args.model not in ["sd3-medium", "flux-dev", "flux-schnell"]:
-                pipe.unet = mod
-            else:
-                pipe.transformer = mod
-            do_calibrate(
-                pipe=pipe,
-                calibration_prompts=calibration_prompts,
-                model_id=args.model,
-                calib_size=args.calib_size,
-                n_steps=args.n_steps,
-            )
-
-        # Fuse LoRA layers, then quantize
-        check_lora(backbone)
-        mtq.quantize(backbone, quant_config, forward_loop)
+        backbone = quantize_diffusion_model(pipe, 
+                                 backbone, 
+                                 model_name=args.model, 
+                                 precision=args.format, 
+                                 quant_level=args.quant_level, 
+                                 calib_size=args.calib_size, 
+                                 batch_size=args.batch_size, 
+                                 calibration_source="./calib/calib_prompts.txt",
+                                 collect_method=args.collect_method,
+                                 quant_algo=args.quant_algo,
+                                 percentile=args.percentile,
+                                 num_denoising_steps=args.n_steps,
+                                 trt_high_precision_dtype=args.trt_high_precision_dtype,
+                                 alpha=args.alpha,
+                                 lowrank=args.lowrank)
 
         # Save the quantized checkpoint if path is provided
         if args.quantized_torch_ckpt_save_path:
@@ -314,11 +366,11 @@ def main() -> None:
         # Restore the previously quantized model
         mto.restore(backbone, args.restore_from)
 
-    # Additional quantization adjustments by level
-    quantize_lvl(args.model, backbone, args.quant_level)
+        # Additional quantization adjustments by level
+        quantize_lvl(args.model, backbone, args.quant_level)
 
-    # Disable some quantizers
-    mtq.disable_quantizer(backbone, filter_func)
+        # Disable some quantizers
+        mtq.disable_quantizer(backbone, filter_func)
 
     # Optional ONNX export
     if args.onnx_dir:
