@@ -27,11 +27,11 @@ tensorrt.tensorrt = mock.Mock(name="tensorrt_tensorrt")  # type: ignore[attr-def
 tensorrt.__version__ = "8.2"  # type: ignore[attr-defined]
 sys.modules[tensorrt.__name__] = tensorrt
 
-from modelopt.torch._deploy._runtime.tensorrt.tensorrt_utils import calib_data_generator  # noqa
+from modelopt.torch._deploy._runtime.tensorrt.tensorrt_utils import calib_data_generator
 
 
 @pytest.mark.parametrize(
-    "batch_size, num_batches, total_batch",
+    ("batch_size", "num_batches", "total_batch"),
     [
         (1, 1, 1),
         (1, 2, 2),

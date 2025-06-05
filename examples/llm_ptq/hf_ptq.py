@@ -18,12 +18,18 @@ import copy
 import random
 import time
 import warnings
+from typing import Any
 
 import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
-from example_utils import get_model, get_processor, get_tokenizer, is_enc_dec, is_model_on_gpu
-from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast, WhisperProcessor
+from example_utils import apply_kv_cache_quant, get_model, get_processor, get_tokenizer, is_enc_dec
+from transformers import (
+    AutoModelForCausalLM,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerFast,
+    WhisperProcessor,
+)
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
@@ -34,6 +40,7 @@ from modelopt.torch.export import (
     get_model_type,
 )
 from modelopt.torch.quantization.config import need_calibration
+from modelopt.torch.quantization.plugins.accelerate import init_quantized_weights
 from modelopt.torch.quantization.utils import is_quantized
 from modelopt.torch.utils.dataset_utils import (
     create_forward_loop,
@@ -47,16 +54,16 @@ from modelopt.torch.utils.vlm_dataset_utils import get_vlm_dataset_dataloader
 
 RAND_SEED = 1234
 
-QUANT_CFG_CHOICES = {
-    "int8": "INT8_DEFAULT_CFG",
-    "int8_sq": "INT8_SMOOTHQUANT_CFG",
-    "fp8": "FP8_DEFAULT_CFG",
-    "int4_awq": "INT4_AWQ_CFG",
-    "w4a8_awq": "W4A8_AWQ_BETA_CFG",
-    "nvfp4": "NVFP4_DEFAULT_CFG",
-    "nvfp4_awq": "NVFP4_AWQ_LITE_CFG",
-    "fp8_pb_wo": "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
-    "fp8_pc_pt": "FP8_PER_CHANNEL_PER_TOKEN_CFG",
+QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
+    "int8": mtq.INT8_DEFAULT_CFG,
+    "int8_sq": mtq.INT8_SMOOTHQUANT_CFG,
+    "fp8": mtq.FP8_DEFAULT_CFG,
+    "int4_awq": mtq.INT4_AWQ_CFG,
+    "w4a8_awq": mtq.W4A8_AWQ_BETA_CFG,
+    "nvfp4": mtq.NVFP4_DEFAULT_CFG,
+    "nvfp4_awq": mtq.NVFP4_AWQ_LITE_CFG,
+    "fp8_pb_wo": mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
+    "fp8_pc_pt": mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
 }
 
 KV_QUANT_CFG_CHOICES = {
@@ -88,14 +95,19 @@ def auto_quantize(
             for qformat in qformat_list
         ), "One or more quantization formats provided are not supported for tensorrt llm export"
 
+    def loss_func(output, data):
+        # For transformers AutoModelForCausalLM models, the outputs are wrapped in `CausalLMOutputWithPast`
+        # which contains the loss attribute.
+        return output.loss
+
     model, _ = mtq.auto_quantize(
         model,
         constraints={"effective_bits": auto_quantize_bits},
         data_loader=calib_dataloader,
         forward_step=lambda model, batch: model(**batch),
-        loss_func=lambda output, data: output.loss,
-        quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list]
-        + [None],  # TRTLLM only support one quantization format or None
+        loss_func=loss_func,
+        # TRTLLM only support one quantization format or None (do not quantize, internally supported)
+        quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list],
         num_calib_steps=len(calib_dataloader),
         num_score_steps=min(
             len(calib_dataloader), 128 // batch_size
@@ -123,7 +135,7 @@ def auto_quantize(
     return model
 
 
-def quantize_model(model, quant_cfg, args, calib_dataloader=None):
+def quantize_model(model, quant_cfg, args, calib_dataloader=None, calibration_only=False):
     # The calibration loop for the model can be setup using the modelopt API.
     #
     # Example usage:
@@ -164,6 +176,8 @@ def quantize_model(model, quant_cfg, args, calib_dataloader=None):
             calibrate_loop,
             args.batch_size,
         )
+    elif calibration_only:
+        model = mtq.calibrate(model, quant_cfg["algorithm"], forward_loop=calibrate_loop)
     else:
         model = mtq.quantize(model, quant_cfg, forward_loop=calibrate_loop)
     end_time = time.time()
@@ -173,7 +187,7 @@ def quantize_model(model, quant_cfg, args, calib_dataloader=None):
 
 def main(args):
     if not torch.cuda.is_available():
-        raise EnvironmentError("GPU is required for inference.")
+        raise OSError("GPU is required for inference.")
 
     random.seed(RAND_SEED)
     np.random.seed(RAND_SEED)
@@ -204,16 +218,38 @@ def main(args):
                     "w4a8_awq",
                     "fp8_pb_wo",
                 ]
-                or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES.keys()
+                or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES
             ), f"Quantization format {args.qformat} not supported for HF export path"
 
-    model = get_model(
-        args.pyt_ckpt_path,
-        args.device,
-        gpu_mem_percentage=args.gpu_max_mem_percentage,
-        trust_remote_code=args.trust_remote_code,
-        use_seq_device_map=args.use_seq_device_map,
-    )
+    # If low memory mode is enabled, we compress the model while loading the HF checkpoint.
+    calibration_only = False
+    if not args.low_memory_mode:
+        model = get_model(
+            args.pyt_ckpt_path,
+            args.device,
+            gpu_mem_percentage=args.gpu_max_mem_percentage,
+            trust_remote_code=args.trust_remote_code,
+            use_seq_device_map=args.use_seq_device_map,
+        )
+    else:
+        assert args.export_fmt == "hf", (
+            "Low memory mode is only supported for exporting HF checkpoint."
+        )
+        assert args.qformat in QUANT_CFG_CHOICES, (
+            f"Quantization format is not supported for low memory mode. Supported formats: {QUANT_CFG_CHOICES.keys()}"
+        )
+        quant_cfg = QUANT_CFG_CHOICES[args.qformat]
+        if args.kv_cache_qformat != "none":
+            quant_cfg = apply_kv_cache_quant(
+                quant_cfg, getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
+            )
+        with init_quantized_weights(quant_cfg, gpu_mem_percentage=args.gpu_max_mem_percentage):
+            model = AutoModelForCausalLM.from_pretrained(
+                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+            )
+        calibration_only = True
+    model_is_already_quantized = is_quantized(model)
+
     model_type = get_model_type(model)
 
     device = model.device
@@ -258,8 +294,7 @@ def main(args):
         if args.batch_size == 0:
             # Sparse algorithm takes more GPU memory so we reduce the batch_size by 4.
             args.batch_size = max(get_max_batch_size(model) // 4, 1)
-            if args.batch_size > args.calib_size:
-                args.batch_size = args.calib_size
+            args.batch_size = min(args.batch_size, args.calib_size)
 
         print(f"Use calib batch_size {args.batch_size}")
 
@@ -283,13 +318,6 @@ def main(args):
         mts.export(model)
 
     if args.auto_quantize_bits or args.qformat in QUANT_CFG_CHOICES:
-        # If any qformat provided is not fp8, assert model is on GPU
-        if args.qformat not in ["fp8", "nvfp4"]:
-            assert is_model_on_gpu(model), (
-                f"Model must be fully loaded onto GPUs for {args.qformat} calibration. "
-                "Please make sure the system has enough GPU memory to load the model."
-            )
-
         if "awq" in args.qformat:
             print(
                 "\n####\nAWQ calibration could take longer than other calibration methods. "
@@ -297,9 +325,9 @@ def main(args):
             )
 
         if args.batch_size == 0:
-            # TODO: Enable auto-batch size calculation for AutoQuantize
+            # TODO: Enable auto-batch size calculation for auto_quantize
             assert args.auto_quantize_bits is None, (
-                "AutoQuantize requires batch_size to be specified, please specify batch_size."
+                "auto_quantize requires batch_size to be specified, please specify batch_size."
             )
             # Calibration/sparsification will actually take much more memory than regular inference
             # due to intermediate tensors for fake quantization. Setting sample_memory_usage_ratio
@@ -325,8 +353,7 @@ def main(args):
                 sample_memory_usage_ratio=sample_memory_usage_ratio,
                 sample_input_single_batch=sample_input_single_batch,
             )
-            if args.batch_size > args.calib_size:
-                args.batch_size = args.calib_size
+            args.batch_size = min(args.batch_size, args.calib_size)
 
         print(f"Use calib batch_size {args.batch_size}")
 
@@ -372,10 +399,10 @@ def main(args):
                 f"Unsupported quantization format: {args.qformat} with {args.kv_cache_qformat} KV cache"
             )
 
-            quant_cfg = getattr(mtq, QUANT_CFG_CHOICES[args.qformat])
+            quant_cfg = QUANT_CFG_CHOICES[args.qformat]
 
             if "awq" in args.qformat:
-                quant_cfg = copy.deepcopy(getattr(mtq, QUANT_CFG_CHOICES[args.qformat]))
+                quant_cfg = copy.deepcopy(QUANT_CFG_CHOICES[args.qformat])
                 weight_quantizer = quant_cfg["quant_cfg"]["*weight_quantizer"]
                 if isinstance(weight_quantizer, list):
                     weight_quantizer = weight_quantizer[0]
@@ -384,7 +411,7 @@ def main(args):
                     weight_quantizer["block_sizes"][-1] = args.awq_block_size
 
                 # Coarser optimal scale search seems to resolve the overflow in TRT-LLM for some models
-                if "w4a8_awq" == args.qformat and model_type in ["gemma", "mpt"]:
+                if args.qformat == "w4a8_awq" and model_type in ["gemma", "mpt"]:
                     quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
 
             enable_quant_kv_cache = args.kv_cache_qformat != "none"
@@ -392,33 +419,32 @@ def main(args):
 
             # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
             if enable_quant_kv_cache:
-                # Update KV cache related bmm quantizers
-                # If quant_cfg["quant_cfg"] is None, it corresponds to only kv cache quantization case
-                quant_cfg["quant_cfg"] = quant_cfg.get("quant_cfg", {"default": {"enable": False}})
-                quant_cfg["quant_cfg"].update(
-                    getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
+                quant_cfg = apply_kv_cache_quant(
+                    quant_cfg,
+                    getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"],
                 )
-
-                # Set default algorithm for kv cache quantization if not provided.
-                if not quant_cfg.get("algorithm", None):
-                    quant_cfg["algorithm"] = "max"
 
             # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
             if model_type == "gemma" and "int8_sq" in args.qformat:
                 quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
 
-        if not is_quantized(model):
+        if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
             input_ids = next(iter(calib_dataloader))[
                 "input_features" if model_type == "whisper" else "input_ids"
             ][0:1]
-            generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
+            try:
+                generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
+            except Exception as e:
+                print(
+                    "Error during model generation. Please check if your transformers version is "
+                    "compatible with the model."
+                )
+                print(f"Error details: {e}")
+                raise
 
             # quantize the model
-            model = quantize_model(model, quant_cfg, args, calib_dataloader)
-            if args.compress:
-                mtq.compress(model)
-                # Lets print the quantization summary
+            model = quantize_model(model, quant_cfg, args, calib_dataloader, calibration_only)
             if args.verbose:
                 mtq.print_quant_summary(model)
 
@@ -543,7 +569,7 @@ if __name__ == "__main__":
         "--qformat",
         help=(
             "Quantization format. If --auto_quantize_bits is set, this argument specifies the quantization "
-            "format for optimal per-layer AutoQuantize search."
+            "format for optimal per-layer auto_quantize search."
         ),
         default="fp8",
     )
@@ -572,8 +598,8 @@ if __name__ == "__main__":
         default=None,
         type=float,
         help=(
-            "Effective bits constraint for AutoQuantize. If not set, "
-            "regular quantization without AutoQuantize search will be applied."
+            "Effective bits constraint for auto_quantize. If not set, "
+            "regular quantization without auto_quantize search will be applied."
         ),
     )
     parser.add_argument(
@@ -623,16 +649,19 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--compress",
-        help="Compress the model weights after quantization",
-        default=False,
-        action="store_true",
-    )
-    parser.add_argument(
         "--verbose",
         help="Print verbose output (e.g. quantization summary). Disable by --no_verbose.",
         default=True,
         action=argparse.BooleanOptionalAction,
+    )
+    parser.add_argument(
+        "--low_memory_mode",
+        help=(
+            "Use low memory mode for quantization."
+            "This is an experimental feature and may not work for all quantization formats."
+        ),
+        default=False,
+        action="store_true",
     )
     args = parser.parse_args()
 

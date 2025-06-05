@@ -110,7 +110,7 @@ def get_int8_config(
         w_name = f"{name}*weight_quantizer"
         i_name = f"{name}*input_quantizer"
 
-        if w_name in quant_config["quant_cfg"].keys() or i_name in quant_config["quant_cfg"].keys():
+        if w_name in quant_config["quant_cfg"] or i_name in quant_config["quant_cfg"]:
             continue
         if filter_func(name):
             continue
@@ -162,30 +162,27 @@ def get_fp4_config(model, fp4_linear_only=False):
         w_name = f"{name}*weight_quantizer"
         i_name = f"{name}*input_quantizer"
 
-        if (
-            w_name in quant_config["quant_cfg"].keys()  # type: ignore
-            or i_name in quant_config["quant_cfg"].keys()  # type: ignore
-        ):
+        if w_name in quant_config["quant_cfg"] or i_name in quant_config["quant_cfg"]:
             continue
         if isinstance(module, torch.nn.Linear):
-            quant_config["quant_cfg"][w_name] = {  # type: ignore
+            quant_config["quant_cfg"][w_name] = {  # type: ignore[index]
                 "num_bits": (2, 1),
                 "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
                 "axis": None,
             }
-            quant_config["quant_cfg"][i_name] = {  # type: ignore
+            quant_config["quant_cfg"][i_name] = {  # type: ignore[index]
                 "num_bits": (2, 1),
                 "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
                 "axis": None,
             }
         elif isinstance(module, torch.nn.Conv2d):
             if fp4_linear_only:
-                quant_config["quant_cfg"][w_name] = {"enable": False}  # type: ignore
-                quant_config["quant_cfg"][i_name] = {"enable": False}  # type: ignore
+                quant_config["quant_cfg"][w_name] = {"enable": False}  # type: ignore[index]
+                quant_config["quant_cfg"][i_name] = {"enable": False}  # type: ignore[index]
             else:
                 # fp8 for conv
-                quant_config["quant_cfg"][w_name] = {"num_bits": (4, 3), "axis": None}  # type: ignore
-                quant_config["quant_cfg"][i_name] = {"num_bits": (4, 3), "axis": None}  # type: ignore
+                quant_config["quant_cfg"][w_name] = {"num_bits": (4, 3), "axis": None}  # type: ignore[index]
+                quant_config["quant_cfg"][i_name] = {"num_bits": (4, 3), "axis": None}  # type: ignore[index]
     return quant_config
 
 
@@ -198,6 +195,6 @@ def set_quant_config_attr(quant_config, trt_high_precision_dtype, quant_algo, **
         algo_cfg["lowrank"] = kwargs["lowrank"]
     quant_config["algorithm"] = algo_cfg
 
-    for _, p in quant_config["quant_cfg"].items():
-        if "num_bits" in p.keys() and "trt_high_precision_dtype" not in p.keys():
+    for p in quant_config["quant_cfg"].values():
+        if "num_bits" in p and "trt_high_precision_dtype" not in p:
             p["trt_high_precision_dtype"] = trt_high_precision_dtype

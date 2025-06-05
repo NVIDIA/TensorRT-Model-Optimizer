@@ -96,7 +96,7 @@ def get_calib_data_for_encoder(
         assert cv2_image is not None, "cv2-image is none"
         tensor = prepare_input(cv2_image, np_dtype, image_input_width, image_input_height)
         tensor = tensor.astype(np_dtype)
-        x = calib_data.get("image", None)
+        x = calib_data.get("image")
         if x is None:
             calib_data["image"] = tensor
         else:

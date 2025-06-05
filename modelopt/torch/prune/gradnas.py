@@ -35,25 +35,30 @@ See more about masks being used to measure sensitivity in this paper: https://ar
 
 import types
 import warnings
+from collections.abc import Callable, Iterable
 from contextlib import contextmanager
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
+from pydantic import create_model
 from torch.utils.hooks import RemovableHandle
 from tqdm import tqdm
 
 import modelopt.torch.nas.modules as dnn
+from modelopt.torch.nas.conversion import NASModeRegistry
 from modelopt.torch.nas.registry import DMRegistry
 from modelopt.torch.nas.traced_hp import TracedHp
 from modelopt.torch.nas.utils import get_subnet_config, sample, select
+from modelopt.torch.opt.config import ModeloptBaseConfig, get_kwargs_for_create_model_with_rules
 from modelopt.torch.opt.dynamic import DynamicModule
-from modelopt.torch.opt.searcher import SearchConfig
+from modelopt.torch.opt.searcher import BaseSearcher, SearchConfig
 from modelopt.torch.opt.utils import named_hparams
 from modelopt.torch.utils import get_module_device, standardize_model_args, torch_to, unwrap_model
 
-from .fastnas import BinarySearcher
+from .fastnas import BinarySearcher, FastNASModeDescriptor, _get_fastnas_default_rules
+from .pruning import PruneModeRegistry
 
 if TYPE_CHECKING:
     from modelopt.torch.nas.plugins.transformers import (
@@ -118,12 +123,9 @@ def _setup_grad_manager_hf_attention(
         else:
             head_mask = None
 
-        if head_mask is None:
-            head_mask = _modelopt_mask
-        else:
-            # head_mask shape: 1 x num_attention_heads x 1 x 1
-            # https://github.com/huggingface/transformers/blob/8f7969/src/transformers/modeling_utils.py#L841
-            head_mask = head_mask * _modelopt_mask
+        # head_mask shape: 1 x num_attention_heads x 1 x 1
+        # https://github.com/huggingface/transformers/blob/8f7969/src/transformers/modeling_utils.py#L841
+        head_mask = _modelopt_mask if head_mask is None else head_mask * _modelopt_mask
 
         if head_mask_in_kwargs or not head_mark_in_args:
             kwargs["head_mask"] = head_mask
@@ -207,11 +209,11 @@ class GradientBinarySearcher(BinarySearcher):
 
             # features/heads corresponding to the hparams have already been sorted, now sort the
             # score_tensors
-            for _, hp in hps_for_grad_calc.items():
+            for hp in hps_for_grad_calc.values():
                 assert hasattr(hp, "score_tensor")
                 hp.score_tensor = hp.score_tensor.sort(descending=True).values
 
-    def sanitize_search_config(self, config: Optional[SearchConfig]) -> SearchConfig:
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
         """Sanitize the search config dict."""
         config = config or {}
         if config.get("score_func") is not None:
@@ -246,7 +248,7 @@ class GradientBinarySearcher(BinarySearcher):
         self,
         data_loader: Iterable,
         loss_func: Callable[[Any, Any], torch.Tensor],
-        collect_func: Optional[Callable] = None,
+        collect_func: Callable | None = None,
         max_iter_data_loader: int = 128,
     ) -> dict[str, TracedHp]:
         """Estimate gradient scores for the searchable hparams in the model."""
@@ -300,14 +302,48 @@ class GradientBinarySearcher(BinarySearcher):
     @contextmanager
     def _overwrite_hp_importance(self, hps_for_grad_calc: dict[str, TracedHp]):
         """Context manager to overwrite `_get_importance` for hparams in the model."""
-        for _, hp in hps_for_grad_calc.items():
+        for hp in hps_for_grad_calc.values():
             assert getattr(hp, "score_tensor") is not None
             setattr(hp, "_get_importance_bkp", hp._get_importance)
             hp._get_importance = types.MethodType(lambda x: x.score_tensor, hp)
 
         yield
 
-        for _, hp in hps_for_grad_calc.items():
+        for hp in hps_for_grad_calc.values():
             assert hasattr(hp, "_get_importance_bkp")
             hp._get_importance = hp._get_importance_bkp
             delattr(hp, "_get_importance_bkp")
+
+
+GradNASConfig: type[ModeloptBaseConfig] = create_model(
+    "GradNASConfig",
+    **get_kwargs_for_create_model_with_rules(
+        registry=DMRegistry,
+        default_rules=_get_fastnas_default_rules(),
+        doc='Configuration for the ``"gradnas"`` mode.',
+    ),
+)
+
+
+@NASModeRegistry.register_mode
+@PruneModeRegistry.register_mode
+class GradNASModeDescriptor(FastNASModeDescriptor):
+    """Class to describe the ``"gradnas"`` mode.
+
+    The properties of this mode can be inspected via the source code.
+    """
+
+    @property
+    def name(self) -> str:
+        """Returns the value (str representation) of the mode."""
+        return "gradnas"
+
+    @property
+    def config_class(self) -> type[ModeloptBaseConfig]:
+        """Specifies the config class for the mode."""
+        return GradNASConfig
+
+    @property
+    def search_algorithm(self) -> type[BaseSearcher]:
+        """Specifies the search algorithm to use for this mode (if any)."""
+        return GradientBinarySearcher

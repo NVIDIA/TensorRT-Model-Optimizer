@@ -23,7 +23,7 @@ from onnx import helper
 
 class UNet(nn.Module):
     def __init__(self, in_channels=1, out_channels=1):
-        super(UNet, self).__init__()
+        super().__init__()
 
         def conv_block(in_c, out_c):
             return nn.Sequential(
@@ -187,7 +187,8 @@ def build_r1a_model():
     # Create the ONNX model
     model = helper.make_model(graph)
     model.opset_import[0].version = 13
-    model.ir_version = 9  # TODO: remove manual ir_version change once ORT supports ir_version 10
+    # TODO: Remove all manual ir_version changes in tests once ORT supports ir_version 11
+    model.ir_version = 10
 
     # Check the ONNX model
     model_inferred = onnx.shape_inference.infer_shapes(model)
@@ -364,7 +365,7 @@ def build_conv_concat_model():
     # Create the ONNX model
     model = helper.make_model(graph)
     model.opset_import[0].version = 13
-    model.ir_version = 9  # TODO: remove manual ir_version change once ORT supports ir_version 10
+    model.ir_version = 10
 
     # Check the ONNX model
     model_inferred = onnx.shape_inference.infer_shapes(model)

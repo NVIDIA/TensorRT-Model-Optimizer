@@ -48,7 +48,7 @@ def test_unflatten_tree(data):
 
 
 @pytest.mark.parametrize(
-    "data, expected_keys",
+    ("data", "expected_keys"),
     [
         (5, [""]),
         ([5], ["0"]),

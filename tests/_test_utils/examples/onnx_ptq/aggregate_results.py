@@ -19,7 +19,7 @@ import os
 
 
 def get_metrics_from_csv(file_path):
-    with open(file_path, mode="r") as csv_file:
+    with open(file_path) as csv_file:
         csv_reader = csv.reader(csv_file)
         next(csv_reader)
         top1_accuracy, top5_accuracy, latency = None, None, None
@@ -80,7 +80,7 @@ def main():
         ):
             continue
         model_folder_path = os.path.join(build_folder_path, model_folder)
-        sorted_precision_folders = sorted([entry for entry in os.listdir(model_folder_path)])
+        sorted_precision_folders = sorted(os.listdir(model_folder_path))
 
         # Load FP16 precision accuracies first
         for precision_folder in sorted_precision_folders:

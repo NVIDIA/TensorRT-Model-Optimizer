@@ -60,7 +60,7 @@ class HistogramCalibrator(_Calibrator):
         torch_hist=True,
     ):
         """Initialize."""
-        super(HistogramCalibrator, self).__init__(num_bits, axis, unsigned)
+        super().__init__(num_bits, axis, unsigned)
         self._num_bins = num_bins
         self._skip_zeros = skip_zeros
 
@@ -92,9 +92,9 @@ class HistogramCalibrator(_Calibrator):
                 self._calib_hist, self._calib_bin_edges = np.histogram(x_np, bins=self._num_bins)
             else:
                 temp_amax = np.max(x_np)
-                if temp_amax > self._calib_bin_edges[-1]:  # type: ignore
+                if temp_amax > self._calib_bin_edges[-1]:  # type: ignore[index]
                     # increase the number of bins
-                    width = self._calib_bin_edges[1] - self._calib_bin_edges[0]  # type: ignore
+                    width = self._calib_bin_edges[1] - self._calib_bin_edges[0]  # type: ignore[index]
                     # NOTE: np.arange may create an extra bin after the one containing temp_amax
                     new_bin_edges = np.arange(
                         self._calib_bin_edges[-1] + width,  # type: ignore[index]
@@ -103,7 +103,7 @@ class HistogramCalibrator(_Calibrator):
                     )
                     self._calib_bin_edges = np.hstack((self._calib_bin_edges, new_bin_edges))
                 hist, self._calib_bin_edges = np.histogram(x_np, bins=self._calib_bin_edges)
-                hist[: len(self._calib_hist)] += self._calib_hist  # type: ignore
+                hist[: len(self._calib_hist)] += self._calib_hist  # type: ignore[arg-type]
                 self._calib_hist = hist
         else:
             # This branch of code is designed to match numpy version as close as possible
@@ -118,15 +118,15 @@ class HistogramCalibrator(_Calibrator):
                     self._calib_hist = torch.histc(x, bins=self._num_bins, min=0, max=x_max)
                     self._calib_bin_edges = torch.linspace(0, x_max, self._num_bins + 1)
                 else:
-                    if x_max > self._calib_bin_edges[-1]:  # type: ignore
-                        width = self._calib_bin_edges[1] - self._calib_bin_edges[0]  # type: ignore
+                    if x_max > self._calib_bin_edges[-1]:  # type: ignore[index]
+                        width = self._calib_bin_edges[1] - self._calib_bin_edges[0]  # type: ignore[index]
                         self._num_bins = int((x_max / width).ceil().item())
                         self._calib_bin_edges = torch.arange(
                             0, x_max + width, width, device=x.device
                         )
 
-                    hist = torch.histc(x, bins=self._num_bins, min=0, max=self._calib_bin_edges[-1])  # type: ignore
-                    hist[: self._calib_hist.numel()] += self._calib_hist  # type: ignore
+                    hist = torch.histc(x, bins=self._num_bins, min=0, max=self._calib_bin_edges[-1])  # type: ignore[index]
+                    hist[: self._calib_hist.numel()] += self._calib_hist  # type: ignore[union-attr]
                     self._calib_hist = hist
 
     def reset(self):
@@ -165,7 +165,7 @@ class HistogramCalibrator(_Calibrator):
 
         if isinstance(self._calib_hist, torch.Tensor):
             calib_hist = self._calib_hist.int().cpu().numpy()
-            calib_bin_edges = self._calib_bin_edges.cpu().numpy()  # type: ignore
+            calib_bin_edges = self._calib_bin_edges.cpu().numpy()  # type: ignore[union-attr]
         else:
             calib_hist = self._calib_hist
             calib_bin_edges = self._calib_bin_edges
@@ -181,7 +181,7 @@ class HistogramCalibrator(_Calibrator):
         elif method == "percentile":
             calib_amax = _compute_amax_percentile(calib_hist, calib_bin_edges, percentile)
         else:
-            raise TypeError("Unknown calibration method {}".format(method))
+            raise TypeError(f"Unknown calibration method {method}")
 
         return calib_amax
 
@@ -190,15 +190,16 @@ class HistogramCalibrator(_Calibrator):
         if self._calib_bin_edges is None:
             bin_edge_str = "None"
         else:
-            bin_edge_str = "[{:.3f}, ..., {:.3f}]({})".format(
-                self._calib_bin_edges[0], self._calib_bin_edges[-1], len(self._calib_bin_edges)
+            bin_edge_str = (
+                f"[{self._calib_bin_edges[0]:.3f}, ..., {self._calib_bin_edges[-1]:.3f}]"
+                f"({len(self._calib_bin_edges)})"
             )
-        s += "calib_bin_edges={})".format(bin_edge_str)
+        s += f"calib_bin_edges={bin_edge_str})"
         return s
 
     def __repr__(self):
         s = "HistogramCalibrator("
-        s += super(HistogramCalibrator, self).__repr__()
+        s += super().__repr__()
         s += " calib_bin_edges={_calib_bin_edges}"
         s += " calib_hist={_calib_hist})"
         return s.format(**self.__dict__)
@@ -264,9 +265,8 @@ def _compute_amax_entropy(calib_hist, calib_bin_edges, num_bits, unsigned, strid
         total_counts_old = np.sum(reference_density)
         if round(total_counts_new) != total_data or round(total_counts_old) != total_data:
             raise RuntimeError(
-                "Count mismatch! total_counts_new={}, total_counts_old={}, total_data={}".format(
-                    total_counts_new, total_counts_old, total_data
-                )
+                f"Count mismatch! total_counts_new={total_counts_new}, "
+                f"total_counts_old={total_counts_old}, total_data={total_data}"
             )
 
         _normalize_distr(reference_density)
@@ -373,10 +373,7 @@ def calibrate_weights(model, method="percentile", perchannel=True, percentile=99
                 qnn.QuantConvTranspose2d,
                 qnn.QuantConvTranspose3d,
             )
-            if perchannel:
-                axis = 1 if isinstance(module, channel_second_modules) else 0
-            else:
-                axis = None
+            axis = (1 if isinstance(module, channel_second_modules) else 0) if perchannel else None
             axis_size = module.weight.shape[axis] if axis is not None else 1
 
             # Histogram is always collected even if method is "max". Although "max" is supported here
@@ -414,17 +411,17 @@ def calibrate_weights(model, method="percentile", perchannel=True, percentile=99
                 )
                 calib_amax.append(quant_utils.reduce_amax(module.weight, axis=reduce_axis))
             elif method == "mse":
-                for i in range(axis_size):
-                    calib_amax.append(
-                        _compute_amax_mse(calib_hist[i], calib_bin_edges[i], num_bits, unsigned)
-                    )
+                calib_amax.extend(
+                    _compute_amax_mse(calib_hist[i], calib_bin_edges[i], num_bits, unsigned)
+                    for i in range(axis_size)
+                )
             elif method == "percentile":
-                for i in range(axis_size):
-                    calib_amax.append(
-                        _compute_amax_percentile(calib_hist[i], calib_bin_edges[i], percentile)
-                    )
+                calib_amax.extend(
+                    _compute_amax_percentile(calib_hist[i], calib_bin_edges[i], percentile)
+                    for i in range(axis_size)
+                )
             else:
-                raise TypeError("Unsupported calibration method {}".format(method))
+                raise TypeError(f"Unsupported calibration method {method}")
 
             if axis is None:
                 calib_amax_t = calib_amax[0]

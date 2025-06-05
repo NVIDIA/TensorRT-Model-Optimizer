@@ -1,6 +1,34 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.31 (2025-06-04)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- NeMo and Megatron-LM distributed checkpoint (``torch-dist``) stored with legacy version can no longer be loaded. The remedy is to load the legacy distributed checkpoint with 0.29 and store a ``torch`` checkpoint and resume with 0.31 to convert to a new format. The following changes only apply to storing and resuming distributed checkpoint.
+    - ``quantizer_state`` of :class:`TensorQuantizer <modelopt.torch.quantization.nn.modules.TensorQuantizer>` is now stored in ``extra_state`` of :class:`QuantModule <modelopt.torch.quantization.nn.module.QuantModule>` where it used to be stored in the sharded ``modelopt_state``.
+    - The dtype and shape of ``amax`` and ``pre_quant_scale`` stored in the distributed checkpoint are now retored. Some dtype and shape are previously changed to make all decoder layers to have homogeneous structure in the checkpoint.
+    - Togather with megatron.core-0.13, quantized model will store and resume distributed checkpoint in a heterogenous format.
+- auto_quantize API now accepts a list of quantization config dicts as the list of quantization choices.
+    - This API previously accepts a list of strings of quantization format names. It was therefore limited to only pre-defined quantization formats unless through some hacks.
+    - With this change, now user can easily use their own custom quantization formats for auto_quantize.
+    - In addition, the ``quantization_formats`` now exclude ``None`` (indicating "do not quantize") as a valid format because the auto_quantize internally always add "do not quantize" as an option anyway.
+- Model export config is refactored. The quant config in ``hf_quant_config.json`` is converted and saved to ``config.json``. ``hf_quant_config.json`` will be deprecated soon.
+
+
+**Deprecations**
+
+- Deprecate ``Python 3.9`` support.
+
+**New Features**
+
+- Upgrade LLM examples to use TensorRT-LLM 0.19.
+- Add new model support in the ``llm_ptq`` example: Qwen3 MoE.
+- ModelOpt now supports advanced quantization algorithms such as AWQ, SVDQuant and SmoothQuant for cpu-offloaded Huggingface models.
+- Add AutoCast tool to convert ONNX models to FP16 or BF16.
+- Add ``--low_memory_mode`` flag in the llm_ptq example support to initialize HF models with compressed weights and reduce peak memory of PTQ and quantized checkpoint export.
+
 0.29 (2025-05-08)
 ^^^^^^^^^^^^^^^^^
 

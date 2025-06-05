@@ -25,12 +25,12 @@ from modelopt.torch.quantization.qtensor import NVFP4QTensor
 
 class TestQTensor:
     @pytest.mark.parametrize(
-        "num_bits, block_sizes",
+        ("num_bits", "block_sizes"),
         [(4, {-1: 64, "scale_bits": 8, "scale_block_sizes": {-1: 256}}), (4, {-1: 64})],
     )
     @pytest.mark.parametrize("device", ["cpu", "cuda"])
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
-    def test_qtensor(self, num_bits, block_sizes, device, input_dtype):  # noqa: N803
+    def test_qtensor(self, num_bits, block_sizes, device, input_dtype):
         nf4_attr_cfg = QuantizerAttributeConfig(
             num_bits=num_bits,
             block_sizes=block_sizes,
@@ -61,7 +61,7 @@ class TestQTensor:
         assert torch.allclose(deq_x, x, rtol=1e-1, atol=1e-1)
 
     @pytest.mark.parametrize(
-        "num_bits, block_sizes, scale_lambda, scale_to_check",
+        ("num_bits", "block_sizes", "scale_lambda", "scale_to_check"),
         [
             (
                 (2, 1),
@@ -99,7 +99,7 @@ class TestQTensor:
 
     # Validate the result is consistent with reference implementation
     @pytest.mark.parametrize(
-        "num_bits, block_sizes, axis, test_input, test_output",
+        ("num_bits", "block_sizes", "axis", "test_input", "test_output"),
         [
             # NF4
             (
@@ -374,7 +374,7 @@ class TestQTensor:
             # Define mask to perform rounding
             mask = torch.tensor([0, 1, 0, 1, 0, 1, 0]).to(device)
             mask_shape = list(weight.shape)
-            mask = mask.expand(mask_shape + [7])
+            mask = mask.expand([*mask_shape, 7])
 
             sign_bit = (weight < 0).to(torch.uint8)
 
@@ -421,7 +421,7 @@ class TestQTensor:
         assert after_quantize - before_quantize < input_size * 10
 
     @pytest.mark.parametrize(
-        "num_bits, block_sizes, axis, input_shape, expected_output_shape",
+        ("num_bits", "block_sizes", "axis", "input_shape", "expected_output_shape"),
         [
             # FP8, 2D block
             (

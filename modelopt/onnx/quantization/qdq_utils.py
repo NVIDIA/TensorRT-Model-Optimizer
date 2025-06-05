@@ -15,8 +15,8 @@
 
 """Various utils to support inserting Q/DQ nodes."""
 
-import logging
-from typing import Any, Dict, List, Sequence, Tuple, Union
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 import onnx
@@ -26,6 +26,7 @@ from onnx.reference.custom_element_types import float8e4m3fn
 from onnx.reference.ops.op_cast import Cast_19 as Cast
 
 from modelopt.onnx import utils
+from modelopt.onnx.logging_config import logger
 from modelopt.onnx.quantization.graph_utils import (
     get_tensor_consumer_nodes,
     get_tensor_producer_nodes,
@@ -55,6 +56,7 @@ onnx_dtype_map = {
 
 def use_trt_qdq_ops():
     """Globally set node names to TRT custom names."""
+    logger.debug("Using TRT QDQ ops")
     global QUANTIZE_NODE_NAME
     QUANTIZE_NODE_NAME = "TRT_INT4QuantizeLinear"
     global DEQUANTIZE_NODE_NAME
@@ -205,7 +207,7 @@ def make_gs_dequantize_node(
     name: str,
     inputs: Sequence[gs.Tensor],
     outputs: Sequence[gs.Tensor],
-    attributes: dict[str, Any] = None,
+    attributes: dict[str, Any] | None = None,
 ) -> gs.Node:
     """Create a GraphSurgeon Dequantize node.
 
@@ -228,6 +230,7 @@ def _postprocess_qdq(
 ):
     # Inserts all newly created nodes to graph.
     # Update all consumers of original initializers to point to the DQ nodes.
+    logger.debug(f"Postprocessing QDQ nodes for {len(orig_weight_names)} weights")
     for node in graph.nodes:
         for i in range(len(node.inputs)):
             key = node.inputs[i].name
@@ -241,6 +244,7 @@ def _postprocess_qdq(
 
     graph.cleanup()
     graph.toposort()
+    logger.debug(f"Added {len(q_nodes)} Q nodes and {len(dq_nodes)} DQ nodes")
 
 
 def insert_pre_quant_scale_nodes(
@@ -253,6 +257,7 @@ def insert_pre_quant_scale_nodes(
         input_tensors: A dictionary of weight tensor names mapped to corresponding input tensor names
         pre_quant_scale: A map from ONNX input tensor name to corresponding pre-quant scale.
     """
+    logger.debug(f"Inserting pre-quant scale nodes for {len(pre_quant_scale)} tensors")
 
     def _insert_helper(
         weight_tensor_name: str,
@@ -264,7 +269,7 @@ def insert_pre_quant_scale_nodes(
         # TODO: Study effects of caching Gemm/Matmul nodes on perf and mem usage.
         gemm_nodes = [node for node in graph.nodes if node.op in ["Gemm", "MatMul"]]
         for node in gemm_nodes:
-            input_set = set([input.name for input in node.inputs])
+            input_set = {input.name for input in node.inputs}
             input_idxs = {input.name: idx for idx, input in enumerate(node.inputs)}
             if _dq_out_name(weight_tensor_name) in input_set and input_tensor_name in input_set:
                 pqs_in = node.inputs[input_idxs[input_tensor_name]]
@@ -292,8 +297,8 @@ def insert_dq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
     quantized_weights: dict[str, np.ndarray],
-    attributes: dict[str, Any] = None,
-    zero_points: Union[dict[str, np.ndarray], None] = None,
+    attributes: dict[str, Any] | None = None,
+    zero_points: dict[str, np.ndarray] | None = None,
 ):
     """Insert new initializers and DQ nodes into graph.
 
@@ -303,6 +308,7 @@ def insert_dq_nodes(
         scales: A map from ONNX initializer name to desired scale factor for that initializer.
         dq_only: Whether to only insert dq nodes.
     """
+    logger.debug(f"Inserting DQ nodes for {len(scales)} weights")
 
     def _insert_helper(
         name: str,
@@ -334,7 +340,7 @@ def insert_dq_nodes(
         if zero_points is not None:
             zp = zero_points.get(name)
             assert zp is not None, "zero-point is enabled but zero-point values not found"
-        _insert_helper(name, quantized_weights[name], scale, dq_nodes, attributes, zp)
+        _insert_helper(name, quantized_weights[name], scale, dq_nodes, attributes, zp)  # type: ignore[arg-type]
 
     _postprocess_qdq(
         graph,
@@ -355,6 +361,7 @@ def insert_qdq_nodes(
         scales: A map from ONNX initializer name to desired scale factor for that initializer.
         weight_map: A map from ONNX initializer name to graphsurgeon tensor.
     """
+    logger.debug(f"Inserting QDQ nodes for {len(scales)} weights")
 
     def _insert_helper(
         name: str,
@@ -395,6 +402,7 @@ def replace_scale_values(graph: onnx.GraphProto, act_scales_dict: dict[str, floa
         graph: ONNX graph to modify
         act_scales_dict: Dictionary mapping scale tensor names to their new values
     """
+    logger.debug(f"Replacing scale values for {len(act_scales_dict)} tensors")
     initializer_indices = {init.name: idx for idx, init in enumerate(graph.initializer)}
 
     for node in graph.node:
@@ -410,6 +418,7 @@ def replace_scale_values(graph: onnx.GraphProto, act_scales_dict: dict[str, floa
                 np.float32(act_scales_dict[scale_name]), scale_name
             )
             graph.initializer[initializer_indices[scale_name]].CopyFrom(scale)
+            logger.debug(f"Updated scale value for {scale_name}")
         else:
             # For weight quantizers, verify the weight tensor exists
             weight_name = node.input[0]
@@ -420,15 +429,12 @@ def replace_scale_values(graph: onnx.GraphProto, act_scales_dict: dict[str, floa
 def has_qdq_nodes(onnx_model: onnx.ModelProto):
     """Check if the onnx graph already has QDQ nodes."""
     qdq_ops = {QUANTIZE_NODE_NAME, DEQUANTIZE_NODE_NAME}
-    for node in onnx_model.graph.node:
-        if node.op_type in qdq_ops:
-            return True
-    return False
+    return any(node.op_type in qdq_ops for node in onnx_model.graph.node)
 
 
 def _get_graph_metadata(
     graph: onnx.GraphProto,
-) -> Tuple[Dict[str, onnx.TensorProto], Dict[str, onnx.NodeProto], Dict[str, List[onnx.NodeProto]]]:
+) -> tuple[dict[str, onnx.TensorProto], dict[str, onnx.NodeProto], dict[str, list[onnx.NodeProto]]]:
     """Get helper dictionaries for efficient graph traversal and node analysis.
 
     Args:
@@ -448,9 +454,9 @@ def _get_graph_metadata(
 
 def _get_scale_and_zp(
     node: onnx.NodeProto,
-    initializers: Dict[str, onnx.TensorProto],
-    tensor_producers: Dict[str, onnx.NodeProto],
-) -> Tuple[np.ndarray, np.ndarray]:
+    initializers: dict[str, onnx.TensorProto],
+    tensor_producers: dict[str, onnx.NodeProto],
+) -> tuple[np.ndarray, np.ndarray]:
     """Get scale and zero point tensors for a node.
 
     Args:
@@ -490,7 +496,7 @@ def _get_scale_and_zp(
 
 
 def _get_succesive_consumers(
-    node: onnx.NodeProto, tensor_consumers: dict[str, List[onnx.NodeProto]]
+    node: onnx.NodeProto, tensor_consumers: dict[str, list[onnx.NodeProto]]
 ) -> tuple[onnx.NodeProto, onnx.NodeProto]:
     """Get the DequantizeLinear node and its consumer node for a given QuantizeLinear node.
 
@@ -615,6 +621,7 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
         ValueError: If the model is invalid or conversion fails
         RuntimeError: If graph operations fail
     """
+    logger.info("Converting model with QDQ nodes to DQ only model")
     if not isinstance(onnx_model, onnx.ModelProto):
         raise ValueError("Input must be an ONNX model protobuf")
 
@@ -630,6 +637,7 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
 
     for node_idx, node in q_nodes:
         weight_name = node.input[0]
+        logger.debug(f"Processing QDQ node for weight {weight_name}")
 
         # Nothing to do for non-const weight inputs
         if weight_name in tensor_producers:
@@ -654,8 +662,10 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
             # Create and update new weight tensor
             if zp_array.dtype == float8e4m3fn:
                 new_weight = _create_fp8_tensor(scaled, weight_name)
+                logger.debug(f"Converted {weight_name} to FP8")
             else:
                 new_weight = onnx.numpy_helper.from_array(scaled.astype("int8"), weight_name)
+                logger.debug(f"Converted {weight_name} to INT8")
             weight.CopyFrom(new_weight)
 
             # Track QuantizeLinear node indices for cleanup
@@ -672,7 +682,7 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
             dq_node.input[0] = weight_name
 
         except Exception as e:
-            raise RuntimeError(f"Failed to convert node {node.name}: {str(e)}")
+            raise RuntimeError(f"Failed to convert node {node.name}: {e!s}")
 
     # Remove processed nodes
     for node_idx in sorted(q_indices, reverse=True):
@@ -681,6 +691,7 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     # Remove redundant cast nodes in the quantized model
     # Note. This optimization is used by diffusers through --dq_only option, so keeping it here as well
     remove_redundant_cast_nodes(graph)
+    logger.info(f"Removed {len(q_indices)} Q nodes and redundant cast nodes")
 
     return onnx_model
 
@@ -700,6 +711,7 @@ def quantize_weights_to_mxfp8(
     Returns:
         ONNX model protobuf with weights quantized to FP8 precision using MXFP8 quantization.
     """
+    logger.info("Converting weights to MXFP8 precision")
     graph = onnx_model.graph
     initializers = {initializer.name: initializer for initializer in graph.initializer}
     tensor_producers = get_tensor_producer_nodes(graph)
@@ -711,24 +723,27 @@ def quantize_weights_to_mxfp8(
         and any(".weight" in input for input in node.input)
     ]
     gelu_nodes = [node for node in graph.node if node.op_type == "Gelu"]
+    logger.debug(f"Found {len(weight_dq_nodes)} weight DQ nodes and {len(gelu_nodes)} GELU nodes")
+
     for node in weight_dq_nodes:
         # Get weights and node attributes
         weight_name = node.input[0]
+        logger.debug(f"Processing MXFP8 conversion for weight {weight_name}")
         weight = numpy_helper.to_array(initializers[weight_name])
         if has_attribute(node, "axis"):
             quant_axis = int(get_attribute(node, "axis"))
         else:
             quant_axis = -1
-            print(
-                "Warning: axis attribute not found for MXFP8DequantizeLinear node. Setting axis to -1."
+            logger.warning(
+                "axis attribute not found for MXFP8DequantizeLinear node. Setting axis to -1"
             )
 
         if has_attribute(node, "block_size"):
             block_size = int(get_attribute(node, "block_size"))
         else:
             block_size = 32
-            print(
-                "Warning: block_size attribute not found for MXFP8DequantizeLinear node. Setting block_size to 32."
+            logger.warning(
+                "block_size attribute not found for MXFP8DequantizeLinear node. Setting block_size to 32"
             )
 
         # Compute and save scales as uint8
@@ -749,7 +764,6 @@ def quantize_weights_to_mxfp8(
         node.input[1] = scale_name
 
         # Convert weights to FP8
-
         # Expand block array so that it can be broadcasted with weight
         se8m0_fp32 = np.repeat(se8m0_fp32, block_size, axis=quant_axis)
         scaled_weight = weight / np.exp2(se8m0_fp32 - e8_m0_bias)
@@ -758,13 +772,14 @@ def quantize_weights_to_mxfp8(
             Cast.eval(scaled_weight, to=onnx.TensorProto.FLOAT8E4M3FN), weight_name
         )
         initializers[weight_name].CopyFrom(weights_e4m3)
-        print(f"Replaced {node.name} with MXFP8DQ.")
+        logger.debug(f"Converted {weight_name} to MXFP8")
 
     # Currently only tanh approximation is supported for Gelu
     for node in gelu_nodes:
         for attr in node.attribute:
             if attr.name == "approximate":
                 attr.s = b"tanh"
+                logger.debug(f"Updated GELU node {node.name} to use tanh approximation")
 
     return onnx_model
 
@@ -889,6 +904,7 @@ def fp4qdq_to_2dq(onnx_model: onnx.ModelProto, verbose: bool = False) -> onnx.Mo
     Returns:
         ONNX model protobuf with DQ nodes for weights and DynQ + DQ nodes for activations.
     """
+    logger.info("Converting model with FP4QDQ nodes to 2DQ only model")
     graph = onnx_model.graph
     initializers = graph.initializer
     initializers_to_delete = []
@@ -935,15 +951,20 @@ def fp4qdq_to_2dq(onnx_model: onnx.ModelProto, verbose: bool = False) -> onnx.Mo
         return precision_dtype
 
     if verbose:
-        logging.info("Post-processing TRT_FP4QDQ nodes for TRT deployment...")
+        logger.info("Post-processing TRT_FP4QDQ nodes for TRT deployment")
     precision_dtype = _get_precision_dtype()
+    logger.debug(f"Using precision dtype: {precision_dtype}")
     fp4_qdq_nodes = [node for node in graph.node if node.op_type == "TRT_FP4QDQ"]
+    logger.debug(f"Found {len(fp4_qdq_nodes)} FP4QDQ nodes to convert")
 
     for node in fp4_qdq_nodes:
         idx1 = initializer_indices.get(node.input[0], None)
         assert idx1 is not None, f"Initializer for weight '{node.input[0]}' not found."
         block_size = node.attribute[0].i
         initializers_to_delete.append(initializers[idx1].name)
+        logger.debug(
+            f"Processing FP4QDQ node for weight {node.input[0]} with block size {block_size}"
+        )
 
         tensor = initializers[idx1]
         w32 = utils.read_f16_tensor_as_fp32(tensor)
@@ -973,12 +994,13 @@ def fp4qdq_to_2dq(onnx_model: onnx.ModelProto, verbose: bool = False) -> onnx.Mo
         _cast_input_dtypes(next_node, precision_dtype)
 
         if verbose:
-            logging.info(f"Replaced {node.name} with 2 DQ nodes.")
+            logger.debug(f"Replaced {node.name} with 2 DQ nodes")
 
     new_initializers = [
         init for init in graph.initializer if init.name not in initializers_to_delete
     ]
     graph.ClearField("initializer")
     graph.initializer.extend(new_initializers)
+    logger.info(f"Removed {len(initializers_to_delete)} initializers")
 
     return onnx_model

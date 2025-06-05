@@ -35,7 +35,7 @@ from modelopt.torch.utils.network import (
 
 
 @pytest.mark.parametrize(
-    "in_channel, out_channel, kernel_size, groups",
+    ("in_channel", "out_channel", "kernel_size", "groups"),
     [
         (2, 4, 3, 2),
         (3, 5, 1, 1),
@@ -56,7 +56,7 @@ def test_param_count(in_channel, out_channel, kernel_size, groups) -> None:
 
 
 @pytest.mark.parametrize(
-    "v, divisor, min_val",
+    ("v", "divisor", "min_val"),
     [
         (23, 8, None),
         (23, 10, None),
@@ -69,7 +69,7 @@ def test_make_divisible(v, divisor, min_val):
 
 
 @pytest.mark.parametrize(
-    "test_input, expected_output",
+    ("test_input", "expected_output"),
     [
         ((3,), 1),
         ((5,), 2),
@@ -91,7 +91,7 @@ def test_compare_dict():
 
 
 @pytest.mark.parametrize(
-    "model, target, submodule",
+    ("model", "target", "submodule"),
     [
         (nn.Sequential(nn.Conv2d(3, 16, 3), nn.ReLU()), "1", nn.SiLU()),
         (MobileNetV2(width_mult=0.25), "classifier.0", nn.SiLU()),
@@ -110,7 +110,7 @@ def test_regular(model, target, submodule):
 
 
 @pytest.mark.parametrize(
-    "model, training",
+    ("model", "training"),
     [
         (nn.Sequential(nn.Conv2d(3, 16, 3), nn.ReLU()), True),
         (MobileNetV2(width_mult=0.25), False),
@@ -159,7 +159,7 @@ def forward6(a, b, *args, c, d="8"):
 
 # using strings since order matters with string addition!
 @pytest.mark.parametrize(
-    "forward, args, kwargs, expect_assert_without_kwargs, fw_fails",
+    ("forward", "args", "kwargs", "expect_assert_without_kwargs", "fw_fails"),
     [
         (forward0, ("0", "1", "2"), {"d": "3", "e": "4"}, True, (False, False)),
         (forward0, ("0", "1", "2", "3", "4"), {}, False, (False, False)),
@@ -186,7 +186,7 @@ def test_standardize_model_args(
 
     # wrap into format expected by standardize_model_args
     if kwargs is not None:
-        args = args + (kwargs,)
+        args = (*args, kwargs)
 
     # check if we can process as expected
     with pytest.raises(AssertionError) if expect_assert else nullcontext():

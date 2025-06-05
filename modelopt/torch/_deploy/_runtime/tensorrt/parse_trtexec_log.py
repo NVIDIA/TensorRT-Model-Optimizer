@@ -71,9 +71,7 @@ class FileSection:
         if k is not None and v is not None:
             self.dict[k] = v
             return True
-        if k is not None:
-            return True
-        return False
+        return k is not None
 
 
 def __parse_log_file(trtexec_log: str, sections: list) -> list[dict]:
@@ -84,9 +82,8 @@ def __parse_log_file(trtexec_log: str, sections: list) -> list[dict]:
                 if section.entered_section(line):
                     current_section = section
                     break
-        else:
-            if not current_section.parse_line(line):
-                current_section = None
+        elif not current_section.parse_line(line):
+            current_section = None
     dicts = [section.dict for section in sections]
     return dicts
 

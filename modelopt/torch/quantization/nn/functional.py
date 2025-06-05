@@ -51,8 +51,7 @@ class ClipFunction(Function):
             warnings.warn("Learning enabled for clip min/max. This is an experimental feature.")
         if clip_value_min.numel() != 1 or clip_value_max.numel() != 1:
             raise ValueError(
-                "Learnable min/max can only be scalar, got size %s and %s."
-                % (clip_value_min.size(), clip_value_max.size())
+                f"Learnable min/max can only be scalar, got size {clip_value_min.size()} and {clip_value_max.size()}."
             )
 
         # Ensure the dtypes of min/max grads matches the input dtype
@@ -101,10 +100,8 @@ def normalized_hadamard_transform(inputs):
         import fast_hadamard_transform
     except ModuleNotFoundError:
         raise ModuleNotFoundError(
-            (
-                "Package `fast_hadamard_transform` not found, please install it using "
-                "`pip install git+https://github.com/Dao-AILab/fast-hadamard-transform.git`"
-            )
+            "Package `fast_hadamard_transform` not found, please install it using "
+            "`pip install git+https://github.com/Dao-AILab/fast-hadamard-transform.git`"
         )
 
     return FastHadamardTransform.apply(inputs) / torch.sqrt(

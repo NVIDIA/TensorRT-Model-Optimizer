@@ -13,20 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Plugins for pruning for Megatron-Core / NeMo modules using Minitron algorithm."""
+"""[Deprecated]. Please use :mod:`modelopt.torch.prune.plugins.mcore_gpt_minitron` instead."""
 
-# import nas plugin to check if it is enabled else raises an Exception
-from modelopt.torch.nas.plugins.megatron import *  # noqa: F403
-
-from ..config import MCoreGPTMinitronConfig
-
-MCoreGPTMinitronConfig.register_default(
-    {
-        "megatron.core.models.gpt.GPTModel": {
-            "hidden_size_divisor": 64,
-            "num_heads_per_group_divisor": 1,
-            "num_query_groups_divisor": 1,
-            "ffn_hidden_size_divisor": 64,
-        },
-    }
-)
+from .mcore_gpt_minitron import *  # noqa: F403

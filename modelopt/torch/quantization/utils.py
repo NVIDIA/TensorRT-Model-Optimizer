@@ -15,22 +15,22 @@
 
 """Quantization utilities."""
 
-from contextlib import ExitStack, contextmanager
+from contextlib import ExitStack, contextmanager, nullcontext
 
 import torch
 import torch.nn.functional as F
 
 __all__ = [
+    "EXPORT_MODE",
     "convert_quantization_axis_to_reduce_axis",
-    "reduce_amax",
+    "export_torch_mode",
     "is_quantized",
+    "is_quantized_column_parallel_linear",
     "is_quantized_layer_with_weight",
     "is_quantized_linear",
-    "is_quantized_column_parallel_linear",
     "is_quantized_row_parallel_linear",
+    "reduce_amax",
     "replace_function",
-    "EXPORT_MODE",
-    "export_torch_mode",
 ]
 
 
@@ -66,9 +66,12 @@ def reduce_block_amax(input_tensor: torch.Tensor, block_sizes: dict):
 
             # Compute new shape for blocking
             outer_dim = amax.shape[dim] // block_size
-            new_shape = (
-                list(amax.shape[:dim]) + [outer_dim, block_size] + list(amax.shape[dim + 1 :])
-            )
+            new_shape = [
+                *list(amax.shape[:dim]),
+                outer_dim,
+                block_size,
+                *list(amax.shape[dim + 1 :]),
+            ]
 
             # Reshape into blocks
             amax = amax.reshape(new_shape)
@@ -128,12 +131,9 @@ def convert_quantization_axis_to_reduce_axis(input, axis):
     """
     if axis is None:
         return None
-    reduce_axis = []
     axis = axis if isinstance(axis, (list, tuple)) else [axis]
-    for i in range(input.dim()):
-        # Handle positive and negative axis.
-        if i not in axis and (i - input.dim()) not in axis:
-            reduce_axis.append(i)
+    # Handle positive and negative axis.
+    reduce_axis = [i for i in range(input.dim()) if i not in axis and (i - input.dim()) not in axis]
     return reduce_axis
 
 
@@ -182,10 +182,7 @@ def is_quantized(module):
     """Check if a module is quantized."""
     from .nn import TensorQuantizer
 
-    for _module in module.modules():
-        if isinstance(_module, TensorQuantizer):
-            return True
-    return False
+    return any(isinstance(_module, TensorQuantizer) for _module in module.modules())
 
 
 def is_quantized_layer_with_weight(module):
@@ -257,3 +254,22 @@ def is_torch_export_mode():
 def is_pow2(n):
     """Check if a number is the power of 2."""
     return (n != 0) and (n & (n - 1) == 0)
+
+
+@contextmanager
+def enable_weight_access_and_writeback(module, root_model):
+    """Enable weight access and writeback for a module.
+
+    Useful for modules with weight not intact such as Linear layer in FSDP wrapped model or
+    HF accelerate CPU off-loaded models.
+    """
+    if hasattr(module, "_hf_hook"):
+        from .plugins.accelerate import weight_access_and_writeback_context
+
+        context = weight_access_and_writeback_context(module)
+    # TODO: add support for fsdp2
+    else:
+        context = nullcontext()
+
+    with context:
+        yield

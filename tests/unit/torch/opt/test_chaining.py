@@ -45,12 +45,10 @@ def get_kd_mode():
 
 @pytest.mark.parametrize(
     "mode",
-    (
+    [
         ["autonas"],
         ["autonas", "export"],
         ["autonas", "export", "fastnas"],
-        ["autonas", "export", "fastnas", "export"],
-        ["autonas", "export", "fastnas", "export"],
         ["autonas", "export", "fastnas", "export"],
         ["autonas", "export", "fastnas", "export", get_kd_mode()],
         ["autonas", "export", "fastnas", "export", get_kd_mode(), "export_student"],
@@ -63,7 +61,7 @@ def get_kd_mode():
         ["fastnas", "export", "sparse_magnitude", "quantize", get_kd_mode(), "export_student"],
         ["fastnas", "quantize", get_kd_mode(), "export_student"],
         ["fastnas", "sparse_magnitude", "export_sparse", "export"],
-    ),
+    ],
 )
 def test_chained_save_restore(mode):
     """Test whether we can save and restore a model."""
@@ -94,8 +92,8 @@ def test_chained_save_restore(mode):
 
 
 @pytest.mark.parametrize(
-    "mode, error_msg",
-    (
+    ("mode", "error_msg"),
+    [
         (
             ["export"],
             [r"Cannot add export according to the current export stack: deque\(\[.*\]\)."],
@@ -122,7 +120,7 @@ def test_chained_save_restore(mode):
             ["fastnas", get_kd_mode(), "export", "export_student"],
             [r"Cannot add export according to the current export stack: deque\(\[.*\]\)."],
         ),
-    ),
+    ],
 )
 def test_invalid_chaining(mode, error_msg):
     """Test whether apply_mode will raise an error for this combination of mode(s)."""
@@ -132,8 +130,8 @@ def test_invalid_chaining(mode, error_msg):
 
 
 @pytest.mark.parametrize(
-    "mode, modellike, expect_exception",
-    (
+    ("mode", "modellike", "expect_exception"),
+    [
         ("autonas", True, False),
         ("autonas", False, False),
         (
@@ -158,7 +156,7 @@ def test_invalid_chaining(mode, error_msg):
         ),
         ("quantize", True, False),
         ("quantize", False, False),
-    ),
+    ],
 )
 def test_model_like_initialization(mode, modellike, expect_exception):
     model = (get_model, (), {}) if modellike else get_model()

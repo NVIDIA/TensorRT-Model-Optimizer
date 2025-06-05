@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
@@ -31,10 +31,10 @@ def sd3_forward(
     encoder_hidden_states: torch.FloatTensor = None,
     pooled_projections: torch.FloatTensor = None,
     timestep: torch.LongTensor = None,
-    block_controlnet_hidden_states: list = None,
-    joint_attention_kwargs: Optional[dict[str, Any]] = None,
+    block_controlnet_hidden_states: list | None = None,
+    joint_attention_kwargs: dict | None = None,
     return_dict: bool = True,
-) -> Union[torch.FloatTensor, Transformer2DModelOutput]:
+) -> torch.FloatTensor | Transformer2DModelOutput:
     """
     The [`SD3Transformer2DModel`] forward method.
 
@@ -100,25 +100,24 @@ def sd3_forward(
                 **ckpt_kwargs,
             )
 
+        elif hasattr(self, "use_trt_infer") and self.use_trt_infer:
+            feed_dict = {
+                "hidden_states": hidden_states,
+                "encoder_hidden_states": encoder_hidden_states,
+                "temb": temb,
+            }
+            _results = self.engines[f"transformer_blocks.{index_block}"](
+                feed_dict, self.cuda_stream
+            )
+            if index_block != 23:
+                encoder_hidden_states = _results["encoder_hidden_states_out"]
+            hidden_states = _results["hidden_states_out"]
         else:
-            if hasattr(self, "use_trt_infer") and self.use_trt_infer:
-                feed_dict = {
-                    "hidden_states": hidden_states,
-                    "encoder_hidden_states": encoder_hidden_states,
-                    "temb": temb,
-                }
-                _results = self.engines[f"transformer_blocks.{index_block}"](
-                    feed_dict, self.cuda_stream
-                )
-                if index_block != 23:
-                    encoder_hidden_states = _results["encoder_hidden_states_out"]
-                hidden_states = _results["hidden_states_out"]
-            else:
-                encoder_hidden_states, hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=temb,
-                )
+            encoder_hidden_states, hidden_states = block(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                temb=temb,
+            )
 
         # controlnet residual
         if block_controlnet_hidden_states is not None and block.context_pre_only is False:

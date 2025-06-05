@@ -15,16 +15,20 @@
 
 """The package setup script for modelopt customizing certain aspects of the installation process."""
 
+import glob
 import os
-import platform
 
 import setuptools
+from Cython.Build import cythonize
+from setuptools.command.build_py import build_py
+from setuptools.extension import Extension
+from setuptools_scm import get_version
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-version = os.environ.get(
-    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.29.0" if platform.system() == "Linux" else "0.27.0"
-)
+# TODO: Set version to static stable release version when creating the release branch
+# version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "X.Y.Z")
+version = get_version(root=".", fallback_version="0.0.0")
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -47,19 +51,18 @@ optional_deps = {
     "onnx": [
         "cppimport",
         "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
-        "onnx",
+        "onnx>=1.18.0",
         "onnxconverter-common",
         "onnx-graphsurgeon",
-        # Onnxruntime 1.20+ is not supported on Python 3.9
-        "onnxruntime~=1.18.1 ; python_version < '3.10'",
-        "onnxruntime~=1.20.1 ; python_version >= '3.10' and (platform_machine == 'aarch64' or platform_system == 'Darwin')",  # noqa: E501
-        "onnxruntime-gpu~=1.20.1 ; python_version >= '3.10' and platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
-        "onnxruntime-directml==1.20.0; python_version >= '3.10' and platform_system == 'Windows'",
+        "onnxruntime~=1.22.0 ; platform_machine == 'aarch64' or platform_system == 'Darwin'",
+        "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
+        "onnxruntime-gpu==1.20.0; platform_system == 'Windows'",
         "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
+        "polygraphy>=0.49.22",
     ],
     "torch": [
         "pulp",
-        "pynvml>=11.5.0",
+        "nvidia-ml-py>=12",
         "regex",
         "safetensors",
         "torch>=2.4",
@@ -72,37 +75,31 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.12.0",
-        "transformers>=4.48.0,<4.52.0",
+        "transformers>=4.48.0,<4.52",
     ],
     # linter tools
     "dev-lint": [
         "bandit[toml]==1.7.9",  # security/compliance checks
         "mypy==1.15.0",
         "pre-commit==4.2.0",
-        "ruff==0.11.6",
+        "ruff==0.11.9",
     ],
     # testing
     "dev-test": [
         "coverage",
         "onnxscript",  # For test_onnx_dynamo_export unit test
         "pytest",
-        "pytest-asyncio",
         "pytest-cov",
         "pytest-timeout",
         "timm",
-        "toml",
         "tox",
         "tox-current-env>=0.0.12",  # Incompatible with tox==4.18.0
     ],
     # docs
     "dev-docs": [
         "autodoc_pydantic>=2.1.0",
-        "ipython",
-        "ipywidgets",
-        "nbsphinx>=0.9.3",
-        "pypandoc",  # Required by nbsphinx
-        "sphinx~=7.2.0",  # AttributeError for sphinx~=7.3.0
-        "snowballstemmer<3",  # 3.0 issue with Sphinx
+        "sphinx~=8.1.0",
+        "sphinx-argparse>=0.5.2",
         "sphinx-autobuild>=2024.10.3",
         "sphinx-copybutton>=0.5.2",
         "sphinx-inline-tabs>=2023.4.21",
@@ -125,6 +122,85 @@ optional_deps["all"] = [
 optional_deps["dev"] = [deps for k in optional_deps for deps in optional_deps[k]]
 
 
+# External release overwrites ######################################################################
+# TODO: Remove this section before copying the setup.py to the modelopt github repository
+
+# You can modify the installation process with the following env variables:
+# - ``MODELOPT_EXTERNAL``: if set to ``true`` (Default is ``False``), external packages (excluding
+#     `modelopt.core`) will be packaged into a wheel `nvidia-modelopt`. Also, internal dependencies
+#     will not be installed or packaged. This is useful for external releases.
+# - ``MODELOPT_CORE_EXTERNAL``: if set to ``true`` (Default is ``False``), only `modelopt.core` will
+#     be compiled into a separate wheel `nvidia-modelopt-core`. This wheel will not have any pip
+#     dependencies. This is useful for external releases.
+
+MODELOPT_EXTERNAL = os.environ.get("MODELOPT_EXTERNAL", "false").lower() == "true"
+MODELOPT_CORE_EXTERNAL = os.environ.get("MODELOPT_CORE_EXTERNAL", "false").lower() == "true"
+
+assert not (MODELOPT_EXTERNAL and MODELOPT_CORE_EXTERNAL), (
+    "Cannot set both `MODELOPT_EXTERNAL` and `MODELOPT_CORE_EXTERNAL` to true."
+)
+
+
+if MODELOPT_EXTERNAL:
+    packages = setuptools.find_namespace_packages(
+        include=[  # Modules for external release (everything except modelopt.core)
+            "modelopt",  # __init__.py
+            "modelopt.deploy*",
+            "modelopt.onnx*",
+            "modelopt.torch*",
+        ]
+    )
+elif MODELOPT_CORE_EXTERNAL:
+    name = "nvidia-modelopt-core"
+    packages = ["modelopt_core"] + [
+        f"modelopt_core.{p}" for p in setuptools.find_namespace_packages(where="modelopt/core")
+    ]
+    package_dir = {"modelopt_core": "modelopt/core"}
+    package_data = {}
+    required_deps = []
+    optional_deps = {}
+
+    # Cythonize all non-init files in modelopt_core
+    compiled_files = [
+        f.replace(os.sep, "/")  # Windows compatible
+        for f in glob.iglob("modelopt/core/**/*.py", recursive=True)
+        if not f.endswith("__init__.py")
+    ]
+    ext_modules = cythonize(
+        [
+            Extension(
+                f.replace("modelopt/core", "modelopt_core").replace(".py", "").replace("/", "."),
+                sources=[f],
+            )
+            for f in compiled_files
+        ],
+        compiler_directives={"language_level": "3"},
+        build_dir="build/modelopt_core_build",
+    )
+
+    class ModeloptBuildPy(build_py):
+        """A custom builder class to modify the python build process for regular installs.
+
+        The build process is executed during ``pip install .``. This is also triggered in certain cases
+        during editable installs, i.e., ``pip install -e .``, starting from Python 3.9+. One trigger is
+        when new packages are discovered!
+        """
+
+        def find_package_modules(self, *args, **kwargs):
+            """If a package exists as compiled version skip python version."""
+            return [
+                pm
+                for pm in super().find_package_modules(*args, **kwargs)
+                if pm[-1].replace(os.sep, "/") not in compiled_files
+            ]
+
+    setup_kwargs["ext_modules"] = ext_modules
+    setup_kwargs["cmdclass"] = {"build_py": ModeloptBuildPy}
+else:
+    # remove nvidia-modelopt-core dependency for internal installations / wheels
+    required_deps = [dep for dep in required_deps if not dep.startswith("nvidia-modelopt-core")]
+
+
 if __name__ == "__main__":
     setuptools.setup(
         name=name,
@@ -142,7 +218,7 @@ if __name__ == "__main__":
             "Intended Audience :: Science/Research",
             "Topic :: Scientific/Engineering :: Artificial Intelligence",
         ],
-        python_requires=">=3.9,<3.13",
+        python_requires=">=3.10,<3.13",
         install_requires=required_deps,
         extras_require=optional_deps,
         packages=packages,

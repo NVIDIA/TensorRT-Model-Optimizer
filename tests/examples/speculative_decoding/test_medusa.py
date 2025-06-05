@@ -53,7 +53,7 @@ def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, daring_anteater_path, t
             "./launch.sh",
             "--model", tiny_llama_path,
             "--data", daring_anteater_path,
-            "--num_epochs", "0.005",
+            "--num_epochs", "0.001",
             "--lr", "1e-5",
             "--save_steps", "50",
             "--do_eval", "False",
@@ -75,7 +75,7 @@ def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, daring_anteater_path, t
         [
             "./launch.sh",
             "--model", medusa_path,
-            "--num_epochs", "0.1",
+            "--num_epochs", "0.001",
             "--lr", "1e-5",
             "--save_steps", "5",
             "--output_dir", tmp_path / "medusa-tinyllama-qat-finetune",

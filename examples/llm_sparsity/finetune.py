@@ -33,8 +33,8 @@ import argparse
 import copy
 import os
 import pickle
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
 
 import torch
 import transformers
@@ -72,8 +72,8 @@ PROMPT_DICT = {
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="facebook/opt-125m")
-    use_flash_attn: Optional[bool] = field(
+    model_name_or_path: str | None = field(default="facebook/opt-125m")
+    use_flash_attn: bool | None = field(
         default=False,
         metadata={"help": "Enables Flash attention for training."},
     )
@@ -91,7 +91,7 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
-    cache_dir: Optional[str] = field(default=None)
+    cache_dir: str | None = field(default=None)
     optim: str = field(default="adamw_torch")
     model_max_length: int = field(
         default=2048,
@@ -108,7 +108,7 @@ class TrainingArguments(transformers.TrainingArguments):
 @dataclass
 class ModelOptArguments:
     # modelopt quantization arguments
-    quant_cfg: Optional[str] = field(
+    quant_cfg: str | None = field(
         default=None,
         metadata={
             "help": (
@@ -128,7 +128,7 @@ class ModelOptArguments:
         },
     )
     # modelopt sparsity arguments
-    sparse_fmt: Optional[str] = field(
+    sparse_fmt: str | None = field(
         default=None,
         metadata={
             "help": (
@@ -137,7 +137,7 @@ class ModelOptArguments:
             )
         },
     )
-    modelopt_restore_path: Optional[str] = field(
+    modelopt_restore_path: str | None = field(
         default=None,
         metadata={"help": "Path to the modelopt state dict to restore from."},
     )
@@ -187,12 +187,12 @@ def _tokenize_fn(strings: Sequence[str], tokenizer: transformers.PreTrainedToken
             print_rank_0("Input exceeds model length 2048")
             print_rank_0(input_ids_lens[i])
             print_rank_0(strings[i])
-    return dict(
-        input_ids=input_ids,
-        labels=labels,
-        input_ids_lens=input_ids_lens,
-        labels_lens=labels_lens,
-    )
+    return {
+        "input_ids": input_ids,
+        "labels": labels,
+        "input_ids_lens": input_ids_lens,
+        "labels_lens": labels_lens,
+    }
 
 
 def preprocess(
@@ -209,7 +209,7 @@ def preprocess(
     labels = copy.deepcopy(input_ids)
     for label, source_len in zip(labels, sources_tokenized["input_ids_lens"]):
         label[:source_len] = IGNORE_INDEX
-    return dict(input_ids=input_ids, labels=labels)
+    return {"input_ids": input_ids, "labels": labels}
 
 
 def get_model_state_dict(trainer: transformers.Trainer):
@@ -230,7 +230,7 @@ class SupervisedDataset(Dataset):
         tokenizer: transformers.PreTrainedTokenizer,
         split: str,
     ):
-        super(SupervisedDataset, self).__init__()
+        super().__init__()
 
         pickle_name = f"dict_{split}_{tokenizer.model_max_length}.pickle"
         with training_args.main_process_first():
@@ -261,11 +261,11 @@ class SupervisedDataset(Dataset):
         return len(self.input_ids)
 
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
-        return dict(input_ids=self.input_ids[i], labels=self.labels[i])
+        return {"input_ids": self.input_ids[i], "labels": self.labels[i]}
 
 
 @dataclass
-class DataCollatorForSupervisedDataset(object):
+class DataCollatorForSupervisedDataset:
     """Collate examples for supervised fine-tuning."""
 
     tokenizer: transformers.PreTrainedTokenizer
@@ -280,11 +280,11 @@ class DataCollatorForSupervisedDataset(object):
         labels = torch.nn.utils.rnn.pad_sequence(
             labels, batch_first=True, padding_value=IGNORE_INDEX
         )
-        return dict(
-            input_ids=input_ids,
-            labels=labels,
-            attention_mask=input_ids.ne(self.tokenizer.pad_token_id),  # type: ignore[attr-defined]
-        )
+        return {
+            "input_ids": input_ids,
+            "labels": labels,
+            "attention_mask": input_ids.ne(self.tokenizer.pad_token_id),  # type: ignore[attr-defined]
+        }
 
 
 def make_supervised_data_module(
@@ -297,7 +297,11 @@ def make_supervised_data_module(
     train_dataset = SupervisedDataset(training_args, train_datapath, tokenizer, "train")
     val_dataset = SupervisedDataset(training_args, val_datapath, tokenizer, "val")
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer)
-    return dict(train_dataset=train_dataset, eval_dataset=val_dataset, data_collator=data_collator)
+    return {
+        "train_dataset": train_dataset,
+        "eval_dataset": val_dataset,
+        "data_collator": data_collator,
+    }
 
 
 def train():
@@ -337,7 +341,7 @@ def train():
 
     if tokenizer.pad_token is None:
         smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+            special_tokens_dict={"pad_token": DEFAULT_PAD_TOKEN},
             tokenizer=tokenizer,
             model=model,
         )

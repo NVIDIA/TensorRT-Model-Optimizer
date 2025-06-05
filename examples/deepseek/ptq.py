@@ -43,7 +43,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 import torch
 import torch.distributed as dist
@@ -53,6 +53,7 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 import modelopt.torch.quantization as mtq
+from modelopt.torch.export.model_config import KV_CACHE_FP8
 from modelopt.torch.export.quant_utils import get_quant_config
 from modelopt.torch.quantization.nn import TensorQuantizer
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
@@ -69,9 +70,9 @@ def monkey_patch_deepseek_model():
     def linear(
         x: torch.Tensor,
         weight: torch.Tensor,
-        bias: Optional[torch.Tensor] = None,
-        act_quantizer=None,
-        weight_quantizer=None,
+        bias: torch.Tensor | None = None,
+        act_quantizer: TensorQuantizer | None = None,
+        weight_quantizer: TensorQuantizer | None = None,
     ) -> torch.Tensor:
         if weight.element_size() > 1:
             if act_quantizer is not None:
@@ -214,7 +215,7 @@ def ptq(
     quant_cfg: str,
     batch_size: int,
     calib_size: int,
-    mla_quant: Optional[str] = None,
+    mla_quant: str | None = None,
 ):
     """Runs Deepseek model PTQ and returns the quantized model."""
 
@@ -252,6 +253,9 @@ def ptq(
         mtq_cfg["quant_cfg"]["*attn*weight_quantizer"] = {"num_bits": (4, 3), "axis": None}
         mtq_cfg["quant_cfg"]["*attn*input_quantizer"] = {"num_bits": (4, 3), "axis": None}
 
+    if args.enable_wo_quant and "FP4" in quant_cfg:
+        mtq_cfg["quant_cfg"]["*wo*weight_quantizer"] = mtq_cfg["quant_cfg"]["*input_quantizer"]
+        mtq_cfg["quant_cfg"]["*wo*input_quantizer"] = mtq_cfg["quant_cfg"]["*weight_quantizer"]
     ## ptq
     transformer = mtq.quantize(transformer, mtq_cfg, calibrate_loop)
     if int(os.environ["LOCAL_RANK"]) == 0:
@@ -260,7 +264,7 @@ def ptq(
     return model
 
 
-def save_amax_and_quant_config(model, output_path: str):
+def save_amax_and_quant_config(model, output_path: str, enable_fp8_kvcache: bool):
     """Saves the amax values of the model to the output path."""
     world_size = int(os.getenv("WORLD_SIZE", "1"))
     rank = int(os.getenv("RANK", "0"))
@@ -282,6 +286,9 @@ def save_amax_and_quant_config(model, output_path: str):
 
     quant_config = get_quant_config(model.named_modules())
 
+    if enable_fp8_kvcache:
+        quant_config["quantization"]["kv_cache_quant_algo"] = KV_CACHE_FP8
+
     all_quant_configs = [None] * dist.get_world_size()
     dist.all_gather_object(all_quant_configs, quant_config)
 
@@ -297,7 +304,7 @@ def save_amax_and_quant_config(model, output_path: str):
                 quantized_layers.update(quant_config_rank["quantization"]["quantized_layers"])
 
         if exclude_modules:
-            quant_config["quantization"]["exclude_modules"] = sorted(list(exclude_modules))
+            quant_config["quantization"]["exclude_modules"] = sorted(exclude_modules)
         if quantized_layers:
             quant_config["quantization"]["quantized_layers"] = quantized_layers
 
@@ -321,9 +328,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch_size", type=int, default=8, help="batch size for quantization.")
     parser.add_argument("--calib_size", type=int, default=512, help="samples for calibration.")
+    parser.add_argument("--enable_fp8_kvcache", type=bool, default=True, help="enable fp8 kvcache.")
+    parser.add_argument("--enable_wo_quant", action="store_true", help="enable MLA wo quant.")
 
     args = parser.parse_args()
     model = load_deepseek_model(args.config, args.model_path, args.batch_size)
     tokenizer = AutoTokenizer.from_pretrained(args.model_path)
     model = ptq(model, tokenizer, args.quant_cfg, args.batch_size, args.calib_size)
-    save_amax_and_quant_config(model, args.output_path)
+    save_amax_and_quant_config(model, args.output_path, args.enable_fp8_kvcache)

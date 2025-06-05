@@ -14,7 +14,8 @@
 # limitations under the License.
 
 import copy
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -45,7 +46,7 @@ def run_fsdp_test(
     sample_subnet: Callable[[DynamicModule], None],
     rank: int,
     world_size: int,
-    fsdp_kwargs: Optional[dict[str, Any]] = None,
+    fsdp_kwargs: dict[str, Any] | None = None,
 ):
     # init test case
     model, dummy_input = get_test_case()

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import OrderedDict
 
 import pytest
 import torch
@@ -24,7 +23,7 @@ from modelopt.torch.nas.registry import DMRegistry
 
 
 class ModuleContainerWrapper:
-    def __init__(self, modules: OrderedDict) -> None:
+    def __init__(self, modules: dict) -> None:
         self._modules = modules
 
     def items(self) -> any:
@@ -32,7 +31,7 @@ class ModuleContainerWrapper:
 
 
 @pytest.mark.parametrize(
-    "in_features, depth, desired_depth",
+    ("in_features", "depth", "desired_depth"),
     [
         (2, 4, 2),
         (4, 3, 3),

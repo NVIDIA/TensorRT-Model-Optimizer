@@ -37,8 +37,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# ruff: noqa: N806, PGH003
 # type: ignore
-# ruff: noqa
 
 """NOTE: This file is only used to overwrite certain methods in the instruct-eval repo."""
 
@@ -46,7 +46,6 @@ import json
 import signal
 import time
 from pathlib import Path
-from typing import Optional
 
 import openai
 import rwkv
@@ -96,7 +95,7 @@ class OpenAIModel(EvalModel):
     model_path: str
     engine: str = ""
     use_azure: bool = False
-    tokenizer: Optional[tiktoken.Encoding]
+    tokenizer: tiktoken.Encoding | None
     api_endpoint: str = "https://research.openai.azure.com/"
     api_version: str = "2023-03-15-preview"
     timeout: int = 60
@@ -175,8 +174,8 @@ class OpenAIModel(EvalModel):
 
 class SeqToSeqModel(EvalModel):
     model_path: str
-    model: Optional[PreTrainedModel] = None
-    tokenizer: Optional[PreTrainedTokenizer] = None
+    model: PreTrainedModel | None = None
+    tokenizer: PreTrainedTokenizer | None = None
     lora_path: str = ""
     device: str = "cuda"
     load_8bit: bool = False
@@ -334,7 +333,7 @@ class LlamaModel(SeqToSeqModel):
                 "Write a response that appropriately completes the request.\n\n"
                 "### Instruction:\n{instruction}\n\n### Response:"
             )
-            text = template.format_map(dict(instruction=prompt))
+            text = template.format_map({"instruction": prompt})
         else:
             text = prompt
 
@@ -448,8 +447,8 @@ def print_gpu_utilization():
 
 class GPTQModel(LlamaModel):
     quantized_path: str
-    model: Optional[LlamaForCausalLM]
-    tokenizer: Optional[LlamaTokenizer]
+    model: LlamaForCausalLM | None = None
+    tokenizer: LlamaTokenizer | None = None
     num_bits: int = 4
     group_size: int = 128
 
@@ -505,7 +504,7 @@ class ChatGLMModel(SeqToSeqModel):
 class RWKVModel(EvalModel):
     tokenizer_path: str = "https://github.com/BlinkDL/ChatRWKV/raw/main/20B_tokenizer.json"
     download_root: str = "."
-    model: Optional[rwkv.utils.PIPELINE]
+    model: rwkv.utils.PIPELINE | None = None
 
     def download(self, url: str) -> str:
         path = Path(self.download_root, Path(url).name)
@@ -546,7 +545,7 @@ class RWKVModel(EvalModel):
                 break  # exit when 'endoftext'
 
             out_tokens += [token]
-            occurrence[token] = 1 + (occurrence[token] if token in occurrence else 0)
+            occurrence[token] = 1 + occurrence.get(token, 0)
 
             tmp = self.model.decode(out_tokens[out_last:])
             if ("\ufffd" not in tmp) and (not tmp.endswith("\n")):
@@ -565,15 +564,15 @@ class RWKVModel(EvalModel):
 
 
 def select_model(model_name: str, **kwargs) -> EvalModel:
-    model_map = dict(
-        seq_to_seq=SeqToSeqModel,
-        causal=CausalModel,
-        llama=LlamaModel,
-        chatglm=ChatGLMModel,
-        openai=OpenAIModel,
-        rwkv=RWKVModel,
-        gptq=GPTQModel,
-    )
+    model_map = {
+        "seq_to_seq": SeqToSeqModel,
+        "causal": CausalModel,
+        "llama": LlamaModel,
+        "chatglm": ChatGLMModel,
+        "openai": OpenAIModel,
+        "rwkv": RWKVModel,
+        "gptq": GPTQModel,
+    }
     model_class = model_map.get(model_name)
     if model_class is None:
         raise ValueError(f"{model_name}. Choose from {list(model_map.keys())}")

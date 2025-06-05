@@ -12,11 +12,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""Patch manager for NAS."""
 
 import types
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, Optional
+from typing import Any
 
 import torch.nn as nn
 
@@ -40,15 +42,14 @@ class PatchManager(ABC):
     _patch_cls_key = "_modelopt_patch_cls"
 
     def __init__(self, model: nn.Module) -> None:
+        """Constructor."""
         self._model = model
 
         # find submodule with patch (if it exists)
         self._modelopt_name, self._modelopt_module = self._get_named_patched_module(model)
 
     @classmethod
-    def _get_named_patched_module(
-        cls, model: nn.Module
-    ) -> tuple[Optional[str], Optional[nn.Module]]:
+    def _get_named_patched_module(cls, model: nn.Module) -> tuple[str | None, nn.Module | None]:
         """Return the name of the patched module and the patched module itself."""
         for name, module in model.named_modules():
             if hasattr(module, cls._patch_data_key):
@@ -126,7 +127,7 @@ class PatchManager(ABC):
         """Call reset hook before sample-related operations (sample & select)."""
         self._hook_pre_sample()
 
-    def call_post_eval(self, forward_loop: Optional[ForwardLoop] = None) -> None:
+    def call_post_eval(self, forward_loop: ForwardLoop | None = None) -> None:
         """Call post-eval hook explicitly.
 
         Args:
@@ -136,15 +137,12 @@ class PatchManager(ABC):
 
     def _hook_pre_sample(self) -> None:
         """Optional hook to be called before sample-related operations (sample & select)."""
-        pass
 
-    def _hook_post_eval(self, forward_loop: Optional[ForwardLoop] = None) -> None:
+    def _hook_post_eval(self, forward_loop: ForwardLoop | None = None) -> None:
         """Optional hook that is called after eval() (or train(False)) to calibrate the model."""
-        pass
 
     def _hook_pre_forward(self, *args, **kwargs) -> None:
         """Optional hook that is called after the original forward function is called."""
-        pass
 
     def _hook_post__replicate_for_data_parallel(self) -> None:
         """Optional hook to be called after _replicate_for_data_parallel."""
@@ -175,6 +173,7 @@ class PatchManager(ABC):
 
     @staticmethod
     def hooked__replicate_for_data_parallel(mod: nn.Module) -> nn.Module:
+        """The _replicate_for_data_parallel method with hooks."""
         mod = getattr(mod, "_modelopt_unhooked__replicate_for_data_parallel")(mod)
         if is_modelopt_patches_enabled():
             PatchManager.get_manager(mod)._hook_post__replicate_for_data_parallel()
@@ -236,7 +235,7 @@ def _modelopt_eval_recursion_guard(model: nn.Module) -> Iterator[bool]:
             delattr(model, guard_key)
 
 
-def prep_for_eval(model: nn.Module, forward_loop: Optional[ForwardLoop] = None) -> nn.Module:
+def prep_for_eval(model: nn.Module, forward_loop: ForwardLoop | None = None) -> nn.Module:
     """Calibrate model for evaluation and enable eval().
 
     Args:

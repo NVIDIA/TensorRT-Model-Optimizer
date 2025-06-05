@@ -102,7 +102,7 @@ def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
 
 
 @pytest.mark.parametrize(
-    "model_type,arch,algo",
+    ("model_type", "arch", "algo"),
     [
         ("nemotron", None, None),
         ("nemotron", "NemotronForCausalLM", None),

@@ -16,20 +16,19 @@
 """Model optimization subpackage for onnx."""
 
 import sys
-import warnings
 
 MIN_PYTHON_VERSION = (3, 10)
 
 try:
-    from . import quantization  # noqa: F401
+    from . import quantization
+    from .logging_config import configure_logging, logger
 except ImportError as e:
     raise ImportError(f"{e}\nPlease install optional ``[onnx]`` dependencies.")
 
 
 # Check the current Python version
 if sys.version_info < MIN_PYTHON_VERSION:
-    warnings.warn(
+    logger.warning(
         f"This package requires Python {MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]} or higher. "
-        f"You are using Python {sys.version_info[0]}.{sys.version_info[1]}.",
-        UserWarning,
+        f"You are using Python {sys.version_info[0]}.{sys.version_info[1]}",
     )

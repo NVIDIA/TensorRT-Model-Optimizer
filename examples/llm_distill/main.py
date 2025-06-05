@@ -16,7 +16,6 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 import datasets
 import torch
@@ -40,8 +39,8 @@ logging.basicConfig(level=logging.INFO)
 
 @dataclass
 class ModelArguments:
-    teacher_name_or_path: Optional[str] = None
-    student_name_or_path: Optional[str] = None
+    teacher_name_or_path: str | None = None
+    student_name_or_path: str | None = None
     single_model: bool = False
 
 

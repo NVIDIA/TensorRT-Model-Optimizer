@@ -110,7 +110,7 @@ def _test_speculative_gpt_model(
 
 
 @pytest.mark.parametrize(
-    "algo,num_medusa_heads_or_eagle_layers,activation_func,normalization",
+    ("algo", "num_medusa_heads_or_eagle_layers", "activation_func", "normalization"),
     [
         ("eagle", 1, "squared_relu", "LayerNorm"),  # MHA
         ("eagle", 2, "swiglu", "RMSNorm"),  # GQA

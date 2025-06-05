@@ -16,7 +16,6 @@
 """Implements FP8 quantization for efficient tensor storage and computation."""
 
 import math
-from typing import Union
 
 import torch
 
@@ -43,8 +42,8 @@ class FP8QTensor(BaseQuantizedTensor):
         cls,
         input: torch.Tensor,
         scales: torch.Tensor = None,
-        axis: Union[tuple, int, None] = None,
-        block_sizes: dict = None,
+        axis: tuple | int | None = None,
+        block_sizes: dict | None = None,
     ) -> tuple:
         """Converting a tensor to a quantized format based on FP8 quantization. Only E4M3 is supported.
 
@@ -121,7 +120,7 @@ class FP8QTensor(BaseQuantizedTensor):
 
         # get args
         scales = kwarg["scale"]
-        block_sizes = kwarg.get("block_sizes", None)
+        block_sizes = kwarg.get("block_sizes")
 
         quantized_data = self._quantized_data
         if block_sizes:

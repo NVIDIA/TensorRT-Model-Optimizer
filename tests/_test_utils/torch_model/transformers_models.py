@@ -13,19 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 from pathlib import Path
-from typing import Union
 
 import pytest
 import torch
 
 pytest.importorskip("transformers")
 from transformers import (
+    AutoTokenizer,
     BertConfig,
     BertForQuestionAnswering,
     LlamaConfig,
     LlamaForCausalLM,
-    LlamaTokenizer,
+    T5Config,
+    T5Model,
+    T5Tokenizer,
 )
 
 import modelopt.torch.opt as mto
@@ -47,12 +50,30 @@ def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:
     return tiny_llama
 
 
+def get_tiny_t5(**config_kwargs) -> T5Model:
+    kwargs = {
+        "vocab_size": 32,
+        "d_model": 32,
+        "d_kv": 32,
+        "d_ff": 32,
+        "num_layers": 2,
+        "num_heads": 16,
+        "relative_attention_num_buckets": 8,
+        "relative_attention_max_distance": 32,
+        "decoder_start_token_id": 0,
+    }
+    kwargs.update(**config_kwargs)
+    t5_model = T5Model(T5Config(**kwargs))
+
+    return t5_model
+
+
 def create_tiny_llama_dir(
-    tmp_path: Union[Path, str], with_tokenizer: bool = False, **config_kwargs
+    tmp_path: Path | str, with_tokenizer: bool = False, **config_kwargs
 ) -> Path:
     llama_dir = Path(tmp_path) / "tiny_llama"
     if with_tokenizer:
-        tokenizer = LlamaTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             "hf-internal-testing/tiny-random-LlamaForCausalLM"
         )
         tokenizer.save_pretrained(llama_dir)
@@ -62,6 +83,19 @@ def create_tiny_llama_dir(
     tiny_llama = tiny_llama.to(torch.bfloat16)  # Use same dtype as TinyLlama-1.1B-Chat-v1.0
     tiny_llama.save_pretrained(llama_dir)
     return llama_dir
+
+
+def create_tiny_t5_dir(tmp_path: Path | str, with_tokenizer: bool = False, **config_kwargs) -> Path:
+    t5_dir = Path(tmp_path) / "tiny_t5"
+    if with_tokenizer:
+        tokenizer = T5Tokenizer.from_pretrained("hf-internal-testing/tiny-random-T5Model")
+        tokenizer.save_pretrained(t5_dir)
+        config_kwargs["vocab_size"] = tokenizer.vocab_size
+
+    tiny_t5 = get_tiny_t5(**config_kwargs)
+    tiny_t5 = tiny_t5.to(torch.bfloat16)
+    tiny_t5.save_pretrained(t5_dir)
+    return t5_dir
 
 
 def create_tiny_bert_dir(tmp_path: Path) -> Path:
@@ -96,11 +130,9 @@ def tf_modelopt_state_and_output_tester(model_ref, model_test):
     # Huggingface adds a _is_hf_initialized attribute to the model's modules
     for module in model_test.modules():
         if hasattr(module, "_is_hf_initialized"):
-            try:
+            # AttributeError for PEFT models, PEFT models get `_is_hf_initialized` from model.base_model
+            with contextlib.suppress(AttributeError):
                 delattr(module, "_is_hf_initialized")
-            except AttributeError:
-                # Happens for PEFT models, PEFT models get `_is_hf_initialized` from model.base_model
-                pass
 
     model_ref_state = mto.modelopt_state(model_ref)
     model_test_state = mto.modelopt_state(model_test)

@@ -19,7 +19,6 @@ Some of the logics in this file are empirical and needs constant update if excep
 """
 
 from contextlib import contextmanager
-from typing import Optional
 from warnings import warn
 
 import torch
@@ -29,12 +28,11 @@ try:
     from transformers.activations import ACT2FN
 except Exception:
     warn("Cannot find transformers package. Hugginface modules cannot be exported.")
-    pass
 
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import import_plugin
 
-from ..quantization.nn import SequentialQuantizer
+from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .hf_config_map import HF_CONFIG_MAP
 from .mcore_config_map import MCORE_CONFIG_MAP
 from .model_config import (
@@ -88,13 +86,15 @@ def get_experts_list(module: torch.nn.Module, model_type: str):
     """Returns list of grouped experts by linear name for given module."""
     experts_list = []
     if "mixtralforcausallm" in model_type:
-        for linear_name in ["w1", "w2", "w3"]:
-            experts_list.append(
+        experts_list.extend(
+            [
                 [
                     _get_mixtral_expert(module.experts, i, linear_name)
                     for i in range(len(module.experts))
                 ]
-            )
+                for linear_name in ["w1", "w2", "w3"]
+            ]
+        )
     else:
         raise NotImplementedError(f" {model_type} not supported")
 
@@ -131,11 +131,7 @@ def check_model_compatibility(module_list: list[nn.Module]) -> tuple[bool, bool,
             num_layer_norm += 1
 
     return (
-        1 <= num_embeddings
-        and num_embeddings <= 2
-        and num_module_list == 1
-        and 1 <= num_layer_norm
-        and num_layer_norm <= 2,
+        1 <= num_embeddings <= 2 and num_module_list == 1 and 1 <= num_layer_norm <= 2,
         num_embeddings > 1,
         num_layer_norm > 1,
     )
@@ -157,14 +153,13 @@ def get_transformer_layers(model: nn.Module) -> list[nn.Module]:
                 if type(child).__name__ == "TransformerLanguageModel":
                     language_model = child
                     break
-                for m in child.children():
-                    next_children.append(m)
+                next_children.extend(list(child.children()))
             children = next_children
         if language_model:
             warn("Warning: this is an old NEMO checkpoint format and will be deprecated soon.")
-            layers = [m for m in language_model.embedding.children()] + [
-                m for m in language_model.encoder.children()
-            ]
+            layers = list(language_model.embedding.children()) + list(
+                language_model.encoder.children()
+            )
 
             if hasattr(language_model, "output_layer"):
                 layers.append(language_model.output_layer)
@@ -175,8 +170,8 @@ def get_transformer_layers(model: nn.Module) -> list[nn.Module]:
         # mcore models
         layers = []
         if hasattr(model, "embedding"):
-            layers = layers + [m for m in model.embedding.children()]
-        layers = layers + [m for m in model.decoder.children()]
+            layers = layers + list(model.embedding.children())
+        layers = layers + list(model.decoder.children())
         if hasattr(model, "output_layer"):
             layers.append(model.output_layer)
         return layers
@@ -205,7 +200,7 @@ def get_transformer_layers(model: nn.Module) -> list[nn.Module]:
 
     if hasattr(model, "model"):
         # LLAMA, InternLM2
-        modules = [m for m in model.model.children()]
+        modules = list(model.model.children())
         # LLAMA
         if hasattr(model, "lm_head"):
             modules += [model.lm_head]
@@ -215,12 +210,12 @@ def get_transformer_layers(model: nn.Module) -> list[nn.Module]:
 
         return modules
 
-    return [m for m in model.children()]
+    return list(model.children())
 
 
 def is_linear(module: nn.Module) -> bool:
     """Returns whether the module is a linear layer."""
-    return any([k in type(module).__name__ for k in ["Linear", "Conv1D", "NormHead"]])
+    return any(k in type(module).__name__ for k in ["Linear", "Conv1D", "NormHead"])
 
 
 def is_conv(module: nn.Module) -> bool:
@@ -283,10 +278,7 @@ def build_layernorm_config(module: nn.Module) -> LayernormConfig:
         ):
             return True
 
-        if hasattr(module, "zero_centered_gamma") and module.zero_centered_gamma:
-            return True
-
-        return False
+        return bool(hasattr(module, "zero_centered_gamma") and module.zero_centered_gamma)
 
     if _weights_plus_one(module):
         # megatron layernorm's weight needs to be updated.
@@ -319,7 +311,7 @@ def is_attention(module: nn.Module) -> bool:
 
 def is_mlp(module: nn.Module) -> bool:
     """Returns whether the module is an MLP layer."""
-    return any([key in type(module).__name__.upper() for key in ("MLP", "T5DENSE")])
+    return any(key in type(module).__name__.upper() for key in ("MLP", "T5DENSE"))
 
 
 def is_moe(module: nn.Module) -> bool:
@@ -381,12 +373,13 @@ def build_qkv(
             model_metadata_config["head_is_first_dim"] = True
 
         qkv_weight = qkv_module.weight
-        if type(qkv_module).__name__ == "Conv1D":
-            if not hasattr(qkv_module, "input_quantizer") and not hasattr(
-                qkv_module, "output_quantizer"
-            ):
-                # For unquantized nn.Conv1D, the weights are transposed compared with the nn.Linear
-                qkv_weight = qkv_weight.T
+        if (
+            type(qkv_module).__name__ == "Conv1D"
+            and not hasattr(qkv_module, "input_quantizer")
+            and not hasattr(qkv_module, "output_quantizer")
+        ):
+            # For unquantized nn.Conv1D, the weights are transposed compared with the nn.Linear
+            qkv_weight = qkv_weight.T
 
         # Handle the case that num_kv_heads/num_attention_heads is the first dimension of QKV.
         # This logic covers MQA and GQA as well.
@@ -485,15 +478,13 @@ def build_qkv(
     num_kv_heads = ext_config.num_kv_heads or k_weight.size(0) // head_size
     if tp_size > num_kv_heads:
         if any(
-            map(
-                lambda t: t is not None and t.numel() > 1,
-                [
-                    k_activation_scaling_factor,
-                    k_weight_scaling_factor_2,
-                    v_activation_scaling_factor,
-                    v_weight_scaling_factor_2,
-                ],
-            )
+            t is not None and t.numel() > 1
+            for t in [
+                k_activation_scaling_factor,
+                k_weight_scaling_factor_2,
+                v_activation_scaling_factor,
+                v_weight_scaling_factor_2,
+            ]
         ):
             # TODO(oargov): handle cases with biases / scales
             raise NotImplementedError(
@@ -650,9 +641,12 @@ def build_attention_config(
                 config.k_layernorm = build_layernorm_config(layer)
             else:
                 raise NotImplementedError(f"{name}: {layer} not recognized")
-        elif "model_type" in model_metadata_config:
-            if model_metadata_config["model_type"] == "t5":
-                config.rel_attn_table = RelativeAttentionTableConfig(weight=layer.weight.T)
+        elif (
+            "model_type" in model_metadata_config
+            and model_metadata_config["model_type"] == "t5"
+            and not isinstance(layer, TensorQuantizer)
+        ):
+            config.rel_attn_table = RelativeAttentionTableConfig(weight=layer.weight.T)
 
     if not qkv_modules:
         assert q
@@ -683,7 +677,7 @@ def build_attention_config(
 
 
 def _is_qkv(name) -> bool:
-    return all([k in name for k in ["q", "k", "v"]]) or "W_pack" in name or "c_attn" in name
+    return all(k in name for k in ["q", "k", "v"]) or "W_pack" in name or "c_attn" in name
 
 
 def _get_hidden_act(act_func) -> str:
@@ -714,7 +708,7 @@ def _get_hidden_act(act_func) -> str:
 def build_mlp_config(
     module: nn.Module,
     decoder_type,
-    hidden_act: Optional[str] = None,
+    hidden_act: str | None = None,
     merge_gate_fc: bool = False,
 ) -> MLPConfig:
     """Builds the MLP config for the module."""
@@ -733,49 +727,40 @@ def build_mlp_config(
         if decoder_type != "gpt":
             return False
 
-        if "dense_h_to_4h" in fc_name and "dense_h_to_4h_2" not in fc_name:
-            return True
-
-        return False
+        return bool("dense_h_to_4h" in fc_name and "dense_h_to_4h_2" not in fc_name)
 
     # TODO: We may want to refactor these keywords/model mapping
-    fc_keywords = set(
-        [
-            "c_fc",  # gpt2
-            "fc_in",  # gptj
-            "gate_proj",  # llama, baichuan, recurrentgemma, deepseek
-            "dense_h_to_4h",  # falcon, chatglm, bloom
-            "linear_fc1",
-            "w2",  # qwen
-            "fc1",  # phi, gemma, whisper
-            "gate_up_proj",  # phi
-            "wi_0",  # t5
-            "wi",  # t5
-            "c_fc_0",  # exaone
-        ]
-    )
-    proj_keywords = set(
-        [
-            "c_proj",  # gpt2, qwen, exaone
-            "fc_out",  # gptj
-            "dense_4h_to_h",  # falcon, chatglm, bloom
-            "4h_to_h",
-            "down_proj",  # llama, baichuan, mpt, phi, recurrentgemma, nemotron, deepseek
-            "linear_fc2",
-            "proj",
-            "fc2",  # phi, gemma, whisper
-            "wo",  # t5
-        ]
-    )
-    gate_keywords = set(
-        [
-            "up_proj",  # llama, baichuan, recurrentgemma, deepseek
-            "dense_h_to_4h_2",
-            "w1",  # qwen
-            "wi_1",  # t5
-            "c_fc_1",  # exaone
-        ]
-    )
+    fc_keywords = {
+        "c_fc",  # gpt2
+        "fc_in",  # gptj
+        "gate_proj",  # llama, baichuan, recurrentgemma, deepseek
+        "dense_h_to_4h",  # falcon, chatglm, bloom
+        "linear_fc1",
+        "w2",  # qwen
+        "fc1",  # phi, gemma, whisper
+        "gate_up_proj",  # phi
+        "wi_0",  # t5
+        "wi",  # t5
+        "c_fc_0",  # exaone
+    }
+    proj_keywords = {
+        "c_proj",  # gpt2, qwen, exaone
+        "fc_out",  # gptj
+        "dense_4h_to_h",  # falcon, chatglm, bloom
+        "4h_to_h",
+        "down_proj",  # llama, baichuan, mpt, phi, recurrentgemma, nemotron, deepseek
+        "linear_fc2",
+        "proj",
+        "fc2",  # phi, gemma, whisper
+        "wo",  # t5
+    }
+    gate_keywords = {
+        "up_proj",  # llama, baichuan, recurrentgemma, deepseek
+        "dense_h_to_4h_2",
+        "w1",  # qwen
+        "wi_1",  # t5
+        "c_fc_1",  # exaone
+    }
 
     # Arctic (llama-based MoE, decoder_type is "llama") has MLP keyword conflicts with Qwen
     # Arctic's residual MLP use w1 for fc, w2 for proj, w3 for gate
@@ -803,11 +788,11 @@ def build_mlp_config(
     proj_linear: nn.Module = None
     for name, layer in module.named_children():
         if is_linear(layer):
-            if any([keyword == name for keyword in fc_keywords]):
+            if any(keyword == name for keyword in fc_keywords):
                 fc_linear = layer
-            elif any([keyword == name for keyword in gate_keywords]):
+            elif any(keyword == name for keyword in gate_keywords):
                 gate_linear = layer
-            elif any([keyword == name for keyword in proj_keywords]):
+            elif any(keyword == name for keyword in proj_keywords):
                 proj_linear = layer
 
     # TensorRT-LLM may choose to merge gate and fc during engine building.
@@ -993,21 +978,21 @@ def set_zero_amax_for_uncalibrated_experts(experts: nn.Module):
             hasattr(module, "input_quantizer")
             and module.input_quantizer is not None
             and module.input_quantizer.is_enabled
-        ):
-            if module.input_quantizer.amax is None:
-                warn(
-                    f"Missing amax value for {module} input_quantizer. Setting it to 0 for checkpoint export. "
-                    f"This typically occurs in MoE models when certain experts are not activated during calibration. "
-                    f"Consider increasing your calibration dataset size to ensure all experts are exercised."
-                )
-                # Use float32 dtype explicitly to ensure we create a floating point tensor
-                module.input_quantizer.amax = torch.tensor(
-                    0.0, dtype=torch.float32, device=module.weight_quantizer.amax.device
-                )
-                uncalibrated_experts.append(module)
+        ) and module.input_quantizer.amax is None:
+            warn(
+                f"Missing amax value for {module} input_quantizer. Setting it to 0 for checkpoint export. "
+                f"This typically occurs in MoE models when certain experts are not activated during calibration. "
+                f"Consider increasing your calibration dataset size to ensure all experts are exercised."
+            )
+            # Use float32 dtype explicitly to ensure we create a floating point tensor
+            module.input_quantizer.amax = torch.tensor(
+                0.0, dtype=torch.float32, device=module.weight_quantizer.amax.device
+            )
+            uncalibrated_experts.append(module)
     yield
-    for module in uncalibrated_experts:
-        delattr(module.input_quantizer, "_amax")
+    if uncalibrated_experts:
+        for module in uncalibrated_experts:
+            delattr(module.input_quantizer, "_amax")
 
 
 def build_stacked_experts(
@@ -1326,14 +1311,13 @@ def build_decoder_config(
     config = DecoderLayerConfig(decoder_type=decoder_type)
     # Supporting different attention layer config in MCoreGPTModel. If per layer config
     # exists, override the global config.
-    if hasattr(module, "self_attention"):
-        if hasattr(module.self_attention, "config"):
-            if hasattr(module.self_attention.config, "num_attention_heads"):
-                config.num_attention_heads = module.self_attention.config.num_attention_heads
-            if hasattr(module.self_attention.config, "kv_channels"):
-                config.attention_head_size = module.self_attention.config.kv_channels
-            if hasattr(module.self_attention.config, "num_query_groups"):
-                config.num_kv_heads = module.self_attention.config.num_query_groups
+    if hasattr(module, "self_attention") and hasattr(module.self_attention, "config"):
+        if hasattr(module.self_attention.config, "num_attention_heads"):
+            config.num_attention_heads = module.self_attention.config.num_attention_heads
+        if hasattr(module.self_attention.config, "kv_channels"):
+            config.attention_head_size = module.self_attention.config.kv_channels
+        if hasattr(module.self_attention.config, "num_query_groups"):
+            config.num_kv_heads = module.self_attention.config.num_query_groups
 
     # Set all config fields in modelopt from HF config
     _set_layer_config_from_metaconfig(config, model_metadata_config)
@@ -1391,30 +1375,29 @@ def build_decoder_config(
                     model_metadata_config, config, layernorm_config
                 )
             # For all decoder only models
+            elif name in ["ln_mlp"]:
+                config.mlp_layernorm = layernorm_config
+            elif (
+                config.decoder_type in ["gemma2", "gemma3"]
+            ) and "post_attention_layernorm" in name:
+                config.post_layernorm = layernorm_config
+            elif (
+                config.decoder_type in ["gemma2", "gemma3"]
+            ) and "pre_feedforward_layernorm" in name:
+                config.pre_feedforward_layernorm = layernorm_config
+            elif (
+                config.decoder_type in ["gemma2", "gemma3"]
+            ) and "post_feedforward_layernorm" in name:
+                config.post_feedforward_layernorm = layernorm_config
+            elif config.input_layernorm is None:
+                config.input_layernorm = layernorm_config
+            elif config.post_layernorm is None:
+                config.post_layernorm = layernorm_config
             else:
-                if name in ["ln_mlp"]:
-                    config.mlp_layernorm = layernorm_config
-                elif (
-                    config.decoder_type in ["gemma2", "gemma3"]
-                ) and "post_attention_layernorm" in name:
-                    config.post_layernorm = layernorm_config
-                elif (
-                    config.decoder_type in ["gemma2", "gemma3"]
-                ) and "pre_feedforward_layernorm" in name:
-                    config.pre_feedforward_layernorm = layernorm_config
-                elif (
-                    config.decoder_type in ["gemma2", "gemma3"]
-                ) and "post_feedforward_layernorm" in name:
-                    config.post_feedforward_layernorm = layernorm_config
-                elif config.input_layernorm is None:
-                    config.input_layernorm = layernorm_config
-                elif config.post_layernorm is None:
-                    config.post_layernorm = layernorm_config
-                else:
-                    assert model_metadata_config["parallel_attn_mlp_res"], (
-                        "Unexpected layernorm in a layer"
-                    )
-                    config.residual_layernorm = layernorm_config
+                assert model_metadata_config["parallel_attn_mlp_res"], (
+                    "Unexpected layernorm in a layer"
+                )
+                config.residual_layernorm = layernorm_config
 
         elif is_attention(layer):
             # For models where a linear may replace the attention/MLP module (e.g. Deci models)
@@ -1489,8 +1472,8 @@ def build_decoder_config(
 
 
 def build_medusa_heads_config(
-    model: Optional[nn.Module],
-) -> Optional[list[MedusaHeadConfig]]:
+    model: nn.Module | None,
+) -> list[MedusaHeadConfig] | None:
     """Build a list of MedusaHeadConfig if exists.
 
     Following TensorRT-LLM's Medusa implementation, all Medusa heads (num_medusa_heads) should be
@@ -1499,9 +1482,9 @@ def build_medusa_heads_config(
     (LinearActConfig). The only supported hidden_act for the layer is 'silu'. All Linear layers are
     column-parallel.
     """
-    # medusa_heads: Optional[nn.Module] = None
+    # medusa_heads: nn.Module | None = None
 
-    def get_medusa_heads(model: nn.Module) -> Optional[nn.Module]:
+    def get_medusa_heads(model: nn.Module) -> nn.Module | None:
         """Return the MedusaHead is exists."""
         # MCore GPTModel impl
         if hasattr(model, "medusa_heads"):
@@ -1544,7 +1527,7 @@ def build_medusa_heads_config(
 def _split_fused_qkv_weight_and_scaling(
     weight: torch.Tensor,
     num_heads: int,
-    num_kv_heads: Optional[int] = None,
+    num_kv_heads: int | None = None,
     training_tp: int = 1,
     keep_channel_order: bool = False,
 ):
@@ -1566,7 +1549,7 @@ def _split_fused_qkv_weight_and_scaling(
     #  - Multi-Query Attention: num_kv_heads = 1
     #  - Grouped-Query Attention: num_heads % num_kv_heads = 0
     weight_dim = weight.dim()
-    assert 1 <= weight_dim and weight_dim <= 2
+    assert 1 <= weight_dim <= 2
 
     qkv_in = weight.shape[-1] if weight_dim > 1 else 1
 
@@ -1612,13 +1595,12 @@ def _update_encoder_decoder_layernorm_config(model_metadata_config, config, laye
         else:
             config.mlp_layernorm = layernorm_config
     # For decoder of Encoder-Decoder model
+    elif config.self_attention_layernorm is None:
+        config.self_attention_layernorm = layernorm_config
+    elif config.cross_attention_layernorm is None:
+        config.cross_attention_layernorm = layernorm_config
     else:
-        if config.self_attention_layernorm is None:
-            config.self_attention_layernorm = layernorm_config
-        elif config.cross_attention_layernorm is None:
-            config.cross_attention_layernorm = layernorm_config
-        else:
-            config.mlp_layernorm = layernorm_config
+        config.mlp_layernorm = layernorm_config
 
 
 def _move_input_layernorm_for_noop_attention(

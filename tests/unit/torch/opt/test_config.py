@@ -83,15 +83,15 @@ def test_rule_based_config():
         assert len(config) == original_len + (1 if is_new_registered else 0)
 
         # __iter__
-        keys = {k for k in config}
+        keys = set(config)
         assert lin_alias in keys
         assert lin_name not in keys
         assert (new_name in keys) == is_new_registered
 
         # keys
-        assert lin_alias in config.keys()
-        assert lin_name not in config.keys()
-        assert (new_name in config.keys()) == is_new_registered
+        assert lin_alias in config.keys()  # noqa: SIM118
+        assert lin_name not in config.keys()  # noqa: SIM118
+        assert (new_name in config.keys()) == is_new_registered  # noqa: SIM118
 
         # setitem (re-assign and re-validate)
         config[lin_alias] = lin_value

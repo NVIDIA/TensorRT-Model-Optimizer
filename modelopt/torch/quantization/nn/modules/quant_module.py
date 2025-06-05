@@ -17,7 +17,6 @@
 
 import contextlib
 import warnings
-from typing import Union
 
 import torch
 
@@ -30,8 +29,8 @@ from .tensor_quantizer import SequentialQuantizer, TensorQuantizer
 __all__ = [
     "QuantInputBase",
     "QuantLinearConvBase",
-    "QuantModuleRegistry",
     "QuantModule",
+    "QuantModuleRegistry",
 ]
 
 
@@ -141,7 +140,7 @@ class QuantLinearConvBase(QuantInputBase):
     Quantized linear modules are modules where both the input and the weight are quantized.
     """
 
-    weight_quantizer: Union[TensorQuantizer, SequentialQuantizer]
+    weight_quantizer: TensorQuantizer | SequentialQuantizer
     _enable_weight_quantization: bool
     default_quant_desc_weight = QUANT_DESC_8BIT_PER_TENSOR
 
@@ -164,26 +163,6 @@ class QuantLinearConvBase(QuantInputBase):
         if is_torch_export_mode():
             return super().forward(input, *args, **kwargs)
 
-        # Check if real-quant GEMM is available
-        if hasattr(self, "_use_real_quant_gemm") and self._use_real_quant_gemm:
-            from ...backends.gemm_registry import gemm_registry
-
-            real_quant_gemm = (
-                self._real_quant_gemm_cache
-                if hasattr(self, "_real_quant_gemm_cache")
-                else gemm_registry.find_match(self, input, args, kwargs)
-            )
-
-            # Note: We cache the real-quant GEMM function to avoid matching overhead.
-            # This assumes that the function will not change after the first call.
-            if real_quant_gemm:
-                self._real_quant_gemm_cache = real_quant_gemm
-                output = real_quant_gemm(self, input, self.weight, self.bias, *args, **kwargs)
-                return (
-                    self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
-                )
-
-        # Otherwise, fallback to the default GEMM
         with self.quantize_weight():
             return super().forward(input, *args, **kwargs)
 

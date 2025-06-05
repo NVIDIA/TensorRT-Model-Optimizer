@@ -38,7 +38,7 @@ except ImportError:
 
 
 @pytest.mark.parametrize(
-    "model, dummy_input, is_error_expected",
+    ("model", "dummy_input", "is_error_expected"),
     [
         (
             nn.Sequential(nn.Linear(1, 8), nn.Linear(8, 8), nn.Linear(8, 1)),

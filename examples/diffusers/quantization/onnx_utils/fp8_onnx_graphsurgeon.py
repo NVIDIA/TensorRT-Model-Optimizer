@@ -25,11 +25,10 @@ def get_parent_nodes(node):
     Returns list of input producer nodes for the given node.
     """
     parents = []
-    for tensor in node.inputs:
-        # If the tensor is not a constant or graph input and has a producer,
-        # the producer is a parent of node `node`
-        if len(tensor.inputs) == 1:
-            parents.append(tensor.inputs[0])
+    # If the tensor is not a constant or graph input and has a producer,
+    # the producer is a parent of node `node`
+    parents = [tensor.inputs[0] for tensor in node.inputs if len(tensor.inputs) == 1]
+
     return parents
 
 
@@ -39,8 +38,7 @@ def get_child_nodes(node):
     """
     children = []
     for tensor in node.outputs:
-        for consumer in tensor.outputs:  # Traverse all consumer of the tensor
-            children.append(consumer)
+        children.extend(tensor.outputs)  # Traverse all consumer of the tensor
     return children
 
 
@@ -65,10 +63,7 @@ def has_path_type(node, graph, path_type, is_forward, wild_card_types, path_node
     else:
         next_path_type = path_type[:]
 
-    if is_forward:
-        next_level_nodes = get_child_nodes(node)
-    else:
-        next_level_nodes = get_parent_nodes(node)
+    next_level_nodes = get_child_nodes(node) if is_forward else get_parent_nodes(node)
 
     # Check if any child (forward path) or parent (backward path) can match the remaining path types
     for next_node in next_level_nodes:
@@ -109,9 +104,8 @@ def convert_zp_fp8(onnx_graph):
     # Find all zero constant nodes
     qdq_zero_nodes = set()
     for node in onnx_graph.graph.node:
-        if node.op_type == "QuantizeLinear":
-            if len(node.input) > 2:
-                qdq_zero_nodes.add(node.input[2])
+        if node.op_type == "QuantizeLinear" and len(node.input) > 2:
+            qdq_zero_nodes.add(node.input[2])
 
     print(f"Found {len(qdq_zero_nodes)} QDQ pairs")
 
@@ -195,17 +189,20 @@ def cast_fp8_mha_io(graph):
     for node in graph.nodes:
         if node.op == "Softmax":
             fp8_mha_partition = []
-            if has_path_type(
-                node, graph, softmax_bmm1_chain_type, False, wild_card_types, fp8_mha_partition
-            ) and has_path_type(
-                node, graph, softmax_bmm2_chain_type, True, wild_card_types, fp8_mha_partition
-            ):
-                if (
+            if (
+                has_path_type(
+                    node, graph, softmax_bmm1_chain_type, False, wild_card_types, fp8_mha_partition
+                )
+                and has_path_type(
+                    node, graph, softmax_bmm2_chain_type, True, wild_card_types, fp8_mha_partition
+                )
+                and (
                     len(fp8_mha_partition) == 10
                     and fp8_mha_partition[1].op == "MatMul"
                     and fp8_mha_partition[7].op == "MatMul"
-                ):
-                    fp8_mha_partitions.append(fp8_mha_partition)
+                )
+            ):
+                fp8_mha_partitions.append(fp8_mha_partition)
 
     print(f"Found {len(fp8_mha_partitions)} FP8 attentions")
 

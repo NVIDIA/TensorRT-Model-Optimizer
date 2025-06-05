@@ -37,7 +37,7 @@ class _QuantLoraLinear(QuantModule):
 
         weight = self.base_layer.weight
         for active_adapter in self.active_adapters:
-            if active_adapter not in self.lora_A.keys():
+            if active_adapter not in self.lora_A.keys():  # noqa: SIM118
                 continue
             lora_a = self.lora_A[active_adapter]
             lora_b = self.lora_B[active_adapter]

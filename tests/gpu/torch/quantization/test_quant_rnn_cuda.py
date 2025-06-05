@@ -26,7 +26,7 @@ from modelopt.torch.quantization.nn import QuantModuleRegistry
 
 
 @pytest.mark.parametrize(
-    "original_cls, bidirectional, bias",
+    ("original_cls", "bidirectional", "bias"),
     [
         (nn.LSTM, True, True),
         (nn.LSTM, False, False),

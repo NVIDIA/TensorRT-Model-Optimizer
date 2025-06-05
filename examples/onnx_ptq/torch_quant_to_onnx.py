@@ -82,7 +82,7 @@ def get_model_input_shape(model_name):
     model = timm.create_model(model_name, pretrained=True, num_classes=1000)
     data_config = timm.data.resolve_model_data_config(model)
     input_size = data_config["input_size"]
-    return (1,) + tuple(input_size)  # Add batch dimension
+    return (1, *tuple(input_size))  # Add batch dimension
 
 
 def main():
@@ -128,7 +128,7 @@ def main():
         config = mtq.MXFP8_DEFAULT_CFG
         data_loader = None  # MXFP8 doesn't need calibration data
     else:  # nvfp4
-        config = mtq.NVFP4_DEFAULT_CFG  # type: ignore
+        config = mtq.NVFP4_DEFAULT_CFG
         data_loader = load_calibration_data(
             args.timm_model_name,
             args.calibration_data_size,

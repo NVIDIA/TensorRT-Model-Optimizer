@@ -17,8 +17,9 @@
 
 import json
 import types
+from collections.abc import Callable
 from contextlib import contextmanager, nullcontext
-from typing import Any, Callable
+from typing import Any
 
 from sphinx.application import Sphinx
 from sphinxcontrib.autodoc_pydantic import __version__
@@ -112,7 +113,7 @@ class ModeloptPydanticModelDocumenter(PydanticModelDocumenter):
         # create valid rst lines from the config
         config_json = json.dumps(config, default=str, indent=3)
         lines = [f"   {line}" for line in config_json.split("\n")]
-        lines = [":Default config (JSON):", "", ".. code-block:: json", ""] + lines + [""]
+        lines = [":Default config (JSON):", "", ".. code-block:: json", "", *lines, ""]
 
         # add lines to autodoc
         source_name = self.get_sourcename()

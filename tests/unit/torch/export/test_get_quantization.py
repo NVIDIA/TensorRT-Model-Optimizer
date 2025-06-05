@@ -23,7 +23,7 @@ from modelopt.torch.export.model_config import QUANTIZATION_FP8, QUANTIZATION_W4
 
 class ToyModel(torch.nn.Module):
     def __init__(self):
-        super(ToyModel, self).__init__()
+        super().__init__()
         self.linears = torch.nn.Sequential(
             torch.nn.Linear(10, 10),
             torch.nn.Linear(10, 10),
@@ -57,7 +57,7 @@ partial_w4a8_config = {
 
 
 @pytest.mark.parametrize(
-    "config, expected",
+    ("config", "expected"),
     [(partial_fp8_config, QUANTIZATION_FP8), (partial_w4a8_config, QUANTIZATION_W4A8_AWQ)],
 )
 def test_get_quantization_format(config, expected):

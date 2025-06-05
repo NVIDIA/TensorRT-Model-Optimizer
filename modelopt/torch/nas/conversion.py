@@ -18,12 +18,12 @@
 from torch import nn
 
 from modelopt.torch.opt.conversion import apply_mode
-from modelopt.torch.opt.mode import ModeLike
+from modelopt.torch.opt.mode import ModeLike, _ModeRegistryCls
 from modelopt.torch.utils import ModelLike, unwrap_model
 
-from .mode import NASModeRegistry
+__all__ = ["convert", "export"]
 
-__all__ = ["export", "convert"]
+NASModeRegistry = _ModeRegistryCls("nas")
 
 
 def convert(model: ModelLike, mode: ModeLike) -> nn.Module:
@@ -38,10 +38,10 @@ def convert(model: ModelLike, mode: ModeLike) -> nn.Module:
             process. Modes set up the model for different algorithms for model optimization. The
             following modes are available:
 
-            *   :class:`"autonas"<modelopt.torch.nas.mode.AutoNASModeDescriptor>`: The ``model`` will
+            *   :class:`"autonas"<modelopt.torch.nas.autonas.AutoNASModeDescriptor>`: The ``model`` will
                 be converted into a search space and set up to automatically perform operations
                 required for AutoNAS-based model training, evaluation, and search. The mode's config
-                is described in :class:`AutoNASConfig<modelopt.torch.nas.config.AutoNASConfig>`.
+                is described in :class:`AutoNASConfig<modelopt.torch.nas.autonas.AutoNASConfig>`.
 
             If the mode argument is specified as a dictionary, the keys should indicate the mode and
             the values specify the per-mode configuration. If not provided, then default

@@ -16,7 +16,7 @@
 """Utility functions for getting samples and forward loop function for different speech datasets."""
 
 import math
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch.utils.data import DataLoader
@@ -82,8 +82,8 @@ def get_speech_dataset_dataloader(
     processor: WhisperProcessor = None,
     batch_size: int = 1,
     num_samples: int = 512,
-    device: Optional[str] = None,
-    dtype: Optional[torch.dtype] = None,
+    device: str | None = None,
+    dtype: torch.dtype | None = None,
 ) -> DataLoader:
     """Get a dataloader with the dataset name and processor of the target model.
 

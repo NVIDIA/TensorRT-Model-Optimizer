@@ -26,16 +26,20 @@ from ..module import SparseModule, SpDMRegistry
 
 
 class _MegatronParallelLinear(SparseModule):
-    def _get_shard_axis_dict(self):
+    def _get_shard_axis_dict(self, state_dict):
         raise NotImplementedError
 
     def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
         sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets)
 
-        sparse_state_dict, sharded_axis_dict = {}, self._get_shard_axis_dict()
-        for k, v in self.state_dict(prefix="", keep_vars=True).items():
-            if k == "_weight_mask":
-                sparse_state_dict[k] = v
+        sparse_state_dict = {
+            k: v
+            for k, v in self.state_dict(prefix="", keep_vars=True).items()
+            if k == "_weight_mask"
+        }
+
+        sharded_axis_dict = self._get_shard_axis_dict(sparse_state_dict)
+
         if sparse_state_dict:
             sharded_state_dict.update(
                 **make_sharded_tensors_for_checkpoint(
@@ -50,7 +54,7 @@ class _MegatronParallelLinear(SparseModule):
     {ColumnParallelLinear: "megatron.core.tensor_parallel.layers.ColumnParallelLinear"}
 )
 class _MegatronColumnParallelLinear(_MegatronParallelLinear):
-    def _get_shard_axis_dict(self):
+    def _get_shard_axis_dict(self, state_dict):
         return {"_weight_mask": 0}
 
 
@@ -58,7 +62,7 @@ class _MegatronColumnParallelLinear(_MegatronParallelLinear):
     {RowParallelLinear: "megatron.core.tensor_parallel.layers.RowParallelLinear"}
 )
 class _MegatronRowParallelLinear(_MegatronParallelLinear):
-    def _get_shard_axis_dict(self):
+    def _get_shard_axis_dict(self, state_dict):
         return {"_weight_mask": 1}
 
 

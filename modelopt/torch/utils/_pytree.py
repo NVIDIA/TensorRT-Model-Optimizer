@@ -36,7 +36,7 @@ a class-based, nested tree spec object.
 """
 
 from collections import deque
-from typing import Any, Union
+from typing import Any
 
 
 class TreeSpec:
@@ -47,7 +47,7 @@ class TreeSpec:
         self.names = names
 
     @staticmethod
-    def _fill_spec(values: Union[list, tuple, Any], spec: Any) -> Any:
+    def _fill_spec(values: list | tuple | Any, spec: Any) -> Any:
         """Fill the pytree spec with values."""
         # put fill_values in a deque container to allow for popping it while traversing data
         values = deque(values) if isinstance(values, (list, tuple)) else values
@@ -67,7 +67,7 @@ class TreeSpec:
         # return output structure
         return data_structure
 
-    def generate_pytree(self, values: Union[list, tuple, Any]) -> Any:
+    def generate_pytree(self, values: list | tuple | Any) -> Any:
         """Fill the pytree spec with values (non-static version)."""
         return self._fill_spec(values, self.spec)
 
@@ -82,10 +82,10 @@ class TreeSpec:
 def _check_serializable_keys(data: dict):
     """Check if all keys in the data structure are serializable."""
     allowed_key_types = (float, int, str, type(None), bool)
-    assert all(isinstance(k, allowed_key_types) for k in data.keys()), "Keys must be serializable!"
+    assert all(isinstance(k, allowed_key_types) for k in data), "Keys must be serializable!"
 
 
-def unflatten_tree(values: Union[list, tuple, Any], tree_spec: TreeSpec) -> Any:
+def unflatten_tree(values: list | tuple | Any, tree_spec: TreeSpec) -> Any:
     """Return a pytree according to the tree_spec and values filled according to the fillers.
 
     Args:
@@ -128,6 +128,6 @@ def flatten_tree(pytree: Any, prefix: str = "") -> tuple[list[Any], TreeSpec]:
             yield prefix, pytree
 
     # retrieve flattened values and names. Then initialize tree_spec with the flattened names.
-    flattened = {n: v for n, v in collect_spec(pytree, prefix)}
+    flattened = dict(collect_spec(pytree, prefix))
 
     return list(flattened.values()), TreeSpec(pytree, list(flattened.keys()))

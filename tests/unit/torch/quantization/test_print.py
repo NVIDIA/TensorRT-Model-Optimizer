@@ -35,7 +35,7 @@ class TestPrint:
     def test_print_module(self):
         class _TestModule(nn.Module):
             def __init__(self):
-                super(_TestModule, self).__init__()
+                super().__init__()
                 self.conv = nn.Conv2d(33, 65, 3)
                 self.quant_conv = qnn.Conv2d(33, 65, 3)
                 self.linear = nn.Linear(33, 65)

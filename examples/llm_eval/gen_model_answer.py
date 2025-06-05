@@ -137,27 +137,26 @@ def run_eval(
         get_answers_func = get_model_answers
 
     chunk_size = len(questions) // (num_gpus_total // num_gpus_per_model)
-    ans_handles = []
-    for i in range(0, len(questions), chunk_size):
-        ans_handles.append(
-            get_answers_func(
-                model_path,
-                model_id,
-                questions[i : i + chunk_size],
-                answer_file,
-                max_new_token,
-                num_choices,
-                num_gpus_per_model,
-                max_gpu_memory,
-                dtype=dtype,
-                revision=revision,
-                top_p=top_p,
-                temperature=temperature,
-                engine_dir=engine_dir,
-                vocab_file=vocab_file,
-                nim_model=nim_model,
-            )
+    ans_handles = [
+        get_answers_func(
+            model_path,
+            model_id,
+            questions[i : i + chunk_size],
+            answer_file,
+            max_new_token,
+            num_choices,
+            num_gpus_per_model,
+            max_gpu_memory,
+            dtype=dtype,
+            revision=revision,
+            top_p=top_p,
+            temperature=temperature,
+            engine_dir=engine_dir,
+            vocab_file=vocab_file,
+            nim_model=nim_model,
         )
+        for i in range(0, len(questions), chunk_size)
+    ]
 
     if use_ray:
         ray.get(ans_handles)
@@ -265,10 +264,7 @@ def get_model_answers(
                 input_ids = tokenizer([prompt]).input_ids
 
                 # Model Optimizer modification
-                if temperature <= 1e-4:
-                    do_sample = False
-                else:
-                    do_sample = True
+                do_sample = not temperature <= 0.0001
 
                 # some models may error out when generating long outputs
                 try:
@@ -355,12 +351,12 @@ def get_model_answers(
 def reorg_answer_file(answer_file):
     """Sort by question id and de-duplication"""
     answers = {}
-    with open(answer_file, "r") as fin:
+    with open(answer_file) as fin:
         for line in fin:
             qid = json.loads(line)["question_id"]
             answers[qid] = line
 
-    qids = sorted(list(answers.keys()))
+    qids = sorted(answers.keys())
     with open(answer_file, "w") as fout:
         for qid in qids:
             fout.write(answers[qid])
@@ -476,8 +472,8 @@ if __name__ == "__main__":
         type=float,
         default=None,
         help=(
-            "Effective bits constraint for AutoQuantize. If not set, "
-            "regular quantization without AutoQuantize search will be applied."
+            "Effective bits constraint for auto_quantize. If not set, "
+            "regular quantization without auto_quantize search will be applied."
         ),
     )
     parser.add_argument(
@@ -496,10 +492,11 @@ if __name__ == "__main__":
         ray.init()
 
     question_file = f"data/{args.bench_name}/question.jsonl"
-    if args.answer_file:
-        answer_file = args.answer_file
-    else:
-        answer_file = f"data/{args.bench_name}/model_answer/{args.model_id}.jsonl"
+    answer_file = (
+        args.answer_file
+        if args.answer_file
+        else f"data/{args.bench_name}/model_answer/{args.model_id}.jsonl"
+    )
 
     print(f"Output to {answer_file}")
 

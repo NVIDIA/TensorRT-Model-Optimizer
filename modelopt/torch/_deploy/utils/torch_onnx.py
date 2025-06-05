@@ -22,7 +22,7 @@ import os
 import shutil
 import tempfile
 from contextlib import nullcontext
-from typing import Any, Union
+from typing import Any
 
 import onnx
 import torch
@@ -160,7 +160,7 @@ def _to_expected_onnx_type(val: Any) -> Any:
 
 
 def generate_onnx_input(
-    model_metadata: ModelMetadata, input: Union[Any, tuple], ignore_nesting: bool = False
+    model_metadata: ModelMetadata, input: Any | tuple, ignore_nesting: bool = False
 ) -> dict[str, Any]:
     """Generate input for onnx model from model's forward signature and provided input.
 
@@ -214,7 +214,7 @@ def generate_onnx_input(
     # capture flattened args without default args that do not appear in onnx graph
     values, tree_spec = flatten_tree(named_args)
     if not ignore_nesting:
-        flat_kv = {k: v for k, v in zip(tree_spec.names, values)}
+        flat_kv = dict(zip(tree_spec.names, values))
     else:
         flat_kv = {k.split(".")[-1]: v for k, v in zip(tree_spec.names, values)}
 
@@ -284,28 +284,30 @@ def split_args_kwargs(args_tuple):
 def is_fp4_quantized(model: nn.Module) -> bool:
     """Check if the model is quantized in NVFP4 mode."""
     for _, module in model.named_modules():
-        if hasattr(module, "input_quantizer"):
-            if module.input_quantizer.block_sizes and module.input_quantizer.block_sizes.get(
-                "scale_bits", None
-            ) == (4, 3):
-                return True
+        if (
+            hasattr(module, "input_quantizer")
+            and module.input_quantizer.block_sizes
+            and module.input_quantizer.block_sizes.get("scale_bits", None) == (4, 3)
+        ):
+            return True
     return False
 
 
 def is_mxfp8_quantized(model: nn.Module) -> bool:
     """Check if the model is quantized in MXFP8 mode."""
     for _, module in model.named_modules():
-        if hasattr(module, "input_quantizer"):
-            if module.input_quantizer.block_sizes and module.input_quantizer.block_sizes.get(
-                "scale_bits", None
-            ) == (8, 0):
-                return True
+        if (
+            hasattr(module, "input_quantizer")
+            and module.input_quantizer.block_sizes
+            and module.input_quantizer.block_sizes.get("scale_bits", None) == (8, 0)
+        ):
+            return True
     return False
 
 
 def get_onnx_bytes_and_metadata(
     model: nn.Module,
-    dummy_input: Union[Any, tuple],
+    dummy_input: Any | tuple,
     onnx_load_path: str = "",
     dynamic_axes: dict = {},
     remove_exported_model: bool = True,
@@ -360,7 +362,7 @@ def get_onnx_bytes_and_metadata(
     # Also standardize dummy_input again so we can use it
     dummy_input = tuple(named_args.values())
     if dummy_input and isinstance(dummy_input[-1], dict):
-        dummy_input = dummy_input + ({},)  # we need to add an extra dict for the fake kwargs!
+        dummy_input = (*dummy_input, {})  # we need to add an extra dict for the fake kwargs!
 
     # Get input tree spec, see generate_onnx_input for more info as well on this
     flat_input, tree_spec_input = flatten_tree(named_args)
@@ -443,8 +445,8 @@ def get_onnx_bytes_and_metadata(
         tree_spec_input, tree_spec_output, input_none_names, onnx_opt_graph, model
     )
 
-    # Change the onnx IR version to 9 to be compatible with ONNXRuntime
-    onnx_opt_graph.ir_version = 9
+    # TODO: Remove manual ir_version change once ORT supports ir_version 11
+    onnx_opt_graph.ir_version = 10
 
     # Convert dummy TRT_FP4QDQ nodes to 2DQ format if the model is quantized in FP4 mode
     # Or convert weights to MXFP8 format if the model is quantized in MXFP8 mode

@@ -18,7 +18,6 @@
 import copy
 from dataclasses import fields, is_dataclass
 from pathlib import Path
-from typing import Optional, Union
 from warnings import warn
 
 import torch
@@ -470,7 +469,7 @@ def _merge_model_configs_to_first_tp(config, ranks: list[int], group=None):
 def _model_model_configs_to_first_pp(
     model_config: ModelConfig,
     ranks: list[int],
-    workspace_path: Optional[Union[Path, str]] = None,
+    workspace_path: Path | str | None = None,
 ):
     """Merges the mode_config from each rank to the first pp rank.
 
@@ -492,10 +491,8 @@ def _model_model_configs_to_first_pp(
             layer_configs_copy = []
             if layer_configs:
                 layer_configs_copy.append(layer_configs[0])
-                for config in layer_configs[1:]:
-                    if config:
-                        # Have to copy the config from the other pps as the shm will be releases after
-                        layer_configs_copy.append(copy.deepcopy(config))
+                # Have to copy the config from the other pps as the shm will be releases after
+                layer_configs_copy.extend(config for config in layer_configs[1:] if config)
                 decoder_layers.append(layer_configs_copy)
 
     # If we take a 80-layer TP8/PP4 export, then locally each pp rank has 20 layers.
@@ -545,7 +542,7 @@ def postprocess_model_config(
     inference_tensor_parallel: int = 1,
     inference_pipeline_parallel: int = 1,
     training_pipeline_parallel: int = 1,
-    workspace_path: Optional[Union[Path, str]] = None,
+    workspace_path: Path | str | None = None,
 ) -> list[ModelConfig]:
     """Postprocesses the model configs with trained tensor parallel to target inference tensor parallel.
 

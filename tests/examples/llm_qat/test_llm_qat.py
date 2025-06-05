@@ -28,6 +28,8 @@ def _run_command(extra_cmd_args: list[str]):
             "--lr", "1e-5",
             "--save_steps", "5",
             "--calib_size", "64",
+            "--train_size", "256",
+            "--eval_size", "64",
             *extra_cmd_args,
         ],
         "llm_qat",

@@ -20,7 +20,7 @@ from modelopt.torch.trace.analyzer import NodeProcessor, is_in_slice_range
 
 
 @pytest.mark.parametrize(
-    "slice_obj, num, expected",
+    ("slice_obj", "num", "expected"),
     [
         (slice(0, 5), 0, True),
         (slice(0, 5), 5, False),
@@ -36,7 +36,7 @@ def test_is_in_slice_range(slice_obj, num, expected):
 
 
 @pytest.mark.parametrize(
-    "edims, edims2, expected_result",
+    ("edims", "edims2", "expected_result"),
     [
         ([{0, 1}], [{0}], {0: 0}),
         ([{0, 1}], [{2}], {}),

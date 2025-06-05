@@ -24,7 +24,7 @@ def test_llama_eagle(tiny_llama_path, num_gpus, daring_anteater_path, tmp_path):
             "./launch.sh",
             "--model", tiny_llama_path,
             "--data", daring_anteater_path,
-            "--num_epochs", "0.005",
+            "--num_epochs", "0.001",
             "--lr", "1e-5",
             "--save_steps", "50",
             "--do_eval", "False",

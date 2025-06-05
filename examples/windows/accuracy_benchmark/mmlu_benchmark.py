@@ -19,7 +19,6 @@ import os
 import random
 import time
 from argparse import Namespace
-from typing import Union
 
 import numpy as np
 import onnxruntime as rt
@@ -149,17 +148,15 @@ def format_example(df, idx, include_answer=True):
     prompt = df.iloc[idx, 0]
     k = df.shape[1] - 2
     for j in range(k):
-        prompt += "\n{}. {}".format(get_choices()[j], df.iloc[idx, j + 1])
+        prompt += f"\n{get_choices()[j]}. {df.iloc[idx, j + 1]}"
     prompt += "\nAnswer:"
     if include_answer:
-        prompt += " {}\n\n".format(df.iloc[idx, k + 1])
+        prompt += f" {df.iloc[idx, k + 1]}\n\n"
     return prompt
 
 
 def gen_prompt(train_df, subject, k=-1):
-    prompt = "The following are multiple choice questions (with answers) about {}.\n\n".format(
-        format_subject(subject)
-    )
+    prompt = f"The following are multiple choice questions (with answers) about {format_subject(subject)}.\n\n"
     if k == -1:
         k = train_df.shape[0]
     for i in range(k):
@@ -197,7 +194,7 @@ def evaluate_trtllm(args, subject, pipeline, dev_df, test_df):
         cors = np.array(cors)
 
         all_probs = np.array(all_probs)
-        print("Average accuracy {:.3f} - {}".format(acc, subject))
+        print(f"Average accuracy {acc:.3f} - {subject}")
 
         return cors, acc, all_probs
     else:
@@ -269,7 +266,7 @@ def evaluate_genai_dml(args, subject, model, dev_df, test_df, model_path):
     cors = np.array(cors)
 
     all_probs = np.array(all_probs)
-    print("Average accuracy {:.3f} - {}".format(acc, subject))
+    print(f"Average accuracy {acc:.3f} - {subject}")
 
     return cors, acc, all_probs
 
@@ -309,7 +306,7 @@ def evaluate_pt(args, subject, model: EvalModel, dev_df, test_df):
     acc = np.mean(cors)
     cors = np.array(cors)
     all_probs = np.array(all_probs)
-    print("Average accuracy {:.3f} - {}".format(acc, subject))
+    print(f"Average accuracy {acc:.3f} - {subject}")
 
     return cors, acc, all_probs
 
@@ -405,7 +402,7 @@ def evaluate_ort_native(args, subject, sess, tokenizer, dev_df, test_df, config)
     acc = np.mean(cors)
     cors = np.array(cors)
     all_probs = np.array(all_probs)
-    print("Average accuracy {:.3f} - {}".format(acc, subject))
+    print(f"Average accuracy {acc:.3f} - {subject}")
 
     return cors, acc, all_probs
 
@@ -419,12 +416,12 @@ def save_results_to_json(results, output_file="results.json"):
 def main(
     data_dir: str = "data/mmlu",
     ntrain: int = 0,
-    quant_cfg: str = None,
+    quant_cfg: str | None = None,
     batch_size: int = 0,
     calib_size: int = 512,
     dtype: str = "bfloat16",
     output_file: str = "results/results.json",
-    subject: Union[str, tuple] = None,
+    subject: str | tuple | None = None,
     ep: str = "pt",
     max_seq_length: int = 4096,
     trust_remote_code: bool = False,
@@ -490,7 +487,7 @@ def main(
         # Create the InferenceSession with the selected provider
         sess = rt.InferenceSession(os.path.join(onnx_model_path, "model.onnx"), providers=providers)
 
-        with open(os.path.join(onnx_model_path, "config.json"), "r") as config_file:
+        with open(os.path.join(onnx_model_path, "config.json")) as config_file:
             config = json.load(config_file)
 
         tokenizer = AutoTokenizer.from_pretrained(onnx_model_path, local_files_only=True)
@@ -582,7 +579,7 @@ def main(
         subcats = get_subcategories()[subject]
         for subcat in subcats:
             subcat_cors[subcat].append(cors)
-            for key in get_categories().keys():
+            for key in get_categories():
                 if subcat in get_categories()[key]:
                     cat_cors[key].append(cors)
         all_cors.append(cors)
@@ -599,7 +596,7 @@ def main(
 
     if all_cors:
         weighted_acc = np.mean(np.concatenate(all_cors))
-        print("Overall average accuracy: {:.3f}".format(weighted_acc))
+        print(f"Overall average accuracy: {weighted_acc:.3f}")
     else:
         weighted_acc = None
 

@@ -22,16 +22,28 @@ import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from functools import partial
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
 import tqdm
+from pydantic import create_model
 from torch.nn.modules.batchnorm import _BatchNorm
 
-from modelopt.torch.opt.config import ModeloptBaseConfig
+from modelopt.torch.opt.config import (
+    ModeloptBaseConfig,
+    ModeloptField,
+    get_kwargs_for_create_model_with_rules,
+)
 from modelopt.torch.opt.conversion import ApplyModeError, ModelLikeModule
-from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
+from modelopt.torch.opt.mode import (
+    ConvertEntrypoint,
+    ConvertReturnType,
+    MetadataDict,
+    ModeDescriptor,
+    RestoreEntrypoint,
+    UpdateEntrypoint,
+)
 from modelopt.torch.opt.searcher import BaseSearcher, ForwardLoop, SearchConfig, SearchStateDict
 from modelopt.torch.opt.utils import is_configurable
 from modelopt.torch.utils import (
@@ -47,15 +59,20 @@ from modelopt.torch.utils import (
     unwrap_model,
 )
 
-from ._algorithms import ConstraintsFunc, get_constraints_func
-from ._patch import PatchData, PatchManager, _modelopt_eval_recursion_guard, prep_for_eval
-from .config import ExportConfig
+from .algorithms import ConstraintsFunc, get_constraints_func
+from .conversion import NASModeRegistry
+from .patch import PatchData, PatchManager, _modelopt_eval_recursion_guard, prep_for_eval
+from .registry import DMRegistry
 from .search_space import SearchSpace, generate_search_space
 from .utils import MODELOPT_BN_CALIB_ITERS, MODELOPT_QUEUE_MAXLEN, get_subnet_config, sample, select
 
 __all__ = [
+    "AutoNASConfig",
+    "AutoNASModeDescriptor",
     "AutoNASPatchManager",
     "EvolveSearcher",
+    "ExportConfig",
+    "ExportModeDescriptor",
     "IterativeSearcher",
     "RandomSearcher",
     "convert_autonas_searchspace",
@@ -66,6 +83,72 @@ __all__ = [
     "restore_searchspace",
     "update_autonas_metadata",
 ]
+
+
+def _get_ratio_list():
+    return (0.5, 0.67, 1.0)
+
+
+def _conv_config():
+    return {
+        "channels_ratio": _get_ratio_list(),
+        "kernel_size": (),
+        "channel_divisor": 32,
+    }
+
+
+def _norm_lin_config():
+    return {
+        "features_ratio": _get_ratio_list(),
+        "feature_divisor": 32,
+    }
+
+
+AutoNASConfig: type[ModeloptBaseConfig] = create_model(
+    "AutoNASConfig",
+    **get_kwargs_for_create_model_with_rules(
+        registry=DMRegistry,
+        default_rules={
+            "nn.Conv1d": _conv_config(),
+            "nn.Conv2d": _conv_config(),
+            "nn.Conv3d": _conv_config(),
+            "nn.ConvTranspose1d": _conv_config(),
+            "nn.ConvTranspose2d": _conv_config(),
+            "nn.ConvTranspose3d": _conv_config(),
+            "nn.Linear": _norm_lin_config(),
+            "nn.BatchNorm1d": _norm_lin_config(),
+            "nn.BatchNorm2d": _norm_lin_config(),
+            "nn.BatchNorm3d": _norm_lin_config(),
+            "nn.SyncBatchNorm": _norm_lin_config(),
+            "nn.InstanceNorm1d": _norm_lin_config(),
+            "nn.InstanceNorm2d": _norm_lin_config(),
+            "nn.InstanceNorm3d": _norm_lin_config(),
+            "nn.LayerNorm": _norm_lin_config(),
+            "nn.GroupNorm": {k: v for k, v in _conv_config().items() if k != "kernel_size"},
+            "nn.Sequential": {"min_depth": 0},
+        },
+        doc='Configuration for the ``"autonas"`` mode.',
+    ),
+)
+
+
+class ExportConfig(ModeloptBaseConfig):
+    """Configuration for the export mode.
+
+    This mode is used to export a model after NAS search.
+    """
+
+    strict: bool = ModeloptField(
+        default=True,
+        title="Strict export",
+        description="Enforces that the subnet configuration must exactly match during export.",
+    )
+
+    calib: bool = ModeloptField(
+        default=False,
+        title="Calibration",
+        description="Whether to calibrate the subnet before exporting.",
+    )
 
 
 class AutoNASPatchManager(PatchManager):
@@ -81,7 +164,7 @@ class AutoNASPatchManager(PatchManager):
             "autosampled": False,  # indicator whether current sub-net was auto-sampled
         }
 
-    def _hook_post_eval(self, forward_loop: Optional[ForwardLoop] = None) -> None:
+    def _hook_post_eval(self, forward_loop: ForwardLoop | None = None) -> None:
         """Optional hook that is called after eval() (or train(False)) to calibrate the model."""
         # get the model and patch_data reference
         model = self._model
@@ -234,7 +317,7 @@ class IterativeSearcher(BaseSearcher, ABC):
             "best_history": {"iter_num": [], "candidates": []},
         }
 
-    def sanitize_search_config(self, config: Optional[SearchConfig]) -> SearchConfig:
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
         """Sanitize the search config dict."""
         config = super().sanitize_search_config(config)
         assert config["score_func"] is not None, "Please provide `score_func`!"
@@ -348,7 +431,6 @@ class IterativeSearcher(BaseSearcher, ABC):
 
     def before_step(self) -> None:
         """Run before each iterative step."""
-        pass
 
     def run_step(self) -> None:
         """The main routine of each iterative step."""
@@ -402,7 +484,6 @@ class IterativeSearcher(BaseSearcher, ABC):
 
     def after_step(self) -> None:
         """Run after each iterative step."""
-        pass
 
     def early_stop(self) -> bool:
         """Check if we should early stop the search if possible."""
@@ -635,3 +716,93 @@ def restore_export(model: nn.Module, config: ExportConfig, metadata: MetadataDic
         raise ApplyModeError(f"Unmatched metadata={unmatched_keys}!")
 
     return model
+
+
+@NASModeRegistry.register_mode
+class AutoNASModeDescriptor(ModeDescriptor):
+    """Class to describe the ``"autonas"`` mode.
+
+    The properties of this mode can be inspected via the source code.
+    """
+
+    @property
+    def name(self) -> str:
+        """Returns the value (str representation) of the mode."""
+        return "autonas"
+
+    @property
+    def config_class(self) -> type[ModeloptBaseConfig]:
+        """Specifies the config class for the mode."""
+        return AutoNASConfig
+
+    @property
+    def next_modes(self) -> set[str] | None:
+        """Modes that must immediately follow this mode."""
+        return {"export", "kd_loss", "quantize", "sparse_magnitude", "sparse_gpt"}
+
+    @property
+    def export_mode(self) -> str | None:
+        """The mode that corresponds to the export mode of this mode."""
+        return "export"
+
+    @property
+    def search_algorithm(self) -> type[BaseSearcher]:
+        """Specifies the search algorithm to use for this mode (if any)."""
+        return EvolveSearcher
+
+    @property
+    def convert(self) -> ConvertEntrypoint:
+        """The mode's entrypoint for converting a model."""
+        return convert_autonas_searchspace
+
+    @property
+    def restore(self) -> RestoreEntrypoint:
+        """The mode's entrypoint for restoring a model."""
+        return restore_autonas_searchspace
+
+    @property
+    def update_for_save(self) -> UpdateEntrypoint:
+        """The mode's entrypoint for updating the models state before saving."""
+        return update_autonas_metadata
+
+    @property
+    def update_for_new_mode(self) -> UpdateEntrypoint:
+        """The mode's entrypoint for updating the models state before new mode."""
+        return update_autonas_metadata
+
+
+@NASModeRegistry.register_mode
+class ExportModeDescriptor(ModeDescriptor):
+    """Class to describe the ``"export"`` mode.
+
+    The properties of this mode can be inspected via the source code.
+    """
+
+    @property
+    def name(self) -> str:
+        """Returns the value (str representation) of the mode."""
+        return "export"
+
+    @property
+    def config_class(self) -> type[ModeloptBaseConfig]:
+        """Specifies the config class for the mode."""
+        return ExportConfig
+
+    @property
+    def is_export_mode(self) -> bool:
+        """Whether the mode is an export mode.
+
+        Returns:
+            True if the mode is an export mode, False otherwise. Defaults to False.
+        """
+        return True
+
+    @property
+    def convert(self) -> ConvertEntrypoint:
+        """The mode's entrypoint for converting a model."""
+        return export_searchspace
+
+    @property
+    def restore(self) -> RestoreEntrypoint:
+        """The mode's entrypoint for restoring a model."""
+        return restore_export

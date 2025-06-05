@@ -16,9 +16,12 @@
 """Utility functions for PyTorch models."""
 
 import inspect
+import types
 import warnings
 from collections import abc, deque
-from typing import Any, Callable, Iterable, Optional, Union
+from collections.abc import Callable, Iterable
+from contextlib import contextmanager
+from typing import Any, Union
 
 import torch
 import torch.distributed.fsdp
@@ -43,9 +46,11 @@ from .tensor import torch_to
 __all__ = [
     "ModelLike",
     "compare_dict",
+    "create_param_grad_clear_hook",
     "get_model_attributes",
     "get_module_device",
     "get_same_padding",
+    "get_unwrapped_name",
     "init_model_from_model_like",
     "is_channels_last",
     "is_parallel",
@@ -56,14 +61,12 @@ __all__ = [
     "remove_bn",
     "run_forward_loop",
     "set_submodule",
+    "standardize_constructor_args",
     "standardize_model_args",
     "standardize_model_like_tuple",
     "standardize_named_model_args",
-    "standardize_constructor_args",
     "unwrap_model",
     "zero_grad",
-    "create_param_grad_clear_hook",
-    "get_unwrapped_name",
 ]
 
 # NOTE: can be extended dynamically in appropriate plugin files if available (e.g. megatron core)
@@ -73,8 +76,8 @@ SUPPORTED_WRAPPERS = {
 }
 UNSUPPORTED_WRAPPERS = {torch.distributed.fsdp.FullyShardedDataParallel: "module"}
 
-ModelLike = Union[nn.Module, type[nn.Module], tuple, Callable]
-ConstructorLike = Union[Callable, tuple]
+ModelLike = Union[nn.Module, type[nn.Module], tuple, Callable]  # noqa: UP007
+ConstructorLike = Callable | tuple
 
 
 def is_parallel(model: nn.Module) -> bool:
@@ -119,7 +122,7 @@ def param_num(network: nn.Module, trainable_only: bool = False, unit=1e6) -> flo
 def param_num_from_forward(
     model: nn.Module,
     trainable_only: bool = False,
-    args: Union[torch.Tensor, tuple, None] = None,
+    args: torch.Tensor | tuple | None = None,
     unit: float = 1e6,
 ):
     """Get the number of parameters of a PyTorch model from a forward pass.
@@ -167,7 +170,7 @@ def param_num_from_forward(
     return sum(params.values()) / unit
 
 
-def get_same_padding(kernel_size: Union[int, tuple[int, int]]) -> Union[int, tuple]:
+def get_same_padding(kernel_size: int | tuple[int, int]) -> int | tuple:
     """Get the same padding for a given kernel size."""
     if isinstance(kernel_size, tuple):
         assert len(kernel_size) == 2, f"invalid kernel size: {kernel_size}"
@@ -180,7 +183,7 @@ def get_same_padding(kernel_size: Union[int, tuple[int, int]]) -> Union[int, tup
         return kernel_size // 2
 
 
-def make_divisible(v: Union[int, float], divisor: Optional[int], min_val=None) -> Union[int, float]:
+def make_divisible(v: int | float, divisor: int | None, min_val: int | None = None) -> int | float:
     """Function taken from the original tf repo.
 
     It ensures that all layers have a channel number that is divisible by 8
@@ -240,18 +243,18 @@ def remove_bn(model: nn.Module):
             m.forward = lambda x: x
 
 
-def _preprocess_args(args: Union[Any, tuple]) -> tuple:
+def _preprocess_args(args: Any | tuple) -> tuple:
     """Return args in standardized format as tuple with last entry as kwargs."""
     if not isinstance(args, tuple):
         args = (args,)
     if not isinstance(args[-1], abc.Mapping):
-        args = args + ({},)
+        args = (*args, {})
 
     return args
 
 
 def standardize_named_model_args(
-    model_or_fw_or_sig: Union[nn.Module, Callable, inspect.Signature], args: Union[Any, tuple]
+    model_or_fw_or_sig: nn.Module | Callable | inspect.Signature, args: Any | tuple
 ) -> tuple[dict[str, Any], set[str]]:
     """Standardize model arguments according to torch.onnx.export and give them a name.
 
@@ -344,9 +347,9 @@ def standardize_named_model_args(
 
 
 def standardize_model_args(
-    model_or_fw_or_sig: Union[nn.Module, Callable, inspect.Signature],
-    args: Union[Any, tuple],
-    use_kwargs=False,
+    model_or_fw_or_sig: nn.Module | Callable | inspect.Signature,
+    args: Any | tuple,
+    use_kwargs: bool = False,
 ) -> tuple:
     """Standardize model arguments according to torch.onnx.export.
 
@@ -501,10 +504,10 @@ def init_model_from_model_like(model: ModelLike) -> nn.Module:
 def run_forward_loop(
     model,
     data_loader: Iterable,
-    max_iters: Optional[int] = None,
-    collect_func: Optional[Callable[[Any], Union[Any, tuple]]] = None,
-    progress_bar: Optional[str] = None,
-    post_process: Optional[Callable] = None,
+    max_iters: int | None = None,
+    collect_func: Callable[[Any], Any | tuple] | None = None,
+    progress_bar: str | None = None,
+    post_process: Callable | None = None,
 ):
     """Run multiple forward passes with a model according to the provided data loader.
 
@@ -603,7 +606,53 @@ def get_unwrapped_name(name: str) -> str:
 
     # TODO: Implement support for DeepSpeed Zero wrapped modules
     name = _convert_to_wrapped_module_name(name)
-    if name.endswith("."):
-        # The above Pytorch utility function adds a trailing dot, remove it
-        name = name[:-1]
+    name = name.removesuffix(".")
     return name
+
+
+@contextmanager
+def temporarily_remove_accelerate_hook(module):
+    """Context manager to temporarily remove accelerate hook from a module."""
+    accelerate_hook = None
+    if hasattr(module, "_hf_hook"):
+        # A module with forward method patched by accelerate
+        from accelerate.hooks import add_hook_to_module, remove_hook_from_module
+
+        accelerate_hook = module._hf_hook
+        remove_hook_from_module(module)
+    try:
+        yield
+    finally:
+        if accelerate_hook is not None:
+            from accelerate.hooks import add_hook_to_module
+
+            add_hook_to_module(module, accelerate_hook)
+
+
+def bind_forward_method(
+    module: nn.Module, forward_fn: Callable, orig_forward_cache_name: str | None = None
+):
+    """Correctly bind the forward method of a module with specified `forward_fn`.
+
+    If this module's forward is already patched by accelerate, we temporarily remove the patch,
+    bind the forward method, and then reapply the patch.
+
+    If the specified `forward_fn` is not bound to the module, it will be bound to the module.
+    Optionally, a name can be specified for the caching of the original forward method.
+    """
+    with temporarily_remove_accelerate_hook(module):
+        if orig_forward_cache_name is not None:
+            setattr(module, orig_forward_cache_name, getattr(module, "forward"))
+
+        if not hasattr(forward_fn, "__self__") or forward_fn.__self__ is not module:
+            # The forward function is not bound to the module, so we need to bind it
+            module.forward = types.MethodType(forward_fn, module)
+        else:
+            module.forward = forward_fn
+
+
+def unpatch_forward_method(module: nn.Module, orig_forward_cache_name: str):
+    """Unpatch the forward method of a module."""
+    with temporarily_remove_accelerate_hook(module):
+        setattr(module, "forward", getattr(module, orig_forward_cache_name))
+        delattr(module, orig_forward_cache_name)

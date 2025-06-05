@@ -47,6 +47,8 @@ The model can be quantized as an FP8, INT8 or INT4 model. For FP8 quantization `
 
 > *Note that, INT4 TensorRT engines are not performant yet compared to FP16 engines. Stay tuned for the next update.*
 
+> *Minimum opset requirements: int8 (13+), fp8 (21+), int4 (21+). ModelOpt will automatically upgrade lower opset versions to meet these requirements.*
+
 ```bash
 python -m modelopt.onnx.quantization \
     --onnx_path=vit_base_patch16_224.onnx \
@@ -134,6 +136,7 @@ trtexec --onnx=/path/to/identity_neural_network.quant.onnx \
 This example demonstrates how to quantize a [timm](https://github.com/huggingface/pytorch-image-models) vision model using either MXFP8 or NVFP4 precision formats, and then export it to ONNX. The script leverages the ModelOpt toolkit for both quantization and ONNX export.
 
 > *Note: Users may experience performance issues with MXFP8 and NVFP4, which will be fixed in the upcoming release.*
+> *Opset 20 is used to export the NVFP4 and MXFP8 ONNX models.*
 
 ## What it does
 

@@ -16,13 +16,14 @@
 
 import json
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
 from io import TextIOWrapper
-from typing import IO, Any, Iterator, TextIO, Union
+from typing import IO, Any, TextIO
 
 
 @contextmanager
-def file_descriptor(f: Union[str, IO], mode: str = "r") -> Iterator[IO]:
+def file_descriptor(f: str | IO, mode: str = "r") -> Iterator[IO]:
     opened = False
     try:
         if isinstance(f, str):
@@ -35,7 +36,7 @@ def file_descriptor(f: Union[str, IO], mode: str = "r") -> Iterator[IO]:
             f.close()
 
 
-def save_jsonl(f: Union[str, TextIO], obj: Any, **kwargs) -> None:
+def save_jsonl(f: str | TextIO, obj: Any, **kwargs) -> None:
     assert isinstance(f, str), type(f)
     os.makedirs(os.path.dirname(f), exist_ok=True)
 

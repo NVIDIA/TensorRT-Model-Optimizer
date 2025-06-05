@@ -31,6 +31,9 @@ write your own one. Currently, we support plugins for
 
 from modelopt.torch.utils import import_plugin
 
+with import_plugin("accelerate"):
+    from .accelerate import *
+
 with import_plugin("apex"):
     from .apex import *
 

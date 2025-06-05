@@ -15,9 +15,9 @@
 
 """Performs FP8 GEMM only quantization of an ONNX model, and returns the ONNX ModelProto."""
 
-import logging
 import os
 import tempfile
+import time
 from functools import reduce
 
 import numpy as np
@@ -29,6 +29,7 @@ from onnxconverter_common import convert_float_to_float16
 from onnxruntime.quantization import CalibrationMethod
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
+from modelopt.onnx.logging_config import logger
 from modelopt.onnx.quantization.graph_utils import (
     build_non_residual_input_map,
     convert_fp16_io,
@@ -61,6 +62,7 @@ def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
         List of Conv nodes.
     """
     unsupported_conv_nodes = []
+    logger.info("Scanning for unsupported FP8 Conv nodes")
     for node in graph.nodes:
         if node.op == "Conv":
             weight = node.inputs[1]
@@ -68,45 +70,46 @@ def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
             # If weight.shape is None, it means the weight is not a constant tensor.
             # Skip the convs with non-constant weights.
             if weight.shape is None:
-                logging.info(f"Skipped quantizing conv: {node.name} due to non-constant weight.")
+                logger.debug(f"Skipped quantizing conv: {node.name} due to non-constant weight")
                 unsupported_conv_nodes.append(node.name)
                 continue
 
             assert 3 <= len(weight.shape) <= 5, (
-                f"Invalid weight shape {weight.shape}. Only 1D, 2D, and 3D convolutions are supported."
+                f"Invalid weight shape {weight.shape}. Only 1D, 2D, and 3D convolutions are supported"
             )
             output_channel = weight.shape[0]
             input_channel = weight.shape[1]
             if output_channel % 16 != input_channel % 16:
-                logging.info(f"Found unpaddable conv for FP8: {node.name}")
+                logger.debug(f"Found unpaddable conv for FP8: {node.name}")
                 unsupported_conv_nodes.append(node.name)
                 continue
 
             if output_channel < 16 or input_channel < 16:
-                logging.info(f"Found Conv with I/O channel size less than 16: {node.name}")
+                logger.debug(f"Found Conv with I/O channel size less than 16: {node.name}")
                 unsupported_conv_nodes.append(node.name)
                 continue
 
             filter_size = reduce(lambda x, y: x * y, weight.shape[2:])
             if filter_size > 32:
-                logging.info(f"Found large filter conv for FP8: {node.name}")
+                logger.debug(f"Found large filter conv for FP8: {node.name}")
                 unsupported_conv_nodes.append(node.name)
 
+    logger.info(f"Found {len(unsupported_conv_nodes)} unsupported FP8 Conv nodes")
     return unsupported_conv_nodes
 
 
-def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.ModelProto:
+def int8_to_fp8(onnx_path: str) -> onnx.ModelProto:
     """Converts the INT8 quantized model to FP8 quantized model.
 
     Note. This conversion works only for max calibrated INT8 models.
 
     Args:
         onnx_path: Path to the INT8 quantized ONNX model.
-        verbose: Whether to print verbose logs or not.
 
     Returns:
         FP8 quantized ONNX model.
     """
+    logger.info("Starting INT8 to FP8 conversion")
     onnx_model = onnx.load(onnx_path)
     graph = onnx_model.graph
     initializers = graph.initializer
@@ -123,14 +126,11 @@ def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.ModelProto:
         return numpy_helper.from_array(np_fp8_scale.astype(dtype), scale_name)
 
     def _convert(node: onnx.NodeProto):
-        if verbose:
-            logging.info(f"Processing {node.name}")
-
         scale_name = node.input[1]
         zero_point_name = node.input[2]
 
         if scale_name not in processed_tensor:
-            scale_idx = initializer_indices.get(scale_name, None)
+            scale_idx = initializer_indices.get(scale_name)
             if scale_idx is not None:
                 scale = initializers[scale_idx]
                 fp8_scale = _int8_scale_to_fp8_scale(scale, scale_name)
@@ -143,7 +143,7 @@ def int8_to_fp8(onnx_path: str, verbose: bool = False) -> onnx.ModelProto:
             processed_tensor.add(scale_name)
 
         if zero_point_name not in processed_tensor:
-            zero_point_idx = initializer_indices.get(zero_point_name, None)
+            zero_point_idx = initializer_indices.get(zero_point_name)
             assert zero_point_idx is not None, (
                 f"Expected '{zero_point_name}' to be found in 'graph.initializer', but it was not present."
             )
@@ -171,12 +171,13 @@ def upgrade_opset_21(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     This is necessary for FP8+FP16 quantization since FP8 QuantizeLinear/DequantizeLinear ops do not support FP16
     scaling factors until opset 21.
     """
+    logger.info("Upgrading model to opset 21")
     graph = gs.import_onnx(onnx_model)
 
     for node in graph.nodes:
         # QuantizeLinear/DequantizeLinear op with FP16 scales are only supported with empty domain
         # and opset_import version=21.
-        if node.op == "QuantizeLinear" or node.op == "DequantizeLinear":
+        if node.op in {"QuantizeLinear", "DequantizeLinear"}:
             node.domain = ""
 
         # ReduceMean op no longer has "axes" attribute in opset 21. Instead, it should be the second input tensor.
@@ -201,17 +202,16 @@ def quantize(
     onnx_path: str,
     calibration_method: str = "max",
     calibration_data_reader: CalibrationDataReader = None,
-    calibration_cache_path: str = None,
-    calibration_shapes: str = None,
+    calibration_cache_path: str | None = None,
+    calibration_shapes: str | None = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
-    op_types_to_quantize: list[str] = None,
-    op_types_to_exclude: list[str] = None,
-    nodes_to_quantize: list[str] = None,
-    nodes_to_exclude: list[str] = None,
+    op_types_to_quantize: list[str] | None = None,
+    op_types_to_exclude: list[str] | None = None,
+    nodes_to_quantize: list[str] | None = None,
+    nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = [],
-    verbose: bool = False,
-    trt_extra_plugin_lib_paths: str = None,
+    trt_extra_plugin_lib_paths: str | None = None,
     high_precision_dtype: str = "fp16",
     mha_accumulation_dtype: str = "fp16",
     passes: list[str] = ["concat_elimination"],
@@ -221,18 +221,21 @@ def quantize(
 
     Currently, ['Conv', 'Gemm', 'MatMul'] quantization is supported.
     """
-    logging.info("Quantization Mode: fp8")
+    logger.info("Starting FP8 quantization process")
+    t_start = time.time()
+
     if calibration_method != "max":
         raise RuntimeError("Only the max calibration method is supported for FP8 quantization.")
 
     # Load the onnx graph
+    logger.info(f"Loading ONNX model from {onnx_path}")
     onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
     graph = gs.import_onnx(onnx_model)
     graph.toposort()
 
     # If the model already has QDQ nodes, skip the quantization process
     if has_qdq_nodes(onnx_model):
-        logging.info("Model already has QDQ nodes, skipping quantization.")
+        logger.info("Model already has QDQ nodes, skipping quantization")
         return onnx_model
 
     # The quantizable op types for FP8 are limited to Conv, Gemm, and Matmul
@@ -244,17 +247,17 @@ def quantize(
         )
 
     # Change the default configuration of ORT quantization
-    op_types = set([node.op for node in graph.nodes])
+    op_types = {node.op for node in graph.nodes}
     trt_guided_options, _ = configure_ort(
         list(op_types), op_types_to_quantize, trt_extra_plugin_lib_paths, calibration_eps
     )
-    logging.info(
+    logger.info(
         f"Quantizable op types in the model: {[t for t in op_types_to_quantize if t in op_types]}"
     )
 
     # Collect node names to include in quantization
     no_quantize_inputs = []
-    nodes_to_quantize = expand_node_names_from_patterns(graph, nodes_to_quantize)
+    nodes_to_quantize = expand_node_names_from_patterns(graph, nodes_to_quantize)  # type: ignore[arg-type]
     if not nodes_to_quantize:
         nodes_to_quantize = [node.name for node in graph.nodes if node.op in op_types_to_quantize]
         _, no_quantize_inputs = build_non_residual_input_map(graph)
@@ -264,36 +267,33 @@ def quantize(
             nodes_to_quantize.extend(add_nodes)
 
     # Collect node names to exclude from quantization
-    nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)
-    nodes_to_exclude.extend(_find_unsupported_fp8_convs_to_exclude(graph))
+    nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
+    nodes_to_exclude.extend(_find_unsupported_fp8_convs_to_exclude(graph))  # type: ignore[union-attr]
 
     # Update the list of nodes to quantize
     nodes_to_quantize = [
         node_name for node_name in nodes_to_quantize if node_name not in nodes_to_exclude
     ]
 
-    logging.info(f"Total number of nodes: {len(graph.nodes)}")
     if not nodes_to_quantize:
-        logging.info(
-            "No node or node type is selected for quantization or model does not have them!"
-        )
+        logger.info("No node or node type is selected for quantization or model does not have them")
         return
-    elif verbose:
-        logging.info(f"Selected nodes to quantize: {nodes_to_quantize}")
+    logger.debug(f"Selected nodes to quantize: {nodes_to_quantize}")
 
     if passes and "concat_elimination" in passes:
         group_qdq_tensors = get_concat_eliminated_tensors(onnx_model, nodes_to_quantize)
         if group_qdq_tensors:
             trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
-            if verbose:
-                logging.info("concat_elimination enable")
+            logger.debug(f"Grouping QDQ tensors for concat elimination: {group_qdq_tensors}")
 
     # Create a temp file for intermediate model
     tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
     os.close(tmp_onnx_file)
+    logger.debug(f"Created temporary file for intermediate model: {tmp_onnx_path}")
 
     # Quantize in INT8 mode using ORT's MinMax calibration method, with
     # ActivationSymmetric as True, which is equivalent to max calibration
+    logger.info("Starting INT8 quantization with MinMax calibration")
     quantize_static(
         onnx_path,
         tmp_onnx_path,
@@ -310,14 +310,14 @@ def quantize(
         intermediate_generated_files.append(tmp_onnx_path + ".data")
 
     # Post-processing of the onnx model after ORT quantization
-    onnx_model = int8_to_fp8(tmp_onnx_path, verbose)
+    onnx_model = int8_to_fp8(tmp_onnx_path)
     graph = gs.import_onnx(onnx_model)
     remove_partial_input_qdq(graph, no_quantize_inputs)
     onnx_model = gs.export_onnx(graph)
 
     if high_precision_dtype == "fp16":
         # We need to convert float to float16 so as to speed up layers like LayerNorm or GroupNorm.
-        logging.info("Converting float tensors to float16")
+        logger.info("Converting float tensors to float16")
         graph = gs.import_onnx(onnx_model)
         remove_output_initializers(graph, onnx_model.graph.initializer)
         convert_fp16_io(graph)
@@ -341,12 +341,12 @@ def quantize(
             # We need to convert the ONNX model to opset 19+ since FP8 QuantizeLinear/DequantizeLinear ops do not
             # support FP16 scaling factors until opset 19. So, converting here to opset-21 (19+).
             onnx_model = upgrade_opset_21(onnx_model)
-            logging.warning("Model's ONNX opset is updated to 21.\n")
 
         if mha_accumulation_dtype == "fp32":
             # Insert Cast nodes in MHA's BMM1 and BMM2's input and output tensors because
             # The compiler only has FP32 accumulation kernels for FP8 MHAs.
-            logging.info("Inserting Cast nodes to enable FP8+FP16 MHA")
+            logger.info("Inserting Cast nodes to enable FP8+FP16 MHA")
             onnx_model = insert_fp8_mha_casts(onnx_model)
 
+    logger.info(f"FP8 quantization completed in {time.time() - t_start:.2f} seconds")
     return onnx_model

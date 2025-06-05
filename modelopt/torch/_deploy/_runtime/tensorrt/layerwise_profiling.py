@@ -159,7 +159,7 @@ def map_trt_layers_to_onnx(
                 logging.error(f"Key splitting in layerwise profiling failed for key: {key}.")
                 return _remove_non_onnx_nodes(key)
 
-            covered_keys = _group_split(key[0], "+") + [key[1]]
+            covered_keys = [*_group_split(key[0], "+"), key[1]]
             if onnx_node_names:
                 idx1, idx2 = onnx_node_names.index(key[0]), onnx_node_names.index(key[1])
                 covered_keys = tuple(onnx_node_names[idx1 : idx2 + 1])

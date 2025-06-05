@@ -15,7 +15,7 @@
 
 """Utilities for optimization."""
 
-from typing import Generator, Optional
+from collections.abc import Generator
 
 import torch.nn as nn
 
@@ -56,7 +56,7 @@ def is_dynamic(model: nn.Module) -> bool:
 
 
 def named_hparams(
-    model: nn.Module, configurable: Optional[bool] = None
+    model: nn.Module, configurable: bool | None = None
 ) -> Generator[tuple[str, Hparam], None, None]:
     """Recursively yield the name and instance of *all* hparams."""
     yield from _DynamicSpaceUnwrapped(model).named_hparams(configurable)

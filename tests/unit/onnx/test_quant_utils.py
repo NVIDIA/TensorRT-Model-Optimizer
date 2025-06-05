@@ -191,7 +191,7 @@ def test_pack_float32_to_4bit_utils():
 
 
 @pytest.mark.parametrize(
-    "weight, weight_axis, block_size, expected_amax",
+    ("weight", "weight_axis", "block_size", "expected_amax"),
     [
         (np.array([[1, 2], [-3, 4]]), 0, 2, np.array([3, 4])),
         (np.array([[1, 2], [-3, 4]]), 1, 2, np.array([2, 4])),
@@ -221,10 +221,11 @@ def test_get_amax(weight, weight_axis, block_size, expected_amax):
 
 
 @pytest.mark.parametrize(
-    "amax, weight_shape, axis, expected_e8m0",
+    ("amax", "weight_shape", "axis", "expected_e8m0"),
     [
         (np.array([3, 4]), (2, 2), 0, np.array([[120, 121]])),
         (np.array([3, 4]), (2, 2), 1, np.array([[120], [121]])),
+        (np.array([0, 448]), (2, 2), 0, np.array([[0, 127]])),
         (
             np.array([[[3, 4]], [[7, 8]]]),
             (2, 2, 2),

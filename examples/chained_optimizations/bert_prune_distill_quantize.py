@@ -42,7 +42,7 @@ import logging
 import math
 import os
 import random
-from typing import Any, Optional
+from typing import Any
 
 import datasets
 import evaluate
@@ -81,7 +81,7 @@ logger = get_logger(__name__)
 SEED = 123
 
 
-def parse_args(input_args: Optional[list[str]] = None):
+def parse_args(input_args: list[str] | None = None):
     parser = argparse.ArgumentParser(
         description="Finetune a transformers model on a Question Answering task"
     )
@@ -585,8 +585,8 @@ def evaluate_model(
         n_best_size: int = 20,
         max_answer_length: int = 30,
         null_score_diff_threshold: float = 0.0,
-        output_dir: Optional[str] = None,
-        prefix: Optional[str] = None,
+        output_dir: str | None = None,
+        prefix: str | None = None,
     ) -> EvalPrediction:
         """Post-processes the predictions of a question-answering model to convert them to answers
         that are substrings of  the original contexts. This is the base postprocessing functions for
@@ -781,7 +781,7 @@ def evaluate_model(
         # If we have an output_dir, let's save all those dicts.
         if output_dir is not None:
             if not os.path.isdir(output_dir):
-                raise EnvironmentError(f"{output_dir} is not a directory.")
+                raise OSError(f"{output_dir} is not a directory.")
 
             prediction_file = os.path.join(
                 output_dir, "predictions.json" if prefix is None else f"{prefix}_predictions.json"
@@ -1090,7 +1090,7 @@ def train_and_evaluate_model(
             json.dump(eval_metric, f, indent=4)
 
 
-def main(input_args: Optional[list[str]] = None) -> None:
+def main(input_args: list[str] | None = None) -> None:
     args = parse_args(input_args)
 
     # Initialize the accelerator

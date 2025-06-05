@@ -15,12 +15,12 @@
 
 """Module to specify the basic hyperparameter with tracing capabilities."""
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from modelopt.torch.opt.hparam import Hparam
 from modelopt.torch.trace import Symbol
 
-__all__ = ["TracedHpRegistry", "TracedHp"]
+__all__ = ["TracedHp", "TracedHpRegistry"]
 
 TracedHparamType = type["TracedHp"]
 
@@ -67,7 +67,7 @@ class TracedHpRegistry:
         return cls._registry[type(sym)].initialize_from(hp)
 
     @classmethod
-    def get(cls, sym: Symbol) -> Optional[TracedHparamType]:
+    def get(cls, sym: Symbol) -> TracedHparamType | None:
         """Get Hparam type associated with symbol."""
         return cls._registry.get(type(sym))
 

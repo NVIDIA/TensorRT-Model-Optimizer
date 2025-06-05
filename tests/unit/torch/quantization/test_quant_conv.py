@@ -31,7 +31,7 @@ NUM_OUT_CHANNELS = 5
 
 class TestQuantConvND:
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -57,7 +57,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -88,7 +88,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -120,7 +120,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -144,7 +144,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -176,7 +176,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -210,7 +210,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -249,7 +249,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, f_conv, input_shape",
+        ("conv_cls", "f_conv", "input_shape"),
         [
             (quant_conv.QuantConv1d, F.conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, F.conv_transpose1d, (2, NUM_IN_CHANNELS, 8)),
@@ -283,7 +283,7 @@ class TestQuantConvND:
         assert torch.allclose(out1, out2, rtol=1e-0, atol=1e-0)
 
     @pytest.mark.parametrize(
-        "conv_cls, nn_conv_cls, input_shape",
+        ("conv_cls", "nn_conv_cls", "input_shape"),
         [
             (quant_conv.QuantConv1d, nn.Conv1d, (2, NUM_IN_CHANNELS, 8)),
             (quant_conv.QuantConvTranspose1d, nn.ConvTranspose1d, (2, NUM_IN_CHANNELS, 8)),

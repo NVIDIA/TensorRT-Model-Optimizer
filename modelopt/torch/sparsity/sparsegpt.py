@@ -163,8 +163,8 @@ class SparseGPTSearcher(BaseSparseSearcher):
         # the column size must be divisible by m
         if weight.size(0) % m != 0 or weight.size(1) % m != 0:
             warnings.warn(
-                f"Skipping pruning {mod_name} of size={str(weight.size())} and"
-                f" type={str(weight.dtype)} for SparseGPT"
+                f"Skipping pruning {mod_name} of size={weight.size()!s} and"
+                f" type={weight.dtype!s} for SparseGPT"
             )
             return False
 

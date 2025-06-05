@@ -26,15 +26,13 @@ Please refer to each individual sub-module to learn more about the various conce
 ``modelopt.torch.opt`` and how to use them to implement a model optimization algorithm.
 """
 
-try:
-    from . import _hooks
-except ImportError:
-    pass
+from modelopt.torch.utils.import_utils import import_plugin
 
-try:
+with import_plugin("opt_hooks", verbose=False):
+    from . import _hooks
+
+with import_plugin("huggingface", verbose=False):
     from .plugins.huggingface import *
-except ImportError:
-    pass
 
 from . import plugins, utils
 from .config import *

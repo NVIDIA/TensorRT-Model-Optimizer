@@ -15,7 +15,7 @@
 
 """Module to profile a model on a target device."""
 
-from typing import Any, Union
+from typing import Any
 
 import torch.nn as nn
 
@@ -27,7 +27,7 @@ __all__ = ["get_latency", "profile"]
 
 def get_latency(
     model: nn.Module,
-    dummy_input: Union[Any, tuple],
+    dummy_input: Any | tuple,
     deployment: Deployment,
 ) -> float:
     """Obtain deployment latency of model by compiling and sending model to engine for profiling.
@@ -110,7 +110,7 @@ def get_latency(
 
 def profile(
     model: nn.Module,
-    dummy_input: Union[Any, tuple],
+    dummy_input: Any | tuple,
     deployment: Deployment,
     verbose: bool = False,
 ) -> tuple[float, DetailedResults]:

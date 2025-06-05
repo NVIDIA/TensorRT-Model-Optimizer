@@ -16,10 +16,12 @@
 """Module implementing ``fasnas`` pruning algorithm for search."""
 
 import warnings
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 import torch.nn as nn
 import tqdm
+from pydantic import create_model
 
 from modelopt.torch.nas.autonas import (
     AutoNASPatchManager,
@@ -28,16 +30,27 @@ from modelopt.torch.nas.autonas import (
     restore_searchspace,
     update_autonas_metadata,
 )
+from modelopt.torch.nas.conversion import NASModeRegistry
 from modelopt.torch.nas.hparams import ConcatTracedHp
+from modelopt.torch.nas.registry import DMRegistry
 from modelopt.torch.nas.utils import get_subnet_config, sample, select, sort_parameters
-from modelopt.torch.opt.config import ModeloptBaseConfig
-from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
-from modelopt.torch.opt.searcher import SearchStateDict
+from modelopt.torch.opt.config import ModeloptBaseConfig, get_kwargs_for_create_model_with_rules
+from modelopt.torch.opt.mode import (
+    ConvertEntrypoint,
+    ConvertReturnType,
+    MetadataDict,
+    ModeDescriptor,
+    RestoreEntrypoint,
+    UpdateEntrypoint,
+)
+from modelopt.torch.opt.searcher import BaseSearcher, SearchStateDict
 from modelopt.torch.opt.utils import named_hparams
 from modelopt.torch.utils import random
 
+from .pruning import PruneModeRegistry
+
 ConstraintsRes = dict[str, float]
-ConstraintEvalFunc = Callable[[Optional[ConstraintsRes]], float]
+ConstraintEvalFunc = Callable[[ConstraintsRes | None], float]
 
 
 class FastNASPatchManager(AutoNASPatchManager):
@@ -165,7 +178,7 @@ class BinarySearcher(IterativeSearcher):
         return is_loaded
 
     def _get_binary_search_hps(self):
-        hps_configurable = {k: hp for k, hp in named_hparams(self.model, configurable=True)}
+        hps_configurable = dict(named_hparams(self.model, configurable=True))
 
         # TODO: eventually improve this!
         binary_search_hps = {
@@ -261,3 +274,103 @@ class BinarySearcher(IterativeSearcher):
 
                 self.sensitivity_map[name] = cur_sensitivity_scores
                 self.save_search_checkpoint()
+
+
+def _conv_config():
+    return {
+        "channels_ratio": tuple(0.05 * i for i in range(1, 21)),
+        "kernel_size": (),
+        "channel_divisor": 32,
+    }
+
+
+def _norm_lin_config():
+    return {
+        "features_ratio": tuple(0.05 * i for i in range(1, 21)),
+        "feature_divisor": 32,
+    }
+
+
+def _get_fastnas_default_rules():
+    return {
+        "nn.Conv1d": _conv_config(),
+        "nn.Conv2d": _conv_config(),
+        "nn.Conv3d": _conv_config(),
+        "nn.ConvTranspose1d": _conv_config(),
+        "nn.ConvTranspose2d": _conv_config(),
+        "nn.ConvTranspose3d": _conv_config(),
+        "nn.Linear": _norm_lin_config(),
+        "nn.BatchNorm1d": _norm_lin_config(),
+        "nn.BatchNorm2d": _norm_lin_config(),
+        "nn.BatchNorm3d": _norm_lin_config(),
+        "nn.SyncBatchNorm": _norm_lin_config(),
+        "nn.InstanceNorm1d": _norm_lin_config(),
+        "nn.InstanceNorm2d": _norm_lin_config(),
+        "nn.InstanceNorm3d": _norm_lin_config(),
+        "nn.LayerNorm": _norm_lin_config(),
+        "nn.GroupNorm": {k: v for k, v in _conv_config().items() if k != "kernel_size"},
+    }
+
+
+FastNASConfig: type[ModeloptBaseConfig] = create_model(
+    "FastNASConfig",
+    **get_kwargs_for_create_model_with_rules(
+        registry=DMRegistry,
+        default_rules=_get_fastnas_default_rules(),
+        doc='Configuration for the ``"fastnas"`` mode.',
+    ),
+)
+
+
+@NASModeRegistry.register_mode
+@PruneModeRegistry.register_mode
+class FastNASModeDescriptor(ModeDescriptor):
+    """Class to describe the ``"fastnas"`` mode.
+
+    The properties of this mode can be inspected via the source code.
+    """
+
+    @property
+    def name(self) -> str:
+        """Returns the value (str representation) of the mode."""
+        return "fastnas"
+
+    @property
+    def config_class(self) -> type[ModeloptBaseConfig]:
+        """Specifies the config class for the mode."""
+        return FastNASConfig
+
+    @property
+    def next_modes(self) -> set[str] | None:
+        """Modes that must immediately follow this mode."""
+        return {"export", "kd_loss", "quantize", "sparse_magnitude", "sparse_gpt"}
+
+    @property
+    def export_mode(self) -> str | None:
+        """The mode that corresponds to the export mode of this mode."""
+        return "export"
+
+    @property
+    def search_algorithm(self) -> type[BaseSearcher]:
+        """Specifies the search algorithm to use for this mode (if any)."""
+        return BinarySearcher
+
+    @property
+    def convert(self) -> ConvertEntrypoint:
+        """The mode's entrypoint for converting a model."""
+        return convert_fastnas_searchspace
+
+    @property
+    def restore(self) -> RestoreEntrypoint:
+        """The mode's entrypoint for restoring a model."""
+        return restore_fastnas_searchspace
+
+    @property
+    def update_for_save(self) -> UpdateEntrypoint:
+        """The mode's entrypoint for updating the models state before saving."""
+        return update_fastnas_metadata
+
+    @property
+    def update_for_new_mode(self) -> UpdateEntrypoint:
+        """The mode's entrypoint for updating the models state before new mode."""
+        return update_fastnas_metadata

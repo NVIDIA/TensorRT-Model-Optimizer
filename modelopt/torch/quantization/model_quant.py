@@ -18,30 +18,34 @@
 import fnmatch
 import inspect
 import warnings
-from typing import Any, Callable, Iterable, Optional, Union
+from collections.abc import Callable, Iterable
+from typing import Any
 
 import torch
 import torch.nn as nn
 
+import modelopt.torch.quantization as mtq
 from modelopt.core.torch.quantization.algorithms import AutoQuantizeSearcher
 from modelopt.torch.opt import apply_mode
 from modelopt.torch.opt.searcher import ForwardLoop
+from modelopt.torch.quantization.config import QuantizeConfig
 from modelopt.torch.quantization.conversion import set_quantizer_by_cfg
 
+from . import config
 from .config import QuantizeAlgoCfgType
 from .conversion import set_quantizer_attribute
 from .mode import QuantizeModeRegistry, get_modelike_from_algo_cfg
 from .nn import QuantModule, TensorQuantizer
 
 __all__ = [
-    "calibrate",
-    "postprocess_amax",
-    "quantize",
     "auto_quantize",
+    "calibrate",
     "disable_quantizer",
     "enable_quantizer",
-    "print_quant_summary",
     "fold_weight",
+    "postprocess_amax",
+    "print_quant_summary",
+    "quantize",
 ]
 
 
@@ -49,7 +53,7 @@ __all__ = [
 def calibrate(
     model: nn.Module,
     algorithm: QuantizeAlgoCfgType = "max",
-    forward_loop: Optional[ForwardLoop] = None,
+    forward_loop: ForwardLoop | None = None,
 ) -> nn.Module:
     """Adjusts weights and scaling factors based on selected algorithms.
 
@@ -125,8 +129,8 @@ def postprocess_amax(model: nn.Module, key: str, post_process_fn) -> nn.Module:
 
 def quantize(
     model: nn.Module,
-    config: dict[str, Any],
-    forward_loop: Optional[ForwardLoop] = None,
+    config: dict[str, Any | QuantizeConfig],
+    forward_loop: ForwardLoop | None = None,
 ) -> nn.Module:
     """Quantizes and calibrates the model in-place.
 
@@ -223,18 +227,21 @@ def quantize(
 
 def auto_quantize(
     model: nn.Module,
-    constraints: dict[str, Union[float, str]] = {"effective_bits": 4.8},
-    quantization_formats: list[Optional[str]] = ["NVFP4_DEFAULT_CFG", "FP8_DEFAULT_CFG", None],
-    data_loader: Iterable = None,
-    forward_step: Callable[[nn.Module, Any], Union[Any, torch.Tensor]] = None,
-    loss_func: Callable[[Any, Any], torch.Tensor] = None,
-    forward_backward_step: Optional[Callable[[nn.Module, Any], Any]] = None,
-    disabled_layers: Optional[Union[list[str], str]] = None,
+    constraints: dict[str, float | str] = {"effective_bits": 4.8},
+    quantization_formats: list[dict[str, Any] | str] = [
+        mtq.NVFP4_AWQ_LITE_CFG,
+        mtq.FP8_DEFAULT_CFG,
+    ],
+    data_loader: Iterable | None = None,
+    forward_step: Callable[[nn.Module, Any], Any | torch.Tensor] | None = None,
+    loss_func: Callable[[Any, Any], torch.Tensor] | None = None,
+    forward_backward_step: Callable[[nn.Module, Any], Any] | None = None,
+    disabled_layers: list[str] | str | None = None,
     num_calib_steps: int = 512,
     num_score_steps: int = 128,
     verbose: bool = False,
 ):
-    r"""API for ``AutoQuantize`` which quantizes a model by searching for the best quantization formats per-layer.
+    r"""Perform optimal per-layer quantization by searching for the best quantization formats per-layer.
 
     ``auto_quantize`` uses a gradient based sensitivity score to rank the per-layer quantization formats and search
     for the best quantization formats per-layer.
@@ -251,11 +258,35 @@ def auto_quantize(
                 # For an effective quantization bits of 4.8
                 constraints = {"effective_bits": 4.8}
 
-        quantization_formats: A list of the string names of the quantization formats to search for.
-            The supported quantization formats are as listed by :attr:`modelopt.torch.quantization.config.choices`.
+        quantization_formats: A list of quantization format config dictionaries or string names to search for.
+            Each config dictionary should be valid as a ``config`` argument in
+            :meth:`quantize <modelopt.torch.quantization.model_quant.quantize>`.
+            The supported quantization format names are as listed by :attr:`modelopt.torch.quantization.config.choices`.
 
-            In addition, the quantization format can also be ``None`` which implies skipping quantization for
-            the layer.
+            Internally we always add "do not quantize" as a choice. Therefore, it is possible that a layer is
+            not quantized by any of the quantization formats.
+
+            Custom quantization formats can also be defined and used as a quantization format. This is a  experimental
+            feature and the results may not be optimal. Here is an example:
+
+            .. code-block:: python
+
+                INT8_CUSTOM_QUANT_CFG = {
+                    "quant_cfg": {
+                        "*weight_quantizer": {"num_bits": 8, "axis": 0},
+                        "*input_quantizer": {"num_bits": 8, "axis": None},
+                    },
+                    "algorithm": "smoothquant",
+                }
+
+                mtq.auto_quantize(
+                    model,
+                    constraints,
+                    quantization_formats=["INT4_AWQ_CFG", INT8_CUSTOM_QUANT_CFG],
+                )
+
+            Internally we always add "do not quantize" as a choice. Therefore, it is possible that a layer is
+            not quantized by any of the quantization formats.
 
             .. note::
 
@@ -273,8 +304,8 @@ def auto_quantize(
              .. code-block:: python
 
                 # A valid `quantization_formats` argument
-                # This will search for the best per-layer quantization from FP8, W4A8_AWQ or No quantization
-                quantization_formats = ["FP8_DEFAULT_CFG", "W4A8_AWQ", None]
+                # This will search for the best per-layer quantization from FP8, W4A8_AWQ_BETA_CFG or No quantization
+                quantization_formats = [mtq.FP8_DEFAULT_CFG, mtq.W4A8_AWQ_BETA_CFG]
 
         data_loader: An iterator that yields data that is to be used for calibrating quantized layers and estimating
             ``auto_quantize`` scores.
@@ -374,14 +405,28 @@ def auto_quantize(
         might not be readily deployable to TensorRT-LLM yet.
 
     """
+    processed_quantization_formats = []
+    for i, quant_cfg in enumerate(quantization_formats):
+        if quant_cfg is None:
+            continue
+        if isinstance(quant_cfg, str):
+            assert quant_cfg in config.choices, f"Invalid quantization format: {quant_cfg}"
+            quant_cfg = getattr(config, quant_cfg)
+        elif not any(quant_cfg is getattr(config, choice) for choice in config.choices):
+            warnings.warn(
+                "Received custom quantization formats for search, auto_quantize results may not be optimal."
+            )
+        processed_quantization_formats.append(quant_cfg)
+
+    assert len(processed_quantization_formats) > 0, "`quantization_formats` should not be empty"
     model = apply_mode(
         model,
-        mode=[("quantize", {"quant_cfg": {}})],
+        mode="auto_quantize",
         registry=QuantizeModeRegistry,
     )
     searcher = AutoQuantizeSearcher()
     search_config = {
-        "quantization_formats": quantization_formats,
+        "quantization_formats": processed_quantization_formats,
         "data_loader": data_loader,
         "forward_step": forward_step,
         "loss_func": loss_func,
@@ -403,12 +448,12 @@ def auto_quantize(
     return model, searcher.state_dict()
 
 
-def disable_quantizer(model: nn.Module, wildcard_or_filter_func: Union[str, Callable]):
+def disable_quantizer(model: nn.Module, wildcard_or_filter_func: str | Callable):
     """Disable quantizer by wildcard or filter function."""
     set_quantizer_attribute(model, wildcard_or_filter_func, {"enable": False})
 
 
-def enable_quantizer(model: nn.Module, wildcard_or_filter_func: Union[str, Callable]):
+def enable_quantizer(model: nn.Module, wildcard_or_filter_func: str | Callable):
     """Enable quantizer by wildcard or filter function."""
     set_quantizer_attribute(model, wildcard_or_filter_func, {"enable": True})
 

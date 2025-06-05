@@ -23,8 +23,9 @@
 """
 
 import warnings
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable, Iterator, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -43,7 +44,7 @@ from modelopt.torch.utils import (
 from .search_space import SampleFunc, SearchSpace
 
 # only certain categories of utils via __all__
-__all__ = [
+__all__ = [  # noqa: RUF022
     # search/profile related utils
     "inference_flops",
     "print_search_space_summary",
@@ -73,10 +74,7 @@ def batch_norm_ignored_flops():
     handlers_new = []
     for op_names, op in profile.handlers:
         if "aten::batch_norm" in op_names:
-            op_names_new = []
-            for op_name in op_names:
-                if op_name != "aten::batch_norm":
-                    op_names_new.append(op_name)
+            op_names_new = [op_name for op_name in op_names if op_name != "aten::batch_norm"]
             handlers_new.append((tuple(op_names_new), op))
         else:
             handlers_new.append((op_names, op))
@@ -87,11 +85,11 @@ def batch_norm_ignored_flops():
 
 def inference_flops(
     network: nn.Module,
-    dummy_input: Optional[Union[Any, tuple]] = None,
-    data_shape: Optional[tuple] = None,
+    dummy_input: Any | tuple[Any, ...] | None = None,
+    data_shape: tuple[Any, ...] | None = None,
     unit: float = 1e6,
     return_str: bool = False,
-) -> Union[float, str]:
+) -> float | str:
     """Get the inference FLOPs of a PyTorch model.
 
     Args:
@@ -165,7 +163,7 @@ def select(model: nn.Module, config: dict[str, Any], strict: bool = True) -> Non
     _SearchSpaceUnwrapped(model).select(config, strict)
 
 
-def get_subnet_config(model: nn.Module, configurable: Optional[bool] = None) -> dict[str, Any]:
+def get_subnet_config(model: nn.Module, configurable: bool | None = None) -> dict[str, Any]:
     """Return the config dict of all hyperparameters.
 
     Args:
@@ -180,13 +178,13 @@ def get_subnet_config(model: nn.Module, configurable: Optional[bool] = None) -> 
 
 def _reset_before_sample(model: nn.Module):
     """Call pre-sample reset hook from patch manager."""
-    from ._patch import PatchManager
+    from .patch import PatchManager
 
     if PatchManager.is_patched(model):
         PatchManager.get_manager(model).reset_before_sample()
 
 
-def sort_parameters(model: nn.Module, hps_to_sort: Optional[set[str]] = None) -> None:
+def sort_parameters(model: nn.Module, hps_to_sort: set[str] | None = None) -> None:
     """Sort the parameters of the model according to the stored importances.
 
     Args:
@@ -209,7 +207,7 @@ def print_search_space_summary(
 class _ModeloptOpsState:
     """Global flag to enable/disable modelopt patches - defaults to True."""
 
-    _instance: Optional["_ModeloptOpsState"] = None
+    _instance: "_ModeloptOpsState | None" = None
     _auto_enabled = True
 
     def __new__(cls) -> "_ModeloptOpsState":

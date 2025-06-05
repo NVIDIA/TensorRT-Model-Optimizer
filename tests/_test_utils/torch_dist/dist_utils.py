@@ -75,6 +75,6 @@ def get_device_counts():
 
 def synchronize_state_dict(model: nn.Module):
     state_dict = model.state_dict()
-    for k, v in state_dict.items():
+    for v in state_dict.values():
         dist.all_reduce(v, op=dist.ReduceOp.SUM)
     model.load_state_dict(state_dict)

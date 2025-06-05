@@ -15,32 +15,32 @@
 
 """Patches onnx_graphsurgeon to support explicitly setting a dtype."""
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 from onnx_graphsurgeon.ir.tensor import LazyValues
 
+from modelopt.onnx.logging_config import logger
 from modelopt.onnx.quantization.quant_utils import pack_float32_to_4bit_cpp_based
 
-GS_LOGGER = gs.logger.logger.G_LOGGER
 ONNX_MAJOR, ONNX_MINOR = tuple(map(int, onnx.__version__.split(".")[:2]))
 
 
 def _onnx_supports_int4():
-    return ONNX_MAJOR > 1 or ONNX_MAJOR == 1 and ONNX_MINOR >= 16
+    return ONNX_MAJOR > 1 or (ONNX_MAJOR == 1 and ONNX_MINOR >= 16)
 
 
 def _make_constant(
-    name: str, values: Union[np.ndarray, LazyValues], dtype: onnx.TensorProto.DataType
+    name: str, values: np.ndarray | LazyValues, dtype: onnx.TensorProto.DataType
 ) -> gs.Constant:
     """Creates a constant with a specified dtype."""
     converted_dtype = (
         dtype if isinstance(values, LazyValues) else onnx.helper.tensor_dtype_to_np_dtype(dtype)
     )
     if values.dtype != converted_dtype:
-        GS_LOGGER.critical(
+        logger.error(
             f"Trying to create tensor with incompatible types: `{values.dtype}`, `{dtype}`"
         )
 
@@ -50,7 +50,7 @@ def _make_constant(
 
 
 def _make_variable(
-    name: str, dtype: onnx.TensorProto.DataType, shape: Sequence[Union[int, str]]
+    name: str, dtype: onnx.TensorProto.DataType, shape: Sequence[int | str]
 ) -> gs.Constant:
     """Creates a variable with a specified dtype."""
     x = gs.Variable(name, onnx.helper.tensor_dtype_to_np_dtype(dtype), shape)
@@ -88,9 +88,9 @@ def _export_tensor_proto(tensor: gs.Constant) -> onnx.TensorProto:
 
 def _export_value_info_proto(tensor: gs.Variable, do_type_check: bool) -> onnx.ValueInfoProto:
     if do_type_check and tensor.dtype is None:
-        GS_LOGGER.critical(
+        logger.error(
             "Graph input and output tensors must include dtype information. Please set the dtype"
-            " attribute for: {:}".format(tensor)
+            f" attribute for: {tensor}"
         )
 
     if tensor.dtype is not None:
@@ -105,6 +105,7 @@ def _export_value_info_proto(tensor: gs.Variable, do_type_check: bool) -> onnx.V
 
 def patch_gs_modules():
     """Dynamically patch graphsurgeon modules."""
+    logger.debug("Patching ONNX GraphSurgeon modules")
     gs.make_constant = _make_constant
     gs.make_variable = _make_variable
     gs.exporters.onnx_exporter.OnnxExporter.export_tensor_proto = _export_tensor_proto

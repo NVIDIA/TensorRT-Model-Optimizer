@@ -21,15 +21,15 @@ from ... import tensor_quant
 from .quant_module import QuantLinearConvBase, QuantModuleRegistry, _LegacyQuantLinearConvBaseMixin
 
 __all__ = [
-    "Conv2d",
-    "QuantConv2d",
-    "Conv3d",
-    "QuantConv3d",
     "Conv1d",
-    "QuantConv1d",
+    "Conv2d",
+    "Conv3d",
     "ConvTranspose1d",
     "ConvTranspose2d",
     "ConvTranspose3d",
+    "QuantConv1d",
+    "QuantConv2d",
+    "QuantConv3d",
     "QuantConvTranspose1d",
     "QuantConvTranspose2d",
     "QuantConvTranspose3d",

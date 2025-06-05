@@ -23,7 +23,12 @@ from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, 
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
-from modelopt.core.torch.quantization.algorithms import QuantRecipe, QuantRecipeHparam
+from modelopt.core.torch.quantization.algorithms import (
+    QuantRecipe,
+    QuantRecipeHparam,
+    estimate_quant_compression,
+)
+from modelopt.torch.quantization.config import _default_disabled_quantizer_cfg
 from modelopt.torch.utils.distributed import DistributedProcessGroup
 
 
@@ -57,20 +62,20 @@ class TransformerBlock(torch.nn.Module):
 
 
 @pytest.mark.parametrize(
-    "name, other_name, is_less_than",
+    ("quant_cfg", "other_quant_cfg", "is_less_than"),
     [
-        ("FP8_DEFAULT_CFG", None, True),
-        ("NVFP4_DEFAULT_CFG", "FP8_DEFAULT_CFG", True),
-        (None, "INT8_DEFAULT_CFG", False),
+        (mtq.FP8_DEFAULT_CFG, None, True),
+        (mtq.NVFP4_DEFAULT_CFG, mtq.FP8_DEFAULT_CFG, True),
+        (None, mtq.INT8_DEFAULT_CFG, False),
     ],
 )
-def test_quant_recipe(name, other_name, is_less_than):
-    qr_this = QuantRecipe(name)
-    qr_other = QuantRecipe(other_name)
+def test_quant_recipe(quant_cfg, other_quant_cfg, is_less_than):
+    qr_this = QuantRecipe(quant_cfg)
+    qr_other = QuantRecipe(other_quant_cfg)
     assert (qr_this < qr_other) == is_less_than
 
-    qr_this_duplicate = QuantRecipe(name)
-    assert qr_this_duplicate in set([qr_this])
+    qr_this_duplicate = QuantRecipe(quant_cfg)
+    assert qr_this_duplicate in {qr_this}
 
 
 def test_quant_recipe_hparam():
@@ -82,8 +87,8 @@ def test_quant_recipe_hparam():
     model_ref = mtq.quantize(model_ref, mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG)
 
     search_recipes = [
-        QuantRecipe("INT8_DEFAULT_CFG"),
-        QuantRecipe("INT4_BLOCKWISE_WEIGHT_ONLY_CFG"),
+        QuantRecipe(mtq.INT8_DEFAULT_CFG),
+        QuantRecipe(mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG),
     ]
     hparam = QuantRecipeHparam(
         search_recipes,
@@ -91,17 +96,28 @@ def test_quant_recipe_hparam():
         nn_modules=[model_test],
     )
     model_test._register_hparam("quant_recipe", hparam)
-    assert model_test.quant_recipe.name == "INT8_DEFAULT_CFG"
+    assert model_test.quant_recipe == QuantRecipe(mtq.INT8_DEFAULT_CFG)
     assert model_test.get_hparam("quant_recipe").choices == sorted(
-        search_recipes + [QuantRecipe(None)]
+        [*search_recipes, QuantRecipe(quant_cfg=None)]
     )
 
-    model_test.quant_recipe = QuantRecipe("INT4_BLOCKWISE_WEIGHT_ONLY_CFG")
+    model_test.quant_recipe = QuantRecipe(mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG)
     inputs = torch.randn(1, 4, 4)
     output_test = model_test(inputs)
     output_ref = model_ref(inputs)
 
     assert torch.allclose(output_test, output_ref)
+
+
+# use this config to test custom quantization config
+INT8_CUSTOM_QUANT_TEST_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": 8, "axis": 0},
+        "*input_quantizer": {"num_bits": 8, "axis": None},
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": "smoothquant",
+}
 
 
 @pytest.mark.parametrize(
@@ -111,8 +127,9 @@ def test_quant_recipe_hparam():
 @pytest.mark.parametrize(
     "search_formats",
     [
-        ["INT4_BLOCKWISE_WEIGHT_ONLY_CFG", "INT8_DEFAULT_CFG", None],
-        ["INT4_AWQ_CFG", "INT8_SMOOTHQUANT_CFG", None],
+        [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT8_DEFAULT_CFG],
+        [mtq.INT4_AWQ_CFG, mtq.INT8_SMOOTHQUANT_CFG],
+        [mtq.INT4_AWQ_CFG, INT8_CUSTOM_QUANT_TEST_CFG],
     ],
 )
 def test_auto_quantize(model_cls, search_formats):
@@ -158,7 +175,6 @@ def test_auto_quantize(model_cls, search_formats):
 
 def test_auto_quantize_disable():
     model = TransformerBlock()
-    search_formats = ["INT4_BLOCKWISE_WEIGHT_ONLY_CFG", "INT8_DEFAULT_CFG", None]
 
     def loss_func(output):
         return output.sum()
@@ -166,7 +182,10 @@ def test_auto_quantize_disable():
     best_model, search_history = mtq.auto_quantize(
         model,
         constraints={"effective_bits": 5.0},
-        quantization_formats=search_formats,
+        quantization_formats=[
+            mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+            mtq.INT8_DEFAULT_CFG,
+        ],
         data_loader=[model.get_input() for _ in range(2)],
         forward_step=lambda model, batch: model(batch),
         loss_func=lambda output, data: output.sum(),
@@ -196,7 +215,7 @@ def test_auto_quantize_vs_quantize():
     best_model, search_history = mtq.auto_quantize(
         model_test,
         constraints={"effective_bits": 11.0},
-        quantization_formats=["INT8_SMOOTHQUANT_CFG"],
+        quantization_formats=[mtq.INT8_SMOOTHQUANT_CFG],
         data_loader=dataloader,
         forward_step=lambda model, batch: model(batch),
         loss_func=lambda output, data: output.sum(),
@@ -245,7 +264,7 @@ def _test_data_parallel_auto_quantize(rank, size):
     model, search_history = mtq.auto_quantize(
         model,
         constraints={"effective_bits": 11.0},
-        quantization_formats=["INT8_SMOOTHQUANT_CFG", None],
+        quantization_formats=[mtq.INT8_SMOOTHQUANT_CFG],
         data_loader=[model.get_input() for _ in range(2)],
         forward_step=lambda model, batch: model(batch),
         loss_func=lambda output, data: output.sum(),
@@ -255,8 +274,14 @@ def _test_data_parallel_auto_quantize(rank, size):
     )
 
     search_history_rank0 = DistributedProcessGroup.get_dist_syncd_obj(
-        search_history if rank == 0 else None, DistributedProcessGroup(None), lambda a: a[0]
+        search_history if rank == 0 else None,
+        DistributedProcessGroup(None),
+        lambda a: a[0],
     )
+
+    print(f"rank {rank} search_history: {search_history}")
+    if search_history != search_history_rank0:
+        print(f"rank {rank} search_history_rank0: {search_history_rank0}")
 
     # Assert that the costs, scores and searched recipes are the same across all ranks
     assert search_history == search_history_rank0
@@ -266,3 +291,73 @@ def _test_data_parallel_auto_quantize(rank, size):
 
 def test_data_parallel_auto_quantize():
     spawn_multiprocess_job(4, _test_data_parallel_auto_quantize, backend="gloo")
+
+
+def test_estimate_quant_compression():
+    nvfp4_affine_kv_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_AFFINE_KV_CFG)
+    assert estimate_quant_compression(nvfp4_affine_kv_cfg) == 0.25
+
+    nvfp4_awq_clip_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_AWQ_CLIP_CFG)
+    assert estimate_quant_compression(nvfp4_awq_clip_cfg) == 0.25
+
+    nvfp4_awq_full_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_AWQ_FULL_CFG)
+    assert estimate_quant_compression(nvfp4_awq_full_cfg) == 0.25
+
+    nvfp4_awq_lite_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_AWQ_LITE_CFG)
+    assert estimate_quant_compression(nvfp4_awq_lite_cfg) == 0.25
+
+    nvfp4_default_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_DEFAULT_CFG)
+    assert estimate_quant_compression(nvfp4_default_cfg) == 0.25
+
+    nvfp4_kv_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_KV_CFG)
+    assert estimate_quant_compression(nvfp4_kv_cfg) == 0.25
+
+    nvfp4_kv_rotate_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_KV_ROTATE_CFG)
+    assert estimate_quant_compression(nvfp4_kv_rotate_cfg) == 0.25
+
+    nvfp4_svdquant_default_cfg = mtq.config.QuantizeConfig(**mtq.NVFP4_SVDQUANT_DEFAULT_CFG)
+    assert estimate_quant_compression(nvfp4_svdquant_default_cfg) == 0.25
+
+    int8_default_cfg = mtq.config.QuantizeConfig(**mtq.INT8_DEFAULT_CFG)
+    assert estimate_quant_compression(int8_default_cfg) == 0.5
+
+    int8_smoothquant_cfg = mtq.config.QuantizeConfig(**mtq.INT8_SMOOTHQUANT_CFG)
+    assert estimate_quant_compression(int8_smoothquant_cfg) == 0.5
+
+    fp8_default_cfg = mtq.config.QuantizeConfig(**mtq.FP8_DEFAULT_CFG)
+    assert estimate_quant_compression(fp8_default_cfg) == 0.5
+
+    fp8_per_channel_per_token_cfg = mtq.config.QuantizeConfig(**mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG)
+    assert estimate_quant_compression(fp8_per_channel_per_token_cfg) == 0.5
+
+    fp8_2d_blockwise_weight_only_cfg = mtq.config.QuantizeConfig(
+        **mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG
+    )
+    assert estimate_quant_compression(fp8_2d_blockwise_weight_only_cfg) == 0.5
+
+    int4_blockwise_weight_only_cfg = mtq.config.QuantizeConfig(**mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG)
+    assert estimate_quant_compression(int4_blockwise_weight_only_cfg) == 0.25
+
+    int4_awq_cfg = mtq.config.QuantizeConfig(**mtq.INT4_AWQ_CFG)
+    assert estimate_quant_compression(int4_awq_cfg) == 0.25
+
+    w4a8_awq_beta_cfg = mtq.config.QuantizeConfig(**mtq.W4A8_AWQ_BETA_CFG)
+    assert estimate_quant_compression(w4a8_awq_beta_cfg) == 0.25
+
+    mxfp8_default_cfg = mtq.config.QuantizeConfig(**mtq.MXFP8_DEFAULT_CFG)
+    assert estimate_quant_compression(mxfp8_default_cfg) == 0.5
+
+    mxfp6_default_cfg = mtq.config.QuantizeConfig(**mtq.MXFP6_DEFAULT_CFG)
+    assert estimate_quant_compression(mxfp6_default_cfg) == 0.375
+
+    mxfp4_default_cfg = mtq.config.QuantizeConfig(**mtq.MXFP4_DEFAULT_CFG)
+    assert estimate_quant_compression(mxfp4_default_cfg) == 0.25
+
+    mxint8_default_cfg = mtq.config.QuantizeConfig(**mtq.MXINT8_DEFAULT_CFG)
+    assert estimate_quant_compression(mxint8_default_cfg) == 0.5
+
+    fp8_kv_cfg = mtq.config.QuantizeConfig(**mtq.FP8_KV_CFG)
+    assert estimate_quant_compression(fp8_kv_cfg) == 0.5
+
+    fp8_affine_kv_cfg = mtq.config.QuantizeConfig(**mtq.FP8_AFFINE_KV_CFG)
+    assert estimate_quant_compression(fp8_affine_kv_cfg) == 0.5

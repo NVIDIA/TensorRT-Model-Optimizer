@@ -31,7 +31,6 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 import torch
 import transformers
@@ -63,12 +62,12 @@ CUSTOM_QUANT_CFG = {
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="meta-llama/Llama-2-7b-hf")
+    model_name_or_path: str = field(default="meta-llama/Llama-2-7b-hf")
 
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
-    cache_dir: Optional[str] = field(default=None)
+    cache_dir: str | None = field(default=None)
     model_max_length: int = field(
         default=2048,
         metadata={
@@ -93,14 +92,24 @@ class TrainingArguments(transformers.TrainingArguments):
 @dataclass
 class DataArguments:
     dataset: str = field(
-        default="samsum",
-        metadata={"help": "Specify the dataset.", "choices": ["samsum", "Daring-Anteater"]},
+        default="Daring-Anteater",
+        metadata={"help": "Specify the dataset.", "choices": ["Daring-Anteater"]},
+    )
+    train_size: int = field(
+        default=0,
+        metadata={"help": "Number of training samples to use. If `0`, use default training size."},
+    )
+    eval_size: int = field(
+        default=0,
+        metadata={
+            "help": "Number of evaluation samples to use. If `0`, use default evaluation size."
+        },
     )
 
 
 @dataclass
 class QuantizationArguments:
-    quant_cfg: Optional[str] = field(
+    quant_cfg: str | None = field(
         default=None,
         metadata={
             "help": (
@@ -140,7 +149,7 @@ def train():
         (ModelArguments, TrainingArguments, DataArguments, QuantizationArguments)
     )
     model_args, training_args, data_args, quant_args = parser.parse_args_into_dataclasses()
-    print_rank_0(f"arguments: {model_args}, {training_args}, {quant_args}")
+    print_rank_0(f"arguments: {model_args}, {training_args}, {data_args}, {quant_args}")
 
     # Enable automatic save/load of modelopt state huggingface checkpointing
     # modelopt state will be saved automatically to "modelopt_state.pt"
@@ -165,7 +174,12 @@ def train():
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
     print_rank_0("Loading dataset...")
-    data_module = make_supervised_data_module(dataset=data_args.dataset, tokenizer=tokenizer)
+    data_module = make_supervised_data_module(
+        dataset=data_args.dataset,
+        tokenizer=tokenizer,
+        train_size=data_args.train_size,
+        eval_size=data_args.eval_size,
+    )
 
     # Training
     checkpoint = None

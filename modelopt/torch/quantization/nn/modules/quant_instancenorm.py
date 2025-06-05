@@ -25,19 +25,13 @@ __all__ = ["QuantInstanceNorm1d", "QuantInstanceNorm2d", "QuantInstanceNorm3d"]
 class QuantInstanceNorm1d(_LegacyQuantInputBaseMixin, nn.InstanceNorm1d):
     """Applies Quantized Instance Normalization over a 3D input."""
 
-    pass
-
 
 class QuantInstanceNorm2d(_LegacyQuantInputBaseMixin, nn.InstanceNorm2d):
     """Applies Quantized Instance Normalization over a 4D input."""
 
-    pass
-
 
 class QuantInstanceNorm3d(_LegacyQuantInputBaseMixin, nn.InstanceNorm3d):
     """Applies Quantized Instance Normalization over a 5D input."""
-
-    pass
 
 
 QuantModuleRegistry.register({nn.InstanceNorm1d: "nn.InstanceNorm1d"})(QuantInputBase)

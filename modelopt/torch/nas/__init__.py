@@ -21,7 +21,7 @@ from . import modules
 
 # isort: on
 
-from . import config, hparams, mode, plugins, utils
+from . import autonas, hparams, plugins, utils
 from .algorithms import *
 from .conversion import *
 from .utils import *

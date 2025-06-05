@@ -32,7 +32,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from diffusers.models.unets.unet_2d_condition import UNet2DConditionOutput
@@ -44,12 +44,12 @@ def cachecrossattnupblock2d_forward(
     res_hidden_states_0: torch.FloatTensor,
     res_hidden_states_1: torch.FloatTensor,
     res_hidden_states_2: torch.FloatTensor,
-    temb: Optional[torch.FloatTensor] = None,
-    encoder_hidden_states: Optional[torch.FloatTensor] = None,
-    cross_attention_kwargs: Optional[dict[str, Any]] = None,
-    upsample_size: Optional[int] = None,
-    attention_mask: Optional[torch.FloatTensor] = None,
-    encoder_attention_mask: Optional[torch.FloatTensor] = None,
+    temb: torch.FloatTensor | None = None,
+    encoder_hidden_states: torch.FloatTensor | None = None,
+    cross_attention_kwargs: dict[str, Any] | None = None,
+    upsample_size: int | None = None,
+    attention_mask: torch.FloatTensor | None = None,
+    encoder_attention_mask: torch.FloatTensor | None = None,
 ) -> torch.FloatTensor:
     res_hidden_states_tuple = (res_hidden_states_0, res_hidden_states_1, res_hidden_states_2)
     for resnet, attn in zip(self.resnets, self.attentions):
@@ -82,8 +82,8 @@ def cacheupblock2d_forward(
     res_hidden_states_0: torch.FloatTensor,
     res_hidden_states_1: torch.FloatTensor,
     res_hidden_states_2: torch.FloatTensor,
-    temb: Optional[torch.FloatTensor] = None,
-    upsample_size: Optional[int] = None,
+    temb: torch.FloatTensor | None = None,
+    upsample_size: int | None = None,
 ) -> torch.FloatTensor:
     res_hidden_states_tuple = (res_hidden_states_0, res_hidden_states_1, res_hidden_states_2)
     for resnet in self.resnets:
@@ -105,19 +105,19 @@ def cacheupblock2d_forward(
 def cacheunet_forward(
     self,
     sample: torch.FloatTensor,
-    timestep: Union[torch.Tensor, float, int],
+    timestep: torch.Tensor | float | int,
     encoder_hidden_states: torch.Tensor,
-    class_labels: Optional[torch.Tensor] = None,
-    timestep_cond: Optional[torch.Tensor] = None,
-    attention_mask: Optional[torch.Tensor] = None,
-    cross_attention_kwargs: Optional[dict[str, Any]] = None,
-    added_cond_kwargs: Optional[dict[str, torch.Tensor]] = None,
-    down_block_additional_residuals: Optional[tuple[torch.Tensor]] = None,
-    mid_block_additional_residual: Optional[torch.Tensor] = None,
-    down_intrablock_additional_residuals: Optional[tuple[torch.Tensor]] = None,
-    encoder_attention_mask: Optional[torch.Tensor] = None,
+    class_labels: torch.Tensor | None = None,
+    timestep_cond: torch.Tensor | None = None,
+    attention_mask: torch.Tensor | None = None,
+    cross_attention_kwargs: dict[str, Any] | None = None,
+    added_cond_kwargs: dict[str, torch.Tensor] | None = None,
+    down_block_additional_residuals: tuple[torch.Tensor] | None = None,
+    mid_block_additional_residual: torch.Tensor | None = None,
+    down_intrablock_additional_residuals: tuple[torch.Tensor] | None = None,
+    encoder_attention_mask: torch.Tensor | None = None,
     return_dict: bool = True,
-) -> Union[UNet2DConditionOutput, tuple]:
+) -> UNet2DConditionOutput | tuple:
     # 1. time
     t_emb = self.get_time_embed(sample=sample, timestep=timestep)
     emb = self.time_embedding(t_emb, timestep_cond)
@@ -161,7 +161,7 @@ def cacheunet_forward(
                 sample = down_results["sample"]
                 res_samples_0 = down_results["res_samples_0"]
                 res_samples_1 = down_results["res_samples_1"]
-                if "res_samples_2" in down_results.keys():
+                if "res_samples_2" in down_results:
                     res_samples_2 = down_results["res_samples_2"]
             else:
                 # For t2i-adapter CrossAttnDownBlock2D
@@ -176,24 +176,23 @@ def cacheunet_forward(
                     encoder_attention_mask=encoder_attention_mask,
                     **additional_residuals,
                 )
+        elif hasattr(self, "use_trt_infer") and self.use_trt_infer:
+            feed_dict = {"hidden_states": sample, "temb": emb}
+            down_results = self.engines[f"down_blocks.{i}"](feed_dict, self.cuda_stream)
+            sample = down_results["sample"]
+            res_samples_0 = down_results["res_samples_0"]
+            res_samples_1 = down_results["res_samples_1"]
+            if "res_samples_2" in down_results:
+                res_samples_2 = down_results["res_samples_2"]
         else:
-            if hasattr(self, "use_trt_infer") and self.use_trt_infer:
-                feed_dict = {"hidden_states": sample, "temb": emb}
-                down_results = self.engines[f"down_blocks.{i}"](feed_dict, self.cuda_stream)
-                sample = down_results["sample"]
-                res_samples_0 = down_results["res_samples_0"]
-                res_samples_1 = down_results["res_samples_1"]
-                if "res_samples_2" in down_results.keys():
-                    res_samples_2 = down_results["res_samples_2"]
-            else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+            sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
 
         if hasattr(self, "use_trt_infer") and self.use_trt_infer:
             down_block_res_samples += (
                 res_samples_0,
                 res_samples_1,
             )
-            if "res_samples_2" in down_results.keys():
+            if "res_samples_2" in down_results:
                 down_block_res_samples += (res_samples_2,)
         else:
             down_block_res_samples += res_samples
@@ -245,25 +244,24 @@ def cacheunet_forward(
                     attention_mask=attention_mask,
                     encoder_attention_mask=encoder_attention_mask,
                 )
+        elif hasattr(self, "use_trt_infer") and self.use_trt_infer:
+            feed_dict = {
+                "hidden_states": sample,
+                "res_hidden_states_0": res_samples[0],
+                "res_hidden_states_1": res_samples[1],
+                "res_hidden_states_2": res_samples[2],
+                "temb": emb,
+            }
+            up_results = self.engines[f"up_blocks.{i}"](feed_dict, self.cuda_stream)
+            sample = up_results["sample"]
         else:
-            if hasattr(self, "use_trt_infer") and self.use_trt_infer:
-                feed_dict = {
-                    "hidden_states": sample,
-                    "res_hidden_states_0": res_samples[0],
-                    "res_hidden_states_1": res_samples[1],
-                    "res_hidden_states_2": res_samples[2],
-                    "temb": emb,
-                }
-                up_results = self.engines[f"up_blocks.{i}"](feed_dict, self.cuda_stream)
-                sample = up_results["sample"]
-            else:
-                sample = upsample_block(
-                    hidden_states=sample,
-                    temb=emb,
-                    res_hidden_states_0=res_samples[0],
-                    res_hidden_states_1=res_samples[1],
-                    res_hidden_states_2=res_samples[2],
-                )
+            sample = upsample_block(
+                hidden_states=sample,
+                temb=emb,
+                res_hidden_states_0=res_samples[0],
+                res_hidden_states_1=res_samples[1],
+                res_hidden_states_2=res_samples[2],
+            )
 
     # 6. post-process
     if self.conv_norm_out:

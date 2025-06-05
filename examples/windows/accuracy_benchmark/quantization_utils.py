@@ -52,10 +52,7 @@ def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, trust_remote_code=False):
 def _quantize_model_with_dataset(lm, quant_cfg: str, calib_dataset):
     atq_cfg = getattr(mtq, quant_cfg)
 
-    if hasattr(lm, "gpt2"):
-        net = lm.gpt2
-    else:
-        net = lm.model
+    net = lm.gpt2 if hasattr(lm, "gpt2") else lm.model
 
     def calibrate_loop(model):
         print("Calibrating model...")
@@ -67,15 +64,14 @@ def _quantize_model_with_dataset(lm, quant_cfg: str, calib_dataset):
         def _not_dynamic(cfg):
             return cfg.get("enable", True) and cfg.get("type", "") != "dynamic"
 
-        for _, cfg in atq_cfg.get("quant_cfg", {}).items():
+        for cfg in atq_cfg.get("quant_cfg", {}).values():
             # quantization like W4A8 has a list of weight quantizers
             if isinstance(cfg, list):
                 for config in cfg:
                     if _not_dynamic(config):
                         return False
-            else:
-                if _not_dynamic(cfg):
-                    return False
+            elif _not_dynamic(cfg):
+                return False
 
         return True
 
@@ -131,10 +127,7 @@ def quantize_model(
         device = model.model.device
 
     if batch_size == 0:
-        if hasattr(model, "gpt2"):
-            net = model.gpt2
-        else:
-            net = model.model
+        net = model.gpt2 if hasattr(model, "gpt2") else model.model
 
         # We let the system to determine the max data batch for each forward.
         batch_size = dataset_utils.get_max_batch_size(net)

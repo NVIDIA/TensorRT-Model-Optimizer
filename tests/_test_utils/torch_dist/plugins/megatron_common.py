@@ -13,16 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
-from typing import Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from _test_utils.import_helper import skip_if_no_megatron
-from _test_utils.torch_quantization.checkpointing import format_modelopt_checkpoint_by_version
 from packaging.version import Version
-
-import modelopt.torch.opt as mto
 
 skip_if_no_megatron()
 
@@ -49,6 +45,11 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_config import TransformerConfig
+
+from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
+    restore_sharded_modelopt_state,
+    save_sharded_modelopt_state,
+)
 
 try:
     from megatron.core.extensions.transformer_engine import TENorm
@@ -119,12 +120,12 @@ def get_mcore_gpt_model(
     pipeline_model_parallel_size: int = 1,
     *,
     num_layers: int = 2,
-    num_layers_in_first_pipeline_stage: Optional[int] = None,
-    num_layers_in_last_pipeline_stage: Optional[int] = None,
+    num_layers_in_first_pipeline_stage: int | None = None,
+    num_layers_in_last_pipeline_stage: int | None = None,
     hidden_size: int = 64,
     num_attention_heads: int = 8,
-    num_query_groups: Optional[int] = None,
-    ffn_hidden_size: Optional[int] = 128,
+    num_query_groups: int | None = None,
+    ffn_hidden_size: int | None = 128,
     max_sequence_length: int = 32,
     vocab_size: int = 64,
     activation_func: str = "swiglu",
@@ -185,7 +186,7 @@ def get_mcore_gpt_model(
 
 @torch.no_grad()
 def run_mcore_gpt_inference(
-    model: GPTModel, prompt_tokens: torch.Tensor, active_hidden_size: Optional[int] = None
+    model: GPTModel, prompt_tokens: torch.Tensor, active_hidden_size: int | None = None
 ) -> torch.Tensor:
     """Run inference on a wrapped Megatron GPT model.
 
@@ -231,7 +232,7 @@ def run_mcore_gpt_inference(
 
 
 def run_mcore_gpt_inference_with_dummy_input(
-    model: GPTModel, batch_size: int = 2, hidden_size: Optional[int] = None
+    model: GPTModel, batch_size: int = 2, hidden_size: int | None = None
 ) -> torch.Tensor:
     """Run inference on a wrapped Megatron GPT model."""
     prompt_tokens = torch.randint(
@@ -267,37 +268,15 @@ def load_distributed_checkpoint(checkpoint_path, gpt_model):
 
 def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, version=None):
     logits_ref = forward_fn(model_ref)
-    modelopt_state = mto.modelopt_state(model_ref)
     state_dict = copy.deepcopy(model_ref.state_dict())
 
+    # Save Megatron-Core checkpoint and modelopt_state with `torch-dist` format.
     save_distributed_checkpoint(tmp_path, model_ref)
-    # Test that model_ref has not been modified during distributed save
-    modelopt_state_after_distributed_save = mto.modelopt_state(model_ref)
-    if version is not None:
-        # Format the checkpoint for the given version
-        modelopt_state = format_modelopt_checkpoint_by_version(modelopt_state, version)
-        modelopt_state_after_distributed_save = format_modelopt_checkpoint_by_version(
-            modelopt_state_after_distributed_save, version
-        )
-    assert modelopt_state == modelopt_state_after_distributed_save
-    state_dict_after_distributed_save = model_ref.state_dict()
-    assert state_dict.keys() == state_dict_after_distributed_save.keys()
-    for k, v in state_dict.items():
-        assert not isinstance(v, torch.Tensor) or torch.allclose(
-            v.to(torch.float32), state_dict_after_distributed_save[k].to(torch.float32)
-        )
-    logits_ref_after_distributed_save = forward_fn(model_ref)
-    assert torch.allclose(logits_ref, logits_ref_after_distributed_save)
+    save_sharded_modelopt_state([model_ref], tmp_path)
 
-    model_test = mto.restore_from_modelopt_state(model_test, modelopt_state)
+    # Restore model_test from `torch-dist`.
+    restore_sharded_modelopt_state([model_test], tmp_path)
     model_test = load_distributed_checkpoint(tmp_path, model_test)
-
-    modelopt_state_test = mto.modelopt_state(model_test)
-
-    if version is not None:
-        modelopt_state_test = format_modelopt_checkpoint_by_version(modelopt_state_test, version)
-
-    assert modelopt_state == modelopt_state_test
 
     state_dict_test = model_test.state_dict()
     assert state_dict.keys() == state_dict_test.keys(), (
@@ -305,8 +284,11 @@ def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, 
     )
     for k, v in state_dict.items():
         # sharded_state_dict will omit output_layer since we are lacking support on vocab padding
+        # extra_state can be a byte Tensor where the value can change due to different serialized
+        # order (serialized from a dict). As a result, we must skip checking extra_state.
         if (
-            "output_layer" in k
+            "_extra_state" in k
+            or "output_layer" in k
             or k.endswith("._amax_for_smoothing")
             or not isinstance(v, torch.Tensor)
         ):

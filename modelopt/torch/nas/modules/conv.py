@@ -16,7 +16,6 @@
 """Dynamic Conv implementations based on torch.nn.modules.conv."""
 
 import itertools
-from typing import Optional, Union
 
 import torch
 from torch import nn
@@ -39,7 +38,7 @@ class _DynamicConvNd(DynamicModule):
 
     @staticmethod
     def _assert_input_format(
-        mod: "_DynamicConvNd", input: Union[tuple[torch.Tensor], torch.Tensor]
+        mod: "_DynamicConvNd", input: tuple[torch.Tensor] | torch.Tensor
     ) -> None:
         if isinstance(input, tuple):
             assert len(input) == 1, f"Expected single input, but got {input}."
@@ -49,8 +48,8 @@ class _DynamicConvNd(DynamicModule):
 
     @staticmethod
     def _get_padding(
-        mod: "_DynamicConvNd", padding: Union[str, tuple[int, ...]]
-    ) -> Union[str, tuple[int, ...]]:
+        mod: "_DynamicConvNd", padding: str | tuple[int, ...]
+    ) -> str | tuple[int, ...]:
         """New padding such that output size stays the same as with max kernel size and padding."""
         if isinstance(padding, str):
             return padding
@@ -70,7 +69,7 @@ class _DynamicConvNd(DynamicModule):
         return tuple(active_padding)
 
     @staticmethod
-    def _get_bias(mod: "_DynamicConvNd", bias: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    def _get_bias(mod: "_DynamicConvNd", bias: torch.Tensor | None) -> torch.Tensor | None:
         return get_sliced_tensor(mod, bias, "out_channels")
 
     @staticmethod
@@ -200,9 +199,9 @@ class _DynamicConvNd(DynamicModule):
     def modify(
         self,
         *,
-        channels_ratio: Optional[tuple[float, ...]] = None,
+        channels_ratio: tuple[float, ...] | None = None,
         channel_divisor: int = 1,
-        kernel_size: tuple[Union[int, tuple[int, ...]], ...] = (),
+        kernel_size: tuple[int | tuple[int, ...], ...] = (),
     ):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 

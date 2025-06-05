@@ -23,9 +23,7 @@
 
 # Usage: ./test_onnx_ptq.sh /path/to/imagenet /path/to/models
 
-set -e
-set -x
-set -o pipefail
+set -exo pipefail
 
 start_time=$(date +%s)
 script_dir="$(dirname "$(readlink -f "$0")")"

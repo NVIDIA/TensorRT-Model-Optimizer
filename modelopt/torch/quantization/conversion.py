@@ -16,8 +16,9 @@
 """Quantization conversion/restore utilities."""
 
 import fnmatch
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, Callable, Union
+from typing import Any
 
 import torch.nn as nn
 
@@ -25,6 +26,7 @@ from modelopt.torch.opt.conversion import ApplyModeError, ModelLikeModule, Model
 from modelopt.torch.opt.dynamic import _DMRegistryCls
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 from modelopt.torch.utils import get_unwrapped_name
+from modelopt.torch.utils.distributed import is_dtensor_sharded
 
 from .config import (
     QuantizeConfig,
@@ -42,12 +44,12 @@ from .nn import (
 from .utils import is_quantized, is_quantized_linear
 
 __all__ = [
-    "replace_quant_module",
-    "set_quantizer_by_cfg",
-    "set_quantizer_attribute",
     "register",
-    "unregister",
+    "replace_quant_module",
+    "set_quantizer_attribute",
+    "set_quantizer_by_cfg",
     "set_quantizer_by_cfg_context",
+    "unregister",
 ]
 
 
@@ -56,8 +58,14 @@ def convert_to_quantized_model(model: ModelLikeModule, config: QuantizeConfig) -
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
+    if is_dtensor_sharded(model):
+        raise NotImplementedError(
+            "ModelOpt does not support Dtensor sharded models to quantization/restore entry point yet. "
+            "Please shard the model after quantization/restore."
+        )
+
     replace_quant_module(model, version=ModeloptStateManager(model).state_version)
-    set_quantizer_by_cfg(model, config["quant_cfg"])
+    set_quantizer_by_cfg(model, config.get("quant_cfg", {}))
 
     metadata = {}
     update_quantize_metadata(model, config, metadata)
@@ -73,7 +81,7 @@ def convert_to_quantized_model_svdquant(
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
     create_and_replace_svdquant_linear_on_the_fly(model)
-    set_quantizer_by_cfg(model, config["quant_cfg"])
+    set_quantizer_by_cfg(model, config.get("quant_cfg", {}))
 
     metadata = {}
     update_quantize_metadata(model, config, metadata)
@@ -86,25 +94,31 @@ def restore_quantized_model(
 ) -> nn.Module:
     """Insert quantizers to the model and restore the quantizer states from the given state dict."""
     # initialize the true module if necessary
-    model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
-
-    assert not is_quantized(model), "Model must not be quantized!"
-
-    replace_quant_module(model, version=ModeloptStateManager(model).state_version)
-    set_quantizer_by_cfg(model, config["quant_cfg"] if "quant_cfg" in config else {})
+    convert_to_quantized_model(model, config)
 
     return restore_quantizer_state(model, config, metadata)
 
 
 def restore_quantizer_state(model: nn.Module, config: QuantizeConfig, metadata: MetadataDict):
-    """Restore the quantizer states from the given state dict."""
+    """Restore the quantizer states from the given state dict.
+
+    For NeMo-MCore sharded checkpoint (torch-dist), quantizer_state is removed from the
+    metadata and stored with the main checkpoint as extra_state (similar to TransformerEngine).
+    This is because quantizer_state's keys also need to be sharded/remapped during resuming.
+    The restore of the quantizer_state is moved to QuantModule.set_extra_state when
+    load_state_dict is called.
+
+    Here we detect whether quantizer_state exists in the metadata. The model already has
+    QuantModule replaced but without quantizer_state nor any buffer attached. For more
+    details regarding how NeMo-MCore sharded checkpoint is restored,
+    see modelopt.torch.opt.plugins.mcore_dist_checkpointing.restore_sharded_modelopt_state.
+    """
     if "quantizer_state" not in metadata:
-        # A temporary soln for MCore checkpointing
-        # MCore checkpointing assumes that only one `quantizer_state` is present in the metadata
-        # However, metadata for various modes such as `quantize`, `max_calibrate`, etc. have
-        # `quantizer_state` in its metadata
-        # TODO: Fix MCore checkpointing
-        return
+        # MCore-NeMo sharded checkpoint (`torch-dist`) has its quantizer_state stored as the
+        # extra_state of `QuantModule`. The quantizer_state is resumed with
+        # QuantModule.set_extra_state().
+        return model
+
     quantizer_state_dict = metadata["quantizer_state"]
     unmatched_keys = quantizer_state_dict.keys() - quantizer_state(model).keys()
     extra_keys = quantizer_state(model).keys() - quantizer_state_dict.keys()
@@ -192,7 +206,7 @@ def _replace_quant_module(model: nn.Module, version=None, registry=QuantModuleRe
         _replace_quant_module(getattr(model, name), version=version, registry=registry)
 
 
-def set_quantizer_by_cfg(quant_model: nn.Module, quant_cfg: Union[QuantizeQuantCfgType, dict]):
+def set_quantizer_by_cfg(quant_model: nn.Module, quant_cfg: QuantizeQuantCfgType | dict):
     """Update the quantizer attributes based on the specified `quant_cfg`.
 
     `quant_cfg` is a dictionary mapping wildcards or filter functions
@@ -228,18 +242,16 @@ def set_quantizer_by_cfg(quant_model: nn.Module, quant_cfg: Union[QuantizeQuantC
 
 def set_quantizer_attribute(
     quant_model: nn.Module,
-    wildcard_or_filter_func: Union[str, Callable],
-    attribute: Union[
-        QuantizerAttributeConfig,
-        list[QuantizerAttributeConfig],
-        dict[
-            Union[str, Callable],
-            Union[QuantizerAttributeConfig, list[QuantizerAttributeConfig]],
-        ],
-        dict,
-        list[dict],
-    ],
-    parent_class: Union[None, type] = None,
+    wildcard_or_filter_func: str | Callable,
+    attribute: QuantizerAttributeConfig
+    | list[QuantizerAttributeConfig]
+    | dict[
+        str | Callable,
+        QuantizerAttributeConfig | list[QuantizerAttributeConfig],
+    ]
+    | dict
+    | list[dict],
+    parent_class: type | None = None,
 ):
     """Finegrained adjustment of quantizer attribute by wildcard or filter function.
 
@@ -288,9 +300,7 @@ def set_quantizer_attribute(
 
 
 @contextmanager
-def set_quantizer_by_cfg_context(
-    quant_model: nn.Module, quant_cfg: Union[QuantizeQuantCfgType, dict]
-):
+def set_quantizer_by_cfg_context(quant_model: nn.Module, quant_cfg: QuantizeQuantCfgType | dict):
     """Context manager for setting quantizer attributes using `quant_cfg`.
 
     The set attributes will be reset to the original attributes after exiting the context manager.

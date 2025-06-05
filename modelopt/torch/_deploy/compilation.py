@@ -15,7 +15,7 @@
 
 """Module to compile a model for a target device."""
 
-from typing import Any, Union
+from typing import Any
 
 import torch.nn as nn
 
@@ -30,7 +30,7 @@ __all__ = ["compile"]
 
 def compile(
     model: nn.Module,
-    dummy_input: Union[Any, tuple],
+    dummy_input: Any | tuple,
     deployment: Deployment,
     dynamic_axes: dict = {},
     compilation_args: dict = {},

@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import argparse
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from config import (
@@ -59,7 +59,7 @@ ADDITIONAL_ARGS: dict[str, dict[str, Any]] = {
 def create_pipeline(
     model_name: str,
     model_dtype: str,
-    override_model_path: Optional[str] = None,
+    override_model_path: str | None = None,
 ) -> DiffusionPipeline:
     """Create and return an appropriate pipeline based on the model_name provided."""
     # Convert string to torch.dtype
@@ -72,10 +72,7 @@ def create_pipeline(
     else:
         raise ValueError(f"Unknown model dtype {model_dtype}.")
 
-    if override_model_path:
-        model_path = override_model_path
-    else:
-        model_path = MODEL_ID[model_name]
+    model_path = override_model_path if override_model_path else MODEL_ID[model_name]
 
     if model_name == "sd3-medium":
         return StableDiffusion3Pipeline.from_pretrained(model_path, torch_dtype=torch_dtype)
@@ -234,11 +231,9 @@ def main() -> None:
     pipe.to("cuda") if not args.cpu_offloading else pipe.enable_model_cpu_offload()
 
     # Choose correct backbone (unet or transformer) for the loaded pipeline
-    if args.model not in ["sd3-medium", "flux-dev", "flux-schnell"]:
-        backbone = pipe.unet
-    else:
-        # For SD3 and Flux, apparently your backbone is pipe.transformer
-        backbone = pipe.transformer
+    backbone = (
+        pipe.transformer if args.model in ["sd3-medium", "flux-dev", "flux-schnell"] else pipe.unet
+    )
 
     # Adjust calibration steps to be number of batches
     args.calib_size = args.calib_size // args.batch_size
@@ -273,10 +268,9 @@ def main() -> None:
                 raise NotImplementedError("Only 'default' collect method is implemented for fp8.")
             quant_config = FP8_DEFAULT_CONFIG
         elif args.format == "fp4":
-            if args.model.startswith("flux"):
-                quant_config = NVFP4_FP8_MHA_FLUX_CONFIG
-            else:
-                quant_config = NVFP4_DEFAULT_CONFIG
+            quant_config = (
+                NVFP4_FP8_MHA_FLUX_CONFIG if args.model.startswith("flux") else NVFP4_DEFAULT_CONFIG
+            )
         else:
             raise NotImplementedError(f"Unknown format {args.format}.")
 

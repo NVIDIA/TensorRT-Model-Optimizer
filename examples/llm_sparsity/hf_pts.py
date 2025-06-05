@@ -110,7 +110,7 @@ def get_model(ckpt_path, dtype="fp16", trust_remote_code=False):
 
 def main(args):
     if not torch.cuda.is_available():
-        raise EnvironmentError("GPU is required for inference.")
+        raise OSError("GPU is required for inference.")
 
     random.seed(1234)
     np.random.seed(1234)
@@ -121,7 +121,7 @@ def main(args):
     )
     if tokenizer.pad_token is None:
         smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+            special_tokens_dict={"pad_token": DEFAULT_PAD_TOKEN},
             tokenizer=tokenizer,
             model=model,
         )

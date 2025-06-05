@@ -17,7 +17,7 @@ import json
 import os
 import tempfile
 import time
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 import onnxruntime as ort
@@ -34,7 +34,7 @@ class ORTLocalClient(RuntimeClient):
     """A client for using the local onnx runtime with CPU backend."""
 
     @property
-    def _profile_defaults(self) -> dict[str, Union[int, float]]:
+    def _profile_defaults(self) -> dict[str, int | float]:
         """Default profiling parameters."""
         return {
             "iterations": 10,
@@ -62,7 +62,9 @@ class ORTLocalClient(RuntimeClient):
             "onnx_opset": ["13"],
         }
 
-    def _ir_to_compiled(self, ir_bytes: bytes, compilation_args: dict[str, Any] = None) -> bytes:
+    def _ir_to_compiled(
+        self, ir_bytes: bytes, compilation_args: dict[str, Any] | None = None
+    ) -> bytes:
         """Converts an ONNX model to a compiled device model."""
         return ir_bytes  # ir_bytes (onnx) are also compiled model for ORT
 
@@ -83,7 +85,7 @@ class ORTLocalClient(RuntimeClient):
         }[onnx_type]
 
     def _init_session(
-        self, compiled_model: bytes, session_options: Optional[ort.SessionOptions] = None
+        self, compiled_model: bytes, session_options: ort.SessionOptions | None = None
     ) -> ort.InferenceSession:
         """Initializes an inference session with the compiled model and returns the session."""
         provider = self._accelerator_to_provider[self.deployment["accelerator"]]
@@ -112,7 +114,7 @@ class ORTLocalClient(RuntimeClient):
 
             # end profiling and load results
             prof_file = ort_session.end_profiling()
-            with open(prof_file, "r") as p_file:
+            with open(prof_file) as p_file:
                 results = json.load(p_file)
 
         # get latency from profiling results (latencies are in nano-seconds)

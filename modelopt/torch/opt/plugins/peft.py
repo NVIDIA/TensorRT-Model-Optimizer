@@ -16,7 +16,7 @@
 """ModelOpt plugin for enabling automatic save/restore of ModelOpt state for `peft` library."""
 
 import os
-from typing import Callable
+from collections.abc import Callable
 
 import torch
 from peft import PeftModel

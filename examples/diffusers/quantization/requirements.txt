@@ -1,6 +1,5 @@
 cuda-python
 nvtx
-onnx-weekly
 onnx_graphsurgeon
 opencv-python>=4.8.1.78
 sentencepiece

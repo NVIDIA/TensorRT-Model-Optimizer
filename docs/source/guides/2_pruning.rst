@@ -77,7 +77,7 @@ Prerequisites
    Loss function is used to run some forward and backward passes on the train dataloader to get the gradients.
 #. Please see the API reference of :meth:`mtp.prune() <modelopt.torch.prune.pruning.prune>` for more details.
 
-Below we show an example using :class:`"fastnas" <modelopt.torch.prune.mode.FastNASModeDescriptor>`.
+Below we show an example using :class:`"fastnas" <modelopt.torch.prune.fastnas.FastNASModeDescriptor>`.
 
 Perform pruning
 ---------------
@@ -170,7 +170,7 @@ Customizing pruning config
 --------------------------
 
 In the above example, we have used the default mode config for ``mtp.prune()``. You can see it using
-:meth:`mtp.config.FastNASConfig() <modelopt.torch.prune.config.FastNASConfig>`.
+:meth:`mtp.fastnas.FastNASConfig() <modelopt.torch.prune.fastnas.FastNASConfig>`.
 You can also specify custom mode configs to have a different search space. See
 :meth:`mtp.prune() <modelopt.torch.prune.pruning.prune>` documentation for more information. An
 example config is shown below:
@@ -180,7 +180,7 @@ example config is shown below:
     import modelopt.torch.prune as mtp
 
     # config to restrict the search space to have a Conv2d out channels as multiple of 64
-    ss_config = mtp.config.FastNASConfig()
+    ss_config = mtp.fastnas.FastNASConfig()
     ss_config["nn.Conv2d"]["*"]["channel_divisor"] = 64
 
     # run pruning as shown above

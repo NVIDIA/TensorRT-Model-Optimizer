@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import os
-from typing import Sequence
+from collections.abc import Sequence
 
 import numpy as np
 import onnx

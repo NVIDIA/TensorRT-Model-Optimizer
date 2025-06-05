@@ -14,8 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -e
-set -o pipefail
+set -eo pipefail
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
@@ -32,6 +31,14 @@ while [ $# -gt 0 ]; do
     --dataset*)
       if [[ "$1" != *=* ]]; then shift; fi
       DATASET="${1#*=}"
+      ;;
+    --train_size*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      TRAIN_SIZE="${1#*=}"
+      ;;
+    --eval_size*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      EVAL_SIZE="${1#*=}"
       ;;
     --num_epochs*)
       if [[ "$1" != *=* ]]; then shift; fi
@@ -102,7 +109,9 @@ DEFAULT_SAVE_STEPS=$((192 / GPU_COUNT))
 
 MODEL=${MODEL:-"meta-llama/Llama-2-7b-hf"}
 OUTPUT_DIR=${OUTPUT_DIR:-"llama2-finetune"}
-DATASET=${DATASET:-"samsum"}
+DATASET=${DATASET:-"Daring-Anteater"}
+TRAIN_SIZE=${TRAIN_SIZE:-0}
+EVAL_SIZE=${EVAL_SIZE:-0}
 NUM_EPOCHS=${NUM_EPOCHS:-1}
 SAVE_STEPS=${SAVE_STEPS:-$DEFAULT_SAVE_STEPS}
 ACCUM_STEPS=${ACCUM_STEPS:-1}
@@ -143,6 +152,8 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --do_eval True \
     --output_dir $OUTPUT_DIR \
     --dataset $DATASET \
+    --train_size $TRAIN_SIZE \
+    --eval_size $EVAL_SIZE \
     --num_train_epochs $NUM_EPOCHS \
     --per_device_train_batch_size $TRAIN_BS \
     --per_device_eval_batch_size $EVAL_BS \

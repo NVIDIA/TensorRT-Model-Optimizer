@@ -15,7 +15,8 @@
 
 """Plugin to add NAS/Pruning support for megatron-core GPT model."""
 
-from typing import Any, Callable, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -60,7 +61,7 @@ from modelopt.torch.utils import (
     random,
 )
 
-from .._algorithms import (
+from ..algorithms import (
     MODULE_TYPE_TO_CONSTRAINTS_FUNC,
     ConstraintEvalFunc,
     ConstraintInterpolator,
@@ -102,9 +103,7 @@ class _DynamicParallelLinear(DynamicModule):
         return get_sliced_tensor(mod, weight, "output_size", "input_size")
 
     @staticmethod
-    def _get_bias(
-        mod: "_DynamicParallelLinear", bias: Optional[torch.Tensor]
-    ) -> Optional[torch.Tensor]:
+    def _get_bias(mod: "_DynamicParallelLinear", bias: torch.Tensor | None) -> torch.Tensor | None:
         return get_sliced_tensor(mod, bias, "output_size")
 
 
@@ -226,10 +225,11 @@ class _DynamicMLP(DynamicModule):
         self.linear_fc2 = DMRegistry.convert(self.linear_fc2)
 
         ffn_hidden_size = TracedHp(list(range(1, self.config.ffn_hidden_size + 1)))
-        if self.config.gated_linear_unit:
-            fc1_output_size = RepeatedTracedHp(ffn_hidden_size, 2)
-        else:
-            fc1_output_size = ffn_hidden_size
+        fc1_output_size = (
+            RepeatedTracedHp(ffn_hidden_size, 2)
+            if self.config.gated_linear_unit
+            else ffn_hidden_size
+        )
 
         self._register_hparam("ffn_hidden_size", ffn_hidden_size)
         self.linear_fc1.output_size = fc1_output_size
@@ -392,8 +392,8 @@ class _DynamicQKVColumnParallelLinear(DynamicModule, ColumnParallelLinear):
 
     @staticmethod
     def _get_bias(
-        mod: "_DynamicQKVColumnParallelLinear", bias: Optional[torch.Tensor]
-    ) -> torch.Tensor:
+        mod: "_DynamicQKVColumnParallelLinear", bias: torch.Tensor | None
+    ) -> torch.Tensor | None:
         """Return the bias tensor of the linear layer."""
         if bias is None:
             return bias
@@ -487,8 +487,8 @@ class _DynamicProjRowParallelLinear(DynamicModule, RowParallelLinear):
 
     @staticmethod
     def _get_bias(
-        mod: "_DynamicProjRowParallelLinear", bias: Optional[torch.Tensor]
-    ) -> torch.Tensor:
+        mod: "_DynamicProjRowParallelLinear", bias: torch.Tensor | None
+    ) -> torch.Tensor | None:
         """Return the bias tensor of the linear layer."""
         return get_sliced_tensor(mod, bias, "output_size")
 
@@ -668,10 +668,7 @@ class _DynamicTransformerLayer(DynamicModule):
 
     def _layer_imp_forward_hook(self, module, args, kwargs, output) -> None:
         """Hook to collect cosine similarity between input and output to rank layers for depth pruning."""
-        if "hidden_states" in kwargs:
-            hidden_states = kwargs["hidden_states"]
-        else:
-            hidden_states = args[0]
+        hidden_states = kwargs["hidden_states"] if "hidden_states" in kwargs else args[0]
 
         output, _ = output  # [seq_len, batch_size, hidden_size]
 
@@ -969,12 +966,12 @@ class MegatronConstraintsFunc(ConstraintsFunc):
         self,
         model: MegatronModule,
         constraints: ConstraintsDict,
-        dummy_input: Union[Any, tuple],
-        deployment: Optional[dict] = None,
+        dummy_input: Any | tuple[Any, ...],
+        deployment: dict | None = None,
         fast_eval: bool = True,
     ):
         """Initialize with additional data parallel group info from megatron."""
-        for key, _ in constraints.items():
+        for key in constraints:
             if key != "params":
                 raise ValueError("Only params constraints is supported for MegatronModule!")
 
@@ -1009,7 +1006,7 @@ class MegatronConstraintsFunc(ConstraintsFunc):
             "params": self._get_params,
         }
 
-    def _get_params(self, _: Optional[ConstraintsRes] = None) -> float:
+    def _get_params(self, _: ConstraintsRes | None = None) -> float:
         """Get number of model parameters from forward pass."""
         params = param_num_from_forward(self.model, args=self.dummy_input, unit=1.0)
         reduced_params = torch.Tensor([params]).to(device=get_module_device(self.model))
@@ -1017,19 +1014,19 @@ class MegatronConstraintsFunc(ConstraintsFunc):
         torch.distributed.all_reduce(reduced_params, group=get_tensor_model_parallel_group())
         return reduced_params.item()
 
-    def _get_flops(self, _: Optional[ConstraintsRes] = None) -> float:
+    def _get_flops(self, _: ConstraintsRes | None = None) -> float:
         """Get inference FLOPs."""
         raise NotImplementedError
 
-    def _get_flops_min_depth(self, _: Optional[ConstraintsRes] = None) -> float:
+    def _get_flops_min_depth(self, _: ConstraintsRes | None = None) -> float:
         """Get inference FLOPs with depth set to minimum."""
         raise NotImplementedError
 
-    def _get_true_latency(self, _: Optional[ConstraintsRes] = None) -> float:
+    def _get_true_latency(self, _: ConstraintsRes | None = None) -> float:
         """Get true inference latency."""
         raise NotImplementedError
 
-    def _get_latency(self, precomputed: Optional[ConstraintsRes] = None) -> float:
+    def _get_latency(self, precomputed: ConstraintsRes | None = None) -> float:
         """Get inference latency from interpolator."""
         raise NotImplementedError
 

@@ -40,7 +40,7 @@ def tiny_alexnet():
     return alexnet(num_classes=10)  # Same class as tiny_mobilenet
 
 
-@pytest.fixture()
+@pytest.fixture
 def distillation_model():
     student = tiny_mobilenet().train()
     config = {

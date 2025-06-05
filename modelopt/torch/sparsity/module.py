@@ -15,15 +15,13 @@
 
 """Dynamic class for all sparse modules."""
 
-from typing import Optional
-
 import torch
 from torch import nn
 
 from modelopt.torch.opt.dynamic import DynamicModule, _DMRegistryCls
 from modelopt.torch.opt.hparam import Hparam
 
-__all__ = ["SparseModule", "SpDMRegistry"]
+__all__ = ["SpDMRegistry", "SparseModule"]
 
 
 SpDMRegistry = _DMRegistryCls(prefix="Sparse")  # global instance for the sparsity registry
@@ -67,7 +65,7 @@ class SparseModule(DynamicModule):
             hp.active = -1
             self._weight_mask = torch.ones_like(self.weight, dtype=torch.bool)
 
-    def set_mask(self, value: Optional[torch.BoolTensor]):
+    def set_mask(self, value: torch.BoolTensor | None):
         """Set the active sparse mask of the module weights."""
         if value is None:
             self._weight_mask = None

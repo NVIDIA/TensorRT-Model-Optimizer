@@ -54,8 +54,7 @@ def quantize_model(model, args, tokenizer, processor=None):
     )
     batch_size = get_max_batch_size(model, sample_memory_usage_ratio=sample_memory_usage_ratio)
     calib_size = args.calib_size
-    if batch_size > calib_size:
-        batch_size = calib_size
+    batch_size = min(batch_size, calib_size)
 
     # Handle Mllama models with VLM dataset
     if processor is not None and isinstance(processor, MllamaImageProcessor):
@@ -124,12 +123,6 @@ def main():
     )
     args = parser.parse_args()
 
-    # Temporary fix TRT-LLM 0.18
-    # TODO: remove this after TRT-LLM has changed the engine name of visual encoder of Mllama to "model.engine"
-    if args.visual_engine_dir is not None:
-        if "llama" in args.hf_model_dir.lower():
-            args.visual_engine_name = "visual_encoder.engine"
-
     # Load data
     instances = load_dataset(
         "lmms-lab/GQA", "testdev_balanced_instructions", split="testdev", token=True
@@ -140,7 +133,7 @@ def main():
         id2image[row["id"]] = row["image"].convert("RGB")
 
     # Load model
-    if args.llm_engine_dir is not None:
+    if args.engine_dir is not None:
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
         logger.set_level(args.log_level)
         # Load TensorRT engine
@@ -166,7 +159,7 @@ def main():
                 input_text = questions[0]
             elif model.model_type in ["mllama"]:
                 input_text = ["<|image|><|begin_of_text|>" + question for question in questions]
-            _, output_text = model.run(input_text, raw_images, args.max_new_tokens)
+            _, output_text = model.run(input_text, raw_images, None, args.max_new_tokens)
             outputs.extend(
                 [
                     {
@@ -199,7 +192,7 @@ def main():
             ].copy()
 
             generation_config = GenerationConfig.from_pretrained(args.hf_model_dir + "/llm")
-            generation_config.update(**{"max_new_tokens": args.max_new_tokens})
+            generation_config.update(max_new_tokens=args.max_new_tokens)
         elif "llama" in args.hf_model_dir.lower():
             model = MllamaForConditionalGeneration.from_pretrained(
                 args.hf_model_dir,

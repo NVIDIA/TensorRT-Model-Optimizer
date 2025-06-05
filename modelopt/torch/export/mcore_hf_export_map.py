@@ -17,7 +17,7 @@
 """Custom mapping from Megatron Core models to their Hugging Face counter part."""
 
 import copy
-from typing import Any, Dict
+from typing import Any
 
 COL_PARALLEL = {"sharding_dim": 0}
 ROW_PARALLEL = {"sharding_dim": 1}
@@ -27,7 +27,7 @@ class CustomModuleMapping:
     """A custom module mapping from Megatron Core to its HF counter part."""
 
     def __init__(
-        self, func_name: str = "", target_name_or_prefix: str = "", func_kwargs: Dict[str, Any] = {}
+        self, func_name: str = "", target_name_or_prefix: str = "", func_kwargs: dict[str, Any] = {}
     ):
         """Create a custom module mapping."""
         self.func_name = func_name
@@ -35,7 +35,7 @@ class CustomModuleMapping:
         self.func_kwargs = func_kwargs
 
 
-llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
+llama_causal_lm_export: dict[str, CustomModuleMapping] = {
     "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
     "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
     "linear_qkv": CustomModuleMapping(
@@ -52,7 +52,7 @@ llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
     "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
 }
 
-medusa_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
+medusa_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
     # MedusaForCausalLM support
     "lm_head": CustomModuleMapping(
         "name_remapping", "medusa_heads.{}.1."
@@ -61,7 +61,7 @@ medusa_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
     "linear": CustomModuleMapping("name_remapping", "medusa_heads.{}.{}.linear."),
 }
 
-eagle_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
+eagle_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
     "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
     "enorm": CustomModuleMapping("name_remapping", "enorm."),
     "hnorm": CustomModuleMapping("name_remapping", "hnorm."),
@@ -79,9 +79,7 @@ eagle_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
     "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
 }
 
-#
-#
-eagle3_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
+eagle3_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
     "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
     "enorm": CustomModuleMapping("name_remapping", "midlayer.input_layernorm."),
     "fc": CustomModuleMapping("name_remapping", "fc."),
@@ -100,7 +98,7 @@ eagle3_llama_causal_lm_export: Dict[str, CustomModuleMapping] = {
 
 
 # Example on adding a new CausalLM.
-nemotron_causal_lm_export_delta: Dict[str, CustomModuleMapping] = {
+nemotron_causal_lm_export_delta: dict[str, CustomModuleMapping] = {
     # NemotronForCausalLM is using square-relu where no gated handle is needed.
     "linear_fc1": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.up_proj."),
     # EagleForCausalLM support
@@ -112,7 +110,7 @@ nemotron_causal_lm_export_delta: Dict[str, CustomModuleMapping] = {
 nemotron_causal_lm_export = copy.deepcopy(llama_causal_lm_export)
 nemotron_causal_lm_export.update(nemotron_causal_lm_export_delta)
 
-deepseek_causal_lm_export: Dict[str, CustomModuleMapping] = {
+deepseek_causal_lm_export: dict[str, CustomModuleMapping] = {
     "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
     "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
     "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
@@ -278,7 +276,7 @@ deepseek_causal_lm_export: Dict[str, CustomModuleMapping] = {
 }
 
 
-all_mcore_hf_export_mapping: Dict[str, Any] = {
+all_mcore_hf_export_mapping: dict[str, Any] = {
     "DeepseekV2ForCausalLM": deepseek_causal_lm_export,
     "DeepseekV3ForCausalLM": deepseek_causal_lm_export,
     "LlamaForCausalLM": llama_causal_lm_export,
@@ -289,7 +287,7 @@ all_mcore_hf_export_mapping: Dict[str, Any] = {
 }
 
 
-llama_causal_lm_import: Dict[str, CustomModuleMapping] = {
+llama_causal_lm_import: dict[str, CustomModuleMapping] = {
     "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens.", COL_PARALLEL),
     "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
     "linear_qkv": CustomModuleMapping("qkv_merging", "model.layers.{}.self_attn.", COL_PARALLEL),
@@ -416,7 +414,7 @@ deepseek_v3_causal_lm_import = {
     ),
 }
 
-all_mcore_hf_import_mapping: Dict[str, Any] = {
+all_mcore_hf_import_mapping: dict[str, Any] = {
     "LlamaForCausalLM": llama_causal_lm_import,
     "DeepseekV2ForCausalLM": deepseek_v3_causal_lm_import,
     "DeepseekV3ForCausalLM": deepseek_v3_causal_lm_import,

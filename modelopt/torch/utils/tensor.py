@@ -20,7 +20,7 @@ from collections import abc
 import numpy as np
 import torch
 
-__all__ = ["torch_to", "torch_detach", "torch_to_numpy", "numpy_to_torch"]
+__all__ = ["numpy_to_torch", "torch_detach", "torch_to", "torch_to_numpy"]
 
 
 def torch_to(data, *args, **kwargs):

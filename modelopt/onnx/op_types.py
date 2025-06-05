@@ -120,7 +120,7 @@ def is_copy_op(op_type: str):
 
 def is_linear_op(op_type: str):
     """Returns whether the given op type is of Linear category or not."""
-    return op_type in ["Conv", "Gemm", "MatMul"]
+    return op_type in ["Conv", "ConvTranspose", "Gemm", "MatMul"]
 
 
 def is_pointwise_or_elementwise_op(op_type: str):

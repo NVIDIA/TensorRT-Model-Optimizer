@@ -20,7 +20,7 @@ from _test_utils.torch_model.vision_models import (
 )
 from torchprofile import profile_macs
 
-from modelopt.torch.nas._algorithms import ConstraintsFunc
+from modelopt.torch.nas.algorithms import ConstraintsFunc
 from modelopt.torch.utils import param_num, remove_bn
 
 try:

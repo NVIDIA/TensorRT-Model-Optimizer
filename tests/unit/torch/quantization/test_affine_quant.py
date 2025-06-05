@@ -48,14 +48,14 @@ class TestAffineBMMQuantizer:
     @pytest.mark.parametrize("num_bits", [(2, 1), (4, 3)])
     @pytest.mark.parametrize("type", ["static", "dynamic"])
     @pytest.mark.parametrize("method", ["mean", "max_min"])
-    @pytest.mark.parametrize("axis", [(-1,), (-1, -3), (-1, -2, -3), (-1, -2, -3)])
+    @pytest.mark.parametrize("axis", [(-1,), (-1, -3), (-1, -2, -3)])
     def test_bias_static(self, num_bits, type, method, axis):
         # Test static kv bias quantization
 
         x = torch.randn(2, 3, 4, 5)
 
         # reduce_axis conversion: (-1, -3) -> {-1: None, -3: None}
-        reduce_axis = {ax: None for ax in axis}
+        reduce_axis = dict.fromkeys(axis)
 
         quant_cfg_dict = {
             "num_bits": num_bits,

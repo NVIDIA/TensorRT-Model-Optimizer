@@ -16,7 +16,7 @@
 """An extension of the DynamicSpace to handle searchable units and related utilities."""
 
 import fnmatch
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -29,15 +29,15 @@ from modelopt.torch.utils import random
 from .registry import DMRegistry
 from .traced_hp import TracedHp, TracedHpRegistry
 
-__all__ = ["generate_search_space", "SearchSpace"]
+__all__ = ["SearchSpace", "generate_search_space"]
 
-SampleFunc = Union[random.FSample, dict[str, random.FSample]]
+SampleFunc = random.FSample | dict[str, random.FSample]
 
 
 class SearchSpace(DynamicSpace):
     """Stub for search space interface."""
 
-    def __init__(self, model: nn.Module, sym_map: Optional[SymMap] = None) -> None:
+    def __init__(self, model: nn.Module, sym_map: SymMap | None = None) -> None:
         """Initialize the search space from the model and its associated symbolic map."""
         super().__init__(model)
         self._sym_map = sym_map
@@ -59,7 +59,7 @@ class SearchSpace(DynamicSpace):
     def _should_be_converted(self, mod: nn.Module) -> bool:
         return self._sym_map is None or mod in self._sym_map
 
-    def generate(self, rules: Optional[RulesDict] = None) -> None:
+    def generate(self, rules: RulesDict | None = None) -> None:
         """Generate the search space from the model + symbolic map."""
         # sanity checks
         assert isinstance(self._sym_map, SymMap), "Model's sym_map was not provided!"
@@ -114,7 +114,7 @@ class SearchSpace(DynamicSpace):
             sample_func = {"*": sample_func}
 
         # sample configurable hparams
-        f_sample: Optional[random.FSample]
+        f_sample: random.FSample | None
         for hp_name, hp in self.named_hparams(configurable=True):
             for pattern, f_sample in sample_func.items():
                 if fnmatch.fnmatch(hp_name, pattern):
@@ -127,7 +127,7 @@ class SearchSpace(DynamicSpace):
         return self.config()
 
     @torch.no_grad()
-    def sort_parameters(self, hps_to_sort: Optional[set[str]] = None) -> None:
+    def sort_parameters(self, hps_to_sort: set[str] | None = None) -> None:
         """A graph propagation based parameter sorting algorithm.
 
         Args:
@@ -167,10 +167,11 @@ class SearchSpace(DynamicSpace):
         hp_visited = set()  # Only highlight configurable hparams once
         for name, hp in self.named_hparams():
             if not any(name.endswith(s) for s in skipped_hparams):
-                if len(hp.choices) > 8:
-                    choices_to_print = hp.choices[:4] + ["..."] + hp.choices[-4:]
-                else:
-                    choices_to_print = hp.choices
+                choices_to_print = (
+                    hp.choices[:4] + ["..."] + hp.choices[-4:]
+                    if len(hp.choices) > 8
+                    else hp.choices
+                )
                 if hp.is_configurable and hp not in hp_visited:
                     hp_visited.add(hp)
                     prefix = "*"
@@ -181,7 +182,7 @@ class SearchSpace(DynamicSpace):
         print("{:-^100}".format(""))
 
 
-def generate_search_space(model: nn.Module, rules: Optional[RulesDict] = None) -> SearchSpace:
+def generate_search_space(model: nn.Module, rules: RulesDict | None = None) -> SearchSpace:
     """Patch model with dynamic units and generate/return the search space.
 
     Args:

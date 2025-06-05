@@ -134,5 +134,5 @@ def infer(pipe):
 
 def prepare(pipe, config_list):
     model = get_model(pipe)
-    assert model.__class__ in CACHED_PIPE.keys(), f"{model.__class__} is not supported!"
+    assert model.__class__ in CACHED_PIPE, f"{model.__class__} is not supported!"
     cachify(model, config_list, CACHED_PIPE[model.__class__])

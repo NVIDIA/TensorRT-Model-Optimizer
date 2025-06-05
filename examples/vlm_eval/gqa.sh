@@ -52,12 +52,8 @@ while [[ $# -gt 0 ]]; do
             HF_MODEL_DIR="$2"
             shift 2
             ;;
-        --visual_engine)
-            VISUAL_ENGINE_DIR="$2"
-            shift 2
-            ;;
-        --llm_engine)
-            LLM_ENGINE_DIR="$2"
+        --engine_dir)
+            ENGINE_DIR="$2"
             shift 2
             ;;
         --batch_size)
@@ -92,7 +88,7 @@ fi
 
 MODEL_NAME=$(basename $HF_MODEL_DIR | sed 's/[^0-9a-zA-Z\-]/_/g' | tr 'A-Z' 'a-z')
 
-if [[ "$MODEL_NAME" == *"vila"* ]] && [[ -z "$LLM_ENGINE_DIR" ]]; then
+if [[ "$MODEL_NAME" == *"vila"* ]] && [[ -z "$ENGINE_DIR" ]]; then
     # Install required dependency for VILA
     pip install -r requirements-vila.txt
     # Clone oringinal VILA repo
@@ -111,8 +107,8 @@ if [[ -z "$BATCH_SIZE" && ("$MODEL_NAME" == *"vila"* || "$MODEL_NAME" == *"llava
 fi
 
 # Check if TRT engine is provided
-if [ -z "$VISUAL_ENGINE_DIR" ] || [ -z "$LLM_ENGINE_DIR" ]; then
-    echo "Either --visual_engine or --llm_engine not provided, evaluation will be based on Pytorch."
+if [ -z "$ENGINE_DIR" ]; then
+    echo "ENGINE_DIR not provided, evaluation will be based on Pytorch."
     if [ -z "$QUANT_CFG" ]; then
         ANSWER_DIR="$script_dir/gqa/$MODEL_NAME/llava_gqa_testdev_balanced/answers"
         ANSWERS_FILE="$ANSWER_DIR/merge.jsonl"
@@ -122,7 +118,7 @@ if [ -z "$VISUAL_ENGINE_DIR" ] || [ -z "$LLM_ENGINE_DIR" ]; then
     fi
 else
     echo "Both --visual_engine or --llm_engine are provided, evaluation will be based on TRT engine."
-    ANSWER_DIR="$script_dir/gqa/$(basename $LLM_ENGINE_DIR)/llava_gqa_testdev_balanced/answers"
+    ANSWER_DIR="$script_dir/gqa/$(basename $ENGINE_DIR)/llava_gqa_testdev_balanced/answers"
     ANSWERS_FILE="$ANSWER_DIR/merge.jsonl"
 fi
 
@@ -131,8 +127,7 @@ if [ ! -f $ANSWERS_FILE ]; then
     python model_gqa_loader.py \
         --answers_file "$ANSWERS_FILE" \
         --hf_model_dir "$HF_MODEL_DIR" \
-        ${VISUAL_ENGINE_DIR:+--visual_engine_dir "$VISUAL_ENGINE_DIR"} \
-        ${LLM_ENGINE_DIR:+--llm_engine_dir "$LLM_ENGINE_DIR"} \
+        ${ENGINE_DIR:+--engine_dir "$ENGINE_DIR"} \
         ${BATCH_SIZE:+--batch_size "$BATCH_SIZE"} \
         ${QUANT_CFG:+--quant_cfg "$QUANT_CFG"} \
         --kv_cache_free_gpu_memory_fraction "$KV_CACHE_FREE_GPU_MEMORY_FRACTION"

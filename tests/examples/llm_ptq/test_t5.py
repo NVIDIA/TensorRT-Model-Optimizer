@@ -13,20 +13,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import subprocess
+from pathlib import Path
+
 import pytest
 from _test_utils.examples.run_command import run_llm_ptq_command
 
 T5_PATH = "google-t5/t5-small"
 
 
-# TODO: Enable T5 quantization after the bug is fixed
-@pytest.mark.skip(reason="T5 quantization tests are disabled due to a bug")
-@pytest.mark.parametrize("quant, export_fmt", [("fp16", "tensorrt_llm")])
+@pytest.fixture(scope="session", autouse=True)
+def install_t5_requirements():
+    subprocess.run(
+        ["pip", "install", "-r", "requirements-t5.txt"],
+        cwd=Path(__file__).parent.parent.parent.parent / "examples/llm_ptq",
+        check=True,
+    )
+
+
+@pytest.mark.parametrize(("quant", "export_fmt"), [("fp16", "tensorrt_llm")])
 def test_t5(quant, export_fmt):
     run_llm_ptq_command(model=T5_PATH, quant=quant, export_fmt=export_fmt)
 
 
-@pytest.mark.skip(reason="T5 quantization tests are disabled due to a bug")
-@pytest.mark.parametrize("quant, export_fmt", [("fp8", "tensorrt_llm")])
+@pytest.mark.parametrize(("quant", "export_fmt"), [("fp8", "tensorrt_llm")])
 def test_t5_sm89(require_sm89, quant, export_fmt):
     run_llm_ptq_command(model=T5_PATH, quant=quant, export_fmt=export_fmt)

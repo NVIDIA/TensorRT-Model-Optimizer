@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText:Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,95 +31,70 @@ import argparse
 import concurrent.futures
 import json
 import os
+import sys
 
-import openai
 import tqdm
-from fastchat.model.model_adapter import get_conversation_template
 from openai import OpenAI
 
-# Modify OpenAI's API key and API base to use vLLM's API server.
-client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="token-abc123",
-)
-
-base_url_pool = []
-
-# List models API
-for i in range(10):
-    openai.base_url = "http://localhost:8000{}/v1".format(i)
-
-    try:
-        models = client.models.list().data[0].id
-        print(openai.base_url, models)
-        base_url_pool.append(openai.base_url)
-    except Exception as e:
-        print(e)
-        break
-
-print("API base pool: ", base_url_pool)
-
 parser = argparse.ArgumentParser()
-parser.add_argument("--data_path", type=str)
-parser.add_argument("--output_path", type=str)
-parser.add_argument("--num_threads", type=int, default=256)
-parser.add_argument("--temperature", type=float, default=0.0)
-parser.add_argument("--max_tokens", type=int, default=2048)
-parser.add_argument("--chat", action="store_true")
-parser.add_argument("--system_prompt", nargs="+", type=str, default="")
+parser.add_argument("--data_path", type=str, help="Path to the data file")
+parser.add_argument("--output_path", type=str, help="Path to the output file")
+parser.add_argument(
+    "--num_threads", type=int, default=256, help="Number of threads to use (batch size)"
+)
+parser.add_argument("--temperature", type=float, default=0.0, help="Temperature for the model")
+parser.add_argument(
+    "--max_tokens", type=int, default=2048, help="Maximum number of tokens to generate"
+)
+parser.add_argument("--chat", action="store_true", help="Use chat mode")
+parser.add_argument("--model", type=str, default="model", help="Model name")
+parser.add_argument("--url", type=str, default="http://localhost:8000/v1", help="URL of the API")
+parser.add_argument("--api_key", type=str, default="token-abc123", help="API key (if any)")
+parser.add_argument(
+    "--log_empty_conversations", action="store_true", help="Log empty conversations"
+)
+parser.add_argument("--system_prompt", nargs="+", type=str, default="", help="System prompt")
 args = parser.parse_args()
 
 
 if args.data_path.endswith("jsonl"):
-    with open(args.data_path, "r") as f:
+    with open(args.data_path) as f:
         data = [json.loads(line) for line in f]
 else:
-    data = json.load(open(args.data_path, "r"))
+    data = json.load(open(args.data_path))
+
+client = OpenAI(
+    base_url=args.url,
+    api_key=args.api_key,
+)
 
 
 def generate_data(messages, idx, system_prompt):
     try:
-        # load balanced
-        openai.base_url = base_url_pool[idx % len(base_url_pool)]
-        model_name = client.models.list().data[0].id
+        model_name = args.model
 
         if args.chat:
-            converted_messages = []
             output_messages = []
 
             if system_prompt and len(messages) > 0:
                 system_message = {"role": "system", "content": system_prompt}
-                converted_messages.append(system_message)
                 output_messages.append(system_message)
 
             for message in messages[::2]:
-                if message["from"].lower() != "user":
+                if message["role"].lower() != "user":
                     return
-                message["from"] = "user"
-                converted_messages.append(
-                    {
-                        "role": "user",
-                        "content": message["value"],
-                    }
-                )
+                output_messages.append(message)
                 try:
                     response = client.chat.completions.create(
                         model=model_name,
-                        messages=converted_messages,
+                        messages=output_messages,
                         max_tokens=args.max_tokens,
                         temperature=args.temperature,
                     )
                     if response.choices[0].finish_reason == "length":
                         break
                     response = response.choices[0].message.content.strip()
-                    output_messages.append(message)
                     output_messages.append(
-                        {
-                            "from": "assistant",
-                            "value": response,
-                        }
-                    )
-                    converted_messages.append(
                         {
                             "role": "assistant",
                             "content": response,
@@ -128,12 +103,18 @@ def generate_data(messages, idx, system_prompt):
                 except Exception as e:
                     print(e)
                     break
-            if len(output_messages) == 0 or (system_prompt and len(output_messages) == 1):
-                return
+            if len(output_messages) == 1 or (system_prompt and len(output_messages) == 2):
+                if not args.log_empty_conversations:
+                    return
+                to_write = {"conversation_id": idx}
+            else:
+                to_write = {"conversation_id": idx, "conversations": output_messages}
             with open(args.output_path, "a") as f:
                 # write in share gpt format
-                f.write(json.dumps({"conversations": output_messages}) + "\n")
+                f.write(json.dumps(to_write) + "\n")
         else:
+            from fastchat.model.model_adapter import get_conversation_template
+
             conv = get_conversation_template(model_name)
             conv.append_message(conv.roles[0], messages[0]["value"])
             conv.append_message(conv.roles[1], None)
@@ -144,34 +125,54 @@ def generate_data(messages, idx, system_prompt):
                 prompt=prompt,
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
-                ignore_eos=True,
+                ignore_eos=False,
                 skip_special_tokens=False,
                 spaces_between_special_tokens=False,
             )
             response = response.choices[0].text.strip()
             with open(args.output_path, "a") as f:
                 # write in share gpt format
-                f.write(json.dumps({"text": prompt + response}) + "\n")
+                if args.log_empty_conversations:
+                    to_write = {"conversation_id": idx, "text": prompt + response}
+                else:
+                    to_write = {"text": prompt + response}
+                f.write(json.dumps(to_write) + "\n")
     except Exception as e:
         print(e)
         print(prompt)
         print("Failed to generate data")
 
 
-# if output_path exists, count the number of lines and skip the first n data
-start = 0
+# if output_path exists identify the conversation_ids that have already been generated
+finished_ids = []
+done = False
 if os.path.exists(args.output_path):
-    with open(args.output_path, "r") as f:
-        start = len(f.readlines())
-        print("Skip first {} data".format(start))
+    with open(args.output_path) as f:
+        for line in f:
+            outdata = json.loads(line)
+            finished_ids.append(outdata.get("conversation_id", -1))
+            if outdata.get("finished", False):
+                done = True
+                break
+finished_ids = set(finished_ids)
+
+if done:
+    print("All conversations already generated")
+    sys.exit()
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=args.num_threads) as executor:
     futures = []
     system_prompt = " ".join(args.system_prompt)
 
-    for idx, sample in enumerate(data[start:]):
+    for idx, sample in enumerate(data):
+        if idx in finished_ids:
+            continue
         future = executor.submit(generate_data, sample["conversations"], idx, system_prompt)
         futures.append(future)
 
     for future in tqdm.tqdm(concurrent.futures.as_completed(futures), total=len(futures)):
         future.result()
+
+if args.log_empty_conversations:
+    with open(args.output_path, "a") as f:
+        f.write(json.dumps({"finished": True}) + "\n")

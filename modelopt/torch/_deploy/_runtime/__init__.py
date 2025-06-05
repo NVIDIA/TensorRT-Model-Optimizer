@@ -13,18 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from modelopt.torch.utils.import_utils import import_plugin
+
 from .registry import *
 from .runtime_client import *
 
 # no runtime_client_impl will be available if 'deploy' is not installed
-try:
+with import_plugin("ort_client", verbose=False):
     from .ort_client import *
-except ImportError:
-    pass
 
-try:
-    from .trt_client import *
-except ImportError:
+
+with import_plugin("trt_client", verbose=False):
     # ImportError if tensorrt is not installed
     # ModuleNotFoundError if .tensorrt/ is not available
-    pass
+    from .trt_client import *

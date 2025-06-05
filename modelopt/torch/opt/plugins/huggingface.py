@@ -106,12 +106,12 @@ def patch_pretrained_methods(cls: type, patch_methods: list[tuple[str, Any]]):
         # in case multiple threads patch the same library
         if hasattr(cls, "_modelopt_cache"):
             return
-        cls._modelopt_cache = {}  # type: ignore
+        cls._modelopt_cache = {}  # type: ignore[attr-defined]
         for method_name, patch_method in patch_methods:
             if not hasattr(cls, method_name):
                 warnings.warn(f"Method {method_name} not found in {cls.__name__}")
                 continue
-            cls._modelopt_cache[method_name] = getattr(cls, method_name)  # type: ignore
+            cls._modelopt_cache[method_name] = getattr(cls, method_name)  # type: ignore[attr-defined]
             setattr(cls, method_name, patch_method)
 
 

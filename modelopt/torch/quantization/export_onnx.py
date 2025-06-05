@@ -103,7 +103,6 @@
 """Utility to export a quantized torch model to quantized ONNX."""
 
 import contextlib
-from typing import Optional, Union
 
 import onnx
 import torch
@@ -146,7 +145,7 @@ def export_int8(
         amax = amax.squeeze().data
         assert len(amax.shape) == 1, "ONNX does not support multi-axis quantization."
         zero_point = torch.zeros_like(amax, dtype=torch.int32).data
-        axis = list(amax_init_shape).index(list(amax.shape)[0])
+        axis = list(amax_init_shape).index(next(iter(amax.shape)))
 
     zero_point = g.op("Constant", value_t=zero_point.to(torch_dtype_map[trt_high_precision_dtype]))
 
@@ -163,7 +162,7 @@ def export_int8(
 
     input_type = inputs.type().scalarType()
 
-    assert trt_high_precision_dtype == input_type or trt_high_precision_dtype == "Float", (
+    assert trt_high_precision_dtype in (input_type, "Float"), (
         "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
     )
 
@@ -194,7 +193,7 @@ def _fp8_quantize(
     # TRT StronglyType only supports FP16 QDQs
     # custom ops, so cast the input if needed.
     input_type = inputs.type().scalarType()
-    assert trt_high_precision_dtype == input_type or trt_high_precision_dtype == "Float", (
+    assert trt_high_precision_dtype in (input_type, "Float"), (
         "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
     )
     if trt_high_precision_dtype != input_type:
@@ -215,16 +214,16 @@ def _fp8_dequantize(
     inputs: torch.Value,
     scale_inv: float,
     trt_high_precision_dtype: str = "Float",
-    otype: str = None,
+    otype: str | None = None,
 ):
     """Helper Function for Dequantization."""
     output_shape = sym_help._get_tensor_sizes(inputs)
-    assert trt_high_precision_dtype == otype or trt_high_precision_dtype == "Float", (
+    assert trt_high_precision_dtype in (otype, "Float"), (
         "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
     )
     scale = g.op(
         "Constant",
-        value_t=torch.tensor(scale_inv, dtype=torch_dtype_map[otype]),
+        value_t=torch.tensor(scale_inv, dtype=torch_dtype_map[otype]),  # type: ignore[index]
     )
     out = g.op("trt::TRT_FP8DequantizeLinear", inputs, scale).setType(
         inputs.type().with_dtype(torch_dtype_map[trt_high_precision_dtype]).with_sizes(output_shape)
@@ -233,7 +232,7 @@ def _fp8_dequantize(
     # DQ outputs are currently constrained to FP32 due to a similar limitation in ORT
     # custom ops, so cast the output if needed.
     if trt_high_precision_dtype != otype:
-        out = g.op("Cast", out, to_i=onnx_dtype_map[otype])
+        out = g.op("Cast", out, to_i=onnx_dtype_map[otype])  # type: ignore[index]
     return out
 
 
@@ -244,10 +243,7 @@ def export_fp8(
     trt_high_precision_dtype: str,
 ):
     """Export quantized model to FP8 ONNX."""
-    if amax is None:
-        scale = 1.0
-    else:
-        scale = 448.0 / float(amax)
+    scale = 1.0 if amax is None else 448.0 / float(amax)
     otype = inputs.type().scalarType()
     q_tensor = _fp8_quantize(g, inputs, 1.0 / scale, trt_high_precision_dtype)
     return _fp8_dequantize(g, q_tensor, 1.0 / scale, trt_high_precision_dtype, otype)
@@ -258,10 +254,10 @@ def scaled_dot_product_attention(
     query: torch._C.Value,
     key: torch._C.Value,
     value: torch._C.Value,
-    attn_mask: Optional[torch._C.Value] = None,
+    attn_mask: torch._C.Value | None = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
-    scale: Optional[torch._C.Value] = None,
+    scale: torch._C.Value | None = None,
     enable_gqa: bool = False,
 ):
     """Perform scaled dot product attention."""
@@ -331,10 +327,10 @@ def export_fp8_mha(
     query: torch._C.Value,
     key: torch._C.Value,
     value: torch._C.Value,
-    attn_mask: Optional[torch._C.Value] = None,
+    attn_mask: torch._C.Value | None = None,
     dropout_p: float = 0.0,
     is_causal: bool = False,
-    scale: Optional[torch._C.Value] = None,
+    scale: torch._C.Value | None = None,
     q_quantized_scale: float = 1.0,
     k_quantized_scale: float = 1.0,
     v_quantized_scale: float = 1.0,
@@ -495,7 +491,7 @@ def _fp4_dynamic_quantize(
 def _fp4_dequantize(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
-    scale: Union[float, torch.Value],
+    scale: float | torch.Value,
     trt_high_precision_dtype: str,
 ):
     """Helper Function for Dequantization."""

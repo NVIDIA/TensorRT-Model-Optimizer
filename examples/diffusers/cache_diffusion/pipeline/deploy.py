@@ -58,8 +58,8 @@ def replace_new_forward(backbone):
         backbone.forward = types.MethodType(sd3_forward, backbone)
 
 
-def get_input_info(dummy_dict, info: str = None, batch_size: int = 1):
-    return_val = [] if info == "profile_shapes" or info == "input_names" else {}
+def get_input_info(dummy_dict, info: str | None = None, batch_size: int = 1):
+    return_val = [] if info in {"profile_shapes", "input_names"} else {}
 
     def collect_leaf_keys(d):
         for key, value in d.items():
@@ -68,13 +68,13 @@ def get_input_info(dummy_dict, info: str = None, batch_size: int = 1):
             else:
                 value = (value[0] * batch_size,) + value[1:]
                 if info == "profile_shapes":
-                    return_val.append((key, value))  # type: ignore
+                    return_val.append((key, value))  # type: ignore[attr-defined]
                 elif info == "profile_shapes_dict":
-                    return_val[key] = value  # type: ignore
+                    return_val[key] = value  # type: ignore[index]
                 elif info == "dummy_input":
-                    return_val[key] = torch.ones(value).half().cuda()  # type: ignore
+                    return_val[key] = torch.ones(value).half().cuda()  # type: ignore[index]
                 elif info == "input_names":
-                    return_val.append(key)  # type: ignore
+                    return_val.append(key)  # type: ignore[attr-defined]
 
     collect_leaf_keys(dummy_dict)
     return return_val
@@ -83,12 +83,12 @@ def get_input_info(dummy_dict, info: str = None, batch_size: int = 1):
 def complie2trt(cls, onnx_path: Path, engine_path: Path, batch_size: int = 1):
     subdirs = [f for f in onnx_path.iterdir() if f.is_dir()]
     for subdir in subdirs:
-        if subdir.name not in ONNX_CONFIG[cls].keys():
+        if subdir.name not in ONNX_CONFIG[cls]:
             continue
         model_path = subdir / "model.onnx"
         plan_path = engine_path / f"{subdir.name}.plan"
         if not plan_path.exists():
-            print(f"Building {str(model_path)}")
+            print(f"Building {model_path!s}")
             build_profile = Profile()
             profile_shapes = get_input_info(
                 ONNX_CONFIG[cls][subdir.name]["dummy_input"], "profile_shapes", batch_size
@@ -109,12 +109,12 @@ def complie2trt(cls, onnx_path: Path, engine_path: Path, batch_size: int = 1):
             )
             save_engine(engine, path=plan_path)
         else:
-            print(f"{str(model_path)} already exists!")
+            print(f"{model_path!s} already exists!")
 
 
 def get_total_device_memory(backbone):
     max_device_memory = 0
-    for _, engine in backbone.engines.items():
+    for engine in backbone.engines.values():
         max_device_memory = max(max_device_memory, engine.engine.device_memory_size)
     return max_device_memory
 
@@ -130,7 +130,7 @@ def load_engines(backbone, engine_path: Path, batch_size: int = 1):
     for engine in backbone.engines.values():
         engine.activate(shared_device_memory)
     backbone.cuda_stream = cudart.cudaStreamCreate()[1]
-    for block_name in backbone.engines.keys():
+    for block_name in backbone.engines:
         backbone.engines[block_name].allocate_buffers(
             shape_dict=get_input_info(
                 ONNX_CONFIG[backbone.__class__][block_name]["dummy_input"],
@@ -178,7 +178,7 @@ def export_onnx(backbone, onnx_path: Path):
                     opset_version=17,
                 )
             else:
-                print(f"{str(_onnx_file)} alread exists!")
+                print(f"{_onnx_file!s} alread exists!")
 
 
 def warm_up(backbone, batch_size: int = 1):

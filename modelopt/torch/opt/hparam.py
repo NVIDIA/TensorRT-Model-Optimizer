@@ -16,12 +16,13 @@
 """Standard hyperparameter class for regular symbol."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
-from typing import Callable, Generator, Optional, Sequence, Union
+from typing import Union
 
 import torch
 
-__all__ = ["Hparam", "HPType"]
+__all__ = ["HPType", "Hparam"]
 
 
 class CustomHPType(ABC):
@@ -40,7 +41,7 @@ class CustomHPType(ABC):
         """Return True if self is equal to other."""
 
 
-HPType = Union[tuple[int, ...], int, float, CustomHPType]
+HPType = tuple[int, ...] | int | float | CustomHPType
 
 
 # NOTE: Hparam class should be picklable for distributed broadcasting of hparams for Megatron pruning.
@@ -50,11 +51,11 @@ class Hparam:
     An example of such a Hparam could be an hparam with identity dependencies.
     """
 
-    Importance = Optional[torch.Tensor]
+    Importance = Union[torch.Tensor, None]  # noqa: UP007
     ImportanceEstimator = Callable[[], Importance]
-    ActiveSlice = Union[slice, torch.LongTensor]
+    ActiveSlice = Union[slice, torch.LongTensor]  # noqa: UP007
 
-    def __init__(self, choices: Sequence[HPType], original: Optional[HPType] = None) -> None:
+    def __init__(self, choices: Sequence[HPType], original: HPType | None = None) -> None:
         """Initializes Hparam with original value and choices."""
         self._original = max(choices) if original is None else original
         self._choices = sorted(set(choices) | {self.original})
@@ -63,12 +64,12 @@ class Hparam:
         self._strict_len = True  # whether the importance must be of length equal to max choice
 
         # Callback to compute hparam importance
-        self._importance_estimators: Optional[list[Hparam.ImportanceEstimator]] = [
+        self._importance_estimators: list[Hparam.ImportanceEstimator] | None = [
             self._default_get_importance
         ]
 
         # an optional order to enforce for active_slice
-        self._slice_order: Optional[torch.LongTensor] = None
+        self._slice_order: torch.LongTensor | None = None
 
     def __iter__(self) -> Generator[HPType, None, None]:
         """Iterate over choices."""
@@ -98,7 +99,7 @@ class Hparam:
         return self._active
 
     @active.setter
-    def active(self, val: Optional[HPType]):
+    def active(self, val: HPType | None):
         """Set the active value with a sanity check for choices and dynamic hparams."""
         val = self.original if val is None else val
         assert val in self._choices, f"val = {val}, choices = {self.choices}"
@@ -206,7 +207,7 @@ class Hparam:
         return sum(imps_all) if imps_all else None
 
     @torch.no_grad()
-    def enforce_order(self, order: Optional[torch.Tensor] = None) -> None:
+    def enforce_order(self, order: torch.Tensor | None = None) -> None:
         """Store a reference to this order and enforce the order for active_slice.
 
         This function enables the user to enforce an order how the active_slice is generated.
@@ -229,7 +230,7 @@ class Hparam:
 
         self._enforce_order(order)
 
-    def _enforce_order(self, order: Optional[torch.Tensor] = None) -> None:
+    def _enforce_order(self, order: torch.Tensor | None = None) -> None:
         """Private method to enforce order without sanity checks."""
         if isinstance(order, torch.Tensor):  # Always store the order as a CPU tensor
             order = order.cpu()

@@ -347,10 +347,7 @@ class DefaultModel1(BaseDeployModel):
         b: bool = False,
         f: float = 0.5,
     ):
-        if b:
-            out = x + t
-        else:
-            out = x + f
+        out = x + t if b else x + f
 
         return out
 

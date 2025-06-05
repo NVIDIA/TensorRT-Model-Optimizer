@@ -17,7 +17,6 @@
 
 import copy
 import warnings
-from typing import Optional
 
 import megatron.core
 import torch
@@ -126,10 +125,9 @@ class MedusaLayer(MegatronModule):
         """
         super().__init__(config=config)
 
-        if config.use_cpu_initialization:
-            device = torch.device("cpu")
-        else:
-            device = torch.cuda.current_device()
+        device = (
+            torch.device("cpu") if config.use_cpu_initialization else torch.cuda.current_device()
+        )
 
         self.activation_func = F.silu
 
@@ -190,7 +188,7 @@ class MedusaHead(MegatronModule):
         return self.lm_head(x)
 
     def sharded_state_dict(
-        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict = None
+        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict | None = None
     ) -> ShardedStateDict:
         """Return MCore sharded_state_dict."""
         assert not sharded_offsets, "Unexpected sharded offsets"
@@ -309,7 +307,7 @@ class _DynamicMedusaGPTModel(MedusaModel):
                 acc.append(top1_p)
 
             if get_tensor_model_parallel_rank() == 0:
-                print("Medusa Training Accuracy: {}".format(acc))
+                print(f"Medusa Training Accuracy: {acc}")
 
         # Return the original logits untouched.
         if labels is None:
@@ -331,7 +329,7 @@ class _DynamicMedusaGPTModel(MedusaModel):
         return loss
 
     def sharded_state_dict(
-        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict = None
+        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict | None = None
     ) -> ShardedStateDict:
         """Override the shared_state_dict to take care medusa_heads."""
         assert not sharded_offsets, "Unexpected sharded offsets"
@@ -349,7 +347,7 @@ class _DynamicMedusaGPTModel(MedusaModel):
         # The remedy is to pop all medusa_heads* out and call the MedusaHead sharded_state_dict()
         # again to populate the correct sharded_staet_dict.
         extra_keys = []
-        for key, val in sharded_state_dict.items():
+        for key in sharded_state_dict:
             if "medusa_heads" in key:
                 extra_keys += [key]
         for key in extra_keys:
@@ -402,7 +400,7 @@ class EagleLanguageModelEmbedding(LanguageModelEmbedding):
         self,
         prefix: str = "",
         sharded_offsets: tuple[tuple[int, int, int]] = (),
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> ShardedStateDict:
         """Different from the default, we change the state_dict to have 1 replica at pp."""
         state_dict = self.state_dict(prefix="", keep_vars=True)
@@ -424,7 +422,7 @@ class EagleTransformerBlock(TransformerBlock):
     """Only store the EAGLE decoder in the last pp stage."""
 
     def sharded_state_dict(
-        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict = None
+        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict | None = None
     ) -> ShardedStateDict:
         """Generate a sharded state dictionary for the transformer block.
 
@@ -524,16 +522,12 @@ class EagleModule(MegatronModule):
                 eagle_config, eagle_config.hidden_size, eagle_config.layernorm_epsilon
             )
 
-        if config.use_cpu_initialization:
-            device = "cpu"
-        else:
-            device = torch.cuda.current_device()
+        device = "cpu" if config.use_cpu_initialization else torch.cuda.current_device()
 
         # EAGLE-3 uses aux_hidden_states (usually >= 3); otherwise EAGLE-1
-        if self._num_aux_hidden_states > 0:
-            fc_input_size_multiplier = self._num_aux_hidden_states
-        else:
-            fc_input_size_multiplier = 2
+        fc_input_size_multiplier = (
+            self._num_aux_hidden_states if self._num_aux_hidden_states > 0 else 2
+        )
 
         # This linear was previously a ColumnParallelLinear. We changed it to a normal linear
         # since ColumnParallelLinear will have try to gather the input sequence when sequence
@@ -612,10 +606,11 @@ class EagleModule(MegatronModule):
             raise ValueError(
                 "_eagle3_layer_forward_hook can only be registered to TransformerLayer"
             )
-        if isinstance(output, torch.Tensor):
-            hidden_states = output.clone().detach()
-        else:
-            hidden_states = output[0].clone().detach()
+        hidden_states = (
+            output.clone().detach()
+            if isinstance(output, torch.Tensor)
+            else output[0].clone().detach()
+        )
         self._next_hidden_states_input = hidden_states
 
     def _eagle3_attention_forward_pre_hook(self, module, input_layernorm_output):
@@ -634,7 +629,7 @@ class EagleModule(MegatronModule):
         rotary_pos_emb: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
-        extra_block_kwargs: dict = None,
+        extra_block_kwargs: dict | None = None,
     ) -> torch.Tensor:
         """Forward function."""
         # input_ids [b, s]
@@ -656,12 +651,11 @@ class EagleModule(MegatronModule):
             decoder_input = hidden_states
 
         if rotary_pos_emb is None:
-            if self.config.multi_latent_attention:
-                # For MLA, rotary_pos_emb is computed per attention.
-                # [TODO] (chenhany): this seems wrong when training the 2nd loss
-                rotary_pos_emb = None
-            else:
-                rotary_pos_emb = self.rotary_pos_emb(seq_len)
+            # For MLA, rotary_pos_emb is computed per attention.
+            # [TODO] (chenhany): multi_latent_attention case seems wrong when training the 2nd loss
+            rotary_pos_emb = (
+                None if self.config.multi_latent_attention else self.rotary_pos_emb(seq_len)
+            )
 
         self._next_hidden_states_input = None
 
@@ -701,7 +695,7 @@ class EagleLlama3Module(EagleModule):
         use_mtp_layernorm: bool = False,
         bias: bool = False,
         num_aux_hidden_states: int = 0,
-        ffn_hidden_size: Optional[int] = 0,
+        ffn_hidden_size: int = 0,
     ):
         """Constructor."""
         eagle_config = copy.deepcopy(config)
@@ -754,10 +748,11 @@ class _DynamicEagleGPTModel(EagleModel):
             )
         if module.layer_number - 1 not in self.eagle_aux_hidden_state_layer_ids:
             return
-        if isinstance(output, torch.Tensor):
-            hidden_states = output.clone().detach()
-        else:
-            hidden_states = output[0].clone().detach()
+        hidden_states = (
+            output.clone().detach()
+            if isinstance(output, torch.Tensor)
+            else output[0].clone().detach()
+        )
         self._aux_hidden_states.append(hidden_states)
 
     def _setup(self):
@@ -895,7 +890,7 @@ class _DynamicEagleGPTModel(EagleModel):
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         position_ids: torch.Tensor,
-        features: Optional[torch.Tensor] = None,
+        features: torch.Tensor | None = None,
     ):
         """Getting EAGLE module inputs.
 
@@ -1253,7 +1248,7 @@ class _DynamicEagleGPTModel(EagleModel):
         decoder_input: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
-        extra_block_kwargs: dict = None,
+        extra_block_kwargs: dict | None = None,
     ):
         # Word and rotary positional embeddings
         if decoder_input is not None:
@@ -1265,10 +1260,7 @@ class _DynamicEagleGPTModel(EagleModel):
             # decoder will get hidden_states from decoder.input_tensor
             decoder_input = None
 
-        if mcore_version_higher_than("0.9.0"):
-            extra_kwargs = {"packed_seq_params": None}
-        else:
-            extra_kwargs = {}
+        extra_kwargs = {"packed_seq_params": None} if mcore_version_higher_than("0.9.0") else {}
 
         if self.config.multi_latent_attention:
             # For MLA, rotary_pos_emb is computed per attention.
@@ -1301,7 +1293,7 @@ class _DynamicEagleGPTModel(EagleModel):
         output_weight,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
-        extra_block_kwargs: dict = None,
+        extra_block_kwargs: dict | None = None,
     ):
         eagle_hidden_states, eagle_hidden_states_pre_final_layernorm = self.eagle_module(
             eagle_inputs["input_ids"],
@@ -1330,7 +1322,7 @@ class _DynamicEagleGPTModel(EagleModel):
         labels: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
-        extra_block_kwargs: dict = None,
+        extra_block_kwargs: dict | None = None,
         **kwargs,
     ) -> torch.Tensor:
         if input_ids is not None and (position_ids is None or attention_mask is None):
@@ -1403,9 +1395,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
-                    "{:3}/{:3} EAGLE 1st Top-1: {}".format(
-                        torch.distributed.get_rank(), torch.distributed.get_world_size(), acc
-                    ),
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 1st Top-1: {acc}",
                     flush=True,
                 )
 
@@ -1446,9 +1436,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
-                    "{:3}/{:3} EAGLE 2nd Top-1: {}".format(
-                        torch.distributed.get_rank(), torch.distributed.get_world_size(), acc
-                    ),
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 2nd Top-1: {acc}",
                     flush=True,
                 )
 
@@ -1490,9 +1478,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
-                    "{:3}/{:3} EAGLE 3rd Top-1: {}".format(
-                        torch.distributed.get_rank(), torch.distributed.get_world_size(), acc
-                    ),
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 3rd Top-1: {acc}",
                     flush=True,
                 )
 
@@ -1534,9 +1520,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
-                    "{:3}/{:3} EAGLE 4th Top-1: {}".format(
-                        torch.distributed.get_rank(), torch.distributed.get_world_size(), acc
-                    ),
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 4th Top-1: {acc}",
                     flush=True,
                 )
 
@@ -1851,7 +1835,7 @@ class _DynamicMTPGPTModel(MTPModel):
         decoder_input: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
-        extra_block_kwargs: dict = None,
+        extra_block_kwargs: dict | None = None,
     ):
         # Word and rotary positional embeddings
         if decoder_input is not None:
@@ -1863,10 +1847,7 @@ class _DynamicMTPGPTModel(MTPModel):
             # decoder will get hidden_states from decoder.input_tensor
             decoder_input = None
 
-        if mcore_version_higher_than("0.9.0"):
-            extra_kwargs = {"packed_seq_params": None}
-        else:
-            extra_kwargs = {}
+        extra_kwargs = {"packed_seq_params": None} if mcore_version_higher_than("0.9.0") else {}
 
         if self.config.multi_latent_attention:
             # For MLA, rotary_pos_emb is computed per attention.
@@ -1904,7 +1885,7 @@ class _DynamicMTPGPTModel(MTPModel):
         output_weight,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
-        extra_block_kwargs: dict = None,
+        extra_block_kwargs: dict | None = None,
     ):
         mtp_embeddings = self.embedding(
             input_ids=input_ids,
@@ -1932,7 +1913,7 @@ class _DynamicMTPGPTModel(MTPModel):
         labels: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
-        extra_block_kwargs: dict = None,
+        extra_block_kwargs: dict | None = None,
         **kwargs,
     ) -> torch.Tensor:
         if position_ids is None or attention_mask is None:
@@ -1986,11 +1967,12 @@ class _DynamicMTPGPTModel(MTPModel):
                 mtp_attention_mask[:, :, -(1 + i) :, :] = True
                 mtp_attention_mask[:, :, :, -(1 + i) :] = True
 
-                if self.config.multi_latent_attention:
-                    # For MLA, rotary_pos_emb is computed per attention.
-                    rotary_pos_emb = None
-                else:
-                    rotary_pos_emb = self.rotary_pos_emb(mtp_ids.shape[-1])
+                # For MLA, rotary_pos_emb is computed per attention.
+                rotary_pos_emb = (
+                    None
+                    if self.config.multi_latent_attention
+                    else self.rotary_pos_emb(mtp_ids.shape[-1])
+                )
 
                 hidden_states, mtp_logits = self._mtp_forward(
                     i,
@@ -2040,12 +2022,12 @@ class _DynamicMTPGPTModel(MTPModel):
                     acc.append(top1_p)
 
                 if get_tensor_model_parallel_rank() == 0:
-                    print("MTP_{} Training Accuracy: {}".format(i, acc))
+                    print(f"MTP_{i} Training Accuracy: {acc}")
 
         return loss
 
     def sharded_state_dict(
-        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict = None
+        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict | None = None
     ) -> ShardedStateDict:
         """Override the shared_state_dict to take care mtp."""
         assert not sharded_offsets, "Unexpected sharded offsets"
@@ -2063,7 +2045,7 @@ class _DynamicMTPGPTModel(MTPModel):
         # The remedy is to pop all mtp* out and call the EagleModule sharded_state_dict()
         # again to populate the correct sharded_staet_dict.
         extra_keys = []
-        for key, val in sharded_state_dict.items():
+        for key in sharded_state_dict:
             if "mtp" in key:
                 extra_keys += [key]
         for key in extra_keys:

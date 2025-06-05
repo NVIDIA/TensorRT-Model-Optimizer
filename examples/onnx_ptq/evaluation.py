@@ -16,7 +16,7 @@
 """Module to evaluate a device model for the specified task."""
 
 import random
-from typing import Any, Final, Union
+from typing import Any, Final
 
 import torch
 import torchvision.transforms as transforms
@@ -39,8 +39,8 @@ TORCH_MODEL: Final[str] = "torch_model"
 
 
 def evaluate(
-    model: Union[torch.nn.Module, bytes],
-    dummy_input: Union[Any, tuple],
+    model: torch.nn.Module | bytes,
+    dummy_input: Any | tuple,
     dataset_path: str,
     evaluation_type: str = ACCURACY,
     batch_size=1,
@@ -203,10 +203,7 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,), ra
         outputs = model(inputs)
 
         # Calculate accuracy
-        if isinstance(outputs, list):
-            outputs = outputs[0]
-        else:
-            outputs = outputs.data
+        outputs = outputs[0] if isinstance(outputs, list) else outputs.data
 
         labels_size = labels.size(0)
         total += labels_size

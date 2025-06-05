@@ -18,6 +18,7 @@ import copy
 from packaging.version import Version
 
 
+# Deprecation > 0.29
 def format_modelopt_checkpoint_by_version(modelopt_state: dict, version: str):
     if Version(version) >= Version("0.29"):
         return modelopt_state
@@ -26,11 +27,11 @@ def format_modelopt_checkpoint_by_version(modelopt_state: dict, version: str):
     for mode, state in modelopt_state["modelopt_state_dict"]:
         if "quantizer_state" not in state["metadata"]:
             continue
-        for quantizer_name, quantizer_state in state["metadata"]["quantizer_state"].items():
+        for quantizer_state in state["metadata"]["quantizer_state"].values():
             quantizer_state["_mopt_ckpt_versn"] = version
             pyt_states = quantizer_state.pop("_pytorch_state_metadata", None)
             if pyt_states is None:
                 continue
-            for k, v in pyt_states["buffers"].items():
+            for k in pyt_states["buffers"]:
                 quantizer_state["_has" + k] = True
     return modelopt_state

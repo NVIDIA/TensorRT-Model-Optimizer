@@ -24,11 +24,11 @@ from . import distributed as dist
 from .logging import print_rank_0
 
 __all__ = [
+    "AccumulatingTimer",
+    "Timer",
     "clear_cuda_cache",
     "get_cuda_memory_stats",
     "report_memory",
-    "Timer",
-    "AccumulatingTimer",
 ]
 
 

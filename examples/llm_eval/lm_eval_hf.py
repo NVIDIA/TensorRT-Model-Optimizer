@@ -37,7 +37,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import warnings
-from typing import Optional
 
 from lm_eval import utils
 from lm_eval.__main__ import cli_evaluate, parse_eval_args, setup_parser
@@ -49,9 +48,7 @@ import modelopt.torch.opt as mto
 from modelopt.torch.quantization.utils import is_quantized
 
 
-def create_from_arg_obj(
-    cls: type[T], arg_dict: dict, additional_config: Optional[dict] = None
-) -> T:
+def create_from_arg_obj(cls: type[T], arg_dict: dict, additional_config: dict | None = None) -> T:
     """Overrides the HFLM.create_from_arg_obj"""
 
     quant_cfg = arg_dict.pop("quant_cfg", None)
@@ -101,14 +98,14 @@ def setup_parser_with_modelopt_args():
         type=str,
         help=(
             "Quantization format. If `--auto_quantize_bits` is specified, this argument specifies the "
-            "comma-seperated list of quantization quantization formats that will be searched by `AutoQuantize`"
+            "comma-seperated list of quantization quantization formats that will be searched by `auto_quantize`"
         ),
     )
     parser.add_argument(
         "--auto_quantize_bits",
         type=float,
         help=(
-            "Effective bits constraint for AutoQuantize. If not set, "
+            "Effective bits constraint for auto_quantize. If not set, "
             "regular quantization will be applied."
         ),
     )

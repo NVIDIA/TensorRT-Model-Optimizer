@@ -16,7 +16,6 @@
 """Module containing native torch layer-specific symbolic information and implementations."""
 
 import re
-from typing import Optional
 
 from torch import nn
 
@@ -25,7 +24,7 @@ from ..symbols import Symbol, SymInfo, SymMap
 __all__ = ["SymDepth"]
 
 
-def _get_ndim(mod: nn.Module) -> Optional[int]:
+def _get_ndim(mod: nn.Module) -> int | None:
     """Get ndim of a module."""
     ndim_matches = re.findall(r"\d[dD]", type(mod).__name__)
     assert len(ndim_matches) < 2, f"Found multiple ndim matches in {type(mod).__name__}"
@@ -53,10 +52,7 @@ def get_linear_sym_info(mod: nn.Module) -> SymInfo:
 def get_norm_sym_info(mod: nn.Module) -> SymInfo:
     # extract elastic dims based on norm type
     ndim = _get_ndim(mod)
-    if ndim == 1 or isinstance(mod, nn.SyncBatchNorm):
-        edims = {1}
-    else:
-        edims = {1, -(ndim + 1)}
+    edims = {1} if ndim == 1 or isinstance(mod, nn.SyncBatchNorm) else {1, -(ndim + 1)}
 
     num_features = Symbol(cl_type=Symbol.CLType.INCOMING, elastic_dims=edims)
     return SymInfo(is_shape_preserving=True, num_features=num_features)
@@ -109,7 +105,7 @@ class SymDepth(Symbol):
         """Return min depth."""
         return self.max_depth - len(self.skippable_idxs)
 
-    def disable(self, _memo: Optional[set["Symbol"]] = None) -> None:
+    def disable(self, _memo: set["Symbol"] | None = None) -> None:
         """Disable symbol."""
         super().disable(_memo)
         for i in range(len(self._is_skippable)):

@@ -149,6 +149,8 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
 
     with SequentialQuantizer.convert_to_single_quantizer(module), torch.no_grad():
         for _, m in module.named_modules():
+            if hasattr(m, "weight") and m.weight.is_meta:
+                continue
             if (
                 hasattr(m, "weight_quantizer")
                 and m.weight_quantizer.is_enabled
@@ -156,9 +158,6 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
             ):
                 if force_quantize:
                     m.weight_quantizer._dequantize = False
-                assert not m.weight.is_meta, (
-                    "Real quantization does not support tensors on meta device."
-                )
                 real_quant_tensor = m.weight_quantizer(m.weight)
                 m.weight = QTensorWrapper(real_quant_tensor)
                 dynamically_update_state_methods(m)

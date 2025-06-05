@@ -143,7 +143,18 @@ def _test_mcore_gpt_pruning(
 
 
 @pytest.mark.parametrize(
-    "num_attention_heads, num_query_groups, activation_func, normalization, ffn_div, num_attention_heads_div, num_query_groups_div, hidden_size_div, num_layers_div, uneven_pp",  # noqa: E501
+    (
+        "num_attention_heads",
+        "num_query_groups",
+        "activation_func",
+        "normalization",
+        "ffn_div",
+        "num_attention_heads_div",
+        "num_query_groups_div",
+        "hidden_size_div",
+        "num_layers_div",
+        "uneven_pp",
+    ),
     [
         (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False),  # MHA - pruned ffn/4
         (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False),  # GQA - pruned attention/2

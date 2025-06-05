@@ -24,7 +24,7 @@ from utils import convert_img2tensor, reorganize_data
 def compute_clip_iqa(data, device: str = "cuda"):
     results = defaultdict(list)
     reorg_data = reorganize_data(data)
-    for model_name in reorg_data.keys():
+    for model_name in reorg_data:
         clip_model = CLIPImageQualityAssessment(
             model_name_or_path="openai/clip-vit-large-patch14"
         ).to(device)
@@ -39,7 +39,7 @@ def compute_clip_iqa(data, device: str = "cuda"):
 def compute_clip(data, device: str = "cuda"):
     results = defaultdict(list)
     reorg_data = reorganize_data(data)
-    for model_name in reorg_data.keys():
+    for model_name in reorg_data:
         clip_model = CLIPScore(model_name_or_path="openai/clip-vit-large-patch14").to(device)
         for entry in tqdm(reorg_data[model_name], desc=f"Computing CLIP for {model_name}"):
             prompt = entry["prompt"]

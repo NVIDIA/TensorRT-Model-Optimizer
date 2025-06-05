@@ -31,7 +31,9 @@ class FakeClient(RuntimeClient):
     def _inference(self, compiled_model: bytes, inputs: list[ndarray]) -> list[ndarray]:
         raise NotImplementedError
 
-    def _ir_to_compiled(self, ir_bytes: bytes, compilation_args: dict[str, Any] = None) -> bytes:
+    def _ir_to_compiled(
+        self, ir_bytes: bytes, compilation_args: dict[str, Any] | None = None
+    ) -> bytes:
         return ir_bytes
 
     @property

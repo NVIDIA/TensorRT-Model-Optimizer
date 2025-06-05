@@ -22,7 +22,7 @@ from modelopt.torch.utils import make_divisible
 
 
 @pytest.mark.parametrize(
-    "in_features, out_features, bias, active_in_features, active_out_features",
+    ("in_features", "out_features", "bias", "active_in_features", "active_out_features"),
     [
         (12, 6, False, 2, 3),
         (4, 8, True, 1, 7),

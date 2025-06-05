@@ -95,19 +95,19 @@ def test_specify_forward_loop():
     config_loop = {"forward_loop": lambda m: m(*args)}
 
     # try specifying data_loader
-    searcher.search(model, {}, tuple(), config_data_loader)
+    searcher.search(model, {}, (), config_data_loader)
     assert searcher.forward_loop is not None
     searcher.forward_loop(model)
 
     # try specifying forward_loop
-    searcher.search(model, {}, tuple(), config_loop)
+    searcher.search(model, {}, (), config_loop)
     assert searcher.forward_loop is not None
     searcher.forward_loop(model)
 
     # try specifying None
-    searcher.search(model, {}, tuple(), {})
+    searcher.search(model, {}, (), {})
     assert searcher.forward_loop is None
 
     # try specifying both
     with pytest.raises(AssertionError, match="Only provide `data_loader` or `forward_loop`!"):
-        searcher.search(model, {}, tuple(), {**config_data_loader, **config_loop})
+        searcher.search(model, {}, (), {**config_data_loader, **config_loop})

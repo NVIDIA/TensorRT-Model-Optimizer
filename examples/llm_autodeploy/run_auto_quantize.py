@@ -25,8 +25,8 @@ from modelopt.torch.utils import create_forward_loop
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
 
 SUPPORT_QUANT_FORMAT = {
-    "fp8": "FP8_DEFAULT_CFG",
-    "nvfp4": "NVFP4_DEFAULT_CFG",
+    "fp8": mtq.FP8_DEFAULT_CFG,
+    "nvfp4": mtq.NVFP4_DEFAULT_CFG,
 }
 
 
@@ -52,7 +52,7 @@ def update_weight_quantizer_amax_for_fusion(model: torch.nn.Module):
         for handle in handles:
             handle.remove()
 
-    for _, modules in input_to_linear.items():
+    for modules in input_to_linear.values():
         # make sure they have the same input amax
         if modules[0].input_quantizer.is_enabled:
             amax = modules[0].input_quantizer.amax
@@ -76,13 +76,18 @@ def auto_quantize(
         "One or more quantization formats provided are not supported for unified checkpoint export"
     )
 
+    def loss_func(output, data):
+        # For transformers AutoModelForCausalLM models, the outputs are wrapped in `CausalLMOutputWithPast`
+        # which contains the loss attribute.
+        return output.loss
+
     model, _ = mtq.auto_quantize(
         model,
         constraints={"effective_bits": auto_quantize_bits},
         data_loader=calib_dataloader,
         forward_step=lambda model, batch: model(**batch),
-        loss_func=lambda output, data: output.loss,
-        quantization_formats=[SUPPORT_QUANT_FORMAT[format] for format in qformat_list] + [None],
+        loss_func=loss_func,
+        quantization_formats=[SUPPORT_QUANT_FORMAT[format] for format in qformat_list],
         num_calib_steps=len(calib_dataloader),
         num_score_steps=min(
             len(calib_dataloader), 128 // batch_size
@@ -108,9 +113,9 @@ def auto_quantize(
 def modelopt_ptq(
     model_path: str,
     output_dir: str,
-    qformat: str = None,
+    qformat: str | None = None,
     num_samples: int = 512,
-    auto_quantize_bits: float = None,
+    auto_quantize_bits: float | None = None,
     calib_dataset: str = "cnn_dailymail",
     calib_batch_size: int = 8,
 ) -> torch.nn.Module:
@@ -194,8 +199,8 @@ if __name__ == "__main__":
         default=8.0,
         type=float,
         help=(
-            "Effective bits constraint for AutoQuantize. If not set, "
-            "regular quantization without AutoQuantize search will be applied."
+            "Effective bits constraint for auto_quantize. If not set, "
+            "regular quantization without auto_quantize search will be applied."
         ),
     )
 

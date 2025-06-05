@@ -39,10 +39,7 @@ trex.to_dot = mock.Mock(name="trex_to_dot")  # type: ignore[attr-defined]
 trex.render_dot = mock.Mock(name="trex_render_dot")  # type: ignore[attr-defined]
 sys.modules[trex.__name__] = trex
 
-from modelopt.torch._deploy._runtime.tensorrt.engine_builder import (  # noqa
-    build_engine,
-    profile_engine,
-)
+from modelopt.torch._deploy._runtime.tensorrt.engine_builder import build_engine, profile_engine
 
 
 @pytest.fixture

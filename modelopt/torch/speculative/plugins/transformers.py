@@ -30,7 +30,7 @@
 """Support speculative decoding for huggingface models."""
 
 import contextlib
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from torch import nn
@@ -88,20 +88,20 @@ class HFMedusaModel(MedusaModel):
 
     def forward(
         self,
-        input_ids: torch.LongTensor = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Cache] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
-        logits_to_keep: Union[int, torch.Tensor] = 0,
+        input_ids: torch.LongTensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        labels: torch.LongTensor | None = None,
+        use_cache: bool | None = None,
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        cache_position: torch.LongTensor | None = None,
+        logits_to_keep: int | torch.Tensor = 0,
         freeze_base_model: bool = True,
-        medusa_heads_coefficient: Optional[float] = 0.2,
-        medusa_decay_coefficient: Optional[float] = 0.8,
+        medusa_heads_coefficient: float | None = 0.2,
+        medusa_decay_coefficient: float | None = 0.8,
         **kwargs,
     ) -> Any:
         """Forward pass of the MedusaModel.
@@ -187,14 +187,14 @@ class EagleModule(nn.Module):
         hidden_states: torch.Tensor,
         inputs_embeds: torch.Tensor,
         lm_head: nn.Module,
-        attention_mask: Optional[torch.Tensor] = None,
-        loss_mask: Optional[torch.Tensor] = None,
-        logits: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Cache] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = False,
-        position_embeddings: Optional[torch.Tensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        loss_mask: torch.Tensor | None = None,
+        logits: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        use_cache: bool | None = None,
+        output_attentions: bool | None = False,
+        position_embeddings: torch.Tensor | None = None,
     ):
         """Forward function for EagleModule."""
         batch_size, seq_length, _ = hidden_states.shape
@@ -349,20 +349,20 @@ class HFEagleModel(EagleModel):
     def forward(
         self,
         input_ids: torch.LongTensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[Cache] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        cache_position: Optional[torch.LongTensor] = None,
+        attention_mask: torch.Tensor | None = None,
+        position_ids: torch.LongTensor | None = None,
+        past_key_values: Cache | None = None,
+        inputs_embeds: torch.FloatTensor | None = None,
+        labels: torch.LongTensor | None = None,
+        use_cache: bool | None = None,
+        output_attentions: bool | None = None,
+        output_hidden_states: bool | None = None,
+        cache_position: torch.LongTensor | None = None,
         logits_to_keep: int = 0,
-        loss_mask: torch.Tensor = None,
-        freeze_base_model: Optional[bool] = True,
-        classification_loss_coefficient: Optional[float] = 0.1,
-        regression_loss_coefficient: Optional[float] = 1.0,
+        loss_mask: torch.Tensor | None = None,
+        freeze_base_model: bool = True,
+        classification_loss_coefficient: float | None = 0.1,
+        regression_loss_coefficient: float | None = 1.0,
         **kwargs,
     ) -> Any:
         """Forward pass of the EagleModel.

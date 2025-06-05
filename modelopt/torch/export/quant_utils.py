@@ -16,7 +16,8 @@
 """Utils for quantization including scaling factors adjustments."""
 
 import logging
-from typing import Any, Generator, List, Optional, Union
+from collections.abc import Generator
+from typing import Any
 from warnings import warn
 
 import torch
@@ -79,8 +80,8 @@ def resmooth_and_get_scale(
     pre_quant_scales: list[torch.Tensor],
     ranks: int,
     group_size: int,
-    new_pre_quant_scale: torch.Tensor = None,
-    quantization: Optional[str] = QUANTIZATION_NONE,
+    new_pre_quant_scale: torch.Tensor | None = None,
+    quantization: str | None = QUANTIZATION_NONE,
 ):
     """Resmooths weights from a single or multiple ranks and get scaling factors and amax.
 
@@ -258,7 +259,7 @@ def get_prequant_scaling_factor(module: nn.Module) -> torch.Tensor:
     return prequant_scaling_factor
 
 
-def get_kv_cache_bias(kv_module: nn.Module) -> List[torch.Tensor]:
+def get_kv_cache_bias(kv_module: nn.Module) -> list[torch.Tensor]:
     """Returns the kv_cache bias if _bias_value is set. Else returns None."""
     kv_bias = []
     for quantizer in ["k_bmm_quantizer", "v_bmm_quantizer"]:
@@ -267,7 +268,7 @@ def get_kv_cache_bias(kv_module: nn.Module) -> List[torch.Tensor]:
     return kv_bias
 
 
-def get_kv_cache_scaling_factor(kv_module: nn.Module) -> List[torch.Tensor]:
+def get_kv_cache_scaling_factor(kv_module: nn.Module) -> list[torch.Tensor]:
     """Returns the kv_cache scaling factor if output quantizer is set. Else returns None by default."""
     if not hasattr(kv_module, "k_bmm_quantizer") or not hasattr(kv_module, "v_bmm_quantizer"):
         return [None, None]
@@ -292,17 +293,17 @@ def get_kv_cache_scaling_factor(kv_module: nn.Module) -> List[torch.Tensor]:
     return scaling_factors
 
 
-def get_kv_cache_dtype(modules: Union[list[nn.Module], nn.Module]) -> Optional[str]:
+def get_kv_cache_dtype(modules: list[nn.Module] | nn.Module) -> str | None:
     """Returns the kv_cache dtype.
 
     If num_bits of output_quantizer is (4, 3) then returns FP8; if it is 8, returns int8,
     otherwise returns None.
 
     Args:
-        modules (Union[list[nn.Module], nn.Module]): The module or list of modules to inspect.
+        modules: The module or list of modules to inspect.
 
     Returns:
-        str: The kv_cache dtype.
+        The kv_cache dtype.
     """
     num_bits_list = []
     is_affine = True
@@ -351,7 +352,7 @@ def get_weight_block_size(module: nn.Module) -> int:
     return 0
 
 
-def get_quantization_format(module) -> Optional[str]:
+def get_quantization_format(module) -> str | None:
     """Gets the quantization string.
 
     Gets the quantization string by iterating through the module and its children.
@@ -437,7 +438,7 @@ def _prefix_wildcard_summarize_exclude_modules(unquantized_layers, quantized_lay
 
     def all_matching_prefix_wildcards(name):
         # include all possible prefix wildcards, and the exact name itself
-        wildcards = set([name])
+        wildcards = {name}
         for i in range(len(name) + 1):
             wildcards.add(name[:i] + "*")
         return wildcards
@@ -471,13 +472,13 @@ def _prefix_wildcard_summarize_exclude_modules(unquantized_layers, quantized_lay
     for layer in unquantized_layers:
         candidate_wildcards = []
         for wildcards in next_formated_matching_prefix_wildcards(layer):
-            if any([wildcard in negtive_wild_candidates for wildcard in wildcards]):
+            if any(wildcard in negtive_wild_candidates for wildcard in wildcards):
                 # need a more specific wildcard
                 logger.debug(
                     f"Unquantized layer {layer}, prefix wildcards {wildcards} invalidated by negative wildcards"
                 )
                 continue
-            if all([wildcard in res_summary for wildcard in wildcards]):
+            if all(wildcard in res_summary for wildcard in wildcards):
                 # we get covered already, do not need to move forward, and clear candidate
                 logger.debug(
                     f"Unquantized layer {layer}, prefix wildcards {wildcards} already covered"
@@ -561,10 +562,8 @@ def process_layer_quant_config(layer_config_dict):
     elif len(quantization_formats) == 1 and quantization_config is not None:
         per_layer_config.update(quantization_config)
         per_layer_config["exclude_modules"] = sorted(
-            list(
-                _prefix_wildcard_summarize_exclude_modules(
-                    exclude_modules, per_layer_config["quantized_layers"].keys()
-                )
+            _prefix_wildcard_summarize_exclude_modules(
+                exclude_modules, per_layer_config["quantized_layers"].keys()
             )
         )
         per_layer_config.pop("quantized_layers")
@@ -620,8 +619,8 @@ def to_quantized_weight(
     weight: torch.Tensor,
     weights_scaling_factor: torch.Tensor,
     quantization: str,
-    weights_scaling_factor2: Optional[torch.Tensor] = None,
-    block_size: Optional[int] = None,
+    weights_scaling_factor2: torch.Tensor | None = None,
+    block_size: int | None = None,
 ):
     """Converts the weight to the quantized (packed) format."""
     if weights_scaling_factor is not None:
@@ -701,16 +700,16 @@ def from_quantized_weight(
     raise NotImplementedError(f"quantization format {quantization} not supported")
 
 
-def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: Optional[str]) -> dict:
+def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str | None) -> dict:
     """Filters out keys related to weight quantizers and updates KV cache related keys.
 
     Args:
-        state_dict (dict): The full model state_dict.
-        maxbound (float): The maximum bound value for the output quantizer.
-        quantization (Optional[str]): The KV cache quantization format.
+        state_dict: The full model state_dict.
+        maxbound: The maximum bound value for the output quantizer.
+        quantization: The KV cache quantization format.
 
     Returns:
-        dict: Filtered state_dict without unnecessary keys like '_amax' and non KV cache output quantizers.
+        The filtered state_dict without unnecessary keys like '_amax' and non KV cache output quantizers.
     """
     replacements = {
         "k_bmm_quantizer._amax": "k_proj.k_scale",
@@ -809,8 +808,12 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
                 if not torch.equal(module.input_quantizer.pre_quant_scale, avg_prequant_scale):
                     module.weight = nn.Parameter(
                         module.weight
-                        * module.input_quantizer.pre_quant_scale.type(module.weight.dtype)
-                        / avg_prequant_scale.type(module.weight.dtype)
+                        * module.input_quantizer.pre_quant_scale.to(
+                            dtype=module.weight.dtype, device=module.weight.device
+                        )
+                        / avg_prequant_scale.to(
+                            dtype=module.weight.dtype, device=module.weight.device
+                        )
                     )
                     module.input_quantizer.pre_quant_scale = avg_prequant_scale
 
@@ -855,7 +858,7 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
                 module.weight_quantizer.amax = weight_amax
 
 
-def get_quant_config(named_modules: Union[nn.Module, dict[str, nn.Module]]) -> dict[str, Any]:
+def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[str, Any]:
     """Generate quantization config for a torch model.
 
     Args:

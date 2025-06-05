@@ -20,11 +20,11 @@ from _test_utils.examples.run_command import run_llm_ptq_command
 BART_PATH = "facebook/bart-large-cnn"
 
 
-@pytest.mark.parametrize("quant, export_fmt", [("fp16", "tensorrt_llm")])
+@pytest.mark.parametrize(("quant", "export_fmt"), [("fp16", "tensorrt_llm")])
 def test_bart(quant, export_fmt):
     run_llm_ptq_command(model=BART_PATH, quant=quant, export_fmt=export_fmt)
 
 
-@pytest.mark.parametrize("quant, export_fmt", [("fp8", "tensorrt_llm")])
+@pytest.mark.parametrize(("quant", "export_fmt"), [("fp8", "tensorrt_llm")])
 def test_bart_sm89(require_sm89, quant, export_fmt):
     run_llm_ptq_command(model=BART_PATH, quant=quant, export_fmt=export_fmt)

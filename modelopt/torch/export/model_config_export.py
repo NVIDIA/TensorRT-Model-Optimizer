@@ -19,9 +19,10 @@ import copy
 import json
 import math
 import tempfile
+from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Iterator, Optional, Union
+from typing import Any
 from warnings import warn
 
 import torch
@@ -87,10 +88,10 @@ __all__ = ["export_tensorrt_llm_checkpoint", "torch_to_tensorrt_llm_checkpoint"]
 def torch_to_tensorrt_llm_checkpoint(
     model: nn.Module,
     decoder_type: str,
-    dtype: Optional[torch.dtype] = None,
+    dtype: torch.dtype | None = None,
     inference_tensor_parallel: int = 0,
     inference_pipeline_parallel: int = 1,
-    workspace_path: Optional[Union[Path, str]] = None,
+    workspace_path: Path | str | None = None,
 ) -> Iterator[tuple[dict[str, Any], dict[str, torch.Tensor], dict[str, Any]]]:
     """Converts the torch model to the TensorRT-LLM checkpoint per GPU rank.
 
@@ -171,14 +172,16 @@ def torch_to_tensorrt_llm_checkpoint(
     else:
         raise ValueError("Cannot find valid model metadata config in model")
 
-    if "multi_query_group_num" in model_metadata_config.keys():
-        if model_metadata_config["multi_query_group_num"] % inference_tensor_parallel != 0:
-            raise ValueError(
-                "Cannot divide {} kv_heads into {} gpus".format(
-                    model_metadata_config["multi_query_group_num"],
-                    inference_tensor_parallel,
-                )
+    if (
+        "multi_query_group_num" in model_metadata_config
+        and model_metadata_config["multi_query_group_num"] % inference_tensor_parallel != 0
+    ):
+        raise ValueError(
+            "Cannot divide {} kv_heads into {} gpus".format(
+                model_metadata_config["multi_query_group_num"],
+                inference_tensor_parallel,
             )
+        )
 
     training_pipeline_parallel = model_metadata_config.get("pipeline_model_parallel_size", 1)
     training_tensor_parallel = dist.size() // training_pipeline_parallel
@@ -205,14 +208,11 @@ def torch_to_tensorrt_llm_checkpoint(
     models = [("decoder", model)]
     is_enc_dec = model_type_is_enc_dec(decoder_type)
     if is_enc_dec:
-        if decoder_type in ["whisper"]:
-            model_lm_head = model.proj_out
-        else:
-            model_lm_head = model.lm_head
+        model_lm_head = model.proj_out if decoder_type in ["whisper"] else model.lm_head
         # For Encoder-Decoder models, we process the checkpoint separately.
         models = get_enc_dec_models(model, decoder_type)
 
-    for component_name, model in models:
+    for component_name, model in models:  # noqa: PLR1704
         transformer_layers = get_transformer_layers(model)
         if training_pipeline_parallel == 1:
             compatible, has_position_embedding, has_embedding_layernorm = check_model_compatibility(
@@ -326,25 +326,23 @@ def torch_to_tensorrt_llm_checkpoint(
                     # This will update lm_head quantization config according to constraints from TRT-LLM
                     update_lm_head_quantization(config, module, inference_pipeline_parallel)
                     config.lm_head = build_linear_config(module, "column")
-            elif is_conv(module):
-                if decoder_type in ["whisper"]:
-                    if config.conv1 is None:
-                        config.conv1 = build_conv_config(module)
-                    else:
-                        config.conv2 = build_conv_config(module)
+            elif is_conv(module) and decoder_type in ["whisper"]:
+                if config.conv1 is None:
+                    config.conv1 = build_conv_config(module)
+                else:
+                    config.conv2 = build_conv_config(module)
 
         # For decoder of Encoder-Decoder model, it needs some encoder information
-        if is_enc_dec:
-            if model_metadata_config["enc_dec"] == "dec":
-                config.encoder_hidden_size, config.encoder_num_heads, config.encoder_head_size = (
-                    get_encoder_config(models[0][1].config)
-                )
-                (
-                    config.decoder_start_token_id,
-                    config.eos_token_id,
-                    config.bos_token_id,
-                    config.pad_token_id,
-                ) = get_enc_dec_token_ids(models[1][1].config)
+        if is_enc_dec and model_metadata_config["enc_dec"] == "dec":
+            config.encoder_hidden_size, config.encoder_num_heads, config.encoder_head_size = (
+                get_encoder_config(models[0][1].config)
+            )
+            (
+                config.decoder_start_token_id,
+                config.eos_token_id,
+                config.bos_token_id,
+                config.pad_token_id,
+            ) = get_enc_dec_token_ids(models[1][1].config)
 
         # For the training time PP, not all ranks will have the lm_head layer.
         if config.lm_head is None:
@@ -373,16 +371,16 @@ def torch_to_tensorrt_llm_checkpoint(
 
         config.quantization = get_quantization_format(model)
 
-        if config.quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
-            if config.vocab_size % 64 != 0:
-                # TODO: Check if this works for Mixtral
-                assert training_tensor_parallel == 1, (
-                    "We do not support padding for training time TP"
-                )
-                print("Padding vocab_embedding and lm_head for AWQ weights export")
-                pad_embedding_lm_head(config)
-                if hf_config is not None:
-                    hf_config.vocab_size = config.vocab_size
+        if (
+            config.quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]
+            and config.vocab_size % 64 != 0
+        ):
+            # TODO: Check if this works for Mixtral
+            assert training_tensor_parallel == 1, "We do not support padding for training time TP"
+            print("Padding vocab_embedding and lm_head for AWQ weights export")
+            pad_embedding_lm_head(config)
+            if hf_config is not None:
+                hf_config.vocab_size = config.vocab_size
 
         check_weight_shape_valid(
             config,
@@ -444,8 +442,8 @@ def torch_to_tensorrt_llm_checkpoint(
 def export_tensorrt_llm_checkpoint(
     model: nn.Module,
     decoder_type: str,
-    dtype: Optional[torch.dtype] = None,
-    export_dir: Union[Path, str] = tempfile.gettempdir(),
+    dtype: torch.dtype | None = None,
+    export_dir: Path | str = tempfile.gettempdir(),
     inference_tensor_parallel: int = 0,
     inference_pipeline_parallel: int = 1,
     use_nfs_workspace: bool = False,
@@ -534,7 +532,7 @@ def export_tensorrt_llm_checkpoint(
             # Hacky implementation for Encoder-Decoder for now
             if is_enc_dec:
                 new_weights = {}
-                for key in weights.keys():
+                for key in weights:
                     new_key = key
                     if key.endswith("rel_attn_table") and key.find(".0.") > 0:
                         # stores additional the relative attention for pre-compute feature in TRTLLM

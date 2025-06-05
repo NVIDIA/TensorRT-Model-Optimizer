@@ -19,7 +19,6 @@ Check out :meth:`mtn.convert <modelopt.torch.nas.conversion.convert>` to learn m
 """
 
 import warnings
-from typing import Optional
 
 import torch.nn as nn
 from torch.nn.modules.loss import _Loss as Loss
@@ -62,12 +61,12 @@ class KnowledgeDistillationModeDescriptor(ModeDescriptor):
         return KDLossConfig
 
     @property
-    def next_modes(self) -> Optional[set[str]]:
+    def next_modes(self) -> set[str] | None:
         """Modes that must immediately follow this mode."""
         return {"export_student"}
 
     @property
-    def export_mode(self) -> Optional[str]:
+    def export_mode(self) -> str | None:
         """The mode that corresponds to the export mode of this mode."""
         return "export_student"
 

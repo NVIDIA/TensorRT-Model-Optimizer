@@ -42,7 +42,7 @@ vision_models = get_vision_models()
 
 
 @pytest.mark.parametrize(
-    "model, args, kwargs",
+    ("model", "args", "kwargs"),
     [
         (LeNet5(), (LeNet5.gen_input(),), {}),
         (

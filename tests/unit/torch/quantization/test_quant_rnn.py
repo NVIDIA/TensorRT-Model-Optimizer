@@ -34,7 +34,7 @@ INPUT_SHAPE = [SEQ_LEN, BATCH_SIZE, HIDDEN_SIZE]
 
 class TestQuantRNN:
     @pytest.mark.parametrize(
-        "original_cls, bidirectional, bias",
+        ("original_cls", "bidirectional", "bias"),
         [
             (nn.RNN, True, True),
             (nn.RNN, False, False),
@@ -64,7 +64,7 @@ class TestQuantRNN:
         assert torch.allclose(out1, out2)
 
     @pytest.mark.parametrize(
-        "original_cls, bidirectional, bias",
+        ("original_cls", "bidirectional", "bias"),
         [
             (nn.RNN, True, True),
             (nn.RNN, False, False),
@@ -98,7 +98,7 @@ class TestQuantRNN:
         assert torch.allclose(out1[0], out2[0])
 
     @pytest.mark.parametrize(
-        "original_cls, bidirectional, bias",
+        ("original_cls", "bidirectional", "bias"),
         [
             (nn.LSTM, True, True),
             (nn.LSTM, False, False),
@@ -125,7 +125,7 @@ class TestQuantRNN:
         assert torch.allclose(out1, out2)
 
     @pytest.mark.parametrize(
-        "original_cls, bidirectional",
+        ("original_cls", "bidirectional"),
         [
             (nn.RNN, True),
             (nn.RNN, False),
@@ -151,7 +151,7 @@ class TestQuantRNN:
         assert torch.allclose(out1, out2)
 
     @pytest.mark.parametrize(
-        "original_cls, bidirectional",
+        ("original_cls", "bidirectional"),
         [
             (nn.RNN, True),
             (nn.RNN, False),
@@ -183,7 +183,7 @@ class TestQuantRNN:
         assert torch.allclose(out1, out2)
 
     @pytest.mark.parametrize(
-        "original_cls, bidirectional",
+        ("original_cls", "bidirectional"),
         [
             (nn.RNN, True),
             (nn.RNN, False),
@@ -214,7 +214,7 @@ class TestQuantRNN:
         assert torch.allclose(out1, out2)
 
     @pytest.mark.parametrize(
-        "original_cls, bidirectional",
+        ("original_cls", "bidirectional"),
         [
             (nn.LSTM, True),
             (nn.LSTM, False),

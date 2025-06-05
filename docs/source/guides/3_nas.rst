@@ -70,7 +70,7 @@ Example usage:
 
     In the above example, we have used the default AutoNAS ``config`` for ``mtn.convert()``.
     You can see it using
-    :meth:`mtn.config.AutoNASConfig() <modelopt.torch.nas.config.AutoNASConfig>`.
+    :meth:`mtn.autonas.AutoNASConfig() <modelopt.torch.nas.autonas.AutoNASConfig>`.
     You can also specify custom configurations to have a different search space. See
     :meth:`mtn.convert() <modelopt.torch.nas.conversion.convert>` documentation for more information.
     An example config is shown below:
@@ -79,7 +79,7 @@ Example usage:
 
         import modelopt.torch.nas as mtn
 
-        config = mtn.config.AutoNASConfig()
+        config = mtn.autonas.AutoNASConfig()
         config["nn.Conv2d"]["*"]["out_channels_ratio"] += (0.1,)  # include more channel choices
 
         model = mtn.convert(model_or_model_factory, mode=[("autonas", config)])

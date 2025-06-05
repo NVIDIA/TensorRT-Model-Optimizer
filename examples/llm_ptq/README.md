@@ -58,6 +58,8 @@ scripts/huggingface_example.sh --model $HF_PATH --quant [fp8|nvfp4|int8_sq|int4_
 
 > *If a GPU OOM error occurs during model quantization despite sufficient memory, setting the --use_seq_device_map flag can help. This enforces sequential device mapping, distributing the model across GPUs and utilizing up to 80% of each GPU's memory.*
 
+> *You can now add `--low_memory_mode` to the command when setting `--export_fmt=hf` to lower the memory requirements of the PTQ process. With this mode, the script will compress model weights to low precision before calibration. This mode is only supported for FP8 and NVFP4 with max calibration.*
+
 #### Llama 4
 
 We support FP8 and NVFP4 quantized Llama 4 model Hugging Face checkpoint export using the following command:
@@ -103,7 +105,7 @@ Model | fp8 | int8_sq | int4_awq | w4a8_awq<sup>1</sup> | nvfp4<sup>5</sup> |
 GPTJ | Yes | Yes | Yes | Yes | -
 LLAMA 2 | Yes | Yes | Yes | Yes | -
 LLAMA 3, 3.1, 3.3 | Yes | No | Yes | Yes<sup>3</sup> | Yes
-LLAMA 4 | Yes | No | No | No | Yes
+LLAMA 4 <sup>6</sup> | Yes | No | No | No | Yes
 LLAMA 2 (Nemo) | Yes | Yes | Yes | Yes | -
 CodeLlama | Yes | Yes | Yes | No | -
 Mistral | Yes | Yes | Yes | No | Yes
@@ -127,6 +129,7 @@ RecurrentGemma 2B | Yes | Yes | Yes | No | -
 StarCoder 2 | Yes | Yes | Yes | No | -
 QWen 2, 2.5 <sup>4</sup> | Yes | Yes | Yes | Yes | Yes
 QWen MOE | Yes | - | - | - | Yes
+QWen3 MOE <sup>6</sup> | Yes | - | - | - | Yes
 QwQ | Yes | - | - | - | Yes
 DBRX | Yes | No | No | No | -
 InternLM2 | Yes | No | Yes | Yes<sup>3</sup> | -
@@ -144,6 +147,8 @@ Whisper | Yes | No | No | No | -
 > *<sup>4.</sup>For some models, KV cache quantization may result in a higher accuracy penalty.*
 
 > *<sup>5.</sup>A selective set of the popular models are internally tested. The actual model support list may be longer. NVFP4 inference requires Blackwell GPUs and TensorRT-LLM v0.17 or later*
+
+> *<sup>6.</sup>Some models currently support export to HF format only.*
 
 > *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](./hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*
 
@@ -192,36 +197,38 @@ QWen2 | Yes
 Mixtral 8x7B | Yes
 CodeLlama | Yes
 
-### Optimal Partial Quantization using AutoQuantize
+### Optimal Partial Quantization using auto_quantize
 
-[AutoQuantize](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) is a PTQ algorithm from ModelOpt which quantizes a model by searching for the best quantization format per-layer while meeting the performance constraint specified by the user. This way, `AutoQuantize` enables to trade-off model accuracy for performance.
+[auto_quantize](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) is a PTQ algorithm from ModelOpt which quantizes a model by searching for the best quantization format per-layer while meeting the performance constraint specified by the user. This way, `auto_quantize` enables to trade-off model accuracy for performance.
 
-Currently `AutoQuantize` supports only `auto_quantize_bits` as the performance constraint (for both weight-only quantization and
+Currently `auto_quantize` supports only `auto_quantize_bits` as the performance constraint (for both weight-only quantization and
 weight & activation quantization). See
-[AutoQuantize documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) for more details.
+[auto_quantize documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) for more details.
 
-#### AutoQuantize for Hugging Face models
+#### auto_quantize for Hugging Face models
 
-`AutoQuantize` can be performed for Huggingface LLM models like [Llama-3](https://huggingface.co/meta-llama) as shown below:
+`auto_quantize` can be performed for Huggingface LLM models like [Llama-3](https://huggingface.co/meta-llama) as shown below:
 
 ```bash
 export HF_PATH=<the downloaded LLaMA checkpoint from the Hugging Face hub, or simply the model card>
-# --auto_quantize_bits specifies the constraint for `AutoQuantize`
-# --quant specifies the formats to be searched for `AutoQuantize`
+# --auto_quantize_bits specifies the constraint for `auto_quantize`
+# --quant specifies the formats to be searched for `auto_quantize`
 # NOTE: auto_quantize_bits cannot be lower than the number of bits for the smallest quantization format in --quant
 scripts/huggingface_example.sh --type llama --model $HF_PATH --quant w4a8_awq,fp8 --auto_quantize_bits 4.8 --tp [1|2|4|8]  --calib_batch_size 4
 ```
 
-The above example perform `AutoQuantize` where the less quantization sensitive layers are quantized with `w4a8_awq` (specified by `--quant w4a8_awq`) and the more sensitive layers
+The above example perform `auto_quantize` where the less quantization sensitive layers are quantized with `w4a8_awq` (specified by `--quant w4a8_awq`) and the more sensitive layers
 are kept un-quantized such that the effective bits is 4.8 (specified by `--auto_quantize_bits 4.8`).
 
-#### AutoQuantize for NeMo models
+> \*Note: AutoQuantize requires backpropagation of the model. Models without backpropagation support (e.g., Llama-4) will not work with AutoQuantize.
 
-The usage is similar for NeMo models to perform `AutoQuantize`. Please refer to the earlier section on [NeMo models](#for-nemo-models-like-nemotron) for the full setup instructions.
+#### Auto_quantize for NeMo models
+
+The usage is similar for NeMo models to perform `auto_quantize`. Please refer to the earlier section on [NeMo models](#for-nemo-models-like-nemotron) for the full setup instructions.
 
 ```bash
-# --auto_quantize_bits specifies the constraint for `AutoQuantize`
-# --quant specifies the formats to be searched for `AutoQuantize`. Multiple formats can be searched over by passing them as comma separated values
+# --auto_quantize_bits specifies the constraint for `auto_quantize`
+# --quant specifies the formats to be searched for `auto_quantize`. Multiple formats can be searched over by passing them as comma separated values
 scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant fp8,int4_awq --auto_quantize_bits 6.4 --tp [1|2|4|8]
 ```
 

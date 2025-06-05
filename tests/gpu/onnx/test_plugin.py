@@ -93,6 +93,7 @@ def _create_test_model_trt():
     )
 
     model = gs.export_onnx(graph)
+    model.ir_version = 10
 
     return model
 

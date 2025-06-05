@@ -20,7 +20,8 @@ import os
 import signal
 import threading
 import time
-from typing import Any, Iterable, Optional, Union
+from collections.abc import Iterable
+from typing import Any
 
 import torch
 import torch.nn.functional as F
@@ -33,7 +34,7 @@ from modelopt.deploy.llm.generate import LLM
 
 logger = logging.getLogger(__name__)
 
-TokenSequence = Union[list[int], torch.LongTensor, torch.Tensor, BatchEncoding]
+TokenSequence = list[int] | torch.LongTensor | torch.Tensor | BatchEncoding
 
 
 @register_model("trt-llm")
@@ -66,7 +67,7 @@ class TRTLLM(TemplateAPI):
         messages: Iterable[list[int]],
         *,
         generate: bool = True,
-        gen_kwargs: Optional[dict] = None,
+        gen_kwargs: dict | None = None,
         **kwargs,
     ):
         # !!! Copy: shared dict for each request, need new object !!!
@@ -117,9 +118,9 @@ class TRTLLM(TemplateAPI):
         messages: Iterable[list[int]],
         *,
         generate: bool = True,
-        cache_keys: list = None,
-        ctxlens: Optional[list[int]] = None,
-        gen_kwargs: Optional[dict] = None,
+        cache_keys: list | None = None,
+        ctxlens: list[int] | None = None,
+        gen_kwargs: dict | None = None,
         **kwargs,
     ):
         raise NotImplementedError
@@ -129,10 +130,10 @@ class TRTLLM(TemplateAPI):
 
     def _create_payload(
         self,
-        messages: Union[list[list[int]], list[dict], list[str], str],
+        messages: list[list[int]] | list[dict] | list[str] | str,
         *,
         generate: bool = True,
-        gen_kwargs: Optional[dict] = None,
+        gen_kwargs: dict | None = None,
         seed: int = 1234,
         **kwargs,
     ) -> dict:
@@ -140,15 +141,15 @@ class TRTLLM(TemplateAPI):
         raise NotImplementedError
 
     @staticmethod
-    def parse_generations(outputs: Union[Any, list[Any]], **kwargs) -> list[str]:
+    def parse_generations(outputs: Any | list[Any], **kwargs) -> list[str]:
         """Method used to parse the generations from the (batched) API response."""
         return outputs
 
     @staticmethod
     def parse_logprobs(
-        outputs: Union[Any, list[Any]],
-        tokens: list[list[int]] = None,
-        ctxlens: list[int] = None,
+        outputs: Any | list[Any],
+        tokens: list[list[int]] | None = None,
+        ctxlens: list[int] | None = None,
         **kwargs,
     ) -> list[tuple[float, bool]]:
         """Method used to parse the logprobs from the (batched) API response.
@@ -161,7 +162,9 @@ class TRTLLM(TemplateAPI):
         res = []
 
         for logits_single_batch, tokens_single_batch, ctxlen_single_batch in zip(
-            outputs, tokens, ctxlens
+            outputs,
+            tokens,  # type: ignore[arg-type]
+            ctxlens,  # type: ignore[arg-type]
         ):
             logits_single_batch = logits_single_batch.to("cuda")
             continuation_logprob = F.log_softmax(

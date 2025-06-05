@@ -19,16 +19,13 @@ def add_common_args(parser):
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--log_level", type=str, default="info")
     parser.add_argument(
-        "--visual_engine_dir",
-        type=str,
-        default=None,
-        help="Directory containing visual TRT engines",
-    )
-    parser.add_argument(
         "--visual_engine_name", type=str, default="model.engine", help="Name of visual TRT engine"
     )
     parser.add_argument(
-        "--llm_engine_dir", type=str, default=None, help="Directory containing TRT-LLM engines"
+        "--engine_dir",
+        type=str,
+        default=None,
+        help="Directory containing visual and LLM TRT engines",
     )
     parser.add_argument(
         "--hf_model_dir", type=str, default=None, help="Directory containing tokenizer"
@@ -54,8 +51,10 @@ def add_common_args(parser):
         "--video_path",
         type=str,
         default=None,
-        help="Path to your local video file, using 'llava-onevision-accuracy' to check the"
-        + "Llava-OneVision model accuracy",
+        help=(
+            "Path to your local video file, using 'llava-onevision-accuracy' to check the"
+            "Llava-OneVision model accuracy"
+        ),
     )
     parser.add_argument(
         "--video_num_frames",
@@ -99,8 +98,10 @@ def add_common_args(parser):
         "--cross_kv_cache_fraction",
         default=0.5,
         type=float,
-        help="Specify the kv cache fraction reserved for cross attention. Only applicable for"
-        + "encoder-decoder models. By default 0.5 for self and 0.5 for cross.",
+        help=(
+            "Specify the kv cache fraction reserved for cross attention. Only applicable for"
+            "encoder-decoder models. By default 0.5 for self and 0.5 for cross."
+        ),
     )
     parser.add_argument(
         "--multi_block_mode",
@@ -108,5 +109,22 @@ def add_common_args(parser):
         in ("yes", "true", "t", "1"),  # custom boolean function to convert input string to boolean
         default=True,
         help="Distribute the work across multiple CUDA thread-blocks on the GPU for masked MHA kernel.",
+    )
+    parser.add_argument(
+        "--session",
+        default="cpp_llm_only",
+        type=str,
+        choices=["python", "cpp_llm_only", "cpp"],
+        help="Runtime used to run the models.\n"
+        "`cpp_llm_only`: vision engine run in python runtime, but LLM in pybind cpp runtime\n"
+        "`python`: everything runs in python runtime\n"
+        "`cpp`: everything runs in C++ runtime",
+    )
+    parser.add_argument(
+        "--lora_task_uids",
+        type=str,
+        default=None,
+        nargs="+",
+        help="The list of LoRA task uids; use -1 to disable the LoRA module",
     )
     return parser

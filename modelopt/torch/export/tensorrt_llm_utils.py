@@ -169,7 +169,7 @@ def convert_to_tensorrt_llm_config(
                 else "rope_gpt_neox"
             )
         ),
-        "share_embedding_table": True if (model_config.lm_head is None and pp_size == 1) else False,
+        "share_embedding_table": bool(model_config.lm_head is None and pp_size == 1),
         "residual_mlp": first_attention_decoder_config.residual_mlp is not None,
         # Model Optimizer customized fields
         "bias": first_attention_config.dense.bias is not None,
@@ -271,25 +271,19 @@ def convert_to_tensorrt_llm_config(
             "relative" if decoder_type == "t5" else "learned_absolute"
         )
         config["share_embedding_table"] = getattr(model_config, "share_embedding_table")
-        config["has_position_embedding"] = (
-            False if not getattr(model_config, "position_embedding") else True
-        )
+        config["has_position_embedding"] = bool(getattr(model_config, "position_embedding"))
         # fallback to RmsNorm if not specified as HF might change class naming for layernorm
         layernorm_type = model_config.layers[0].mlp_layernorm.layernorm_type
         if not layernorm_type:
             layernorm_type = "RmsNorm"
         config["layernorm_type"] = layernorm_type_map[layernorm_type]
-        config["has_attention_qkvo_bias"] = (
-            True
-            if (
-                model_config.layers[0].attention.qkv.bias is not None
-                if model_config.enc_dec == "enc"
-                else model_config.layers[0].self_attention.qkv.bias is not None
-            )
-            else False
+        config["has_attention_qkvo_bias"] = bool(
+            model_config.layers[0].attention.qkv.bias is not None
+            if model_config.enc_dec == "enc"
+            else model_config.layers[0].self_attention.qkv.bias is not None
         )
-        config["has_mlp_bias"] = False if model_config.layers[0].mlp.fc.bias is None else True
-        config["has_model_final_layernorm"] = True if model_config.ln_f else False
+        config["has_mlp_bias"] = model_config.layers[0].mlp.fc.bias is not None
+        config["has_model_final_layernorm"] = bool(model_config.ln_f)
 
         mlp_type_map = {i.name: i.value for i in MLPType}
 
@@ -302,8 +296,8 @@ def convert_to_tensorrt_llm_config(
             )
         ]
         config["use_prompt_tuning"] = False
-        config["has_position_embedding"] = False if not model_config.position_embedding else True
-        config["has_embedding_layernorm"] = False if not model_config.ln_embed else True
+        config["has_position_embedding"] = bool(model_config.position_embedding)
+        config["has_embedding_layernorm"] = bool(model_config.ln_embed)
         config["has_embedding_scale"] = False
         config["ffn_hidden_size"] = model_config.layers[0].mlp.fc.weight.shape[0]
         # T5 uses q_scaling to offset attention scaling effect. Bart does not.

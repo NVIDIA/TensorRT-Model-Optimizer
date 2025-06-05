@@ -12,19 +12,19 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+# ruff: noqa: E501
 """High-level API to automatically prune and optimize your model with various algorithms."""
 
-from typing import Any, Optional, Union
+from typing import Any
 
 from torch import nn
 
 import modelopt.torch.nas as mtn
 from modelopt.torch.opt.conversion import apply_mode
-from modelopt.torch.opt.mode import ModeLike
+from modelopt.torch.opt.mode import ModeLike, _ModeRegistryCls
 from modelopt.torch.opt.searcher import ConstraintsDict, SearchConfig
 
-from .mode import PruneModeRegistry
+PruneModeRegistry = _ModeRegistryCls("prune")
 
 __all__ = ["prune"]
 
@@ -33,8 +33,8 @@ def prune(
     model: nn.Module,
     mode: ModeLike,
     constraints: ConstraintsDict,
-    dummy_input: Union[Any, tuple],
-    config: Optional[SearchConfig] = None,
+    dummy_input: Any | tuple,
+    config: SearchConfig | None = None,
 ) -> tuple[nn.Module, dict[str, Any]]:
     """Prune a given model by searching for the best architecture within the design space.
 
@@ -45,17 +45,17 @@ def prune(
             process. Modes set up the model for different algorithms for model optimization. The
             following modes are available:
 
-            *   :class:`"fastnas"<modelopt.torch.prune.mode.FastNASModeDescriptor>`: The ``model`` will
+            *   :class:`"fastnas"<modelopt.torch.prune.fastnas.FastNASModeDescriptor>`: The ``model`` will
                 be converted into a search space and set up to automatically perform operations
                 required for FastNAS pruning & search. The mode's config
                 is described in :class:`FastNASConfig<modelopt.torch.prune.config.FastNASConfig>`.
                 This mode is recommended to prune Computer Vision models.
-            *   :class:`"gradnas"<modelopt.torch.prune.mode.GradNASModeDescriptor>`: The ``model`` will
+            *   :class:`"gradnas"<modelopt.torch.prune.gradnas.GradNASModeDescriptor>`: The ``model`` will
                 be converted into a search space and set up to automatically perform operations
                 required for gradient-based pruning & search. The mode's config
                 is described in :class:`GradNASConfig<modelopt.torch.prune.config.GradNASConfig>`.
                 This mode is recommended to prune Hugging Face language models like BERT and GPT-J.
-            *   :class:`"mcore_gpt_minitron"<modelopt.torch.prune.mode.MCoreGPTMinitronModeDescriptor>`: The ``model``
+            *   :class:`"mcore_gpt_minitron"<modelopt.torch.prune.plugins.mcore_gpt_minitron.MCoreGPTMinitronModeDescriptor>`: The ``model``
                 will be converted into a search space and set up to automatically perform operations
                 required for Minitron-style pruning & search. The mode's config
                 is described in :class:`MCoreGPTMinitronConfig<modelopt.torch.prune.config.MCoreGPTMinitronConfig>`.

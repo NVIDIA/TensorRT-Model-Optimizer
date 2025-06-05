@@ -20,7 +20,7 @@ import warnings
 from pathlib import Path
 from time import time
 from types import ModuleType
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 from packaging.specifiers import SpecifierSet
@@ -32,12 +32,12 @@ __all__ = ["load_cpp_extension"]
 
 def load_cpp_extension(
     name: str,
-    sources: list[Union[str, Path]],
-    cuda_version_specifiers: Optional[str],
+    sources: list[str | Path],
+    cuda_version_specifiers: str | None,
     fail_msg: str = "",
     raise_if_failed: bool = False,
     **load_kwargs: Any,
-) -> Optional[ModuleType]:
+) -> ModuleType | None:
     """Load a C++ / CUDA extension using torch.utils.cpp_extension.load() if the current CUDA version satisfies it.
 
     Loading first time may take a few mins because of the compilation, but subsequent loads are instantaneous.

@@ -28,7 +28,7 @@ NUM_CHANNELS = 3
 
 class TestQuantInstanceNormND:
     @pytest.mark.parametrize(
-        "pool_cls, input_shape",
+        ("pool_cls", "input_shape"),
         [
             (quant_instancenorm.QuantInstanceNorm1d, (2, NUM_CHANNELS, 8)),
             (quant_instancenorm.QuantInstanceNorm2d, (2, NUM_CHANNELS, 8, 8)),
@@ -52,7 +52,7 @@ class TestQuantInstanceNormND:
         assert torch.allclose(out1, out2, rtol=0, atol=0)
 
     @pytest.mark.parametrize(
-        "pool_cls, input_shape",
+        ("pool_cls", "input_shape"),
         [
             (quant_instancenorm.QuantInstanceNorm1d, (2, NUM_CHANNELS, 8)),
             (quant_instancenorm.QuantInstanceNorm2d, (2, NUM_CHANNELS, 8, 8)),
@@ -78,7 +78,7 @@ class TestQuantInstanceNormND:
         assert torch.allclose(out1, out2, rtol=0, atol=0)
 
     @pytest.mark.parametrize(
-        "pool_cls, input_shape",
+        ("pool_cls", "input_shape"),
         [
             (quant_instancenorm.QuantInstanceNorm1d, (2, NUM_CHANNELS, 8)),
             (quant_instancenorm.QuantInstanceNorm2d, (2, NUM_CHANNELS, 8, 8)),

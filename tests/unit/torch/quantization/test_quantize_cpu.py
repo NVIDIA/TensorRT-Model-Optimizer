@@ -102,7 +102,7 @@ def test_quantize(model_cls, config):
 
 
 @pytest.mark.parametrize(
-    "model_cls, quant_config",
+    ("model_cls", "quant_config"),
     [
         (SimpleLinear, mtq.INT8_SMOOTHQUANT_CFG),
         (SimpleConvLinear, quant_cfg_custom_calib),

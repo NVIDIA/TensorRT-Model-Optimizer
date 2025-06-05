@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
 
 from transformers import AutoTokenizer
 
@@ -67,7 +66,7 @@ def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, trust_remote_code=False):
 
 def _quantize_model_with_dataset(
     lm,
-    quant_cfg: Union[str, list[str]],
+    quant_cfg: str | list[str],
     calib_dataset,
     auto_quantize_bits=None,
     batch_size=1,
@@ -82,15 +81,21 @@ def _quantize_model_with_dataset(
 
     if auto_quantize_bits is not None:
         quant_cfg_for_search = [
-            quant_fmt if quant_fmt != "NONE" else None for quant_fmt in quant_cfg
+            getattr(mtq, quant_fmt) for quant_fmt in quant_cfg if quant_fmt != "NONE"
         ]
+
+        def loss_func(output, data):
+            # For transformers AutoModelForCausalLM models, the outputs are wrapped in `CausalLMOutputWithPast`
+            # which contains the loss attribute.
+            return output.loss
+
         net, _ = mtq.auto_quantize(
             net,
             constraints={"effective_bits": auto_quantize_bits},
             quantization_formats=quant_cfg_for_search,
             data_loader=calib_dataset,
             forward_step=lambda model, batch: model(**batch),
-            loss_func=lambda output, data: output.loss,
+            loss_func=loss_func,
             num_calib_steps=len(calib_dataset),
             num_score_steps=min(
                 len(calib_dataset), 128 // batch_size
@@ -98,7 +103,7 @@ def _quantize_model_with_dataset(
             verbose=True,
         )
     else:
-        mtq_cfg = CUSTOM_CONFIG.get(quant_cfg, None)  # type: ignore [arg-type]
+        mtq_cfg = CUSTOM_CONFIG.get(quant_cfg)  # type: ignore [arg-type]
         if mtq_cfg is None:
             mtq_cfg = getattr(mtq, quant_cfg)  # type: ignore [arg-type]
 
@@ -135,7 +140,7 @@ def _quantize_model_with_dataset(
 
 def quantize_model(
     model,
-    quant_cfg: str,
+    quant_cfg: str | list[str],
     tokenizer,
     batch_size,
     calib_size,
@@ -148,11 +153,12 @@ def quantize_model(
 
     Args:
         model: the model to be quantized.
-        quant_cfg: the quantization algorithm config name.
+        quant_cfg: the quantization algorithm config name if simple quantization is used.
+                   the list of quantization algorithm config names if auto quantization is used.
         tokenizer: the tokenizer.
         batch_size: the calibration batch size for each calibration inference run.
         calib_size: the total calibration dataset size.
-        auto_quantize_bits: The effective bits constraint for AutoQuantize.
+        auto_quantize_bits: The effective bits constraint for auto_quantize.
         data: the name of the calibration dataset.
         test_generated:  If ``True``, test the generated text before and after quantization.
         compress: If ``True``, compress the model after quantization.
@@ -168,12 +174,9 @@ def quantize_model(
         device = model.model.device
 
     if batch_size == 0:
-        assert auto_quantize_bits is None, "AutoQuantize requires batch_size to be set."
+        assert auto_quantize_bits is None, "auto_quantize requires batch_size to be set."
 
-        if hasattr(model, "gpt2"):
-            net = model.gpt2
-        else:
-            net = model.model
+        net = model.gpt2 if hasattr(model, "gpt2") else model.model
 
         # We let the system to determine the max data batch for each forward.
         batch_size = get_max_batch_size(net)

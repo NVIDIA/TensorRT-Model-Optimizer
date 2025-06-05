@@ -58,11 +58,11 @@ def get_data_loader(num_batches):
 
 
 @pytest.mark.parametrize(
-    "module, key_layer, expected_kernel_size_set, expected_mid_channels",
+    ("module", "key_layer", "expected_kernel_size_set", "expected_mid_channels"),
     [
-        [Bottleneck(32, 2, base_width=512), "conv2", {(3, 3)}, {16}],
-        [BasicBlock(16, 32), "conv1", {(3, 3)}, {16, 32}],
-        [InvertedResidual(16, 16, 1, 6), "conv.1.0", {(3, 3)}, {48, 64, 80, 96}],
+        (Bottleneck(32, 2, base_width=512), "conv2", {(3, 3)}, {16}),
+        (BasicBlock(16, 32), "conv1", {(3, 3)}, {16, 32}),
+        (InvertedResidual(16, 16, 1, 6), "conv.1.0", {(3, 3)}, {48, 64, 80, 96}),
     ],
 )
 def test_base_module(
@@ -99,7 +99,7 @@ def _add_wrong_value(rules):
 
 
 @pytest.mark.parametrize(
-    "change_rule, is_valid_rule",
+    ("change_rule", "is_valid_rule"),
     [
         (lambda rules: rules, True),
         (_change_to_nn_type, True),

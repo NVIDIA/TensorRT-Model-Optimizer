@@ -22,5 +22,5 @@ simplifies the overall workflow to accommodate for the simpler nature of pruning
 # nas is a required - so let's check if it's available
 import modelopt.torch.nas
 
-from . import config, mode, plugins
+from . import fastnas, gradnas, plugins
 from .pruning import *

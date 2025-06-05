@@ -15,7 +15,9 @@
 
 """ModelOpt plugin for enabling automatic save/restore of ModelOpt state for HuggingFace models."""
 
+import os
 import types
+import warnings
 from contextlib import contextmanager
 
 import torch
@@ -54,12 +56,37 @@ def _undo_torch_init_override_by_transformers():
 
 def _new_from_pretrained(cls, /, pretrained_model_name_or_path, *args, **kwargs):
     """Patch for `cls.from_pretrained` method to restore ModelOpt state."""
+    if kwargs.get("tp_plan") is not None:
+        raise NotImplementedError(
+            "ModelOpt does not support tensor parallelism for Huggingface transformers models yet. "
+            "Please use multi-GPU non-tensor parallel inference by specifying `device_map` in the `from_pretrained` API"
+        )
+
+    original_world_size = None
+    if kwargs.get("device_map") == "auto" and os.environ.get("WORLD_SIZE"):
+        # Transformers overrides device_map ="auto" when world_size is > 0 to use tensor parallelism
+        # We dont support tensor parallelism yet, so lets unset WORLD_SIZE env variable when the original
+        # `from_pretrained` is called and restore it after the model is loaded
+        # TODO: remove this once we support tensor parallelism
+        original_world_size = os.environ["WORLD_SIZE"]
+        del os.environ["WORLD_SIZE"]
+        warnings.warn(
+            f"Distributed setup with world_size={original_world_size} detected with device_map='auto' - Huggingface"
+            "transformers now uses tensor parallelism for this case. "
+            "ModelOpt does not support tensor parallelism for Huggingface transformers models yet. "
+            "Hence, overriding Huggingface transformers behavior to disable tensor parallelism."
+        )
+
     with _patch_model_init_for_modelopt(
         cls, pretrained_model_name_or_path, extra_context=_undo_torch_init_override_by_transformers
     ):
         model = types.MethodType(cls._modelopt_cache["from_pretrained"].__func__, cls)(
             pretrained_model_name_or_path, *args, **kwargs
         )
+
+    if original_world_size is not None:
+        os.environ["WORLD_SIZE"] = original_world_size
+
     return model
 
 

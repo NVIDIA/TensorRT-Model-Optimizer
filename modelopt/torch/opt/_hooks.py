@@ -16,7 +16,6 @@
 """Hooks for Pytorch to ensure compatibility with dynamic modules."""
 
 from contextlib import ExitStack, nullcontext
-from typing import Union
 
 import torch
 import torch.nn as nn
@@ -30,7 +29,7 @@ from .dynamic import DynamicModule
 
 
 def _safe_setattr_tensor_or_param_with_dm_check(
-    module: nn.Module, param_name: str, tensor_or_param: Union[torch.Tensor, nn.Parameter]
+    module: nn.Module, param_name: str, tensor_or_param: torch.Tensor | nn.Parameter
 ):
     """A batched version of _safe_setattr_tensor_or_param ensuring compatibility with DMs.
 

@@ -38,8 +38,6 @@ python quantize.py \
 
 *In our example code, FP4 is only supported for Flux. However, you can modify our script to enable FP4 format support for your own model.*
 
-*The FP4 format relies on the `onnx-weekly` build rather than the stable ONNX 1.17 version.*
-
 ```sh
 python quantize.py \
   --model {flux-dev|sdxl-1.0|sdxl-turbo} --model-dtype {Half|BFloat16} --trt-high-precision-dtype {Half|BFloat16} \

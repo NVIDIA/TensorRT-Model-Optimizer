@@ -19,7 +19,6 @@ import argparse
 import subprocess
 import warnings
 from pathlib import Path
-from typing import Optional, Union
 
 import tensorrt_llm
 import torch
@@ -52,13 +51,13 @@ def str2bool(v):
 
 
 def build_tensorrt_llm(
-    pretrained_config: Union[str, Path],
-    engine_dir: Union[str, Path],
+    pretrained_config: str | Path,
+    engine_dir: str | Path,
     max_input_len: int = 200,
     max_output_len: int = 200,
     max_batch_size: int = 1,
     max_beam_width: int = 1,
-    max_num_tokens: Optional[int] = None,
+    max_num_tokens: int | None = None,
     num_build_workers: int = 1,
     enable_sparsity: bool = False,
     max_prompt_embedding_table_size: int = BuildConfig.max_prompt_embedding_table_size,

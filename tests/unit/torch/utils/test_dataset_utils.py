@@ -32,8 +32,7 @@ def setup_test_data():
     def mock_infer(**kwargs):
         batch_size = kwargs["input_ids"].shape[0]
         if batch_size > 2:
-            raise torch.cuda.OutOfMemoryError()
-        return None
+            raise torch.cuda.OutOfMemoryError
 
     return batch_data, mock_infer
 
@@ -77,7 +76,7 @@ def test_oom_with_single_sample():
     }
 
     def mock_infer_always_oom(**kwargs):
-        raise torch.cuda.OutOfMemoryError()
+        raise torch.cuda.OutOfMemoryError
 
     # Should raise assertion error since can't split batch size 1
     with pytest.raises(AssertionError):
@@ -95,7 +94,7 @@ def test_batch_contents_preserved():
 
     def mock_infer_collect(**kwargs):
         if kwargs["input_ids"].shape[0] > 2:
-            raise torch.cuda.OutOfMemoryError()
+            raise torch.cuda.OutOfMemoryError
         processed_values.extend(kwargs["input_ids"].flatten().tolist())
 
     _process_batch(batch_data, mock_infer_collect)

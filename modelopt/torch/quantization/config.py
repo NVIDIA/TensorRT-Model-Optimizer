@@ -136,20 +136,21 @@ the layer named ``lm_head``,  you can create a custom config and quantize your m
 
 """
 
-import warnings
-from typing import Callable, Dict, Literal, Optional, Tuple, Union
+from collections.abc import Callable
+from typing import Literal
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
-from modelopt.core.torch.quantization.config import (  # noqa: F401
-    NVFP4_AFFINE_KV_CFG,
-    NVFP4_AWQ_CLIP_CFG,
-    NVFP4_AWQ_FULL_CFG,
-    NVFP4_AWQ_LITE_CFG,
-    NVFP4_DEFAULT_CFG,
-    NVFP4_KV_CFG,
-    NVFP4_KV_ROTATE_CFG,
-    NVFP4_SVDQUANT_DEFAULT_CFG,
+# use the form "from x import y as y" syntax to direct mypy that these configs are re-exported
+from modelopt.core.torch.quantization.config import NVFP4_AFFINE_KV_CFG as NVFP4_AFFINE_KV_CFG
+from modelopt.core.torch.quantization.config import NVFP4_AWQ_CLIP_CFG as NVFP4_AWQ_CLIP_CFG
+from modelopt.core.torch.quantization.config import NVFP4_AWQ_FULL_CFG as NVFP4_AWQ_FULL_CFG
+from modelopt.core.torch.quantization.config import NVFP4_AWQ_LITE_CFG as NVFP4_AWQ_LITE_CFG
+from modelopt.core.torch.quantization.config import NVFP4_DEFAULT_CFG as NVFP4_DEFAULT_CFG
+from modelopt.core.torch.quantization.config import NVFP4_KV_CFG as NVFP4_KV_CFG
+from modelopt.core.torch.quantization.config import NVFP4_KV_ROTATE_CFG as NVFP4_KV_ROTATE_CFG
+from modelopt.core.torch.quantization.config import (
+    NVFP4_SVDQUANT_DEFAULT_CFG as NVFP4_SVDQUANT_DEFAULT_CFG,
 )
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 from modelopt.torch.utils.network import ConstructorLike
@@ -275,6 +276,57 @@ MXFP8_DEFAULT_CFG = {
     "algorithm": None,
 }
 
+MXFP6_DEFAULT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (3, 2),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (3, 2),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": None,
+}
+
+MXFP4_DEFAULT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": None,
+}
+
+MXINT8_DEFAULT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": 8,
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": 8,
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": None,
+}
+
 FP8_KV_CFG = {
     "quant_cfg": {
         "*[kv]_bmm_quantizer": {
@@ -299,30 +351,6 @@ FP8_AFFINE_KV_CFG = {
     "algorithm": "max",
 }
 
-
-# Deprecated configs
-class _DeprecatedConfig(dict):
-    """A dictionary that prints out a warning when the deprecated config is used."""
-
-    _warned = False  # Class-level flag to track if warning was shown
-
-    def __getitem__(self, key):
-        if not self._warned:
-            warnings.warn(
-                "This quantization configuration is deprecated, and will be removed in the next release. "
-                "Please use the new API `mtq.compress` to compress the model weights after quantization instead.",
-                DeprecationWarning,
-                stacklevel=2,  # Show the caller's line number
-            )
-            self.__class__._warned = True  # Set flag for all instances
-        return super().__getitem__(key)
-
-
-# Deprecated configs
-FP8_PER_TENSOR_REAL_QUANT_CFG = _DeprecatedConfig(FP8_DEFAULT_CFG)
-FP8_2D_BLOCKWISE_REAL_QUANT_CFG = _DeprecatedConfig(FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG)
-FP8_PER_CHANNEL_REAL_QUANT_CFG = _DeprecatedConfig(FP8_PER_CHANNEL_PER_TOKEN_CFG)
-
 choices: set[str] = {
     "INT8_DEFAULT_CFG",
     "INT8_SMOOTHQUANT_CFG",
@@ -344,7 +372,6 @@ choices: set[str] = {
     "MXFP8_DEFAULT_CFG",
 }
 
-
 BiasType = Literal["static", "dynamic"]
 BiasMethod = Literal["mean", "max_min"]
 
@@ -358,7 +385,7 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         description="""If True, enables the quantizer. If False, by-pass the quantizer and returns the input tensor.""",
     )
 
-    num_bits: Union[int, tuple[int, int]] = ModeloptField(
+    num_bits: int | tuple[int, int] = ModeloptField(
         default=8,
         title="An integer or a tuple of two integers specifying the number of quantization bits.",
         description="""`num_bits` can be:
@@ -429,14 +456,12 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
             block_sizes is None or block_sizes.get("type", None) != "dynamic"
         ):
             raise ValueError(
-                (
-                    "Only blockwise dynamic quantization is supported with quantization "
-                    "formats E{num_bis[0]}M{num_bits[1]}."
-                )
+                "Only blockwise dynamic quantization is supported with quantization "
+                "formats E{num_bis[0]}M{num_bits[1]}."
             )
         return self
 
-    axis: Optional[Union[int, tuple[int, ...]]] = ModeloptField(
+    axis: int | tuple[int, ...] | None = ModeloptField(
         default=None,
         title="None, integer or a tuple of integers specifying the axis to quantize.",
         description="""This field is for static per-channel quantization. *It cannot coexist with `block_sizes`*.
@@ -490,12 +515,11 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         pattern=r"^static$|^dynamic$",
     )
 
-    block_sizes: Optional[
-        dict[Union[int, str], Optional[Union[int, tuple[int, int], str, dict[int, int]]]]
-    ] = ModeloptField(
-        default=None,
-        title="Optional dictionary specifying block quantization parameters.",
-        description="""This field is for static or dynamic block quantization. *It cannot coexist with ``axis``*.
+    block_sizes: dict[int | str, int | tuple[int, int] | str | dict[int, int] | None] | None = (
+        ModeloptField(
+            default=None,
+            title="Optional dictionary specifying block quantization parameters.",
+            description="""This field is for static or dynamic block quantization. *It cannot coexist with ``axis``*.
             You should set block_sizes if you want fixed number of elements to share every scale factor.
 
             The keys are the axes for block quantization and the
@@ -524,14 +548,14 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
             ``block_sizes = {-1: None, "type": "dynamic"}`` can be used to
             specify per-token dynamic quantization.
         """,
+        )
     )
 
-    bias: Optional[
-        Dict[Union[int, str], Union[BiasType, BiasMethod, Optional[Tuple[int, ...]], bool, int]]
-    ] = ModeloptField(
-        default=None,
-        title="Bias configuration.",
-        description="""Configuration for bias handling in affine quantization. The keys are:
+    bias: dict[int | str, BiasType | BiasMethod | tuple[int, ...] | bool | int | None] | None = (
+        ModeloptField(
+            default=None,
+            title="Bias configuration.",
+            description="""Configuration for bias handling in affine quantization. The keys are:
             - "enable": Boolean to enable/disable bias handling, default is False
             - "type": Specify the type of bias ["static", "dynamic"], default is "static"
             - "method": Specify the method of bias calibration ["mean", "max_min"], default is "mean"
@@ -542,6 +566,7 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
             bias = {"enable": True, "type": "static", "axis": -1}
             bias = {"enable": True, "type": "dynamic", "axis": (-1, -3)}
         """,
+        )
     )
 
     @staticmethod
@@ -579,20 +604,13 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         if v is None:
             return v
 
-        if "type" in v:
-            if v["type"] not in ["static", "dynamic"]:
-                raise ValueError(f"Invalid bias type: {v['type']}, expected 'static' or 'dynamic'")
+        if "type" in v and v["type"] not in ["static", "dynamic"]:
+            raise ValueError(f"Invalid bias type: {v['type']}, expected 'static' or 'dynamic'")
 
-        if "method" in v:
-            if v["method"] not in ["mean", "max_min"]:
-                raise ValueError(
-                    f"Invalid bias method: {v['method']}, expected 'mean' or 'max_min'"
-                )
+        if "method" in v and v["method"] not in ["mean", "max_min"]:
+            raise ValueError(f"Invalid bias method: {v['method']}, expected 'mean' or 'max_min'")
 
-        axis = []
-        for k in v.keys():
-            if k not in ["type", "method"]:
-                axis.append(k)
+        axis = [k for k in v.keys() if k not in ["type", "method"]]  # noqa: SIM118
         assert len(axis) > 0, "The axis for bias computation is not specified."
         for x in axis:
             if not isinstance(x, int):
@@ -609,7 +627,7 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         pattern=r"^Float$|^Half$|^BFloat16$",
     )
 
-    calibrator: Union[str, ConstructorLike] = ModeloptField(
+    calibrator: str | ConstructorLike = ModeloptField(
         default="max",
         title="""Specify the calibrator to use.""",
         description="""The calibrator can be a string from ``["max", "histogram"]`` or a constructor
@@ -657,7 +675,7 @@ class MaxCalibConfig(QuantizeAlgorithmConfig):
 
     method: Literal["max"] = ModeloptField("max")
 
-    distributed_sync: Optional[bool] = ModeloptField(
+    distributed_sync: bool | None = ModeloptField(
         default=True,
         title="Whether to sync the amax across the distributed processes.",
         description="If True, the amax will be synced across the distributed processes.",
@@ -673,7 +691,7 @@ class SmoothQuantCalibConfig(QuantizeAlgorithmConfig):
 
     method: Literal["smoothquant"] = ModeloptField("smoothquant")
 
-    alpha: Optional[float] = ModeloptField(
+    alpha: float | None = ModeloptField(
         default=1.0,
         ge=0.0,
         le=1.0,
@@ -695,7 +713,7 @@ class AWQLiteCalibConfig(QuantizeAlgorithmConfig):
 
     method: Literal["awq_lite"] = ModeloptField("awq_lite")
 
-    alpha_step: Optional[float] = ModeloptField(
+    alpha_step: float | None = ModeloptField(
         default=0.1,
         gt=0.0,
         le=1.0,
@@ -703,7 +721,7 @@ class AWQLiteCalibConfig(QuantizeAlgorithmConfig):
         description="The alpha will be searched from 0 to 1 with the step size specified.",
     )
 
-    debug: Optional[bool] = ModeloptField(
+    debug: bool | None = ModeloptField(
         default=False,
         title="Debug mode.",
         description="If True, module's search metadata will be kept as a module attribute named `awq_lite`.",
@@ -720,20 +738,20 @@ class AWQClipCalibConfig(QuantizeAlgorithmConfig):
 
     method: Literal["awq_clip"] = ModeloptField("awq_clip")
 
-    max_co_batch_size: Optional[int] = ModeloptField(
+    max_co_batch_size: int | None = ModeloptField(
         default=1024,
         title="Maximum output channel batch size while searching clip values.",
         description="Reduce this number if CUDA Out of Memory error occurs.",
     )
 
-    max_tokens_per_batch: Optional[int] = ModeloptField(
+    max_tokens_per_batch: int | None = ModeloptField(
         default=64,
         title="Maximum tokens per batch while searching clip values.",
         description="""The total tokens used for clip search would be ``max_tokens_per_batch * number of batches``.
         Original AWQ uses a total of 512 tokens to search for clip values.""",
     )
 
-    min_clip_ratio: Optional[float] = ModeloptField(
+    min_clip_ratio: float | None = ModeloptField(
         default=0.5,
         gt=0.0,
         lt=1.0,
@@ -742,7 +760,7 @@ class AWQClipCalibConfig(QuantizeAlgorithmConfig):
         ``[original block amax * min_clip_ratio, original block amax]``.""",
     )
 
-    shrink_step: Optional[float] = ModeloptField(
+    shrink_step: float | None = ModeloptField(
         default=0.05,
         gt=0.0,
         le=1.0,
@@ -751,7 +769,7 @@ class AWQClipCalibConfig(QuantizeAlgorithmConfig):
         with the step size specified.""",
     )
 
-    debug: Optional[bool] = ModeloptField(
+    debug: bool | None = ModeloptField(
         default=False,
         title="Debug mode.",
         description="If True, module's search metadata will be kept as a module attribute named ``awq_clip``.",
@@ -766,7 +784,7 @@ class AWQFullCalibConfig(AWQLiteCalibConfig, AWQClipCalibConfig):
 
     method: Literal["awq_full"] = ModeloptField("awq_full")
 
-    debug: Optional[bool] = ModeloptField(
+    debug: bool | None = ModeloptField(
         default=False,
         title="Debug mode.",
         description=(
@@ -784,7 +802,7 @@ class SVDQuantConfig(QuantizeAlgorithmConfig):
 
     method: Literal["svdquant"] = ModeloptField("svdquant")
 
-    lowrank: Optional[int] = ModeloptField(
+    lowrank: int | None = ModeloptField(
         default=32,
         title="Low-rank dimension for the SVD LoRA",
         description=(
@@ -795,20 +813,15 @@ class SVDQuantConfig(QuantizeAlgorithmConfig):
 
 
 QuantizeQuantCfgType = dict[
-    Union[str, Callable],
-    Union[
-        QuantizerAttributeConfig,
-        list[QuantizerAttributeConfig],
-        dict[
-            Union[str, Callable],
-            Union[QuantizerAttributeConfig, list[QuantizerAttributeConfig]],
-        ],
-    ],
+    str | Callable,
+    QuantizerAttributeConfig
+    | list[QuantizerAttributeConfig]
+    | dict[str | Callable, QuantizerAttributeConfig | list[QuantizerAttributeConfig]],
 ]
 
-_QuantizeAlgoCfgType = Union[None, str, dict, QuantizeAlgorithmConfig]
+_QuantizeAlgoCfgType = str | dict | QuantizeAlgorithmConfig | None
 
-QuantizeAlgoCfgType = Union[None, _QuantizeAlgoCfgType, list[_QuantizeAlgoCfgType]]
+QuantizeAlgoCfgType = _QuantizeAlgoCfgType | list[_QuantizeAlgoCfgType] | None
 
 
 class QuantizeConfig(ModeloptBaseConfig):
@@ -838,7 +851,7 @@ class CompressConfig(ModeloptBaseConfig):
     )
 
 
-CompressCfgType = Union[dict[str, bool], None, CompressConfig]
+CompressCfgType = dict[str, bool] | None | CompressConfig
 
 
 class _QuantizeExportConfig(ModeloptBaseConfig):
@@ -863,13 +876,12 @@ def need_calibration(config):
             continue
         # quantization like W4A8 has a list of weight quantizers
         if isinstance(cfg, list):
-            for config in cfg:
-                if _not_dynamic(config):
+            for _config in cfg:
+                if _not_dynamic(_config):
                     print(f"{cfg}: True")
                     return True
-        else:
-            if _not_dynamic(cfg):
-                print(f"{cfg}: True")
-                return True
+        elif _not_dynamic(cfg):
+            print(f"{cfg}: True")
+            return True
 
     return False

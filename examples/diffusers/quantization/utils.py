@@ -92,7 +92,7 @@ def quantize_lvl(model_id, backbone, quant_level=2.5, enable_conv_3d=True):
 
 
 def load_calib_prompts(batch_size, calib_data_path="./calib_prompts.txt"):
-    with open(calib_data_path, "r", encoding="utf8") as file:
+    with open(calib_data_path, encoding="utf8") as file:
         lst = [line.rstrip("\n") for line in file]
     return [lst[i : i + batch_size] for i in range(0, len(lst), batch_size)]
 

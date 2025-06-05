@@ -41,10 +41,9 @@
 
 """This module contains all the patched functions from ORT."""
 
-import logging
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Optional, Sequence, Union
 
 import numpy as np
 import onnx
@@ -71,23 +70,24 @@ from onnxruntime.quantization.quant_utils import (
     QuantizationMode,
     QuantType,
     load_model_with_shape_infer,
-    model_has_pre_process_metadata,
     save_and_reload_model_with_shape_infer,
 )
 from onnxruntime.quantization.quantize import check_static_quant_arguments
 from onnxruntime.quantization.registry import QDQRegistry, QLinearOpsRegistry
 from tqdm import tqdm
 
+from modelopt.onnx.logging_config import logger
+
 
 def _collect_value(histogram_collector, name_to_arr):
     """Collect histogram on real value."""
     for tensor, data_arr in tqdm(name_to_arr.items()):
         # ====================== Modification ======================
-        concat_data_arr = np.asarray(data_arr[0])  # noqa: PLW2901
-        concat_data_arr = concat_data_arr.flatten()  # noqa: PLW2901
+        concat_data_arr = np.asarray(data_arr[0])
+        concat_data_arr = concat_data_arr.flatten()
         for i in range(1, len(data_arr)):
-            curr_data_arr = np.asarray(data_arr[i])  # noqa: PLW2901
-            curr_data_arr = curr_data_arr.flatten()  # noqa: PLW2901
+            curr_data_arr = np.asarray(data_arr[i])
+            curr_data_arr = curr_data_arr.flatten()
             concat_data_arr = np.concatenate((concat_data_arr, curr_data_arr))
 
         data_arr = concat_data_arr
@@ -140,11 +140,11 @@ def _collect_absolute_value(histogram_collector, name_to_arr):
                 f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
             )
             # ====================== Modification ======================
-            concat_data_arr = np.asarray(data_arr[0])  # noqa: PLW2901
-            concat_data_arr = concat_data_arr.flatten()  # noqa: PLW2901
+            concat_data_arr = np.asarray(data_arr[0])
+            concat_data_arr = concat_data_arr.flatten()
             for i in range(1, len(data_arr)):
-                curr_data_arr = np.asarray(data_arr[i])  # noqa: PLW2901
-                curr_data_arr = curr_data_arr.flatten()  # noqa: PLW2901
+                curr_data_arr = np.asarray(data_arr[i])
+                curr_data_arr = curr_data_arr.flatten()
                 concat_data_arr = np.concatenate((concat_data_arr, curr_data_arr))
             data_arr_np = concat_data_arr
             # ==========================================================
@@ -222,7 +222,8 @@ def _check_opset_version(onnx_quantizer):
     if opset_version < 19 and onnx_quantizer.weight_qType == onnx_pb.TensorProto.FLOAT8E4M3FN:
         onnx_quantizer.model.model.opset_import.remove(ai_onnx_domain[0])
         onnx_quantizer.model.model.opset_import.extend([onnx.helper.make_opsetid("", 19)])
-        onnx_quantizer.model.model.ir_version = 9
+        # TODO: Remove manual ir_version change once ORT supports ir_version 11
+        onnx_quantizer.model.model.ir_version = 10
         opset_version = 19
 
     onnx_quantizer.fuse_dynamic_quant = True
@@ -262,19 +263,20 @@ def _select_tensors_to_calibrate(calibrator, model: onnx.ModelProto):
 
 def _create_inference_session_with_ep_config(calibrator, **kwargs):
     """Create an ORT InferenceSession."""
+    logger.info("Creating inference session with EP configuration")
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     providers = kwargs.get("execution_providers", [])
+    logger.debug(f"Execution providers: {providers}")
 
     # Note. This path can be an empty string, which denotes that the model has custom ops and TRT EP is needed.
-    trt_extra_plugin_lib_paths = kwargs.get("trt_extra_plugin_lib_paths", None)
+    trt_extra_plugin_lib_paths = kwargs.get("trt_extra_plugin_lib_paths")
 
     if trt_extra_plugin_lib_paths is not None:
+        logger.debug(f"TRT extra plugin paths: {trt_extra_plugin_lib_paths}")
         if "TensorrtExecutionProvider" not in ort.get_available_providers():
             raise RuntimeError(
-                "Could not find `TensorrtExecutionProvider`, only {}".format(
-                    ort.get_available_providers()
-                )
+                f"Could not find `TensorrtExecutionProvider`, only {ort.get_available_providers()}"
             )
         trt_ep_options = (
             {"trt_extra_plugin_lib_paths": trt_extra_plugin_lib_paths}
@@ -283,13 +285,14 @@ def _create_inference_session_with_ep_config(calibrator, **kwargs):
         )
         # Set GPU memory usage limit
         trt_ep_options["trt_max_workspace_size"] = 80 * 1024 * 1024 * 1024
+        logger.debug(f"TRT EP options: {trt_ep_options}")
 
         # Update the TRT EP with the plugin path
         if "TensorrtExecutionProvider" in providers:
             providers.remove("TensorrtExecutionProvider")
         providers.insert(0, ("TensorrtExecutionProvider", trt_ep_options))
 
-    # Create the inference session with EP configuration
+    logger.info("Creating inference session with ORT")
     calibrator.infer_session = ort.InferenceSession(
         calibrator.augmented_model_path,
         sess_options=sess_options,
@@ -297,7 +300,9 @@ def _create_inference_session_with_ep_config(calibrator, **kwargs):
     )
 
     # Group qdq tensors will have the same scaling factor.
-    calibrator.group_qdq_tensors = kwargs.get("group_qdq_tensors", None)
+    calibrator.group_qdq_tensors = kwargs.get("group_qdq_tensors")
+    if calibrator.group_qdq_tensors:
+        logger.debug(f"Group QDQ tensors: {calibrator.group_qdq_tensors}")
 
 
 def _compute_data_minmax_calibrator(calibrator):
@@ -313,13 +318,8 @@ def _compute_data_minmax_calibrator(calibrator):
         for i in range(len(calibrator.intermediate_outputs[0]))
     ]
 
-    # TODO: If Python 3.10, we can instead just add strict=True to zip
-    assert all(
-        len(output_names) == len(intermediate_output)
-        for intermediate_output in calibrator.intermediate_outputs
-    )
     output_dicts_list = [
-        dict(zip(output_names, intermediate_output))
+        dict(zip(output_names, intermediate_output), strict=True)
         for intermediate_output in calibrator.intermediate_outputs
     ]
 
@@ -375,9 +375,8 @@ def _compute_data_minmax_calibrator(calibrator):
         else:
             pairs.append((min_value_array, max_value_array))
 
-    # TODO: For Python 3.10, we can instead just add strict=False here
     new_calibrate_tensors_range = TensorsData(
-        CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs))
+        CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs, strict=False))
     )
     if calibrator.calibrate_tensors_range:
         calibrator.calibrate_tensors_range = calibrator.merge_range(
@@ -552,12 +551,12 @@ def _adjust_tensor_ranges(base_quantizer):
 
 
 def _create_calibrator_with_extra_options(
-    model: Union[str, Path],
-    op_types_to_calibrate: Optional[Sequence[str]] = None,
+    model: str | Path,
+    op_types_to_calibrate: Sequence[str] | None = None,
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,
     use_external_data_format=False,
-    extra_options={},  # noqa: B006
+    extra_options={},
 ):
     """This function overwrite is needed to pass the TRT plugin path and EP list to the inference session."""
     calibrator = None
@@ -631,8 +630,8 @@ def _create_calibrator_with_extra_options(
 
 
 def _quantize_static(
-    model_input: Union[str, Path, onnx.ModelProto],
-    model_output: Union[str, Path],
+    model_input: str | Path | onnx.ModelProto,
+    model_output: str | Path,
     calibration_data_reader: CalibrationDataReader,
     quant_format=QuantFormat.QDQ,
     op_types_to_quantize=None,
@@ -659,11 +658,18 @@ def _quantize_static(
                 Default is [("CUDAExecutionProvider", {"device_id": 0}), "CPUExecutionProvider",
                 "TensorrtExecutionProvider"]
     """
-    if activation_type == QuantType.QFLOAT8E4M3FN or weight_type == QuantType.QFLOAT8E4M3FN:
-        if calibrate_method != CalibrationMethod.Distribution:
-            raise ValueError(
-                "Only Distribution calibration method is supported for float quantization."
-            )
+    logger.info("Starting static quantization")
+    logger.debug(f"Quantization format: {quant_format}")
+    logger.debug(f"Activation type: {activation_type}")
+    logger.debug(f"Weight type: {weight_type}")
+    logger.debug(f"Calibration method: {calibrate_method}")
+    if (
+        QuantType.QFLOAT8E4M3FN in (activation_type, weight_type)
+        and calibrate_method != CalibrationMethod.Distribution
+    ):
+        raise ValueError(
+            "Only Distribution calibration method is supported for float quantization."
+        )
 
     extra_options = extra_options or {}
     nodes_to_exclude = nodes_to_exclude or []
@@ -682,14 +688,6 @@ def _quantize_static(
         else load_model_with_shape_infer(Path(model_input))
     )
 
-    pre_processed: bool = model_has_pre_process_metadata(model)
-    if not pre_processed:
-        logging.warning(
-            "Please consider to run pre-processing before quantization. Refer to example: "
-            "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
-            "/cpu/ReadMe.md "
-        )
-
     calib_extra_options_keys = [
         ("CalibTensorRangeSymmetric", "symmetric"),
         ("CalibMovingAverage", "moving_average"),
@@ -706,10 +704,12 @@ def _quantize_static(
         for (name, key) in calib_extra_options_keys
         if name in extra_options
     }
+    logger.debug(f"Calibration extra options: {calib_extra_options}")
 
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
         if isinstance(model_input, onnx.ModelProto):
             output_path = str(Path(quant_tmp_dir) / "model_input.onnx")
+            logger.debug(f"Saving model to temporary path: {output_path}")
             onnx.save_model(
                 model_input,
                 output_path,
@@ -717,6 +717,7 @@ def _quantize_static(
             )
             model_input = output_path
 
+        logger.debug("Creating calibrator")
         calibrator = calibrate.create_calibrator(
             Path(model_input),
             # ======== Modification ========
@@ -727,9 +728,13 @@ def _quantize_static(
             use_external_data_format=use_external_data_format,
             extra_options=calib_extra_options,
         )
+
+        logger.debug("Collecting calibration data")
         calibrator.collect_data(calibration_data_reader)
+        logger.debug("Computing tensor ranges")
         tensors_range = calibrator.compute_data()
         if not isinstance(tensors_range, TensorsData):
+            logger.error(f"Unexpected type {type(tensors_range)} for tensors_range")
             raise TypeError(
                 f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
             )
@@ -768,16 +773,11 @@ def _quantize_static(
 
     quantizer.quantize_model()
     quantizer.model.save_model_to_file(model_output, use_external_data_format)
-    if not pre_processed:
-        logging.warning(
-            "Please consider pre-processing before quantization. See "
-            "https://github.com/microsoft/onnxruntime-inference-examples/blob/main/quantization/image_classification"
-            "/cpu/ReadMe.md "
-        )
 
 
 def patch_ort_modules():
     """Patches the ORT modules."""
+    logger.debug("Patching ORT modules")
     HistogramCollector.collect_value = _collect_value
     HistogramCollector.collect_absolute_value = _collect_absolute_value
     calibrate.create_calibrator = _create_calibrator_with_extra_options

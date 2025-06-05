@@ -21,7 +21,7 @@ from packaging.version import Version as _Version
 from torch import __version__ as _torch_version
 
 try:
-    from . import distill, nas, opt, prune, quantization, sparsity, speculative, utils  # noqa: E402
+    from . import distill, nas, opt, prune, quantization, sparsity, speculative, utils
 except ImportError as e:
     raise ImportError(f"{e}\nPlease install optional ``[torch]`` dependencies.")
 

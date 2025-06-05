@@ -18,16 +18,26 @@
 Minitron pruning algorithm uses activation magnitudes to estimate importance of neurons / attention heads in the model.
 More details on Minitron pruning algorithm can be found here: https://arxiv.org/pdf/2407.14679
 
-Actual implementation is at :mod:`modelopt.torch.nas.plugins.megatron`.
+Actual dynamic module implementations are at :mod:`modelopt.torch.nas.plugins.megatron`.
 """
 
-from typing import Optional
-
 import torch
+from pydantic import create_model
 
+# isort: off
+# import nas plugin to check if it is enabled else raises an Exception
+from modelopt.torch.nas.plugins.megatron import *  # noqa: F403
+# isort: on
+
+from modelopt.torch.nas.conversion import NASModeRegistry
+from modelopt.torch.nas.registry import DMRegistry
 from modelopt.torch.nas.utils import sort_parameters
+from modelopt.torch.opt.config import ModeloptBaseConfig, get_kwargs_for_create_model_with_rules
 from modelopt.torch.opt.searcher import BaseSearcher, SearchConfig, SearchStateDict
 from modelopt.torch.opt.utils import named_hparams
+
+from ..fastnas import FastNASModeDescriptor
+from ..pruning import PruneModeRegistry
 
 SUPPORTED_HPARAMS = {
     # Width pruning
@@ -77,7 +87,7 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
         """Return default state dict."""
         return {}  # Not used
 
-    def sanitize_search_config(self, config: Optional[SearchConfig]) -> SearchConfig:
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
         """Sanitize the search config dict."""
         config = super().sanitize_search_config(config)
         assert config["data_loader"] or config["forward_loop"], (
@@ -163,3 +173,44 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
         for n in SUPPORTED_HPARAMS:
             if n in export_config:
                 setattr(model_cfg, n, export_config[n])
+
+
+MCoreGPTMinitronConfig: type[ModeloptBaseConfig] = create_model(
+    "MCoreGPTMinitronConfig",
+    **get_kwargs_for_create_model_with_rules(
+        registry=DMRegistry,
+        default_rules={
+            "megatron.core.models.gpt.GPTModel": {
+                "hidden_size_divisor": 64,
+                "num_heads_per_group_divisor": 1,
+                "num_query_groups_divisor": 1,
+                "ffn_hidden_size_divisor": 64,
+            },
+        },
+        doc='Configuration for the ``"mcore_gpt_minitron"`` mode.',
+    ),
+)
+
+
+@NASModeRegistry.register_mode
+@PruneModeRegistry.register_mode
+class MCoreGPTMinitronModeDescriptor(FastNASModeDescriptor):
+    """Class to describe the ``"mcore_gpt_minitron"`` mode.
+
+    The properties of this mode can be inspected via the source code.
+    """
+
+    @property
+    def name(self) -> str:
+        """Returns the value (str representation) of the mode."""
+        return "mcore_gpt_minitron"
+
+    @property
+    def config_class(self) -> type[ModeloptBaseConfig]:
+        """Specifies the config class for the mode."""
+        return MCoreGPTMinitronConfig
+
+    @property
+    def search_algorithm(self) -> type[BaseSearcher]:
+        """Specifies the search algorithm to use for this mode (if any)."""
+        return MCoreGPTMinitronSearcher

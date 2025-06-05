@@ -31,7 +31,7 @@ def is_trt8():
     return int(trt.__version__.split(".", maxsplit=1)[0]) == TENSORRT_8_MAJOR_VERSION
 
 
-class HostDeviceMem(object):
+class HostDeviceMem:
     """Simple helper data class to hold host and device memory pointers."""
 
     def __init__(self, host_mem, device_mem, dtype):
@@ -82,10 +82,11 @@ def get_input_names(engine: trt.tensorrt.ICudaEngine) -> list[str]:
     Returns:
         List of engine input names.
     """
-    input_names = []
-    for binding_index in range(engine.num_bindings):
-        if engine.binding_is_input(binding_index):
-            input_names.append(engine.get_binding_name(binding_index))
+    input_names = [
+        engine.get_binding_name(binding_index)
+        for binding_index in range(engine.num_bindings)
+        if engine.binding_is_input(binding_index)
+    ]
     return input_names
 
 
@@ -98,10 +99,11 @@ def get_output_names(engine: trt.tensorrt.ICudaEngine) -> list[str]:
     Returns:
         List of engine output names.
     """
-    output_names = []
-    for binding_index in range(engine.num_bindings):
-        if not engine.binding_is_input(binding_index):
-            output_names.append(engine.get_binding_name(binding_index))
+    output_names = [
+        engine.get_binding_name(binding_index)
+        for binding_index in range(engine.num_bindings)
+        if not engine.binding_is_input(binding_index)
+    ]
     return output_names
 
 

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -68,8 +67,8 @@ class EvalModel(BaseModel):
 
 
 class SeqToSeqModel(EvalModel):
-    model: Optional[PreTrainedModel] = None
-    tokenizer: Optional[PreTrainedTokenizer] = None
+    model: PreTrainedModel | None = None
+    tokenizer: PreTrainedTokenizer | None = None
     lora_path: str = ""
     device: str = "cuda"
     load_8bit: bool = False
@@ -254,10 +253,10 @@ def print_gpu_utilization():
 
 
 def select_model(model_name: str, **kwargs) -> EvalModel:
-    model_map = dict(
-        causal=CausalModel,
-        autoawq_causal=AutoAWQCausalModel,
-    )
+    model_map = {
+        "causal": CausalModel,
+        "autoawq_causal": AutoAWQCausalModel,
+    }
     model_class = model_map.get(model_name)
     if model_class is None:
         raise ValueError(f"{model_name}. Choose from {list(model_map.keys())}")
@@ -305,7 +304,7 @@ class TrtllmPipeline:
                     )
                     output_ids = outputs[0, input_lengths[0] :]
 
-            elif isinstance(self.model, ModelRunnerCpp) or isinstance(self.model, ModelRunner):
+            elif isinstance(self.model, (ModelRunnerCpp, ModelRunner)):
                 outputs = self.model.generate(
                     batch_input_ids,
                     max_new_tokens=output_len,

@@ -159,7 +159,7 @@ class DoubleArgModel(nn.Module):
 
 
 @pytest.mark.parametrize(
-    "model, n_args, batch_size",
+    ("model", "n_args", "batch_size"),
     [
         (SingleArgModel(), 1, 1),
         (SingleArgModel(), 1, 2),

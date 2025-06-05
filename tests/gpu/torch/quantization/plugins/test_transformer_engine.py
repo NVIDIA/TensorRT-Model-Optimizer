@@ -57,14 +57,17 @@ class TELinear(nn.Module):
 )
 def test_quantize(model_cls, config):
     """Test quantize function can run without problems."""
-    if config in [
-        mtq.NVFP4_DEFAULT_CFG,
-        mtq.NVFP4_AWQ_LITE_CFG,
-        mtq.MXFP8_DEFAULT_CFG,
-        mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
-    ]:
-        if get_cuda_ext_mx() is None:
-            pytest.skip("cuda_ext_mx is not available")
+    if (
+        config
+        in [
+            mtq.NVFP4_DEFAULT_CFG,
+            mtq.NVFP4_AWQ_LITE_CFG,
+            mtq.MXFP8_DEFAULT_CFG,
+            mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
+        ]
+        and get_cuda_ext_mx() is None
+    ):
+        pytest.skip("cuda_ext_mx is not available")
 
     if config == mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG:
         # reduce block sizes for simple testing models
@@ -75,7 +78,7 @@ def test_quantize(model_cls, config):
 
 
 @pytest.mark.parametrize(
-    "model_cls, quant_config",
+    ("model_cls", "quant_config"),
     [
         (TELinear, mtq.INT8_SMOOTHQUANT_CFG),
     ],

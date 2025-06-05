@@ -43,7 +43,7 @@ def require_sm89(cuda_capability):
 
 @pytest.fixture(scope="session")
 def tiny_llama_path(tmp_path_factory):
-    yield str(
+    return str(
         create_tiny_llama_dir(
             tmp_path_factory.mktemp("tiny_llama"),
             with_tokenizer=True,

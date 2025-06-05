@@ -47,6 +47,9 @@ from modelopt.torch.quantization.extensions import get_cuda_ext_mx
         mtq.NVFP4_AWQ_CLIP_CFG,
         mtq.NVFP4_AWQ_FULL_CFG,
         mtq.MXFP8_DEFAULT_CFG,
+        mtq.MXFP6_DEFAULT_CFG,
+        mtq.MXFP4_DEFAULT_CFG,
+        mtq.MXINT8_DEFAULT_CFG,
         mtq.NVFP4_KV_ROTATE_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     ],
@@ -60,6 +63,9 @@ def test_quantize(model_cls, config):
         mtq.NVFP4_AWQ_CLIP_CFG,
         mtq.NVFP4_AWQ_FULL_CFG,
         mtq.MXFP8_DEFAULT_CFG,
+        mtq.MXFP6_DEFAULT_CFG,
+        mtq.MXFP4_DEFAULT_CFG,
+        mtq.MXINT8_DEFAULT_CFG,
         mtq.NVFP4_KV_ROTATE_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     ]:
@@ -77,7 +83,7 @@ def test_quantize(model_cls, config):
 
 
 @pytest.mark.parametrize(
-    "model_cls, quant_config",
+    ("model_cls", "quant_config"),
     [
         (SimpleLinear, mtq.INT8_SMOOTHQUANT_CFG),
         (SimpleLinear, mtq.W4A8_AWQ_BETA_CFG),

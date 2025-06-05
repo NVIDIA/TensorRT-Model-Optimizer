@@ -20,7 +20,7 @@ import tempfile
 import warnings
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -28,6 +28,7 @@ import torch.nn as nn
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer
 
+from .convert_hf_config import convert_hf_quant_config_format
 from .layer_utils import get_experts_list, is_layernorm, is_moe, is_quantlinear
 from .model_config import (
     KV_CACHE_FP8,
@@ -111,10 +112,24 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
 
     with torch.no_grad():
         fake_input = torch.ones([1, 2], dtype=torch.long).to(model.device)
+        decoder_fake_input = fake_input
+        if model_type.startswith("whisper"):
+            # For Whisper models, we need to pass a fake input with the specific sequence length
+            from transformers import AutoFeatureExtractor
+
+            feature_extractor = AutoFeatureExtractor.from_pretrained(model.name_or_path)
+            fake_input = torch.ones(
+                [1, model.config.num_mel_bins, feature_extractor.nb_max_frames], dtype=model.dtype
+            ).to(model.device)
+
         # Run forward pass so that all modules sharing the same input are collected using forward hook.
 
         with set_quantizer_by_cfg_context(model, {"*": {"enable": False}}):
-            model(fake_input)
+            if getattr(model.config, "is_encoder_decoder", False):
+                # For encoder-decoder models, we need to pass both the encoder and decoder input ids
+                model(fake_input, decoder_input_ids=decoder_fake_input)
+            else:
+                model(fake_input)
 
         for handle in handles:
             handle.remove()
@@ -133,14 +148,14 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         if (
             quantization_format is not QUANTIZATION_NONE
             and "awq" in quantization_format
-            and tensor in output_to_layernorm.keys()
+            and tensor in output_to_layernorm
         ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
 
 
 def _export_hf_checkpoint(
-    model: nn.Module, dtype: Optional[torch.dtype] = None
+    model: nn.Module, dtype: torch.dtype | None = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -187,7 +202,6 @@ def _export_hf_checkpoint(
         remove_hook_from_module(model, recurse=True)
     except ImportError:
         warnings.warn("accelerate is not installed, hooks will not be removed")
-        pass
 
     quant_config = get_quant_config(layer_pool)
 
@@ -204,10 +218,17 @@ def _export_hf_checkpoint(
     if kv_cache_format != QUANTIZATION_NONE:
         kv_cache_max_bound = cache_bound_mapping.get(kv_cache_format)
 
+    # Track if any layers are quantized to properly set exclude_modules
+    has_quantized_layers = False
+
     for name, sub_module in layer_pool.items():
         if is_quantlinear(sub_module):
             quantization_format = get_quantization_format(sub_module)
             block_size = get_weight_block_size(sub_module)
+
+            # Track if any layer is quantized
+            if quantization_format != QUANTIZATION_NONE:
+                has_quantized_layers = True
 
             if quantization_format == QUANTIZATION_FP8:
                 # Convert amax to float32
@@ -300,7 +321,8 @@ def _export_hf_checkpoint(
         quantized_state_dict, kv_cache_max_bound, kv_cache_format
     )
 
-    if quantization_format != QUANTIZATION_NONE:
+    # Check if any layers are quantized
+    if has_quantized_layers:
         quant_config["quantization"].setdefault("exclude_modules", []).append("lm_head")
 
     return quantized_state_dict, quant_config
@@ -308,8 +330,8 @@ def _export_hf_checkpoint(
 
 def export_hf_checkpoint(
     model: nn.Module,
-    dtype: Optional[torch.dtype] = None,
-    export_dir: Union[Path, str] = tempfile.gettempdir(),
+    dtype: torch.dtype | None = None,
+    export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
@@ -325,14 +347,27 @@ def export_hf_checkpoint(
     try:
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
-        # Save config
+        # Save hf_quant_config.json for backward compatibility
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
+
+        hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
         # Save model
         if not save_modelopt_state:
             model._disable_modelopt_save = True
         model.save_pretrained(export_dir, state_dict=post_state_dict)
+
+        original_config = f"{export_dir}/config.json"
+        config_data = {}
+
+        with open(original_config) as file:
+            config_data = json.load(file)
+
+        config_data["quantization_config"] = hf_quant_config
+
+        with open(original_config, "w") as file:
+            json.dump(config_data, file, indent=4)
 
     except Exception as e:
         fallback_model_path = f"{export_dir}/modelopt_model.pth"

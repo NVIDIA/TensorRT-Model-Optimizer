@@ -30,6 +30,6 @@ def import_plugin(plugin_name, msg_if_missing=None, verbose=True):
     except Exception as e:
         if verbose:
             warnings.warn(
-                f"Failed to import {plugin_name} plugin due to: {repr(e)}. "
+                f"Failed to import {plugin_name} plugin due to: {e!r}. "
                 "You may ignore this warning if you do not need this plugin."
             )

@@ -17,7 +17,8 @@
 
 import inspect
 from collections import deque
-from typing import Any, Callable, Generator, Optional, Union
+from collections.abc import Callable, Generator
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -26,7 +27,7 @@ from torch.fx.proxy import TraceError
 
 from modelopt.torch.utils.graph import NodeTarget
 
-__all__ = ["RobustTracer", "GraphCollection", "recursive_trace"]
+__all__ = ["GraphCollection", "RobustTracer", "recursive_trace"]
 
 
 class RobustTracer:
@@ -38,7 +39,7 @@ class RobustTracer:
     _leaves: set[type[nn.Module]] = set()
 
     @classmethod
-    def is_registered_leaf(cls, m: Union[nn.Module, type[nn.Module]]) -> bool:
+    def is_registered_leaf(cls, m: nn.Module | type[nn.Module]) -> bool:
         """Check if module is registered as extra leaf module."""
         if isinstance(m, nn.Module):
             m = type(m)
@@ -71,8 +72,8 @@ class RobustTracer:
 
         def trace(
             self,
-            root: Union[torch.nn.Module, Callable[..., Any]],
-            concrete_args: Optional[dict[str, Any]] = None,
+            root: torch.nn.Module | Callable[..., Any],
+            concrete_args: dict[str, Any] | None = None,
         ) -> Graph:
             """Trace like regular tracer, however, we need special treatment for root == leaf.
 
@@ -168,18 +169,18 @@ class RobustTracer:
         self._tracer_failed: dict[int, str] = {}
         self._tracer_visited: set[int] = set()
 
-    def record_call_module(self, m: nn.Module, e: Optional[Exception] = None) -> None:
+    def record_call_module(self, m: nn.Module, e: Exception | None = None) -> None:
         """Record the call_module operation."""
         self._tracer_visited.add(id(m))  # mark as visited
         if e is not None:
-            self._tracer_failed[id(m)] = f"{type(e).__name__}: {str(e)}"  # mark as failed as well
+            self._tracer_failed[id(m)] = f"{type(e).__name__}: {e!s}"  # mark as failed as well
             self._leaf_added = True  # add a flag to indicate a leaf node is added
 
     def is_failed(self, m: NodeTarget) -> bool:
         """Check if the module is failed."""
         return id(m) in self._tracer_failed
 
-    def failure_msg(self, m: NodeTarget) -> Optional[str]:
+    def failure_msg(self, m: NodeTarget) -> str | None:
         """Get the failure message of the module."""
         return self._tracer_failed.get(id(m))
 
@@ -191,7 +192,7 @@ class RobustTracer:
         """Check if the given module is a leaf module."""
         return self._FxTracerPlus(self).is_leaf_module(m, module_qualified_name)
 
-    def trace(self, root: nn.Module, concrete_args: Optional[dict[str, Any]] = None) -> Graph:
+    def trace(self, root: nn.Module, concrete_args: dict[str, Any] | None = None) -> Graph:
         """Trace root using the fx tracer.
 
         Unlike the standard tracer in fx, this tracer adds the following functionalities:
@@ -220,7 +221,7 @@ class RobustTracer:
         return self.graph
 
     def _get_full_kwargs(
-        self, root: NodeTarget, concrete_args: Optional[dict[str, Any]] = None
+        self, root: NodeTarget, concrete_args: dict[str, Any] | None = None
     ) -> Graph:
         # extract function to be traced
         fn = type(root).forward if isinstance(root, nn.Module) else root
@@ -255,7 +256,7 @@ class GraphCollection:
         """Check if node target failed during tracing."""
         return self._tracer.is_failed(m)
 
-    def failure_msg(self, m: NodeTarget) -> Optional[str]:
+    def failure_msg(self, m: NodeTarget) -> str | None:
         """Get the failure message of the module if it failed."""
         return self._tracer.failure_msg(m)
 
@@ -264,7 +265,7 @@ class GraphCollection:
         return self._tracer.is_unvisited(m)
 
     def recursive_trace(
-        self, model: nn.Module, concrete_args: Optional[dict[str, Any]] = None
+        self, model: nn.Module, concrete_args: dict[str, Any] | None = None
     ) -> None:
         """Recursively trace the model and all failing sub-modules and store graph collection.
 
@@ -307,7 +308,7 @@ class GraphCollection:
 
 
 def recursive_trace(
-    model: nn.Module, concrete_args: Optional[dict[str, Any]] = None
+    model: nn.Module, concrete_args: dict[str, Any] | None = None
 ) -> GraphCollection:
     """Recursively trace the model and all failing sub-modules and return graph collection.
 

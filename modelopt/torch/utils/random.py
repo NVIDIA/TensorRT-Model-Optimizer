@@ -16,8 +16,9 @@
 """Random number generator with a deterministic, synchronized seed for sampling."""
 
 import random as _random
+from collections.abc import Callable, MutableSequence, Sequence
 from contextlib import contextmanager
-from typing import Any, Callable, MutableSequence, Optional, Sequence, TypeVar
+from typing import Any, TypeVar
 
 import torch
 
@@ -28,17 +29,19 @@ T = TypeVar("T")  # pylint: disable=invalid-name
 FSample = Callable[[Sequence[T]], T]
 
 
-def _get_generator(seed: Optional[int] = None) -> _random.Random:
+def _get_generator(seed: int | None = None) -> _random.Random:
     # delete existing generator if manual seed is provided OR if we are now in distributed setting
     # but weren't previously and so generator is not yet synced across GPUs (manual seed still takes
     # precedence though).
-    if hasattr(_get_generator, "generator"):
-        if seed is not None or (
+    if hasattr(_get_generator, "generator") and (
+        seed is not None
+        or (
             dist.size() > 1
             and not getattr(_get_generator, "is_synced", False)
             and not getattr(_get_generator, "is_manual", False)
-        ):
-            delattr(_get_generator, "generator")
+        )
+    ):
+        delattr(_get_generator, "generator")
     if not hasattr(_get_generator, "generator"):
         # synchronizing random seed and initialize generator
         seed = dist.broadcast(seed or _random.getrandbits(64))

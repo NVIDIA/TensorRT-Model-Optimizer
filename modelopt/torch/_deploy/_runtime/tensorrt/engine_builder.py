@@ -18,7 +18,6 @@ import os
 import subprocess  # nosec
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory, gettempdir
-from typing import Optional, Union
 
 from ..._runtime.common import read_bytes, timeit, write_bytes, write_string
 from ..._runtime.tensorrt.layerwise_profiling import process_layerwise_result
@@ -43,7 +42,7 @@ except ImportError:
 
 # TODO: Get rid of this function or get approval for `# nosec` usage if we want to include this
 #   as a non-compiled python file in the release.
-def _run_command(cmd: str, cwd: str = None) -> tuple[int, str]:
+def _run_command(cmd: str, cwd: str | None = None) -> tuple[int, str]:
     """Util function to execute a command.
 
     This util will not direct stdout and stderr to console if the cmd succeeds.
@@ -79,7 +78,7 @@ def _get_profiling_params(profiling_runs: int) -> list[str]:
 def _get_trtexec_params(
     engine_path: str,
     builder_optimization_level: str,
-    timing_cache_file: str = None,
+    timing_cache_file: str | None = None,
     verbose: bool = False,
 ) -> list[str]:
     cmd = ["--saveEngine=" + engine_path]
@@ -101,7 +100,7 @@ def _get_trtexec_params(
     return cmd
 
 
-def _draw_engine(engine_json_fname: str) -> Optional[bytes]:
+def _draw_engine(engine_json_fname: str) -> bytes | None:
     if not HAVE_TREX:
         logging.exception("`trex` is not installed. Skipping engine graph drawing.")
         return None
@@ -127,7 +126,6 @@ def _is_low_bit_mode(trt_mode: str) -> bool:
         TRTMode.INT4,
         TRTMode.FLOAT8,
         TRTMode.BEST,
-        TRTMode.STRONGLY_TYPED,
     ]
 
 
@@ -147,14 +145,14 @@ def _update_dynamic_shapes(dynamic_shapes: dict, cmd: list[str]) -> None:
 def build_engine(
     onnx_bytes: OnnxBytes,
     trt_mode: str = TRTMode.FLOAT32,
-    calib_cache: str = None,
-    dynamic_shapes: dict = None,
-    plugin_config: dict = None,
+    calib_cache: str | None = None,
+    dynamic_shapes: dict | None = None,
+    plugin_config: dict | None = None,
     builder_optimization_level: str = "3",
-    output_dir: Union[str, Path, None] = None,
+    output_dir: str | Path | None = None,
     draw_engine: bool = False,
     verbose: bool = False,
-) -> tuple[Optional[bytes], bytes, Optional[bytes]]:
+) -> tuple[bytes | None, bytes, bytes | None]:
     """This method produces serialized TensorRT engine from an ONNX model.
 
     Args:
@@ -204,10 +202,11 @@ def build_engine(
         onnx_path = os.path.join(tmp_onnx_dir, f"{onnx_bytes.model_name}.onnx")
 
         # Save engine and trtexec artifacts in modelopt_build directory or in the output_dir if it is provided
-        if output_dir is None:
-            output_dir = os.path.join(gettempdir(), "modelopt_build/engine/")
-        else:
-            output_dir = Path(output_dir)
+        output_dir = (
+            os.path.join(gettempdir(), "modelopt_build/engine/")
+            if output_dir is None
+            else Path(output_dir)
+        )
         calib_cache_path = os.path.join(output_dir, "calib_cache")
         engine_path = os.path.join(
             output_dir, f"{onnx_bytes.model_name}/{onnx_bytes.model_name}.engine"
@@ -225,14 +224,20 @@ def build_engine(
 
         if plugin_config:
             if "staticPlugins" in plugin_config:
-                for plugin in plugin_config["staticPlugins"]:
-                    cmd.append(f"--staticPlugins={plugin}")
+                cmd.extend(
+                    [f"--staticPlugins={plugin}" for plugin in plugin_config["staticPlugins"]]
+                )
             if "dynamicPlugins" in plugin_config:
-                for plugin in plugin_config["dynamicPlugins"]:
-                    cmd.append(f"--dynamicPlugins={plugin}")
+                cmd.extend(
+                    [f"--dynamicPlugins={plugin}" for plugin in plugin_config["dynamicPlugins"]]
+                )
             if "setPluginsToSerialize" in plugin_config:
-                for plugin in plugin_config["setPluginsToSerialize"]:
-                    cmd.append(f"--setPluginsToSerialize={plugin}")
+                cmd.extend(
+                    [
+                        f"--setPluginsToSerialize={plugin}"
+                        for plugin in plugin_config["setPluginsToSerialize"]
+                    ]
+                )
             if "ignoreParsedPluginLibs" in plugin_config:
                 cmd.append("--ignoreParsedPluginLibs")
 
@@ -272,10 +277,10 @@ def build_engine(
 def profile_engine(
     engine_bytes: bytes,
     profiling_runs: int = 1,
-    onnx_node_names: list[str] = None,
+    onnx_node_names: list[str] | None = None,
     enable_layerwise_profiling: bool = False,
-    dynamic_shapes: dict = None,
-) -> tuple[Optional[dict[str, float]], bytes]:
+    dynamic_shapes: dict | None = None,
+) -> tuple[dict[str, float] | None, bytes]:
     """This method produces profiles a TensorRT engine and returns the detailed results.
 
     Args:
@@ -322,7 +327,7 @@ def profile_engine(
 
             layerwise_results = {}  # empty dictionary
             if enable_layerwise_profiling and os.path.exists(profile_path):
-                layerwise_results = process_layerwise_result(profile_path, onnx_node_names)
+                layerwise_results = process_layerwise_result(profile_path, onnx_node_names)  # type: ignore[arg-type]
 
             return layerwise_results, out.encode()
         # If _run_command has error,

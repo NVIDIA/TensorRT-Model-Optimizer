@@ -16,10 +16,8 @@
 """Calibration utilities."""
 
 import math
-import types
 import warnings
 from functools import partial
-from typing import Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -28,23 +26,23 @@ import torch.nn.functional as F
 
 from modelopt.torch.opt.searcher import ForwardLoop
 from modelopt.torch.utils.distributed import ParallelState
+from modelopt.torch.utils.network import bind_forward_method, unpatch_forward_method
 
 from .conversion import create_and_replace_svdquant_linear_on_the_fly, set_quantizer_by_cfg_context
 from .nn import SequentialQuantizer, TensorQuantizer
 from .utils import (
+    enable_weight_access_and_writeback,
     is_quantized_column_parallel_linear,
     is_quantized_layer_with_weight,
     is_quantized_linear,
     is_quantized_row_parallel_linear,
 )
 
-__all__ = ["max_calibrate", "awq", "smoothquant", "svdquant"]
+__all__ = ["awq", "max_calibrate", "smoothquant", "svdquant"]
 
 
 @torch.no_grad()
-def max_calibrate(
-    model: nn.Module, forward_loop: Optional[ForwardLoop] = None, distributed_sync=True
-):
+def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, distributed_sync=True):
     """Calibrate the model using max.
 
     Args:
@@ -94,7 +92,7 @@ def max_calibrate(
     #   weights:      TPG should have the same amax if axis in [None, 0]
 
     def sync_quantizer_amax_across_tp(
-        quantizer: Union[TensorQuantizer, SequentialQuantizer],
+        quantizer: TensorQuantizer | SequentialQuantizer,
         linear_name: str,
         quantizer_type: str,
         axes_for_sync: list,
@@ -115,7 +113,7 @@ def max_calibrate(
                 )
             # Skip amax sync for INT4 / W4A8 block quantization
             # Sync amax for NVFP4 (dynamic per-block, static per-tensor quantized scale)
-            if not getattr(quantizer.block_sizes, "type", None) != "dynamic":
+            if getattr(quantizer.block_sizes, "type", None) == "dynamic":
                 return
 
         if quantizer.axis in axes_for_sync and quantizer.amax is not None:
@@ -171,7 +169,7 @@ def enable_stats_collection(model: nn.Module):
                 module.disable()
 
 
-def finish_stats_collection(model: nn.Module, method: Optional[str] = None):
+def finish_stats_collection(model: nn.Module, method: str | None = None):
     """Finish stats collection for all quantizers in the model."""
     for name, module in model.named_modules():
         if isinstance(module, TensorQuantizer) and not module._disabled:
@@ -222,7 +220,7 @@ def disable_pre_quant_scale_and_resmooth(linear: nn.Module, delete_pre_quant_sca
         linear.input_quantizer._enable_pre_quant_scale = False
 
 
-# A global variable used during AutoQuantize to avoid folding pre_quant_scale to weights
+# A global variable used during auto_quantize to avoid folding pre_quant_scale to weights
 _ENABLE_FOLDING_PQS_TO_WEIGHTS = True
 
 
@@ -244,7 +242,7 @@ def _apply_weight_pre_quant_scale(linear, pre_quant_scale):
 
 @torch.no_grad()
 def apply_pre_quant_scale_and_smooth(
-    linear: nn.Module, pre_quant_scale: Optional[torch.Tensor] = None
+    linear: nn.Module, pre_quant_scale: torch.Tensor | None = None
 ):
     """Apply pre_quant_scale and smooth the quantized linear weights.
 
@@ -288,7 +286,7 @@ def apply_pre_quant_scale_and_smooth(
 
 
 @torch.no_grad()
-def smoothquant(model: nn.Module, forward_loop: Optional[ForwardLoop] = None, alpha=1.0):
+def smoothquant(model: nn.Module, forward_loop: ForwardLoop | None = None, alpha=1.0):
     """Smooth-Quant variant with per-channel weight scaling.
 
     Args:
@@ -323,6 +321,34 @@ def smoothquant(model: nn.Module, forward_loop: Optional[ForwardLoop] = None, al
 
     max_calibrate(model, forward_loop)
 
+    def postprocess(module):
+        # It is important to keep scaling math in fp32 to be numerically safe
+        act_amax = module.input_quantizer.amax.float()
+        weight_scale = module.weight.abs().amax(dim=0, keepdim=True)
+        device, dtype = module.weight.device, module.weight.dtype
+
+        parallel_group = module.parallel_state.tensor_parallel_group
+        if is_quantized_column_parallel_linear(module) and parallel_group.is_initialized():
+            dist.all_reduce(act_amax, op=dist.ReduceOp.MAX, group=parallel_group.group)
+            dist.all_reduce(weight_scale, op=dist.ReduceOp.MAX, group=parallel_group.group)
+
+        scale_a = (weight_scale.pow(1 - alpha) / act_amax.pow(alpha)).squeeze()
+
+        # Now that activation per-channel amax have been collected, use per-tensor quantization for activation
+        # TODO: make this a buffer after we support only heterogeneous checkpointing for MCore
+        module.input_quantizer._amax_for_smoothing = act_amax.cpu()
+        module.input_quantizer.reset_amax()
+        module.input_quantizer.axis = None
+        module.input_quantizer.amax = act_amax.amax().to(dtype=dtype, device=device)
+
+        # Some channel could have 0 amax which causes scale_a to overflow. Explicitly mask them out here
+        epsilon = 1.0 / (1 << 31)
+        if scale_a.min() <= epsilon:
+            zero_mask = act_amax <= epsilon
+            scale_a[zero_mask] = 1
+        scale_a = scale_a.clamp(min=1e-4, max=1e4)
+        apply_pre_quant_scale_and_smooth(module, scale_a)
+
     smoothed_modules = 0
     for name, module in model.named_modules():
         if is_quantized_linear(module):
@@ -340,32 +366,8 @@ def smoothquant(model: nn.Module, forward_loop: Optional[ForwardLoop] = None, al
                 f"Error: {name} has only one channel to smooth"
             )
 
-            # It is important to keep scaling math in fp32 to be numerically safe
-            act_amax = module.input_quantizer.amax.float()
-            weight_scale = module.weight.abs().amax(dim=0, keepdim=True)
-
-            parallel_group = module.parallel_state.tensor_parallel_group
-            if is_quantized_column_parallel_linear(module) and parallel_group.is_initialized():
-                dist.all_reduce(act_amax, op=dist.ReduceOp.MAX, group=parallel_group.group)
-                dist.all_reduce(weight_scale, op=dist.ReduceOp.MAX, group=parallel_group.group)
-
-            scale_a = (weight_scale.pow(1 - alpha) / act_amax.pow(alpha)).squeeze()
-
-            # Now that activation per-channel amax have been collected, use per-tensor quantization for activation
-            # TODO: make this a buffer after we support only heterogeneous checkpointing for MCore
-            module.input_quantizer._amax_for_smoothing = act_amax.cpu()
-            module.input_quantizer.reset_amax()
-            module.input_quantizer.axis = None
-            device, dtype = module.weight.device, module.weight.dtype
-            module.input_quantizer.amax = act_amax.amax().to(dtype=dtype, device=device)
-
-            # Some channel could have 0 amax which causes scale_a to overflow. Explicitly mask them out here
-            epsilon = 1.0 / (1 << 31)
-            if scale_a.min() <= epsilon:
-                zero_mask = act_amax <= epsilon
-                scale_a[zero_mask] = 1
-            scale_a = scale_a.clamp(min=1e-4, max=1e4)
-            apply_pre_quant_scale_and_smooth(module, scale_a)
+            with enable_weight_access_and_writeback(module, model):
+                postprocess(module)
 
             smoothed_modules += 1
     print(f"Smoothed {smoothed_modules} modules")
@@ -418,7 +420,7 @@ def _smoothquant_fasteval(model: nn.Module):
 
 def awq(
     model: nn.Module,
-    forward_loop: Optional[ForwardLoop] = None,
+    forward_loop: ForwardLoop | None = None,
     algorithm: str = "awq_lite",
     **kwargs,
 ):
@@ -499,9 +501,9 @@ def awq_lite(
     def get_act_scale(x):
         return x.abs().contiguous().view(-1, x.shape[-1]).mean(0).to(torch.float32)
 
-    def get_scale(x_max, w_max, alpha, tensor_parallel_group=None, dtype=torch.float32):
+    def get_scale(x_max, w_max, alpha, tensor_parallel_group=None):
         scales = (
-            (x_max.pow(alpha) / (w_max.pow(1 - alpha) + torch.finfo(w_max.dtype).tiny))
+            (x_max.pow(alpha) / (w_max.pow(1 - alpha) + torch.finfo(torch.float32).tiny))
             .clamp(min=1e-4, max=1e4)
             .view(-1)
         )
@@ -509,7 +511,7 @@ def awq_lite(
         if tensor_parallel_group and tensor_parallel_group.is_initialized():
             dist.all_reduce(scales, op=dist.ReduceOp.SUM, group=tensor_parallel_group.group)
             scales /= tensor_parallel_group.world_size()
-        return scales.to(dtype)
+        return scales
 
     def update_loss(self, out, out_actual, alpha):
         out_actual = out_actual[0] if isinstance(out_actual, tuple) else out_actual
@@ -528,7 +530,6 @@ def awq_lite(
                 if is_quantized_column_parallel_linear(self)
                 else None
             ),
-            self.weight.dtype,
         )
 
     def forward(self, input, *args, **kwargs):
@@ -542,15 +543,14 @@ def awq_lite(
         self.weight_quantizer.enable()
 
         if AWQLiteHelper.cache_mode:
-            # NOTE: Input can be on different device than weights
-            self.awq_lite.act_scale += get_act_scale(input).to(self.awq_lite.weight_scale.device)
+            self.awq_lite.act_scale += get_act_scale(self.input_quantizer(input))
             self.awq_lite.num_cache_steps += 1
             if self.awq_lite.is_input_quantized:
                 with set_quantizer_by_cfg_context(self.input_quantizer, {"*": {"enable": True}}):
                     max_calibrate(self.input_quantizer, lambda quantizer: quantizer(input))
             return out_actual
 
-        for alpha in self.awq_lite.loss.keys():
+        for alpha in self.awq_lite.loss:
             awq_scale = get_scale(
                 self.awq_lite.act_scale,
                 self.awq_lite.weight_scale,
@@ -560,10 +560,9 @@ def awq_lite(
                     if is_quantized_column_parallel_linear(self)
                     else None
                 ),
-                self.weight.dtype,
             )
-            self.input_quantizer.pre_quant_scale = 1 / awq_scale
-            self.weight_quantizer.pre_quant_scale = awq_scale
+            self.input_quantizer.pre_quant_scale = (1 / awq_scale).to(self.weight.dtype)
+            self.weight_quantizer.pre_quant_scale = awq_scale.to(self.weight.dtype)
             out = self._forward_no_awq(input, *args, **kwargs)
 
             update_loss(self, out, out_actual, alpha)
@@ -575,9 +574,9 @@ def awq_lite(
 
     for name, module in model.named_modules():
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:
-            module._forward_no_awq = module.forward
-            module.awq_lite = AWQLiteHelper(module)
-            module.forward = types.MethodType(forward, module)
+            with enable_weight_access_and_writeback(module, model):
+                module.awq_lite = AWQLiteHelper(module)
+            bind_forward_method(module, forward, "_forward_no_awq")
 
             if module.input_quantizer.is_enabled:
                 module.input_quantizer.disable()
@@ -612,6 +611,22 @@ def awq_lite(
     print("Searching awq_lite parameters...")
     forward_loop(model)
 
+    def postprocess(module):
+        update_best_params(module)
+        delattr(module.weight_quantizer, "_pre_quant_scale")
+        delattr(module.input_quantizer, "_pre_quant_scale")
+        if module.awq_lite.is_input_quantized:
+            assert module.input_quantizer.amax is not None
+            act_amax = module.input_quantizer.amax
+            # TODO: make this a buffer after we support only heterogeneous checkpointing for MCore
+            module.input_quantizer._amax_for_smoothing = act_amax.cpu()
+            module.input_quantizer.reset_amax()
+            module.input_quantizer.axis = None
+            module.input_quantizer.amax = act_amax.amax()
+            module.input_quantizer.enable()
+
+        apply_pre_quant_scale_and_smooth(module, 1.0 / module.awq_lite.best_scale)
+
     for name, module in model.named_modules():
         if hasattr(module, "awq_lite"):
             if module.awq_lite.num_cache_steps > 0:
@@ -620,29 +635,13 @@ def awq_lite(
                     " model. Please provide a valid `forward_loop` function that can be used to"
                     " forward data through the model many times."
                 )
-
-                update_best_params(module)
-                delattr(module.weight_quantizer, "_pre_quant_scale")
-                delattr(module.input_quantizer, "_pre_quant_scale")
-                if module.awq_lite.is_input_quantized:
-                    assert module.input_quantizer.amax is not None
-                    act_amax = module.input_quantizer.amax
-                    # TODO: make this a buffer after we support only heterogeneous checkpointing for MCore
-                    module.input_quantizer._amax_for_smoothing = act_amax.cpu()
-                    module.input_quantizer.reset_amax()
-                    module.input_quantizer.axis = None
-                    device, dtype = module.weight.device, module.weight.dtype
-                    module.input_quantizer.amax = act_amax.amax().to(dtype=dtype, device=device)
-                    module.input_quantizer.enable()
-
-                apply_pre_quant_scale_and_smooth(module, 1.0 / module.awq_lite.best_scale)
+                with enable_weight_access_and_writeback(module, model):
+                    postprocess(module)
 
             if not debug:
                 delattr(module, "awq_lite")
 
-            # Restore forward function; Why is this dangerous?
-            module.forward = module._forward_no_awq
-            delattr(module, "_forward_no_awq")
+            unpatch_forward_method(module, "_forward_no_awq")
 
 
 @torch.no_grad()
@@ -729,7 +728,7 @@ def awq_clip(
             out_actual = inputs @ self.weight.T
             original_amax = self.weight_quantizer.amax.clone()
             self.awq_clip.num_tokens += inputs.shape[0]
-            for shrink in self.awq_clip.loss.keys():
+            for shrink in self.awq_clip.loss:
                 self.weight_quantizer.amax = original_amax * shrink
                 out = inputs @ self.weight_quantizer(self.weight).T
                 loss = (out - out_actual).float().pow(2).mean()
@@ -760,7 +759,7 @@ def awq_clip(
 
                 org_out = (inputs * w).sum(dim=-1)  # co_bsz, max_tokens, n_block
 
-                for shrink in self.awq_clip.loss.keys():
+                for shrink in self.awq_clip.loss:
                     self.weight_quantizer.amax = self.awq_clip.w_amax * shrink
                     quantized_clipped_weight = self.weight_quantizer(self.weight)
                     cur_w = quantized_clipped_weight[
@@ -814,9 +813,9 @@ def awq_clip(
             and module.weight_quantizer.is_enabled
             and module.weight_quantizer.block_sizes is not None
         ):
-            module._forward_no_awq = module.forward
-            module.forward = types.MethodType(partial(forward, name), module)
-            module.awq_clip = AWQClipHelper(module)
+            bind_forward_method(module, partial(forward, name), "_forward_no_awq")
+            with enable_weight_access_and_writeback(module, model):
+                module.awq_clip = AWQClipHelper(module)
 
     print("Estimating awq_clip parameters...")
     # Lets enable stats collection
@@ -827,23 +826,25 @@ def awq_clip(
     # This will also perform distributed amax sync for input_quantizers
     max_calibrate(model, lambda model: None)
 
+    def postprocess(module):
+        update_best_params(module)
+
+        # Load the best clip value (amax)
+        module.weight_quantizer.amax = module.awq_clip.best_clip_val
+        module.weight_quantizer.enable()
+        if module.awq_clip.is_input_quantized:
+            module.input_quantizer.enable()
+
     for name, module in model.named_modules():
         if is_quantized_linear(module) and hasattr(module, "awq_clip"):
             if module.awq_clip.num_tokens > 0:
-                update_best_params(module)
-
-                # Load the best clip value (amax)
-                module.weight_quantizer.amax = module.awq_clip.best_clip_val
-                module.weight_quantizer.enable()
-                if module.awq_clip.is_input_quantized:
-                    module.input_quantizer.enable()
+                with enable_weight_access_and_writeback(module, model):
+                    postprocess(module)
 
             if not debug:
                 delattr(module, "awq_clip")
 
-            # Restore forward function
-            module.forward = module._forward_no_awq
-            delattr(module, "_forward_no_awq")
+            unpatch_forward_method(module, "_forward_no_awq")
 
 
 def _get_awq_quantizer_block_size(tensor: torch.Tensor, quantizer: TensorQuantizer):
@@ -858,9 +859,10 @@ def _get_awq_quantizer_block_size(tensor: torch.Tensor, quantizer: TensorQuantiz
     return blocksize
 
 
+@torch.no_grad()
 def svdquant(
     model: nn.Module,
-    forward_loop: Optional[ForwardLoop] = None,
+    forward_loop: ForwardLoop | None = None,
     lowrank: int = 32,
     **kwargs,
 ):
@@ -874,31 +876,35 @@ def svdquant(
     See :class:`SVDQuantConfig <modelopt.torch.quantization.config.SVDQuantConfig>` for
     details on the remaining arguments.
     """
+
+    def postprocess(module, name):
+        print(f"SVD {name}")
+        u, s, vt = torch.linalg.svd(module.weight.data.double())
+        if u.shape[1] < lowrank or vt.shape[0] < lowrank:
+            warnings.warn(
+                "The low-rank dimensions do not match the layer dimensions. "
+                "Please verify your configuration and model settings. "
+                f"SVD will be skipped for this layer {name}."
+            )
+            return
+        us = u[:, :lowrank] * s[:lowrank]
+        vt = vt[:lowrank]
+        dtype = module.weight.dtype
+        module.weight_quantizer.svdquant_lora_a = vt.to(dtype=dtype)
+        module.weight_quantizer.svdquant_lora_b = us.to(dtype=dtype)
+        module.weight.data.sub_(
+            module.weight_quantizer.svdquant_lora_b @ module.weight_quantizer.svdquant_lora_a
+        )
+        module.weight_quantizer.reset_amax()
+        max_calibrate(
+            module,
+            lambda module: module.weight_quantizer(module.weight),
+        )
+
     create_and_replace_svdquant_linear_on_the_fly(model=model)
     awq(model, forward_loop, "awq_lite", **kwargs)
 
     for name, module in model.named_modules():
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:
-            print(f"SVD {name}")
-            u, s, vt = torch.linalg.svd(module.weight.data.double())
-            if u.shape[1] < lowrank or vt.shape[0] < lowrank:
-                warnings.warn(
-                    "The low-rank dimensions do not match the layer dimensions. "
-                    "Please verify your configuration and model settings. "
-                    "SVD will be skipped for this layer {name}."
-                )
-                continue
-            us = u[:, :lowrank] * s[:lowrank]
-            vt = vt[:lowrank]
-            device = module.weight.device
-            dtype = module.weight.dtype
-            module.weight_quantizer.svdquant_lora_a = vt.to(device).to(dtype)
-            module.weight_quantizer.svdquant_lora_b = us.to(device).to(dtype)
-            module.weight.data.sub_(
-                module.weight_quantizer.svdquant_lora_b @ module.weight_quantizer.svdquant_lora_a
-            )
-            module.weight_quantizer.reset_amax()
-            max_calibrate(
-                module,
-                lambda module: module.weight_quantizer(module.weight),
-            )
+            with enable_weight_access_and_writeback(module, model):
+                postprocess(module, name)

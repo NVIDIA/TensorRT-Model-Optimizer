@@ -22,6 +22,7 @@ import numpy as np
 import onnx
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
+from modelopt.onnx.logging_config import logger
 from modelopt.onnx.utils import (
     gen_random_inputs,
     get_input_names,
@@ -29,14 +30,17 @@ from modelopt.onnx.utils import (
     parse_shapes_spec,
 )
 
-CalibrationDataType = Union[np.ndarray, dict[str, np.ndarray]]
+CalibrationDataType = Union[np.ndarray, dict[str, np.ndarray]]  # noqa: UP007
 
 
 class CalibrationDataProvider(CalibrationDataReader):
     """Calibration data provider class."""
 
     def __init__(
-        self, onnx_path: str, calibration_data: CalibrationDataType, calibration_shapes: str = None
+        self,
+        onnx_path: str,
+        calibration_data: CalibrationDataType,
+        calibration_shapes: str | None = None,
     ):
         """Intializes the data provider class with the calibration data iterator.
 
@@ -51,6 +55,7 @@ class CalibrationDataProvider(CalibrationDataReader):
                 If the shape is not provided for an input tensor, the shape is inferred from the onnx model directly,
                 with all the unknown dims filled with 1.
         """
+        logger.info("Setting up CalibrationDataProvider for calibration")
         onnx_model = onnx.load(onnx_path)
         input_names = get_input_names(onnx_model)
         input_shapes = {} if calibration_shapes is None else parse_shapes_spec(calibration_shapes)
@@ -58,25 +63,30 @@ class CalibrationDataProvider(CalibrationDataReader):
         for name in input_names:
             if name not in input_shapes:
                 input_shapes[name] = inferred_input_shapes[name]
+                logger.debug(f"Inferred shape for {name}: {inferred_input_shapes[name]}")
 
         # Validate calibration data against expected inputs by the model
         if isinstance(calibration_data, np.ndarray):
             assert len(input_names) == 1, "Calibration data has only one tensor."
             calibration_data = {input_names[0]: calibration_data}
+            logger.debug(
+                f"Single tensor calibration data shape: {calibration_data[input_names[0]].shape}"
+            )
         elif isinstance(calibration_data, dict):
             assert len(input_names) == len(calibration_data), (
                 "Model input count and calibration data doesn't match."
             )
             for input_name in input_names:
                 assert input_name in calibration_data
+            logger.debug(f"Multi-tensor calibration data with {len(calibration_data)} inputs")
         else:
             raise ValueError(
                 f"calibration data must be numpy array or dict, got {type(calibration_data)}"
             )
 
         # Create list of model inputs with appropriate batch size
-        # So that we can create an input iterator
         n_itr = int(calibration_data[input_names[0]].shape[0] / input_shapes[input_names[0]][0])
+        logger.debug(f"Creating {n_itr} calibration iterations")
         self.calibration_data_list = [{}] * n_itr
         for input_name in input_names:
             for idx, calib_data in enumerate(
@@ -102,10 +112,14 @@ class CalibrationDataProvider(CalibrationDataReader):
 class RandomDataProvider(CalibrationDataReader):
     """Calibration data reader class with random data provider."""
 
-    def __init__(self, onnx_model: Union[str, onnx.ModelProto], calibration_shapes: str = None):
+    def __init__(self, onnx_model: str | onnx.ModelProto, calibration_shapes: str | None = None):
         """Initializes the data reader class with random calibration data."""
+        logger.info("Initializing RandomDataProvider")
         if isinstance(onnx_model, str):
             onnx_path = onnx_model
+            logger.debug(
+                f"Loading ONNX model from: {onnx_path} to read the input shapes for RandomDataProvider"
+            )
             onnx_model = onnx.load(onnx_path)
         self.calibration_data_list: list[dict[str, np.ndarray]] = [
             gen_random_inputs(onnx_model, calibration_shapes)
@@ -134,7 +148,8 @@ def import_scales_from_calib_cache(cache_path: str) -> dict[str, float]:
     Returns:
         Dictionary with scales in the format {tensor_name: float_scale}.
     """
-    with open(cache_path, "r") as f:
+    logger.info(f"Importing scales from calibration cache: {cache_path}")
+    with open(cache_path) as f:
         scales_dict = {}
         lines = f.readlines()
         for i, line in enumerate(lines):
@@ -143,7 +158,9 @@ def import_scales_from_calib_cache(cache_path: str) -> dict[str, float]:
                 try:
                     scale = struct.unpack("!f", bytes.fromhex(hex_value))[0]
                     scales_dict[layer_name + "_scale"] = scale
-                except Exception:
+                    logger.debug(f"Imported scale for {layer_name}: {scale}")
+                except Exception as e:
+                    logger.error(f"Failed to parse scale for tensor {layer_name}: {e!s}")
                     raise ValueError(f"Scale value for tensor {layer_name} was not found!")
 
         return scales_dict

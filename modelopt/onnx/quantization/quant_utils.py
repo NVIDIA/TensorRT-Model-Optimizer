@@ -15,7 +15,7 @@
 
 """Provides some basic utilities that can be used in quantize() methods."""
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -25,7 +25,7 @@ UINT4_MIN = 0
 UINT4_MAX = 15
 
 
-def pack_float32_to_4bit_optimized(array: Union[np.ndarray, Sequence], signed: bool) -> np.ndarray:
+def pack_float32_to_4bit_optimized(array: np.ndarray | Sequence, signed: bool) -> np.ndarray:
     """Convert an array of float32 value to a 4bit data-type and pack every two concecutive elements in a byte.
 
     This is the optimized version of pack_float32_to_4bit() utility in ONNX helper file. The basic optimizations
@@ -55,14 +55,14 @@ def pack_float32_to_4bit_optimized(array: Union[np.ndarray, Sequence], signed: b
     array_flat = np.rint(array_flat).astype(dtype)
     assert len(array_flat) % 2 == 0, "array length must be even at this point"
     assert len(array_flat) == inp_arr_len, "output-length must match the input-length"
-    output_list = []
-    for i in range(0, inp_arr_len, 2):
-        output_list.append((array_flat[i + 1] << 4) | (array_flat[i] & 0x0F))
+    output_list = [
+        ((array_flat[i + 1] << 4) | (array_flat[i] & 0x0F)) for i in range(0, inp_arr_len, 2)
+    ]
     arr = np.array(output_list)
     return arr.astype(np.uint8)
 
 
-def pack_float32_to_4bit_cpp_based(array: Union[np.ndarray, Sequence], signed: bool) -> np.ndarray:
+def pack_float32_to_4bit_cpp_based(array: np.ndarray | Sequence, signed: bool) -> np.ndarray:
     """Convert an array of float32 value to a 4bit data-type and pack every two concecutive elements in a byte.
 
     This is the optimized version of pack_float32_to_4bit() utility in ONNX helper file. The basic optimizations
@@ -148,7 +148,8 @@ def get_weights_scaling_factor(
     # Quantize per_block_scale to FP8
     q_per_block_scale = per_block_scale / weights_scaling_factor_2
     # Set all zero values in scale to 1.0
-    q_per_block_scale[per_block_scale == 0] = 1.0
+    zero_mask = per_block_scale == 0
+    q_per_block_scale[zero_mask] = 1.0
     return q_per_block_scale.astype(np.float32)
 
 
@@ -160,7 +161,7 @@ def quantize(
 ):
     """Converting a tensor to a quantized format based on NVFP4 quantization."""
     # Reshape the weight and scale factors
-    input = input.reshape(tuple(input.shape[:-1]) + (-1, block_size))
+    input = input.reshape((*tuple(input.shape[:-1]), -1, block_size))
 
     # Scale weights
     scaled_weight = input / (
@@ -239,10 +240,11 @@ def compute_e8m0(
     q_max = 448  # Largest value of FP8
     e8m0_bias = 127
     amax = amax / q_max
-    e8m0_unbiased_exp = np.ceil(np.log2(amax))  # round up power of 2
-    e8m0 = e8m0_unbiased_exp + e8m0_bias  # Add bias to the exponent
+    min_value = -127.0
+    e8m0_unbiased_exp = np.ceil(np.maximum(np.log2(amax), min_value))
+    e8m0 = e8m0_unbiased_exp + e8m0_bias
     if not np.all((e8m0 >= 0) & (e8m0 <= 255)):
-        raise ValueError("e8m0 out of uint8 range [0, 255]")
+        raise ValueError(f"e8m0 values out of range: min={np.min(e8m0)}, max={np.max(e8m0)}")
     if rank == 2:
         d0, d1 = weight_shape
         if quant_axis == 1:

@@ -24,7 +24,8 @@ from modelopt.onnx.quantization.quantize import quantize
 __all__ = ["main"]
 
 
-def parse_args():
+def get_parser() -> argparse.ArgumentParser:
+    """Get the argument parser for ONNX PTQ."""
     argparser = argparse.ArgumentParser("python -m modelopt.onnx.quantization")
     group = argparser.add_mutually_exclusive_group(required=False)
     argparser.add_argument(
@@ -136,9 +137,17 @@ def parse_args():
         ),
     )
     argparser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="If verbose, print all the debug info.",
+        "--log_level",
+        type=str,
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "debug", "info", "warning", "error"],
+        default="INFO",
+        help="Set the logging level for the quantization process.",
+    )
+    argparser.add_argument(
+        "--log_file",
+        type=str,
+        default=None,
+        help="Path to the log file for the quantization process.",
     )
     argparser.add_argument(
         "--trt_plugins",
@@ -217,12 +226,12 @@ def parse_args():
         action="store_true",
         help="If True, the given ONNX model will be simplified before quantization is performed.",
     )
-    return argparser.parse_args()
+    return argparser
 
 
 def main():
     """Command-line entrypoint for ONNX PTQ."""
-    args = parse_args()
+    args = get_parser().parse_args()
     calibration_data = None
     if args.calibration_data_path:
         calibration_data = np.load(args.calibration_data_path, allow_pickle=True)
@@ -248,7 +257,8 @@ def main():
         use_external_data_format=args.use_external_data_format,
         keep_intermediate_files=args.keep_intermediate_files,
         output_path=args.output_path,
-        verbose=args.verbose,
+        log_level=args.log_level,
+        log_file=args.log_file,
         trt_plugins=args.trt_plugins,
         trt_plugins_precision=args.trt_plugins_precision,
         high_precision_dtype=args.high_precision_dtype or default_high_precision_dtype,

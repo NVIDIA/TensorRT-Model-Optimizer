@@ -103,7 +103,7 @@ class TestHistogramCalibrator:
         amax = hist_calibrator.compute_amax(method="entropy", start_bin=128)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be closer to 256 because the last bin gets stretched to (~255, 257)
         assert (amax - 255.0).abs() < (amax - 256.0).abs()
@@ -117,7 +117,7 @@ class TestHistogramCalibrator:
         amax = hist_calibrator.compute_amax(method="mse", start_bin=128)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be closer to 255
         assert (amax - 255.0).abs() < 0.5
@@ -133,7 +133,7 @@ class TestHistogramCalibrator:
         amax = calibrator.compute_amax("percentile", percentile=50, start_bin=128)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be close to 5
         assert (amax - 5.0).abs() < 10 / 2048
@@ -196,7 +196,7 @@ class TestEntropyCalibrator:
         amax = hist_calibrator.compute_amax("entropy", start_bin=128)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         assert amax < 1.1
 
@@ -212,7 +212,7 @@ class TestEntropyCalibrator:
         amax = hist_calibrator.compute_amax("entropy", start_bin=128)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         assert amax < 1.1
 
@@ -235,7 +235,7 @@ class TestEntropyCalibrator:
         amax = hist_calibrator.compute_amax("entropy", start_bin=128)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         assert amax < 1.1
 
@@ -256,7 +256,7 @@ class TestMSECalibrator:
         amax = calibrator.compute_amax("mse", start_bin=16)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be closer to 255
         assert (amax - 255.0).abs() < (amax - 256.0).abs()
@@ -271,7 +271,7 @@ class TestMSECalibrator:
         amax = calibrator.compute_amax("mse", start_bin=8)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be closer to 512
         assert (amax - 512.0).abs() < (amax - 513.0).abs()
@@ -289,7 +289,7 @@ class TestMSECalibrator:
         amax = calibrator.compute_amax("mse")
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be closer to 255
         assert (amax - 255.0).abs() < (amax - 256.0).abs()
@@ -310,7 +310,7 @@ class TestPercentileCalibrator:
         amax = calibrator.compute_amax("percentile", percentile=90)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be approximately 89
         assert (amax - 89.0).abs() < 100 / 1024
@@ -324,7 +324,7 @@ class TestPercentileCalibrator:
         amax = calibrator.compute_amax("percentile", percentile=80)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be approximately 79
         assert (amax - 79.0).abs() < 100 / 2048
@@ -340,7 +340,7 @@ class TestPercentileCalibrator:
         amax = calibrator.compute_amax("percentile", percentile=99)
 
         if verbose:
-            print("amax={:.4f}".format(amax.item()), end=" ")
+            print(f"amax={amax.item():.4f}", end=" ")
 
         # amax should be approximately 97
         assert (amax - 97.0).abs() < 100 / 1024

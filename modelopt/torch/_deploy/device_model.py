@@ -115,7 +115,7 @@ class DeviceModel:
             raise AttributeError("Please compile the model first.")
 
         # Flatten all args, kwargs into a single list of tensors for onnx/device inference.
-        all_args = args + (kwargs,) if kwargs or (args and isinstance(args[-1], dict)) else args
+        all_args = (*args, kwargs) if kwargs or (args and isinstance(args[-1], dict)) else args
 
         # If Model metadata is None then DeviceModel is instantiated with raw ONNX bytes instead of PyTorch module.
         onnx_inputs = all_args[0]

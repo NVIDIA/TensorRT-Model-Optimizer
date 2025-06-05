@@ -16,9 +16,9 @@
 """Custom plugin base modules and utilities for quantization."""
 
 import warnings
+from collections.abc import Callable, Iterator
 from functools import partial
 from types import ModuleType
-from typing import Callable, Iterator
 
 import torch
 from packaging.version import Version
@@ -46,13 +46,19 @@ except ImportError:
     register_hf_attentions_on_the_fly = _dummy_register
 
 
+CUSTOM_MODEL_PLUGINS = {
+    register_falcon_linears_on_the_fly,
+    register_dbrx_moe_on_the_fly,
+    register_hf_attentions_on_the_fly,
+}
+
+
 # TODO: This is a temporary solution
 # In future implement a decorator to register methods updating QUANT_MODULE on the fly
 def register_custom_model_plugins_on_the_fly(model):
     """Registers custom modules as QUANT_MODULE on the fly."""
-    register_falcon_linears_on_the_fly(model)
-    register_dbrx_moe_on_the_fly(model)
-    register_hf_attentions_on_the_fly(model)
+    for callback in CUSTOM_MODEL_PLUGINS:
+        callback(model)
 
 
 class _QuantFunctionalMixin(QuantModule):
@@ -130,7 +136,7 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
         from modelopt.torch.quantization.model_calib import max_calibrate
 
         def _check_unsupported_states(quantizer: TensorQuantizer):
-            for k in quantizer.state_dict().keys():
+            for k in quantizer.state_dict():
                 if k not in ["_amax", "_pre_quant_scale"]:
                     warnings.warn(
                         f"Restore of {k} for {prefix} is not supported. The restore of this layer might be "
@@ -140,7 +146,8 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
         def _has_state(quantizer, name):
             # Handling for SequentialQuantizer
             quantizer = quantizer[0] if isinstance(quantizer, SequentialQuantizer) else quantizer
-            if self.is_version_less_than("0.29"):
+
+            if self.is_version_less_than("0.29") and "dev" not in __version__:
                 # For backward compatibility, previously we used to save a boolean attribute "_has_amax"
                 # to indicate if the quantizer has amax.
                 return hasattr(quantizer, "_has" + name)
@@ -166,15 +173,17 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
             self.input_quantizer.register_buffer("_pre_quant_scale", pqs)
         if _has_state(self.input_quantizer, "_amax"):
             self.input_quantizer.reset_amax()
-            dummy_input = torch.randn(
+            dummy_input = torch.ones(
                 (1, 1, self.weight.shape[1]), device=self.weight.device, dtype=self.weight.dtype
             )
+            # [TODO]: fp8_real_quant does not have all_reduce max implemented
             max_calibrate(self.input_quantizer, lambda iq: iq(dummy_input), distributed_sync=False)
         if _has_state(self.output_quantizer, "_amax"):
             self.output_quantizer.reset_amax()
-            dummy_input = torch.randn(
+            dummy_input = torch.ones(
                 (1, 1, self.weight.shape[0]), device=self.weight.device, dtype=self.weight.dtype
             )
+            # [TODO]: fp8_real_quant does not have all_reduce max implemented
             max_calibrate(self.output_quantizer, lambda oq: oq(dummy_input), distributed_sync=False)
 
         # If there are any other states, lets move them to the correct device

@@ -126,7 +126,7 @@ def _test_gpt_search_space(
 
 
 @pytest.mark.parametrize(
-    "num_attention_heads,num_query_groups,activation_func,normalization",
+    ("num_attention_heads", "num_query_groups", "activation_func", "normalization"),
     [
         (8, 8, "squared_relu", "LayerNorm"),  # MHA
         (8, 4, "swiglu", "RMSNorm"),  # GQA

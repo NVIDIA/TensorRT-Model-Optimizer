@@ -39,7 +39,7 @@ def parse_args():
     args = parser.parse_args()
     for key, value in vars(args).items():
         if value is not None:
-            print("Parsed args -- {}: {}".format(key, value))
+            print(f"Parsed args -- {key}: {value}")
     return args
 
 

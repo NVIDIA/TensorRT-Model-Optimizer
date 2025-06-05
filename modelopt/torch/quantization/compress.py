@@ -23,19 +23,34 @@ import warnings
 import torch.nn as nn
 
 from modelopt.torch.opt import apply_mode
-from modelopt.torch.opt.conversion import ModelLikeModule
+from modelopt.torch.opt.conversion import ModelLikeModule, ModeloptStateManager
+from modelopt.torch.opt.dynamic import _DMRegistryCls
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 
 from .backends.gemm_registry import enable_real_quant_gemm, is_real_quant_gemm_enabled
 from .config import CompressCfgType, CompressConfig
-from .conversion import set_quantizer_attribute, update_quantize_metadata
+from .conversion import _replace_quant_module, set_quantizer_attribute, update_quantize_metadata
+from .nn.modules.quant_linear import RealQuantLinear
 from .qtensor import QTensorWrapper, pack_real_quantize_weight
+from .utils import is_quantized_linear
+
+RealQuantModuleRegistry = _DMRegistryCls("RealQuant")
 
 
 def compress_convert(
     model, config: CompressConfig, use_real_quant_gemm: bool = True
 ) -> ConvertReturnType:
     """Compress entry point."""
+    for _, module in model.named_modules():
+        if is_quantized_linear(module) and type(module) not in RealQuantModuleRegistry:
+            RealQuantModuleRegistry.register({type(module): module.__class__.__name__})(
+                RealQuantLinear
+            )
+    # Convert QuantLinear to RealQuantLinear
+    _replace_quant_module(
+        model, version=ModeloptStateManager(model).state_version, registry=RealQuantModuleRegistry
+    )
+
     compress_cfg = config.compress
     if "default" in compress_cfg and isinstance(compress_cfg["default"], bool):
         set_quantizer_attribute(
@@ -62,10 +77,7 @@ def compress_convert(
     def _has_qtensorwrapper(module):
         if hasattr(module, "weight") and isinstance(module.weight, QTensorWrapper):
             return True
-        for _, submodule in module.named_children():
-            if _has_qtensorwrapper(submodule):
-                return True
-        return False
+        return any(_has_qtensorwrapper(submodule) for _, submodule in module.named_children())
 
     if _has_qtensorwrapper(model):
         warnings.warn(
@@ -90,13 +102,12 @@ def compress_restore(
 ) -> nn.Module:
     """Restore the model from the compressed state."""
     # Compress with dummy weights
-    compress_convert(
+    model, _ = compress_convert(
         model,
         config,
-        use_real_quant_gemm=metadata["use_real_quant_gemm"]
-        if "use_real_quant_gemm" in metadata
-        else False,
+        use_real_quant_gemm=metadata.get("use_real_quant_gemm", False),
     )
+    return model
 
 
 def update_compress_metadata(model: nn.Module, config: CompressConfig, metadata: MetadataDict):
@@ -131,3 +142,8 @@ def compress(model, config: CompressCfgType = None):
     if config is None:
         config = CompressConfig()
     apply_mode(model, [("real_quantize", config)])
+
+
+def is_real_quantized(model):
+    """Check if the model is real quantized."""
+    return any(isinstance(_module, RealQuantLinear) for _module in model.modules())

@@ -21,8 +21,9 @@ import operator
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
+from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Iterable, Iterator, Optional, TypeVar, Union
+from typing import Any, TypeVar
 
 import numpy as np
 import torch
@@ -44,7 +45,7 @@ __all__ = ["analyze_symbols"]
 class Map:
     """A mapping of the dependencies that continuously updates/resolve recursive mappings."""
 
-    Dependency = dict[str, Union[Optional[Node], NodeTarget, int, bool]]
+    Dependency = dict[str, Node | None | NodeTarget | int | bool]
 
     def __init__(self):
         # this is the collection of root dependencies
@@ -181,7 +182,6 @@ class NodeProcessor(ABC):
 
     def reset(self) -> None:
         """Reset processor."""
-        pass
 
     @abstractmethod
     def process(self, node: Node, id: int, input_nodes: list[Node]) -> None:
@@ -190,7 +190,6 @@ class NodeProcessor(ABC):
 
     def post_process(self) -> None:
         """Handle post-processing at the end of the entire fx graph tracing."""
-        pass
 
     def _filtered_named_symbols(
         self, target: NodeTarget, filter: Callable[[Symbol], bool]
@@ -233,13 +232,13 @@ class NodeProcessor(ABC):
         is_on_list = type(target) in node_list or target in node_list
         return is_on_list and not (check_failed and gc.is_failed(target))
 
-    def _get_node_target(self, node: Node) -> Optional[NodeTarget]:
+    def _get_node_target(self, node: Node) -> NodeTarget | None:
         return _get_node_target(node, root=self._model)
 
     def _get_root_target(self, node: Node) -> NodeTarget:
         return self._dependency_map.target(node)
 
-    def _identify_in_out_nodes(self, node: Node) -> tuple[list[Node], Optional[Node]]:
+    def _identify_in_out_nodes(self, node: Node) -> tuple[list[Node], Node | None]:
         """Return list of input nodes w/o mutable out node and out node.
 
         For methods within torch and torch.Tensor, the user can specify "out" to store the result
@@ -319,7 +318,7 @@ class NodeProcessor(ABC):
         """Return root nodes of nodes according to dependency map."""
         return [self._dependency_map.root(n) for n in nodes]
 
-    def _synchronize_nodes(self, nodes: list[Node], disable: bool = False) -> Optional[Node]:
+    def _synchronize_nodes(self, nodes: list[Node], disable: bool = False) -> Node | None:
         """Synchronize list of nodes if possible, otherwise disable symbols within nodes.
 
         Synchronizing hereby means linking the symbols of the provided list of nodes to each
@@ -531,9 +530,9 @@ class FeatureAdaptiveNodeProcessor(NodeProcessor):
         target_sharing_nodes = []
         if isinstance(target, nn.Module):
             # retrieve all nodes that share the same target
-            for prev_node in self._dependency_map:
-                if self._get_node_target(prev_node) == target:
-                    target_sharing_nodes.append(prev_node)
+            target_sharing_nodes = [
+                node for node in self._dependency_map if self._get_node_target(node) == target
+            ]
         target_sharing_nodes.append(node)
 
         # retrieve the primary input node for each target sharing node
@@ -629,7 +628,7 @@ class PassthroughUnivariateNodeProcessor(NodeProcessor):
           only support one elastic dimension referred to in different indexing schemes.
     """
 
-    _passthrough_targets: Optional[dict[NodeTarget, set[int]]] = None
+    _passthrough_targets: dict[NodeTarget, set[int]] | None = None
 
     # fmt: off
 
@@ -695,19 +694,15 @@ class PassthroughUnivariateNodeProcessor(NodeProcessor):
     #   dependency.
     PASSTHROUGH_FUNCTIONALS.update({
         # univariate feature preserving functionals (pooling functionals)
-        **dict.fromkeys(["avg_pool1d", "max_pool1d", "max_unpool1d", "lp_pool1d",
-                         "adaptive_max_pool1d", "adaptive_avg_pool1d", "fractional_max_pool1d"],
-                        {0, 1, -2}),
-        **dict.fromkeys(["avg_pool2d", "max_pool2d", "max_unpool2d", "lp_pool2d",
-                         "adaptive_max_pool2d", "adaptive_avg_pool2d", "fractional_max_pool2d"],
-                        {0, 1, -3}),
-        **dict.fromkeys(["avg_pool3d", "max_pool3d", "max_unpool3d", "adaptive_max_pool3d",
-                         "adaptive_avg_pool3d", "fractional_max_pool3d"],
-                        {0, 1, -4}),
+        **{key: {0, 1, -2} for key in ["avg_pool1d", "max_pool1d", "max_unpool1d", "lp_pool1d",
+                                       "adaptive_max_pool1d", "adaptive_avg_pool1d", "fractional_max_pool1d"]},
+        **{key: {0, 1, -3} for key in ["avg_pool2d", "max_pool2d", "max_unpool2d", "lp_pool2d",
+                                       "adaptive_max_pool2d", "adaptive_avg_pool2d", "fractional_max_pool2d"]},
+        **{key: {0, 1, -4} for key in ["avg_pool3d", "max_pool3d", "max_unpool3d", "adaptive_max_pool3d",
+                                       "adaptive_avg_pool3d", "fractional_max_pool3d"]},
         # univariate feature preserving functionals (vision functionals)
-        **dict.fromkeys(["pad", "interpolate", "upsample", "upsample_nearest", "upsample_bilinear",
-                         "upsample_bicubic", "grid_sample"],
-                        {0, 1}),
+        **{key: {0, 1} for key in ["pad", "interpolate", "upsample", "upsample_nearest",
+                                   "upsample_bilinear", "upsample_bicubic", "grid_sample"]},
     })
 
     # * a collection of possible univariate modules that preserve all tensor dimensions.
@@ -730,20 +725,17 @@ class PassthroughUnivariateNodeProcessor(NodeProcessor):
     # * These functions are part of torch.nn and do not have in-place equivalents.
     PASSTHROUGH_MODULES.update({
         # univariate feature preserving modules (pooling+padding layers)
-        **dict.fromkeys(["MaxPool1d", "MaxUnpool1d", "AvgPool1d", "FractionalMaxPool1d", "LPPool1d",
-                         "AdaptiveMaxPool1d", "AdaptiveAvgPool1d", "ReflectionPad1d",
-                         "ReplicationPad1d", "ZeroPad1d", "ConstantPad1d"],
-                        {0, 1, -2}),
-        **dict.fromkeys(["MaxPool2d", "MaxUnpool2d", "AvgPool2d", "FractionalMaxPool2d", "LPPool2d",
-                         "AdaptiveMaxPool2d", "AdaptiveAvgPool2d", "ReflectionPad2d",
-                         "ReplicationPad2d", "ZeroPad2d", "ConstantPad2d"],
-                        {0, 1, -3}),
-        **dict.fromkeys(["MaxPool3d", "MaxUnpool3d", "AvgPool3d", "FractionalMaxPool3d", "LPPool3d",
-                         "AdaptiveMaxPool3d", "AdaptiveAvgPool3d", "ReflectionPad3d",
-                         "ReplicationPad3d", "ZeroPad3d", "ConstantPad3d"],
-                        {0, 1, -4}),
+        **{key: {0, 1, -2} for key in ["MaxPool1d", "MaxUnpool1d", "AvgPool1d", "FractionalMaxPool1d", "LPPool1d",
+                                       "AdaptiveMaxPool1d", "AdaptiveAvgPool1d", "ReflectionPad1d", "ReplicationPad1d",
+                                       "ZeroPad1d", "ConstantPad1d"]},
+        **{key: {0, 1, -3} for key in ["MaxPool2d", "MaxUnpool2d", "AvgPool2d", "FractionalMaxPool2d", "LPPool2d",
+                                       "AdaptiveMaxPool2d", "AdaptiveAvgPool2d", "ReflectionPad2d", "ReplicationPad2d",
+                                       "ZeroPad2d", "ConstantPad2d"]},
+        **{key: {0, 1, -4} for key in ["MaxPool3d", "MaxUnpool3d", "AvgPool3d", "FractionalMaxPool3d", "LPPool3d",
+                                       "AdaptiveMaxPool3d", "AdaptiveAvgPool3d", "ReflectionPad3d", "ReplicationPad3d",
+                                       "ZeroPad3d", "ConstantPad3d"]},
         # univariate feature-preserving modules (upsample layers)
-        **dict.fromkeys(["Upsample", "UpsamplingNearest2d", "UpsamplingBilinear2d"], {1}),
+        **{key: {1} for key in ["Upsample", "UpsamplingNearest2d", "UpsamplingBilinear2d"]},
     })
 
     # fmt: on
@@ -781,7 +773,7 @@ class PassthroughUnivariateNodeProcessor(NodeProcessor):
         return targets
 
     @classmethod
-    def _get_filtered_list(cls, filt_fn: Callable[[Optional[set[int]]], bool]) -> list[NodeTarget]:
+    def _get_filtered_list(cls, filt_fn: Callable[[set[int] | None], bool]) -> list[NodeTarget]:
         """Return list of nodes that satisfy filter function."""
         return [n for n, edim in cls._get_passthrough_targets().items() if filt_fn(edim)]
 
@@ -824,7 +816,7 @@ class PassthroughUnivariateNodeProcessor(NodeProcessor):
 class MultivariateDimensionPreservingNodeProcessor(NodeProcessor):
     """Processor for handling multivariate feature dimension preserving nodes."""
 
-    _targets: Optional[list[NodeTarget]] = None
+    _targets: list[NodeTarget] | None = None
 
     # fmt: off
 
@@ -880,7 +872,7 @@ class MultivariateDimensionPreservingNodeProcessor(NodeProcessor):
                 op_candidate = op + suffix
                 for module in ops_modules:
                     if hasattr(module, op_candidate):
-                        targets.append(getattr(module, op_candidate))
+                        targets.append(getattr(module, op_candidate))  # noqa: PERF401
 
         cls._targets = targets
         return targets
@@ -906,9 +898,7 @@ def is_in_slice_range(slice_obj: slice, num: int) -> bool:
     """Check if a number is in the range of a slice (ignoring `step` field)."""
     if slice_obj.start is not None and num < slice_obj.start:
         return False
-    if slice_obj.stop is not None and num >= slice_obj.stop:
-        return False
-    return True
+    return not (slice_obj.stop is not None and num >= slice_obj.stop)
 
 
 @GraphDependencyProcessor.register_node_processor
@@ -1038,7 +1028,7 @@ class DanglingSymProcessor:
             if not _strict or is_unvisited:
                 sym.disable()
 
-        def mod_str(mod_name: Union[str, Iterable]) -> Union[str, list[str]]:
+        def mod_str(mod_name: str | Iterable) -> str | list[str]:
             def name_or_root(name: str) -> str:
                 return name if name else '""'
 
@@ -1119,7 +1109,7 @@ class DanglingSymProcessor:
                 "\nWithin visited modules, found unaccounted symbols of the model"
                 " (likely due to tracing error):"
             )
-            error_msg += "\n\t".join([found_msg] + mod_str(cross_hparams_dangling_visited_names))
+            error_msg += "\n\t".join([found_msg, *mod_str(cross_hparams_dangling_visited_names)])
         if error_msg:
             if _strict:
                 error_msg += (
@@ -1140,7 +1130,7 @@ class SequentialDepthProcessor:
     """A processor to check the depth choices of all sequential modules in a given model."""
 
     def __init__(
-        self, gc: GraphCollection, sym_map: SymMap, concrete_args: Optional[dict[str, Any]] = None
+        self, gc: GraphCollection, sym_map: SymMap, concrete_args: dict[str, Any] | None = None
     ) -> None:
         """Initialize the processor."""
         self._gc = gc
@@ -1217,12 +1207,10 @@ class SequentialDepthProcessor:
         This check pre-filters the unskippable block based on some heuristics. It is supposed
         to be fast but not perfect, necessary but not sufficient.
         """
-        if not self._is_shape_preserving_residual_block(module):
-            return False
         # TODO: we should add more heuristics-based checks here.
-        return True
+        return self._is_shape_preserving_residual_block(module)
 
-    def _is_shape_preserving(self, target: Optional[NodeTarget]) -> bool:
+    def _is_shape_preserving(self, target: NodeTarget | None) -> bool:
         """Check whether the target is shape-preserving.
 
         A target can be shape-preserving either if it's a shape-preserving pass-through node or a
@@ -1341,7 +1329,7 @@ class SequentialDepthProcessor:
 
 
 def analyze_symbols(
-    model: nn.Module, concrete_args: Optional[dict[str, Any]] = None, _strict: bool = True
+    model: nn.Module, concrete_args: dict[str, Any] | None = None, _strict: bool = True
 ) -> SymMap:
     """Trace layer dependencies and return a valid symbolic mapping.
 

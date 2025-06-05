@@ -40,7 +40,7 @@ parse_options() {
     USE_SEQ_DEVICE_MAP=false
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,effective_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,use_seq_device_map,gpu_max_mem_percentage:,kv_cache_free_gpu_memory_fraction:,no-verbose" -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,auto_quantize_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,use_seq_device_map,gpu_max_mem_percentage:,kv_cache_free_gpu_memory_fraction:,low_memory_mode,no-verbose" -n "$0" -- "$@")
   eval set -- "$ARGS"
   while true; do
     case "$1" in
@@ -55,7 +55,7 @@ parse_options() {
       --awq_block_size ) AWQ_BLOCK_SIZE="$2"; shift 2;;
       --calib ) CALIB_SIZE="$2"; shift 2;;
       --calib_batch_size ) CALIB_BATCH_SIZE="$2"; shift 2;;
-      --effective_bits ) AUTO_QUANTIZE_BITS="$2"; shift 2;;
+      --auto_quantize_bits ) AUTO_QUANTIZE_BITS="$2"; shift 2;;
       --input ) BUILD_MAX_INPUT_LEN="$2"; shift 2;;
       --output ) BUILD_MAX_OUTPUT_LEN="$2"; shift 2;;
       --batch ) BUILD_MAX_BATCH_SIZE="$2"; shift 2;;
@@ -70,6 +70,7 @@ parse_options() {
       --gpu_max_mem_percentage ) GPU_MAX_MEM_PERCENTAGE="$2"; shift 2;;
       --kv_cache_free_gpu_memory_fraction ) KV_CACHE_FREE_GPU_MEMORY_FRACTION="$2"; shift 2;;
       --no-verbose ) VERBOSE=false; shift;;
+      --low_memory_mode ) LOW_MEMORY_MODE=true; shift;;
       -- ) shift; break ;;
       * ) break ;;
     esac
@@ -77,7 +78,7 @@ parse_options() {
 
   DEFAULT_CALIB_SIZE=512
   DEFAULT_CALIB_BATCH_SIZE=0
-  DEFAULT_BUILD_MAX_INPUT_LEN=3072
+  DEFAULT_BUILD_MAX_INPUT_LEN=4096
   DEFAULT_BUILD_MAX_OUTPUT_LEN=1024
   DEFAULT_BUILD_MAX_BATCH_SIZE=2
 
@@ -139,7 +140,7 @@ parse_options() {
   echo "awq_block_size: $AWQ_BLOCK_SIZE"
   echo "calib: $CALIB_SIZE"
   echo "calib_batch_size: $CALIB_BATCH_SIZE"
-  echo "effective_bits: $AUTO_QUANTIZE_BITS"
+  echo "auto_quantize_bits: $AUTO_QUANTIZE_BITS"
   echo "input: $BUILD_MAX_INPUT_LEN"
   echo "output: $BUILD_MAX_OUTPUT_LEN"
   echo "batch: $BUILD_MAX_BATCH_SIZE"
@@ -152,5 +153,6 @@ parse_options() {
   echo "use_seq_device_map: $USE_SEQ_DEVICE_MAP"
   echo "gpu_max_mem_percentage: $GPU_MAX_MEM_PERCENTAGE"
   echo "kv_cache_free_gpu_memory_fraction: $KV_CACHE_FREE_GPU_MEMORY_FRACTION"
+  echo "low_memory_mode: $LOW_MEMORY_MODE"
   echo "================="
 }

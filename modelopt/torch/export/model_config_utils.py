@@ -17,7 +17,8 @@
 
 import dataclasses
 import math
-from typing import Optional, Union, get_args, get_origin
+from types import UnionType
+from typing import Union, get_args, get_origin
 
 import numpy as np
 import torch
@@ -133,15 +134,14 @@ def _unified_weights_key(k: str) -> str:
     """Try to unify the weights dict key between old npz and the new safetensors format."""
     prefixes = ["transformer.", "_np:"]
     for prefix in prefixes:
-        if k.startswith(prefix):
-            k = k[len(prefix) :]
+        k = k.removeprefix(prefix)
 
     k = k.replace("final_layernorm", "ln_f")
 
     return k.replace(":", ".")
 
 
-def _restore_model_config(model_config, weights: dict[str, Union[np.ndarray, torch.Tensor]]):
+def _restore_model_config(model_config, weights: dict[str, np.ndarray | torch.Tensor]):
     def _is_tensor_key(k):
         return isinstance(k, str) and _unified_weights_key(k) in weights
 
@@ -159,7 +159,7 @@ def _restore_model_config(model_config, weights: dict[str, Union[np.ndarray, tor
                 _restore_model_config(v, weights)
 
 
-def restore_model_config(model_config, weights: dict[str, Union[np.ndarray, torch.Tensor]]):
+def restore_model_config(model_config, weights: dict[str, np.ndarray | torch.Tensor]):
     """Recursively restores the model_config from json and loads np.ndarray or torch.Tensor weights from weights."""
     unified_key_weights = {}
     for k, v in weights.items():
@@ -173,16 +173,16 @@ def _from_dict(class_type, data):
     if data is None:
         return None
 
-    # class_type of quantization is Optional[str], which is catergrorized as Union
-    if class_type != Optional[str] and get_origin(class_type) == Union:
+    # class_type of quantization is str | None, which is catergrorized as Union
+    if class_type != str | None and get_origin(class_type) in [Union, UnionType]:
         # Handle QKV
-        if all([key in data for key in ["q", "k", "v"]]):
+        if all(key in data for key in ["q", "k", "v"]):
             # splitted qkv case
             class_type = QKVConfig
-        elif all([key in data for key in ["router", "experts"]]):
+        elif all(key in data for key in ["router", "experts"]):
             # moe
             class_type = MOEConfig
-        elif all([key in data for key in ["fc", "gate", "proj"]]):
+        elif all(key in data for key in ["fc", "gate", "proj"]):
             # mlp
             class_type = MLPConfig
         else:
@@ -307,25 +307,23 @@ def pack_linear_weights(model_config: ModelConfig):
 
     def _linear_layer_to_quantized_weight(linear_layers):
         for linear_layer in linear_layers:
-            if isinstance(linear_layer, LinearConfig):
-                # Check if quantization of the layer is None to support auto_quant
-                if (
-                    linear_layer.weights_scaling_factor is not None
-                    and linear_layer.quantization is not None
-                ):
-                    # Quantize on CPU if we are short of GPU memory.
-                    # Using 2x of the tensor size as a threshold.
-                    if linear_layer.weight.is_cuda:
-                        free_mem, _ = torch.cuda.mem_get_info(linear_layer.weight.device)
-                        if (
-                            free_mem
-                            < 2
-                            * linear_layer.weight.element_size()
-                            * linear_layer.weight.nelement()
-                        ):
-                            linear_layer.weight = linear_layer.weight.cpu()
+            # Check if quantization of the layer is None to support auto_quant
+            if isinstance(linear_layer, LinearConfig) and (
+                linear_layer.weights_scaling_factor is not None
+                and linear_layer.quantization is not None
+            ):
+                # Quantize on CPU if we are short of GPU memory.
+                # Using 2x of the tensor size as a threshold.
+                if linear_layer.weight.is_cuda:
+                    free_mem, _ = torch.cuda.mem_get_info(linear_layer.weight.device)
+                    if (
+                        free_mem
+                        < 2 * linear_layer.weight.element_size() * linear_layer.weight.nelement()
+                    ):
+                        linear_layer.weight = linear_layer.weight.cpu()
 
-                    # Save the quantize layer weights to cpu and save gpu memory.
+                # Save the quantize layer weights to cpu and save gpu memory.
+                if linear_layer.weight.element_size() > 1:
                     linear_layer.weight = to_quantized_weight(
                         linear_layer.weight,
                         linear_layer.weights_scaling_factor,
@@ -334,19 +332,17 @@ def pack_linear_weights(model_config: ModelConfig):
                         linear_layer.awq_block_size,
                     ).cpu()
 
-                    # Convert to int8 if to make the checkpoint compatible with the latest TensorRT-LLM release.
-                    # The future TensorRT-LLM release will use uint8 weights instead.
-                    if linear_layer.quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
-                        linear_layer.weight = linear_layer.weight.view(torch.int8)
+                # Convert to int8 if to make the checkpoint compatible with the latest TensorRT-LLM release.
+                # The future TensorRT-LLM release will use uint8 weights instead.
+                if linear_layer.quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
+                    linear_layer.weight = linear_layer.weight.view(torch.int8)
 
-                    # TensorRT-LLM uses per_channel_scale for FP8 per channel weight quantization.
-                    if linear_layer.quantization == QUANTIZATION_FP8_PC_PT:
-                        linear_layer.per_channel_scale = linear_layer.weights_scaling_factor.cpu()
-                        linear_layer.weights_scaling_factor = None
-                    else:
-                        linear_layer.weights_scaling_factor = (
-                            linear_layer.weights_scaling_factor.cpu()
-                        )
+                # TensorRT-LLM uses per_channel_scale for FP8 per channel weight quantization.
+                if linear_layer.quantization == QUANTIZATION_FP8_PC_PT:
+                    linear_layer.per_channel_scale = linear_layer.weights_scaling_factor.cpu()
+                    linear_layer.weights_scaling_factor = None
+                else:
+                    linear_layer.weights_scaling_factor = linear_layer.weights_scaling_factor.cpu()
 
     if not model_config.quantization:
         return
@@ -372,7 +368,7 @@ def pack_linear_weights(model_config: ModelConfig):
                     linear_configs.extend(_find_linear_configs_recursive(item))
 
             elif isinstance(value, dict):
-                for _, item in value.items():
+                for item in value.values():
                     linear_configs.extend(_find_linear_configs_recursive(item))
 
             # Handle nested dataclasses

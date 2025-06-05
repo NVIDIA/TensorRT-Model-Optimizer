@@ -28,7 +28,7 @@ SUPPORTED_VLM_DATASET_CONFIG: dict[str, dict[str, Any]] = {
     "scienceqa": {"config": {"path": "derek-thomas/ScienceQA"}},
 }
 
-__all__ = ["get_vlm_dataset_dataloader", "get_supported_vlm_datasets"]
+__all__ = ["get_supported_vlm_datasets", "get_vlm_dataset_dataloader"]
 
 
 def _get_vlm_dataset(dataset_name: str, num_samples: int):

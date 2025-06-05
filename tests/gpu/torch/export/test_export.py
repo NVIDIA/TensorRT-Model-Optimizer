@@ -65,7 +65,7 @@ from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 
 
 @pytest.mark.parametrize(
-    "config, expected",
+    ("config", "expected"),
     [
         (partial_fp8_config, QUANTIZATION_FP8),
         (partial_w4a8_config, QUANTIZATION_W4A8_AWQ),
@@ -81,7 +81,7 @@ def test_get_quantization_format(config, expected):
 
 
 @pytest.mark.parametrize(
-    "layer_config_dict, expected_processed_dict",
+    ("layer_config_dict", "expected_processed_dict"),
     [
         (
             {
@@ -142,7 +142,7 @@ def test_process_layer_quant_config(layer_config_dict, expected_processed_dict):
 
 
 @pytest.mark.parametrize(
-    "item_list, expected",
+    ("item_list", "expected"),
     [
         (["a", "a", "a"], True),
         (["b", "a", "a"], False),
@@ -160,7 +160,7 @@ def test_all_items_same(item_list, expected):
 
 
 @pytest.mark.parametrize(
-    "weight, group_size, expected",
+    ("weight", "group_size", "expected"),
     [
         (
             torch.tensor([[0.0, 0.35, 0.28, 7.0], [0.49, 0.84, -0.77, 0.07]]),
@@ -196,7 +196,7 @@ def test_get_scaling_factor_from_weight(weight, group_size, expected):
 
 
 @pytest.mark.parametrize(
-    "state_dict, quantization, maxbound, expected_state_dict",
+    ("state_dict", "quantization", "maxbound", "expected_state_dict"),
     [
         (  # Test replacements and KV cache scaling
             {
@@ -253,7 +253,7 @@ def test_postprocess_state_dict(state_dict, quantization, maxbound, expected_sta
 
 
 @pytest.mark.parametrize(
-    "config, expected",
+    ("config", "expected"),
     [
         (partial_fp8_kv_cache_config, KV_CACHE_FP8),
         (partial_int8_kv_cache_config, KV_CACHE_INT8),
@@ -274,7 +274,7 @@ def test_get_kv_cache_dtype(config, expected):
 
 # Tensor Quantizer extraction for export tests
 @pytest.mark.parametrize(
-    "q_weight, k_weight, v_weight, o_weight, expected_qkv_amax, expected_o_amax",
+    ("q_weight", "k_weight", "v_weight", "o_weight", "expected_qkv_amax", "expected_o_amax"),
     [
         (
             torch.tensor([[0.1, 0.3], [0.22, 0.45]]),
@@ -320,7 +320,7 @@ def test_adjust_attn_amax_values(
 
 
 @pytest.mark.parametrize(
-    "config, expected_block_size",
+    ("config", "expected_block_size"),
     [
         (FP8_DEFAULT_CFG, 0),
         (INT8_SMOOTHQUANT_CFG, 0),
@@ -351,7 +351,7 @@ def test_get_weight_block_size(config, expected_block_size):
 
 
 @pytest.mark.parametrize(
-    "config, maxbound, expected_amax",
+    ("config", "maxbound", "expected_amax"),
     [
         (only_weight_quantizer_fp8_config, 448, [0.45, 0.95, 0.92, 0.97]),
         (only_input_quantizer_fp8_config, 448, [1.0, 0.67, 0.68, 0.9]),
@@ -359,7 +359,7 @@ def test_get_weight_block_size(config, expected_block_size):
     ],
 )
 @pytest.mark.parametrize(
-    "q_weight, k_weight, v_weight, o_weight",
+    ("q_weight", "k_weight", "v_weight", "o_weight"),
     [
         (
             torch.tensor([[0.1, 0.3], [0.22, 0.45]]),
@@ -388,7 +388,7 @@ def test_get_scaling_factor(
 
 
 @pytest.mark.parametrize(
-    "config, expected",
+    ("config", "expected"),
     [
         (
             partial_fp8_config,

@@ -31,12 +31,12 @@ def install_whisper_requirements():
     )
 
 
-@pytest.mark.parametrize("quant, export_fmt", [("fp16", "tensorrt_llm")])
+@pytest.mark.parametrize(("quant", "export_fmt"), [("fp16", "tensorrt_llm")])
 def test_whisper(quant, export_fmt):
     run_llm_ptq_command(model=WHISPER_PATH, quant=quant, export_fmt=export_fmt)
 
 
-@pytest.mark.parametrize("quant, export_fmt", [("fp8", "tensorrt_llm")])
+@pytest.mark.parametrize(("quant", "export_fmt"), [("fp8", "tensorrt_llm")])
 def test_whisper_sm89(require_sm89, quant, export_fmt):
     # Auto-batch-size computation seems to take >10mins for Whisper hence using a fixed batch size
     run_llm_ptq_command(model=WHISPER_PATH, quant=quant, export_fmt=export_fmt, calib_batch_size=16)

@@ -10,8 +10,9 @@
    :toctree:
    :recursive:
 {% for item in modules %}
-{% if '.plugins.' not in item or item == 'modelopt.torch.opt.plugins.huggingface' %}
-   {{ item }}
+{% set full_item = fullname + '.' + item.split('.')[-1] %}
+{% if '.plugins.' not in full_item or full_item == 'modelopt.torch.opt.plugins.huggingface' %}
+   {{ full_item }}
 {% endif %}
 {%- endfor %}
 {% endif %}

@@ -28,7 +28,7 @@ from modelopt.torch.trace.modules.nn import (
 
 
 @pytest.mark.parametrize(
-    "test_str, raises_error, expected_dim",
+    ("test_str", "raises_error", "expected_dim"),
     [
         ("Conv2d", False, 2),
         ("FakeConv7DPlus", False, 7),
@@ -59,7 +59,7 @@ def test_get_linear_sym_info():
 
 
 @pytest.mark.parametrize(
-    "norm, edims",
+    ("norm", "edims"),
     [
         (nn.BatchNorm1d(10), {1}),
         (nn.BatchNorm2d(10), {1, -3}),
@@ -98,7 +98,7 @@ def test_sequential_sym_info():
 
 
 @pytest.mark.parametrize(
-    "conv, edims, has_channels",
+    ("conv", "edims", "has_channels"),
     [
         # regular convs
         (nn.Conv1d(10, 10, 3), {1, -2}, True),

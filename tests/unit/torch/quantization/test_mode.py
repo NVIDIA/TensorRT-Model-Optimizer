@@ -20,13 +20,20 @@ import pytest
 from modelopt.torch.opt.config import ModeloptField
 from modelopt.torch.opt.mode import _ModeRegistryCls
 from modelopt.torch.quantization.config import QuantizeAlgorithmConfig
-from modelopt.torch.quantization.mode import BaseCalibrateModeDescriptor, CalibrateModeRegistry
+from modelopt.torch.quantization.mode import (
+    BaseCalibrateModeDescriptor,
+    CalibrateModeRegistry,
+    QuantizeModeRegistry,
+)
 
 
-def test_calibrate_algo_modes():
+def test_modes():
     for mode in ["max", "smoothquant", "awq_full", "awq_lite", "svdquant", None]:
         mode_name = BaseCalibrateModeDescriptor._get_mode_name(mode)
         assert mode_name in CalibrateModeRegistry
+
+    for mode in ["quantize", "auto_quantize"]:
+        assert mode in QuantizeModeRegistry
 
 
 def test_calibrate_mode_registry_with_custom_mode():

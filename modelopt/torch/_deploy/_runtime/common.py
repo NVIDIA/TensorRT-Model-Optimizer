@@ -15,7 +15,7 @@
 
 import logging
 import time
-from typing import Callable
+from collections.abc import Callable
 
 
 def timeit(method: Callable) -> Callable:
@@ -58,7 +58,7 @@ def read_bytes(file_path: str) -> bytes:
 
 
 def read_string(file_path: str) -> str:
-    with open(file_path, "r") as file:
+    with open(file_path) as file:
         data = file.read()
         return data
 

@@ -45,9 +45,7 @@ def main():
     transforms = timm.data.create_transform(**data_config, is_training=False)
     images = dataset["train"][0 : args.calibration_data_size]["image"]
 
-    calib_tensor = []
-    for image in images:
-        calib_tensor.append(transforms(image))
+    calib_tensor = [transforms(image) for image in images]
 
     calib_tensor = np.stack(calib_tensor, axis=0)
     if args.fp16:

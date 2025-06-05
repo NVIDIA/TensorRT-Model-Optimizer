@@ -16,8 +16,9 @@
 """Quantized RNN."""
 
 import contextlib
+from collections.abc import Callable, Iterator
 from types import ModuleType
-from typing import Any, Callable, Iterator, Optional, Union
+from typing import Any
 
 import torch
 import torch._VF as _VF
@@ -46,7 +47,7 @@ _layer_call_name_map = {
 class QuantRNNBase(QuantModule):
     """Base class for quantized RNN modules."""
 
-    weight_quantizer: Union[TensorQuantizer, SequentialQuantizer]
+    weight_quantizer: TensorQuantizer | SequentialQuantizer
     _enable_weight_quantization: bool
     default_quant_desc_weight = QUANT_DESC_8BIT_PER_TENSOR
     default_quant_desc_input = QUANT_DESC_8BIT_PER_TENSOR
@@ -64,11 +65,7 @@ class QuantRNNBase(QuantModule):
     @property
     def all_input_quantizers_disabled(self):
         """Check if all input quantizer are disabled."""
-        for iq in self._input_quantizers + self._proj_input_quantizers:
-            if iq.is_enabled:
-                return False
-
-        return True
+        return all(not iq.is_enabled for iq in self._input_quantizers + self._proj_input_quantizers)
 
     @contextlib.contextmanager
     def quantize_weight(self):
@@ -185,8 +182,8 @@ class VFRNNForward:
         has_proj: bool,
         has_bias: bool,
         input_quantizers: list[TensorQuantizer],
-        proj_input_quantizers: Optional[list[TensorQuantizer]] = None,
-        batch_first: Optional[bool] = False,
+        proj_input_quantizers: list[TensorQuantizer] | None = None,
+        batch_first: bool | None = False,
     ):
         """Pre-construct necessary parameters for vf calls to reduce overhead.
 
@@ -222,10 +219,10 @@ class VFRNNForward:
         layer_forwards: tuple[Callable],
         input: torch.Tensor,
         flat_weights: list[torch.Tensor],
-        hidden: Union[torch.Tensor, tuple[torch.Tensor]],
-        dropout: Optional[float] = 0,
-        training: Optional[bool] = True,
-        batch_sizes: Optional[torch.Tensor] = None,
+        hidden: torch.Tensor | tuple[torch.Tensor],
+        dropout: float | None = 0,
+        training: bool | None = True,
+        batch_sizes: torch.Tensor | None = None,
     ):
         """This this the core implementation of vf rnn calls."""
         all_hiddens = []

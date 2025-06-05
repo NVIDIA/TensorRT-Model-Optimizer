@@ -42,7 +42,6 @@ import os
 import random
 import warnings
 from argparse import Namespace
-from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -163,17 +162,15 @@ def format_example(df, idx, include_answer=True):
     prompt = df.iloc[idx, 0]
     k = df.shape[1] - 2
     for j in range(k):
-        prompt += "\n{}. {}".format(get_choices()[j], df.iloc[idx, j + 1])
+        prompt += f"\n{get_choices()[j]}. {df.iloc[idx, j + 1]}"
     prompt += "\nAnswer:"
     if include_answer:
-        prompt += " {}\n\n".format(df.iloc[idx, k + 1])
+        prompt += f" {df.iloc[idx, k + 1]}\n\n"
     return prompt
 
 
 def gen_prompt(train_df, subject, k=-1):
-    prompt = "The following are multiple choice questions (with answers) about {}.\n\n".format(
-        format_subject(subject)
-    )
+    prompt = f"The following are multiple choice questions (with answers) about {format_subject(subject)}.\n\n"
     if k == -1:
         k = train_df.shape[0]
     for i in range(k):
@@ -181,7 +178,7 @@ def gen_prompt(train_df, subject, k=-1):
     return prompt
 
 
-def evaluate(args, subject, model: Union[EvalModel, LLM], dev_df, test_df):
+def evaluate(args, subject, model: EvalModel | LLM, dev_df, test_df):
     cors = []
     all_probs = []
     for i in range(test_df.shape[0]):
@@ -217,7 +214,7 @@ def evaluate(args, subject, model: Union[EvalModel, LLM], dev_df, test_df):
     cors = np.array(cors)
 
     all_probs = np.array(all_probs)
-    print("Average accuracy {:.3f} - {}".format(acc, subject))
+    print(f"Average accuracy {acc:.3f} - {subject}")
 
     return cors, acc, all_probs
 
@@ -225,8 +222,8 @@ def evaluate(args, subject, model: Union[EvalModel, LLM], dev_df, test_df):
 def main(
     data_dir: str = "data/mmlu",
     ntrain: int = 5,
-    quant_cfg: str = None,
-    auto_quantize_bits: float = None,
+    quant_cfg: str | None = None,
+    auto_quantize_bits: float | None = None,
     batch_size: int = 0,
     calib_size: int = 512,
     dtype: str = "bfloat16",
@@ -253,7 +250,7 @@ def main(
     # Model Optimizer modification
     # Enable automatic save/load of modelopt state huggingface checkpointing
     mto.enable_huggingface_checkpointing()
-    if vocab_file := kwargs.get("vocab_file", None):
+    if vocab_file := kwargs.get("vocab_file"):
         from modelopt.deploy.llm.nemo_utils import get_nemo_tokenizer
 
         tokenizer = get_nemo_tokenizer(vocab_file)
@@ -262,7 +259,7 @@ def main(
         tokenizer = get_tokenizer(
             model_ckpt_path, trust_remote_code=kwargs.get("trust_remote_code", False)
         )
-    if kwargs.get("engine_dir", None):
+    if kwargs.get("engine_dir"):
         # get model type
         last_part = os.path.basename(kwargs["engine_dir"])
         model_type = last_part.split("_")[0]
@@ -272,7 +269,7 @@ def main(
             tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
 
         assert LLM is not None, "tensorrt_llm APIs could not be imported."
-        medusa_choices = kwargs.get("medusa_choices", None)
+        medusa_choices = kwargs.get("medusa_choices")
         model = LLM(
             checkpoint_dir=kwargs["engine_dir"], tokenizer=tokenizer, medusa_choices=medusa_choices
         )
@@ -307,21 +304,21 @@ def main(
         subcats = get_subcategories()[subject]
         for subcat in subcats:
             subcat_cors[subcat].append(cors)
-            for key in get_categories().keys():
+            for key in get_categories():
                 if subcat in get_categories()[key]:
                     cat_cors[key].append(cors)
         all_cors.append(cors)
 
     for subcat in subcat_cors:
         subcat_acc = np.mean(np.concatenate(subcat_cors[subcat]))
-        print("Average accuracy {:.3f} - {}".format(subcat_acc, subcat))
+        print(f"Average accuracy {subcat_acc:.3f} - {subcat}")
 
     for cat in cat_cors:
         cat_acc = np.mean(np.concatenate(cat_cors[cat]))
-        print("Average accuracy {:.3f} - {}".format(cat_acc, cat))
+        print(f"Average accuracy {cat_acc:.3f} - {cat}")
 
     weighted_acc = np.mean(np.concatenate(all_cors))
-    print("Average accuracy: {:.3f}".format(weighted_acc))
+    print(f"Average accuracy: {weighted_acc:.3f}")
     return weighted_acc
 
 

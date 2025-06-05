@@ -15,7 +15,8 @@
 
 """A collection of common models for testing."""
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import timm
 import torch

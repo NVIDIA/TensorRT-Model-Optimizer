@@ -32,29 +32,14 @@
 # sys.path.insert(0, os.path.abspath('.'))
 
 import os
-import shutil
 import sys
-import tempfile
 
 import sphinx.application
 from docutils import nodes
 from docutils.nodes import Element
-from pypandoc.pandoc_download import download_pandoc
 from sphinx.writers.html5 import HTML5Translator
 
-from modelopt import __version__  # noqa: E402
-
-if not shutil.which("pandoc"):
-    # Install pandoc if it is not installed.
-    # Default `targetfolder` for Mac (~/Applications/pandoc) is not in `$PATH` so use whatever is in PATH
-    # Pandoc is required by nbconvert but it is not included in the pypandoc pip package
-    with tempfile.TemporaryDirectory() as tmpdir:
-        download_pandoc(
-            version="3.1.13",
-            download_folder=tmpdir,
-            targetfolder=os.environ["PATH"].split(os.pathsep)[0],
-            delete_installer=True,
-        )
+from modelopt import __version__
 
 sys.path.insert(0, os.path.abspath("../../"))
 sys.path.append(os.path.abspath("./_ext"))
@@ -75,13 +60,11 @@ extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.githubpages",
-    "sphinx.ext.napoleon",
-    # "sphinx.ext.viewcode",
+    "sphinx.ext.napoleon",  # Support for NumPy and Google style docstrings
+    "sphinxarg.ext",  # for command-line help documentation
     "sphinx_copybutton",  # line numbers getting copied so cannot use `:linenos:`
     "sphinx_inline_tabs",
-    "nbsphinx",  # rendering jupyter notebooks in docs
     "sphinx_togglebutton",
-    "IPython.sphinxext.ipython_console_highlighting",
     "sphinxcontrib.autodoc_pydantic",
     "modelopt_autodoc_pydantic",
 ]
@@ -132,7 +115,7 @@ html_permalinks_icon = "#"  # default icon not rendering properly
 
 
 # Mock imports for autodoc
-autodoc_mock_imports = ["mpi4py", "tensorrt_llm"]
+autodoc_mock_imports = ["mpi4py", "tensorrt_llm", "triton"]
 
 autosummary_generate = True
 autosummary_imported_members = False
@@ -161,19 +144,6 @@ autodoc_class_signature = "separated"
 # NOTE: summary table on the top of each page does not follow this order so we should also set __all__ in sorted order
 autodoc_member_order = "alphabetical"  # can also use `bysource` or `groupwise` to sort members
 
-
-# Do not auto-execute notebooks where all outputs are empty
-nbsphinx_execute = "never"
-
-# Add link to download notebook on top of each notebook tutorial!
-nbsphinx_prolog = r"""
-.. raw:: html
-
-    <div class="admonition note">
-        This tutorial is available as a Jupyter Notebook!
-        <a href="{{ env.doc2path(env.docname, base=None).split('/')|last|e }}">Download notebook from here</a>.
-    </div>
-"""
 
 # autodoc_pydantic model settings
 autodoc_pydantic_model_show_config_summary = False

@@ -16,7 +16,7 @@
 """Searcher interface for sparsity algorithms."""
 
 from abc import abstractmethod
-from typing import Iterator, Optional
+from collections.abc import Iterator
 
 import torch
 import torch.nn as nn
@@ -43,7 +43,7 @@ class BaseSparseSearcher(BaseSearcher):
         """Return default state dict."""
         return {}
 
-    def sanitize_search_config(self, config: Optional[SearchConfig]) -> SearchStateDict:
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchStateDict:
         """Sanitize the search config dict."""
         config_sanitized = super().sanitize_search_config(config)
 

@@ -15,12 +15,15 @@
 
 """This module provides a GEMM function for nvfp4 quantization."""
 
+from typing import Any
+
 import torch
 from torch.autograd import Function
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.backends.gemm_registry import gemm_registry
 from modelopt.torch.quantization.backends.utils import fp4_compatible
+from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import NVFP4QTensor, QTensorWrapper
 
 
@@ -129,16 +132,17 @@ def _nvfp4_availability_check(module, input, args, kwargs):
         return False
 
     # Check module type
-    if not type(module).__name__ == "QuantLinear":
+    if not isinstance(module, RealQuantLinear):
         return False
 
     # Check quantizer presence and configuration
     if not hasattr(module, "input_quantizer") or not hasattr(module, "weight_quantizer"):
         return False
 
+    quant_cfg: dict[str, Any] = mtq.NVFP4_DEFAULT_CFG["quant_cfg"]
     # Quantizer configs
-    input_cfg = mtq.NVFP4_DEFAULT_CFG["quant_cfg"]["*input_quantizer"]  # type: ignore[attr-defined]
-    weight_cfg = mtq.NVFP4_DEFAULT_CFG["quant_cfg"]["*weight_quantizer"]  # type: ignore[attr-defined]
+    input_cfg = quant_cfg["*input_quantizer"]
+    weight_cfg = quant_cfg["*weight_quantizer"]
 
     # Check input quantizer config
     for key, value in input_cfg.items():
@@ -166,13 +170,10 @@ def _nvfp4_availability_check(module, input, args, kwargs):
         return False
 
     # Only block_size==16 is supported.
-    if (
+    return not (
         module.input_quantizer.block_sizes[-1] != 16
         or module.weight_quantizer.block_sizes[-1] != 16
-    ):
-        return False
-
-    return True
+    )
 
 
 # Register default implementations

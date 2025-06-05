@@ -196,7 +196,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
 
     python ../llm_ptq/modelopt_to_tensorrt_llm.py \
         --model_config=$MODEL_CONFIG \
-        --engine_dir=$ENGINE_DIR \
+        --engine_dir=${ENGINE_DIR}/llm \
         --tokenizer=$MODEL_PATH \
         --max_input_len=$BUILD_MAX_INPUT_LEN \
         --max_output_len=$BUILD_MAX_OUTPUT_LEN \
@@ -208,7 +208,7 @@ fi
 
 
 VISUAL_ARGS=""
-VISION_ENCODER_DIR=${SAVE_PATH}/vision_encoder
+VISION_ENCODER_DIR=${ENGINE_DIR}/vision
 VISUAL_MODEL_TYPE=$MODEL_TYPE
 case "${MODEL_TYPE}" in
     "vila")
@@ -235,15 +235,14 @@ fi
 VLM_RUN_ARGS=""
 case "${MODEL_TYPE}" in
     "mllama")
-        VLM_RUN_ARGS+=" --visual_engine_name visual_encoder.engine --image_path https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit.jpg --input_text \"<|image|><|begin_of_text|>If I had to write a haiku for this one\" --max_new_tokens 50 --batch_size 2 "
+        VLM_RUN_ARGS+=" --image_path https://huggingface.co/datasets/huggingface/documentation-images/resolve/0052a70beed5bf71b92610a43a52df6d286cd5f3/diffusers/rabbit.jpg --input_text \"<|image|><|begin_of_text|>If I had to write a haiku for this one\" --max_new_tokens 50 --batch_size 2 "
         ;;
 esac
 echo "Run inference example"
 
 mpirun -n $GPUS --allow-run-as-root python vlm_run.py  \
     --hf_model_dir $MODEL_PATH \
-    --visual_engine_dir $VISION_ENCODER_DIR \
-    --llm_engine_dir $ENGINE_DIR \
+    --engine_dir $ENGINE_DIR \
     --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION \
     $VLM_RUN_ARGS
 
@@ -252,11 +251,11 @@ if [[ $TASKS =~ "gqa" ]]; then
     pushd ../vlm_eval/
     if [[ "$MODEL_PATH" =~ ^/ ]]; then
         # If MODEL_PATH is absolute path
-        source gqa.sh --hf_model $MODEL_PATH --llm_engine $ENGINE_DIR --visual_engine $VISION_ENCODER_DIR --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION
+        source gqa.sh --hf_model $MODEL_PATH --engine_dir $ENGINE_DIR --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION
     else
         # If MODEL_PATH is absolute path
         script_parent_dir=$(dirname "$script_dir")
-        source gqa.sh --hf_model $script_parent_dir/$MODEL_PATH --llm_engine $ENGINE_DIR --visual_engine $VISION_ENCODER_DIR --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION
+        source gqa.sh --hf_model $script_parent_dir/$MODEL_PATH --engine_dir $ENGINE_DIR --kv_cache_free_gpu_memory_fraction $KV_CACHE_FREE_GPU_MEMORY_FRACTION
     fi
 
     popd

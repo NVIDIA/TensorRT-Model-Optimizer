@@ -15,8 +15,6 @@
 
 """Calibrator that returns the bias of all collected tensors."""
 
-from typing import Optional, Tuple, Union
-
 import torch
 
 from .calibrator import _Calibrator
@@ -25,8 +23,8 @@ __all__ = ["BiasCalibrator"]
 
 
 def compute_maxmin(
-    inputs: torch.Tensor, axis: Optional[Union[int, Tuple[int, ...]]]
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    inputs: torch.Tensor, axis: int | tuple[int, ...] | None
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Compute the max and min values of input tensor.
 
     Args:
@@ -43,7 +41,7 @@ def compute_maxmin(
         max_ = torch.max(inputs)
         min_ = torch.min(inputs)
     else:
-        reduce_axis = tuple()
+        reduce_axis = ()
         for i in range(len(inputs.shape)):
             if i in axis or (i - inputs.dim()) in axis:
                 reduce_axis += (i,)
@@ -54,23 +52,19 @@ def compute_maxmin(
     return max_, min_
 
 
-def compute_maxmin_bias(
-    inputs: torch.Tensor, axis: Optional[Union[int, Tuple[int, ...]]]
-) -> torch.Tensor:
+def compute_maxmin_bias(inputs: torch.Tensor, axis: int | tuple[int, ...] | None) -> torch.Tensor:
     """Compute the max_min mean bias of input tensor."""
     max_, min_ = compute_maxmin(inputs, axis)
     return (max_ + min_) / 2
 
 
-def compute_mean_bias(
-    inputs: torch.Tensor, axis: Optional[Union[int, Tuple[int, ...]]]
-) -> torch.Tensor:
+def compute_mean_bias(inputs: torch.Tensor, axis: int | tuple[int, ...] | None) -> torch.Tensor:
     """Compute the mean bias of input tensor."""
     if axis is None:
         reduce_axis = None
         bias_ = torch.mean(inputs)
     else:
-        reduce_axis = tuple()
+        reduce_axis = ()
         for i in range(len(inputs.shape)):
             if i in axis or (i - inputs.dim()) in axis:
                 reduce_axis += (i,)
@@ -81,7 +75,7 @@ def compute_mean_bias(
 
 
 def compute_bias(
-    inputs: torch.Tensor, axis: Optional[Union[int, Tuple[int, ...]]], method: str = "mean"
+    inputs: torch.Tensor, axis: int | tuple[int, ...] | None, method: str = "mean"
 ) -> torch.Tensor:
     """Compute the bias of input tensor. Supports mean and max_min methods."""
     if method == "mean":
@@ -106,7 +100,7 @@ def add_bias(inputs: torch.Tensor, bias: torch.Tensor) -> torch.Tensor:
 class BiasCalibrator(_Calibrator):
     """Bias calibrator, tracks the bias of all tensors collected."""
 
-    def __init__(self, method: str = "mean", axis: Optional[Union[int, Tuple[int, ...]]] = None):
+    def __init__(self, method: str = "mean", axis: int | tuple[int, ...] | None = None):
         """Initialize."""
         super().__init__(axis=axis)
         self._calib_bias = None

@@ -26,7 +26,8 @@ sequence of modes.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Optional, TypeVar, Union
+from collections.abc import Callable
+from typing import Any, TypeVar
 
 import torch.nn as nn
 
@@ -37,7 +38,7 @@ from .searcher import BaseSearcher
 
 MetadataDict = dict[str, Any]  # metadata dict for one mode
 ModeConfigList = list[tuple[str, ConfigDict]]  # config list for multiple modes
-ModeState = dict[str, Union[ConfigDict, MetadataDict]]  # state dict for one mode
+ModeState = dict[str, ConfigDict | MetadataDict]  # state dict for one mode
 
 ModeEntrypoint = Callable[
     [nn.Module, ModeloptBaseConfig, MetadataDict], tuple[nn.Module, MetadataDict]
@@ -45,7 +46,7 @@ ModeEntrypoint = Callable[
 ConvertReturnType = tuple[nn.Module, MetadataDict]
 _ConvertEntrypoint = Callable[[nn.Module, ModeloptBaseConfig], ConvertReturnType]
 _ConvertEntrypointWithKwargs = Callable[[nn.Module, ModeloptBaseConfig, Any], ConvertReturnType]
-ConvertEntrypoint = Union[_ConvertEntrypoint, _ConvertEntrypointWithKwargs]
+ConvertEntrypoint = _ConvertEntrypoint | _ConvertEntrypointWithKwargs
 RestoreEntrypoint = Callable[[nn.Module, ModeloptBaseConfig, MetadataDict], nn.Module]
 UpdateEntrypoint = Callable[[nn.Module, ModeloptBaseConfig, MetadataDict], None]
 
@@ -75,7 +76,7 @@ class ModeDescriptor(ABC):
         """Specifies the config class for the mode."""
 
     @property
-    def next_modes(self) -> Optional[set[str]]:
+    def next_modes(self) -> set[str] | None:
         """Modes that must immediately follow this mode.
 
         Certain modes only makes sense if they are followed by certain other modes.
@@ -89,7 +90,7 @@ class ModeDescriptor(ABC):
         return None
 
     @property
-    def next_prohibited_modes(self) -> Optional[set[str]]:
+    def next_prohibited_modes(self) -> set[str] | None:
         """Modes that should not be applied after this mode.
 
         This is used to specify that certain modes should not be applied after this mode.
@@ -102,7 +103,7 @@ class ModeDescriptor(ABC):
         return None
 
     @property
-    def export_mode(self) -> Optional[str]:
+    def export_mode(self) -> str | None:
         """The mode that corresponds to the export mode of this mode.
 
         Certain modes require a subsequent export step. For example, after pruning, we might want to
@@ -241,9 +242,7 @@ class ModeDescriptor(ABC):
         """
         return False
 
-    def assert_compatibility_as_next_mode_of(
-        self, other_mode: Union["ModeDescriptor", str]
-    ) -> None:
+    def assert_compatibility_as_next_mode_of(self, other_mode: "ModeDescriptor | str") -> None:
         """Assert that this mode is compatible as a next mode of the other mode."""
         if isinstance(other_mode, str):
             other_mode = _ModeRegistryCls.get_from_any(other_mode)
@@ -260,9 +259,9 @@ class ModeDescriptor(ABC):
             )
 
 
-ModeType = Union[ModeDescriptor, str]
-ModeLike = Union[ModeType, list[ModeType], ModeConfigList]
-ModeKwargsType = Union[dict[str, Any], list[dict[str, Any]]]
+ModeType = ModeDescriptor | str
+ModeLike = ModeType | list[ModeType] | ModeConfigList
+ModeKwargsType = dict[str, Any] | list[dict[str, Any]]
 
 
 class _ModeRegistryCls:
@@ -277,8 +276,7 @@ class _ModeRegistryCls:
         """Initialize the registry with the lookup dictionaries."""
         self._registry_name = registry_name  # quantization, distill, nas, prune, speculative, etc.
         self._name2descriptor: dict[str, ModeDescriptor] = {}
-        # Add the registry to the global list of registries so that `mto.restore_from_modelopt_state` can find it
-        _ModeRegistryCls._all_registries.append(self)
+        self._all_registries.append(self)
 
     def register_mode(self, cls_descriptor: type[T]) -> type[T]:
         """Register a new mode with the given descriptor."""
@@ -303,7 +301,7 @@ class _ModeRegistryCls:
         # remove mode
         del self._name2descriptor[str(mode)]
 
-    def get(self, mode: ModeType) -> Optional[ModeDescriptor]:
+    def get(self, mode: ModeType) -> ModeDescriptor | None:
         """Get the mode by value or throw an error."""
         return self._name2descriptor.get(str(mode))
 
@@ -317,35 +315,30 @@ class _ModeRegistryCls:
 
     def __del__(self) -> None:
         """Remove the registry from the global list."""
-        _ModeRegistryCls._all_registries.remove(self)
+        self._all_registries.remove(self)
 
-    @staticmethod
-    def contained_in_any(mode: ModeType) -> bool:
+    @classmethod
+    def contained_in_any(cls, mode: ModeType) -> bool:
         """Check if mode is registered in any registry."""
-        for registry in _ModeRegistryCls._all_registries:
-            if str(mode) in registry._name2descriptor:
-                return True
-        return False
+        return any(str(mode) in registry._name2descriptor for registry in cls._all_registries)
 
-    @staticmethod
-    def get_from_any(mode: ModeType) -> ModeDescriptor:
+    @classmethod
+    def get_from_any(cls, mode: ModeType) -> ModeDescriptor:
         """Get the mode by value from any registry or throw a KeyError.
 
         Adds a sanity check to ensure that the mode is not ambiguous, i.e., there is only one
         instance.
         """
-        mode_ds = [
-            registry[mode] for registry in _ModeRegistryCls._all_registries if mode in registry
-        ]
+        mode_ds = [registry[mode] for registry in cls._all_registries if mode in registry]
         if not mode_ds:
             raise KeyError(f"Mode {mode} not found in any registry.")
         assert all(mode_ds[0] == m_d for m_d in mode_ds), f"Mode {mode} is ambiguous."
         return mode_ds[0]
 
-    @staticmethod
-    def get_registry_by_name(registry_name: str) -> "_ModeRegistryCls":
+    @classmethod
+    def get_registry_by_name(cls, registry_name: str) -> "_ModeRegistryCls":
         """Get the registry by name."""
-        for registry in _ModeRegistryCls._all_registries:
+        for registry in cls._all_registries:
             if registry._registry_name == registry_name:
                 return registry
         raise KeyError(f"Registry {registry_name} not found.")

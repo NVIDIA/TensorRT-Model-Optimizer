@@ -12,25 +12,33 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 import torch
-from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
+from _test_utils.torch_model.transformers_models import create_tiny_llama_dir, create_tiny_t5_dir
 from safetensors import safe_open
 
 
 # Here we map each qformat -> the suffix we expect in the generated safetensors directory
 @pytest.mark.parametrize(
-    "qformat,expected_suffix,fuse_input_scale,fuse_weight_scale,fuse_weight_scale_2,fuse_prequant_scale",
+    (
+        "qformat",
+        "expected_suffix",
+        "fuse_input_scale",
+        "fuse_weight_scale",
+        "fuse_weight_scale_2",
+        "fuse_prequant_scale",
+    ),
     [
         ("fp8", "tiny_llama-fp8", True, False, True, True),
         ("nvfp4", "tiny_llama-nvfp4", True, False, True, True),
         ("nvfp4_awq", "tiny_llama-nvfp4-awq", True, False, True, True),
         ("int4_awq", "tiny_llama-int4-awq", True, False, True, True),
         ("w4a8_awq", "tiny_llama-w4a8-awq", True, False, True, True),
+        ("fp8", "t5_tiny-fp8", True, False, True, True),
     ],
 )
 def test_unified_hf_export_and_check_safetensors(
@@ -52,7 +60,11 @@ def test_unified_hf_export_and_check_safetensors(
     :param qformat: the quantization format to test (e.g., 'fp8', 'nvfp4', etc.).
     :param expected_suffix: the directory suffix where the .safetensors is expected.
     """
-    tiny_llama_dir = create_tiny_llama_dir(tmp_path, with_tokenizer=True, num_hidden_layers=1)
+    if expected_suffix.startswith("t5_tiny"):
+        tiny_model_dir = create_tiny_t5_dir(tmp_path, with_tokenizer=True, num_hidden_layers=1)
+    else:
+        tiny_model_dir = create_tiny_llama_dir(tmp_path, with_tokenizer=True, num_hidden_layers=1)
+
     current_file_dir = Path(__file__).parent
     hf_ptq_script_path = (current_file_dir / "../../../../examples/llm_ptq/hf_ptq.py").resolve()
 
@@ -66,7 +78,7 @@ def test_unified_hf_export_and_check_safetensors(
         "python",
         str(hf_ptq_script_path),
         "--pyt_ckpt_path",
-        str(tiny_llama_dir),
+        str(tiny_model_dir),
         "--qformat",
         qformat,
         "--export_fmt",
@@ -75,8 +87,15 @@ def test_unified_hf_export_and_check_safetensors(
         str(output_dir),
     ]
 
+    # current transformers T5 model seem to be incompatible with multiple GPUs
+    # https://github.com/huggingface/transformers/issues/30280
+    env = (
+        {**os.environ, "CUDA_VISIBLE_DEVICES": "0"}
+        if expected_suffix.startswith("t5_tiny")
+        else {**os.environ}
+    )
     # Run the command
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, env=env, check=True)
 
     # Now we expect a file named model.safetensors in output_dir
     generated_file = output_dir / "model.safetensors"

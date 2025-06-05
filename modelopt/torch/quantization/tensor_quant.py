@@ -16,7 +16,6 @@
 """Basic tensor quantization functions."""
 
 import warnings
-from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -163,6 +162,7 @@ def _quantize_impl_abstract(
     return output
 
 
+# Argument types: Tensor, int, NoneType, int, int, int, int,
 def _dynamic_block_quantize_impl(
     inputs: torch.Tensor,
     block_size: int,
@@ -173,7 +173,8 @@ def _dynamic_block_quantize_impl(
     scale_exponent_bits: int,
 ):
     scale_bits = (scale_exponent_bits, scale_num_bits - scale_exponent_bits - 1)
-    num_bits = (exponent_bits, num_bits - exponent_bits - 1)
+    if exponent_bits != 0:
+        num_bits = (exponent_bits, num_bits - exponent_bits - 1)
     if num_bits in mx_format_map:
         assert scale_bits in mx_format_map, f"Scale bits should be in {mx_format_map.keys()}"
         if scale_bits != (8, 0):
@@ -185,6 +186,7 @@ def _dynamic_block_quantize_impl(
         ):
             if (
                 num_bits == (2, 1)  # type: ignore[comparison-overlap]
+                and scale_bits == (4, 3)
                 and triton_kernel.IS_AVAILABLE
                 and not DISABLE_TRITON_KERNEL
             ):
@@ -198,7 +200,9 @@ def _dynamic_block_quantize_impl(
                 amax,
             )
     else:
-        raise NotImplementedError("Dynamic block quantization only support E2M1 for now.")
+        raise NotImplementedError(
+            f"Unsupported num_bits: {num_bits}, scale_bits: {scale_bits} for dynamic block quantization."
+        )
 
 
 def _dynamic_block_quantize_impl_abstract(
@@ -294,7 +298,7 @@ QUANT_DESC_8BIT_CONVTRANSPOSE3D_WEIGHT_PER_CHANNEL = QuantizerAttributeConfig(nu
 
 
 @torch.jit.script
-def _fake_tensor_quant_backward(inputs, amax: Optional[torch.Tensor], grad_outputs):
+def _fake_tensor_quant_backward(inputs, amax: torch.Tensor | None, grad_outputs):
     # Skip clip for MX formats
     if amax is None:
         return grad_outputs
@@ -437,10 +441,13 @@ def _dynamic_block_quantize_forward(
 ):
     """Forward method."""
     ctx.save_for_backward(inputs, amax)
-
-    assert isinstance(num_bits, tuple) and len(num_bits) == 2
-    exponent_bits = num_bits[0]
-    num_bits = num_bits[0] + num_bits[1] + 1
+    if isinstance(num_bits, int):
+        # special case for INT dynamic block quantization, e.g. MXINT8
+        exponent_bits = 0
+    else:
+        assert isinstance(num_bits, tuple) and len(num_bits) == 2
+        exponent_bits = num_bits[0]
+        num_bits = num_bits[0] + num_bits[1] + 1
     assert isinstance(scale_bits, tuple) and len(scale_bits) == 2
     scale_exponent_bits = scale_bits[0]
     scale_num_bits = scale_bits[0] + scale_bits[1] + 1
@@ -450,78 +457,7 @@ def _dynamic_block_quantize_forward(
     return outputs
 
 
-class MXFP8DynamicBlockQuantizationFunction(Function):
-    """MXFP8 dynamic block quantization functional."""
-
-    @staticmethod
-    @symbolic_helper.parse_args("v", "i", "n", "is", "is", "is", "is", "s", "s")
-    def symbolic(
-        g,
-        inputs,
-        block_size,
-        amax,
-        num_bits,
-        exponent_bits,
-        scale_num_bits,
-        scale_exponent_bits,
-        onnx_quantizer_type,
-        trt_high_precision_dtype="Half",
-    ):
-        """ONNX symbolic function."""
-        return export_mxfp8(
-            g,
-            inputs,
-            onnx_quantizer_type,
-            block_size,
-        )
-
-    @staticmethod
-    def forward(
-        ctx,
-        inputs,
-        block_size,
-        amax,
-        num_bits,
-        exponent_bits,
-        scale_num_bits,
-        scale_exponent_bits,
-        onnx_quantizer_type,
-        trt_high_precision_dtype="Half",
-    ):
-        """Forward method."""
-        scale_bits = (scale_num_bits, scale_exponent_bits)
-        num_bits = (num_bits, exponent_bits)
-        return _dynamic_block_quantize_forward(
-            ctx,
-            inputs,
-            block_size,
-            amax,
-            num_bits,
-            scale_bits,
-            trt_high_precision_dtype,
-            onnx_quantizer_type,
-        )
-
-    @staticmethod
-    def backward(ctx, grad_outputs):
-        """Implements straight through estimation with clipping."""
-        # Dynamic block quantization does not clip the tensors (i.e in effect) in the forward loop
-        # as the block quantization amax is always the block amax. So we dont need to clip the gradients for STE
-        inputs, amax = ctx.saved_tensors
-        return (
-            _fake_tensor_quant_backward(inputs, amax, grad_outputs),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-
-
-class FP4DynamicBlockQuantizationFunction(Function):
+class DynamicBlockQuantizationFunction(Function):
     """Dynamic block quantization functional."""
 
     @staticmethod
@@ -536,16 +472,27 @@ class FP4DynamicBlockQuantizationFunction(Function):
         scale_bits,
         trt_high_precision_dtype="Half",
         onnx_quantizer_type="dynamic",
-    ):  # noqa: N803
+    ):
         """ONNX symbolic function."""
-        return export_fp4(
-            g,
-            inputs,
-            block_size,
-            amax,
-            num_bits,
-            trt_high_precision_dtype,
-            onnx_quantizer_type,
+        if num_bits == (2, 1) and scale_bits == (4, 3):
+            return export_fp4(
+                g,
+                inputs,
+                block_size,
+                amax,
+                num_bits,
+                trt_high_precision_dtype,
+                onnx_quantizer_type,
+            )
+        if num_bits == (4, 3) and scale_bits == (8, 0):
+            return export_mxfp8(
+                g,
+                inputs,
+                onnx_quantizer_type,
+                block_size,
+            )
+        raise NotImplementedError(
+            f"Unsupported num_bits: {num_bits} and scale_bits: {scale_bits} for ONNX export."
         )
 
     @staticmethod
@@ -802,9 +749,8 @@ class LegacyFakeTensorQuantFunction(Function):
 def _tensor_quant(inputs, amax, num_bits=8, unsigned=False, narrow_range=True):
     """Shared function body between TensorQuantFunction and FakeTensorQuantFunction."""
     # Fine scale, per channel scale will be handled by broadcasting, which could be tricky. Pop a warning.
-    if unsigned:
-        if inputs.min() < 0.0:
-            raise TypeError("Negative values encountered in unsigned quantization.")
+    if unsigned and inputs.min() < 0.0:
+        raise TypeError("Negative values encountered in unsigned quantization.")
 
     # Computation can be done in FP32 to prevent potential over flow.
     input_dtype = inputs.dtype
@@ -906,6 +852,5 @@ legacy_fake_tensor_quant = LegacyFakeTensorQuantFunction.apply
 fake_tensor_quant = FakeTensorQuantFunction.apply
 fake_affine_tensor_quant = FakeAffineTensorQuantFunction.apply
 scaled_e4m3 = ScaledE4M3Function.apply
-nvfp4_dynamic_block_quant = FP4DynamicBlockQuantizationFunction.apply
-mxfp8_dynamic_block_quant = MXFP8DynamicBlockQuantizationFunction.apply
+dynamic_block_quant = DynamicBlockQuantizationFunction.apply
 static_block_quant = StaticBlockQuantizationFunction.apply

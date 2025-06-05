@@ -15,9 +15,9 @@
 
 """Customization for Nemo Megatron GPT."""
 
+from collections.abc import Callable, Iterator
 from functools import partial
 from types import ModuleType
-from typing import Callable, Iterator
 
 import torch
 

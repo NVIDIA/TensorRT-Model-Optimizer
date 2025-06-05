@@ -23,7 +23,7 @@ from _test_utils.torch_quantization.onnx_export import TEST_MODELS, onnx_export_
 
 @pytest.mark.parametrize("model_cls", TEST_MODELS)
 @pytest.mark.parametrize(
-    "num_bits, per_channel_quantization, constant_folding",
+    ("num_bits", "per_channel_quantization", "constant_folding"),
     [
         (8, True, True),
         (8, False, True),

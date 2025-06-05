@@ -17,12 +17,11 @@
 
 import copy
 import gc
-import logging
 import math
 import os
 import tempfile
 import time
-from typing import Any, Optional, Union, cast
+from typing import Any, cast
 
 import numpy
 import onnx
@@ -32,6 +31,7 @@ from onnxruntime.quantization.calibrate import CalibrationDataReader
 from tqdm import tqdm
 
 import modelopt.onnx.quantization.qdq_utils as qdq
+from modelopt.onnx.logging_config import logger
 from modelopt.onnx.op_types import is_fusible_scaling_op
 from modelopt.onnx.quantization.calib_utils import RandomDataProvider
 from modelopt.onnx.quantization.graph_utils import (
@@ -62,8 +62,6 @@ except Exception as e:
     cupy_warning_msg = f"Using slower INT4 ONNX quantization using numpy: {e}"
 
 
-# Set logging level to info
-logging.getLogger().setLevel(logging.INFO)
 NUM_BITS = 4
 INT4_SCALE = 7.0
 INT4_MIN = -(2 ** (NUM_BITS - 1))  # -8
@@ -176,8 +174,13 @@ def quantize_rtn(
     Always selects the first dimension (0) to block over. This is because we must batch over the Cin
     dimension, and in ONNX, weights are always plugged into the RHS (i.e. y = x @ W).
     """
+    logger.info("Starting RTN quantization")
+    t_start = time.time()
+
     graph = gs.import_onnx(onnx_model)
     gemm_nodes = [node for node in graph.nodes if node.op in ["Gemm", "MatMul"]]
+    logger.info(f"Found {len(gemm_nodes)} Gemm/MatMul nodes to quantize")
+
     gemm_tensors = {}
     act_tensors = []
     for gemm in gemm_nodes:
@@ -191,17 +194,18 @@ def quantize_rtn(
             act_tensors.append(gemm.inputs[0])
 
     gemm_weights = {name: tensor.values for name, tensor in gemm_tensors.items()}
+    logger.info(f"Found {len(gemm_weights)} quantizable weights")
 
+    logger.info("Computing scales for gemm weights")
     scales = {}
     for name, w in gemm_weights.items():
+        logger.debug(f"Computing scales for weight {name} of shape {w.shape}")
         s, zp = find_scales(np.asarray(w), block_size)
         assert zp is None, "zero-point is not enabled but zp is found non-None"
         scales[name] = s
 
-    logging.info("Computed scales.")
-
     # Change the scale type to the expected type, fp16 by default
-    for name, _ in scales.items():
+    for name in scales:
         s = scales[name]
         scales[name] = s.astype(onnx.helper.tensor_dtype_to_np_dtype(gemm_io_type))
 
@@ -214,8 +218,10 @@ def quantize_rtn(
 
     if dq_only:
         # Calculate actual quantized weights.
+        logger.info("Computing quantized weights for DQ-only mode")
         gemm_weights_quantized = {}
         for name, w in gemm_weights.items():
+            logger.debug(f"Quantizing weight {name}")
             qw = rtn(np.asarray(w), scales[name], block_size)
             if has_cupy:
                 qw = np.asnumpy(qw)
@@ -225,11 +231,11 @@ def quantize_rtn(
         qdq.insert_dq_nodes(graph, scales, quantized_weights=gemm_weights_quantized)
     else:
         if has_cupy:
-            for name, _ in scales.items():
+            for name in scales:
                 scales[name] = np.asnumpy(scales[name])
         qdq.insert_qdq_nodes(graph, scales, weight_map=gemm_tensors)
 
-    logging.info(f"Inserted {'DQ' if dq_only else 'Q/DQ'} nodes.")
+    logger.info(f"RTN quantization completed in {time.time() - t_start:.2f} seconds")
     return gs.export_onnx(graph)
 
 
@@ -314,7 +320,7 @@ def _clip_search(
         org_out = np.sum(x * weight, axis=-1)  # co_bsz, max_tokens, n_block
 
         # Compute loss for each alpha value
-        for alpha in awq_clip.loss.keys():
+        for alpha in awq_clip.loss:
             # Perform QDQ on the whole original weight tensor
             qw, scales, _ = quant_tensor(w_copy, block_size, alpha)
             cur_w = dq_tensor(qw, scales, block_size)
@@ -369,14 +375,14 @@ def _find_quantizable_weights(
         if len(weight_tensor.dims) == 1:  # 1D blocked quantization not supported
             continue
 
-        gemm_io_type = cast(int, weight_tensor.data_type)
+        gemm_io_type = cast("int", weight_tensor.data_type)
 
         act_tensor = onnx.helper.ValueInfoProto()
         act_tensor.name = gemm.input[0]
 
         # TODO: support transA by transposing activation tensors in _clip_search
         do_transpose = gemm.op_type == "Gemm" and any(
-            [attr.name == "transB" and attr.i > 0 for attr in gemm.attribute]
+            attr.name == "transB" and attr.i > 0 for attr in gemm.attribute
         )
 
         wa_pack.append((act_tensor, weight_tensor, do_transpose, gemm_io_type))
@@ -389,7 +395,7 @@ def _augment_graph(
     wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
 ):
     """Extend graph outputs with MatMuls activation input."""
-    augmented_outputs = set([tensor.name for tensor in graph.output])
+    augmented_outputs = {tensor.name for tensor in graph.output}
     for act_tensor, _, _, _ in wa_pack:
         if act_tensor.name not in augmented_outputs:
             graph.output.append(act_tensor)
@@ -426,7 +432,7 @@ def _quantize_awq_clip(
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
-    logging.info("Finding quantizable weights and augmenting graph output with input activations")
+    logger.info("Quantizing model using AWQ clip algorithm")
     t = time.time()
     augmented_model = copy.deepcopy(onnx_model)
     graph = augmented_model.graph
@@ -437,7 +443,7 @@ def _quantize_awq_clip(
 
     # Add input activations to graph output
     _augment_graph(augmented_model.graph, wa_pack)
-    logging.info(f"Augmenting took {time.time() - t} seconds")
+    logger.info(f"Augmenting took {time.time() - t} seconds")
 
     scales = {}
     gemm_weights_quantized = {}
@@ -448,10 +454,10 @@ def _quantize_awq_clip(
     augmented_onnx_file, augmented_onnx_path = tempfile.mkstemp(suffix=".onnx")
     os.close(augmented_onnx_file)
 
-    # TODO: ONNX version issue, onnx_export uses current ONNX IR version.
-    augmented_model.ir_version = 9
+    # TODO: Remove all manual ir_version changes in this file once ORT supports ir_version 11
+    augmented_model.ir_version = 10
     save_onnx(augmented_model, augmented_onnx_path, use_external_data_format)
-    logging.info(f"Saving the model took {time.time() - t} seconds")
+    logger.info(f"Saving the model took {time.time() - t} seconds")
 
     # Creating inference session and preparing inputs for calibration
     session = create_inference_session(augmented_onnx_path, calibration_eps)
@@ -487,7 +493,7 @@ def _quantize_awq_clip(
         _clip_search(x, w, awq_clip, **kwargs)
         alphas[weight_tensor.name] = awq_clip.best_alpha
 
-    logging.info(f"Clip search for all weights took {time.time() - t} seconds")
+    logger.info(f"Clip search for all weights took {time.time() - t} seconds")
 
     del session
 
@@ -495,7 +501,7 @@ def _quantize_awq_clip(
     t = time.time()
     for i in tqdm(range(len(wa_pack)), desc="Quantizing the weights..."):
         act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
-        gemm_io_type = cast(onnx.TensorProto.DataType, gemm_io_type)
+        gemm_io_type = cast("onnx.TensorProto.DataType", gemm_io_type)
 
         if force_fp16:
             gemm_io_type = onnx.TensorProto.FLOAT16
@@ -524,29 +530,28 @@ def _quantize_awq_clip(
         # TODO: cast input C for Gemm
         _change_input_type(onnx_model.graph, act_tensor.name, gemm_io_type)
 
-    logging.info(f"Quantizing actual weights took {time.time() - t} seconds")
+    logger.info(f"Quantizing actual weights took {time.time() - t} seconds")
 
-    logging.info("Inserting DQ nodes using quantized weights and scales ...")
     t = time.time()
     graph_gs = gs.import_onnx(onnx_model)
     dq_node_attributes = {"axis": 0, "block_size": block_size}
     qdq.insert_dq_nodes(
         graph_gs, scales, quantized_weights=gemm_weights_quantized, attributes=dq_node_attributes
     )
-    logging.info(f"Inserting DQ nodes took {time.time() - t} seconds")
+    logger.info(f"Inserting DQ nodes took {time.time() - t} seconds")
 
-    logging.info("Exporting the quantized graph ...")
+    logger.info("Exporting the quantized graph")
     t = time.time()
     model = gs.export_onnx(graph_gs)
-    model.ir_version = 9
-    logging.info(f"Exporting took {time.time() - t} seconds")
+    model.ir_version = 10
+    logger.info(f"Exporting took {time.time() - t} seconds")
 
     try:
         os.remove(augmented_onnx_path)
         if use_external_data_format:
             os.remove(augmented_onnx_path + "_data")
     except OSError:
-        logging.warn("Augmented ONNX model or external data file was not found!")
+        logger.warn("Augmented ONNX model or external data file was not found")
 
     return model
 
@@ -674,7 +679,7 @@ def run_awq_scale_search_per_node(
 
         out_actual = x.__matmul__(w)
 
-        for alpha in awq_lite[i].loss.keys():
+        for alpha in awq_lite[i].loss:
             awq_scale = get_scale(
                 awq_lite[i].act_scale,
                 awq_lite[i].weight_scale,
@@ -841,7 +846,7 @@ def run_awq_scale_search_per_subgraph(
                 if do_transpose:
                     w = w.T
                 w = np.asarray(w)
-                out_act = out_actual.get(wa_pack_idx, None)
+                out_act = out_actual.get(wa_pack_idx)
                 if out_act is None:
                     out_act = x.__matmul__(w)
                     out_actual[wa_pack_idx] = out_act
@@ -910,7 +915,7 @@ def _quantize_awq_lite(
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
-    logging.info("Finding quantizable weights and augmenting graph output with input activations")
+    logger.info("Quantizing model using AWQ lite algorithm")
     t = time.time()
 
     run_per_subgraph = kwargs.get("awqlite_run_per_subgraph", False)
@@ -935,7 +940,7 @@ def _quantize_awq_lite(
 
     # Add input activations to graph output
     _augment_graph(augmented_model.graph, wa_pack)
-    logging.info(f"Augmenting took {time.time() - t} seconds")
+    logger.info(f"Augmenting took {time.time() - t} seconds")
 
     zero_points = {}
     scales = {}
@@ -949,10 +954,9 @@ def _quantize_awq_lite(
     augmented_onnx_file, augmented_onnx_path = tempfile.mkstemp(suffix=".onnx")
     os.close(augmented_onnx_file)
 
-    # TODO: ONNX version issue, onnx_export uses current ONNX IR version.
-    augmented_model.ir_version = 9
+    augmented_model.ir_version = 10
     save_onnx(augmented_model, augmented_onnx_path, use_external_data_format)
-    logging.info(f"Saving the model took {time.time() - t} seconds")
+    logger.info(f"Saving the model took {time.time() - t} seconds")
 
     # Creating inference session and preparing inputs for calibration
     session = create_inference_session(augmented_onnx_path, calibration_eps)
@@ -966,7 +970,7 @@ def _quantize_awq_lite(
     output_data = []
 
     if enable_fast_path_using_high_sysram:
-        print("Fast-path-using-high-sysram is enabled.\n")
+        logger.info("Fast-path-using-high-sysram is enabled\n")
 
         tensor_names_list = []
         for i in tqdm(range(len(wa_pack)), desc="Getting tensor names..."):
@@ -1033,7 +1037,7 @@ def _quantize_awq_lite(
     if enable_weight_clipping:
         assert len(clip_alphas.keys()) == len(wa_pack)
 
-    logging.info("AWQ scale search" + msg.strip(".") + f" took {time.time() - t} seconds")
+    logger.info("AWQ scale search" + msg.strip(".") + f" took {time.time() - t} seconds")
 
     if session is not None:
         del session
@@ -1047,10 +1051,10 @@ def _quantize_awq_lite(
     t = time.time()
     # Use a common mean scale for weights within a sub-graph
     if fuse_nodes and not run_per_subgraph:
-        for _, wa_pack_idx_list in act_to_wa_pack_map.items():
-            group_awq_scale = []
-            for wa_pack_idx in wa_pack_idx_list:
-                group_awq_scale.append(awq_lite[wa_pack_idx].best_scale[:, np.newaxis])
+        for wa_pack_idx_list in act_to_wa_pack_map.values():
+            group_awq_scale = [
+                awq_lite[wa_pack_idx].best_scale[:, np.newaxis] for wa_pack_idx in wa_pack_idx_list
+            ]
             mean_awq_scale = np.concatenate(group_awq_scale, axis=1)
             mean_awq_scale = mean_awq_scale.mean(axis=1)
             for wa_pack_idx in wa_pack_idx_list:
@@ -1058,7 +1062,7 @@ def _quantize_awq_lite(
 
     for i in tqdm(range(len(wa_pack)), desc="Quantizing the weights..."):
         act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
-        gemm_io_type = cast(onnx.TensorProto.DataType, gemm_io_type)
+        gemm_io_type = cast("onnx.TensorProto.DataType", gemm_io_type)
 
         if force_fp16:
             gemm_io_type = onnx.TensorProto.FLOAT16
@@ -1109,11 +1113,11 @@ def _quantize_awq_lite(
         # TODO: cast input C for Gemm
         _change_input_type(onnx_model.graph, act_tensor.name, gemm_io_type)
 
-    logging.info(f"Quantizing actual weights took {time.time() - t} seconds")
+    logger.info(f"Quantizing actual weights took {time.time() - t} seconds")
 
     # Fuse Mul nodes with parent node if possible
     if fuse_nodes:
-        logging.info("Fusing pre-quant scale Mul nodes with parent node ...")
+        logger.info("Fusing pre-quant scale Mul nodes with parent node")
         t = time.time()
         updated_nodes = set()
         name_to_node_map = {node.name: node for node in onnx_model.graph.node}
@@ -1126,16 +1130,14 @@ def _quantize_awq_lite(
             parent = name_to_node_map[parent]
             if parent.name in updated_nodes:
                 continue
-            weight_tensor_names = []
             # When fuse_nodes or run_per_subgraph is True,
             # scales computed for each child_nodes will be same.
             # Hence, picking pre_quant_scale corresponding to any child_nodes is acceptable
             input_scale = np.asarray(pre_quant_scale[child_nodes[0].input[1]])
-            for node in child_nodes:
-                weight_tensor_names.append(node.input[1])
+            weight_tensor_names = [node.input[1] for node in child_nodes]
             if (
                 is_fusible_scaling_op(parent.op_type)
-                and not all([initializer_map.get(inp) is None for inp in parent.input])
+                and not all(initializer_map.get(inp) is None for inp in parent.input)
                 and len(input_name_to_nodes[child_nodes[0].input[0]]) == len(child_nodes)
             ):
                 for inp in parent.input:
@@ -1173,10 +1175,10 @@ def _quantize_awq_lite(
                 onnx_model.graph.initializer.append(scale_tensor)
                 onnx_model.graph.node.append(mul_node)
 
-        logging.info(f"Fusing pre-quant scale Mul nodes took {time.time() - t} seconds")
+        logger.info(f"Fusing pre-quant scale Mul nodes took {time.time() - t} seconds")
 
-    logging.info(
-        "Inserting DQ nodes and input_pre_quant_scale node using quantized weights and scales ..."
+    logger.info(
+        "Inserting DQ nodes and input_pre_quant_scale node using quantized weights and scales"
     )
     t = time.time()
     graph_gs = gs.import_onnx(onnx_model)
@@ -1191,33 +1193,33 @@ def _quantize_awq_lite(
     if pre_quant_scale:
         qdq.insert_pre_quant_scale_nodes(graph_gs, input_tensors, pre_quant_scale)
 
-    logging.info(f"Inserting nodes took {time.time() - t} seconds")
+    logger.info(f"Inserting nodes took {time.time() - t} seconds")
 
-    logging.info("Exporting the quantized graph ...")
+    logger.info("Exporting the quantized graph")
     t = time.time()
     model = gs.export_onnx(graph_gs)
-    model.ir_version = 9
-    logging.info(f"Exporting took {time.time() - t} seconds")
+    model.ir_version = 10
+    logger.info(f"Exporting took {time.time() - t} seconds")
 
     try:
         os.remove(augmented_onnx_path)
         if use_external_data_format:
             os.remove(augmented_onnx_path + "_data")
     except OSError:
-        logging.warn("Augmented ONNX model or external data file was not found!")
+        logger.error("Augmented ONNX model or external data file was not found")
 
     return model
 
 
 def quantize(
-    onnx_path: Union[str, onnx.ModelProto],
+    onnx_path: str | onnx.ModelProto,
     calibration_method: str = "awq_lite",
     calibration_data_reader: CalibrationDataReader = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     use_external_data_format: bool = True,
     use_zero_point: bool = False,
-    block_size: Optional[int] = None,
-    nodes_to_exclude: Optional[list[str]] = [r"/lm_head"],
+    block_size: int | None = None,
+    nodes_to_exclude: list[str] | None = [r"/lm_head"],
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Applies INT4 Weight-Only-Quantization (WoQ) to an ONNX model.
@@ -1262,24 +1264,28 @@ def quantize(
                                          Default: 1024.
     **Returns**: A quantized ONNX model in ONNX ModelProto format.
     """
-    logging.info("Quantization Mode: int4")
+    logger.info(f"Starting INT4 quantization with method: {calibration_method}")
+    t_start = time.time()
 
     if cupy_warning_msg:
-        logging.warning(cupy_warning_msg)
+        logger.warning(cupy_warning_msg)
 
     # Check if block_size is None and set default to 128
     if block_size is None:
         block_size = 128
+        logger.info(f"Using default block size: {block_size}")
 
     gemm_io_type: onnx.TensorProto.DataType = onnx.TensorProto.FLOAT
 
     # set config params
     nodes_to_exclude = nodes_to_exclude or []
+    logger.debug(f"Excluding nodes matching patterns: {nodes_to_exclude}")
 
     # Patch GS modules to support INT4.
     patch_gs_modules()
 
     if isinstance(onnx_path, str):
+        logger.info(f"Loading ONNX model from path: {onnx_path}")
         onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
     else:
         onnx_model = onnx_path
@@ -1299,6 +1305,9 @@ def quantize(
         do_weight_clipping = False
         if calibration_method == "awq_full":
             do_weight_clipping = True
+            logger.info("Using AWQ full with weight clipping")
+        else:
+            logger.info("Using AWQ lite")
         onnx_model = _quantize_awq_lite(
             onnx_model,
             calibration_data_reader,
@@ -1323,4 +1332,5 @@ def quantize(
     else:
         raise RuntimeError(f"Unsupported calibration method: '{calibration_method}'")
 
+    logger.info(f"INT4 Quantization completed in {time.time() - t_start:.2f} seconds")
     return onnx_model

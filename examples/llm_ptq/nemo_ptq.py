@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
 import copy
 import os
 import time
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.multiprocessing as mp
@@ -23,7 +25,6 @@ from datasets import load_dataset
 from megatron.core import parallel_state
 from megatron.core.transformer.module import Float16Module
 from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import MegatronGPTModel
-from nemo.collections.nlp.modules.common.transformer.text_generation import LengthParam
 from nemo.collections.nlp.parts.nlp_overrides import NLPDDPStrategy, NLPSaveRestoreConnector
 from nemo.core.config import hydra_runner
 from nemo.utils.model_utils import load_config, save_artifacts, unwrap_model
@@ -37,6 +38,9 @@ import modelopt.torch.quantization as mtq
 from modelopt.torch.export import export_tensorrt_llm_checkpoint
 from modelopt.torch.utils import print_rank_0
 from modelopt.torch.utils.dataset_utils import _CustomDataset
+
+if TYPE_CHECKING:
+    from nemo.collections.nlp.modules.common.transformer.text_generation import LengthParam
 
 mp.set_start_method("spawn", force=True)
 
@@ -68,8 +72,8 @@ def get_dataloader_for_fwd_bwd(
 ):
     dataset, text_column = get_dataset(data)
     encodings = {k: [] for k in ["tokens", "labels", "loss_mask", "position_ids", "attention_mask"]}
-    for i, data in zip(range(calib_size), dataset):
-        tokens = tokenizer.text_to_ids(data[text_column])
+    for i, _data in zip(range(calib_size), dataset):
+        tokens = tokenizer.text_to_ids(_data[text_column])
         tokens, labels = tokens[:-1], tokens[1:]
         loss_mask = [1.0] * len(tokens)
         attention_mask = torch.tril(torch.ones((sequence_length, sequence_length))).unsqueeze(0)
@@ -96,12 +100,12 @@ def get_dataloader_for_fwd_bwd(
     return DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 
-QUANT_CFG_CHOICES = {
-    "int8": "INT8_DEFAULT_CFG",
-    "int8_sq": "INT8_SMOOTHQUANT_CFG",
-    "fp8": "FP8_DEFAULT_CFG",
-    "int4_awq": "INT4_AWQ_CFG",
-    "w4a8_awq": "W4A8_AWQ_BETA_CFG",
+QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
+    "int8": mtq.INT8_DEFAULT_CFG,
+    "int8_sq": mtq.INT8_SMOOTHQUANT_CFG,
+    "fp8": mtq.FP8_DEFAULT_CFG,
+    "int4_awq": mtq.INT4_AWQ_CFG,
+    "w4a8_awq": mtq.W4A8_AWQ_BETA_CFG,
 }
 
 
@@ -111,7 +115,7 @@ QUANT_CFG_CHOICES = {
 )
 def main(cfg) -> None:
     if not torch.cuda.is_available():
-        raise EnvironmentError("GPU is required for the inference.")
+        raise OSError("GPU is required for the inference.")
 
     # dtype is used for non-quantized layers
     supported_dtype = ["fp16", "bf16"]
@@ -154,10 +158,8 @@ def main(cfg) -> None:
 
     print_rank_0(model)
     # Have to turn off activations_checkpoint_method for inference
-    try:
+    with contextlib.suppress(AttributeError):
         model.model.module.language_model.encoder.activations_checkpoint_method = None
-    except AttributeError:
-        pass
 
     # Check whether the DDP is initialized
     if parallel_state.is_unitialized():
@@ -194,7 +196,7 @@ def main(cfg) -> None:
             cfg.inference.max_context_length,
         )
 
-        dataloader = [data for data in dataloader]
+        dataloader = list(dataloader)
 
         def forward_loop(model):
             print("Calibrating the model...")
@@ -217,7 +219,7 @@ def main(cfg) -> None:
         if cfg.quantization.auto_quantize_bits is not None:
             # Check if list of quantization formats provided for auto quantize search are supported
             qformat_list = cfg.quantization.algorithm.split(",")
-            assert all(qformat in QUANT_CFG_CHOICES.keys() for qformat in qformat_list), (
+            assert all(qformat in QUANT_CFG_CHOICES for qformat in qformat_list), (
                 "One or more quantization formats provided for auto quantize search are not supported"
             )
 
@@ -231,8 +233,7 @@ def main(cfg) -> None:
                 model,
                 data_loader=dataloader,
                 constraints={"effective_bits": float(cfg.quantization.auto_quantize_bits)},
-                quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list]
-                + [None],
+                quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list],
                 forward_step=lambda model, data: model.fwd_bwd_step(
                     iter([data]), forward_only=True
                 ),
@@ -267,12 +268,10 @@ def main(cfg) -> None:
             assert cfg.quantization.algorithm in QUANT_CFG_CHOICES, (
                 f"Quantization format {cfg.quantization.algorithm} not supported"
             )
-            atq_config = getattr(mtq, QUANT_CFG_CHOICES[cfg.quantization.algorithm])
+            atq_config = QUANT_CFG_CHOICES[cfg.quantization.algorithm]
 
             if "awq" in cfg.quantization.algorithm:
-                atq_config = copy.deepcopy(
-                    getattr(mtq, QUANT_CFG_CHOICES[cfg.quantization.algorithm])
-                )
+                atq_config = copy.deepcopy(QUANT_CFG_CHOICES[cfg.quantization.algorithm])
                 weight_quantizer = atq_config["quant_cfg"]["*weight_quantizer"]
                 if isinstance(weight_quantizer, list):
                     weight_quantizer = weight_quantizer[0]

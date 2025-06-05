@@ -136,8 +136,8 @@ class MagnitudeSearcher(BaseSparseSearcher):
         # rules from ASP
         if weight.size(0) % 8 != 0 or weight.size(1) % 16 != 0:
             warnings.warn(
-                f"Skipping sparsifying {mod_name} of size={str(weight.size())} and"
-                f" type={str(weight.dtype)} for sparsity"
+                f"Skipping sparsifying {mod_name} of size={weight.size()!s} and"
+                f" type={weight.dtype!s} for sparsity"
             )
             return False
 

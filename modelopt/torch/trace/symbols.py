@@ -16,14 +16,14 @@
 """Utilities to describe symbols found in common torch modules."""
 
 from collections import deque
+from collections.abc import Callable, Generator, Iterable
 from enum import Enum, auto
-from typing import Callable, Deque, Generator, Iterable, Optional, Union
 
 import torch.nn as nn
 
 from .tracer import RobustTracer
 
-__all__ = ["Symbol", "SymMap", "SymInfo"]
+__all__ = ["SymInfo", "SymMap", "Symbol"]
 
 
 class Symbol:
@@ -67,7 +67,7 @@ class Symbol:
         is_searchable: bool = False,
         is_sortable: bool = True,
         cl_type: CLType = CLType.NONE,
-        elastic_dims: Optional[set[int]] = None,
+        elastic_dims: set[int] | None = None,
     ):
         """Initializes Symbol with tracing-relevant information."""
         self._is_searchable = is_searchable
@@ -77,7 +77,7 @@ class Symbol:
         self._is_constant = False
 
         # Parent Symbol for a dynamic symbol
-        self._parent: Optional[Symbol] = None
+        self._parent: Symbol | None = None
 
         # list of Symbols that have this symbol as a dependency
         self._dependencies: list[Symbol] = []
@@ -105,7 +105,7 @@ class Symbol:
         self._parent = sp_parent
         sp_parent._dependencies.append(self)
 
-    def disable(self, _memo: Optional[set["Symbol"]] = None) -> None:
+    def disable(self, _memo: set["Symbol"] | None = None) -> None:
         """Disable symbol and mark it as constant together with its whole dependency tree via DFS.
 
         After this call, ``is_constant == True``.
@@ -134,7 +134,7 @@ class Symbol:
         self._is_sortable = False
         self._is_constant = True
 
-    def _check_sortable(self, _memo: Optional[set["Symbol"]] = None) -> bool:
+    def _check_sortable(self, _memo: set["Symbol"] | None = None) -> bool:
         """Check for sortability in dependency tree via DFS."""
         # check starting condition and recursion case
         if _memo is None:
@@ -154,7 +154,7 @@ class Symbol:
         return all(sym._check_sortable(_memo) for sym in all_syms)
 
     @property
-    def parent(self) -> Optional["Symbol"]:
+    def parent(self) -> "Symbol | None":
         """Return the parent symbol."""
         return self._parent
 
@@ -244,7 +244,8 @@ class Symbol:
             "is_constant",
             "is_incoming",
             "is_outgoing",
-        ] + self._extra_repr_attrs
+            *self._extra_repr_attrs,
+        ]
         attrs = [x for x in attrs if getattr(self, x) or not isinstance(getattr(self, x), bool)]
         return f"{type(self).__name__}({', '.join(f'{x}={getattr(self, x)}' for x in attrs)})"
 
@@ -286,7 +287,7 @@ class SymMap:
 
     @classmethod
     def register(
-        cls, nn_cls: Union[type[nn.Module], list[type[nn.Module]]], is_explicit_leaf: bool = True
+        cls, nn_cls: type[nn.Module] | list[type[nn.Module]], is_explicit_leaf: bool = True
     ) -> Callable[[SymRegisterFunc], SymRegisterFunc]:
         """Use this to register a function that defines the symbols for a given nn module.
 
@@ -344,7 +345,7 @@ class SymMap:
                 _remove_as_leaf(nn_cls_dependent)
 
     @classmethod
-    def _get_from_registry(cls, nn_cls: type[nn.Module]) -> Optional[SymRegisterFunc]:
+    def _get_from_registry(cls, nn_cls: type[nn.Module]) -> SymRegisterFunc | None:
         """We check the registry whether the given module has been registered and return it.
 
         If there is no match, we check for approximate matches. Specifically, we check whether a
@@ -390,7 +391,7 @@ class SymMap:
         # as leaf modules. This is because we treat them as leaf modules during tracing and hence
         # we would not record symbolic information for them. If there are internal dependencies,
         # they must be handled on the DynamicModule level.
-        queue: Deque[tuple[str, nn.Module]] = deque([("", self.model)])
+        queue: deque[tuple[str, nn.Module]] = deque([("", self.model)])
         memo: set[nn.Module] = {self.model}  # to keep track of duplicates
         while queue:
             # grab next module in queue
@@ -452,11 +453,11 @@ class SymMap:
 
     def named_symbols(
         self,
-        key: Optional[nn.Module] = None,
-        free: Optional[bool] = None,
-        dynamic: Optional[bool] = None,
-        searchable: Optional[bool] = None,
-        constant: Optional[bool] = None,
+        key: nn.Module | None = None,
+        free: bool | None = None,
+        dynamic: bool | None = None,
+        searchable: bool | None = None,
+        constant: bool | None = None,
     ) -> Generator[tuple[str, Symbol], None, None]:
         """Yield the name and symbol of symbols in either all symbolic modules or a specific one.
 

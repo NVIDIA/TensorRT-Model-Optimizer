@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 import modelopt.torch.nas as mtn
-from modelopt.torch.nas._algorithms import ConstraintsFunc
+from modelopt.torch.nas.algorithms import ConstraintsFunc
 
 
 class Conv2dResidual(nn.Module):
@@ -66,7 +66,13 @@ def fake_latency():
 
 
 @pytest.mark.parametrize(
-    "benchmark, mode, keys_for_interpol, expected_latency_calls, expected_max_search_latency_calls",
+    (
+        "benchmark",
+        "mode",
+        "keys_for_interpol",
+        "expected_latency_calls",
+        "expected_max_search_latency_calls",
+    ),
     [
         (_get_model_and_inputs, "fastnas", ("flops",), 3, 4),
         (lambda: _get_model_and_inputs(True), "autonas", ("flops", "flops_min_depth"), 9, 10),

@@ -17,16 +17,19 @@
 
 import io
 import os
+import tempfile
 from collections import defaultdict
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 import onnx
-import onnx.onnx_cpp2py_export.checker as C  # noqa: N812
+import onnx.onnx_cpp2py_export.checker as C
 import onnx_graphsurgeon as gs
 from onnx import numpy_helper
 from onnx.helper import get_attribute_value
 from onnx_graphsurgeon import Constant, Node, Variable
+
+from modelopt.onnx.logging_config import logger
 
 
 def get_input_names_from_bytes(model_bytes: bytes, external_inputs_only: bool = True) -> list[str]:
@@ -38,6 +41,7 @@ def get_input_names_from_bytes(model_bytes: bytes, external_inputs_only: bool = 
     Returns:
         List of input names of the model.
     """
+    logger.debug("Getting input names from model bytes")
     model = onnx.load_from_string(model_bytes)
     return get_input_names(model, external_inputs_only)
 
@@ -163,9 +167,7 @@ def get_dynamic_graph_inputs(onnx_model: onnx.ModelProto):
     """
     graph = gs.import_onnx(onnx_model)
     return [
-        inp
-        for inp in graph.inputs
-        if -1 in inp.shape or any([isinstance(s, str) for s in inp.shape])
+        inp for inp in graph.inputs if -1 in inp.shape or any(isinstance(s, str) for s in inp.shape)
     ]
 
 
@@ -219,6 +221,7 @@ def get_input_shapes(
     model: onnx.ModelProto, external_inputs_only: bool = True
 ) -> dict[str, list[int]]:
     """This function returns the inputs shapes for the given onnx model."""
+    logger.debug("Getting input shapes from model")
     if external_inputs_only:
         return _get_selected_shapes(model.graph.input, get_input_names(model))
     return _get_all_shapes(model.graph.input)
@@ -252,14 +255,11 @@ def _get_tensor_type(tensor: onnx.ValueInfoProto) -> int:
     return type_
 
 
-def _get_container_types(
-    container, inputs_to_include: Union[None, list[str]] = None
-) -> dict[str, int]:
+def _get_container_types(container, inputs_to_include: list[str] | None = None) -> dict[str, int]:
     results = {}
     for tensor in container:
-        if inputs_to_include is not None:
-            if tensor.name not in inputs_to_include:
-                continue
+        if inputs_to_include is not None and tensor.name not in inputs_to_include:
+            continue
         t_type = _get_tensor_type(tensor)
         results[tensor.name] = t_type
     return results
@@ -275,10 +275,10 @@ def _get_output_types(model: onnx.ModelProto) -> dict[str, int]:
     return results
 
 
-def _convert_types_to_np(types: Union[dict[str, int], list[int], int]) -> Any:
+def _convert_types_to_np(types: dict[str, int] | list[int] | int) -> Any:
     if isinstance(types, dict):
         types_np = {}
-        for name in types.keys():
+        for name in types:
             types_np[name] = onnx.helper.tensor_dtype_to_np_dtype(types[name])
         return types_np
     elif isinstance(types, list):
@@ -287,7 +287,9 @@ def _convert_types_to_np(types: Union[dict[str, int], list[int], int]) -> Any:
         return onnx.helper.tensor_dtype_to_np_dtype(types)
 
 
-def gen_random_inputs(model: onnx.ModelProto, shapes_spec: str = None) -> dict[str, np.ndarray]:
+def gen_random_inputs(
+    model: onnx.ModelProto, shapes_spec: str | None = None
+) -> dict[str, np.ndarray]:
     """This function generates random inputs for an onnx model.
 
     Args:
@@ -299,10 +301,12 @@ def gen_random_inputs(model: onnx.ModelProto, shapes_spec: str = None) -> dict[s
     Returns:
         Dictionary of numpy tensors.
     """
+    logger.info("Generating random inputs for model")
     input_dict = {}
     types = _get_input_types(model)
     types_np = _convert_types_to_np(types)
     input_shapes = {} if shapes_spec is None else parse_shapes_spec(shapes_spec)
+    logger.debug(f"Using input shapes: {input_shapes}")
 
     for graph_input in model.graph.input:
         # Generate tensors for external inputs only
@@ -324,8 +328,10 @@ def gen_random_inputs(model: onnx.ModelProto, shapes_spec: str = None) -> dict[s
 
 def remove_weights_data(onnx_bytes: bytes) -> bytes:
     """Removes raw weight data from the onnx model."""
+    logger.info("Removing weights data from ONNX model")
     model = onnx.load_from_string(onnx_bytes)
     inits = model.graph.initializer
+    weights_removed = 0
 
     for idx, init in enumerate(inits):
         # Only remove arrays with dimension larger than 1
@@ -345,7 +351,9 @@ def remove_weights_data(onnx_bytes: bytes) -> bytes:
                 # Note that, onnx.checker will fail due to data cleaning
                 # We should not check the model till weights are reassigned
                 model.graph.initializer[idx].raw_data = b""
+                weights_removed += 1
 
+    logger.debug(f"Removed weights data from {weights_removed} tensors")
     buffer = io.BytesIO()
     onnx.save_model(model, buffer)
     buffer.seek(0, 0)
@@ -394,7 +402,9 @@ def randomize_weights_onnx_bytes(onnx_bytes: bytes, seed: int = 0) -> bytes:
 
 def validate_onnx(onnx_bytes: bytes) -> bool:
     """Returns True if the onnx_bytes is valid, else False."""
+    logger.info("Validating ONNX model")
     if not onnx_bytes:
+        logger.error("Empty ONNX bytes provided")
         return False
 
     try:
@@ -407,11 +417,7 @@ def validate_onnx(onnx_bytes: bytes) -> bool:
 def validate_batch_size(onnx_bytes: bytes, batch_size: int) -> bool:
     """Returns True if all the model inputs has batch dimension equal to batch_size."""
     input_shapes = list(get_input_shapes_from_bytes(onnx_bytes).values())
-    for shape in input_shapes:
-        if shape[0] != batch_size:
-            return False
-
-    return True
+    return all(shape[0] == batch_size for shape in input_shapes)
 
 
 def get_batch_size(model: onnx.ModelProto) -> int:
@@ -446,15 +452,15 @@ def save_onnx_bytes_to_dir(onnx_bytes: bytes, onnx_dir: str, onnx_name: str) -> 
     try:
         with open(file_path, "wb") as f:
             f.write(onnx_bytes)
-        print(f"Onnx model saved as {file_path}")
+        logger.info(f"Onnx model saved as {file_path}")
     except Exception as e:
-        print(f"Onnx model exporting as {file_path} failed, error {str(e)}")
+        logger.error(f"Onnx model exporting as {file_path} failed, error {e!s}")
 
 
 def name_onnx_nodes(graph: onnx.GraphProto) -> bool:
     """Assigns name to the onnx nodes if not present and return the modified status."""
     is_modified = False
-    node_names = set([node.name for node in graph.node])
+    node_names = {node.name for node in graph.node}
     start_id = len(node_names)
     for node in graph.node:
         if not node.name:
@@ -483,9 +489,9 @@ def duplicate_shared_constants(onnx_model: onnx.ModelProto) -> tuple[onnx.ModelP
     tensors = []
     for node in graph.nodes:
         for inp_idx, tensor in enumerate(node.inputs):
-            if isinstance(tensor, Constant):
-                if len(tensor.outputs) > 1:  # constant is shared across multiple nodes
-                    tensors.append({"tensor": tensor, "inp_node": node, "inp_idx": inp_idx})
+            # constant is shared across multiple nodes
+            if isinstance(tensor, Constant) and len(tensor.outputs) > 1:
+                tensors.append({"tensor": tensor, "inp_node": node, "inp_idx": inp_idx})
 
     # Duplicate shared tensors
     for tensor_dict in tensors:
@@ -497,15 +503,16 @@ def duplicate_shared_constants(onnx_model: onnx.ModelProto) -> tuple[onnx.ModelP
         tensor_dict["inp_node"].inputs[tensor_dict["inp_idx"]] = new_tensor
 
     onnx_model = gs.export_onnx(graph)
-    onnx_model.ir_version = 9
-    is_modified = True if tensors else False
+    # TODO: Remove manual ir_version change once ORT supports ir_version 11
+    onnx_model.ir_version = 10
+    is_modified = bool(tensors)
     return onnx_model, is_modified
 
 
 def is_valid_onnx_model(file_path):
     """Checks if the given file is a valid ONNX model."""
     if not os.path.exists(file_path):
-        print(f"No file found at {file_path}")
+        logger.info(f"No file found at {file_path}")
         return False
 
     try:
@@ -514,17 +521,17 @@ def is_valid_onnx_model(file_path):
 
         # Check the model
         onnx.checker.check_model(model)
-        print(f"ONNX model at {file_path} is valid.")
+        logger.info(f"ONNX model at {file_path} is valid")
         return True
     except C.ValidationError as e:
-        print(f"The file is not a valid ONNX model. {e}")
+        logger.error(f"The file is not a valid ONNX model {e}")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.error(f"An error occurred: {e}")
 
     return False
 
 
-def find_lowest_common_ancestor(node1: Node, node2: Node) -> tuple[Optional[str], int, int]:
+def find_lowest_common_ancestor(node1: Node, node2: Node) -> tuple[str | None, int, int]:
     """Function to find the lowest common ancestor of two nodes.
 
     Args:
@@ -570,33 +577,27 @@ def find_lowest_common_ancestor(node1: Node, node2: Node) -> tuple[Optional[str]
 
 def get_parent_nodes(node: Node) -> list[Node]:
     """Returns list of input producer nodes for the given node."""
-    parents = []
-    for tensor in node.inputs:
-        # If the tensor is not a constant or graph input and has a producer,
-        # the producer is a parent of node `node`
-        if len(tensor.inputs) == 1:
-            parents.append(tensor.inputs[0])
+    # If the tensor is not a constant or graph input and has a producer,
+    # the producer is a parent of node `node`
+    parents = [tensor.inputs[0] for tensor in node.inputs if len(tensor.inputs) == 1]
 
     return parents
 
 
 def get_child_nodes(node: Node) -> list[Node]:
     """Returns list of output consumer nodes for the given node."""
-    children = []
-    for tensor in node.outputs:
-        for consumer in tensor.outputs:  # Traverse all consumer of the tensor
-            children.append(consumer)
-
+    children = [consumer for tensor in node.outputs for consumer in tensor.outputs]
     return children
 
 
 def get_variable_inputs(node: Node) -> list[Variable]:
     """Returns the variable inputs of the given Node."""
-    var_inputs = []
-    for tensor in node.inputs:
-        if isinstance(tensor, Variable):
-            if not tensor.inputs or (tensor.inputs and tensor.inputs[0].op != "Constant"):
-                var_inputs.append(tensor)
+    var_inputs = [
+        tensor
+        for tensor in node.inputs
+        if isinstance(tensor, Variable)
+        and (not tensor.inputs or (tensor.inputs and tensor.inputs[0].op != "Constant"))
+    ]
     return var_inputs
 
 
@@ -607,15 +608,21 @@ def save_onnx(model: onnx.ModelProto, onnx_path: str, save_as_external_data: boo
         model_proto = model.SerializeToString()
         model_size = len(model_proto)
         save_as_external_data = save_as_external_data or model_size > size_threshold
+        logger.debug(
+            f"Model size: {model_size} bytes, using external data: {save_as_external_data}"
+        )
 
     except ValueError as e:
         if "Message onnx.ModelProto exceeds maximum protobuf size of 2GB" in str(e):
+            logger.warning("Model exceeds 2GB limit, switching to external data storage")
             save_as_external_data = True
         else:
+            logger.error(f"Failed to serialize model: {e!s}")
             raise
 
     if save_as_external_data:
         external_data_path = os.path.basename(onnx_path) + "_data"
+        logger.debug(f"Saving external data to: {external_data_path}")
         onnx.save_model(
             model,
             onnx_path,
@@ -667,3 +674,24 @@ def get_attribute(node: onnx.NodeProto, attr_name: str) -> Any:
         if attr.name == attr_name:
             return get_attribute_value(attr)
     raise ValueError(f"Attribute {attr_name} not found in node {node.name}")
+
+
+def infer_shapes(model: onnx.ModelProto, **kwargs):
+    """Infers shapes of the onnx graph, handles large models."""
+    if model.ByteSize() > 2147483648:  # 2GB limit
+        temp_dir = tempfile.TemporaryDirectory().name
+        os.makedirs(temp_dir, exist_ok=True)
+        onnx_orig_path = os.path.join(temp_dir, "model.onnx")
+        onnx_inferred_path = os.path.join(temp_dir, "inferred.onnx")
+        onnx.save_model(
+            model,
+            onnx_orig_path,
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            convert_attribute=False,
+        )
+        onnx.shape_inference.infer_shapes_path(onnx_orig_path, onnx_inferred_path, **kwargs)
+        model = onnx.load(onnx_inferred_path)
+    else:
+        model = onnx.shape_inference.infer_shapes(model, **kwargs)
+    return model

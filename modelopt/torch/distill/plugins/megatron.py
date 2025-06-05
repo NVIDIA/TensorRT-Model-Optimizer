@@ -20,7 +20,7 @@
 import logging
 import types
 from abc import ABCMeta
-from typing import Any, Optional
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_distillation_config(
-    config_path: Optional[str], student_cfg: TransformerConfig, teacher_cfg: TransformerConfig
+    config_path: str | None, student_cfg: TransformerConfig, teacher_cfg: TransformerConfig
 ) -> dict[str, Any]:
     """Read the distillation yaml config file specified by ``args.export_kd_cfg``.
 
@@ -305,25 +305,24 @@ class LogitsKLLoss(BaseLoss):
                     dim=-1,
                 )
 
+        elif self._reverse:
+            loss = torch.sum(
+                F.kl_div(
+                    F.log_softmax(output_teacher, dim=-1),
+                    F.softmax(output_student, dim=-1),
+                    reduction="none",
+                ),
+                dim=-1,
+            )
         else:
-            if self._reverse:
-                loss = torch.sum(
-                    F.kl_div(
-                        F.log_softmax(output_teacher, dim=-1),
-                        F.softmax(output_student, dim=-1),
-                        reduction="none",
-                    ),
-                    dim=-1,
-                )
-            else:
-                loss = torch.sum(
-                    F.kl_div(
-                        F.log_softmax(output_student, dim=-1),
-                        F.softmax(output_teacher, dim=-1),
-                        reduction="none",
-                    ),
-                    dim=-1,
-                )
+            loss = torch.sum(
+                F.kl_div(
+                    F.log_softmax(output_student, dim=-1),
+                    F.softmax(output_teacher, dim=-1),
+                    reduction="none",
+                ),
+                dim=-1,
+            )
 
         return self.post_forward(loss, tp_reduce=True)
 

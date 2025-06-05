@@ -15,8 +15,6 @@
 
 """Internal module for utility functions."""
 
-from typing import Optional
-
 import torch
 
 from modelopt.torch.opt.dynamic import DynamicModule
@@ -24,9 +22,9 @@ from modelopt.torch.opt.hparam import Hparam
 
 
 def get_sliced_tensor_by_slices(
-    tensor: Optional[torch.Tensor],
+    tensor: torch.Tensor | None,
     slices: list[Hparam.ActiveSlice],
-) -> Optional[torch.Tensor]:
+) -> torch.Tensor | None:
     """Get the tensor based on the active slice."""
     if tensor is None:
         return tensor
@@ -53,9 +51,9 @@ def get_sliced_tensor_by_slices(
 
 def get_sliced_tensor(
     mod: DynamicModule,
-    tensor: Optional[torch.Tensor],
-    *hp_names: Optional[str],
-) -> Optional[torch.Tensor]:
+    tensor: torch.Tensor | None,
+    *hp_names: str | None,
+) -> torch.Tensor | None:
     """Get the tensor based on the slices."""
     slices = [
         mod.get_hparam(hp_name).active_slice if hp_name else slice(None) for hp_name in hp_names

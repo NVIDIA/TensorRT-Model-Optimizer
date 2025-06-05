@@ -58,22 +58,22 @@ class Engine:
 
     def activate(self, reuse_device_memory=None):
         if reuse_device_memory:
-            self.context = self.engine.create_execution_context_without_device_memory()  # type: ignore
+            self.context = self.engine.create_execution_context_without_device_memory()  # type: ignore[union-attr]
             self.context.device_memory = reuse_device_memory
         else:
-            self.context = self.engine.create_execution_context()  # type: ignore
+            self.context = self.engine.create_execution_context()  # type: ignore[union-attr]
 
     def allocate_buffers(self, shape_dict=None, device="cuda", batch_size=1):
-        for binding in range(self.engine.num_io_tensors):  # type: ignore
-            name = self.engine.get_tensor_name(binding)  # type: ignore
+        for binding in range(self.engine.num_io_tensors):  # type: ignore[union-attr]
+            name = self.engine.get_tensor_name(binding)  # type: ignore[union-attr]
             if shape_dict and name in shape_dict:
                 shape = shape_dict[name]
             else:
-                shape = self.engine.get_tensor_shape(name)  # type: ignore
+                shape = self.engine.get_tensor_shape(name)  # type: ignore[union-attr]
                 shape = (batch_size * 2,) + shape[1:]
-            dtype = trt.nptype(self.engine.get_tensor_dtype(name))  # type: ignore
-            if self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:  # type: ignore
-                self.context.set_input_shape(name, shape)  # type: ignore
+            dtype = trt.nptype(self.engine.get_tensor_dtype(name))  # type: ignore[union-attr]
+            if self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:  # type: ignore[union-attr]
+                self.context.set_input_shape(name, shape)  # type: ignore[union-attr]
             tensor = torch.empty(tuple(shape), dtype=numpy_to_torch_dtype_dict[dtype]).to(
                 device=device
             )
@@ -84,7 +84,7 @@ class Engine:
             self.tensors[name].copy_(buf)
 
         for name, tensor in self.tensors.items():
-            self.context.set_tensor_address(name, tensor.data_ptr())  # type: ignore
+            self.context.set_tensor_address(name, tensor.data_ptr())  # type: ignore[union-attr]
 
         if use_cuda_graph:
             if self.cuda_graph_instance is not None:
@@ -92,7 +92,7 @@ class Engine:
                 cuassert(cudart.cudaStreamSynchronize(stream))
             else:
                 # do inference before CUDA graph capture
-                noerror = self.context.execute_async_v3(stream)  # type: ignore
+                noerror = self.context.execute_async_v3(stream)  # type: ignore[union-attr]
                 if not noerror:
                     raise ValueError("ERROR: inference failed.")
                 # capture cuda graph
@@ -101,11 +101,11 @@ class Engine:
                         stream, cudart.cudaStreamCaptureMode.cudaStreamCaptureModeGlobal
                     )
                 )
-                self.context.execute_async_v3(stream)  # type: ignore
+                self.context.execute_async_v3(stream)  # type: ignore[union-attr]
                 self.graph = cuassert(cudart.cudaStreamEndCapture(stream))
                 self.cuda_graph_instance = cuassert(cudart.cudaGraphInstantiate(self.graph, 0))
         else:
-            noerror = self.context.execute_async_v3(stream)  # type: ignore
+            noerror = self.context.execute_async_v3(stream)  # type: ignore[union-attr]
             if not noerror:
                 raise ValueError("ERROR: inference failed.")
 

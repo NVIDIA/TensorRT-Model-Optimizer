@@ -22,7 +22,7 @@ from modelopt.torch._deploy._runtime.tensorrt.layerwise_profiling import (
 
 
 @pytest.mark.parametrize(
-    "layerwise_result,onnx_node_names,expected_output",
+    ("layerwise_result", "onnx_node_names", "expected_output"),
     [
         (
             # fmt: off
@@ -146,7 +146,7 @@ def test_map_trt_layers_to_onnx(layerwise_result, onnx_node_names, expected_outp
 
 
 @pytest.mark.parametrize(
-    "layer_latency_dict,expected_output",
+    ("layer_latency_dict", "expected_output"),
     [
         ({"Conv_41 input reformatter 0": 0.01, "Conv_41": 0.02}, {"Conv_41": 0.03}),
         (

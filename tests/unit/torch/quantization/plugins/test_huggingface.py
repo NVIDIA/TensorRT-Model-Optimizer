@@ -124,7 +124,7 @@ def test_dbrx():
     assert hasattr(expertglu_test, "w2_linear") and not hasattr(expertglu_test, "w2")
 
     assert torch.allclose(
-        torch.concat([weight for weight in expertglu_test.w1_linear.parameters()], dim=0),
+        torch.concat(list(expertglu_test.w1_linear.parameters()), dim=0),
         expertglu_ref.w1,
     )
 
@@ -151,7 +151,7 @@ def test_autoquantize_huggingface():
         best_model, search_history = mtq.auto_quantize(
             model,
             constraints={"effective_bits": 11.0},
-            quantization_formats=["INT8_DEFAULT_CFG", None],
+            quantization_formats=[mtq.INT8_DEFAULT_CFG],
             data_loader=[{"input_ids": input_ids, "labels": input_ids} for _ in range(2)],
             forward_step=lambda model, batch: model(**batch),
             loss_func=lambda output, data: output.loss,
@@ -162,7 +162,7 @@ def test_autoquantize_huggingface():
 
 
 @pytest.mark.parametrize(
-    "model_cls,quant_config",
+    ("model_cls", "quant_config"),
     [
         (LlamaForCausalLM, mtq.INT4_AWQ_CFG),
         (AutoModelForCausalLM, mtq.INT4_AWQ_CFG),

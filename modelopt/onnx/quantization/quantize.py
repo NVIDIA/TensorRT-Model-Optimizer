@@ -31,17 +31,17 @@ This tool inserts Quantize-Dequantize (QDQ) nodes following compiler-friendly pa
 model.
 """
 
-import logging
 import os
 import platform
 import shutil
 import tempfile
-from typing import Any, Optional
+from typing import Any
 
 import onnx
-import onnx.onnx_cpp2py_export.checker as C  # noqa: N812
+import onnx.onnx_cpp2py_export.checker as C
 import onnx_graphsurgeon as gs
 
+from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.op_types import is_data_dependent_shape_op
 from modelopt.onnx.quantization.calib_utils import (
     CalibrationDataProvider,
@@ -65,20 +65,17 @@ from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, sav
 __all__ = ["quantize"]
 
 
-# Set logging level to info
-logging.getLogger().setLevel(logging.INFO)
-
-
 def _preprocess_onnx(
     onnx_path: str,
     use_external_data_format: bool,
     output_path: str,
     enable_shared_constants_duplication: bool,
-    trt_plugins: Optional[str],
-    trt_plugins_precision: Optional[list[str]],
+    trt_plugins: str | None,
+    trt_plugins_precision: list[str] | None,
     override_shapes: str,
     simplify: bool = False,
 ) -> tuple[str, list[str], bool, bool]:
+    logger.info(f"Preprocessing the model {onnx_path}")
     intermediate_generated_files = []
     output_dir = os.path.dirname(output_path)
     model_name = os.path.splitext(os.path.basename(onnx_path))[0]
@@ -94,12 +91,12 @@ def _preprocess_onnx(
     if has_custom_op:
         onnx_path = os.path.join(output_dir, f"{model_name}_ort_support.onnx")
         save_onnx(onnx_model, onnx_path, use_external_data_format)
-        logging.info(
-            f"Model with ORT support is saved to {onnx_path}. Model contains custom ops: {custom_ops}."
+        logger.info(
+            f"Model with custom ops is saved to {onnx_path}. Model contains custom ops: {custom_ops}"
         )
         intermediate_generated_files.append(onnx_path)
     elif platform.system() != "Windows":
-        logging.info(
+        logger.info(
             "No custom ops found. If that's not correct, please make sure that the 'tensorrt' python package"
             " is correctly installed and that the paths to 'libcudnn*.so' and TensorRT 'lib/' are in"
             " 'LD_LIBRARY_PATH'. If the custom op is not directly available as a plugin in TensorRT, please"
@@ -114,7 +111,6 @@ def _preprocess_onnx(
         if not opset.domain or opset.domain in ["ai.onnx", "ai.onnx.contrib"]
     ]
     opset_version = ai_onnx_domain[0].version
-    logging.info(f"Model {onnx_path} with opset_version {opset_version} is loaded.")
 
     required_opset_version = 13
     if opset_version < required_opset_version and opset_version != 1:
@@ -122,15 +118,16 @@ def _preprocess_onnx(
         onnx_model = onnx.version_converter.convert_version(onnx_model, opset_version)
         onnx_path = os.path.join(output_dir, f"{model_name}_opset{opset_version}.onnx")
         save_onnx(onnx_model, onnx_path, use_external_data_format)
-        logging.info(f"Model is cloned to {onnx_path} with opset_version {opset_version}.")
+        logger.info(f"Model is cloned to {onnx_path} with opset_version {opset_version}")
         intermediate_generated_files.append(onnx_path)
 
     # Simplify model if requested
     if simplify:
+        logger.info("Attempting to simplify model")
         try:
             import onnxsim
         except ModuleNotFoundError as e:
-            logging.warning(
+            logger.warning(
                 "onnxsim is not installed. Please install it with 'pip install onnxsim'."
             )
             raise e
@@ -141,19 +138,21 @@ def _preprocess_onnx(
                 onnx_model = model_simp
                 onnx_path = os.path.join(output_dir, f"{model_name}_simp.onnx")
                 save_onnx(onnx_model, onnx_path, use_external_data_format)
-                logging.info(f"Simplified model was validated and saved in {onnx_path}!")
+                logger.info(f"Simplified model was validated and saved in {onnx_path}")
             else:
-                logging.warning(
-                    "Simplified ONNX model could not be validated. Will use the original model."
+                logger.warning(
+                    "Simplified ONNX model could not be validated. Will use the original model"
                 )
         except Exception as e:
-            logging.warning(
-                f"Simplification of {onnx_path} failed with error: {e}. Will use the original model."
+            logger.warning(
+                f"Simplification of {onnx_path} failed with error: {e}. Will use the original model"
             )
 
     # Check if data-dependent shape ops are present in the model
     graph = gs.import_onnx(onnx_model)
     has_dds_op = len([node for node in graph.nodes if is_data_dependent_shape_op(node.op)]) > 0
+    if has_dds_op:
+        logger.debug("Found data-dependent shape operations in the model")
 
     # Sometimes input onnx model does not contain the node names
     # This tool depends on those names, so we assign names if needed
@@ -161,6 +160,7 @@ def _preprocess_onnx(
     is_named = name_onnx_nodes(graph)
     is_duplicated_constant = False
     if enable_shared_constants_duplication:
+        logger.info("Duplicating shared constants")
         onnx_model, is_duplicated_constant = duplicate_shared_constants(
             onnx_model
         )  # FasterViT-0, eef
@@ -168,16 +168,17 @@ def _preprocess_onnx(
     if is_named or is_duplicated_constant:
         onnx_path = os.path.join(output_dir, f"{model_name}_named.onnx")
         save_onnx(onnx_model, onnx_path, use_external_data_format)
-        logging.info(f"Model is cloned to {onnx_path} after naming the nodes.")
+        logger.info(f"Model is cloned to {onnx_path} after naming the nodes")
         intermediate_generated_files.append(onnx_path)
 
     # If custom op precisions are given, check if they're fp16. If so, add cast_to_fp16 before all inputs and
     # cast_to_fp32 after all outputs.
     if trt_plugins_precision:
+        logger.debug("Processing custom op precisions")
         custom_ops_to_cast = []
         for trt_plugin_precision in trt_plugins_precision:
             assert ":" in trt_plugin_precision, (
-                "Plugin precision is incorrectly formatted."
+                "Plugin pre cision is incorrectly formatted."
                 " Please check that it's in the format <op_type>:<precision>."
             )
             op_type, precision = trt_plugin_precision.split(":")
@@ -185,7 +186,6 @@ def _preprocess_onnx(
                 custom_ops_to_cast.append(op_type)
         if custom_ops_to_cast:
             onnx_path = add_fp16_fp32_cast(onnx_path, custom_ops_to_cast)
-            logging.info("Adding cast nodes related to custom ops to match requested precisions.")
             intermediate_generated_files.append(onnx_path)
     return onnx_path, intermediate_generated_files, has_custom_op, has_dds_op
 
@@ -194,26 +194,27 @@ def quantize(
     onnx_path: str,
     quantize_mode: str = "int8",
     calibration_data: CalibrationDataType = None,
-    calibration_method: str = None,
-    calibration_cache_path: str = None,
-    calibration_shapes: str = None,
+    calibration_method: str | None = None,
+    calibration_cache_path: str | None = None,
+    calibration_shapes: str | None = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
-    override_shapes: str = None,
-    op_types_to_quantize: list[str] = None,
-    op_types_to_exclude: list[str] = None,
-    nodes_to_quantize: list[str] = None,
-    nodes_to_exclude: list[str] = None,
+    override_shapes: str | None = None,
+    op_types_to_quantize: list[str] | None = None,
+    op_types_to_exclude: list[str] | None = None,
+    nodes_to_quantize: list[str] | None = None,
+    nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
     keep_intermediate_files: bool = False,
-    output_path: str = None,
-    verbose: bool = False,
-    trt_plugins: str = None,
-    trt_plugins_precision: list[str] = None,
-    high_precision_dtype: str = None,
+    output_path: str | None = None,
+    log_level: str = "INFO",
+    log_file: str | None = None,
+    trt_plugins: str | None = None,
+    trt_plugins_precision: list[str] | None = None,
+    high_precision_dtype: str | None = None,
     mha_accumulation_dtype: str = "fp16",
     disable_mha_qdq: bool = False,
     dq_only: bool = True,
-    block_size: Optional[int] = None,
+    block_size: int | None = None,
     use_zero_point: bool = False,
     passes: list[str] = ["concat_elimination"],
     simplify: bool = False,
@@ -260,8 +261,10 @@ def quantize(
         output_path:
             Output filename to save the quantized ONNX model.
             If None, save in the same directory as the original ONNX model with .quant suffix.
-        verbose:
-            If True, print details of node partition, selection etc. throughout the quantization process.
+        log_level:
+            Log level. One of 'DEBUG', 'INFO', 'WARNING', 'ERROR'.
+        log_file:
+            Path to the log file for the quantization process.
         trt_plugins:
             Specifies custom TensorRT plugin library paths in .so format (compiled shared library).
             For multiple paths, separate them with a semicolon, i.e.: "lib_1.so;lib_2.so".
@@ -301,13 +304,17 @@ def quantize(
         None, writes the quantized onnx model in the supplied output_path
         or writes to the same directory with filename like "<model_name>.quant.onnx".
     """
+    logger.info(f"Starting quantization process for model: {onnx_path}")
+    logger.info(f"Quantization mode: {quantize_mode}")
+
+    configure_logging(log_level.upper(), log_file)
     # quantize_static creates a shape-inferred copy at the input model's directory
     # Needs to check if we have write permission to this directory
-    assert onnx_path.endswith(".onnx") or onnx_path.endswith(".pb")
+    assert onnx_path.endswith((".onnx", ".pb"))
     if not os.access(os.path.dirname(os.path.abspath(onnx_path)), os.W_OK):
         old_dir = os.path.dirname(os.path.abspath(onnx_path))
         tmp_dir = tempfile.mkdtemp()
-        logging.info(f"Directory {old_dir} is not writable, store intermediate files in {tmp_dir}")
+        logger.info(f"Directory {old_dir} is not writable, store intermediate files in {tmp_dir}")
         onnx_path = os.path.join(tmp_dir, os.path.basename(onnx_path))
 
         # We assume that the model directory contains only model related weights and protobuf file
@@ -322,7 +329,7 @@ def quantize(
     if not output_path:
         output_dir = os.path.dirname(onnx_path)
         output_path = os.path.join(output_dir, f"{model_name}.quant.onnx")
-        logging.info(f"No output path specified, save quantized model to {output_path}")
+        logger.info(f"No output path specified, save quantized model to {output_path}")
     else:
         if os.path.isabs(output_path):
             output_dir = os.path.dirname(output_path)
@@ -339,10 +346,10 @@ def quantize(
         enable_shared_constants_duplication,
         trt_plugins,
         trt_plugins_precision,
-        override_shapes,
+        override_shapes,  # type: ignore[arg-type]
         simplify,
     )
-    trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)
+    trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
 
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
@@ -369,7 +376,6 @@ def quantize(
         intermediate_generated_files,
         calibration_data_reader,
         calibration_eps,
-        verbose,
     )
 
     if quantize_mode in ["fp8", "int8"]:
@@ -388,9 +394,8 @@ def quantize(
             nodes_to_exclude=nodes_to_exclude,
             use_external_data_format=use_external_data_format,
             intermediate_generated_files=intermediate_generated_files,
-            verbose=verbose,
             trt_extra_plugin_lib_paths=trt_plugins,
-            high_precision_dtype=high_precision_dtype,
+            high_precision_dtype=high_precision_dtype,  # type: ignore[arg-type]
             mha_accumulation_dtype=mha_accumulation_dtype,
             passes=passes,
             **kwargs,
@@ -413,28 +418,31 @@ def quantize(
     if onnx_model:
         # Fuse Q nodes for INT8/FP8 mode
         if quantize_mode in ["int8", "fp8"] and dq_only:
-            logging.info("Fusing Q nodes for INT8/FP8 mode")
             onnx_model = qdq_to_dq(onnx_model)
         else:
             # Remove redundant cast nodes in the quantized model
             remove_redundant_cast_nodes(onnx_model.graph)
 
         # Collect and print stats of the quantized model
-        print_stat(gs.import_onnx(onnx_model), verbose)
+        print_stat(gs.import_onnx(onnx_model))
 
         # Save the quantized model to the output path
         save_onnx(onnx_model, output_path, use_external_data_format)
-        logging.info(f"Quantized onnx model is saved as {output_path}")
+        logger.info(f"Quantized onnx model is saved as {output_path}")
 
     # Check if intermediate files should be deleted
     if not keep_intermediate_files:
+        logger.info("Cleaning up intermediate files")
         for file in intermediate_generated_files:
             if os.path.exists(file):
                 os.remove(file)
 
     # Check if the quantized model is valid
     try:
+        logger.info("Validating quantized model")
         onnx.checker.check_model(output_path)
     except C.ValidationError as e:
-        logging.warning("ONNX model checker failed, check your deployment status.")
-        logging.warning(e)
+        logger.warning("ONNX model checker failed, check your deployment status")
+        logger.warning(e)
+
+    logger.info("Quantization process completed")

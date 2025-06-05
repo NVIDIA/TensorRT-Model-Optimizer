@@ -38,7 +38,7 @@ def test_onnx_simplification(tmp_path):
     onnx_filename = os.path.join(tmp_path, "model_non_simplified.onnx")
     _create_test_model(onnx_filename)
 
-    with open(onnx_filename, "r") as f:
+    with open(onnx_filename) as f:
         graph = gs.import_onnx(onnx.load(f.name))
 
         # Check that the model contains Identity nodes, indicating that constant folding did not happen.
@@ -64,7 +64,7 @@ def test_onnx_simplification(tmp_path):
         assert len(graph.nodes) == 3, (
             f"Number of nodes doesn't match the expected: {len(graph.nodes)} vs 3."
         )
-        assert all([n.op in ["Conv", "BatchNormalization", "Relu"] for n in graph.nodes]), (
+        assert all(n.op in ["Conv", "BatchNormalization", "Relu"] for n in graph.nodes), (
             "Graph contains more ops than expected."
         )
 

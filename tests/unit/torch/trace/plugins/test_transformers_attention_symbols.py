@@ -24,7 +24,7 @@ from modelopt.torch.trace.plugins.transformers import get_hf_attn_sym_info
 
 
 @pytest.mark.parametrize(
-    "cls_type, config",
+    ("cls_type", "config"),
     [
         (BertAttention, BertConfig(hidden_size=8, num_attention_heads=2)),
         (GPTJAttention, GPTJConfig(n_embd=12, n_head=2, rotary_dim=4)),

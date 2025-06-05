@@ -101,7 +101,7 @@ class SupervisedDataset(Dataset):
     """
 
     def __init__(self, raw_data, tokenizer: transformers.PreTrainedTokenizer):
-        super(SupervisedDataset, self).__init__()
+        super().__init__()
 
         print_rank_0("Formatting inputs...")
         sources = raw_data
@@ -116,12 +116,12 @@ class SupervisedDataset(Dataset):
         return len(self.input_ids)
 
     def __getitem__(self, i) -> dict[str, torch.Tensor]:
-        return dict(
-            input_ids=self.input_ids[i],
-            labels=self.labels[i],
-            attention_mask=self.attention_mask[i],
-            loss_mask=self.loss_mask[i],
-        )
+        return {
+            "input_ids": self.input_ids[i],
+            "labels": self.labels[i],
+            "attention_mask": self.attention_mask[i],
+            "loss_mask": self.loss_mask[i],
+        }
 
 
 class LazySupervisedDataset(Dataset):
@@ -135,7 +135,7 @@ class LazySupervisedDataset(Dataset):
     """
 
     def __init__(self, raw_data, tokenizer: transformers.PreTrainedTokenizer):
-        super(LazySupervisedDataset, self).__init__()
+        super().__init__()
         print_rank_0("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer
         self.raw_data = raw_data
@@ -149,12 +149,12 @@ class LazySupervisedDataset(Dataset):
             return self.cached_data_dict[i]
 
         ret = preprocess([self.raw_data[i]], self.tokenizer)
-        ret = dict(
-            input_ids=ret["input_ids"][0],
-            labels=ret["labels"][0],
-            attention_mask=ret["attention_mask"][0],
-            loss_mask=ret["loss_mask"][0],
-        )
+        ret = {
+            "input_ids": ret["input_ids"][0],
+            "labels": ret["labels"][0],
+            "attention_mask": ret["attention_mask"][0],
+            "loss_mask": ret["loss_mask"][0],
+        }
         self.cached_data_dict[i] = ret
 
         return ret
@@ -176,16 +176,20 @@ def make_eagle_supervised_data_module(
     print_rank_0("Loading data...")
 
     if data_args.data_path.endswith("jsonl"):
-        with open(data_args.data_path, "r") as f:
+        with open(data_args.data_path) as f:
             data_json = [json.loads(line) for line in f]
     else:
-        data_json = json.load(open(data_args.data_path, "r"))
+        data_json = json.load(open(data_args.data_path))
     train_dataset = dataset_cls(data_json[: int(len(data_json) * 0.95)], tokenizer=tokenizer)
     eval_dataset = dataset_cls(data_json[int(len(data_json) * 0.95) :], tokenizer=tokenizer)
 
     data_collator = DataCollatorWithPadding()
 
-    return dict(train_dataset=train_dataset, eval_dataset=eval_dataset, data_collator=data_collator)
+    return {
+        "train_dataset": train_dataset,
+        "eval_dataset": eval_dataset,
+        "data_collator": data_collator,
+    }
 
 
 class DataCollatorWithPadding:

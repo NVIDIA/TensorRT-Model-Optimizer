@@ -27,7 +27,7 @@ from modelopt.onnx.quantization.graph_utils import (
 )
 from modelopt.onnx.quantization.partitioning import (
     find_fusible_partitions,
-    get_skiped_output_layers,
+    get_skipped_output_layers,
 )
 
 
@@ -82,5 +82,5 @@ def test_partitioning(tmp_path):
     )
     assert not quantizable_kgen_heads
 
-    skip_list = get_skiped_output_layers(graph, [])
+    skip_list = get_skipped_output_layers(graph, [])
     assert not skip_list

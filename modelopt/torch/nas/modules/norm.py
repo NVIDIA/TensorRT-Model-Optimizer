@@ -15,7 +15,7 @@
 
 """Dynamic norm implementations based on norm modules in torch.nn.modules."""
 
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
 
 import torch
 from torch import nn
@@ -27,7 +27,7 @@ from ..registry import DMRegistry
 from ..traced_hp import TracedHp
 from .utils import get_sliced_tensor
 
-__all__ = ["_DynamicBatchNorm", "_DynamicInstanceNorm", "_DynamicLayerNorm", "_DynamicGroupNorm"]
+__all__ = ["_DynamicBatchNorm", "_DynamicGroupNorm", "_DynamicInstanceNorm", "_DynamicLayerNorm"]
 
 
 class _DynamicBatchInstance(DynamicModule):
@@ -38,7 +38,7 @@ class _DynamicBatchInstance(DynamicModule):
     """
 
     @staticmethod
-    def _cut_to_active_features(mod: "_DynamicBatchInstance", value: Optional[torch.Tensor]):
+    def _cut_to_active_features(mod: "_DynamicBatchInstance", value: torch.Tensor | None):
         return get_sliced_tensor(mod, value, "num_features")
 
     def _setup(self):
@@ -50,9 +50,7 @@ class _DynamicBatchInstance(DynamicModule):
         for attr in dyn_attrs:
             self._register_dynamic_attribute(attr, self._cut_to_active_features)
 
-    def modify(
-        self, *, features_ratio: Optional[tuple[float, ...]] = None, feature_divisor: int = 1
-    ):
+    def modify(self, *, features_ratio: tuple[float, ...] | None = None, feature_divisor: int = 1):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 
         Args:
@@ -61,10 +59,11 @@ class _DynamicBatchInstance(DynamicModule):
             feature_divisor: The divisor of the number of features.
         """
         hp = self.get_hparam("num_features")
-        if features_ratio is not None:
-            choices = {r * hp.original for r in features_ratio}
-        else:
-            choices = set(hp.choices)
+        choices = (
+            {r * hp.original for r in features_ratio}
+            if features_ratio is not None
+            else set(hp.choices)
+        )
         choices = {int(make_divisible(c, feature_divisor)) for c in choices}
         hp.choices = list(set(hp.choices) & choices | {hp.original})
 
@@ -97,15 +96,13 @@ class _DynamicLayerNorm(DynamicModule):
     """An ``nn.LayerNorm`` layer with dynamic hyperparams."""
 
     @staticmethod
-    def _get_normalized_shape(
-        mod: "_DynamicLayerNorm", value: Sequence[Union[int, TracedHp]]
-    ) -> tuple:
-        return tuple(value[:-1]) + (mod.num_features,)
+    def _get_normalized_shape(mod: "_DynamicLayerNorm", value: Sequence[int | TracedHp]) -> tuple:
+        return (*tuple(value[:-1]), mod.num_features)
 
     @staticmethod
     def _cut_to_active_features(
-        mod: "_DynamicLayerNorm", value: Optional[torch.Tensor]
-    ) -> Optional[torch.Tensor]:
+        mod: "_DynamicLayerNorm", value: torch.Tensor | None
+    ) -> torch.Tensor | None:
         if value is None:
             return value
         nf_slice = mod.get_hparam("num_features").active_slice
@@ -126,9 +123,7 @@ class _DynamicLayerNorm(DynamicModule):
 
         self._register_dynamic_attribute("normalized_shape", self._get_normalized_shape)
 
-    def modify(
-        self, *, features_ratio: Optional[tuple[float, ...]] = None, feature_divisor: int = 1
-    ):
+    def modify(self, *, features_ratio: tuple[float, ...] | None = None, feature_divisor: int = 1):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 
         Args:
@@ -137,10 +132,11 @@ class _DynamicLayerNorm(DynamicModule):
             feature_divisor: The divisor of the number of features.
         """
         hp = self.get_hparam("num_features")
-        if features_ratio is not None:
-            choices = {r * hp.original for r in features_ratio}
-        else:
-            choices = set(hp.choices)
+        choices = (
+            {r * hp.original for r in features_ratio}
+            if features_ratio is not None
+            else set(hp.choices)
+        )
         choices = {int(make_divisible(c, feature_divisor)) for c in choices}
         hp.choices = list(set(hp.choices) & choices | {hp.original})
 
@@ -156,7 +152,7 @@ class _DynamicGroupNorm(DynamicModule):
         return mod.num_channels // mod._group_size
 
     @staticmethod
-    def _cut_to_active_channels(mod: "_DynamicGroupNorm", value: Optional[torch.Tensor]):
+    def _cut_to_active_channels(mod: "_DynamicGroupNorm", value: torch.Tensor | None):
         return get_sliced_tensor(mod, value, "num_channels")
 
     def _setup(self):
@@ -178,9 +174,7 @@ class _DynamicGroupNorm(DynamicModule):
         for attr in dyn_attrs:
             self._register_dynamic_attribute(attr, self._cut_to_active_channels)
 
-    def modify(
-        self, *, channels_ratio: Optional[tuple[float, ...]] = None, channel_divisor: int = 1
-    ):
+    def modify(self, *, channels_ratio: tuple[float, ...] | None = None, channel_divisor: int = 1):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 
         Args:
@@ -190,9 +184,10 @@ class _DynamicGroupNorm(DynamicModule):
         """
         hp = self.get_hparam("num_channels")
         choices: list[int]
-        if channels_ratio is not None:
-            choices = {r * hp.original for r in channels_ratio}
-        else:
-            choices = set(hp.choices)
+        choices = (
+            {r * hp.original for r in channels_ratio}
+            if channels_ratio is not None
+            else set(hp.choices)
+        )
         choices = {int(make_divisible(c, channel_divisor)) for c in choices}
         hp.choices = list(set(hp.choices) & choices | {hp.original})

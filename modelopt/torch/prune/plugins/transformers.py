@@ -18,7 +18,8 @@
 # import nas plugin to check if it is enabled else raises an Exception
 from modelopt.torch.nas.plugins.transformers import *  # noqa: F403
 
-from ..config import FastNASConfig, GradNASConfig
+from ..fastnas import FastNASConfig
+from ..gradnas import GradNASConfig
 
 
 def _n_heads_config():

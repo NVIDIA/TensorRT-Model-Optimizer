@@ -1,5 +1,4 @@
 datasets>=2.14.4
-onnx-weekly
 optimum
 sentencepiece
 timm

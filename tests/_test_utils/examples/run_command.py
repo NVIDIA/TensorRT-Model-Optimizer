@@ -87,6 +87,12 @@ def run_llm_autodeploy_command(
             server_handler.terminate()
 
 
+def run_torch_onnx_command(*, quantize_mode: str, onnx_save_path: str, **kwargs):
+    kwargs.update({"quantize_mode": quantize_mode, "onnx_save_path": onnx_save_path})
+    cmd_parts = _extend_cmd_parts(["python", "torch_quant_to_onnx.py"], **kwargs)
+    run_example_command(cmd_parts, "onnx_ptq")
+
+
 def run_llm_ptq_command(*, model: str, quant: str, **kwargs):
     kwargs.update({"model": model, "quant": quant})
     kwargs.setdefault("tasks", "build")

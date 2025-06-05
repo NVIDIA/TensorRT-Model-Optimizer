@@ -61,12 +61,12 @@ def get_default_attention_mask_and_position_ids(input_ids: torch.Tensor):
     return attention_mask, position_ids
 
 
-def tree_decode(draft_logits, tree):
+def tree_decode(draft_logits: list[torch.Tensor], tree: list[list[int]]):
     """Decode tokens using the tree.
 
     Args:
-        draft_logits (List[torch.Tensor]): a list of logits. Each logit represent a future position.
-        tree (List[List[int]]): a tree for decoding. Each sublist is a branch from root where the number
+        draft_logits: a list of logits. Each logit represent a future position.
+        tree: a tree for decoding. Each sublist is a branch from root where the number
         represents the topk index.
     """
     draft_tokens = []
@@ -84,16 +84,13 @@ class ResBlock(nn.Module):
 
     This module performs a linear transformation followed by a SiLU activation,
     and then adds the result to the original input, creating a residual connection.
-
-    Args:
-        hidden_size (int): The size of the hidden layers in the block.
     """
 
-    def __init__(self, hidden_size, bias=True):
+    def __init__(self, hidden_size: int, bias: bool = True):
         """Init function of ResBlock.
 
         Args:
-        hidden_size (int): The size of the hidden layers in the block.
+            hidden_size: The size of the hidden layers in the block.
         """
         super().__init__()
         self.linear = nn.Linear(hidden_size, hidden_size, bias=bias)
@@ -102,14 +99,14 @@ class ResBlock(nn.Module):
         # Use SiLU activation to keep consistent with the Llama model
         self.act = nn.SiLU()
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass of the ResBlock.
 
         Args:
-            x (torch.Tensor): Input tensor.
+            x: Input tensor.
 
         Returns:
-            torch.Tensor: Output after the residual connection and activation.
+            Output after the residual connection and activation.
         """
         return x + self.act(self.linear(x))
 
@@ -151,17 +148,15 @@ class AcceptanceRateValidation:
         input_ids = output.input_ids
         return input_ids
 
-    def get_ground_truth(self, input_ids, osl):
+    def get_ground_truth(self, input_ids: torch.Tensor, osl: int):
         """This function returns ground truth token ids from the base model.
 
         This function will be implemented in the plugins.
 
         Args:
-        input_ids (torch.Tensor): the token ids of the input
-        attention_mask (torch.Tensor): attention mask of the input
-        osl (int): output sequence length
+            input_ids: the token ids of the input
+            osl: output sequence length
         """
-        pass
 
     def check_draft(self, ground_truth, input_ids, draft_tokens, tree=None):
         """This function checks if the draft tokens should be accepted (same as ground truth).

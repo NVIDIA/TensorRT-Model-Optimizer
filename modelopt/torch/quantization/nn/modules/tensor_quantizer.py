@@ -18,7 +18,7 @@
 import contextlib
 import math
 import warnings
-from typing import Any, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.distributed as dist
@@ -42,17 +42,14 @@ from ...qtensor import (
     NVFP4QTensor,
     QTensorWrapper,
 )
-from ...tensor_quant import (
-    fake_tensor_quant,
-    mxfp8_dynamic_block_quant,
-    nvfp4_dynamic_block_quant,
-    scaled_e4m3,
-    static_block_quant,
-)
+from ...tensor_quant import dynamic_block_quant, fake_tensor_quant, scaled_e4m3, static_block_quant
 from ...utils import is_torch_export_mode
 from ..functional import normalized_hadamard_transform
 
-__all__ = ["TensorQuantizer", "SequentialQuantizer"]
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+__all__ = ["SequentialQuantizer", "TensorQuantizer"]
 
 
 class TensorQuantizer(nn.Module):
@@ -88,7 +85,7 @@ class TensorQuantizer(nn.Module):
         amax=None,
     ):
         """Initialize quantizer and set up required variables."""
-        super(TensorQuantizer, self).__init__()
+        super().__init__()
         quant_attribute_cfg = (
             quant_attribute_cfg if quant_attribute_cfg is not None else QuantizerAttributeConfig()
         )
@@ -106,7 +103,7 @@ class TensorQuantizer(nn.Module):
         # Lazy initialize the bias calibrator for KV cache quantization
         self._bias_calibrator = None
 
-    def set_from_attribute_config(self, attribute_cfg: Union[QuantizerAttributeConfig, dict]):
+    def set_from_attribute_config(self, attribute_cfg: QuantizerAttributeConfig | dict):
         """Set quantizer attributes from attribute_dict.
 
         The attributes are defined in
@@ -138,12 +135,9 @@ class TensorQuantizer(nn.Module):
             )
             setattr(self, _tq_attribute_name, _setter(val))
 
-    def dequantize(self, inputs: Union[BaseQuantizedTensor, QTensorWrapper]):
+    def dequantize(self, inputs: BaseQuantizedTensor | QTensorWrapper):
         """De-quantize a real quantized tensor to a given dtype."""
-        if isinstance(inputs, QTensorWrapper):
-            qtensor = inputs.get_qtensor()
-        else:
-            qtensor = inputs
+        qtensor = inputs.get_qtensor() if isinstance(inputs, QTensorWrapper) else inputs
         assert isinstance(qtensor, BaseQuantizedTensor), "Expected input as real quantized tensors."
         kwarg = {
             "scale": self._scale,
@@ -338,7 +332,7 @@ class TensorQuantizer(nn.Module):
         # Get reduce_axis from bias config
         # Bias calibration supports per-channel and per-token quantization
         if self._bias_calibrator is None and self.bias is not None:
-            self.bias_axis = tuple(k for k in self.bias.keys() if isinstance(k, int))
+            self.bias_axis = tuple(k for k in self.bias if isinstance(k, int))
             if self._bias is not None:
                 self._bias_calibrator = calib.BiasCalibrator(
                     method=self.bias_method,
@@ -544,14 +538,11 @@ class TensorQuantizer(nn.Module):
 
     def _is_real_quantize_support(self):
         """Check if real quantization is supported for this quant config."""
-        if (
-            (self._num_bits == 4 and self._block_sizes)  # NF4 and Int4
-            or (self._num_bits == (2, 1) and self._block_sizes)  # NVFP4
-            or (self._num_bits == (4, 3))  # FP8
-            or (self._num_bits == 8)  # Int8
-        ):
-            return True
-        return False
+        return (
+            (self._num_bits == 4 and self._block_sizes)
+            or (self._num_bits == (2, 1) and self._block_sizes)
+            or self._num_bits in ((4, 3), 8)  # Int8
+        )
 
     def _real_quantize(self, inputs):
         assert self._is_real_quantize_support(), "Real quantization not supported for this format."
@@ -595,6 +586,7 @@ class TensorQuantizer(nn.Module):
                 weights_scaling_factor_2=self.amax.float() / 448.0 / 6.0
                 if self.amax is not None
                 else None,
+                try_tensorrt=True,
             )
             buffer_to_register["_scale"] = _weights_scaling_factor
             buffer_to_register["_double_scale"] = _weights_scaling_factor_2
@@ -627,33 +619,16 @@ class TensorQuantizer(nn.Module):
                 # Double quantization is supported
                 assert block_size is not None, "block size for dynamic quantization not found."
 
-                if self.block_sizes.get("scale_bits", None) == (8, 0):
-                    outputs = mxfp8_dynamic_block_quant(
-                        inputs,
-                        block_size,
-                        amax,
-                        self.num_bits[0],
-                        self.num_bits[1],
-                        self.block_sizes.get("scale_bits", None)[0],
-                        self.block_sizes.get("scale_bits", None)[1],
-                        getattr(self, "_onnx_quantizer_type", None),
-                        getattr(self, "_trt_high_precision_dtype", None),
-                    )
-                elif self.block_sizes.get("scale_bits", None) == (4, 3):
-                    outputs = nvfp4_dynamic_block_quant(
-                        inputs,
-                        block_size,
-                        amax,
-                        self._get_bias(inputs),
-                        self._num_bits,
-                        self.block_sizes.get("scale_bits", None),
-                        getattr(self, "_trt_high_precision_dtype", None),
-                        getattr(self, "_onnx_quantizer_type", None),
-                    )
-                else:
-                    raise ValueError(
-                        f"Unknown scale bits: {self.block_sizes.get('scale_bits', None)}"
-                    )
+                outputs = dynamic_block_quant(
+                    inputs,
+                    block_size,
+                    amax,
+                    self._get_bias(inputs),
+                    self._num_bits,
+                    self.block_sizes.get("scale_bits", None),
+                    getattr(self, "_trt_high_precision_dtype", None),
+                    getattr(self, "_onnx_quantizer_type", None),
+                )
             else:
                 # Static block quantization,
                 # Double quantization is not supported
@@ -786,10 +761,9 @@ class TensorQuantizer(nn.Module):
 
         quant_axis = [i for i in range(len(quantize_axis)) if quantize_axis[i]]
 
-        if all(s is None for s in slices):
-            slices = None
-        else:
-            slices = [s if s else slice(None) for s in slices]
+        slices = (
+            None if all(s is None for s in slices) else [s if s else slice(None) for s in slices]
+        )
 
         if all(p is None for p in paddings):
             paddings = None
@@ -837,15 +811,13 @@ class TensorQuantizer(nn.Module):
         if _check_per_channel_block_sizes(block_sizes):
             # Convert block_sizes to axis
             assert self.axis is None, "Axis and block_sizes are both set."
-            axis = tuple(
-                k if k >= 0 else k + x.dim() for k in block_sizes.keys() if isinstance(k, int)
-            )
+            axis = tuple(k if k >= 0 else k + x.dim() for k in block_sizes if isinstance(k, int))
             self.axis = tuple(i for i in range(x.dim()) if i not in axis) or None
 
             # remove block_sizes
             self._block_sizes = None
 
-    def export_amax(self) -> Optional[torch.Tensor]:
+    def export_amax(self) -> torch.Tensor | None:
         """Export correctly formatted/shaped amax."""
         if self.block_sizes is not None and self.block_sizes.get("type", None) == "dynamic":
             return self.amax
@@ -911,9 +883,8 @@ class TensorQuantizer(nn.Module):
             return inputs
 
         # GLOBALS could break TorchDynamo for some Pytorch versions (i.e., 2.3.0)
-        if not is_torch_export_mode():
-            if GLOBALS.in_onnx_export:
-                self._check_onnx_readiness(inputs)
+        if not is_torch_export_mode() and GLOBALS.in_onnx_export:
+            self._check_onnx_readiness(inputs)
 
         if self.block_sizes is not None and self._fake_quant:
             # To support the new block_sizes representation for per-channel quantization,
@@ -923,7 +894,7 @@ class TensorQuantizer(nn.Module):
 
         if (
             self.block_sizes is not None
-            and not self.block_sizes.get("type", None) == "dynamic"
+            and self.block_sizes.get("type", None) != "dynamic"
             and self._fake_quant
         ):
             # Tensor reshaping is required for static block quantization
@@ -964,7 +935,7 @@ class TensorQuantizer(nn.Module):
 
         if (
             self.block_sizes is not None
-            and not self.block_sizes.get("type", None) == "dynamic"
+            and self.block_sizes.get("type", None) != "dynamic"
             and self._fake_quant
         ):
             outputs = self._reset_to_original_shape(outputs)
@@ -1154,11 +1125,9 @@ class TensorQuantizer(nn.Module):
                 # This error happens if the distributed backend is using GPU and
                 # the tensor is not on GPU (or vice versa).
                 warnings.warn(
-                    (
-                        f"Failed to synchronize amax: {e}, probably because the tensor is on a device which is not"
-                        "supported by the current distributed backend. This warning can be ignored"
-                        "if happening during modelopt restore."
-                    )
+                    f"Failed to synchronize amax: {e}, probably because the tensor is on a device which is not"
+                    "supported by the current distributed backend. This warning can be ignored"
+                    "if happening during modelopt restore."
                 )
 
     @contextlib.contextmanager
@@ -1212,7 +1181,7 @@ class SequentialQuantizer(nn.Sequential):
         "load_calib_bias",
     ]
 
-    def __init__(self, *quantizers: TensorQuantizer):  # noqa: N803
+    def __init__(self, *quantizers: TensorQuantizer):
         """Initialize SequentialQuantizer module."""
         super().__init__(*quantizers)
         assert all(isinstance(q, TensorQuantizer) for q in self), (
@@ -1251,10 +1220,9 @@ class SequentialQuantizer(nn.Sequential):
 
     def set_from_attribute_config(
         self,
-        attributes: Union[
-            list[Union[dict[str, Any], QuantizerAttributeConfig]],
-            Union[dict[str, Any], QuantizerAttributeConfig],
-        ],
+        attributes: list[dict[str, Any] | QuantizerAttributeConfig]
+        | dict[str, Any]
+        | QuantizerAttributeConfig,
     ):
         """Set the attributes of contained quantizers from a list of attribute_dicts."""
         if not isinstance(attributes, (list, tuple)):

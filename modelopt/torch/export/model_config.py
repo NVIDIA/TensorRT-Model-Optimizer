@@ -21,7 +21,6 @@ And we will build tensorrt_llm engine from the context saved with this format.
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional, Union
 
 import torch
 
@@ -82,7 +81,7 @@ class LayernormConfig:
 class LinearConfig:
     """The linear layer config."""
 
-    quantization: Optional[str] = QUANTIZATION_NONE
+    quantization: str | None = QUANTIZATION_NONE
     linear_type: str = LINEAR_COLUMN
     weight: torch.Tensor = None
     bias: torch.Tensor = None
@@ -125,7 +124,7 @@ class LinearActConfig:
 class ConvConfig:
     """The Conv layer config."""
 
-    quantization: Optional[str] = QUANTIZATION_NONE
+    quantization: str | None = QUANTIZATION_NONE
     weight: torch.Tensor = None
     bias: torch.Tensor = None
 
@@ -304,14 +303,14 @@ class AttentionConfig:
 
     # QKV can either be stored as splitted (for easier postprocessing)
     # or merged (for TRT LLM export)
-    qkv: Union[QKVConfig, LinearConfig] = None
+    qkv: QKVConfig | LinearConfig = None
     dense: LinearConfig = None
     # KV cache related attributes
     k_cache_scaling_factor: torch.Tensor = None
     v_cache_scaling_factor: torch.Tensor = None
     k_cache_bias: torch.Tensor = None
     v_cache_bias: torch.Tensor = None
-    kv_cache_dtype: Optional[str] = None
+    kv_cache_dtype: str | None = None
 
     rotary_dim: int = -math.inf
     # MPT variants
@@ -393,7 +392,7 @@ class DecoderLayerConfig:
     post_layernorm: LayernormConfig = None
     pre_feedforward_layernorm: LayernormConfig = None  # gemma 2
     post_feedforward_layernorm: LayernormConfig = None  # gemma 2
-    mlp: Union[MLPConfig, MOEConfig] = None
+    mlp: MLPConfig | MOEConfig = None
 
     num_attention_heads: int = 0
     # Supporting different attention_head_size per layer.
@@ -517,11 +516,8 @@ class DecoderLayerConfig:
     def ffn_hidden_size_local(self):
         """Returns the ffn hidden size of the transformer model."""
         fc = self.mlp.fc
-        if isinstance(self.mlp, MOEConfig):
-            # fc in MoE merge fc and gate
-            k = fc.weight.shape[1] // 2
-        else:
-            k = fc.weight.shape[0]
+        # fc in MoE merge fc and gate
+        k = fc.weight.shape[1] // 2 if isinstance(self.mlp, MOEConfig) else fc.weight.shape[0]
         if fc.quantization not in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
             return k
         return k * 2

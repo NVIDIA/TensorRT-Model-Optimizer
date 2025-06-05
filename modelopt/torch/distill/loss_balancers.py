@@ -19,7 +19,8 @@
 
 import abc
 import warnings
-from typing import Any, Callable, Union
+from collections.abc import Callable
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -73,7 +74,7 @@ class DistillationLossBalancer(nn.Module):
 class StaticLossBalancer(DistillationLossBalancer):
     """Static weights-based loss aggregation of KD losses."""
 
-    def __init__(self, kd_loss_weight: Union[float, list[float]] = 0.5):
+    def __init__(self, kd_loss_weight: float | list[float] = 0.5):
         """Constructor.
 
         Args:

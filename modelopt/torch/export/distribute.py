@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from io import BytesIO
 from multiprocessing.shared_memory import SharedMemory
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import torch
 
@@ -48,7 +48,7 @@ class NFSWorkspace:
             If not provided, SharedMemory will be used instead.
     """
 
-    def __init__(self, workspace_path: Optional[Union[Path, str]] = None):
+    def __init__(self, workspace_path: Path | str | None = None):
         """Create the NFS work dir and clean up existing existing state files."""
         self.path = Path("") if workspace_path is None else Path(workspace_path)
         self._is_initialized = workspace_path is not None
@@ -78,7 +78,7 @@ class NFSWorkspace:
 
     def read_configs_and_weights_from_rank(
         self, target_rank: int
-    ) -> tuple[Optional[dict[str, Any]], Optional[dict[str, Any]]]:
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         """All ranks read the target_rank state file.
 
         Args:
@@ -107,7 +107,7 @@ class NFSWorkspace:
         """
         if not self.is_initialized:
             raise ValueError("NFSWorkspace is not initialized!")
-        return self.path.joinpath("rank_{}_state.pth".format(target_rank))
+        return self.path.joinpath(f"rank_{target_rank}_state.pth")
 
     def _clean_up(self):
         """Remove existing state files."""
@@ -179,9 +179,7 @@ def get_tensors_parallel(tensor: torch.Tensor, ranks: list[int], group=None):
 
 
 @contextmanager
-def get_configs_parallel(
-    config, ranks: list[int], group, workspace_path: Optional[Union[Path, str]] = None
-):
+def get_configs_parallel(config, ranks: list[int], group, workspace_path: Path | str | None = None):
     """Gathers the layer config across distributed processes using shm or NFS.
 
     Args:
@@ -254,7 +252,7 @@ def get_configs_parallel(
                 size=8,
             )
 
-            shm_writer.buf[:8] = int(0).to_bytes(8, "little")
+            shm_writer.buf[:8] = (0).to_bytes(8, "little")
 
     # All ranks wait for this to complete.
     dist.barrier(group)
@@ -264,26 +262,25 @@ def get_configs_parallel(
         for rank in ranks:
             if rank == ranks[0]:
                 configs.append(config)
+            elif nfs_workspace.is_initialized:
+                # The master merge rank read other configs from the NFS dir.
+                config_dict, weights = nfs_workspace.read_configs_and_weights_from_rank(rank)
+                if config_dict is not None:
+                    restore_model_config(config_dict, weights)
+                    config = model_config_from_dict(config_dict)
+                    configs.append(config)
             else:
-                if nfs_workspace.is_initialized:
-                    # The master merge rank read other configs from the NFS dir.
-                    config_dict, weights = nfs_workspace.read_configs_and_weights_from_rank(rank)
-                    if config_dict is not None:
-                        restore_model_config(config_dict, weights)
-                        config = model_config_from_dict(config_dict)
-                        configs.append(config)
-                else:
-                    shm = SharedMemory(name=f"rank_{rank}_config", create=False)
-                    len_json = int.from_bytes(shm.buf[:8], "little")
+                shm = SharedMemory(name=f"rank_{rank}_config", create=False)
+                len_json = int.from_bytes(shm.buf[:8], "little")
 
-                    if len_json != 0:
-                        config_dict = json.loads(shm.buf[8 : 8 + len_json].tobytes().decode())
-                        weights = torch.load(BytesIO(shm.buf[8 + len_json :]))
-                        restore_model_config(config_dict, weights)
-                        config = model_config_from_dict(config_dict)
+                if len_json != 0:
+                    config_dict = json.loads(shm.buf[8 : 8 + len_json].tobytes().decode())
+                    weights = torch.load(BytesIO(shm.buf[8 + len_json :]))
+                    restore_model_config(config_dict, weights)
+                    config = model_config_from_dict(config_dict)
 
-                        configs.append(config)
-                        shm_readers.append(shm)
+                    configs.append(config)
+                    shm_readers.append(shm)
     try:
         # Send the config list to the consumer.
         # The merged rank will get a valid config list while the other ranks an empty list.

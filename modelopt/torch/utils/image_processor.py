@@ -49,10 +49,7 @@ class MllamaImageProcessor(BaseImageProcessor):
     def preprocess_function(self, examples):
         """Preprocess function."""
         # Prepare prompts in a generic chat format
-        if "question" in examples:
-            question = examples["question"]
-        else:
-            question = "Describe this image."
+        question = examples.get("question", "Describe this image.")
 
         if examples["image"] is not None:
             if self.tokenizer.chat_template is not None:

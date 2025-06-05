@@ -28,8 +28,8 @@ from torchvision.models.mobilenetv2 import InvertedResidual
 
 import modelopt.torch.nas as mtn
 import modelopt.torch.opt as mto
-from modelopt.torch.nas._patch import prep_for_eval
 from modelopt.torch.nas.autonas import AutoNASPatchManager
+from modelopt.torch.nas.patch import prep_for_eval
 from modelopt.torch.opt.utils import is_dynamic
 from modelopt.torch.utils import run_forward_loop
 from modelopt.torch.utils.random import _set_deterministic_seed, centroid
@@ -370,51 +370,51 @@ def test_set_auto_mode(test_config):
 
 
 @pytest.mark.parametrize(
-    "cls, args, submodule, use_config, dummy_input, mode",
+    ("cls", "args", "submodule", "use_config", "dummy_input", "mode"),
     [
-        [
+        (
             InvertedResidual,
             (16, 32, 1, 6),
             "",
             False,
             torch.randn(1, 16, 8, 8),
             ["autonas", "export"],
-        ],
-        [
+        ),
+        (
             InvertedResidual,
             (16, 32, 1, 6),
             "conv.1",
             True,
             torch.randn(1, 16, 8, 8),
             ["autonas", "export"],
-        ],
-        [
+        ),
+        (
             InvertedResidual,
             (16, 32, 1, 6),
             "conv.1",
             True,
             torch.randn(1, 16, 8, 8),
             ["autonas"],
-        ],
-        [
+        ),
+        (
             InvertedResidual,
             (16, 32, 1, 6),
             "conv.0",
             False,
             torch.randn(1, 16, 8, 8),
             [],
-        ],
-        [
+        ),
+        (
             InvertedResidual,
             (16, 32, 1, 6),
             "",
             True,
             torch.randn(1, 16, 8, 8),
             ["autonas", "export"],
-        ],
-        [TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), ["autonas", "export"]],
-        [TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), ["autonas"]],
-        [TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), []],
+        ),
+        (TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), ["autonas", "export"]),
+        (TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), ["autonas"]),
+        (TinyMobileNetFeatures, (), "", False, torch.randn(1, 3, 64, 64), []),
     ],
 )
 def test_save_restore_whole(
@@ -494,7 +494,7 @@ def test_save_restore_whole(
             assert torch.allclose(output[key], output2[key])
 
 
-@pytest.mark.parametrize("cls, args, config", [[InvertedResidual, (16, 32, 1, 6), None]])
+@pytest.mark.parametrize(("cls", "args", "config"), [(InvertedResidual, (16, 32, 1, 6), None)])
 def test_warning_raised(cls, args, config):
     model = cls(*args)
     model = mtn.convert(model, mode=[("fastnas", config)])

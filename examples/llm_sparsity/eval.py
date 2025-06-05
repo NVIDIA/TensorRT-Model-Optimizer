@@ -16,8 +16,8 @@
 import argparse
 import json
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 import evaluate
 import nltk
@@ -81,7 +81,7 @@ def prepare_tokenizer(accelerator, checkpoint_path, model_max_length, padding_si
 
 def preprocess_cnndailymail(accelerator, data_path, calib=False):
     # Load from CNN dailymail
-    with open(data_path, "r") as fh:
+    with open(data_path) as fh:
         list_data_dict = json.load(fh)
 
     sources = [G_PROMPT_INPUT.format_map(example) for example in list_data_dict]
@@ -105,20 +105,20 @@ def postprocess_text(preds, targets):
 
 class CNNDailymailDataset(Dataset):
     def __init__(self, accelerator, data_path: str, tokenizer):
-        super(CNNDailymailDataset, self).__init__()
+        super().__init__()
 
         self.sources, self.labels = preprocess_cnndailymail(accelerator, data_path, calib=False)
         self.tokenizer = tokenizer
 
     def __getitem__(self, index) -> dict[str, torch.Tensor]:
-        return dict(src_idx=self.sources[index], label_idx=self.labels[index])
+        return {"src_idx": self.sources[index], "label_idx": self.labels[index]}
 
     def __len__(self):
         return len(self.sources)
 
 
 @dataclass
-class DataCollator(object):
+class DataCollator:
     """Collate examples for supervised fine-tuning."""
 
     tokenizer: transformers.PreTrainedTokenizer
@@ -260,7 +260,7 @@ def main():
 
     if tokenizer.pad_token is None:
         smart_tokenizer_and_embedding_resize(
-            special_tokens_dict=dict(pad_token=DEFAULT_PAD_TOKEN),
+            special_tokens_dict={"pad_token": DEFAULT_PAD_TOKEN},
             tokenizer=tokenizer,
             model=model,
         )

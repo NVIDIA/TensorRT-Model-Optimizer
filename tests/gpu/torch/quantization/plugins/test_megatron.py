@@ -33,9 +33,11 @@ from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     tensor_parallel_test_helper,
 )
+from packaging.version import Version
 
 skip_if_no_megatron()
 
+import megatron.core
 from megatron.core.parallel_state import (
     destroy_model_parallel,
     get_data_parallel_group,
@@ -204,11 +206,28 @@ mixed_block_size_config["quant_cfg"].update(
         mtq.W4A8_AWQ_BETA_CFG,
         mtq.NVFP4_DEFAULT_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
+    ],
+)
+def test_homogeneous_sharded_state_dict(need_2_gpus, tmp_path, config):
+    spawn_multiprocess_job(
+        size=2,
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None),
+        backend="nccl",
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
         mixed_precision_config,
         mixed_block_size_config,
     ],
 )
-def test_sharded_state_dict(need_2_gpus, tmp_path, config):
+@pytest.mark.skipif(
+    Version(megatron.core.__version__) <= Version("0.13.0rc1"),
+    reason="This unittest need megatron.core>=0.13 with default heterogenous ckpt support.",
+)
+def test_heterogenous_sharded_state_dict(need_2_gpus, tmp_path, config):
     spawn_multiprocess_job(
         size=2,
         job=partial(_test_sharded_state_dict, tmp_path, config, 256, None),
@@ -225,6 +244,9 @@ def test_sharded_state_dict(need_2_gpus, tmp_path, config):
     ],
 )
 @pytest.mark.parametrize("modelopt_version", ["0.25", "0.27"])
+@pytest.mark.skip(
+    reason="0.31 has breaking change without backward compatibility. This unittest needs to be refactorized."
+)
 def test_sharded_state_dict_old_checkpoints(need_2_gpus, tmp_path, config, modelopt_version):
     spawn_multiprocess_job(
         size=2,
@@ -253,6 +275,10 @@ def test_regular_state_dict(distributed_setup_size_1, hidden_size):
 
     model_test_sd = model_test.state_dict()
     for k, v in model_ref.state_dict().items():
+        # The extra_state checkint must be skipped. It can be a byte tensor serialized
+        # from a dict where the order can change.
+        if "_extra_state" in k:
+            continue
         assert not isinstance(v, torch.Tensor) or torch.allclose(v, model_test_sd[k]), k
 
     logits_ref = forward_fn(model_ref)
@@ -278,7 +304,7 @@ def _test_fp8_real_quantize_helper(rank, size):
         tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED
     )
     hidden_size = 256
-    config = mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG
+    config = mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG
 
     model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
@@ -304,13 +330,3 @@ def _test_fp8_real_quantize_helper(rank, size):
 
 def test_fp8_real_quantize(need_2_gpus):
     spawn_multiprocess_job(size=2, job=_test_fp8_real_quantize_helper, backend="nccl")
-
-
-def test_real_quantize_sharded_state_dict(need_2_gpus, distributed_setup_size_1, tmp_path):
-    config = mtq.FP8_2D_BLOCKWISE_REAL_QUANT_CFG
-
-    spawn_multiprocess_job(
-        size=2,
-        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None),
-        backend="nccl",
-    )

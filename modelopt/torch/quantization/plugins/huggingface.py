@@ -19,21 +19,60 @@ import inspect
 import warnings
 from contextlib import contextmanager
 from functools import partial
-from types import ModuleType
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
 import transformers
+from transformers.models.t5.modeling_t5 import T5Attention
 
 from modelopt.core.torch.quantization.algorithms import AutoQuantizeSearcher
 from modelopt.torch.opt.dynamic import DynamicModule
 
 from ..conversion import register
-from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
+from ..nn import QuantInputBase, QuantModule, QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import _QuantLinear
+from ..utils import replace_function
 from .attention import register_attention_for_kv_quant
 
+if TYPE_CHECKING:
+    from types import ModuleType
+
 __all__ = ["register_hf_attentions_on_the_fly"]
+
+
+class _T5QuantAttention(QuantModule):
+    """Attention class for KV Cache quantization compatible with T5 Model."""
+
+    def _quantized_matmul(self, batch1, batch2):
+        # T5Attention has two matmul operations, one for the query and key and one for the attention and value.
+        # The first matmul is quantized with the q_bmm_quantizer and k_bmm_quantizer. The second matmul is
+        # quantized with the v_bmm_quantizer.
+        if self.qk_quant_matmul:
+            self.qk_quant_matmul = False
+            q, k = batch1, batch2
+            return torch._matmul(
+                self.q_bmm_quantizer(q), self.k_bmm_quantizer(k.transpose(3, 2)).transpose(3, 2)
+            )
+        else:
+            self.qk_quant_matmul = True
+            attn, v = batch1, batch2
+            return torch._matmul(attn, self.v_bmm_quantizer(v))
+
+    def _setup(self):
+        self.q_bmm_quantizer = TensorQuantizer(QuantInputBase.default_quant_desc_input)
+        self.k_bmm_quantizer = TensorQuantizer(QuantInputBase.default_quant_desc_input)
+        self.v_bmm_quantizer = TensorQuantizer(QuantInputBase.default_quant_desc_input)
+
+    @staticmethod
+    def is_compatible_attention(attn):
+        return issubclass(attn, T5Attention)
+
+    def forward(self, *args, **kwargs):
+        # self.qk_quant_matmul is used to alternate between the two matmul operations for T5Attention
+        self.qk_quant_matmul = True
+        with replace_function(torch, "matmul", self._quantized_matmul):
+            return super().forward(*args, **kwargs)
 
 
 class _QuantAttention(QuantModule):
@@ -59,11 +98,10 @@ class _QuantAttention(QuantModule):
         def _is_eager_attention():
             if self.config._attn_implementation == "eager":
                 return True
-            if self.config._attn_implementation == "sdpa" and kwargs.get(
-                "output_attentions", False
-            ):
-                return True
-            return False
+            return bool(
+                self.config._attn_implementation == "sdpa"
+                and kwargs.get("output_attentions", False)
+            )
 
         # Get the original transformers module before wrapped in any ModelOpt DynamicModule
         module: ModuleType = inspect.getmodule(self.get_attn_type(self))
@@ -107,9 +145,7 @@ class _QuantAttention(QuantModule):
         if transformers.__version__ < "4.48.0":
             return False
         module = inspect.getmodule(attn)
-        if getattr(module, "ALL_ATTENTION_FUNCTIONS", None) is None:
-            return False
-        return True
+        return getattr(module, "ALL_ATTENTION_FUNCTIONS", None) is not None
 
     @staticmethod
     def get_attn_type(attn_module) -> type:
@@ -133,6 +169,7 @@ def register_hf_attentions_on_the_fly(model):
         return
 
     attention_cls = {}
+    registerd_attn_module = False
     for name, module in model.named_modules():
         # Only register attention classes that are from Huggingface transformers
         if type(module).__name__.endswith("Attention"):
@@ -142,18 +179,24 @@ def register_hf_attentions_on_the_fly(model):
                 if _QuantAttention.is_compatible_attention(attention_type):
                     # Lets register the attention class for KV Cache quantization
                     register(attention_type, _QuantAttention)
+                    registerd_attn_module = True
+                    print(f"Registered {attention_type} for KV Cache quantization")
+                elif _T5QuantAttention.is_compatible_attention(attention_type):
+                    register(attention_type, _T5QuantAttention)
+                    registerd_attn_module = True
                     print(f"Registered {attention_type} for KV Cache quantization")
                 else:
                     attention_cls[attention_type] = type(module).__name__
 
-    # Check if there is any attention class to register,
-    # this is the case for models that do not use the new_attention_interface
-    # or transformers version < 4.48.0
-    if not attention_cls:
+    # Check if the attention class has been registered
+    # For T5Attention, we want to avoid registering T5LayerCrossAttention and T5LayerSelfAttention.
+    # Hence we check if the attention class has been registered.
+    if registerd_attn_module or not attention_cls:
         return
 
+    # this is the case for models that do not use the new_attention_interface or transformers version < 4.48.0
     # Register the attention class for KV Cache quantization
-    success = any([register_attention_for_kv_quant(cls) for cls in attention_cls])
+    success = any(register_attention_for_kv_quant(cls) for cls in attention_cls)
     if not success:
         warnings.warn(
             f"Could not create a quantized attention class for  {attention_cls} from this model. "
@@ -205,7 +248,6 @@ class _QuantDbrxExperts(QuantModule):
     def _setup(self):
         """Modify the DbrxExpert."""
         # No setup is needed for DbrxExpert, we only need to update DbrxExpertGLU
-        pass
 
     # forward method copied from the original dbrx repo - https://github.com/databricks/dbrx/blob/a3200393/model/modeling_dbrx.py#L795
     def forward(
@@ -222,7 +264,7 @@ class _QuantDbrxExperts(QuantModule):
         expert_mask = nn.functional.one_hot(top_experts, num_classes=self.moe_num_experts).permute(
             2, 1, 0
         )
-        for expert_idx in range(0, self.moe_num_experts):
+        for expert_idx in range(self.moe_num_experts):
             topk_idx, token_idx = torch.where(expert_mask[expert_idx])
             if token_idx.shape[0] == 0:
                 continue

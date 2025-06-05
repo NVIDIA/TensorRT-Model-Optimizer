@@ -22,7 +22,7 @@ from modelopt.torch.quantization.nn import QuantConv2d, QuantLinear
 
 class QuantConvLinear(nn.Module):
     def __init__(self):
-        super(QuantConvLinear, self).__init__()
+        super().__init__()
         self.conv1 = QuantConv2d(1, 8, kernel_size=3)
         self.conv2 = QuantConv2d(8, 4, kernel_size=3)
         self.fc1 = QuantLinear(64, 8)

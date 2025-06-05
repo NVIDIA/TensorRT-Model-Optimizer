@@ -15,8 +15,6 @@
 
 """Dynamic linear implementations based on torch.nn.modules.linear."""
 
-from typing import Optional
-
 import torch
 from torch import nn
 
@@ -39,7 +37,7 @@ class _DynamicLinear(DynamicModule):
         return get_sliced_tensor(mod, weight, "out_features", "in_features")
 
     @staticmethod
-    def _get_bias(mod: "_DynamicLinear", bias: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+    def _get_bias(mod: "_DynamicLinear", bias: torch.Tensor | None) -> torch.Tensor | None:
         return get_sliced_tensor(mod, bias, "out_features")
 
     def _estimate_importance(self) -> TracedHp.Importance:
@@ -57,9 +55,7 @@ class _DynamicLinear(DynamicModule):
         # register importance for in_features
         self.get_hparam("in_features").register_importance(self._estimate_importance)
 
-    def modify(
-        self, *, features_ratio: Optional[tuple[float, ...]] = None, feature_divisor: int = 1
-    ):
+    def modify(self, *, features_ratio: tuple[float, ...] | None = None, feature_divisor: int = 1):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 
         Args:
@@ -71,9 +67,10 @@ class _DynamicLinear(DynamicModule):
         features = ["in_features", "out_features"]
         for feature in features:
             hp = self.get_hparam(feature)
-            if features_ratio is not None:
-                choices = {r * hp.original for r in features_ratio}
-            else:
-                choices = set(hp.choices)
+            choices = (
+                {r * hp.original for r in features_ratio}
+                if features_ratio is not None
+                else set(hp.choices)
+            )
             choices = {int(make_divisible(c, feature_divisor)) for c in choices}
             hp.choices = list(set(hp.choices) & choices | {hp.original})

@@ -16,9 +16,9 @@
 """Hparam that represent concat."""
 
 from collections import defaultdict
+from collections.abc import Callable, Iterator
 from itertools import product
 from math import prod
-from typing import Callable, Iterator, Optional
 
 import numpy as np
 import torch
@@ -113,7 +113,7 @@ class ConcatTracedHp(TracedHp):
         return active
 
     @active.setter
-    def active(self, val: Optional[int]):
+    def active(self, val: int | None):
         """Set the active value with a sanity check for choices and dynamic hparams."""
         val = self.original if val is None else val
         assert val in self._choices, f"val = {val}, choices = {self.choices}"
@@ -188,7 +188,7 @@ class ConcatTracedHp(TracedHp):
         ]
 
     @torch.no_grad()
-    def _enforce_order(self, order: Optional[torch.Tensor] = None) -> None:
+    def _enforce_order(self, order: torch.Tensor | None = None) -> None:
         """Enforcing the order.
 
         Note that we only support intra-group sorting but **not** inter-group sorting. Inter-group
@@ -209,9 +209,9 @@ class ConcatTracedHp(TracedHp):
         orders_split = self._split_order(order)
 
         # ensure that orders are consistent if they come from the same hparam
-        for hp, order in zip(self._inputs, orders_split):
+        for hp, _order in zip(self._inputs, orders_split):
             assert all(
-                torch.equal(order, order_)
+                torch.equal(_order, order_)
                 for hp_, order_ in zip(self._inputs, orders_split)
                 if hp is hp_
             )

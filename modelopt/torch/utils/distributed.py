@@ -19,14 +19,18 @@ import functools
 import io
 import os
 import time
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable
+from typing import Any
 
 import torch
 import torch.distributed
 
+# TODO: update this import to from torch.distributed.tensor import DTensor after we deprecate Torch<2.5
+from torch.distributed._tensor import DTensor
+
 __all__ = [
-    "ParallelState",
     "DistributedProcessGroup",
+    "ParallelState",
     "backend",
     "barrier",
     "is_available",
@@ -47,7 +51,7 @@ def is_initialized() -> bool:
     return is_available() and torch.distributed.is_initialized()
 
 
-def backend() -> Optional[str]:
+def backend() -> str | None:
     """Returns the distributed backend."""
     if is_initialized():
         return "torch"
@@ -81,7 +85,7 @@ def _serialize(obj: Any) -> torch.Tensor:
     return tensor
 
 
-def _deserialize(tensor: torch.Tensor, size: Optional[int] = None) -> Any:
+def _deserialize(tensor: torch.Tensor, size: int | None = None) -> Any:
     buffer = tensor.numpy().tobytes()
     if size is not None:
         buffer = buffer[:size]
@@ -104,10 +108,9 @@ def broadcast(obj: Any, src: int = 0, group=None) -> Any:
         tensor = _serialize(obj).cuda()
 
     # broadcast the tensor size
-    if rank() == src:
-        tensor_size = torch.LongTensor([tensor.numel()]).cuda()
-    else:
-        tensor_size = torch.LongTensor([0]).cuda()
+    tensor_size = (
+        torch.LongTensor([tensor.numel()]).cuda() if rank() == src else torch.LongTensor([0]).cuda()
+    )
     _broadcast(tensor_size, src=src, group=group)
 
     # broadcast the tensor
@@ -186,7 +189,7 @@ def master_only(func):
 class DistributedProcessGroup:
     """A convenient wrapper around torch.distributed.ProcessGroup objects."""
 
-    def __init__(self, group: Optional[Union[torch.distributed.ProcessGroup, int]] = None):
+    def __init__(self, group: torch.distributed.ProcessGroup | int | None = None):
         """Initialize the distributed process group."""
         self.group = group
 
@@ -208,7 +211,7 @@ class DistributedProcessGroup:
     @staticmethod
     def get_dist_syncd_obj(
         obj: Any,
-        groups: Union["DistributedProcessGroup", list["DistributedProcessGroup"]],
+        groups: "DistributedProcessGroup | list[DistributedProcessGroup]",
         op: Callable,
     ):
         """Get the distributed synchronized object across the specified distributed groups."""
@@ -236,8 +239,8 @@ class ParallelState:
 
     def __init__(
         self,
-        data_parallel_group: Optional[Union[torch.distributed.ProcessGroup, int]] = None,
-        tensor_parallel_group: Optional[Union[torch.distributed.ProcessGroup, int]] = -1,
+        data_parallel_group: torch.distributed.ProcessGroup | int | None = None,
+        tensor_parallel_group: torch.distributed.ProcessGroup | int | None = -1,
     ):
         """Initialize the parallel state."""
         self.data_parallel_group = DistributedProcessGroup(data_parallel_group)
@@ -251,6 +254,13 @@ def get_group(ranks: list[int]):
     """Returns the process group if torch.distributed.is_initialized()."""
     # NCCL has an issue with calling barrier. So we just use the gloo backebnd for group barriers.
     return torch.distributed.new_group(ranks, backend="gloo") if is_initialized() else None
+
+
+def is_dtensor_sharded(model):
+    """Returns True if the model is using DTensor."""
+    return any(isinstance(param, DTensor) for param in model.parameters()) or any(
+        isinstance(param, DTensor) for param in model.buffers()
+    )
 
 
 class FileLock:
@@ -274,18 +284,18 @@ class FileLock:
         self.poll_time = poll_time
         self.handle = None
 
-    def try_acquire(self):  # noqa: D102
+    def try_acquire(self):
         try:
             self.handle = os.open(self.lockfile_path, os.O_CREAT | os.O_EXCL)
             return True
         except FileExistsError:
             return False
 
-    def wait(self):  # noqa: D102
+    def wait(self):
         while os.path.exists(self.lockfile_path):
             time.sleep(self.poll_time)
 
-    def release(self):  # noqa: D102
+    def release(self):
         if self.handle is not None:
             os.close(self.handle)
         os.remove(self.lockfile_path)

@@ -15,7 +15,7 @@
 
 """High-level API to automatically sparsify your model with various algorithms."""
 
-from typing import Any, Optional
+from typing import Any
 
 from torch import nn
 
@@ -26,11 +26,11 @@ from modelopt.torch.utils import unwrap_model
 
 from .mode import SparsityModeRegistry
 
-__all__ = ["sparsify", "export"]
+__all__ = ["export", "sparsify"]
 
 
 def sparsify(
-    model: nn.Module, mode: ModeLike, config: Optional[SearchConfig] = None
+    model: nn.Module, mode: ModeLike, config: SearchConfig | None = None
 ) -> tuple[nn.Module, dict[str, Any]]:
     """Sparsify a given model and search for they optimal sparsified weights.
 
@@ -91,7 +91,7 @@ def sparsify(
 
     # run search+sparsification algorithm
     searcher = searcher_cls()
-    searcher.search(model, {}, tuple(), config)
+    searcher.search(model, {}, (), config)
 
     # return the sparsified model
     return model

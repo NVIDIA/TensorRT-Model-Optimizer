@@ -18,6 +18,7 @@
 from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
 
+from modelopt.onnx.logging_config import logger
 from modelopt.onnx.op_types import (
     is_copy_op,
     is_linear_op,
@@ -59,31 +60,27 @@ def _build_fusible_partition(
     """
 
     def _is_on_non_residual_path(node: Node) -> bool:
-        if (
+        return bool(
             node.op == "Add"  # Input node should be an Add node
             # The Add node should have a non-residual input
             and non_residual_inputs[node.name]
             # Input from the current node is non-residual
             and cur_node.outputs[0].name == non_residual_inputs[node.name]
-        ):
-            return True
-        return False
+        )
 
     def _get_partition_node_outputs() -> list[str]:
         # Collect tensor names produced by nodes in fusible_partition
         # TODO: cache sub-partition outputs and append after them
         partition_node_outputs = []
         for partition_node in fusible_partition:
-            for node_output in partition_node.outputs:
-                partition_node_outputs.append(node_output.name)
+            partition_node_outputs.extend([output.name for output in partition_node.outputs])
 
         return partition_node_outputs
 
     def _is_cask_fusible(node: Node, partition_node_outputs: list[str]) -> bool:
         for tensor in node.inputs:
-            if tensor.name not in partition_node_outputs:
-                if not is_const_input(tensor):
-                    return False
+            if tensor.name not in partition_node_outputs and not is_const_input(tensor):
+                return False
         return True
 
     def _is_fusible_mul(mul_node: Node) -> bool:
@@ -102,14 +99,13 @@ def _build_fusible_partition(
             ["Mul", "Sigmoid", "Conv"],
             ["Mul", "Sigmoid", "BatchNormalization", "Conv"],
         ]
-        if any([has_path_type(mul_node, graph, p, is_forward=False) for p in fusible_patterns]):
+        if any(has_path_type(mul_node, graph, p, is_forward=False) for p in fusible_patterns):
             return True
 
         non_fusible_patterns = [["Mul", "Sigmoid"], ["Mul", "HardSigmoid"]]
-        if any([has_path_type(mul_node, graph, p, is_forward=False) for p in non_fusible_patterns]):
-            return False
-
-        return True
+        return not any(
+            has_path_type(mul_node, graph, p, is_forward=False) for p in non_fusible_patterns
+        )
 
     # Check the Mul nodes for their fusion compatibility
     if cur_node.op == "Mul" and not _is_fusible_mul(cur_node):
@@ -172,7 +168,7 @@ def _find_quantizable_kgen_partitions(
     ]
 
     # collect the outputs from the cask fusible partitions.
-    # assumption: the nodes are topologily sorted in the lists.
+    # assumption: the nodes are topologically sorted in the lists.
     cask_fusion_outputs = [partition[-1].outputs[0] for partition in cask_fusible_partitions]
 
     all_fusible_partitions = []
@@ -201,6 +197,7 @@ def find_fusible_partitions(
         List of partitions that are fusible by CASK with Conv/MatMul backbone.
         List of KGEN partitions with pointwise ops only.
     """
+    logger.info("Building KGEN/CASK targeted partitions")
 
     def _partition_helper(fusible_root_type_checker):
         all_fusible_partitions = []  # Collects all individual partitions
@@ -231,28 +228,33 @@ def find_fusible_partitions(
         return all_fusible_partitions
 
     cask_fusible_partitions = _partition_helper(is_linear_op)
+
     kgen_partitions = _partition_helper(is_pointwise_or_elementwise_op)
     kgen_partitions += _find_quantizable_kgen_partitions(graph, cask_fusible_partitions)
 
     return cask_fusible_partitions, kgen_partitions
 
 
-def get_skiped_output_layers(graph: Graph, paritially_quantizable_nodes: list[Node]) -> list[str]:
+def get_skipped_output_layers(graph: Graph, partially_quantizable_nodes: list[Node]) -> list[str]:
     """Returns the name of the non-quantizable output layers."""
     # TODO: see if input producer is already quantized or not
     # TODO: filter out input layers if consumer is not quantized already
     output_layers = []
-    paritially_quantizable_node_names = set([node.name for node in paritially_quantizable_nodes])
+    partially_quantizable_node_names = {node.name for node in partially_quantizable_nodes}
     graph_output_names = [tensor.name for tensor in graph.outputs]
 
     for node in graph.nodes:
-        for tensor in node.outputs:
-            if tensor.name in graph_output_names:
-                if (
+        output_layers.extend(
+            [
+                node.name
+                for tensor in node.outputs
+                if tensor.name in graph_output_names
+                and (
                     node.op not in ["Conv", "Gemm", "MatMul"]
-                    and node.name not in paritially_quantizable_node_names
-                ):
-                    output_layers.append(node.name)
+                    and node.name not in partially_quantizable_node_names
+                )
+            ]
+        )
 
     return output_layers
 
@@ -264,6 +266,7 @@ def find_quantizable_nodes(
     quantizable_op_types: list[str],
 ) -> list[Node]:
     """Return the graph ops which are quantizable but not partitioned yet."""
+    logger.info(f"Finding quantizable nodes. Initial nodes to quantize: {len(nodes_to_quantize)}")
 
     # TODO: Check if any BatchNormalization is un-partitioned
     # Note. Maxpool quantization has +/-
@@ -289,20 +292,28 @@ def find_quantizable_nodes(
         # as they need to check their neighbor's quantization status
         if is_pooling_or_window_op(node.op):
             pooling_and_window_ops.append(node)
+            logger.debug(f"Added pooling/window op to second pass: {node.name} ({node.op})")
             continue
 
         if is_pointwise_or_elementwise_op(node.op) and has_const_input(node):
+            logger.debug(f"Skipping pointwise op with const input: {node.name}")
             continue
 
         quantizable_nodes.append(node)
+        logger.debug(f"Added quantizable node: {node.name} ({node.op})")
+
+    logger.info(f"Found {len(pooling_and_window_ops)} pooling/window ops")
 
     quantizable_node_set = set(
         [node.name for node in nodes_to_quantize] + [node.name for node in quantizable_nodes]
     )
-    for node in pooling_and_window_ops:
-        # TODO: Add or _has_quantizable_producer, ex. inception-v1-12.onnx
-        if _has_quantizable_consumer(node, quantizable_node_set):
-            quantizable_nodes.append(node)
+
+    # TODO: Add or _has_quantizable_producer, ex. inception-v1-12.onnx
+    quantizable_nodes.extend(
+        node
+        for node in pooling_and_window_ops
+        if _has_quantizable_consumer(node, quantizable_node_set)
+    )
 
     return quantizable_nodes
 
@@ -357,15 +368,19 @@ def find_layer_norm_partitions(graph: Graph) -> list[list[Node]]:
         layer_norm_partition = []
         if node.op == "LayerNormalization":
             layer_norm_partitions.append([node])
+            logger.debug(f"Found direct LayerNormalization node: {node.name}")
         elif node.op == layer_norm_chain_types[0] and has_path_type(
             node, graph, layer_norm_chain_types, True, wild_card_types, layer_norm_partition
         ):
             layer_norm_partitions.append(layer_norm_partition)
+            logger.debug(f"Found layer norm pattern starting at: {node.name}")
         elif node.op == mean_var_norm_chain_types[0] and has_path_type(
             node, graph, mean_var_norm_chain_types, True, wild_card_types, layer_norm_partition
         ):
             layer_norm_partitions.append(layer_norm_partition)
+            logger.debug(f"Found mean-var norm pattern starting at: {node.name}")
 
+    logger.info(f"Found {len(layer_norm_partitions)} layer norm partitions")
     return layer_norm_partitions
 
 
@@ -404,8 +419,9 @@ def find_non_quantizable_partitions_from_patterns(graph: Graph) -> list[list[str
     layer_norm_partitions = find_layer_norm_partitions(graph)
     mha_partitions = find_mha_partitions(graph)
 
-    partitions = []
-    for partition_nodes in hard_coded_partitions + layer_norm_partitions + mha_partitions:
-        partitions.append([node.name for node in partition_nodes])
+    partitions = [
+        [node.name for node in partition_nodes]
+        for partition_nodes in hard_coded_partitions + layer_norm_partitions + mha_partitions
+    ]
 
     return partitions

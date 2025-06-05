@@ -14,8 +14,6 @@
 # limitations under the License.
 """Implements INT8 quantization for efficient tensor storage and computation."""
 
-from typing import Union
-
 import torch
 
 from ..qtensor.base_qtensor import BaseQuantizedTensor
@@ -38,9 +36,9 @@ class INT8QTensor(BaseQuantizedTensor):
     def quantize(
         cls,
         input: torch.Tensor,
-        scales: torch.Tensor = None,
-        axis: Union[tuple, int, None] = None,
-        block_sizes: dict = None,
+        scales: torch.Tensor | None = None,
+        axis: tuple | int | None = None,
+        block_sizes: dict | None = None,
     ) -> tuple:
         """Converting a tensor to a quantized format based on INT8 quantization.
 
@@ -99,7 +97,7 @@ class INT8QTensor(BaseQuantizedTensor):
 
         # Get args
         scales = kwarg["scale"]
-        block_sizes = kwarg.get("block_sizes", None)
+        block_sizes = kwarg.get("block_sizes")
 
         shape = self._quantized_data.shape
         if block_sizes:

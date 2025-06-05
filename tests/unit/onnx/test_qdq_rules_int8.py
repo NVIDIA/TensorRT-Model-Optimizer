@@ -94,7 +94,7 @@ def _check_resnet_residual_connection(onnx_path):
 
     #   Check that the left-side branch of Add contains a QDQ node
     #   In this case, this means that the inputs of Add should be DequantizeLinear and Conv.
-    add_node = [n for n in graph.nodes if n.op == "Add"][0]
+    add_node = next(n for n in graph.nodes if n.op == "Add")
     add_input_ops = [inp.inputs[0].op for inp in add_node.inputs]
     assert np.isin(add_input_ops, ["Conv", "DequantizeLinear"]).all(), (
         f"Add node {add_node.name} was not quantized correctly!"

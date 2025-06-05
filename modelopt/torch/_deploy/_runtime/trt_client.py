@@ -54,8 +54,8 @@ class TRTLocalClient(RuntimeClient):
                 "stronglyTyped",
                 "best",
             ],
-            # Support ONNX opsets 13-20
-            "onnx_opset": [str(i) for i in range(13, 21)],
+            # Support ONNX opsets 13-21
+            "onnx_opset": [str(i) for i in range(13, 22)],
         }
 
     def __init__(self, deployment: Deployment):
@@ -67,7 +67,9 @@ class TRTLocalClient(RuntimeClient):
         assert trt.init_libnvinfer_plugins(logger, ""), "Failed to initialize nvinfer plugins."
         self.stream = torch.cuda.Stream()
 
-    def _ir_to_compiled(self, ir_bytes: bytes, compilation_args: dict[str, Any] = None) -> bytes:
+    def _ir_to_compiled(
+        self, ir_bytes: bytes, compilation_args: dict[str, Any] | None = None
+    ) -> bytes:
         """Converts an ONNX model to a compiled TRT engine.
 
         Args:
@@ -82,8 +84,8 @@ class TRTLocalClient(RuntimeClient):
         self.node_names = get_node_names_from_bytes(onnx_model_file_bytes)
         engine_bytes, _, _ = build_engine(
             onnx_bytes,
-            dynamic_shapes=compilation_args.get("dynamic_shapes", None),
-            plugin_config=compilation_args.get("plugin_config", None),
+            dynamic_shapes=compilation_args.get("dynamic_shapes"),  # type: ignore[union-attr]
+            plugin_config=compilation_args.get("plugin_config"),  # type: ignore[union-attr]
             trt_mode=self.deployment["precision"],
             verbose=(self.deployment.get("verbose", "false").lower() == "true"),
         )
@@ -91,7 +93,7 @@ class TRTLocalClient(RuntimeClient):
         return engine_bytes
 
     def _profile(
-        self, compiled_model: bytes, compilation_args: dict[str, Any] = None
+        self, compiled_model: bytes, compilation_args: dict[str, Any] | None = None
     ) -> tuple[float, DetailedResults]:
         node_names = None
         enable_layerwise_profiling = False
@@ -102,7 +104,7 @@ class TRTLocalClient(RuntimeClient):
             compiled_model,
             onnx_node_names=node_names,
             enable_layerwise_profiling=enable_layerwise_profiling,
-            dynamic_shapes=compilation_args.get("dynamic_shapes", None),
+            dynamic_shapes=compilation_args.get("dynamic_shapes"),  # type: ignore[union-attr]
         )
         profiling_results = parse_profiling_log(trtexec_log.decode())
         latency = 0.0

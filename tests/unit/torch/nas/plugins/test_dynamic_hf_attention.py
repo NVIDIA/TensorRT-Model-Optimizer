@@ -24,7 +24,7 @@ from transformers.models.gptj.modeling_gptj import GPTJAttention, GPTJConfig
 
 
 @pytest.mark.parametrize(
-    "n_attn_head, embed_dim, rotary_dim, active_n_attn_head, active_embed_dim",
+    ("n_attn_head", "embed_dim", "rotary_dim", "active_n_attn_head", "active_embed_dim"),
     [
         (2, 12, 4, 1, 6),
         (4, 24, 6, 3, 12),
@@ -97,5 +97,5 @@ def test_dynamic_gptj_attention(
     hp = model.get_hparam("num_attention_heads")
     assert all(c % n_heads_divisor == 0 for c in hp.choices)
     assert hp.choices == list(
-        set([make_divisible(r * hp.original, n_heads_divisor) for r in n_heads_ratio])
+        {make_divisible(r * hp.original, n_heads_divisor) for r in n_heads_ratio}
     )

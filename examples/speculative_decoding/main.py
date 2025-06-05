@@ -31,7 +31,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Literal
 
 import torch
 import transformers
@@ -50,7 +50,7 @@ mto.enable_huggingface_checkpointing()
 
 @dataclass
 class ModelArguments:
-    model_name_or_path: Optional[str] = field(default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    model_name_or_path: str | None = field(default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
 
 
 @dataclass
@@ -64,7 +64,7 @@ class DataArguments:
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
-    cache_dir: Optional[str] = field(default=None)
+    cache_dir: str | None = field(default=None)
     model_max_length: int = field(
         default=2048,
         metadata={
@@ -80,15 +80,15 @@ class TrainingArguments(transformers.TrainingArguments):
 
 @dataclass
 class MedusaArguments:
-    medusa_num_heads: Optional[int] = field(default=1)
-    medusa_num_layers: Optional[int] = field(default=1)
+    medusa_num_heads: int | None = field(default=1)
+    medusa_num_layers: int | None = field(default=1)
 
 
 @dataclass
 class EagleArguments:
-    eagle_num_layers: Optional[int] = field(default=1)
-    use_input_layernorm_in_first_layer: Optional[bool] = field(default=True)
-    use_last_layernorm: Optional[bool] = field(default=False)
+    eagle_num_layers: int | None = field(default=1)
+    use_input_layernorm_in_first_layer: bool | None = field(default=True)
+    use_last_layernorm: bool | None = field(default=False)
 
 
 def train():

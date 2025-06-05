@@ -26,7 +26,7 @@ import tqdm
 
 from . import distributed as dist
 
-__all__ = ["num2hrb", "no_stdout", "print_rank_0", "DeprecatedError", "silence_matched_warnings"]
+__all__ = ["DeprecatedError", "no_stdout", "num2hrb", "print_rank_0", "silence_matched_warnings"]
 
 
 def num2hrb(num: float, suffix="") -> str:

@@ -20,58 +20,18 @@ from functools import partial
 import datasets
 import transformers
 from peft import LoraConfig, TaskType
-from torch.utils.data import Dataset
 from transformers import default_data_collator
 
 IGNORE_INDEX = -100
 
 
-class ConcatDataset(Dataset):
-    def __init__(self, dataset, max_length=4096):
-        self.dataset = dataset
-        self.samples = []
-        buffer = {"input_ids": [], "attention_mask": [], "labels": []}
-        for sample in self.dataset:
-            buffer = {k: v + sample[k] for k, v in buffer.items()}
-            while len(next(iter(buffer.values()))) > max_length:
-                self.samples.append({k: v[:max_length] for k, v in buffer.items()})
-                buffer = {k: v[max_length:] for k, v in buffer.items()}
-
-    def __getitem__(self, idx):
-        return self.samples[idx]
-
-    def __len__(self):
-        return len(self.samples)
-
-
-def get_preprocessed_samsum(tokenizer, split, max_length=4096):
-    def apply_prompt_template(sample):
-        return {
-            "prompt": prompt.format(dialog=sample["dialogue"]),
-            "summary": sample["summary"],
-        }
-
-    def tokenize_add_label(sample):
-        prompt = tokenizer.encode(tokenizer.bos_token + sample["prompt"], add_special_tokens=False)
-        summary = tokenizer.encode(
-            sample["summary"] + tokenizer.eos_token, add_special_tokens=False
-        )
-        sample = {
-            "input_ids": prompt + summary,
-            "attention_mask": [1] * (len(prompt) + len(summary)),
-            "labels": [IGNORE_INDEX] * len(prompt) + summary,
-        }
-        return sample
-
-    dataset = datasets.load_dataset("samsum", split=split, trust_remote_code=True)
-    prompt = "Summarize this dialog:\n{dialog}\n---\nSummary:\n"
-    dataset = dataset.map(apply_prompt_template, remove_columns=list(dataset.features))
-    dataset = dataset.map(tokenize_add_label, remove_columns=list(dataset.features))
-    dataset = ConcatDataset(dataset, max_length)
-    return dataset
-
-
-def get_daring_anteater(tokenizer: transformers.AutoTokenizer, split="train", max_length=4096):
+def get_daring_anteater(
+    tokenizer: transformers.AutoTokenizer,
+    split="train",
+    max_length=4096,
+    train_size=0,
+    eval_size=0,
+):
     # sample = {
     #     'system': '{system message}',
     #     'conversations': [
@@ -125,25 +85,36 @@ def get_daring_anteater(tokenizer: transformers.AutoTokenizer, split="train", ma
         dataset = get_daring_anteater.cached_dataset
     else:
         dataset = datasets.load_dataset("nvidia/Daring-Anteater", split="train")
+        # Shuffle and subsample the dataset
+        eval_size = 2000 if eval_size == 0 else eval_size
+        train_size = len(dataset) - eval_size if train_size == 0 else train_size - eval_size
+        if train_size + eval_size < len(dataset):
+            dataset = dataset.shuffle(seed=42).select(range(train_size + eval_size))
         dataset = dataset.map(process_and_tokenize, remove_columns=list(dataset.features))
-        dataset = dataset.train_test_split(test_size=2000, shuffle=True, seed=42)
+        dataset = dataset.train_test_split(test_size=eval_size, shuffle=True, seed=42)
         get_daring_anteater.cached_dataset = dataset  # type: ignore[attr-defined]
     return dataset[split]
 
 
 def make_supervised_data_module(
-    dataset="samsum", tokenizer: transformers.PreTrainedTokenizer = None
+    dataset="Daring-Anteater",
+    tokenizer: transformers.PreTrainedTokenizer = None,
+    train_size: int = 0,
+    eval_size: int = 0,
 ) -> dict:
     """Make dataset and collmtor for supervised fine-tuning."""
-    if dataset == "samsum":
-        train_dataset = get_preprocessed_samsum(tokenizer, "train", tokenizer.model_max_length)
-        val_dataset = get_preprocessed_samsum(tokenizer, "validation", tokenizer.model_max_length)
-    elif dataset == "Daring-Anteater":
-        train_dataset = get_daring_anteater(tokenizer, "train", tokenizer.model_max_length)
-        val_dataset = get_daring_anteater(tokenizer, "test", tokenizer.model_max_length)
-    return dict(
-        train_dataset=train_dataset, eval_dataset=val_dataset, data_collator=default_data_collator
-    )
+    if dataset == "Daring-Anteater":
+        train_dataset = get_daring_anteater(
+            tokenizer, "train", tokenizer.model_max_length, train_size, eval_size
+        )
+        val_dataset = get_daring_anteater(
+            tokenizer, "test", tokenizer.model_max_length, train_size, eval_size
+        )
+    return {
+        "train_dataset": train_dataset,
+        "eval_dataset": val_dataset,
+        "data_collator": default_data_collator,
+    }
 
 
 def get_lora_config():

@@ -19,11 +19,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ... import tensor_quant
-from .quant_module import QuantLinearConvBase, QuantModuleRegistry, _LegacyQuantLinearConvBaseMixin
+from ... import backends, tensor_quant
+from ...qtensor.base_qtensor import QTensorWrapper
+from ...utils import is_torch_export_mode
+from .quant_module import (
+    QuantLinearConvBase,
+    QuantModule,
+    QuantModuleRegistry,
+    _LegacyQuantLinearConvBaseMixin,
+)
 from .tensor_quantizer import TensorQuantizer
 
-__all__ = ["Linear", "QuantLinear", "SVDQuantLinear"]
+__all__ = ["Linear", "QuantLinear", "RealQuantLinear", "SVDQuantLinear"]
 
 
 @QuantModuleRegistry.register({nn.Linear: "nn.Linear"})
@@ -97,7 +104,6 @@ class SVDQuantLinear(QuantLinearConvBase):
 
     def _setup(self):
         """Overrides and bypass the _setup function."""
-        pass
 
     def fold_weight(self):
         """Fold the weight for faster eval."""
@@ -123,3 +129,66 @@ class SVDQuantLinear(QuantLinearConvBase):
             for attr in _attrs:
                 if hasattr(self.weight_quantizer, attr):
                     delattr(self.weight_quantizer, attr)
+
+
+class RealQuantLinear(QuantModule):
+    """Quantized version of nn.Linear with real quantization."""
+
+    def forward(self, input, *args, **kwargs):
+        """RealQuant layer forward function."""
+        # For torch.export, we use the default fake quant
+        if is_torch_export_mode():
+            return super().forward(input, *args, **kwargs)
+
+        # Check if real-quant GEMM is available
+        if hasattr(self, "_use_real_quant_gemm") and self._use_real_quant_gemm:
+            real_quant_gemm = (
+                self._real_quant_gemm_cache
+                if hasattr(self, "_real_quant_gemm_cache")
+                else backends.gemm_registry.find_match(self, input, args, kwargs)
+            )
+
+            # Note: We cache the real-quant GEMM function to avoid matching overhead.
+            # This assumes that the function will not change after the first call.
+            if real_quant_gemm:
+                self._real_quant_gemm_cache = real_quant_gemm
+                output = real_quant_gemm(self, input, self.weight, self.bias, *args, **kwargs)
+                return (
+                    self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
+                )
+
+        # Otherwise, fallback to the default GEMM
+        return super().forward(input, *args, **kwargs)
+
+    def _setup(self):
+        class RealQuantParameterDict(dict):
+            def __init__(self, weight_quantizer: TensorQuantizer, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.weight_quantizer = weight_quantizer
+
+            def __setitem__(self, key, value):
+                if (
+                    key == "weight"
+                    and self.weight_quantizer
+                    and self.weight_quantizer.is_enabled
+                    and not self.weight_quantizer._fake_quant
+                    and value.element_size() > 1
+                ):
+                    # reset the amax for later calibration
+                    if (
+                        self.weight_quantizer.amax is not None
+                        and self.weight_quantizer.amax.is_meta
+                    ):
+                        delattr(self.weight_quantizer, "_amax")
+                        self.weight_quantizer.amax = self.weight_quantizer._get_amax(value)
+                        self.weight_quantizer._calibrator.reset()
+                    # compress the weight
+                    real_quant_tensor = self.weight_quantizer(value)
+                    real_quant_value = QTensorWrapper(real_quant_tensor)
+                    del value  # delete the original weight to save memory
+                    value = real_quant_value
+                super().__setitem__(key, value)
+
+        # Monkey patch the _parameters.__setitem__ to real quant the weight when loading
+        # HF acclerate loades the weight by directly assigning the weight through the _parameters dict.
+        self._parameters = RealQuantParameterDict(self.weight_quantizer, self._parameters)

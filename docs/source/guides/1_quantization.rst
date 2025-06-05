@@ -20,5 +20,6 @@ Below, you can find the documentation for the quantization toolkit in ModelOpt:
     ./_choosing_quant_methods.rst
     ./_pytorch_quantization.rst
     ./_customized_model_quantization.rst
+    ./_compress_quantized_models.rst
     ./_onnx_quantization.rst
     ./windows_guides/_ONNX_PTQ_guide.rst

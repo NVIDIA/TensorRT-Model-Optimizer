@@ -23,7 +23,7 @@ from PIL import Image
 
 
 def load_json_file(file_path: Path):
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         data = json.load(f)
     return data
 

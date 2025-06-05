@@ -41,7 +41,9 @@ class TestBlockQuantCuda(BlockQuantTester):
 
 
 class TestTensorQuantizerE4M3:
-    @pytest.mark.parametrize("E, M, axis", [(5, 2, None), (4, 3, None), (4, 3, 1), (7, 3, None)])
+    @pytest.mark.parametrize(
+        ("E", "M", "axis"), [(5, 2, None), (4, 3, None), (4, 3, 1), (7, 3, None)]
+    )
     def test_e4m3(self, E, M, axis):  # noqa: N803
         is_error_expected = E != 4 or M != 3
         with pytest.raises(ValidationError) if is_error_expected else contextlib.nullcontext():
@@ -67,7 +69,7 @@ class TestTensorQuantizerfp4:
         x = torch.rand(2, 1, 16).cuda()
 
         fp4_x = fp4_quantizer(x)
-        ref = tensor_quant.nvfp4_dynamic_block_quant(x, 16, x.abs().amax(), None, (2, 1), (4, 3))
+        ref = tensor_quant.dynamic_block_quant(x, 16, x.abs().amax(), None, (2, 1), (4, 3))
         assert torch.allclose(fp4_x, ref)
 
         assert fp4_quantizer._get_amax(x) == x.abs().amax()

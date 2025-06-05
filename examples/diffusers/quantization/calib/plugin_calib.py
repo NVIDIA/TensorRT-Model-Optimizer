@@ -41,15 +41,14 @@ class PercentileCalibrator(MaxCalibrator):
         reduce_axis = quant_utils.convert_quantization_axis_to_reduce_axis(x, self._axis)
         local_amax = quant_utils.reduce_amax(x, axis=reduce_axis).detach()
         _cur_step = self.i % self.total_step
-        if _cur_step not in self.data.keys():
+        if _cur_step not in self.data:
             self.data[_cur_step] = local_amax
+        elif self.collect_method == "global_min":
+            self.data[_cur_step] = torch.min(self.data[_cur_step], local_amax)
+        elif self.collect_method in {"min-max", "mean-max"}:
+            self.data[_cur_step] = torch.max(self.data[_cur_step], local_amax)
         else:
-            if self.collect_method == "global_min":
-                self.data[_cur_step] = torch.min(self.data[_cur_step], local_amax)
-            elif self.collect_method == "min-max" or self.collect_method == "mean-max":
-                self.data[_cur_step] = torch.max(self.data[_cur_step], local_amax)
-            else:
-                self.data[_cur_step] += local_amax
+            self.data[_cur_step] += local_amax
         if self._track_amax:
             raise NotImplementedError
         self.i += 1
@@ -58,9 +57,9 @@ class PercentileCalibrator(MaxCalibrator):
         """Return the absolute max of all tensors collected."""
         up_lim = int(self.total_step * self.percentile)
         if self.collect_method == "min-mean":
-            amaxs_values = [self.data[i] / self.total_step for i in range(0, up_lim)]
+            amaxs_values = [self.data[i] / self.total_step for i in range(up_lim)]
         else:
-            amaxs_values = [self.data[i] for i in range(0, up_lim)]
+            amaxs_values = [self.data[i] for i in range(up_lim)]
         if self.collect_method == "mean-max":
             act_amax = torch.vstack(amaxs_values).mean(axis=0)[0]
         else:

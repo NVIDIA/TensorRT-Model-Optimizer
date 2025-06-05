@@ -15,6 +15,7 @@
 
 import os
 import sys
+from typing import Any
 
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
@@ -139,7 +140,7 @@ def get_model(
 
     if "vila" in ckpt_path.lower():
         sys.path.append(os.path.join(ckpt_path, "..", "VILA"))
-        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa
+        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
         from transformers import AutoModel
 
         hf_vila = AutoModel.from_pretrained(
@@ -228,9 +229,9 @@ def get_model(
             on_cpu = "cpu" in inferred_device_map.values()
 
             if on_cpu:
-                for device in max_memory.keys():
-                    if isinstance(device, int):
-                        max_memory[device] *= gpu_mem_percentage
+                for _device in max_memory:
+                    if isinstance(_device, int):
+                        max_memory[_device] *= gpu_mem_percentage
 
                 print(
                     "Model does not fit to the GPU mem. "
@@ -247,9 +248,8 @@ def get_model(
                 trust_remote_code=trust_remote_code,
             )
     model.eval()
-    if device == "cuda":
-        if not is_model_on_gpu(model):
-            print("Warning: Some parameters are not on a GPU. Calibration can be slow or hit OOM")
+    if device == "cuda" and not is_model_on_gpu(model):
+        print("Warning: Some parameters are not on a GPU. Calibration can be slow or hit OOM")
 
     return model
 
@@ -262,3 +262,17 @@ def is_model_on_gpu(model) -> bool:
 def is_enc_dec(model_type) -> bool:
     """Return if the model is a encoder-decoder model."""
     return model_type in ["t5", "bart", "whisper"]
+
+
+def apply_kv_cache_quant(quant_cfg: dict[str, Any], kv_cache_quant_cfg: dict[str, Any]):
+    """Apply quantization to the kv cache of the model."""
+    # Update KV cache related bmm quantizers
+    # If quant_cfg["quant_cfg"] is None, it corresponds to only kv cache quantization case
+    quant_cfg["quant_cfg"] = quant_cfg.get("quant_cfg", {"default": {"enable": False}})
+    quant_cfg["quant_cfg"].update(kv_cache_quant_cfg)
+
+    # Set default algorithm for kv cache quantization if not provided.
+    if not quant_cfg.get("algorithm"):
+        quant_cfg["algorithm"] = "max"
+
+    return quant_cfg

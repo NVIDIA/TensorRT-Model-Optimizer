@@ -16,7 +16,8 @@
 """Dynamic sequential implementation (variable depth based on torch.nn.modules.container)."""
 
 from collections import OrderedDict
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from torch import nn
 
@@ -83,7 +84,7 @@ class _DynamicSequential(DynamicModule):
         self._register_temp_attribute("_dynamic_depth", False)
 
         # register hyperparameters
-        self._register_hparam("depth", TracedHp(list(range(0, len(self) + 1))))
+        self._register_hparam("depth", TracedHp(list(range(len(self) + 1))))
 
         # register _modules as a dynamic attribute
         self._register_dynamic_attribute("_modules", self._get_modules)

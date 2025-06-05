@@ -17,7 +17,8 @@
 
 import copy
 import math
-from typing import TYPE_CHECKING, Callable, Optional, Union
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 from warnings import warn
 
 import torch
@@ -25,7 +26,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 if TYPE_CHECKING:
-    from transformers import PreTrainedTokenizer, PreTrainedTokenizerFast
+    from transformers import PreTrainedTokenizerBase
 
 # Use dict to store the config for each dataset.
 # If we want to export more options to user like target languages, we need more standardized approach like dataclass.
@@ -114,11 +115,11 @@ class _CustomDataset(torch.utils.data.Dataset):
 
 def get_dataset_dataloader(
     dataset_name: str = "cnn_dailymail",
-    tokenizer: Union["PreTrainedTokenizer", "PreTrainedTokenizerFast"] = None,
+    tokenizer: "PreTrainedTokenizerBase | None" = None,
     batch_size: int = 1,
     num_samples: int = 512,
     max_sample_length: int = 512,
-    device: Optional[str] = None,
+    device: str | None = None,
     include_labels: bool = False,
 ) -> DataLoader:
     """Get a dataloader with the dataset name and toknizer of the target model.
@@ -286,7 +287,7 @@ def _process_batch(batch_data, infer_method, max_working_batch_size=None):
         "batch_data values must be tensors"
     )
     # Get the batch size of current data
-    batch_size = batch_data[list(batch_data.keys())[0]].shape[0]
+    batch_size = batch_data[next(iter(batch_data.keys()))].shape[0]
 
     # If we know a smaller batch size works, preemptively split
     if max_working_batch_size is not None and batch_size > max_working_batch_size:
@@ -354,15 +355,15 @@ def _forward_loop(model: torch.nn.Module, dataloader: DataLoader) -> None:
 
 
 def create_forward_loop(
-    model: Optional[torch.nn.Module] = None,
+    model: torch.nn.Module | None = None,
     dataset_name: str = "cnn_dailymail",
-    tokenizer: Optional[Union["PreTrainedTokenizer", "PreTrainedTokenizerFast"]] = None,
+    tokenizer: "PreTrainedTokenizerBase | None" = None,
     batch_size: int = 1,
     num_samples: int = 512,
     max_sample_length: int = 512,
-    device: Optional[str] = None,
+    device: str | None = None,
     include_labels: bool = False,
-    dataloader: Optional[DataLoader] = None,
+    dataloader: DataLoader | None = None,
 ) -> Callable:
     """Creates and returns a forward loop function configured for a specific model, dataset, and tokenizer.
 

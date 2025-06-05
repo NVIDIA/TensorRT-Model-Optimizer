@@ -138,6 +138,10 @@ fi
 
 PTQ_ARGS=""
 
+if [ "$LOW_MEMORY_MODE" = "true" ]; then
+    PTQ_ARGS+=" --low_memory_mode "
+fi
+
 if [ -n "$AUTO_QUANTIZE_BITS" ]; then
     PTQ_ARGS+=" --auto_quantize_bits=$AUTO_QUANTIZE_BITS "
 fi

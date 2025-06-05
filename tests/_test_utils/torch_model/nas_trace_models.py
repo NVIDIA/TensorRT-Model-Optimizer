@@ -148,10 +148,7 @@ class ExampleModel2(BaseExampleModel):
         a = self.branch1(x)
         b = self.branch2(x)
         c = self.branch3(x)
-        if training:
-            d = a + b + c
-        else:
-            d = a + b + c + 1
+        d = a + b + c if training else a + b + c + 1
         e = self.last_layer(d)
         return e
 
@@ -593,10 +590,7 @@ class ExampleModel13(BaseExampleModel):
             out4 = self.more_failing(out3)
 
             # now make the model fail as a whole
-            if out4.shape[0] > 10:
-                out5 = 2 * out3
-            else:
-                out5 = out3
+            out5 = 2 * out3 if out4.shape[0] > 10 else out3
             return out5
 
     def __init__(self):
@@ -694,10 +688,7 @@ class ExampleModel16(BaseExampleModel):
 
     def forward(self, x):
         out = self.convs1(x)
-        if out.shape[0] > 10:
-            out = self.convs2(x)
-        else:
-            out = self.convs2(x)
+        out = self.convs2(x) if out.shape[0] > 10 else self.convs2(x)  # noqa: RUF034
         return out
 
     def get_num_searchable_symbols(self):
@@ -839,10 +830,7 @@ class ExampleModel20(BaseExampleModel):
             x = self.conv1(x)
             y = self.conv2(y)
 
-            if x.max() < 0:
-                out1 = F.relu(x)
-            else:
-                out1 = x
+            out1 = F.relu(x) if x.max() < 0 else x
             out2 = x + self.conv3(y)
 
             return out1, out2
@@ -855,10 +843,7 @@ class ExampleModel20(BaseExampleModel):
 
     def forward(self, x, y):
         out1, out2 = self.m(x, y)
-        if out2.max() > 0:
-            out2 = F.softplus(out2)
-        else:
-            out2 = F.tanh(out2)
+        out2 = F.softplus(out2) if out2.max() > 0 else F.tanh(out2)
         out2 = self.conv4(out2)
         return {"out1": out1, "out2": out2}
 

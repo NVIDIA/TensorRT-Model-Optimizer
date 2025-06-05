@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import argparse
+import sys
 import time
 import uuid
-from typing import List, Optional
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
@@ -68,7 +68,7 @@ def build_runner_from_config(args) -> LLM:
     return llm
 
 
-def apply_stop_tokens(text: str, stop_words: Optional[List[str]]) -> str:
+def apply_stop_tokens(text: str, stop_words: list[str] | None) -> str:
     """Truncate text at the first occurrence of any stop token."""
     if not stop_words:
         return text  # No stop tokens provided, return as is
@@ -208,7 +208,7 @@ def run_server():
         uvicorn.run(app, host=args.host, port=args.port)
     except Exception as e:
         print(f"Error: {e}")
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

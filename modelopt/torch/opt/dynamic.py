@@ -18,11 +18,11 @@
 # cython: annotation_typing = False
 
 import inspect
-import types
 import warnings
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from itertools import chain
-from typing import Any, Callable, Iterable, Iterator, Optional, TypeVar, Union
+from typing import Any, TypeVar
 
 import torch
 import torch.nn as nn
@@ -32,11 +32,12 @@ from torch.nn.parameter import Parameter
 
 from modelopt.torch.utils import get_unwrapped_name, is_channels_last, unwrap_model
 from modelopt.torch.utils.distributed import ParallelState
+from modelopt.torch.utils.network import bind_forward_method
 
 from .config import ModeloptBaseRule, RulesDict
 from .hparam import Hparam
 
-__all__ = ["DynamicModule", "_DMRegistryCls", "DynamicSpace"]
+__all__ = ["DynamicModule", "DynamicSpace", "_DMRegistryCls"]
 
 _pytorch_managed = type("_pytorch_managed", (), {})  # pylint: disable=invalid-name
 _da_val_default = type("_da_val_default", (), {})  # pylint: disable=invalid-name
@@ -200,8 +201,7 @@ class _DMAttributeManager:
         """Return the name and hparam for all or current hparams."""
         idx_start = 0 if all else -1
         for hp_lookup in self._hp_all[idx_start:]:
-            for name, hp in hp_lookup.items():
-                yield name, hp
+            yield from hp_lookup.items()
 
     def set_hp(self, name: str, hparam: Hparam):
         """Store hparam by the provided name in the right location."""
@@ -223,7 +223,7 @@ class _DMAttributeManager:
         self,
         name: str,
         val: Any = _da_val_default,
-        cb: Optional[DynamicAttributeCallback] = None,
+        cb: DynamicAttributeCallback | None = None,
     ):
         """Store a dynamic attribute together with its callback method."""
         # sanity checks
@@ -322,7 +322,7 @@ class _DMAttributeManager:
         """Return the setter for the given name."""
         return self._attr[name][0]
 
-    def set_attr(self, name: str, set_hook: Optional[SetAttrHook], del_hook: Optional[DelAttrHook]):
+    def set_attr(self, name: str, set_hook: SetAttrHook | None, del_hook: DelAttrHook | None):
         """Store the name of an attribute in the other list."""
         assert name not in self.attr_keys(), "Attribute already exists!"
 
@@ -477,8 +477,8 @@ class DynamicModule(nn.Module):
         self,
         name: str,
         val: Any,
-        set_hook: Optional[SetAttrHook] = None,
-        del_hook: Optional[DelAttrHook] = None,
+        set_hook: SetAttrHook | None = None,
+        del_hook: DelAttrHook | None = None,
     ):
         """Register a temporary attribute to the instance that is deleted upon the final export.
 
@@ -570,11 +570,11 @@ class DynamicModule(nn.Module):
         self.__class__ = manager.pop_level()
 
         # double-check that any remaining dynamic attributes still work
-        for k in manager.da_keys():
-            try:
+        try:
+            for k in manager.da_keys():
                 getattr(self, k)
-            except Exception as e:
-                raise RuntimeError(f"Dynamic attribute {k} unretrievable after export!") from e
+        except Exception as e:
+            raise RuntimeError(f"Dynamic attribute {k} unretrievable after export!") from e
 
         # remove manager if not needed anymore and check whether it should still be a DynamicModule
         is_dynamic = isinstance(self, DynamicModule)
@@ -628,34 +628,24 @@ class DynamicModule(nn.Module):
         corresponding dynamic behavior in a standardized and rigoruos fashion.
         """
 
-        def _remove_and_reattach_accelerate_monkey_patching(self):
-            # accelerate monkey patches the forward method of modules
-            # This is often used to pipeline parallelize a model or to perform forward with parameters that are
-            # cpu offloaded, but on-demand moved to GPU
-            # For example, see https://github.com/huggingface/accelerate/blob/2d74c0c077d41fdfee2bafca56527eda1db1228b/src/accelerate/hooks.py#L529
+        def bind_forward_method_if_needed(self):
+            # Modules with monkey patched forward method will not call the correct forward path according to the MRO
+            # We will correctly bind the forward method for modules patched by HF accelerate
+            # For other cases, we will just warn the user that the module might not work
 
-            # Monkey patched modules will not call the correct forward path according to the MRO after calling convert
-            # To fix this, we need to remove the monkey patching, update the forward method and add the hook back
-
-            if not hasattr(self.forward, "__func__") or (
-                self.forward.__func__ is not self.__class__.forward
+            if hasattr(self.forward, "__func__") and (
+                self.forward.__func__ is self.__class__.forward
             ):
-                if hasattr(self, "_hf_hook"):
-                    # The forward of this module has been monkey patched by HF accelerate
-                    # So it will not call the correct forward function after converting the module to a DynamicModule
-                    from accelerate.hooks import add_hook_to_module, remove_hook_from_module
+                return
 
-                    assert hasattr(self, "_old_forward")
-
-                    hook = self._hf_hook
-                    remove_hook_from_module(self)
-                    self.forward = types.MethodType(self.__class__.forward, self)
-                    add_hook_to_module(self, hook)
-                else:
-                    warnings.warn(
-                        "Received a module with monkey patched forward method. Dynamic converted module"
-                        " might not work."
-                    )
+            if hasattr(self, "_hf_hook"):
+                # accelerate patched module
+                bind_forward_method(self, self.__class__.forward)
+            else:
+                warnings.warn(
+                    "Received a module with monkey patched forward method. Dynamic converted module"
+                    " might not work."
+                )
 
         # update class
         original_cls = type(module)
@@ -670,7 +660,7 @@ class DynamicModule(nn.Module):
             module._dm_attribute_manager = _DMAttributeManager()
         module._dm_attribute_manager.append_level(original_cls)
 
-        _remove_and_reattach_accelerate_monkey_patching(module)
+        bind_forward_method_if_needed(module)
 
         # setup new hparams and dynamic attributes
         module._setup()
@@ -705,7 +695,6 @@ class DynamicModule(nn.Module):
         intact if not provided, e.g., one might call ``some_dynamic_module.modify()`` without any
         arguments and the module will remain unchanged.
         """
-        pass
 
     def freeze(self):
         """Restrict the hparams of the dynamic module to the orginal choices.
@@ -789,7 +778,7 @@ class DynamicModule(nn.Module):
             with self._dict_with_special():
                 super().__setattr__(name, value)
 
-    def __getattr__(self, name: str) -> Union[torch.Tensor, torch.nn.Module]:
+    def __getattr__(self, name: str) -> torch.Tensor | torch.nn.Module:
         """Get attr and specifically handle hparams as well as dynamic & temporary attributes."""
         # retrieve manager
         manager = self._get_dm_attribute_manager(use_default=True)
@@ -831,7 +820,7 @@ class DynamicModule(nn.Module):
         """Look up and return hparam (like "torch.nn.Module.get_parameter()" but for hparam)."""
         return self._get_dm_attribute_manager().get_hp(target)
 
-    def named_hparams(self, configurable: Optional[bool] = None) -> Iterator[tuple[str, Hparam]]:
+    def named_hparams(self, configurable: bool | None = None) -> Iterator[tuple[str, Hparam]]:
         """Return an iterator over all hparams of the module.
 
         Args:
@@ -884,7 +873,7 @@ class DynamicModule(nn.Module):
         return self._get_dm_attribute_manager().og_cls
 
     @property
-    def parallel_state(self) -> Optional[ParallelState]:
+    def parallel_state(self) -> ParallelState | None:
         """Return the parallel state of the dynamic module."""
         return getattr(self, "_parallel_state", None)
 
@@ -934,7 +923,7 @@ class _DMRegistryCls:
 
     T = TypeVar("T", bound=DynamicModule)
 
-    def __init__(self, prefix: str, dm_base_cls: Optional[type[DynamicModule]] = None):
+    def __init__(self, prefix: str, dm_base_cls: type[DynamicModule] | None = None):
         """Initialize the registry.
 
         Args:
@@ -982,7 +971,7 @@ class _DMRegistryCls:
         assert not _is_occupied(name), f"Dynamic class name {name} should not be occupied!"
         return name
 
-    def _get_registered_nn_class(self, nn_cls: type[nn.Module]) -> Optional[type[nn.Module]]:
+    def _get_registered_nn_class(self, nn_cls: type[nn.Module]) -> type[nn.Module] | None:
         """Optionally return the nn module class that should be used to register nn_cls.
 
         This method loops through the registry to see if there are any nn_cls matches, i.e., any
@@ -993,13 +982,13 @@ class _DMRegistryCls:
                 return nn_cls_
         return None
 
-    def __contains__(self, item: Union[nn.Module, type[nn.Module], str]):
+    def __contains__(self, item: nn.Module | type[nn.Module] | str):
         if isinstance(item, str):
             return item in self._key_registry.values()
         nn_cls = type(item) if isinstance(item, nn.Module) else item
         return self._get_registered_nn_class(nn_cls) is not None
 
-    def __getitem__(self, nn_cls: Union[type[nn.Module], str]) -> type[DynamicModule]:
+    def __getitem__(self, nn_cls: type[nn.Module] | str) -> type[DynamicModule]:
         """Return the dynamic module class for the given nn_cls type or registered string."""
         dm_cls = self.get(nn_cls)
         if dm_cls is None:
@@ -1021,9 +1010,7 @@ class _DMRegistryCls:
         name = self._get_dynamic_class_name(nn_cls)
         return type(name, tuple(clses), {})
 
-    def get(
-        self, nn_cls: Union[type[nn.Module], str], default: Any = None
-    ) -> Optional[type[DynamicModule]]:
+    def get(self, nn_cls: type[nn.Module] | str, default: Any = None) -> type[DynamicModule] | None:
         """Return the dynamic module class for the given nn_cls type or registered string."""
         # check string case first
         if isinstance(nn_cls, str):
@@ -1050,7 +1037,7 @@ class _DMRegistryCls:
         # default return
         return default
 
-    def get_key_from_dm(self, dm_cls: Union[type[DynamicModule], DynamicModule]) -> str:
+    def get_key_from_dm(self, dm_cls: type[DynamicModule] | DynamicModule) -> str:
         """Retrieve the key that is registered for a given dynamic module class."""
         dm_cls = type(dm_cls) if isinstance(dm_cls, DynamicModule) else dm_cls
         for nn_cls, dm_cls_ in self._dynamic_classes.items():
@@ -1058,7 +1045,7 @@ class _DMRegistryCls:
                 return self.get_key(nn_cls)
         raise KeyError(f"{dm_cls} is not registered for a dynamic module!")
 
-    def get_key(self, nn_cls: Union[type[nn.Module], str]) -> str:
+    def get_key(self, nn_cls: type[nn.Module] | str) -> str:
         """Retrieve the key that is registered for a given nn module class."""
         # sanity check
         assert nn_cls in self, f"{nn_cls} is not registered for a dynamic module!"
@@ -1072,7 +1059,7 @@ class _DMRegistryCls:
         assert nn_cls_ is not None
         return self._key_registry[nn_cls_]
 
-    def get_rule_class(self, nn_cls: Union[type[nn.Module], str]) -> type[ModeloptBaseRule]:
+    def get_rule_class(self, nn_cls: type[nn.Module] | str) -> type[ModeloptBaseRule]:
         """Retrieve the rule config class that is registered for a given nn module class."""
         dm_cls = self.get(nn_cls)
         if dm_cls is None:
@@ -1108,7 +1095,7 @@ class _DMRegistryCls:
 
         return decorator
 
-    def unregister(self, nn_cls: Union[type[nn.Module], type[T]]) -> None:
+    def unregister(self, nn_cls: type[nn.Module] | type[T]) -> None:
         """Unregister a previously registered dynamic base module and all its inherited modules.
 
         It throws a KeyError if the dynamic base module is not registered.
@@ -1149,7 +1136,7 @@ class DynamicSpace:
         return True
 
     def convert_to_dynamic(
-        self, rules: Optional[RulesDict], dm_registry: _DMRegistryCls
+        self, rules: RulesDict | None, dm_registry: _DMRegistryCls
     ) -> dict[str, nn.Module]:
         """Convert the model to dynamic modules according to the rules and provided registry.
 
@@ -1217,7 +1204,7 @@ class DynamicSpace:
         """
         return any(True for _ in self.named_dynamic_modules())
 
-    def named_hparams(self, configurable: Optional[bool] = None) -> Iterator[tuple[str, Hparam]]:
+    def named_hparams(self, configurable: bool | None = None) -> Iterator[tuple[str, Hparam]]:
         """Recursively yield the name and instance of *all* hparams.
 
         Args:
@@ -1267,7 +1254,7 @@ class DynamicSpace:
             space_size *= len(hp.choices)
         return space_size
 
-    def config(self, configurable: Optional[bool] = None) -> dict[str, Any]:
+    def config(self, configurable: bool | None = None) -> dict[str, Any]:
         """Return the config dict of all hyperparameters.
 
         Args:
@@ -1297,7 +1284,7 @@ class DynamicSpace:
         # go through config, select based on current config, and track key errors
         missing_keys = []
         inconsistent_keys = []
-        unexpected_keys = {k: True for k in config.keys()}
+        unexpected_keys = dict.fromkeys(config.keys(), True)
 
         # assign free/searchable hparams from config
         for name, hparam in configurables.items():
@@ -1325,14 +1312,14 @@ class DynamicSpace:
         unexpected_keys = [k for k, val in unexpected_keys.items() if val]
         error_msg = ""
         if strict and len(missing_keys) > 0:
-            error_msg += "\n\t".join(["Missing keys in config for:"] + missing_keys)
+            error_msg += "\n\t".join(["Missing keys in config for:", *missing_keys])
             error_msg += "\nMake sure all keys are present in config or set strict=False."
             raise RuntimeError(error_msg)
         if strict and len(unexpected_keys) > 0:
-            error_msg += "\n\t".join(["Unexpected keys in config for:"] + unexpected_keys)
+            error_msg += "\n\t".join(["Unexpected keys in config for:", *unexpected_keys])
             error_msg += "\nMake sure only required keys are in config or set strict=False."
         if strict and len(inconsistent_keys) > 0:
-            error_msg += "\n\t".join(["Inconsistent keys in config:"] + inconsistent_keys)
+            error_msg += "\n\t".join(["Inconsistent keys in config:", *inconsistent_keys])
             error_msg += "\nMake sure keys in config are consistent or set strict=False."
         if error_msg:
             raise RuntimeError(f"Error in selecting config:\n{error_msg}")

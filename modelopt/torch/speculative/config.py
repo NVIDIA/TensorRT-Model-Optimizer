@@ -15,8 +15,6 @@
 
 """Configurations for speculative decoding modes."""
 
-from typing import List
-
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 
 EAGLE1_DEFAULT_CFG = {
@@ -110,7 +108,7 @@ class EagleConfig(ModeloptBaseConfig):
         default=False, description=("Whether to use aux hidden state (EAGLE-3).")
     )
 
-    eagle_aux_hidden_state_layer_ids: List = ModeloptField(
+    eagle_aux_hidden_state_layer_ids: list = ModeloptField(
         default=[],
         description=("The list of aux hidden state layers used in EAGLE-3."),
     )

@@ -87,12 +87,10 @@ def _remap_key(key_dict: dict[str, Any]):
 
 
 def load_and_preprocess_state_dict(modelopt_state_root, world_size=8):
-    state_dict_list = []
-    # load amax from nvfp4 state dict
-    for rank in range(world_size):
-        state_dict_list.append(
-            torch.load(f"{modelopt_state_root}/amax_dict_rank{rank}-mp{world_size}.pt")
-        )
+    state_dict_list = [
+        torch.load(f"{modelopt_state_root}/amax_dict_rank{rank}-mp{world_size}.pt")
+        for rank in range(world_size)
+    ]
 
     # calculate the max acroos all TP
     merged_state_dict = state_dict_list[0]
@@ -121,11 +119,11 @@ def load_and_preprocess_state_dict(modelopt_state_root, world_size=8):
 
 
 def process_quant_config(quant_config_path: str, save_path: str) -> dict[str, Any]:
-    with open(quant_config_path, "r") as f:
+    with open(quant_config_path) as f:
         quant_config = json.load(f)
 
     if "exclude_modules" in quant_config["quantization"]:
-        exclude_dict = {k: None for k in quant_config["quantization"]["exclude_modules"]}
+        exclude_dict = dict.fromkeys(quant_config["quantization"]["exclude_modules"])
         _remap_key(exclude_dict)
         quant_config["quantization"]["exclude_modules"] = list(exclude_dict.keys())
 
@@ -165,7 +163,7 @@ def convert_fp8_ckpt_to_nvfp4(
     torch.set_default_dtype(torch.bfloat16)
     model_index_file = os.path.join(fp8_root, "model.safetensors.index.json")
     os.makedirs(save_root, exist_ok=True)
-    with open(model_index_file, "r") as f:
+    with open(model_index_file) as f:
         model_index = json.load(f)
     weight_map = model_index["weight_map"]
 
@@ -237,10 +235,7 @@ def convert_fp8_ckpt_to_nvfp4(
                         ).to(weight.device)
                         quantized_weight, weight_scaling_factor, weight_scaling_factor_2 = (
                             NVFP4QTensor.quantize(
-                                weight,
-                                16,
-                                None,
-                                weight_scaling_factor_2,
+                                weight, 16, None, weight_scaling_factor_2, try_tensorrt=False
                             )
                         )
 

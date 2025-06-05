@@ -16,7 +16,6 @@
 import copy
 import math
 from contextlib import nullcontext
-from typing import Union
 
 import pytest
 import torch.nn as nn
@@ -26,13 +25,13 @@ from _test_utils.torch_model.vision_models import (
 )
 
 import modelopt.torch.nas as mtn
-from modelopt.torch.nas._algorithms import ConstraintsFunc
+from modelopt.torch.nas.algorithms import ConstraintsFunc
 from modelopt.torch.opt.utils import named_hparams
 from modelopt.torch.utils import random
 
 
 @pytest.mark.parametrize(
-    "get_model_and_input,variant",
+    ("get_model_and_input", "variant"),
     [
         (get_tiny_mobilenet_and_input, 0),
         (get_tiny_resnet_and_input, 1),
@@ -69,7 +68,7 @@ def test_searched_model_constraints(get_model_and_input, variant):
     )
     flops_max = mtn.utils.inference_flops(model, dummy_input)
 
-    def check_constraint(val: float, limits: Union[float, tuple[float, float]]) -> bool:
+    def check_constraint(val: float, limits: float | tuple[float, float]) -> bool:
         """Check if val falls within limits. `None` indicates open-ended intervals."""
         return val >= limits[0] and val <= limits[1] if isinstance(limits, tuple) else val <= limits
 
@@ -226,7 +225,7 @@ def test_profile_same_max(get_model_and_input):
 
 
 @pytest.mark.parametrize(
-    "get_model_and_input,mode",
+    ("get_model_and_input", "mode"),
     [
         (get_tiny_resnet_and_input, "autonas"),
         (get_tiny_mobilenet_and_input, "fastnas"),

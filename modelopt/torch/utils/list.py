@@ -15,16 +15,11 @@
 
 """Utils for operating on lists."""
 
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 
-__all__ = [
-    "list_closest_to_median",  # used
-    "val2list",  # used
-    "val2tuple",  # used
-    "stats",  # used
-]
+__all__ = ["list_closest_to_median", "stats", "val2list", "val2tuple"]
 
 
 def list_closest_to_median(x: list) -> Any:
@@ -34,14 +29,14 @@ def list_closest_to_median(x: list) -> Any:
     return x[diff.index(min(diff))]
 
 
-def val2list(val: Union[list, tuple, Any], repeat_time=1) -> list:
+def val2list(val: list | tuple | Any, repeat_time: int = 1) -> list:
     """Repeat `val` for `repeat_time` times and return the list or val if list/tuple."""
     if isinstance(val, (list, tuple)):
         return list(val)
     return [val for _ in range(repeat_time)]
 
 
-def val2tuple(val: Union[list, tuple, Any], min_len: int = 1, idx_repeat: int = -1) -> tuple:
+def val2tuple(val: list | tuple | Any, min_len: int = 1, idx_repeat: int = -1) -> tuple:
     """Return tuple with min_len by repeating element at idx_repeat."""
     # convert to list first
     val = val2list(val)

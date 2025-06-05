@@ -27,7 +27,7 @@ def _batchnorm(ndim: int) -> type[_BatchNorm]:
 
 
 @pytest.mark.parametrize(
-    "ndim, num_features, active_num_features",
+    ("ndim", "num_features", "active_num_features"),
     [
         (1, 10, 6),
         (2, 8, 4),
@@ -96,7 +96,7 @@ def _instancenorm(ndim: int) -> type[_InstanceNorm]:
 
 
 @pytest.mark.parametrize(
-    "ndim, num_features, active_num_features",
+    ("ndim", "num_features", "active_num_features"),
     [
         (1, 10, 6),
         (1, 10, 8),
@@ -152,7 +152,7 @@ def test_dynamic_instancenorm(ndim: int, num_features: int, active_num_features:
 
 
 @pytest.mark.parametrize(
-    "normlayer_shape, active_num_features",
+    ("normlayer_shape", "active_num_features"),
     [
         ([10], 8),
         ([32, 6], 4),
@@ -172,7 +172,7 @@ def test_dynamic_layernorm(normlayer_shape, active_num_features: int) -> None:
     # reassign active choice
     model.num_features = active_num_features
 
-    active_shape = tuple(normlayer_shape[:-1]) + (active_num_features,)
+    active_shape = (*tuple(normlayer_shape[:-1]), active_num_features)
     assert model.normalized_shape == active_shape
 
     model.train()
@@ -213,7 +213,7 @@ def test_dynamic_layernorm(normlayer_shape, active_num_features: int) -> None:
 
 
 @pytest.mark.parametrize(
-    "num_groups, num_channels, active_num_channels",
+    ("num_groups", "num_channels", "active_num_channels"),
     [
         (1, 8, 8),
         (4, 8, 4),

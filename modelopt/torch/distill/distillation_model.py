@@ -19,8 +19,9 @@
 
 import inspect
 import warnings
+from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, Callable, Optional, Union
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -64,7 +65,7 @@ class DistillationModel(DynamicModule):
             ],
             Loss,  # Loss fn.
         ],
-        loss_balancer: Optional[DistillationLossBalancer] = None,
+        loss_balancer: DistillationLossBalancer | None = None,
         expose_minimal_state_dict: bool = True,
     ):
         """Constructor.
@@ -102,7 +103,7 @@ class DistillationModel(DynamicModule):
         # model params to optimizer, saving/restoring state of DistillationModel etc.
         self._teacher_model = teacher_model
         self._loss_modules = nn.ModuleList(
-            set(m for m in self._layers_to_loss.values() if len(list(m.parameters())) > 0)
+            {m for m in self._layers_to_loss.values() if len(list(m.parameters())) > 0}
         )
 
         # Disable grad for teacher
@@ -130,7 +131,7 @@ class DistillationModel(DynamicModule):
         return self._loss_modules
 
     @property
-    def loss_balancer(self) -> Optional[DistillationLossBalancer]:
+    def loss_balancer(self) -> DistillationLossBalancer | None:
         """Fetch the loss balancer, if any."""
         return self._loss_balancer
 
@@ -204,9 +205,11 @@ class DistillationModel(DynamicModule):
         hide_losses = len(self._loss_modules) > 0 and not any(
             k.startswith("_loss_modules") for k in state_dict
         )
-        with self.hide_teacher_model(enable=hide_teacher):
-            with self.hide_loss_modules(enable=hide_losses):
-                return super().load_state_dict(state_dict, *args, **kwargs)
+        with (
+            self.hide_teacher_model(enable=hide_teacher),
+            self.hide_loss_modules(enable=hide_losses),
+        ):
+            return super().load_state_dict(state_dict, *args, **kwargs)
 
     def forward(self, *args, **kwargs) -> Any:
         """Implement forward pass.
@@ -238,10 +241,10 @@ class DistillationModel(DynamicModule):
 
     def compute_kd_loss(
         self,
-        student_loss: Optional[torch.Tensor] = None,
-        loss_reduction_fn: Callable = None,
+        student_loss: torch.Tensor | None = None,
+        loss_reduction_fn: Callable | None = None,
         skip_balancer: bool = False,
-    ) -> Union[torch.Tensor, dict[str, torch.Tensor]]:
+    ) -> torch.Tensor | dict[str, torch.Tensor]:
         """Compute total loss for distillation backpropagation.
 
         Args:
@@ -265,8 +268,7 @@ class DistillationModel(DynamicModule):
         if student_loss is not None:
             loss_dict[STUDENT_LOSS_KEY] = student_loss
 
-        idx = 0
-        for (student_layer, teacher_layer), loss_fn in self._layers_to_loss.items():
+        for i, ((student_layer, teacher_layer), loss_fn) in enumerate(self._layers_to_loss.items()):
             out_s = student_layer._intermediate_output
             out_t = teacher_layer._intermediate_output.pop(0)  # can store multiple in special cases
             student_layer._intermediate_output = None
@@ -276,8 +278,7 @@ class DistillationModel(DynamicModule):
                 # Needed in cases where a loss mask is used on non-scalar loss-fn outputs, prior to
                 # reducing to a scalar loss value.
                 loss = loss_reduction_fn(loss)
-            loss_dict[f"{loss_fn.__class__.__name__}_{idx}"] = loss
-            idx += 1
+            loss_dict[f"{loss_fn.__class__.__name__}_{i}"] = loss
 
         if skip_balancer:
             # Needed for special case if reduction needs to be done separately before balancing.
@@ -292,7 +293,7 @@ class DistillationModel(DynamicModule):
         return loss_total
 
 
-def output_capture_fwd_hook(module: nn.Module, input: Any, output: Any):  # pylint: disable=redefined-builtin  # noqa
+def output_capture_fwd_hook(module: nn.Module, input: Any, output: Any):  # pylint: disable=redefined-builtin
     """A hook to capture layer output."""
     # NOTE: Defined externally to allow pickling.
 

@@ -16,7 +16,7 @@
 """This module contains the mode descriptor for the quantization mode."""
 
 from abc import abstractmethod
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from modelopt.torch.opt.config import ModeloptBaseConfig
 from modelopt.torch.opt.conversion import ModelLikeModule
@@ -80,12 +80,12 @@ class QuantizeModeDescriptor(ModeDescriptor):
         return QuantizeConfig
 
     @property
-    def next_prohibited_modes(self) -> Optional[set[str]]:
+    def next_prohibited_modes(self) -> set[str] | None:
         """Modes that should not be applied after this mode."""
         return {"sparsity", "autonas", "fastnas", "gradnas"}
 
     @property
-    def export_mode(self) -> Optional[str]:
+    def export_mode(self) -> str | None:
         """The mode that corresponds to the export mode of this mode."""
         return "export_quantize"
 
@@ -155,10 +155,10 @@ class RealQuantizeModeDescriptor(ModeDescriptor):
         return "real_quantize"
 
     @property
-    def next_modes(self) -> Optional[set[str]]:
+    def next_modes(self) -> set[str] | None:
         """Real quantization should be the last mode in the chain."""
         # TODO: update this to support QLoRA
-        return set()
+        return {"max_calibrate"}
 
     @property
     def config_class(self) -> type[ModeloptBaseConfig]:
@@ -186,11 +186,21 @@ class RealQuantizeModeDescriptor(ModeDescriptor):
         return update_compress_metadata
 
 
+@QuantizeModeRegistry.register_mode
+class AutoQuantizeModeDescriptor(QuantizeModeDescriptor):
+    """Mode for autoquantize."""
+
+    @property
+    def name(self) -> str:
+        """Returns the value (str representation) of the mode."""
+        return "auto_quantize"
+
+
 def wrapped_calib_func(
     model: ModelLikeModule,
     config: QuantizeAlgorithmConfig,
-    forward_loop: Optional[ForwardLoop] = None,
-    func: Optional[Callable] = None,
+    forward_loop: ForwardLoop | None = None,
+    func: Callable | None = None,
 ) -> ConvertReturnType:
     """Wrap the calibration function to be compatible with the ModelOpt convert entrypoint.
 
@@ -233,7 +243,7 @@ class BaseCalibrateModeDescriptor(ModeDescriptor):
             compatible with the ModelOpt convert entrypoint.
     """
 
-    _calib_func: Optional[Callable]
+    _calib_func: Callable | None
 
     def __init__(self, *args, **kwargs):
         """Initialize Base calibrate mode descriptor."""
@@ -244,7 +254,7 @@ class BaseCalibrateModeDescriptor(ModeDescriptor):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    def _get_mode_name(cls, algo_name: Optional[str] = None, check: bool = False) -> str:
+    def _get_mode_name(cls, algo_name: str | None = None, check: bool = False) -> str:
         mode_name = algo_name + "_calibrate" if algo_name else "_no_calibrate"
         if check:
             assert mode_name in CalibrateModeRegistry, (

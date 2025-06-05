@@ -58,7 +58,7 @@ def main():
 
     if args.list_models:
         print("Available models:")
-        for model_name in models.keys():
+        for model_name in models:
             print(f" - {model_name}")
         return
 
@@ -105,7 +105,7 @@ def main():
 
     # modelopt modification
     eval_names = args.evals.split(",")
-    available_eval_names = set(["simpleqa", "mmlu", "math", "gpqa", "mgsm", "drop", "humaneval"])
+    available_eval_names = {"simpleqa", "mmlu", "math", "gpqa", "mgsm", "drop", "humaneval"}
     for eval_name in eval_names:
         assert eval_name in available_eval_names, f"{eval_name} not in {available_eval_names}"
 

@@ -16,9 +16,9 @@
 """Support quantization of diffusers layers."""
 
 import functools
+from collections.abc import Callable, Iterator
 from functools import partial
 from types import ModuleType
-from typing import Callable, Iterator, Optional
 
 import onnx
 import torch
@@ -209,10 +209,10 @@ class FP8SDPA(Function):
         query: torch._C.Value,
         key: torch._C.Value,
         value: torch._C.Value,
-        attn_mask: Optional[torch._C.Value] = None,
+        attn_mask: torch._C.Value | None = None,
         dropout_p: float = 0.0,
         is_causal: bool = False,
-        scale: Optional[torch._C.Value] = None,
+        scale: torch._C.Value | None = None,
         q_quantized_scale: float = 1.0,
         k_quantized_scale: float = 1.0,
         v_quantized_scale: float = 1.0,

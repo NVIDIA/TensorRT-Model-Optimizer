@@ -15,7 +15,7 @@
 
 """Hparam for Depth."""
 
-from typing import Callable
+from collections.abc import Callable
 
 from modelopt.torch.trace import Symbol, SymDepth
 

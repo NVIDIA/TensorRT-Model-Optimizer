@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import itertools
-from typing import Optional
 
 import pytest
 from _test_utils.torch_model.nas_trace_models import BaseExampleModel, get_example_models
@@ -24,9 +23,7 @@ from modelopt.torch.trace import Symbol, SymDepth, SymMap, analyze_symbols
 benchmarks = get_example_models()
 
 
-def _get_dependencies(
-    sym: Symbol, sym_map: SymMap, sym_to_name: Optional[dict[Symbol, str]] = None
-):
+def _get_dependencies(sym: Symbol, sym_map: SymMap, sym_to_name: dict[Symbol, str] | None = None):
     """Get all the dependencies of a symbol."""
     if sym_to_name is None:
         sym_to_name = {sym: name for name, sym in sym_map.named_symbols()}

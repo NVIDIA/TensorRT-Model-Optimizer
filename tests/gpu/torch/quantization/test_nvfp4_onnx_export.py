@@ -25,6 +25,7 @@ from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
 from modelopt.torch.quantization.utils import is_quantized_linear
 
 dtype_to_onnx_type_name = {
+    "Float": "FLOAT",
     "BFloat16": "BFLOAT16",
     "Half": "FLOAT16",
 }
@@ -41,18 +42,24 @@ def _check_gemm_quantized(model, dtype):
     nodes = model.graph.node
     for node in nodes:
         if node.op_type == "Gemm":
-            assert sum(1 for input_name in node.input if "DequantizeLinear" in input_name) == 2
+            for input_name in node.input:
+                # Both input nodes are of type DequantizeLinear, optionally passed through Cast
+                assert (
+                    "DequantizeLinear" in input_name
+                    or "TRT_FP4QDQ" in input_name
+                    or "bias" in input_name
+                )
         if node.op_type in ["DequantizeLinear", "TRT_FP4DynamicQuantize"]:
             scale_type = _get_initializer_type_by_name(model, node.input[1])
-            assert not scale_type or scale_type == dtype_to_onnx_type_name[dtype]
+            if "fp8_scale" in node.input[1]:
+                assert scale_type == dtype_to_onnx_type_name["Float"]
+            elif "fp16_scale" in node.input[1]:
+                assert scale_type == dtype_to_onnx_type_name[dtype]
 
             output_type = _get_initializer_type_by_name(model, node.output[0])
             assert not output_type or output_type == dtype_to_onnx_type_name[dtype]
 
 
-@pytest.mark.skipif(
-    not hasattr(onnx.TensorProto, "FLOAT4E2M1"), reason="onnx.TensorProto does not have FLOAT4E2M1"
-)
 @pytest.mark.parametrize(
     "dtype",
     ["Half", "BFloat16"],

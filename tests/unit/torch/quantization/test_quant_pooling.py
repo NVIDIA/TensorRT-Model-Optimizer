@@ -26,7 +26,7 @@ from modelopt.torch.quantization.nn.modules import quant_pooling
 
 class TestQuantMaxPool:
     @pytest.mark.parametrize(
-        "pool_cls, f_pool, input_shape",
+        ("pool_cls", "f_pool", "input_shape"),
         [
             (quant_pooling.QuantMaxPool1d, F.max_pool1d, (2, 5, 5)),
             (quant_pooling.QuantMaxPool2d, F.max_pool2d, (2, 5, 5, 5)),
@@ -92,7 +92,7 @@ class TestQuantMaxPool:
 
 class TestQuantAvgPoolNd:
     @pytest.mark.parametrize(
-        "pool_cls, f_pool, input_shape",
+        ("pool_cls", "f_pool", "input_shape"),
         [
             (quant_pooling.QuantAvgPool1d, F.avg_pool1d, (2, 5, 5)),
             (quant_pooling.QuantAvgPool2d, F.avg_pool2d, (2, 5, 5, 5)),
@@ -144,7 +144,7 @@ class TestQuantAvgPoolNd:
 
 class TestQuantAdaptiveAvgPoolNd:
     @pytest.mark.parametrize(
-        "pool_cls, f_pool, input_shape",
+        ("pool_cls", "f_pool", "input_shape"),
         [
             (quant_pooling.QuantAdaptiveAvgPool1d, F.adaptive_avg_pool1d, (2, 5, 5)),
             (quant_pooling.QuantAdaptiveAvgPool2d, F.adaptive_avg_pool2d, (2, 5, 5, 5)),

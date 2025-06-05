@@ -274,7 +274,7 @@ def _create_quantized_class_from_ast(
         if method_code.co_freevars != original_method.__code__.co_freevars:
             warn(f"{new_class_name}.{method_name} is a decorated method. Ignoring the decorator!")
 
-            new_closure = tuple()
+            new_closure = ()
             for freevar in method_code.co_freevars:
                 assert freevar in original_method.__closure__
                 new_closure += (

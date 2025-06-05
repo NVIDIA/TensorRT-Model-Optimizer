@@ -16,12 +16,13 @@
 """A wrapper over the TensorRT-LLM high level API runner."""
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable, Optional, Union
+from typing import Any
 
 import tensorrt_llm
 import torch
-from packaging.version import parse
+from packaging.version import Version
 from tensorrt_llm import SamplingParams
 from tensorrt_llm._torch.pyexecutor.config import PyTorchConfig
 from tensorrt_llm.bindings.executor import DecodingConfig
@@ -117,9 +118,9 @@ class LLM(TRT_LLM):
 
     def __init__(
         self,
-        checkpoint_dir: Union[str, Path],
-        tokenizer: Optional[Union[str, Path, TokenizerBase]] = None,
-        kv_cache_config: dict[str, Union[int, float]] = {},
+        checkpoint_dir: str | Path,
+        tokenizer: "str | Path | TokenizerBase | None" = None,
+        kv_cache_config: dict[str, int | float] = {},
         medusa_choices: Any = None,
         tp: int = 0,
         trust_remote_code: bool = False,
@@ -135,9 +136,9 @@ class LLM(TRT_LLM):
             tp: the tensor parallel size (for the torch backend). If 0, it will be set to the number of GPUs.
             trust_remote_code: whether to trust the remote code (for the torch backend).
         """
-        assert parse(tensorrt_llm.__version__) >= parse("0.17.0")
+        assert Version(tensorrt_llm.__version__) >= Version("0.17.0")
 
-        with open(Path(checkpoint_dir) / "config.json", "r") as config_file:
+        with open(Path(checkpoint_dir) / "config.json") as config_file:
             config = json.load(config_file)
 
             if "build_config" in config:
@@ -177,11 +178,11 @@ class LLM(TRT_LLM):
 
     def _generate(
         self,
-        prompts: Union[Iterable[str], Iterable[list[int]]],
+        prompts: Iterable[str] | Iterable[list[int]],
         max_new_tokens: int,
         temperature: float = 1.0,
-        top_p: float = None,
-        stop_words: list[str] = None,
+        top_p: float | None = None,
+        stop_words: list[str] | None = None,
     ):
         assert temperature >= 0.0, "Temperature must be greater than 0.0."
 
@@ -192,19 +193,23 @@ class LLM(TRT_LLM):
         beam_width = self.max_beam_width
         kwargs = _sanitize_temperature_and_top_p(temperature, top_p)
         sampling_config = SamplingParams(
-            max_tokens=max_new_tokens, beam_width=beam_width, stop=stop_words, **kwargs
+            max_tokens=max_new_tokens,
+            use_beam_search=True,
+            best_of=beam_width,
+            stop=stop_words,
+            **kwargs,
         )
 
         return self.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
 
     def generate_tokens(
         self,
-        prompts: Union[Iterable[str], Iterable[list[int]]],
+        prompts: Iterable[str] | Iterable[list[int]],
         max_new_tokens: int,
         temperature: float = 1.0,
-        top_p: float = None,
-        stop_words: list[str] = None,
-    ) -> Union[list[list[int]], list[list[list[int]]]]:
+        top_p: float | None = None,
+        stop_words: list[str] | None = None,
+    ) -> list[list[int]] | list[list[list[int]]]:
         """Generates the tokens based on the input prompts.
 
         Args:
@@ -236,12 +241,12 @@ class LLM(TRT_LLM):
 
     def generate_text(
         self,
-        prompts: Union[Iterable[str], Iterable[list[int]]],
+        prompts: Iterable[str] | Iterable[list[int]],
         max_new_tokens: int,
         temperature: float = 1.0,
-        top_p: float = None,
-        stop_words: list[str] = None,
-    ) -> Union[list[str], list[list[str]]]:
+        top_p: float | None = None,
+        stop_words: list[str] | None = None,
+    ) -> list[str] | list[list[str]]:
         """Generates the text based on the input prompts.
 
         Args:
@@ -270,9 +275,9 @@ class LLM(TRT_LLM):
 
     def generate_context_logits(
         self,
-        prompts: Union[Iterable[str], Iterable[list[int]]],
+        prompts: Iterable[str] | Iterable[list[int]],
         temperature: float = 1.0,
-        top_p: float = None,
+        top_p: float | None = None,
     ) -> list[torch.tensor]:
         """Generates the context logits based on the input prompts.
 
@@ -292,7 +297,7 @@ class LLM(TRT_LLM):
         kwargs = _sanitize_temperature_and_top_p(temperature, top_p)
         kwargs["return_context_logits"] = True
 
-        sampling_config = SamplingParams(max_tokens=1, beam_width=1, **kwargs)
+        sampling_config = SamplingParams(max_tokens=1, use_beam_search=True, best_of=1, **kwargs)
 
         outputs = self.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
 

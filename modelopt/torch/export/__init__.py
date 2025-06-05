@@ -15,6 +15,7 @@
 
 """Export package. So far it only supports selected nemo and huggingface LLMs."""
 
+from .convert_hf_config import *
 from .model_config import *
 from .model_config_export import *
 from .model_utils import *

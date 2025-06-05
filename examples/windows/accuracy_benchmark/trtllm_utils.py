@@ -15,7 +15,6 @@
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from transformers import AutoTokenizer, LlamaTokenizer, T5Tokenizer
 
@@ -87,7 +86,7 @@ def supports_inflight_batching(engine_dir):
 
 
 def read_decoder_start_token_id(engine_dir):
-    with open(Path(engine_dir) / "config.json", "r") as f:
+    with open(Path(engine_dir) / "config.json") as f:
         config = json.load(f)
     return config["pretrained_config"]["decoder_start_token_id"]
 
@@ -95,7 +94,7 @@ def read_decoder_start_token_id(engine_dir):
 def read_model_name(engine_dir: str):
     engine_version = get_engine_version(engine_dir)
 
-    with open(Path(engine_dir) / "config.json", "r") as f:
+    with open(Path(engine_dir) / "config.json") as f:
         config = json.load(f)
 
     if engine_version is None:
@@ -120,11 +119,11 @@ def throttle_generator(generator, stream_interval):
 
 
 def load_tokenizer(
-    tokenizer_dir: Optional[str] = None,
-    vocab_file: Optional[str] = None,
+    tokenizer_dir: str | None = None,
+    vocab_file: str | None = None,
     model_name: str = "GPTForCausalLM",
-    model_version: Optional[str] = None,
-    tokenizer_type: Optional[str] = None,
+    model_version: str | None = None,
+    tokenizer_type: str | None = None,
     trust_remote_code: bool = False,
 ):
     if vocab_file is None:
@@ -141,7 +140,7 @@ def load_tokenizer(
             tokenizer_type=tokenizer_type,
             use_fast=use_fast,
         )
-    elif model_name == "GemmaForCausalLM" or model_name == "RecurrentGemmaForCausalLM":
+    elif model_name in {"GemmaForCausalLM", "RecurrentGemmaForCausalLM"}:
         from transformers import GemmaTokenizer
 
         # Initialize tokenizer from vocab file.

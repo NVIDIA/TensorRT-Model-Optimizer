@@ -185,7 +185,7 @@ def get_calib_inputs(
         dataset2 = load_dataset("mit-han-lab/pile-val-backup", split="validation")
         column = "text"
     else:
-        assert 0, f'dataset "{dataset_name}" not supported'
+        raise ValueError(f'dataset "{dataset_name}" not supported')
 
     # dataset2 = dataset2.shuffle(seed=42)
     dataset2 = dataset2[column][:calib_size]

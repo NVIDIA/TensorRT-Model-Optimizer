@@ -23,7 +23,7 @@ from modelopt.torch.quantization.utils import (
 
 
 @pytest.mark.parametrize(
-    "block_sizes, test_input, expected_scales",
+    ("block_sizes", "test_input", "expected_scales"),
     [
         (
             {-1: 2, -2: 2},
@@ -58,7 +58,7 @@ def test_reduce_block_amax(block_sizes, test_input, expected_scales):
 
 
 @pytest.mark.parametrize(
-    "shape, quant_axis, expected_reduce_axis",
+    ("shape", "quant_axis", "expected_reduce_axis"),
     [
         ((2, 3, 4), None, None),  # Per-tensor quantization (None axis)
         ((2, 3, 4), 0, [1, 2]),  # Single axis cases

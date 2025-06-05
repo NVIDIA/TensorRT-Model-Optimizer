@@ -23,7 +23,7 @@ import os
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
 from warnings import warn
 
 import torch
@@ -101,7 +101,7 @@ def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
 def get_quantized_state(
     module: torch.nn.Module,
     dtype: torch.dtype = torch.float16,
-) -> Tuple[Dict[str, torch.Tensor], str, int]:
+) -> tuple[dict[str, torch.Tensor], str, int]:
     """Return a state_dict, quantization format, and block_size of the module.
 
     Args:
@@ -173,7 +173,7 @@ class GPTModelExporter:
     def __init__(
         self,
         model: torch.nn.Module,
-        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+        pretrained_model_name_or_path: str | os.PathLike | None = None,
         export_extra_modules: bool = False,
         dtype=torch.bfloat16,
         trust_remote_code: bool = True,
@@ -234,10 +234,7 @@ class GPTModelExporter:
             if mode == "eagle" and export_extra_modules:
                 is_eagle3 = (mode_cfg["config"]["use_aux_hidden_state"],)
 
-                if is_eagle3:
-                    architectures = "LlamaForCausalLMEagle3"
-                else:
-                    architectures = "LlamaForCausalLMEagle"
+                architectures = "LlamaForCausalLMEagle3" if is_eagle3 else "LlamaForCausalLMEagle"
 
                 self.rules = self.all_rules[architectures]
 
@@ -301,7 +298,7 @@ class GPTModelExporter:
                 }
                 self._hf_config.mtp = mtp_config
 
-    def save_pretrained(self, save_directory: Union[str, os.PathLike]):
+    def save_pretrained(self, save_directory: str | os.PathLike):
         """Save a unified checkpoint which can be deploied by vLLM and TensorRT-LLM.
 
         Args:
@@ -310,11 +307,8 @@ class GPTModelExporter:
         pp_rank = get_pipeline_model_parallel_rank()
         pp_size = get_pipeline_model_parallel_world_size()
 
-        meta_filename = "model-{:05d}-of-{:05d}.json".format(pp_rank + 1, pp_size)
-        ckpt_filename = "model-{:05d}-of-{:05d}.safetensors".format(
-            pp_rank + 1,
-            pp_size,
-        )
+        meta_filename = f"model-{pp_rank + 1:05d}-of-{pp_size:05d}.json"
+        ckpt_filename = f"model-{pp_rank + 1:05d}-of-{pp_size:05d}.safetensors"
 
         # Main export process
         state_dict = self.extra_state_dict if self.export_extra_modules else self.state_dict
@@ -404,10 +398,7 @@ class GPTModelExporter:
                 "weight_map": {},
             }
             for pp_rank in range(get_pipeline_model_parallel_world_size()):
-                meta_filename = "model-{:05d}-of-{:05d}.json".format(
-                    pp_rank + 1,
-                    get_pipeline_model_parallel_world_size(),
-                )
+                meta_filename = f"model-{pp_rank + 1:05d}-of-{get_pipeline_model_parallel_world_size():05d}.json"
                 with open(save_directory + "/" + meta_filename) as f:
                     shard = json.load(f)
                 safetensor_index["metadata"]["total_size"] += shard["metadata"]["total_size"]
@@ -450,9 +441,9 @@ class GPTModelExporter:
 
         return all_rules
 
-    def _get_weight_scales(self, quantized_state: Dict[str, Any], qformat: str):
-        weight_scale = quantized_state.get("weight_scale", None)
-        weight_scale_2 = quantized_state.get("weight_scale_2", None)
+    def _get_weight_scales(self, quantized_state: dict[str, Any], qformat: str):
+        weight_scale = quantized_state.get("weight_scale")
+        weight_scale_2 = quantized_state.get("weight_scale_2")
 
         if weight_scale is not None:
             weight_scale = weight_scale.clone().detach()
@@ -465,7 +456,7 @@ class GPTModelExporter:
 
     def _name_remapping(
         self,
-        module: Union[torch.nn.Module, torch.Tensor],
+        module: torch.nn.Module | torch.Tensor,
         prefix: str,
         skip_output_scale: bool = True,
         mapping={},
@@ -491,7 +482,7 @@ class GPTModelExporter:
             )
 
         for key, val in name_to_value.items():
-            if "output_scale" == key and skip_output_scale:
+            if key == "output_scale" and skip_output_scale:
                 continue
             else:
                 source_key = mapping.get(key, key)
@@ -543,7 +534,7 @@ class GPTModelExporter:
         for key, val in name_to_value.items():
             gate_proj_key = gate_proj_prefix + key
             up_proj_key = up_proj_prefix + key
-            if "output_scale" == key:
+            if key == "output_scale":
                 continue
             else:
                 self._state_dict[gate_proj_key] = val.detach().clone()
@@ -646,7 +637,7 @@ class GPTModelExporter:
             q_proj_key = q_proj_prefix + key
             k_proj_key = k_proj_prefix + key
             v_proj_key = v_proj_prefix + key
-            if "output_scale" == key:
+            if key == "output_scale":
                 self._state_dict[prefix + k_scale_name] = val.detach().clone()
                 self._state_dict[prefix + v_scale_name] = val.detach().clone()
             else:
@@ -871,10 +862,10 @@ class GPTModelExporter:
 
 def export_mcore_gpt_to_hf(
     model: torch.nn.Module,
-    pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
+    pretrained_model_name_or_path: str | os.PathLike | None = None,
     export_extra_modules: bool = False,
     dtype: torch.dtype = torch.float16,
-    export_dir: Union[Path, str] = tempfile.gettempdir(),
+    export_dir: Path | str = tempfile.gettempdir(),
 ):
     """Export Megatron Core GPTModel to unified checkpoint and save to export_dir.
 
@@ -917,7 +908,7 @@ class GPTModelImporter:
         self,
         model: torch.nn.Module,
         pretrained_model_name_or_path: str,
-        workspace_dir: Optional[str] = None,
+        workspace_dir: str | None = None,
         dtype=torch.bfloat16,
         trust_remote_code: bool = True,
     ):
@@ -964,7 +955,7 @@ class GPTModelImporter:
 
         return all_rules
 
-    def _get_safetensor(self, key, sharding_dim: Optional[int] = None):
+    def _get_safetensor(self, key, sharding_dim: int | None = None):
         """Get a safetensor from the sharded checkpoint."""
         safetensors_file = Path(self.pretrained_model_path) / "model.safetensors"
         safetensors_index_file = Path(self.pretrained_model_path) / "model.safetensors.index.json"
@@ -993,7 +984,7 @@ class GPTModelImporter:
                 rank_offset = tp_rank * per_rank_size
                 assert len(shape) == 2
                 assert shape[sharding_dim] % tp_size == 0
-                if sharding_dim == 1 or sharding_dim == -1:
+                if sharding_dim in (1, -1):
                     tensor = tensor_slice[:, rank_offset : rank_offset + per_rank_size]
                 else:
                     tensor = tensor_slice[rank_offset : rank_offset + per_rank_size, :]
@@ -1011,7 +1002,7 @@ class GPTModelImporter:
         module,
         prefix,
         mapping={},
-        sharding_dim: Optional[int] = None,
+        sharding_dim: int | None = None,
     ):
         weight = module.state_dict().get("weight", None)
         weight_scale = module.state_dict().get("weight_quantizer._scale", None)
@@ -1019,7 +1010,7 @@ class GPTModelImporter:
         state_dict = {}
 
         if weight is None:
-            raise ValueError("{} does not contain weight!".format(str(module)))
+            raise ValueError(f"{module!s} does not contain weight!")
         else:
             tensor = self._get_safetensor(prefix + "weight", sharding_dim=sharding_dim)
 
@@ -1042,7 +1033,7 @@ class GPTModelImporter:
 
         # Handle the rest of the state_dict.
         for key, val in module.state_dict().items():
-            if "weight" == key or "weight_quantizer._scale" == key:
+            if key in {"weight", "weight_quantizer._scale"}:
                 continue
             elif "extra_state" in key:
                 state_dict[key] = val
@@ -1059,7 +1050,7 @@ class GPTModelImporter:
         prefix,
         gate_proj_name="gate_proj",
         up_proj_name="up_proj",
-        sharding_dim: Optional[int] = None,
+        sharding_dim: int | None = None,
     ):
         weight = module.state_dict().get("weight", None)
         weight_scale = module.state_dict().get("weight_quantizer._scale", None)
@@ -1067,7 +1058,7 @@ class GPTModelImporter:
         state_dict = {}
 
         if weight is None:
-            raise ValueError("{} does not contain weight!".format(str(module)))
+            raise ValueError(f"{module!s} does not contain weight!")
         else:
             gate_proj = self._get_safetensor(
                 prefix + gate_proj_name + ".weight", sharding_dim=sharding_dim
@@ -1105,7 +1096,7 @@ class GPTModelImporter:
         q_proj_name="q_proj",
         k_proj_name="k_proj",
         v_proj_name="v_proj",
-        sharding_dim: Optional[int] = None,
+        sharding_dim: int | None = None,
     ):
         config = module.config
         hidden_size = config.hidden_size
@@ -1137,7 +1128,7 @@ class GPTModelImporter:
         weight_scale = module.state_dict().get("weight_quantizer._scale", None)
 
         if weight is None:
-            raise ValueError("{} does not contain weight!".format(str(module)))
+            raise ValueError(f"{module!s} does not contain weight!")
 
         if weight_scale is not None:
             q_scale_name = prefix + q_proj_name + "." + self.weight_scale_name
@@ -1316,7 +1307,7 @@ class GPTModelImporter:
 def import_mcore_gpt_from_hf(
     model: torch.nn.Module,
     pretrained_model_path: str,
-    workspace_dir: Optional[str] = None,
+    workspace_dir: str | None = None,
     dtype: torch.dtype = torch.float16,
 ):
     """Import GPTModel state_dict from supported HuggingFace pretrained model path.

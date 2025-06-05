@@ -27,7 +27,7 @@ from modelopt.torch.quantization.utils import export_torch_mode
 
 class SimpleNetwork(nn.Module):
     def __init__(self):
-        super(SimpleNetwork, self).__init__()
+        super().__init__()
         self.linear1 = nn.Linear(in_features=10, out_features=5)
         self.linear2 = nn.Linear(in_features=5, out_features=1)
 

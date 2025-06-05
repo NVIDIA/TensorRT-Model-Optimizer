@@ -32,11 +32,11 @@ def data_path(tmp_path_factory):
         ["cp", data_path / "cnn_eval.json", data_path / "cnn_train.json"], "llm_sparsity"
     )
 
-    yield data_path
+    return data_path
 
 
 @pytest.mark.parametrize(
-    "sparsity_fmt,dtype",
+    ("sparsity_fmt", "dtype"),
     [
         ("sparsegpt", "bf16"),
         ("sparse_magnitude", "bf16"),
@@ -80,7 +80,7 @@ def _test_llama_sparsity_finetune(tiny_llama_path, tmp_path, data_path, sparsity
 
 
 @pytest.mark.parametrize(
-    "sparsity_fmt,dtype",
+    ("sparsity_fmt", "dtype"),
     [
         ("sparsegpt", "bf16"),
     ],
@@ -90,7 +90,7 @@ def test_llama_sparsity_finetune(tiny_llama_path, tmp_path, data_path, sparsity_
 
 
 @pytest.mark.parametrize(
-    "sparsity_fmt,dtype",
+    ("sparsity_fmt", "dtype"),
     [
         ("sparsegpt", "fp16"),
     ],

@@ -40,7 +40,7 @@ def get_ep_for_decoder_calib_data_preparation(calibration_eps: list[str]):
     elif "cpu" in calibration_eps:
         provider = "CPUExecutionProvider"
     else:
-        assert 0, "unknonwn ep"
+        raise ValueError("unknonwn ep")
 
     return provider
 
@@ -100,7 +100,7 @@ def get_calib_data_for_encoder(asr_dataset, processor, calib_size, data_type):
             .numpy()
             .astype(np_dtype)
         )
-        x = calib_data.get("input_features", None)
+        x = calib_data.get("input_features")
         if x is None:
             calib_data["input_features"] = inp
         else:
@@ -138,16 +138,16 @@ def get_calib_data_for_decoder(
         # decoder_input_ids = model.decoder.embed_tokens(decoder_input_ids)
         # decoder_input_ids = torch.ones((batch_size, 2), dtype=torch.int64, device="cuda")
         #                      * model.config.decoder_start_token_id
-        x = calib_data.get("input_ids", None)
+        x = calib_data.get("input_ids")
         if x is None:
-            assert calib_data.get("encoder_hidden_states", None) is None, (
+            assert calib_data.get("encoder_hidden_states") is None, (
                 "encoder-hidden-states is not None but input-ids is"
             )
             calib_data["input_ids"] = decoder_input_ids
             calib_data["encoder_hidden_states"] = last_hidden_state
         else:
             calib_data["input_ids"] = np.concatenate((x, decoder_input_ids[np.newaxis :,]), axis=0)
-            x = calib_data.get("encoder_hidden_states", None)
+            x = calib_data.get("encoder_hidden_states")
             assert x is not None, "encoder-hidden-states is None but not input-ids"
             calib_data["encoder_hidden_states"] = np.concatenate(
                 (x, last_hidden_state[np.newaxis :,]), axis=0
@@ -206,9 +206,9 @@ def get_calib_data_for_decoder_with_past(
         )
         assert len(decoder_outputs.past_key_values[0]) == 4, "different per-layer KV-data length"
 
-        x = calib_data.get("input_ids", None)
+        x = calib_data.get("input_ids")
         if x is None:
-            assert calib_data.get("cache_position", None) is None, (
+            assert calib_data.get("cache_position") is None, (
                 "cache_position is not None but input-ids is"
             )
             calib_data["input_ids"] = next_token_id
@@ -221,7 +221,7 @@ def get_calib_data_for_decoder_with_past(
                 calib_data[f"past_key_values.{i}.encoder.value"] = kv_data[3].cpu().numpy()
         else:
             calib_data["input_ids"] = np.concatenate((x, next_token_id), axis=0)
-            x = calib_data.get("cache_position", None)
+            x = calib_data.get("cache_position")
             assert x is not None, "cache_position is None but not input-ids"
             calib_data["cache_position"] = np.concatenate((x, cache_position), axis=0)
             for i, kv_data in enumerate(decoder_outputs.past_key_values):

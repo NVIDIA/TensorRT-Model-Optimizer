@@ -16,7 +16,8 @@
 """Utility functions for computational graph."""
 
 import itertools
-from typing import Callable, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import Union
 
 import torch
 from torch import nn
@@ -24,10 +25,10 @@ from torch.fx import Node, symbolic_trace
 
 __all__ = ["match"]
 
-NodeTarget = Union[nn.Module, Callable]
+NodeTarget = Union[nn.Module, Callable]  # noqa: UP007
 
 
-def _get_node_target(node: Node, root: nn.Module) -> Optional[NodeTarget]:
+def _get_node_target(node: Node, root: nn.Module) -> NodeTarget | None:
     """Return node target depending on node operator."""
     target_extractor = {
         "call_module": lambda t: root.get_submodule(t),
@@ -56,10 +57,7 @@ def _local_match(nx: Node, ny: Node, mx: nn.Module, my: nn.Module) -> bool:
     ty = _get_node_target(ny, my)
     if isinstance(tx, nn.Module) and isinstance(ty, nn.Module):
         tx, ty = type(tx), type(ty)
-    if tx != ty:
-        return False
-
-    return True
+    return tx == ty
 
 
 def _recursive_match(

@@ -27,7 +27,8 @@ import copy
 import os
 import warnings
 from collections import deque
-from typing import Any, BinaryIO, Deque, Iterator, Optional, Union
+from collections.abc import Iterator
+from typing import Any, BinaryIO
 
 import torch
 import torch.nn as nn
@@ -51,9 +52,9 @@ __all__ = [
     "ModeloptStateManager",
     "apply_mode",
     "modelopt_state",
-    "save",
-    "restore_from_modelopt_state",
     "restore",
+    "restore_from_modelopt_state",
+    "save",
 ]
 
 ModeloptStateList = list[tuple[str, ModeState]]  # state data structure for multiple modes
@@ -65,7 +66,7 @@ class ModeloptStateManager:
     _state_key = "_modelopt_state"
     _state_version_key = "_modelopt_state_version"
 
-    def __init__(self, model: Optional[nn.Module] = None, init_state: bool = False) -> None:
+    def __init__(self, model: nn.Module | None = None, init_state: bool = False) -> None:
         """Initialize state manager.
 
         Args:
@@ -179,8 +180,8 @@ class ModeloptStateManager:
     def has_state_for_mode_type(
         mode_type: str,
         *,
-        model: Optional[nn.Module] = None,
-        state: Optional[dict[str, Any]] = None,
+        model: nn.Module | None = None,
+        state: dict[str, Any] | None = None,
     ) -> bool:
         """Check if the model or modelopt state contains state from any modes of a given type.
 
@@ -211,7 +212,7 @@ class ModeloptStateManager:
             yield _ModeRegistryCls.get_from_any(m_str), config, m_state["metadata"]
 
     @property
-    def last_mode(self) -> Optional[ModeDescriptor]:
+    def last_mode(self) -> ModeDescriptor | None:
         """Return the last mode applied to the model (last stored mode)."""
         return _ModeRegistryCls.get_from_any(self._state[-1][0]) if self._state else None
 
@@ -231,7 +232,7 @@ class ModeloptStateManager:
         self._state[-1][1]["config"] = config.model_dump()
 
     @property
-    def _export_stack(self) -> Deque[tuple[str, str]]:
+    def _export_stack(self) -> deque[tuple[str, str]]:
         """Infer the stack of export modes that still must be applied from existing modes.
 
         Returns:
@@ -341,9 +342,9 @@ def _check_init_modellike(model: nn.Module, mode: ModeDescriptor) -> nn.Module:
 def apply_mode(
     model: ModelLike,
     mode: ModeLike,
-    registry: Optional[_ModeRegistryCls] = None,
-    init_state: Optional[bool] = None,
-    mode_kwargs: Optional[ModeKwargsType] = None,
+    registry: _ModeRegistryCls | None = None,
+    init_state: bool | None = None,
+    mode_kwargs: ModeKwargsType | None = None,
 ) -> nn.Module:
     """Apply the provided modes the model, record the changes, and return the model.
 
@@ -428,7 +429,7 @@ def apply_mode(
     return model
 
 
-def get_mode(model: nn.Module) -> Optional[ModeDescriptor]:
+def get_mode(model: nn.Module) -> ModeDescriptor | None:
     """Get mode of converted network.
 
     model: A model that contains modelopt_state
@@ -485,7 +486,7 @@ def modelopt_state(model: nn.Module) -> dict[str, Any]:
     return objs
 
 
-def save(model: nn.Module, f: Union[str, os.PathLike, BinaryIO], **kwargs) -> None:
+def save(model: nn.Module, f: str | os.PathLike | BinaryIO, **kwargs) -> None:
     """Save a model's state dict together with the modelopt state dict to restore its architecture.
 
     Args:
@@ -575,7 +576,7 @@ def restore_from_modelopt_state(model: ModelLike, modelopt_state: dict[str, Any]
     return model
 
 
-def restore(model: ModelLike, f: Union[str, os.PathLike, BinaryIO], **kwargs) -> nn.Module:
+def restore(model: ModelLike, f: str | os.PathLike | BinaryIO, **kwargs) -> nn.Module:
     """Load the checkpoint, restore the modelopt model modifications, and load the model's weights.
 
     Args:

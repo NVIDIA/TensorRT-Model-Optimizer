@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union
 
 import pytest
 import torch
@@ -56,7 +55,7 @@ def _check_inactive_weight_grad_allzero(
 def _get_weight_tensor_shape(
     in_channels: int,
     out_channels: int,
-    kernel_size: Union[int, tuple],
+    kernel_size: int | tuple[int, ...],
     ndim: int,
     groups: int,
     transposed: bool,
@@ -70,8 +69,17 @@ def _get_weight_tensor_shape(
 
 @pytest.mark.parametrize(
     (
-        "ndim, in_channels, out_channels, kernel_size, active_in_channels, active_out_channels,"
-        " active_kernel_size, padding, active_padding, groups, transposed"
+        "ndim",
+        "in_channels",
+        "out_channels",
+        "kernel_size",
+        "active_in_channels",
+        "active_out_channels",
+        "active_kernel_size",
+        "padding",
+        "active_padding",
+        "groups",
+        "transposed",
     ),
     [
         # ConvNd
@@ -106,8 +114,8 @@ def test_dynamic_conv_and_conv_transpose(
     active_in_channels: int,
     active_out_channels: int,
     active_kernel_size: tuple[int, ...],
-    padding: Union[str, int],
-    active_padding: Union[str, int],
+    padding: str | int,
+    active_padding: str | int,
     groups: int,
     transposed: bool,
 ) -> None:

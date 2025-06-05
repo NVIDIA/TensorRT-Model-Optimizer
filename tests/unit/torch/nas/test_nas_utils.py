@@ -20,7 +20,7 @@ from modelopt.torch.nas.utils import inference_flops
 
 
 @pytest.mark.parametrize(
-    "in_channel, out_channel, kernel_size, groups, data_x, data_y",
+    ("in_channel", "out_channel", "kernel_size", "groups", "data_x", "data_y"),
     [
         (2, 4, 3, 2, 3, 5),
         (3, 5, 1, 1, 2, 2),

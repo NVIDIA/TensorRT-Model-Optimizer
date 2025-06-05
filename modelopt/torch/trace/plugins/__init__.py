@@ -23,7 +23,7 @@ try:
 except ImportError:
     pass
 except Exception as e:
-    _warnings.warn(f"Failed to import megatron plugin due to: {repr(e)}")
+    _warnings.warn(f"Failed to import megatron plugin due to: {e!r}")
 
 try:
     from .transformers import *
@@ -31,4 +31,4 @@ try:
 except ImportError:
     pass
 except Exception as e:
-    _warnings.warn(f"Failed to import transformers plugin due to: {repr(e)}")
+    _warnings.warn(f"Failed to import transformers plugin due to: {e!r}")

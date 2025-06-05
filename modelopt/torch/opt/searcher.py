@@ -24,8 +24,9 @@ search space.
 import copy
 import os
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from contextlib import nullcontext
-from typing import Any, Callable, Optional, Union, final
+from typing import Any, final
 
 import numpy as np
 import pulp
@@ -36,7 +37,7 @@ from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import no_stdout, run_forward_loop
 
 LimitsTuple = tuple[float, float]
-ConstraintsDict = dict[str, Union[str, float, dict, None]]
+ConstraintsDict = dict[str, str | float | dict | None]
 Deployment = dict[str, str]
 ForwardLoop = Callable[[nn.Module], None]
 ScoreFunc = Callable[[nn.Module], float]
@@ -57,9 +58,9 @@ class BaseSearcher(ABC):
     model: nn.Module
     config: SearchConfig
     constraints: ConstraintsDict
-    deployment: Optional[Deployment]
-    dummy_input: Union[Any, tuple]
-    forward_loop: Optional[ForwardLoop]
+    deployment: Deployment | None
+    dummy_input: Any | tuple
+    forward_loop: ForwardLoop | None
 
     @final
     def __init__(self) -> None:
@@ -87,7 +88,7 @@ class BaseSearcher(ABC):
     def default_state_dict(self) -> SearchStateDict:
         """Return default state dict."""
 
-    def sanitize_search_config(self, config: Optional[SearchConfig]) -> SearchConfig:
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
         """Sanitize the search config dict."""
         # supply with defaults (for verbose we wanna make sure it's on master only)
         config = {**self.default_search_config, **(config or {})}
@@ -106,8 +107,8 @@ class BaseSearcher(ABC):
         self,
         model: nn.Module,
         constraints: ConstraintsDict,
-        dummy_input: Optional[Union[Any, tuple]] = None,
-        config: Optional[SearchConfig] = None,
+        dummy_input: Any | tuple | None = None,
+        config: SearchConfig | None = None,
     ) -> SearchStateDict:
         """Search a given prunable model for the best sub-net and return the search model.
 
@@ -172,7 +173,6 @@ class BaseSearcher(ABC):
 
     def before_search(self) -> None:
         """Optional pre-processing steps before the search."""
-        pass
 
     @abstractmethod
     def run_search(self) -> None:
@@ -180,7 +180,6 @@ class BaseSearcher(ABC):
 
     def after_search(self) -> None:
         """Optional post-processing steps after the search."""
-        pass
 
     @property
     def has_score(self) -> bool:
@@ -200,7 +199,7 @@ class BaseSearcher(ABC):
         progress_bar_msg=None,
         max_iter_data_loader=None,
         post_process_fn=False,
-    ) -> Optional[ForwardLoop]:
+    ) -> ForwardLoop | None:
         """Get runnable forward loop on the model using the provided configs."""
         # check config
         data_loader = self.config["data_loader"]
@@ -239,7 +238,7 @@ class BaseSearcher(ABC):
     def load_search_checkpoint(self) -> bool:
         """Load function for search checkpoint returning indicator whether checkpoint was loaded."""
         # check if checkpoint exists
-        checkpoint: Optional[str] = self.config["checkpoint"]
+        checkpoint: str | None = self.config["checkpoint"]
         if checkpoint is None or not os.path.exists(checkpoint):
             return False
 
@@ -254,7 +253,7 @@ class BaseSearcher(ABC):
     def save_search_checkpoint(self) -> None:
         """Save function for search checkpoint."""
         # check if save requirements are satisfied
-        checkpoint: Optional[str] = self.config["checkpoint"]
+        checkpoint: str | None = self.config["checkpoint"]
         if checkpoint is None or not dist.is_master():
             return
 
@@ -274,7 +273,7 @@ class LPS:
     def __init__(
         self,
         name: str,
-        constraints: dict[str, Union[float, tuple[float]]],  # upper bound or (lower, upper) bound
+        constraints: dict[str, float | tuple[float]],  # upper bound or (lower, upper) bound
         constraints_to_candidate_costs: dict[str, list[list[float]]],
         candidate_scores: list[list[float]],
         objective_type: str = "minimize",

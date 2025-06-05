@@ -359,7 +359,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         model_name, backbone
     )
 
-    if model_name == "sdxl-1.0" or model_name == "sdxl-turbo":
+    if model_name in {"sdxl-1.0", "sdxl-turbo"}:
         input_names = ["sample", "timestep", "encoder_hidden_states", "text_embeds", "time_ids"]
         output_names = ["latent"]
     elif model_name == "sd3-medium":

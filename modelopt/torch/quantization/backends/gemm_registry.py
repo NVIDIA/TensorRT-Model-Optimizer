@@ -19,7 +19,8 @@ The registry allows registering specialized GEMM implementations for different q
 providing a central place to manage and match them.
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -42,9 +43,10 @@ class GEMMRegistry:
     def register(
         self,
         gemm_func: Callable,
-        availability_check: Optional[
-            Callable[[torch.nn.Module, torch.Tensor, List, Dict[str, torch.Tensor]], bool]
-        ],
+        availability_check: Callable[
+            [torch.nn.Module, torch.Tensor, list, dict[str, torch.Tensor]], bool
+        ]
+        | None,
     ) -> None:
         """Register a specialized GEMM implementation.
 
@@ -74,9 +76,7 @@ class GEMMRegistry:
         """
         self._registry = [entry for entry in self._registry if entry["gemm_func"] != gemm_func]
 
-    def find_match(
-        self, module: torch.nn.Module, input: Any, *args, **kwargs
-    ) -> Optional[Callable]:
+    def find_match(self, module: torch.nn.Module, input: Any, *args, **kwargs) -> Callable | None:
         """Find a matching GEMM implementation for the given module and arguments.
 
         Args:

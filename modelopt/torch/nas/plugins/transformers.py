@@ -15,7 +15,7 @@
 
 """Plugin to add NAS support for HuggingFace Transformers models."""
 
-from typing import Callable, Optional, Sequence
+from collections.abc import Callable, Sequence
 
 import torch
 from torch import nn
@@ -28,7 +28,7 @@ from modelopt.torch.trace import Symbol
 from modelopt.torch.trace.plugins.transformers import SymAttentionHead
 from modelopt.torch.utils import make_divisible
 
-from ..config import AutoNASConfig
+from ..autonas import AutoNASConfig
 from ..registry import DMRegistry
 from ..traced_hp import TracedHp, TracedHpRegistry
 
@@ -41,7 +41,7 @@ class AttentionHeadTracedHp(TracedHp):
     _hidden_dim_per_head: int
 
     @TracedHp.active.setter  # type: ignore[attr-defined]
-    def active(self, val: Optional[HPType]):
+    def active(self, val: HPType | None):
         super(AttentionHeadTracedHp, type(self)).active.fset(self, val)  # type: ignore[attr-defined]
         with self._hp_hidden_dim._force_configurable():
             self._hp_hidden_dim.active = self.active * self._hidden_dim_per_head
@@ -58,7 +58,7 @@ class AttentionHeadTracedHp(TracedHp):
         imp_heads = imp_hidden_dim.reshape(self.max, -1).sum(dim=1)
         return imp_heads
 
-    def _enforce_order(self, order: Optional[torch.Tensor] = None) -> None:
+    def _enforce_order(self, order: torch.Tensor | None = None) -> None:
         """Convert order of heads to order of hidden_dim."""
         if order is None:
             order_hidden_dim = None
@@ -125,14 +125,15 @@ class _DynamicAttention(DynamicModule):
         hp_hidden_dim.register_importance(lambda: out._parameters["weight"].detach().norm(dim=0))
 
     def modify(
-        self, *, n_heads_ratio: Optional[tuple[float, ...]] = None, n_heads_divisor: int = 1
+        self, *, n_heads_ratio: tuple[float, ...] | None = None, n_heads_divisor: int = 1
     ) -> None:
         # modify num_attention_heads
         hp = self.get_hparam("num_attention_heads")
-        if n_heads_ratio is not None:
-            choices = {r * hp.original for r in n_heads_ratio}
-        else:
-            choices = set(hp.choices)
+        choices = (
+            {r * hp.original for r in n_heads_ratio}
+            if n_heads_ratio is not None
+            else set(hp.choices)
+        )
         choices = {int(make_divisible(c, n_heads_divisor)) for c in choices}
         hp.choices = list(set(hp.choices) & choices | {hp.original})
 

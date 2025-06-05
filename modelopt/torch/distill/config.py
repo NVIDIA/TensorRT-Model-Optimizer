@@ -16,7 +16,8 @@
 """Configurations for distillation modes."""
 
 import warnings
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable
+from typing import Any, Union
 
 import pydantic
 import torch.nn as nn
@@ -28,8 +29,8 @@ from .loss_balancers import DistillationLossBalancer
 
 __all__ = ["KDLossConfig"]
 
-TeacherModel = Union[type[nn.Module], tuple, Callable]
-Criterion = Union[Loss, dict[tuple[str, str], Loss]]
+TeacherModel = type[nn.Module] | tuple | Callable
+Criterion = Union[Loss, dict[tuple[str, str], Loss]]  # noqa: UP007
 
 
 class KDLossConfig(ModeloptBaseConfig):
@@ -41,7 +42,7 @@ class KDLossConfig(ModeloptBaseConfig):
     # TODO: we should really think about a better to configure KDLossConfig
     model_config = pydantic.ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
-    teacher_model: Optional[TeacherModel] = ModeloptField(
+    teacher_model: TeacherModel | None = ModeloptField(
         default=None,
         title="Teacher model",
         description=(
@@ -51,7 +52,7 @@ class KDLossConfig(ModeloptBaseConfig):
             " instance of nn.Module."
         ),
     )
-    criterion: Optional[Criterion] = ModeloptField(
+    criterion: Criterion | None = ModeloptField(
         default=None,
         title="Output-only or layer-wise loss criterion",
         description=(
@@ -62,7 +63,7 @@ class KDLossConfig(ModeloptBaseConfig):
             "``loss_module``."
         ),
     )
-    loss_balancer: Optional[Any] = ModeloptField(
+    loss_balancer: Any | None = ModeloptField(
         default=None,
         title="Loss balancer",
         description=(
@@ -82,7 +83,7 @@ class KDLossConfig(ModeloptBaseConfig):
 
     @pydantic.field_validator("criterion")
     @classmethod
-    def format_criterion(cls, criterion: Optional[Criterion]) -> dict[tuple[str, str], Loss]:
+    def format_criterion(cls, criterion: Criterion | None) -> dict[tuple[str, str], Loss]:
         """Ensure criterion is a mapping from layer names to loss (potentially entire module)."""
         if not isinstance(criterion, dict):
             # Output-only distillation.
@@ -102,7 +103,7 @@ class KDLossConfig(ModeloptBaseConfig):
         for k, v in self.items():
             if k == "loss_balancer":
                 pydantic.TypeAdapter(
-                    Optional[DistillationLossBalancer], config=self.model_config
+                    DistillationLossBalancer | None, config=self.model_config
                 ).validate_python(v)
                 continue
             assert v is not None, f"Missing required field: {k}."
@@ -112,15 +113,14 @@ class KDLossConfig(ModeloptBaseConfig):
             assert len(tuple(self.loss_balancer.parameters())) == 0, (
                 "Loss Balancer cannot have parameters."
             )
-        else:
-            if len(self.criterion) == 0:  # type: ignore[arg-type]
-                warnings.warn(
-                    "No distillation loss criterion provided. Ignore if in pipeline-parallel setup."
-                )
-            elif len(self.criterion) > 1:  # type: ignore[arg-type]
-                raise ValueError(
-                    "Cannot have multiple layer-loss pairs without a `DistillationLossBalancer`"
-                )
+        elif len(self.criterion) == 0:  # type: ignore[arg-type]
+            warnings.warn(
+                "No distillation loss criterion provided. Ignore if in pipeline-parallel setup."
+            )
+        elif len(self.criterion) > 1:  # type: ignore[arg-type]
+            raise ValueError(
+                "Cannot have multiple layer-loss pairs without a `DistillationLossBalancer`"
+            )
 
 
 class ExportStudentConfig(ModeloptBaseConfig):

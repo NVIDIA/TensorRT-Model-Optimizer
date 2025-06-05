@@ -38,7 +38,7 @@ class MaxCalibrator(_Calibrator):
 
     def __init__(self, num_bits=8, axis=None, unsigned=False, track_amax=False):
         """Initialize."""
-        super(MaxCalibrator, self).__init__(num_bits, axis, unsigned)
+        super().__init__(num_bits, axis, unsigned)
         self._track_amax = track_amax
         if self._track_amax:
             self._amaxs = []  # shall we have a better name?
@@ -70,14 +70,10 @@ class MaxCalibrator(_Calibrator):
             "detected negative values after abs, could be torch or cuda bug"
         )
         assert not torch.any(torch.isinf(local_amax)), (
-            "detected inf values in amax. inf in original tensor: {}".format(
-                torch.any(torch.isinf(x))
-            )
+            f"detected inf values in amax. inf in original tensor: {torch.any(torch.isinf(x))}"
         )
         assert not torch.any(torch.isnan(local_amax)), (
-            "detected nan values in amax. nan in original tensor: {}".format(
-                torch.any(torch.isnan(x))
-            )
+            f"detected nan values in amax. nan in original tensor: {torch.any(torch.isnan(x))}"
         )
         if self._calib_amax is None:
             self._calib_amax = local_amax
@@ -105,7 +101,7 @@ class MaxCalibrator(_Calibrator):
 
     def __repr__(self):
         s = "MaxCalibrator("
-        s += super(MaxCalibrator, self).__repr__()
+        s += super().__repr__()
         s += " calib_amax={_calib_amax}"
         s += " track_amax={_track_amax}"
         if self._track_amax:

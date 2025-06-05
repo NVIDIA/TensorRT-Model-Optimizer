@@ -1,5 +1,4 @@
 # Adapted from https://github.com/SafeAILab/EAGLE/blob/7d065d0/eagle/model/cnets.py
-# coding=utf-8
 # Copyright 2022 EleutherAI and the HuggingFace Inc. team. All rights reserved.
 #
 # This code is based on EleutherAI's GPT-NeoX library and the GPT-NeoX
@@ -34,9 +33,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""PyTorch LLaMA model."""
-
-from typing import Optional
+"""Eagle model utils."""
 
 import torch
 from torch import nn
@@ -64,7 +61,7 @@ def make_causal_mask(
 
 
 # Copied from transformers.models.bart.modeling_bart._expand_mask
-def expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: Optional[int] = None):
+def expand_mask(mask: torch.Tensor, dtype: torch.dtype, tgt_len: int | None = None):
     """Expands attention_mask from `[bsz, seq_len]` to `[bsz, 1, tgt_seq_len, src_seq_len]`."""
     bsz, src_len = mask.size()
     tgt_len = tgt_len if tgt_len is not None else src_len

@@ -17,17 +17,8 @@
 
 import fnmatch
 import json
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    ItemsView,
-    Iterator,
-    KeysView,
-    Optional,
-    Union,
-    ValuesView,
-)
+from collections.abc import Callable, ItemsView, Iterator, KeysView, ValuesView
+from typing import Any, TypeAlias
 
 import pydantic
 from pydantic import (
@@ -41,10 +32,6 @@ from pydantic import (
 )
 from pydantic_core import PydanticUndefined
 
-if TYPE_CHECKING:  # Only executed during type checking, e.g. by mypy
-    # typing.TypeAlias is only available for python 3.10+.
-    from typing_extensions import TypeAlias
-
 # A simple type alias for a config dictionary that is used as input to initialize a ModeloptBaseConfig.
 ConfigDict = dict[str, Any]  # config dict for one mode
 
@@ -55,8 +42,8 @@ ConfigDict = dict[str, Any]  # config dict for one mode
 #       ``ModeloptBaseRule.get_rule_type(wrapped_only=True)`` and
 #       ``ModeloptBaseRule.get_rule_type(wrapped_only=False)``, respectively.
 SimpleRule = dict[str, Any]  # a simple rule type
-WrappedRule = dict[str, Optional[SimpleRule]]  # a wrapped rule type with glob patterns
-Rule = Union[Optional[SimpleRule], WrappedRule]  # a rule type that can be simple, wrapped, or None
+WrappedRule = dict[str, SimpleRule | None]  # a wrapped rule type with glob patterns
+Rule = SimpleRule | WrappedRule | None  # a rule type that can be simple, wrapped, or None
 RulesDict = dict[str, Rule]  # a dictionaries containing rules for different types
 
 
@@ -136,8 +123,7 @@ class ModeloptBaseConfig(BaseModel):
         """Iterate over aliases (or name if alias is not defined) of fields."""
         for field_name, field_info in self.model_fields.items():
             yield field_info.alias or field_name
-        for key in self._iterable_model_extra:
-            yield key
+        yield from self._iterable_model_extra
 
     def _get_kv_dict(self) -> dict[str, Any]:
         """Return a dictionary with keys as aliases if possible."""
@@ -170,11 +156,11 @@ class ModeloptBaseRule(ModeloptBaseConfig):
     @classmethod
     def get_rule_type(cls, wrapped_only: bool = False) -> "TypeAlias":
         """Get the rule type for the given ModeloptBaseConfig."""
-        optional_rule_type: "TypeAlias" = Optional[cls]  # type: ignore[valid-type]
+        optional_rule_type: TypeAlias = cls | None  # type: ignore[valid-type]
         rule_type = dict[str, optional_rule_type]
         if wrapped_only:
             return rule_type
-        return Union[optional_rule_type, rule_type]
+        return optional_rule_type | rule_type
 
     @classmethod
     def validate_rule(cls, rule: Rule) -> WrappedRule:
@@ -204,19 +190,20 @@ class ModeloptBaseRule(ModeloptBaseConfig):
         return wrapped_rule
 
     @classmethod
-    def customize_rule(cls, rule: Rule, key: str) -> Optional[SimpleRule]:
+    def customize_rule(cls, rule: Rule, key: str) -> SimpleRule | None:
         """Construct custom rule according to the provided key which is matched."""
         # validate rule first
         rule = cls.validate_rule(rule)
 
         # create custom rule now
-        rule_custom: Optional[SimpleRule] = None
+        rule_custom: SimpleRule | None = None
         for pattern, subrule in rule.items():
             if fnmatch.fnmatch(key, pattern):
-                if rule_custom is None or subrule is None:
-                    rule_custom = subrule
-                else:
-                    rule_custom = {**rule_custom, **subrule}
+                rule_custom = (
+                    subrule
+                    if rule_custom is None or subrule is None
+                    else {**rule_custom, **subrule}
+                )
         return rule_custom
 
 

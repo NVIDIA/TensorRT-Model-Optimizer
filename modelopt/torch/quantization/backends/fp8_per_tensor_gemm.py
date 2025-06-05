@@ -15,11 +15,14 @@
 
 """This module provides a GEMM function for fp8 per tensor quantization."""
 
+from typing import Any
+
 import torch
 from torch.autograd import Function
 
 from modelopt.torch.quantization.backends.gemm_registry import gemm_registry
 from modelopt.torch.quantization.config import FP8_DEFAULT_CFG
+from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import FP8QTensor, QTensorWrapper
 
 from .utils import fp8_compatible
@@ -62,15 +65,16 @@ def fp8_per_tensor_gemm(quant_module, input, bias=None):
 def _fp8_availability_check(module, input, args, kwargs):
     """Comprehensive check for FP8 GEMM availability."""
     # Quantizer configs
-    input_cfg = FP8_DEFAULT_CFG["quant_cfg"]["*input_quantizer"]  # type: ignore
-    weight_cfg = FP8_DEFAULT_CFG["quant_cfg"]["*weight_quantizer"]  # type: ignore
+    quant_cfg: dict[str, Any] = FP8_DEFAULT_CFG["quant_cfg"]
+    input_cfg = quant_cfg["*input_quantizer"]
+    weight_cfg = quant_cfg["*weight_quantizer"]
 
     # Check hardware support
     if not torch.cuda.is_available() or not fp8_compatible():
         return False
 
     # Check module type
-    if not type(module).__name__ == "QuantLinear":
+    if not isinstance(module, RealQuantLinear):
         return False
 
     # Check quantizer presence and configuration

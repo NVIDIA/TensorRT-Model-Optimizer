@@ -15,11 +15,9 @@
 
 """Provides ONNX graph related utils for QDQ placement."""
 
-import logging
 import os
 import re
 from collections import defaultdict
-from typing import Optional, Union
 
 import numpy as np
 import onnx
@@ -29,6 +27,7 @@ from onnx_graphsurgeon.ir.node import Node
 from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
+from modelopt.onnx.logging_config import logger
 from modelopt.onnx.op_types import is_copy_op, is_linear_op
 from modelopt.onnx.quantization.ort_utils import create_inference_session
 from modelopt.onnx.utils import find_lowest_common_ancestor, get_child_nodes, get_parent_nodes
@@ -62,11 +61,7 @@ def is_const_input(tensor: Tensor) -> bool:
 
 def has_const_input(node: Node) -> bool:
     """Returns whether the given node has any constant input."""
-    for tensor in node.inputs:
-        if is_const_input(tensor):
-            return True
-
-    return False
+    return any(is_const_input(tensor) for tensor in node.inputs)
 
 
 def has_path_type(
@@ -138,10 +133,7 @@ def has_path_type(
             path_nodes,
         )
 
-    if is_forward:
-        next_level_nodes = get_child_nodes(node)
-    else:
-        next_level_nodes = get_parent_nodes(node)
+    next_level_nodes = get_child_nodes(node) if is_forward else get_parent_nodes(node)
 
     # Check if any child (forward path) or parent (backward path) can match the remaining path types
     for next_node in next_level_nodes:
@@ -154,7 +146,7 @@ def has_path_type(
     return not next_path_type
 
 
-def get_fusible_backbone(node: Node, graph: Graph) -> Optional[Node]:
+def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
     """Returns the linear backbone node for a given node if it matches the pattern.
 
     TensorRT fuses convolution with BN, Relu etc. when in some specific pattern.
@@ -170,7 +162,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Optional[Node]:
     """
 
     def _get_backbone(root: Node):
-        if root.op == "Conv":
+        if root.op in ["Conv", "ConvTranspose"]:
             return root
 
         for tensor in root.inputs:
@@ -180,14 +172,14 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Optional[Node]:
                 if bb:
                     return bb
 
-    fusible_linear_path_types = [
-        # ["Sigmoid", "Conv"],  # With following Mul
-        # ["Resize", "Relu", "Conv"],   # Note. this causes regression in MTL_v1
-        ["BiasAdd", "ConstMul", "Conv"],
-        ["Relu", "BiasAdd", "ConstMul", "Conv"],
-        ["BatchNormalization", "BiasAdd", "Conv"],
-        ["Relu", "BatchNormalization", "BiasAdd", "Conv"],
-    ]
+    fusible_linear_path_types = []
+    for conv_type in ["Conv", "ConvTranspose"]:
+        fusible_linear_path_types += [
+            ["BiasAdd", "ConstMul", conv_type],
+            ["Relu", "BiasAdd", "ConstMul", conv_type],
+            ["BatchNormalization", "BiasAdd", conv_type],
+            ["Relu", "BatchNormalization", "BiasAdd", conv_type],
+        ]
     for idx, path_type in enumerate(fusible_linear_path_types):
         if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=[]):
             return _get_backbone(node)
@@ -279,11 +271,7 @@ def filter_quantizable_kgen_heads(
         if not is_copy_op(node.op):
             return False
 
-        for parent in get_parent_nodes(node):
-            if not _is_following_cask_partition(parent):
-                return False
-
-        return True
+        return all(_is_following_cask_partition(parent) for parent in get_parent_nodes(node))
 
     def _is_mha_epilogue_pattern(node: Node):
         if head_node.op != "Add":
@@ -313,11 +301,7 @@ def filter_quantizable_kgen_heads(
         if head_name in quantizable_ops:
             quantizable_ops.remove(head_name)
 
-        for consumer in tensor.outputs:
-            if consumer.name in quantizable_ops:
-                return True
-
-        return False
+        return any(consumer.name in quantizable_ops for consumer in tensor.outputs)
 
     quantizable_kgen_heads = []
     no_quantize_inputs = []  # list of tuple [(src_node_name, dst_node_name, input_name), ...]
@@ -394,8 +378,7 @@ def classify_partition_nodes(
         # Collect tensor names produced by partition nodes
         partition_node_outputs = []
         for node in partition:
-            for node_output in node.outputs:
-                partition_node_outputs.append(node_output.name)
+            partition_node_outputs.extend([output.name for output in node.outputs])
 
         for node in partition:
             has_external_inputs = False
@@ -434,7 +417,7 @@ def build_non_residual_input_map(
     This assumes that the Add layer only has 2 inputs.
 
     We will refer to a subgraph which has a Convolution node with a single output that is summed (element-wise)
-    with another non-constant input-tensor as a “residual-add” subgraph, because it occurs in modern
+    with another non-constant input-tensor as a "residual-add" subgraph, because it occurs in modern
     convnets that use residual connections.
 
     Args:
@@ -519,7 +502,7 @@ def remove_partial_input_qdq(
         graph: Onnx model graph.
         no_quantize_inputs: List non-quantizable input info as (src, dst, input_name)
     """
-    logging.info("Deleting QDQ nodes from marked inputs to make certain operations fusible ...")
+    logger.info("Deleting QDQ nodes from marked inputs to make certain operations fusible")
     graph_nodes = {node.name: node for node in graph.nodes}
     for source, target, non_qdq_input_name in no_quantize_inputs:
         # Note. no_quantize_inputs objects are from non-quantized input graph
@@ -558,15 +541,13 @@ def _find_nodes_from_op_types_to_exclude(graph: Graph, op_types_to_exclude=None)
 
 
 def expand_node_names_from_patterns(
-    graph: Union[onnx.GraphProto, Graph], name_patterns: list[str]
+    graph: onnx.GraphProto | Graph, name_patterns: list[str]
 ) -> list[str]:
     """Expand the node names from the given patterns."""
     node_list = getattr(graph, "nodes", None) or getattr(graph, "node", None) or []
     matched_node_names = []
     for pattern in name_patterns:
-        for node in node_list:
-            if re.match(pattern, node.name):
-                matched_node_names.append(node.name)
+        matched_node_names.extend([node.name for node in node_list if re.match(pattern, node.name)])
     return matched_node_names
 
 
@@ -634,7 +615,7 @@ def get_extended_model_outputs(
     # Run extended model's inference.
     extended_model_output_names = [output.name for output in session.get_outputs()]
     outputs = session.run(extended_model_output_names, inputs)
-    output_map = {name: output for name, output in zip(extended_model_output_names, outputs)}
+    output_map = dict(zip(extended_model_output_names, outputs))
 
     return output_map
 
@@ -642,10 +623,9 @@ def get_extended_model_outputs(
 def find_nodes_from_matmul_to_exclude(
     onnx_path: str,
     use_external_data_format: bool = False,
-    intermediate_generated_files: list[str] = None,
+    intermediate_generated_files: list[str] | None = None,
     calibration_data_reader: CalibrationDataReader = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
-    verbose: bool = False,
 ) -> list[str]:
     """Find MatMul nodes that meets gemv condition to exclude.
 
@@ -665,8 +645,6 @@ def find_nodes_from_matmul_to_exclude(
         calibration_eps:
             Priority order for the execution providers (EP) to calibrate the model.
             Any subset of ['cuda:x', 'cpu', 'trt'], where 'x' is the device id.
-        verbose:
-            If True, print the matmul nodes to exclude.
 
     Returns:
         List of Nodes to exclude from quantization.
@@ -674,15 +652,14 @@ def find_nodes_from_matmul_to_exclude(
     model = onnx.load(onnx_path, load_external_data=use_external_data_format)
     graph = gs.import_onnx(model)
 
-    matmul_nodes = []
-    for node in graph.nodes:
-        if node.op == "MatMul" or node.op == "Gemm":
-            matmul_nodes.append(node)
+    matmul_nodes = [node for node in graph.nodes if node.op in {"MatMul", "Gemm"}]
 
     if len(matmul_nodes) == 0:
+        logger.debug("No MatMul nodes found in the model")
         return []
 
     nodes_to_exclude = []
+    logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
     # Then, add each matmul output as model's extended outputs.
     for matmul_node in matmul_nodes:
@@ -693,7 +670,7 @@ def find_nodes_from_matmul_to_exclude(
         onnx_path,
         model,
         use_external_data_format,
-        intermediate_generated_files,
+        intermediate_generated_files,  # type: ignore[arg-type]
         calibration_data_reader,
         calibration_eps,
     )
@@ -707,8 +684,7 @@ def find_nodes_from_matmul_to_exclude(
         ):
             nodes_to_exclude.append(matmul_node.name)
 
-    if verbose:
-        logging.info(f"Matmul nodes to exclude: {nodes_to_exclude}")
+    logger.debug(f"Matmul nodes to exclude: {nodes_to_exclude}")
 
     return [*set(nodes_to_exclude)]
 
@@ -716,13 +692,12 @@ def find_nodes_from_matmul_to_exclude(
 def find_nodes_from_mha_to_exclude(
     onnx_path: str,
     use_external_data_format: bool = False,
-    nodes_to_exclude: list[str] = None,
+    nodes_to_exclude: list[str] | None = None,
     disable_mha_qdq: bool = False,
     quantize_mode: str = "int8",
-    intermediate_generated_files: list[str] = None,
+    intermediate_generated_files: list[str] | None = None,
     calibration_data_reader: CalibrationDataReader = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
-    verbose: bool = False,
 ) -> list[str]:
     """Find MatMul nodes in MHA pattern to exclude.
 
@@ -750,25 +725,26 @@ def find_nodes_from_mha_to_exclude(
             Calibration data reader for running inference.
         calibration_eps:
             Priority list of execution providers (EP) for calibration.
-        verbose:
-            If True, print the matmul nodes to exclude.
 
     Returns:
         List of Nodes to exclude from quantization.
     """
+    logger.info(f"Analyzing MHA nodes for {quantize_mode} quantization")
     model = onnx.load(onnx_path, load_external_data=use_external_data_format)
     graph = gs.import_onnx(model)
 
     mha_partitions = find_mha_partitions(graph)
     if len(mha_partitions) == 0:
-        return nodes_to_exclude
+        logger.info("No MHA partitions found in the model")
+        return nodes_to_exclude  # type: ignore[return-value]
 
     matmul_nodes_to_exclude = []
     if disable_mha_qdq:
+        logger.info("Disabling QDQ for all MHA nodes")
         for mha_partition in mha_partitions:
             matmul_nodes_to_exclude.append(mha_partition[0].name)
             matmul_nodes_to_exclude.append(mha_partition[2].name)
-    elif quantize_mode == "fp8" or quantize_mode == "int8":
+    elif quantize_mode in {"fp8", "int8"}:
         # Add each BMM1's second input as BS1 model's extended outputs.
         for mha_partition in mha_partitions:
             bmm1_node = mha_partition[0]
@@ -779,7 +755,7 @@ def find_nodes_from_mha_to_exclude(
             onnx_path,
             model,
             use_external_data_format,
-            intermediate_generated_files,
+            intermediate_generated_files,  # type: ignore[arg-type]
             calibration_data_reader,
             calibration_eps,
         )
@@ -798,27 +774,38 @@ def find_nodes_from_mha_to_exclude(
             if quantize_mode == "int8":
                 if seq_len > 512:
                     enable_mha_qdq = False
+                    logger.debug(
+                        f"Disabling QDQ for MHA node {bmm1_node.name} due to seq_len {seq_len} > 512"
+                    )
             elif quantize_mode == "fp8":
                 if head_size > 256 or head_size <= 8:
                     enable_mha_qdq = False
+                    logger.debug(
+                        f"Disabling QDQ for MHA node {bmm1_node.name} due to head_size {head_size}"
+                    )
                 else:
                     fp8_fmha_v2_pattern = match_fp8_mha_pattern(graph, softmax_node, False)
                     if len(fp8_fmha_v2_pattern) == 0:
                         enable_mha_qdq = False
+                        logger.debug(
+                            f"Disabling QDQ for MHA node {bmm1_node.name} due to non-matching FP8 pattern"
+                        )
             if not enable_mha_qdq:
                 matmul_nodes_to_exclude.append(mha_partition[0].name)
                 matmul_nodes_to_exclude.append(mha_partition[2].name)
 
-    if verbose:
-        logging.info(f"Matmul nodes From MHA to exclude: {matmul_nodes_to_exclude}")
+    logger.debug(f"Matmul nodes From MHA to exclude: {matmul_nodes_to_exclude}")
 
-    nodes_to_exclude.extend(matmul_nodes_to_exclude)
+    nodes_to_exclude.extend(matmul_nodes_to_exclude)  # type: ignore[union-attr]
     # Remove duplicates from the exclusion list
-    return [*set(nodes_to_exclude)]
+    return [*set(nodes_to_exclude)]  # type: ignore[arg-type]
 
 
 def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16):
     """Adds cast_to_fp16 nodes to the inputs of a layer and cast_to_fp32 to the outputs."""
+    logger.info(
+        "Adding cast_to_fp16 nodes to the inputs of a layer and cast_to_fp32 to the outputs"
+    )
     name_dict = {}
 
     def _get_unique_name(old_name):
@@ -895,7 +882,7 @@ def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16):
     return new_onnx_path
 
 
-def print_stat(graph: Graph, verbose: bool) -> None:
+def print_stat(graph: Graph) -> None:
     """Collect and print stats of the quantized model."""
     count = 0
     quantized_type_counts = {}
@@ -917,11 +904,10 @@ def print_stat(graph: Graph, verbose: bool) -> None:
                 # if that node is also in final model output. Ex. CLIP-ViT-L-14-opset16.onnx
                 assert tensor.name in output_names or producer_node.op != "DequantizeLinear"
 
-    logging.info(f"Total number of nodes: {len(graph.nodes)}")
-    if verbose:
-        logging.info(f"Quantized nodes: {quantized_nodes}")
-    logging.info(f"Total number of quantized nodes: {count}")
-    logging.info(f"Quantized type counts: {quantized_type_counts}")
+    logger.info(f"Total number of nodes: {len(graph.nodes)}")
+    logger.info(f"Total number of quantized nodes: {count}")
+    logger.debug(f"Quantized type counts: {quantized_type_counts}")
+    logger.debug(f"Quantized nodes: {quantized_nodes}")
 
 
 def find_mha_partitions(graph):
@@ -942,13 +928,14 @@ def find_mha_partitions(graph):
     for node in graph.nodes:
         if node.op == "MatMul":
             mha_partition = []
-            if has_path_type(node, graph, mha_chain_type, True, wild_card_types, mha_partition):
-                if (
-                    len(mha_partition) == 3
-                    and mha_partition[0].op == "MatMul"
-                    and mha_partition[2].op == "MatMul"
-                ):
-                    mha_partitions.append(mha_partition)
+            if has_path_type(
+                node, graph, mha_chain_type, True, wild_card_types, mha_partition
+            ) and (
+                len(mha_partition) == 3
+                and mha_partition[0].op == "MatMul"
+                and mha_partition[2].op == "MatMul"
+            ):
+                mha_partitions.append(mha_partition)
 
     return mha_partitions
 
@@ -1137,7 +1124,7 @@ def remove_output_initializers(graph: gs.Graph, graph_initializers: list):
             graph.outputs.remove(output_tensor)
             init_names_removed.append(output_tensor.name)
     if init_names_removed:
-        logging.info(f"Removed output initializers: {init_names_removed}")
+        logger.info(f"Removed output initializers: {init_names_removed}")
 
 
 def get_resize_scales(onnx_model):
@@ -1164,15 +1151,14 @@ def replace_resize_scales(onnx_model, resize_scale_inits):
 
     graph = gs.import_onnx(onnx_model)
     for node in graph.nodes:
-        if node.op == "Resize":
-            if node.name in resize_scale_inits.keys():
-                cast_node = node.inputs[2].inputs[0]
-                scale = cast_node.inputs[0]
-                for new_init in onnx_model.graph.initializer:
-                    if new_init.name == scale.name:
-                        old_data_type, old_raw_data = resize_scale_inits[node.name]
-                        new_init.data_type = old_data_type
-                        new_init.raw_data = old_raw_data
+        if node.op == "Resize" and node.name in resize_scale_inits:
+            cast_node = node.inputs[2].inputs[0]
+            scale = cast_node.inputs[0]
+            for new_init in onnx_model.graph.initializer:
+                if new_init.name == scale.name:
+                    old_data_type, old_raw_data = resize_scale_inits[node.name]
+                    new_init.data_type = old_data_type
+                    new_init.raw_data = old_raw_data
     return onnx_model
 
 
@@ -1212,6 +1198,7 @@ def get_concat_eliminated_tensors(
     Returns:
         {current tensor name: set of tensors that should share the same scaling factor}
     """
+    logger.info("Finding concat eliminated tensors")
     input_name_to_nodes = get_tensor_consumer_nodes(onnx_model.graph)
     graph = gs.import_onnx(onnx_model)
 
@@ -1308,7 +1295,7 @@ def remove_redundant_cast_nodes(graph: onnx.GraphProto) -> None:
     cast_indices = []
     output_names = {output.name for output in graph.output}
 
-    def _get_tensor_type(tensor_name: str) -> Optional[int]:
+    def _get_tensor_type(tensor_name: str) -> int | None:
         """Get the tensor type for a given tensor name."""
         if tensor_name in value_info_map:
             return value_info_map[tensor_name].type.tensor_type.elem_type
@@ -1355,6 +1342,6 @@ def remove_redundant_cast_nodes(graph: onnx.GraphProto) -> None:
                     break
 
     # Remove Cast nodes in reverse order
-    logging.info(f"Removing {len(cast_indices)} redundant Cast nodes")
+    logger.info(f"Removing {len(cast_indices)} redundant Cast nodes")
     for node_idx in sorted(cast_indices, reverse=True):
         del graph.node[node_idx]

@@ -24,7 +24,7 @@ def sanitize_deployment_config(deployment):
 
 
 @pytest.mark.parametrize(
-    "invalid_deployment, error_msg",
+    ("invalid_deployment", "error_msg"),
     [
         ({"runtime": "invalid_runtime"}, "Runtime invalid_runtime is not supported."),
         ({}, "Runtime was not set."),

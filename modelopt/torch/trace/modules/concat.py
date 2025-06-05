@@ -29,7 +29,6 @@ as there is no way of disabling one but not the other.
 
 import copy
 import inspect
-from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -41,7 +40,7 @@ from modelopt.torch.utils.graph import NodeTarget
 from ..analyzer import GraphDependencyProcessor, NodeProcessor
 from ..symbols import Symbol, SymInfo
 
-__all__ = ["ConcatSymbol", "ConcatNodeProcessor"]
+__all__ = ["ConcatNodeProcessor", "ConcatSymbol"]
 
 
 class ConcatSymbol(Symbol):
@@ -54,8 +53,8 @@ class ConcatSymbol(Symbol):
         concat operation and is used to monkey-patch the original symbol.
         """
 
-        _concat_sym: Optional["ConcatSymbol"]  # concat symbol that this is linked to
-        _original_class: Optional[Symbol]  # original class of the symbol
+        _concat_sym: "ConcatSymbol | None"  # concat symbol that this is linked to
+        _original_class: Symbol | None  # original class of the symbol
 
         def __init__(self, *args, **kwargs):
             """Constructor."""
@@ -81,7 +80,7 @@ class ConcatSymbol(Symbol):
             self._concat_sym = concat_sym
 
         @staticmethod
-        def convert(orig_sym: Symbol, cat_dim: int) -> Union["ConcatSymbol.Input", "ConcatSymbol"]:
+        def convert(orig_sym: Symbol, cat_dim: int) -> "ConcatSymbol.Input | ConcatSymbol":
             """Modify and convert the sym in-place to a valid ConcatSymbol.Input."""
             # if symbol is already a concat symbol, we need to disable it but can still use it.
             if isinstance(orig_sym, (ConcatSymbol, ConcatSymbol.Input)):
@@ -115,7 +114,7 @@ class ConcatSymbol(Symbol):
         self,
         symbols: list[Symbol],
         cl_type: Symbol.CLType = Symbol.CLType.NONE,
-        elastic_dims: Optional[set[int]] = None,
+        elastic_dims: set[int] | None = None,
     ):
         """Initializes Symbol from input symbols."""
         super().__init__(cl_type=cl_type, elastic_dims=elastic_dims)
@@ -128,9 +127,9 @@ class ConcatSymbol(Symbol):
         for sym in symbols:
             if isinstance(sym, ConcatSymbol.Input):
                 sym.concat_sym = self
-        self._input_syms: list[Union[ConcatSymbol.Input, ConcatSymbol]] = symbols
+        self._input_syms: list[ConcatSymbol.Input | ConcatSymbol] = symbols
 
-    def disable(self, _memo: Optional[set["Symbol"]] = None) -> None:
+    def disable(self, _memo: set[Symbol] | None = None) -> None:
         """Disable all symbols including input symbols.
 
         We handle input symbols by fake adding them to the dependency list. Note that the dependency
@@ -140,9 +139,7 @@ class ConcatSymbol(Symbol):
         super().disable(_memo)
 
     @staticmethod
-    def _strict_link_to(
-        self_sym: Union["ConcatSymbol", "ConcatSymbol.Input"], other: Symbol
-    ) -> None:
+    def _strict_link_to(self_sym: "ConcatSymbol | ConcatSymbol.Input", other: Symbol) -> None:
         msg = "Linking concat symbol to regular symbol not supported. Use the other way around!"
         assert isinstance(other, (ConcatSymbol, ConcatSymbol.Input)), msg
 
@@ -157,7 +154,7 @@ class ConcatSymbol(Symbol):
         self._strict_link_to(self, other)
 
     @property
-    def input_syms(self) -> list[Union["ConcatSymbol.Input", "ConcatSymbol"]]:
+    def input_syms(self) -> list["ConcatSymbol.Input | ConcatSymbol"]:
         """Return symbols."""
         return self._input_syms
 
@@ -179,7 +176,7 @@ class ConcatSymbol(Symbol):
         """
         return all(sym.is_constant for sym in self.input_syms)
 
-    def _check_sortable(self, _memo: Optional[set["Symbol"]] = None) -> bool:
+    def _check_sortable(self, _memo: set[Symbol] | None = None) -> bool:
         # if we just start the recursion we also check input syms in separate calls/recursions
         _is_sortable_input = bool(_memo) or any(sym._check_sortable() for sym in self.input_syms)
 

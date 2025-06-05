@@ -18,11 +18,13 @@
 import fnmatch
 
 import pytest
+from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
 from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
 from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import save_restore_test
 
 import modelopt.torch.quantization as mtq
+from modelopt.torch.quantization.plugins.accelerate import init_quantized_weights
 from modelopt.torch.quantization.qtensor import QTensorWrapper
 
 
@@ -158,7 +160,7 @@ def test_compress_config(model_cls, quant_config, compress_config):
             continue
 
         # Check if layer should be skipped based on patterns
-        should_compress = compress_config["default"] if "default" in compress_config else False
+        should_compress = compress_config.get("default", False)
         for pattern in compress_config:
             if pattern == "default":
                 continue
@@ -173,3 +175,24 @@ def test_compress_config(model_cls, quant_config, compress_config):
     input_tensor = model_cls.get_input().cuda()
     output = model(input_tensor)
     assert output.shape[0] == input_tensor.shape[0], "Model forward pass failed"
+
+
+@pytest.mark.parametrize("quant_config", [mtq.FP8_DEFAULT_CFG])
+def test_real_quantize_linear(quant_config, tmp_path):
+    try:
+        from transformers import AutoModelForCausalLM
+    except ImportError:
+        pytest.skip("transformers is not installed")
+
+    tiny_llama_dir = create_tiny_llama_dir(tmp_path)
+    with init_quantized_weights(quant_config):
+        model = AutoModelForCausalLM.from_pretrained(tiny_llama_dir)
+
+    for _, module in model.named_modules():
+        if (
+            hasattr(module, "weight")
+            and hasattr(module, "weight_quantizer")
+            and module.weight_quantizer.is_enabled
+            and not module.weight_quantizer.fake_quant
+        ):
+            assert isinstance(module.weight, QTensorWrapper)

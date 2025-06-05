@@ -15,8 +15,6 @@
 
 """Sparsity mode descriptor."""
 
-from typing import Optional
-
 from torch import nn
 
 from modelopt.torch.opt.config import ModeloptBaseConfig
@@ -55,9 +53,10 @@ def restore_sparse_model(
     model: nn.Module, config: ModeloptBaseConfig, metadata: MetadataDict
 ) -> nn.Module:
     """Function for restoring a previously convert model to a sparsity meta-model."""
-    assert "subnet_config" in metadata
     model, _ = convert_sparse_model(model, config)
-    DynamicSpace(model).select(metadata["subnet_config"])
+
+    if "subnet_config" in metadata:
+        DynamicSpace(model).select(metadata["subnet_config"])
 
     return model
 
@@ -116,12 +115,12 @@ class SparseMagnitudeModeDescriptor(ModeDescriptor):
         return SparseMagnitudeConfig
 
     @property
-    def next_modes(self) -> Optional[set[str]]:
+    def next_modes(self) -> set[str] | None:
         """Specifies the next modes for the mode."""
         return {"export_sparse", "kd_loss", "quantize"}
 
     @property
-    def export_mode(self) -> Optional[str]:
+    def export_mode(self) -> str | None:
         """The mode that corresponds to the export mode of this mode."""
         return "export_sparse"
 
