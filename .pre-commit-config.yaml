@@ -12,9 +12,6 @@ repos:
         args: [--maxkb=500, --enforce-all]
         exclude: >
           (?x)^(
-              internal/experimental/GTC_2024_demo/SDXL_PTQ.ipynb|
-              internal/experimental/vae_training/.*|
-              internal/examples/diffusers/quantization/assets/.*.png|
               examples/diffusers/quantization/assets/.*.png|
               examples/diffusers/cache_diffusion/assets/.*.png|
           )$
@@ -25,7 +22,6 @@ repos:
       - id: check-toml
       - id: check-yaml
         args: [--allow-multiple-documents]
-        exclude: ^internal/.gitlab/ # !references are not supported
       - id: debug-statements
       - id: end-of-file-fixer
       - id: mixed-line-ending
@@ -115,14 +111,6 @@ repos:
               examples/speculative_decoding/main.py|
               examples/speculative_decoding/medusa_utils.py|
               examples/speculative_decoding/server_generate.py|
-              internal/examples/diffusers/cache_diffusion/cache_diffusion/module.py|
-              internal/examples/diffusers/cache_diffusion/pipeline/models/sdxl.py|
-              internal/examples/mlperf/infer.py|
-              internal/examples/onnx_ptq/quantize_llama.py|
-              internal/examples/torchvision/modelopt_torchvision.py|
-              internal/examples/vlm_eval/data_utils.py|
-              internal/examples/vlm_eval/eval_utils.py|
-              internal/examples/vlm_eval/mmmu.py|
           )$
 
       # Default hook for Apache 2.0 in core c/c++/cuda files
@@ -167,4 +155,3 @@ repos:
       - id: lychee
         args: ["--no-progress", "--exclude-loopback"]
         stages: [manual] # Only run with `pre-commit run --all-files --hook-stage manual lychee`
-        exclude: internal/

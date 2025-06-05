@@ -15,20 +15,16 @@
 
 """The package setup script for modelopt customizing certain aspects of the installation process."""
 
-import glob
 import os
+import platform
 
 import setuptools
-from Cython.Build import cythonize
-from setuptools.command.build_py import build_py
-from setuptools.extension import Extension
-from setuptools_scm import get_version
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-# TODO: Set version to static stable release version when creating the release branch
-# version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "X.Y.Z")
-version = get_version(root=".", fallback_version="0.0.0")
+version = os.environ.get(
+    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.31.0" if platform.system() == "Linux" else "0.27.0"
+)
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -120,85 +116,6 @@ optional_deps["all"] = [
     deps for k in optional_deps if not k.startswith("dev") for deps in optional_deps[k]
 ]
 optional_deps["dev"] = [deps for k in optional_deps for deps in optional_deps[k]]
-
-
-# External release overwrites ######################################################################
-# TODO: Remove this section before copying the setup.py to the modelopt github repository
-
-# You can modify the installation process with the following env variables:
-# - ``MODELOPT_EXTERNAL``: if set to ``true`` (Default is ``False``), external packages (excluding
-#     `modelopt.core`) will be packaged into a wheel `nvidia-modelopt`. Also, internal dependencies
-#     will not be installed or packaged. This is useful for external releases.
-# - ``MODELOPT_CORE_EXTERNAL``: if set to ``true`` (Default is ``False``), only `modelopt.core` will
-#     be compiled into a separate wheel `nvidia-modelopt-core`. This wheel will not have any pip
-#     dependencies. This is useful for external releases.
-
-MODELOPT_EXTERNAL = os.environ.get("MODELOPT_EXTERNAL", "false").lower() == "true"
-MODELOPT_CORE_EXTERNAL = os.environ.get("MODELOPT_CORE_EXTERNAL", "false").lower() == "true"
-
-assert not (MODELOPT_EXTERNAL and MODELOPT_CORE_EXTERNAL), (
-    "Cannot set both `MODELOPT_EXTERNAL` and `MODELOPT_CORE_EXTERNAL` to true."
-)
-
-
-if MODELOPT_EXTERNAL:
-    packages = setuptools.find_namespace_packages(
-        include=[  # Modules for external release (everything except modelopt.core)
-            "modelopt",  # __init__.py
-            "modelopt.deploy*",
-            "modelopt.onnx*",
-            "modelopt.torch*",
-        ]
-    )
-elif MODELOPT_CORE_EXTERNAL:
-    name = "nvidia-modelopt-core"
-    packages = ["modelopt_core"] + [
-        f"modelopt_core.{p}" for p in setuptools.find_namespace_packages(where="modelopt/core")
-    ]
-    package_dir = {"modelopt_core": "modelopt/core"}
-    package_data = {}
-    required_deps = []
-    optional_deps = {}
-
-    # Cythonize all non-init files in modelopt_core
-    compiled_files = [
-        f.replace(os.sep, "/")  # Windows compatible
-        for f in glob.iglob("modelopt/core/**/*.py", recursive=True)
-        if not f.endswith("__init__.py")
-    ]
-    ext_modules = cythonize(
-        [
-            Extension(
-                f.replace("modelopt/core", "modelopt_core").replace(".py", "").replace("/", "."),
-                sources=[f],
-            )
-            for f in compiled_files
-        ],
-        compiler_directives={"language_level": "3"},
-        build_dir="build/modelopt_core_build",
-    )
-
-    class ModeloptBuildPy(build_py):
-        """A custom builder class to modify the python build process for regular installs.
-
-        The build process is executed during ``pip install .``. This is also triggered in certain cases
-        during editable installs, i.e., ``pip install -e .``, starting from Python 3.9+. One trigger is
-        when new packages are discovered!
-        """
-
-        def find_package_modules(self, *args, **kwargs):
-            """If a package exists as compiled version skip python version."""
-            return [
-                pm
-                for pm in super().find_package_modules(*args, **kwargs)
-                if pm[-1].replace(os.sep, "/") not in compiled_files
-            ]
-
-    setup_kwargs["ext_modules"] = ext_modules
-    setup_kwargs["cmdclass"] = {"build_py": ModeloptBuildPy}
-else:
-    # remove nvidia-modelopt-core dependency for internal installations / wheels
-    required_deps = [dep for dep in required_deps if not dep.startswith("nvidia-modelopt-core")]
 
 
 if __name__ == "__main__":

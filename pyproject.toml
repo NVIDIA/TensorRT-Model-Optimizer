@@ -11,7 +11,6 @@ build-backend = "setuptools.build_meta"
 ####################################################################################################
 [tool.ruff]
 target-version = "py310"
-extend-exclude = ["internal/experimental/*", "internal/examples/crush/ptq.py"]
 line-length = 100 # Line length limit for code
 fix = true
 
