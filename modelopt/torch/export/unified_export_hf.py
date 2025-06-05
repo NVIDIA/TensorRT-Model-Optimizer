@@ -15,6 +15,7 @@
 
 """Code that export quantized Hugging Face models for deployment."""
 
+import collections.abc
 import json
 import tempfile
 import warnings
@@ -29,7 +30,14 @@ from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer
 
 from .convert_hf_config import convert_hf_quant_config_format
-from .layer_utils import get_experts_list, is_layernorm, is_moe, is_quantlinear
+from .layer_utils import (
+    get_expert_linear_names,
+    get_experts_list,
+    is_layernorm,
+    is_moe,
+    is_quantlinear,
+    set_amax_for_uncalibrated_experts,
+)
 from .model_config import (
     KV_CACHE_FP8,
     KV_CACHE_NVFP4,
@@ -183,6 +191,44 @@ def _export_hf_checkpoint(
     # If that has a `.layers`, use it, otherwise fall back to the object itself
     root = getattr(root, "layers", root)
     layer_pool = {f"model.layers.{name}": sub_module for name, sub_module in root.named_modules()}
+
+    # Handle input quantizers of experts that are not calibrated
+    for name, sub_module in model.named_modules():
+        if is_moe(sub_module) and hasattr(sub_module, "experts"):
+            expert_linear_names = get_expert_linear_names(sub_module)
+            for linear_name in expert_linear_names:
+                # Handle DBRX experts specifically
+                if "QuantDbrxExperts" in type(sub_module.experts).__name__:
+                    # For DBRX, experts are in sub_module.experts.mlp and linear layers are ModuleLists
+                    experts_mlp = sub_module.experts.mlp
+                    if hasattr(experts_mlp, linear_name):
+                        linear_modulelist = getattr(experts_mlp, linear_name)
+                        if hasattr(linear_modulelist, "__iter__"):
+                            set_amax_for_uncalibrated_experts(list(linear_modulelist))
+                elif isinstance(sub_module.experts, collections.abc.Iterable):
+                    # For other MoE models (like Mixtral) with iterable experts
+                    try:
+                        set_amax_for_uncalibrated_experts(
+                            [getattr(expert, linear_name) for expert in sub_module.experts]
+                        )
+                    except AttributeError as e:
+                        # Provide more helpful debugging information
+                        expert_types = [type(expert).__name__ for expert in sub_module.experts]
+                        raise AttributeError(
+                            f"Failed to access attribute '{linear_name}' on experts. "
+                            f"MoE module type: {type(sub_module).__name__}, "
+                            f"Expert types: {expert_types}, "
+                            f"Expected linear names: {expert_linear_names}. "
+                            f"This suggests the get_expert_linear_names function may need "
+                            f"to be updated for this model architecture. "
+                            f"Original error: {e}"
+                        ) from e
+                else:
+                    # Unsupported MoE model structure
+                    raise NotImplementedError(
+                        f"MoE model with experts type '{type(sub_module.experts).__name__}' is not supported in export."
+                        f"Please file an issue or add support for this model architecture."
+                    )
 
     # NOTE: Speculative decoding models have extra modules that may be quantized
     # Need to add these modules to the layer_pool

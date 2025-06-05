@@ -324,6 +324,7 @@ def is_moe(module: nn.Module) -> bool:
         "PhimoeSparseMoeBlock".lower(),
         "DeepseekMoE".lower(),
         "Qwen2MoeSparseMoeBlock".lower(),
+        "Qwen3MoeSparseMoeBlock".lower(),
     ]
 
 
@@ -969,10 +970,51 @@ def _build_stacked_linear(experts: nn.Module, module_name, linear_type, num_expe
     return config
 
 
-@contextmanager
-def set_zero_amax_for_uncalibrated_experts(experts: nn.Module):
-    """For experts that does not have valid amax value of input quantizer, we set them to 0."""
+def get_expert_linear_names(module: nn.Module) -> list[str]:
+    """Get the list of linear names for the experts."""
+    if type(module).__name__.lower() in [
+        "Qwen2MoeSparseMoeBlock".lower(),
+        "Qwen3MoeSparseMoeBlock".lower(),
+        "DeepseekMoE".lower(),
+    ]:
+        return ["gate_proj", "down_proj", "up_proj"]
+    elif type(module).__name__.lower() in "MixtralMoeSparseMoeBlock".lower():
+        return ["linear_fc1", "linear_fc2"]
+    elif type(module).__name__.lower() in "DBRXMoeSparseMoeBlock".lower():
+        return ["w1_linear", "w2_linear", "v1_linear"]
+    else:
+        # assuing w1, w2, w3 by default
+        return ["w1", "w2", "w3"]
+
+
+def set_amax_for_uncalibrated_experts(experts: nn.Module, set_amax_value: float | None = None):
+    """Set amax of uncalibrated experts to a given value or the max of existing amax value from other experts.
+
+    Args:
+        experts: a list of experts
+        set_amax_value: set amax value to the given value.
+                        If None, set amax value to the max of existing amax value from other experts.
+
+    Returns:
+        uncalibrated_experts: a list of uncalibrated experts
+    """
     uncalibrated_experts = []
+    # get the max amax value from all experts
+    if set_amax_value is None:
+        amax_values = [
+            module.input_quantizer.amax
+            for module in experts
+            if (
+                hasattr(module, "input_quantizer")
+                and module.input_quantizer is not None
+                and module.input_quantizer.is_enabled
+            )
+            and module.input_quantizer.amax is not None
+        ]
+        if len(amax_values) == 0:
+            return uncalibrated_experts
+        set_amax_value = torch.max(torch.stack(amax_values))
+
     for module in experts:
         if (
             hasattr(module, "input_quantizer")
@@ -980,15 +1022,23 @@ def set_zero_amax_for_uncalibrated_experts(experts: nn.Module):
             and module.input_quantizer.is_enabled
         ) and module.input_quantizer.amax is None:
             warn(
-                f"Missing amax value for {module} input_quantizer. Setting it to 0 for checkpoint export. "
+                f"Missing amax value for {module} input_quantizer. Setting it to {set_amax_value} for export. "
                 f"This typically occurs in MoE models when certain experts are not activated during calibration. "
                 f"Consider increasing your calibration dataset size to ensure all experts are exercised."
             )
             # Use float32 dtype explicitly to ensure we create a floating point tensor
             module.input_quantizer.amax = torch.tensor(
-                0.0, dtype=torch.float32, device=module.weight_quantizer.amax.device
+                set_amax_value, dtype=torch.float32, device=module.weight_quantizer.amax.device
             )
             uncalibrated_experts.append(module)
+
+
+@contextmanager
+def set_amax_for_uncalibrated_experts_context(
+    experts: nn.Module, set_amax_value: float | None = None
+):
+    """Set amax for uncalibrated experts in a context manager."""
+    uncalibrated_experts = set_amax_for_uncalibrated_experts(experts, set_amax_value)
     yield
     if uncalibrated_experts:
         for module in uncalibrated_experts:
@@ -1022,12 +1072,13 @@ def build_stacked_experts(
     )
 
     # Set amax to 0 for uncalibrated experts
-    with set_zero_amax_for_uncalibrated_experts(
+    with set_amax_for_uncalibrated_experts_context(
         [
             expert_getter(experts, i, module_name)
             for module_name in linear_names
             for i in range(num_experts)
-        ]
+        ],
+        0,  # set amax to 0 for uncalibrated experts as we will calculate max across all experts later
     ):
         # Pre-fuse W1 and W3
         if len(linear_names) == 3:
@@ -1121,12 +1172,14 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
         )
     elif decoder_type == "qwen":
         config.router = build_linear_config(module.gate, LINEAR_ROW)
-        preprocess_linear_fusion([module.shared_expert.gate_proj, module.shared_expert.up_proj])
-        config.shared_expert = build_mlp_config(
-            module.shared_expert, decoder_type, merge_gate_fc=True
-        )
-        config.shared_expert_gate = build_linear_config(module.shared_expert_gate, LINEAR_ROW)
-        config.shared_expert_gate.tp = False
+        # Qwen3 doesn't have shared expert
+        if hasattr(module, "shared_expert"):
+            preprocess_linear_fusion([module.shared_expert.gate_proj, module.shared_expert.up_proj])
+            config.shared_expert = build_mlp_config(
+                module.shared_expert, decoder_type, merge_gate_fc=True
+            )
+            config.shared_expert_gate = build_linear_config(module.shared_expert_gate, LINEAR_ROW)
+            config.shared_expert_gate.tp = False
     else:
         raise NotImplementedError(f"{decoder_type} not supported")
 
