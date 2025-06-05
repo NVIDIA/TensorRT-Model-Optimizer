@@ -74,12 +74,11 @@ Call PTQ function
 
 Alternatively, you can call PTQ function in command line:
 
-.. code-block:: bash
+.. argparse::
+   :module: modelopt.onnx.quantization.__main__
+   :func: get_parser
+   :prog: python -m modelopt.onnx.quantization
 
-    python -m modelopt.onnx.quantization \
-        --calibration_data_path /calibration/data/in/npz/npy/format \
-        --output_path /path/to/the/quantized/onnx/output \
-        --quantize_mode int8
 
 If the model contains custom ops, enable calibration with the TensorRT Execution Provider backend with CUDA and CPU fallback (``--calibration_eps trt cuda:0 cpu``) and, if relevant, provide the location of the TensorRT plugin in ``.so`` format via the ``--trt_plugins`` flag.
 

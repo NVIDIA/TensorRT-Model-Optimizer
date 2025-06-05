@@ -31,9 +31,9 @@ symbols
    .. autosummary::
       :nosignatures:
    
-      Symbol
-      SymMap
       SymInfo
+      SymMap
+      Symbol
    
    
 

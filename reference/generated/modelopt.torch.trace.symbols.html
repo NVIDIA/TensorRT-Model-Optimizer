@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>symbols &mdash; Model Optimizer 0.29.0</title>
+  <title>symbols &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -156,14 +156,14 @@
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Symbol</span></code></a></p></td>
-<td><p>A symbolic parameter (<code class="docutils literal notranslate"><span class="pre">Symbol</span></code>) of a <code class="docutils literal notranslate"><span class="pre">SymModule</span></code>.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.trace.symbols.SymInfo" title="modelopt.torch.trace.symbols.SymInfo"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SymInfo</span></code></a></p></td>
+<td><p>A simple class to hold relevant information about the symbolic nature of a given module.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.trace.symbols.SymMap" title="modelopt.torch.trace.symbols.SymMap"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SymMap</span></code></a></p></td>
 <td><p>A class to hold the symbolic representations of a model.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.trace.symbols.SymInfo" title="modelopt.torch.trace.symbols.SymInfo"><code class="xref py py-obj docutils literal notranslate"><span class="pre">SymInfo</span></code></a></p></td>
-<td><p>A simple class to hold relevant information about the symbolic nature of a given module.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Symbol</span></code></a></p></td>
+<td><p>A symbolic parameter (<code class="docutils literal notranslate"><span class="pre">Symbol</span></code>) of a <code class="docutils literal notranslate"><span class="pre">SymModule</span></code>.</p></td>
 </tr>
 </tbody>
 </table>
@@ -185,8 +185,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>is_shape_preserving</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>kwargs</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>) – </p></li>
+<li><p><strong>is_shape_preserving</strong> (<em>bool</em>)</p></li>
+<li><p><strong>kwargs</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -229,8 +229,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>key</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>sym_info</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.SymInfo" title="modelopt.torch.trace.symbols.SymInfo"><em>SymInfo</em></a>) – </p></li>
+<li><p><strong>key</strong> (<em>Module</em>)</p></li>
+<li><p><strong>sym_info</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.SymInfo" title="modelopt.torch.trace.symbols.SymInfo"><em>SymInfo</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -246,8 +246,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mod</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>name</strong> (<em>str</em>) – </p></li>
+<li><p><strong>mod</strong> (<em>Module</em>)</p></li>
+<li><p><strong>name</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -262,7 +262,7 @@
 <dd><p>Return whether the symbolic module is shape preserving.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>key</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>key</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -337,7 +337,7 @@ iterated over. If either of <code class="docutils literal notranslate"><span cla
 <dd><p>Remove the given module from the dictionary and return its symbolic representation.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>key</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>key</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>dict</em>[<em>str</em>, <a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>]</p>
@@ -394,9 +394,9 @@ treated as leaf during tracing.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>mod</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>name</strong> (<em>str</em>) – </p></li>
-<li><p><strong>symbol</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>) – </p></li>
+<li><p><strong>mod</strong> (<em>Module</em>)</p></li>
+<li><p><strong>name</strong> (<em>str</em>)</p></li>
+<li><p><strong>symbol</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -412,7 +412,7 @@ treated as leaf during tracing.</p></li>
 <p>It throws a KeyError if the module is not registered.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>nn_cls</strong> (<em>type</em><em>[</em><em>Module</em><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>nn_cls</strong> (<em>type</em><em>[</em><em>Module</em><em>]</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -469,10 +469,10 @@ treated as leaf during tracing.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>is_searchable</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>is_sortable</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>cl_type</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol.CLType" title="modelopt.torch.trace.symbols.Symbol.CLType"><em>CLType</em></a>) – </p></li>
-<li><p><strong>elastic_dims</strong> (<em>set</em><em>[</em><em>int</em><em>] </em><em>| </em><em>None</em>) – </p></li>
+<li><p><strong>is_searchable</strong> (<em>bool</em>)</p></li>
+<li><p><strong>is_sortable</strong> (<em>bool</em>)</p></li>
+<li><p><strong>cl_type</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol.CLType" title="modelopt.torch.trace.symbols.Symbol.CLType"><em>CLType</em></a>)</p></li>
+<li><p><strong>elastic_dims</strong> (<em>set</em><em>[</em><em>int</em><em>] </em><em>| </em><em>None</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -491,7 +491,7 @@ treated as leaf during tracing.</p></li>
 <p>After this call, <code class="docutils literal notranslate"><span class="pre">is_constant</span> <span class="pre">==</span> <span class="pre">True</span></code>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>_memo</strong> (<em>set</em><em>[</em><a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>] </em><em>| </em><em>None</em>) – </p>
+<dd class="field-odd"><p><strong>_memo</strong> (<em>set</em><em>[</em><a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>] </em><em>| </em><em>None</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -573,7 +573,7 @@ Conv2d where both 1 and -3 refer to the “C” dimension in “NCHW”).</p>
 <dd><p>Register a parent symbol, i.e., make this symbol dependent on the parent.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>sp_parent</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>) – </p>
+<dd class="field-odd"><p><strong>sp_parent</strong> (<a class="reference internal" href="#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>

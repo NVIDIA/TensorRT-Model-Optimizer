@@ -12,16 +12,21 @@ trace
    :recursive:
 
 
+
    modelopt.torch.trace.analyzer
+
 
 
    modelopt.torch.trace.modules
 
 
+
    modelopt.torch.trace.plugins
 
 
+
    modelopt.torch.trace.symbols
+
 
 
    modelopt.torch.trace.tracer

@@ -31,8 +31,8 @@ perf
    .. autosummary::
       :nosignatures:
    
-      Timer
       AccumulatingTimer
+      Timer
    
    
 

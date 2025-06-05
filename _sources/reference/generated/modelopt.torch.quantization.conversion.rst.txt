@@ -37,11 +37,11 @@ conversion
    .. autosummary::
       :nosignatures:
    
-      replace_quant_module
-      set_quantizer_by_cfg
-      set_quantizer_attribute
       register
-      unregister
+      replace_quant_module
+      set_quantizer_attribute
+      set_quantizer_by_cfg
       set_quantizer_by_cfg_context
+      unregister
    
    

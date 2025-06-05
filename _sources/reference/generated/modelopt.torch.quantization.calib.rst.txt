@@ -12,13 +12,17 @@ calib
    :recursive:
 
 
+
    modelopt.torch.quantization.calib.bias
+
 
 
    modelopt.torch.quantization.calib.calibrator
 
 
+
    modelopt.torch.quantization.calib.histogram
+
 
 
    modelopt.torch.quantization.calib.max

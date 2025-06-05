@@ -31,8 +31,8 @@ tracer
    .. autosummary::
       :nosignatures:
    
-      RobustTracer
       GraphCollection
+      RobustTracer
    
    
 

@@ -31,8 +31,8 @@ traced\_hp
    .. autosummary::
       :nosignatures:
    
-      TracedHpRegistry
       TracedHp
+      TracedHpRegistry
    
    
 

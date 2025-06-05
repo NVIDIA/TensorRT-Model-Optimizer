@@ -12,25 +12,33 @@ distill
    :recursive:
 
 
+
    modelopt.torch.distill.config
+
 
 
    modelopt.torch.distill.distillation
 
 
+
    modelopt.torch.distill.distillation_model
+
 
 
    modelopt.torch.distill.loss_balancers
 
 
+
    modelopt.torch.distill.losses
+
 
 
    modelopt.torch.distill.mode
 
 
+
    modelopt.torch.distill.plugins
+
 
 
    modelopt.torch.distill.registry

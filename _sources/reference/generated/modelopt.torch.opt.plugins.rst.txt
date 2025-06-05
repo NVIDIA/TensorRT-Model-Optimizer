@@ -13,7 +13,13 @@ plugins
 
 
 
+
+
    modelopt.torch.opt.plugins.huggingface
+
+
+
+
 
 
 

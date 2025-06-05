@@ -1,0 +1,346 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoCast (ONNX) &mdash; Model Optimizer 0.31.0</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+      <link rel="stylesheet" type="text/css" href="../_static/tabs.css?v=4c969af8" />
+      <link rel="stylesheet" type="text/css" href="../_static/togglebutton.css?v=13237357" />
+      <link rel="stylesheet" type="text/css" href="../_static/autodoc_pydantic.css" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=7a224f4b" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="../_static/copybutton.js?v=20d3d275"></script>
+      <script src="../_static/tabs.js?v=3ee01567"></script>
+      <script>let toggleHintShow = 'Click to show';</script>
+      <script>let toggleHintHide = 'Click to hide';</script>
+      <script>let toggleOpenOnPrint = 'true';</script>
+      <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
+      <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+      <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="TensorRT-LLM" href="../deployment/1_tensorrt_llm.html" />
+    <link rel="prev" title="Speculative Decoding" href="7_speculative_decoding.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            TensorRT Model Optimizer
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Getting Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/1_overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/2_installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/3_quantization.html">Quick Start: Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/4_quantization_windows.html">Quick Start: Quantization (Windows)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/5_pruning.html">Quick Start: Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/6_distillation.html">Quick Start: Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../getting_started/7_sparsity.html">Quick Start: Sparsity</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Guides</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="0_support_matrix.html">Support Matrix</a></li>
+<li class="toctree-l1"><a class="reference internal" href="1_quantization.html">Quantization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="2_pruning.html">Pruning</a></li>
+<li class="toctree-l1"><a class="reference internal" href="3_nas.html">NAS</a></li>
+<li class="toctree-l1"><a class="reference internal" href="4_distillation.html">Distillation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="5_sparsity.html">Sparsity</a></li>
+<li class="toctree-l1"><a class="reference internal" href="6_save_load.html">Saving &amp; Restoring</a></li>
+<li class="toctree-l1"><a class="reference internal" href="7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">AutoCast (ONNX)</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#basic-commandline-usage">Basic Commandline Usage</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#modelopt.onnx.autocast.__main__-get_parser-named-arguments">Named Arguments</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#python-api-usage">Python API Usage</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-it-works">How It Works</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#best-practices">Best Practices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#limitations-and-restrictions">Limitations and Restrictions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#example-usage">Example Usage</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/1_tensorrt_llm.html">TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/2_directml.html">DirectML</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../deployment/3_unified_hf.html">Unified HuggingFace Checkpoint</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Examples</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../examples/0_all_examples.html">All GitHub Examples</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../reference/0_changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../reference/1_modelopt_api.html">modelopt API</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Support</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../support/1_contact.html">Contact us</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../support/2_faqs.html">FAQs</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">TensorRT Model Optimizer</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content style-external-links">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">AutoCast (ONNX)</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/guides/8_autocast.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="autocast-onnx">
+<h1>AutoCast (ONNX)<a class="headerlink" href="#autocast-onnx" title="Link to this heading"></a></h1>
+<p>AutoCast is a tool for converting FP32 ONNX models to mixed precision FP32-FP16 or FP32-BF16 models.
+While casting FP32 to FP6/BF16, some nodes might be more sensitive to effecting accuracy.
+AutoCast intelligently selects nodes to keep in FP32 precision to maintain model accuracy while benefiting from
+reduced precision on the rest of the nodes. AutoCast automatically injects cast operations around the selected
+nodes.</p>
+<section id="basic-commandline-usage">
+<h2>Basic Commandline Usage<a class="headerlink" href="#basic-commandline-usage" title="Link to this heading"></a></h2>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">usage</span><span class="p">:</span> <span class="n">python</span> <span class="o">-</span><span class="n">m</span> <span class="n">modelopt</span><span class="o">.</span><span class="n">onnx</span><span class="o">.</span><span class="n">autocast</span> <span class="p">[</span><span class="o">-</span><span class="n">h</span><span class="p">]</span> <span class="o">--</span><span class="n">onnx_path</span> <span class="n">ONNX_PATH</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">output_path</span> <span class="n">OUTPUT_PATH</span><span class="p">]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">low_precision_type</span> <span class="p">{</span><span class="n">fp16</span><span class="p">,</span><span class="n">bf16</span><span class="p">}]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">calibration_data</span> <span class="n">CALIBRATION_DATA</span><span class="p">]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">nodes_to_exclude</span> <span class="p">[</span><span class="n">NODES_TO_EXCLUDE</span> <span class="o">...</span><span class="p">]]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">op_types_to_exclude</span> <span class="p">[</span><span class="n">OP_TYPES_TO_EXCLUDE</span> <span class="o">...</span><span class="p">]]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">data_max</span> <span class="n">DATA_MAX</span><span class="p">]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">init_max</span> <span class="n">INIT_MAX</span><span class="p">]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">init_conversion_max_bytes</span> <span class="n">INIT_CONVERSION_MAX_BYTES</span><span class="p">]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">keep_io_types</span><span class="p">]</span>
+                                        <span class="p">[</span><span class="o">--</span><span class="n">log_level</span> <span class="p">{</span><span class="n">DEBUG</span><span class="p">,</span><span class="n">INFO</span><span class="p">,</span><span class="n">WARNING</span><span class="p">,</span><span class="n">ERROR</span><span class="p">,</span><span class="n">CRITICAL</span><span class="p">}]</span>
+</pre></div>
+</div>
+<section id="modelopt.onnx.autocast.__main__-get_parser-named-arguments">
+<h3>Named Arguments<a class="headerlink" href="#modelopt.onnx.autocast.__main__-get_parser-named-arguments" title="Link to this heading"></a></h3>
+<dl class="option-list">
+<dt><kbd>--onnx_path</kbd></dt>
+<dd><p>Path to the ONNX model</p>
+</dd>
+<dt><kbd>--output_path</kbd></dt>
+<dd><p>Output filename to save the converted ONNX model. If None, save it in the same dir as the original ONNX model with an appropriate suffix.</p>
+</dd>
+<dt><kbd>--low_precision_type, -t</kbd></dt>
+<dd><p>Possible choices: fp16, bf16</p>
+<p>Precision to reduce to</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">'fp16'</span></code></p>
+</dd>
+<dt><kbd>--calibration_data, -d</kbd></dt>
+<dd><p>File path to inputs for reference runner, either NPZ or Polygraphy JSON file. If not provided, random inputs will be used</p>
+</dd>
+<dt><kbd>--nodes_to_exclude, -n</kbd></dt>
+<dd><p>List of regex patterns to match node names that should remain in FP32</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">[]</span></code></p>
+</dd>
+<dt><kbd>--op_types_to_exclude, -op</kbd></dt>
+<dd><p>List of op types that should remain in FP32</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">[]</span></code></p>
+</dd>
+<dt><kbd>--data_max</kbd></dt>
+<dd><p>Maximum absolute value for node outputs, nodes with outputs greater than this value will remain in FP32</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">512</span></code></p>
+</dd>
+<dt><kbd>--init_max</kbd></dt>
+<dd><p>Maximum absolute value for initializers, nodes with initializers greater than this value will remain in FP32</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">65500.0</span></code></p>
+</dd>
+<dt><kbd>--init_conversion_max_bytes</kbd></dt>
+<dd><p>Maximum size in bytes for initializer conversion. Larger initializers will be cast at runtime.</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">1048576</span></code></p>
+</dd>
+<dt><kbd>--keep_io_types</kbd></dt>
+<dd><p>Keep the input and output types of the model, otherwise they will be converted to FP16</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">False</span></code></p>
+</dd>
+<dt><kbd>--log_level</kbd></dt>
+<dd><p>Possible choices: DEBUG, INFO, WARNING, ERROR, CRITICAL</p>
+<p>Log level</p>
+<p>Default: <code class="docutils literal notranslate"><span class="pre">'INFO'</span></code></p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="python-api-usage">
+<h2>Python API Usage<a class="headerlink" href="#python-api-usage" title="Link to this heading"></a></h2>
+<p>AutoCast can also be used programmatically through its Python API:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">onnx</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">modelopt.onnx.autocast</span><span class="w"> </span><span class="kn">import</span> <span class="n">convert</span>
+
+<span class="c1"># Convert model to mixed precision</span>
+<span class="n">converted_model</span> <span class="o">=</span> <span class="n">convert</span><span class="p">(</span>
+   <span class="n">onnx_path</span><span class="o">=</span><span class="s2">&quot;model.onnx&quot;</span><span class="p">,</span>
+   <span class="n">low_precision_type</span><span class="o">=</span><span class="s2">&quot;fp16&quot;</span><span class="p">,</span>            <span class="c1"># or &quot;bf16&quot;</span>
+   <span class="n">nodes_to_exclude</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                <span class="c1"># optional list of node name patterns to keep in FP32</span>
+   <span class="n">op_types_to_exclude</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>             <span class="c1"># optional list of op types to keep in FP32</span>
+   <span class="n">data_max</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span>                         <span class="c1"># threshold for node outputs</span>
+   <span class="n">init_max</span><span class="o">=</span><span class="mi">65504</span><span class="p">,</span>                       <span class="c1"># threshold for initializers</span>
+   <span class="n">keep_io_types</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                  <span class="c1"># whether to preserve input/output types</span>
+   <span class="n">calibration_data</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                <span class="c1"># optional path to input data file</span>
+   <span class="n">init_conversion_max_bytes</span><span class="o">=</span><span class="mi">1073741824</span><span class="p">,</span> <span class="c1"># maximum size in bytes for initializer conversion, 1&lt;&lt;20</span>
+<span class="p">)</span>
+
+<span class="c1"># Save the converted model</span>
+<span class="n">onnx</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">converted_model</span><span class="p">,</span> <span class="s2">&quot;converted_model.onnx&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="how-it-works">
+<h2>How It Works<a class="headerlink" href="#how-it-works" title="Link to this heading"></a></h2>
+<p>AutoCast follows these steps to convert a model:</p>
+<ol class="arabic simple">
+<li><p><strong>Model Loading and Sanitization</strong>:
+- Loads the ONNX model
+- Performs graph sanitization and optimizations
+- Ensures minimum opset version requirements (22 for BF16, 13 for FP16)</p></li>
+<li><p><strong>Node Classification</strong>:
+- Analyzes each node in the graph
+- Determines which nodes should remain in FP32 based on input and output tensors magnitudes, operation types and node name patterns
+- If a calibration dataset is provided, it will be used to generate intermediate tensor magnitudes for more accurate node classification, otherwise random data will be used.</p></li>
+<li><p><strong>Precision Conversion</strong>:
+- Converts eligible nodes to lower precision
+- Automatically inserts necessary cast operations
+- Automatically replaces initializers with lower precision values</p></li>
+<li><p><strong>Validation and Export</strong>:
+- Verifying that the model is a valid ONNX model (using onnx.checker)
+- Checking that the output tensors are not disconnected
+- Verifying that the original and current network inputs/outputs names match
+- Ensuring that the input and output types are handled according to keep_io_types
+- Saves the converted model</p></li>
+</ol>
+</section>
+<section id="best-practices">
+<h2>Best Practices<a class="headerlink" href="#best-practices" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p><strong>Start with Default Settings</strong>:
+Begin with default thresholds and gradually adjust based on accuracy requirements.</p></li>
+<li><p><strong>Monitor Node Conversion</strong>:
+Use INFO level logging to see what percentage of nodes were converted to lower precision.
+Use DEBUG level logging to see more detailed information about the node classification process.</p></li>
+<li><p><strong>Preserve Critical Operations</strong>:
+Use <code class="docutils literal notranslate"><span class="pre">op_types_to_exclude</span></code> for operations known to be sensitive to precision reduction.</p></li>
+<li><p><strong>Validate with Real Data</strong>:
+Provide representative input data using the <code class="docutils literal notranslate"><span class="pre">calibration_data</span></code> option for more accurate node classification.</p></li>
+<li><p><strong>BF16 Conversion</strong>:
+- BF16 conversion is not supported for all operations.
+- AutoCast will automatically convert the model to opset 22 to enable more BF16 operations.
+- Use <code class="docutils literal notranslate"><span class="pre">--op_types_to_exclude</span></code> to exclude operations that are not supported in BF16.
+- BF16 accuracy may require additional tuning of the <code class="docutils literal notranslate"><span class="pre">data_max</span></code> and <code class="docutils literal notranslate"><span class="pre">init_max</span></code> thresholds.
+- TensorRT might not be able to support all BF16 converted models.</p></li>
+<li><p><strong>Large Initializers</strong>
+- Attempting to convert large initializers, might cause host memory issues.
+- Use <code class="docutils literal notranslate"><span class="pre">--init_conversion_max_bytes</span></code> to limit the size of initializers that will be converted at compile time.
+- Initializers larger than <code class="docutils literal notranslate"><span class="pre">--init_conversion_max_bytes</span></code> will be converted at runtime (using a cast operation).
+- Increasing this value may result in smaller models and faster inference, but could also result in AutoCast crash during the conversion process.
+- For best results, use the highest <code class="docutils literal notranslate"><span class="pre">--init_conversion_max_bytes</span></code> that the host memory can handle.</p></li>
+</ol>
+</section>
+<section id="limitations-and-restrictions">
+<h2>Limitations and Restrictions<a class="headerlink" href="#limitations-and-restrictions" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>AutoCast does not yet support models with custom operators / plugins.</p></li>
+<li><p>AutoCast does not yet support quantized models.</p></li>
+<li><p>BF16 conversion is not supported for all operations</p></li>
+<li><p>Large models (e.g. over 2GB) might cause memory issues.</p></li>
+</ul>
+</section>
+<section id="example-usage">
+<h2>Example Usage<a class="headerlink" href="#example-usage" title="Link to this heading"></a></h2>
+<p>Basic conversion to FP16:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>modelopt.onnx.autocast<span class="w"> </span>--onnx_path<span class="w"> </span>model.onnx
+</pre></div>
+</div>
+<p>Basic conversion with verbose logging and custom output path:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>modelopt.onnx.autocast<span class="w"> </span>--onnx_path<span class="w"> </span>model.onnx<span class="w"> </span>--output_path<span class="w"> </span>custom_path.onnx<span class="w"> </span>--log_level<span class="w"> </span>DEBUG
+</pre></div>
+</div>
+<p>Convert to BF16 with custom data magnitude threshold and custom disabled op types:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>modelopt.onnx.autocast<span class="w"> </span>--onnx_path<span class="w"> </span>model.onnx<span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>--low_precision_type<span class="w"> </span>bf16<span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>--data_max<span class="w"> </span><span class="m">256</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>--op_types_to_exclude<span class="w"> </span>Resize
+</pre></div>
+</div>
+<p>Bypass data magnitude check and keep specific node names in FP32:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>-m<span class="w"> </span>modelopt.onnx.autocast<span class="w"> </span>--onnx_path<span class="w"> </span>model.onnx<span class="w"> </span>--data_max<span class="w"> </span>inf<span class="w"> </span>--nodes_to_exclude<span class="w"> </span><span class="s2">&quot;.*attn.*&quot;</span>
+</pre></div>
+</div>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="7_speculative_decoding.html" class="btn btn-neutral float-left" title="Speculative Decoding" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../deployment/1_tensorrt_llm.html" class="btn btn-neutral float-right" title="TensorRT-LLM" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2023-2025, NVIDIA Corporation.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

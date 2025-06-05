@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>dataset_utils &mdash; Model Optimizer 0.29.0</title>
+  <title>dataset_utils &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -192,7 +192,7 @@ tokenizer to prepare the input data, feeds it into the model, and returns the mo
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>model</strong> (<em>Module</em><em> | </em><em>None</em>) – The PyTorch model for inference.</p></li>
 <li><p><strong>dataset_name</strong> (<em>str</em>) – The name of the dataset to be used. Must be one of the datasets in get_supported_datasets().</p></li>
-<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizer</em><em> | </em><em>PreTrainedTokenizerFast</em><em> | </em><em>None</em>) – The tokenizer used to preprocess text data into a format suitable
+<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizerBase</em><em> | </em><em>None</em>) – The tokenizer used to preprocess text data into a format suitable
 for the model.</p></li>
 <li><p><strong>batch_size</strong> (<em>int</em>) – Batch size of the returned dataloader. If 0 is provided, we auto determine the batch_size.</p></li>
 <li><p><strong>num_samples</strong> (<em>int</em>) – Number of samples from the dataset.</p></li>
@@ -232,15 +232,15 @@ for the model.</p></li>
 </dd>
 <dt class="field-even">Parameters<span class="colon">:</span></dt>
 <dd class="field-even"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>dataset_name</strong> (<em>str</em>) – </p></li>
-<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizer</em><em> | </em><em>PreTrainedTokenizerFast</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>batch_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>num_samples</strong> (<em>int</em>) – </p></li>
-<li><p><strong>max_sample_length</strong> (<em>int</em>) – </p></li>
-<li><p><strong>device</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>include_labels</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>dataloader</strong> (<em>DataLoader</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>model</strong> (<em>Module</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>dataset_name</strong> (<em>str</em>)</p></li>
+<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizerBase</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>batch_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>num_samples</strong> (<em>int</em>)</p></li>
+<li><p><strong>max_sample_length</strong> (<em>int</em>)</p></li>
+<li><p><strong>device</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>include_labels</strong> (<em>bool</em>)</p></li>
+<li><p><strong>dataloader</strong> (<em>DataLoader</em><em> | </em><em>None</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
@@ -257,7 +257,7 @@ for the model.</p></li>
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>dataset_name</strong> (<em>str</em>) – Name of the dataset to load.</p></li>
-<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizer</em><em> | </em><em>PreTrainedTokenizerFast</em>) – Instancne of Hugginface tokenizer.</p></li>
+<li><p><strong>tokenizer</strong> (<em>PreTrainedTokenizerBase</em><em> | </em><em>None</em>) – Instancne of Hugginface tokenizer.</p></li>
 <li><p><strong>batch_size</strong> (<em>int</em>) – Batch size of the returned dataloader.</p></li>
 <li><p><strong>num_samples</strong> (<em>int</em>) – Number of samples from the dataset.</p></li>
 <li><p><strong>max_sample_length</strong> (<em>int</em>) – Maximum length of a sample.</p></li>
@@ -281,10 +281,10 @@ for the model.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>max_sample_length</strong> (<em>int</em>) – </p></li>
-<li><p><strong>sample_memory_usage_ratio</strong> (<em>float</em>) – </p></li>
-<li><p><strong>sample_input_single_batch</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>model</strong> (<em>Module</em>)</p></li>
+<li><p><strong>max_sample_length</strong> (<em>int</em>)</p></li>
+<li><p><strong>sample_memory_usage_ratio</strong> (<em>float</em>)</p></li>
+<li><p><strong>sample_input_single_batch</strong> (<em>Tensor</em>)</p></li>
 </ul>
 </dd>
 </dl>

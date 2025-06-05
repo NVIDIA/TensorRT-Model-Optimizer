@@ -1,5 +1,5 @@
-mode
-====
+convert\_hf\_config
+===================
 
 .. List the submodules
 
@@ -15,7 +15,7 @@ mode
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.prune.mode
+.. automodule:: modelopt.torch.export.convert_hf_config
    :members:
    :undoc-members:
 
@@ -26,19 +26,17 @@ mode
    .. Overview table of available classes in the module
    
    
-   .. rubric:: Classes
-
-   .. autosummary::
-      :nosignatures:
-   
-      FastNASModeDescriptor
-      GradNASModeDescriptor
-      MCoreGPTMinitronModeDescriptor
-   
    
 
 
    .. Overview table of available functions in the module
    
+   
+   .. rubric:: Functions
+
+   .. autosummary::
+      :nosignatures:
+   
+      convert_hf_quant_config_format
    
    

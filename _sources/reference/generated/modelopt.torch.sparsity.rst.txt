@@ -12,25 +12,33 @@ sparsity
    :recursive:
 
 
+
    modelopt.torch.sparsity.config
+
 
 
    modelopt.torch.sparsity.magnitude
 
 
+
    modelopt.torch.sparsity.mode
+
 
 
    modelopt.torch.sparsity.module
 
 
+
    modelopt.torch.sparsity.plugins
+
 
 
    modelopt.torch.sparsity.searcher
 
 
+
    modelopt.torch.sparsity.sparsegpt
+
 
 
    modelopt.torch.sparsity.sparsification

@@ -31,8 +31,8 @@ tensor\_quantizer
    .. autosummary::
       :nosignatures:
    
-      TensorQuantizer
       SequentialQuantizer
+      TensorQuantizer
    
    
 

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>int8 &mdash; Model Optimizer 0.29.0</title>
+  <title>int8 &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -94,6 +94,8 @@
 <li class="toctree-l1 current"><a class="reference internal" href="../1_modelopt_api.html">modelopt API</a><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="modelopt.deploy.html">deploy</a></li>
 <li class="toctree-l2 current"><a class="reference internal" href="modelopt.onnx.html">onnx</a><ul class="current">
+<li class="toctree-l3"><a class="reference internal" href="modelopt.onnx.autocast.html">autocast</a></li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.onnx.logging_config.html">logging_config</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.onnx.op_types.html">op_types</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.onnx.quantization.html">quantization</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="modelopt.onnx.quantization.calib_utils.html">calib_utils</a></li>
@@ -166,29 +168,28 @@
 </table>
 <dl class="py function">
 <dt class="sig sig-object py" id="modelopt.onnx.quantization.int8.quantize">
-<span class="sig-name descname"><span class="pre">quantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'entropy'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_data_reader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_cache_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_shapes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['cpu',</span> <span class="pre">'cuda:0',</span> <span class="pre">'trt']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">op_types_to_quantize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">op_types_to_exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes_to_quantize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes_to_exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_generated_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">verbose</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_extra_plugin_lib_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fp32'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">passes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['concat_elimination']</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.int8.quantize" title="Link to this definition"></a></dt>
+<span class="sig-name descname"><span class="pre">quantize</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">onnx_path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'entropy'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_data_reader</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_cache_path</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_shapes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">calibration_eps</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['cpu',</span> <span class="pre">'cuda:0',</span> <span class="pre">'trt']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">op_types_to_quantize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">op_types_to_exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes_to_quantize</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nodes_to_exclude</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_external_data_format</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">intermediate_generated_files</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_extra_plugin_lib_paths</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'fp32'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">passes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['concat_elimination']</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.onnx.quantization.int8.quantize" title="Link to this definition"></a></dt>
 <dd><p>Applies INT8 quantization to an ONNX file using the compiler friendly heuristics.</p>
 <p>Quantization of [‘Add’, ‘AveragePool’, ‘BatchNormalization’, ‘Clip’, ‘Conv’, ‘ConvTranspose’,
 ‘Gemm’, ‘GlobalAveragePool’, ‘MatMul’, ‘MaxPool’, ‘Mul’] op types are supported.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>onnx_path</strong> (<em>str</em>) – </p></li>
-<li><p><strong>calibration_method</strong> (<em>str</em>) – </p></li>
-<li><p><strong>calibration_data_reader</strong> (<em>CalibrationDataReader</em>) – </p></li>
-<li><p><strong>calibration_cache_path</strong> (<em>str</em>) – </p></li>
-<li><p><strong>calibration_shapes</strong> (<em>str</em>) – </p></li>
-<li><p><strong>calibration_eps</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
-<li><p><strong>op_types_to_quantize</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
-<li><p><strong>op_types_to_exclude</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
-<li><p><strong>nodes_to_quantize</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
-<li><p><strong>nodes_to_exclude</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
-<li><p><strong>use_external_data_format</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>intermediate_generated_files</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
-<li><p><strong>verbose</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>trt_extra_plugin_lib_paths</strong> (<em>str</em>) – </p></li>
-<li><p><strong>high_precision_dtype</strong> (<em>str</em>) – </p></li>
-<li><p><strong>passes</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
+<li><p><strong>onnx_path</strong> (<em>str</em>)</p></li>
+<li><p><strong>calibration_method</strong> (<em>str</em>)</p></li>
+<li><p><strong>calibration_data_reader</strong> (<em>CalibrationDataReader</em>)</p></li>
+<li><p><strong>calibration_cache_path</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>calibration_shapes</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>calibration_eps</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>)</p></li>
+<li><p><strong>op_types_to_quantize</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>op_types_to_exclude</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>nodes_to_quantize</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>nodes_to_exclude</strong> (<em>list</em><em>[</em><em>str</em><em>] </em><em>| </em><em>None</em>)</p></li>
+<li><p><strong>use_external_data_format</strong> (<em>bool</em>)</p></li>
+<li><p><strong>intermediate_generated_files</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>)</p></li>
+<li><p><strong>trt_extra_plugin_lib_paths</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>high_precision_dtype</strong> (<em>str</em>)</p></li>
+<li><p><strong>passes</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

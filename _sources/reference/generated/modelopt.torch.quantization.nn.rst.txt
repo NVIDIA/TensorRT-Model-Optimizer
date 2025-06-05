@@ -12,7 +12,9 @@ nn
    :recursive:
 
 
+
    modelopt.torch.quantization.nn.functional
+
 
 
    modelopt.torch.quantization.nn.modules

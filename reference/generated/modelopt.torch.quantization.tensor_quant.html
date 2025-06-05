@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tensor_quant &mdash; Model Optimizer 0.29.0</title>
+  <title>tensor_quant &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,13 +29,12 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
     <link rel="next" title="triton" href="modelopt.torch.quantization.triton.html" />
-    <link rel="prev" title="quant_modules" href="modelopt.torch.quantization.quant_modules.html" /> 
+    <link rel="prev" title="nf4_tensor" href="modelopt.torch.quantization.qtensor.nf4_tensor.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -112,10 +112,8 @@
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_calib.html">model_calib</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_quant.html">model_quant</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.nn.html">nn</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.optim.html">optim</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.plugins.html">plugins</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.qtensor.html">qtensor</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.quant_modules.html">quant_modules</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">tensor_quant</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.triton.html">triton</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.utils.html">utils</a></li>
@@ -169,7 +167,7 @@
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction" title="modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FP4DynamicBlockQuantizationFunction</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction" title="modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">DynamicBlockQuantizationFunction</span></code></a></p></td>
 <td><p>Dynamic block quantization functional.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.FakeAffineTensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">FakeAffineTensorQuantFunction</span></code></a></p></td>
@@ -181,16 +179,13 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">LegacyFakeTensorQuantFunction</span></code></a></p></td>
 <td><p>Fake version of TensorQuantFunction.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction" title="modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">MXFP8DynamicBlockQuantizationFunction</span></code></a></p></td>
-<td><p>MXFP8 dynamic block quantization functional.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function" title="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ScaledE4M3Function</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.ScaledE4M3Function" title="modelopt.torch.quantization.tensor_quant.ScaledE4M3Function"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ScaledE4M3Function</span></code></a></p></td>
 <td><p>E4M3fy input with scale.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction" title="modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">StaticBlockQuantizationFunction</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction" title="modelopt.torch.quantization.tensor_quant.StaticBlockQuantizationFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">StaticBlockQuantizationFunction</span></code></a></p></td>
 <td><p>Static block quantization functional.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.TensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TensorQuantFunction</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.tensor_quant.TensorQuantFunction" title="modelopt.torch.quantization.tensor_quant.TensorQuantFunction"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TensorQuantFunction</span></code></a></p></td>
 <td><p>A universal tensor quantization function.</p></td>
 </tr>
 </tbody>
@@ -207,25 +202,25 @@
 </tbody>
 </table>
 <dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">FP4DynamicBlockQuantizationFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">DynamicBlockQuantizationFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
 <p>Dynamic block quantization functional.</p>
 <dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.backward">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.backward" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.backward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.backward" title="Link to this definition"></a></dt>
 <dd><p>Implements straight through estimation with clipping.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.forward">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Half'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onnx_quantizer_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dynamic'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.forward" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.forward">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Half'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onnx_quantizer_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dynamic'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.forward" title="Link to this definition"></a></dt>
 <dd><p>Forward method.</p>
 </dd></dl>
 
 <dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.symbolic">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">symbolic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Half'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onnx_quantizer_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dynamic'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.FP4DynamicBlockQuantizationFunction.symbolic" title="Link to this definition"></a></dt>
+<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.symbolic">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">symbolic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Half'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onnx_quantizer_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'dynamic'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.DynamicBlockQuantizationFunction.symbolic" title="Link to this definition"></a></dt>
 <dd><p>ONNX symbolic function.</p>
 </dd></dl>
 
@@ -327,31 +322,6 @@ for experimental purpose.</p>
 <dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.forward">
 <em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">8</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">unsigned</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">narrow_range</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.LegacyFakeTensorQuantFunction.forward" title="Link to this definition"></a></dt>
 <dd><p>Forward method.</p>
-</dd></dl>
-
-</dd></dl>
-
-<dl class="py class">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">MXFP8DynamicBlockQuantizationFunction</span></span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction" title="Link to this definition"></a></dt>
-<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Function</span></code></p>
-<p>MXFP8 dynamic block quantization functional.</p>
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.backward">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">backward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">grad_outputs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.backward" title="Link to this definition"></a></dt>
-<dd><p>Implements straight through estimation with clipping.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.forward">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ctx</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exponent_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_exponent_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onnx_quantizer_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Half'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.forward" title="Link to this definition"></a></dt>
-<dd><p>Forward method.</p>
-</dd></dl>
-
-<dl class="py method">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.symbolic">
-<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">symbolic</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inputs</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">block_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">amax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exponent_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_num_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scale_exponent_bits</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">onnx_quantizer_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">trt_high_precision_dtype</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Half'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.tensor_quant.MXFP8DynamicBlockQuantizationFunction.symbolic" title="Link to this definition"></a></dt>
-<dd><p>ONNX symbolic function.</p>
 </dd></dl>
 
 </dd></dl>
@@ -481,8 +451,8 @@ scale: A Tensor of type float32. outputs / scale will dequantize outputs tensor.
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>inputs</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>amax</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>inputs</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>amax</strong> (<em>Tensor</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -514,7 +484,7 @@ scale: A Tensor of type float32. outputs / scale will dequantize outputs tensor.
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modelopt.torch.quantization.quant_modules.html" class="btn btn-neutral float-left" title="quant_modules" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.quantization.qtensor.nf4_tensor.html" class="btn btn-neutral float-left" title="nf4_tensor" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="modelopt.torch.quantization.triton.html" class="btn btn-neutral float-right" title="triton" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

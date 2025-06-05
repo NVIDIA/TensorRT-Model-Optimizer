@@ -59,6 +59,7 @@ utils
       get_parent_nodes
       get_variable_inputs
       has_attribute
+      infer_shapes
       is_valid_onnx_model
       name_onnx_nodes
       parse_shapes_spec

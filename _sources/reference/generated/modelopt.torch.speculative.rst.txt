@@ -12,25 +12,33 @@ speculative
    :recursive:
 
 
+
    modelopt.torch.speculative.config
+
 
 
    modelopt.torch.speculative.eagle
 
 
+
    modelopt.torch.speculative.medusa
+
 
 
    modelopt.torch.speculative.mode
 
 
+
    modelopt.torch.speculative.mtp
+
 
 
    modelopt.torch.speculative.plugins
 
 
+
    modelopt.torch.speculative.speculative_decoding
+
 
 
    modelopt.torch.speculative.utils

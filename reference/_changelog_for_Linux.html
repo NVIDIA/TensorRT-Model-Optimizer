@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.29.0</title>
+  <title>Model Optimizer Changelog (Linux) &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../_static/doctools.js?v=888ff710"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
       <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -92,16 +92,17 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="reference internal" href="0_changelog.html">Changelog</a><ul class="current">
 <li class="toctree-l2 current"><a class="current reference internal" href="#">Model Optimizer Changelog (Linux)</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#id1">0.29 (2025-05-08)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id2">0.27 (2025-04-03)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id3">0.25 (2025-03-03)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id4">0.23 (2025-01-29)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id5">0.21 (2024-12-03)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id6">0.19 (2024-10-23)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id7">0.17 (2024-09-11)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id8">0.15 (2024-07-25)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id9">0.13 (2024-06-14)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#id11">0.11 (2024-05-07)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id1">0.31 (2025-06-04)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id2">0.29 (2025-05-08)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id3">0.27 (2025-04-03)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id4">0.25 (2025-03-03)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id5">0.23 (2025-01-29)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id6">0.21 (2024-12-03)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id7">0.19 (2024-10-23)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id8">0.17 (2024-09-11)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id9">0.15 (2024-07-25)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id10">0.13 (2024-06-14)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#id12">0.11 (2024-05-07)</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="_changelog_for_Windows.html">Model Optimizer Changelog (Windows)</a></li>
@@ -143,7 +144,44 @@
   <section id="model-optimizer-changelog-linux">
 <h1>Model Optimizer Changelog (Linux)<a class="headerlink" href="#model-optimizer-changelog-linux" title="Link to this heading"></a></h1>
 <section id="id1">
-<h2>0.29 (2025-05-08)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<h2>0.31 (2025-06-04)<a class="headerlink" href="#id1" title="Link to this heading"></a></h2>
+<p><strong>Backward Breaking Changes</strong></p>
+<ul class="simple">
+<li><dl class="simple">
+<dt>NeMo and Megatron-LM distributed checkpoint (<code class="docutils literal notranslate"><span class="pre">torch-dist</span></code>) stored with legacy version can no longer be loaded. The remedy is to load the legacy distributed checkpoint with 0.29 and store a <code class="docutils literal notranslate"><span class="pre">torch</span></code> checkpoint and resume with 0.31 to convert to a new format. The following changes only apply to storing and resuming distributed checkpoint.</dt><dd><ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">quantizer_state</span></code> of <code class="xref py py-class docutils literal notranslate"><span class="pre">TensorQuantizer</span></code> is now stored in <code class="docutils literal notranslate"><span class="pre">extra_state</span></code> of <code class="xref py py-class docutils literal notranslate"><span class="pre">QuantModule</span></code> where it used to be stored in the sharded <code class="docutils literal notranslate"><span class="pre">modelopt_state</span></code>.</p></li>
+<li><p>The dtype and shape of <code class="docutils literal notranslate"><span class="pre">amax</span></code> and <code class="docutils literal notranslate"><span class="pre">pre_quant_scale</span></code> stored in the distributed checkpoint are now retored. Some dtype and shape are previously changed to make all decoder layers to have homogeneous structure in the checkpoint.</p></li>
+<li><p>Togather with megatron.core-0.13, quantized model will store and resume distributed checkpoint in a heterogenous format.</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>auto_quantize API now accepts a list of quantization config dicts as the list of quantization choices.</dt><dd><ul>
+<li><p>This API previously accepts a list of strings of quantization format names. It was therefore limited to only pre-defined quantization formats unless through some hacks.</p></li>
+<li><p>With this change, now user can easily use their own custom quantization formats for auto_quantize.</p></li>
+<li><p>In addition, the <code class="docutils literal notranslate"><span class="pre">quantization_formats</span></code> now exclude <code class="docutils literal notranslate"><span class="pre">None</span></code> (indicating “do not quantize”) as a valid format because the auto_quantize internally always add “do not quantize” as an option anyway.</p></li>
+</ul>
+</dd>
+</dl>
+</li>
+<li><p>Model export config is refactored. The quant config in <code class="docutils literal notranslate"><span class="pre">hf_quant_config.json</span></code> is converted and saved to <code class="docutils literal notranslate"><span class="pre">config.json</span></code>. <code class="docutils literal notranslate"><span class="pre">hf_quant_config.json</span></code> will be deprecated soon.</p></li>
+</ul>
+<p><strong>Deprecations</strong></p>
+<ul class="simple">
+<li><p>Deprecate <code class="docutils literal notranslate"><span class="pre">Python</span> <span class="pre">3.9</span></code> support.</p></li>
+</ul>
+<p><strong>New Features</strong></p>
+<ul class="simple">
+<li><p>Upgrade LLM examples to use TensorRT-LLM 0.19.</p></li>
+<li><p>Add new model support in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example: Qwen3 MoE.</p></li>
+<li><p>ModelOpt now supports advanced quantization algorithms such as AWQ, SVDQuant and SmoothQuant for cpu-offloaded Huggingface models.</p></li>
+<li><p>Add AutoCast tool to convert ONNX models to FP16 or BF16.</p></li>
+<li><p>Add <code class="docutils literal notranslate"><span class="pre">--low_memory_mode</span></code> flag in the llm_ptq example support to initialize HF models with compressed weights and reduce peak memory of PTQ and quantized checkpoint export.</p></li>
+</ul>
+</section>
+<section id="id2">
+<h2>0.29 (2025-05-08)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Refactor <code class="docutils literal notranslate"><span class="pre">SequentialQuantizer</span></code> to improve its implementation and maintainability while preserving its functionality.</p></li>
@@ -177,8 +215,8 @@
 <li><p>Add new example for torch quantization to ONNX for MXFP8, NVFP4 precision.</p></li>
 </ul>
 </section>
-<section id="id2">
-<h2>0.27 (2025-04-03)<a class="headerlink" href="#id2" title="Link to this heading"></a></h2>
+<section id="id3">
+<h2>0.27 (2025-04-03)<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
 <p><strong>Deprecations</strong></p>
 <ul class="simple">
 <li><p>Deprecate real quantization configs, please use <a class="reference internal" href="generated/modelopt.torch.quantization.compress.html#modelopt.torch.quantization.compress" title="modelopt.torch.quantization.compress"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtq.compress</span></code></a> API for model compression after quantization.</p></li>
@@ -209,8 +247,8 @@
 <li><p>Quantization of T5 models is broken. Please use <code class="docutils literal notranslate"><span class="pre">nvidia-modelopt==0.25.0</span></code> with <code class="docutils literal notranslate"><span class="pre">transformers&lt;4.50</span></code> meanwhile.</p></li>
 </ul>
 </section>
-<section id="id3">
-<h2>0.25 (2025-03-03)<a class="headerlink" href="#id3" title="Link to this heading"></a></h2>
+<section id="id4">
+<h2>0.25 (2025-03-03)<a class="headerlink" href="#id4" title="Link to this heading"></a></h2>
 <p><strong>Deprecations</strong></p>
 <ul class="simple">
 <li><p>Deprecate Torch 2.1 support.</p></li>
@@ -231,8 +269,8 @@ It can be used for rotation based quantization methods, e.g. QuaRot. Users need 
 <li><p>Add end-to-end <a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_autodeploy" rel="noopener noreferrer" target="_blank">AutoDeploy example for AutoQuant LLM models</a>.</p></li>
 </ul>
 </section>
-<section id="id4">
-<h2>0.23 (2025-01-29)<a class="headerlink" href="#id4" title="Link to this heading"></a></h2>
+<section id="id5">
+<h2>0.23 (2025-01-29)<a class="headerlink" href="#id5" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Support TensorRT-LLM to 0.17. Examples (e.g. benchmark task in llm_ptq) may not be fully compatible with TensorRT-LLM 0.15.</p></li>
@@ -253,8 +291,8 @@ It can be used for rotation based quantization methods, e.g. QuaRot. Users need 
 <li><p>The unified llama3.1 FP8 huggingface checkpoints can be deployed on <a class="reference external" href="https://github.com/sgl-project/sglang/pull/2535" rel="noopener noreferrer" target="_blank">SGLang</a>.</p></li>
 </ul>
 </section>
-<section id="id5">
-<h2>0.21 (2024-12-03)<a class="headerlink" href="#id5" title="Link to this heading"></a></h2>
+<section id="id6">
+<h2>0.21 (2024-12-03)<a class="headerlink" href="#id6" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Support TensorRT-LLM to 0.15. Examples (e.g. benchmark task in llm_ptq) may not be fully compatible with TensorRT-LLM 0.14.</p></li>
@@ -279,8 +317,8 @@ It can be used for rotation based quantization methods, e.g. QuaRot. Users need 
 <li><p>Added deprecation warnings for Python 3.8, torch 2.0, and CUDA 11.x. Support will be dropped in the next release.</p></li>
 </ul>
 </section>
-<section id="id6">
-<h2>0.19 (2024-10-23)<a class="headerlink" href="#id6" title="Link to this heading"></a></h2>
+<section id="id7">
+<h2>0.19 (2024-10-23)<a class="headerlink" href="#id7" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Deprecated the summarize task in the <code class="docutils literal notranslate"><span class="pre">llm_ptq</span></code> example.</p></li>
@@ -308,8 +346,8 @@ quantization for NeMo &amp; MCore models (in addition to HuggingFace models).</p
 <li><p>Add <code class="docutils literal notranslate"><span class="pre">num_layers</span></code> and <code class="docutils literal notranslate"><span class="pre">hidden_size</span></code> pruning support for NeMo / Megatron-core models.</p></li>
 </ul>
 </section>
-<section id="id7">
-<h2>0.17 (2024-09-11)<a class="headerlink" href="#id7" title="Link to this heading"></a></h2>
+<section id="id8">
+<h2>0.17 (2024-09-11)<a class="headerlink" href="#id8" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Deprecated <code class="docutils literal notranslate"><span class="pre">torch&lt;2.0</span></code> support.</p></li>
@@ -344,8 +382,8 @@ no longer needed for supporting distributed data and tensor parallelism in quant
 a future release.</p></li>
 </ul>
 </section>
-<section id="id8">
-<h2>0.15 (2024-07-25)<a class="headerlink" href="#id8" title="Link to this heading"></a></h2>
+<section id="id9">
+<h2>0.15 (2024-07-25)<a class="headerlink" href="#id9" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>Deprecated <code class="xref py py-class docutils literal notranslate"><span class="pre">QuantDescriptor</span></code>.
@@ -377,8 +415,8 @@ Hugging Face models with namings aligned with its original checkpoints.</p></li>
 <li><p>Added deprecation warning for <code class="docutils literal notranslate"><span class="pre">torch&lt;2.0</span></code>. Support will be dropped in next release.</p></li>
 </ul>
 </section>
-<section id="id9">
-<h2>0.13 (2024-06-14)<a class="headerlink" href="#id9" title="Link to this heading"></a></h2>
+<section id="id10">
+<h2>0.13 (2024-06-14)<a class="headerlink" href="#id10" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p><a class="reference external" href="https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq" rel="noopener noreferrer" target="_blank">PTQ examples</a> have been
@@ -395,8 +433,8 @@ upgraded to use TensorRT-LLM 0.10.</p></li>
 <li><p>(Experimental) Python 3.12 support added.</p></li>
 </ul>
 </section>
-<section id="id11">
-<h2>0.11 (2024-05-07)<a class="headerlink" href="#id11" title="Link to this heading"></a></h2>
+<section id="id12">
+<h2>0.11 (2024-05-07)<a class="headerlink" href="#id12" title="Link to this heading"></a></h2>
 <p><strong>Backward Breaking Changes</strong></p>
 <ul class="simple">
 <li><p>[!!!] The package was renamed from <code class="docutils literal notranslate"><span class="pre">ammo</span></code> to <code class="docutils literal notranslate"><span class="pre">modelopt</span></code>. The new full product

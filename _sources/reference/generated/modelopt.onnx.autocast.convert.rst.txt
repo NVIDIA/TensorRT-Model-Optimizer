@@ -1,0 +1,6 @@
+modelopt.onnx.autocast.convert
+==============================
+
+.. currentmodule:: modelopt.onnx.autocast
+
+.. autofunction:: convert

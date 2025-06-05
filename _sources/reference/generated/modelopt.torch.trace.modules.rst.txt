@@ -12,7 +12,9 @@ modules
    :recursive:
 
 
+
    modelopt.torch.trace.modules.concat
+
 
 
    modelopt.torch.trace.modules.nn

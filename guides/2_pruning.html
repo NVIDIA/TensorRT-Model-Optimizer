@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Pruning &mdash; Model Optimizer 0.29.0</title>
+  <title>Pruning &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../_static/jquery.js?v=5d32c60e"></script>
       <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../_static/doctools.js?v=888ff710"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
       <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
@@ -96,6 +95,7 @@
 <li class="toctree-l1"><a class="reference internal" href="5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -210,7 +210,7 @@ is the validation accuracy of the model and is used to rank the sub-nets sampled
 Loss function is used to run some forward and backward passes on the train dataloader to get the gradients.</p></li>
 <li><p>Please see the API reference of <a class="reference internal" href="../reference/generated/modelopt.torch.prune.pruning.html#modelopt.torch.prune.pruning.prune" title="modelopt.torch.prune.pruning.prune"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtp.prune()</span></code></a> for more details.</p></li>
 </ol>
-<p>Below we show an example using <a class="reference internal" href="../reference/generated/modelopt.torch.prune.mode.html#modelopt.torch.prune.mode.FastNASModeDescriptor" title="modelopt.torch.prune.mode.FastNASModeDescriptor"><code class="xref py py-class docutils literal notranslate"><span class="pre">&quot;fastnas&quot;</span></code></a>.</p>
+<p>Below we show an example using <a class="reference internal" href="../reference/generated/modelopt.torch.prune.fastnas.html#modelopt.torch.prune.fastnas.FastNASModeDescriptor" title="modelopt.torch.prune.fastnas.FastNASModeDescriptor"><code class="xref py py-class docutils literal notranslate"><span class="pre">&quot;fastnas&quot;</span></code></a>.</p>
 </section>
 <section id="perform-pruning">
 <h3>Perform pruning<a class="headerlink" href="#perform-pruning" title="Link to this heading"></a></h3>
@@ -295,14 +295,14 @@ about all the available options for saving and restoring.</p>
 <section id="customizing-pruning-config">
 <h3>Customizing pruning config<a class="headerlink" href="#customizing-pruning-config" title="Link to this heading"></a></h3>
 <p>In the above example, we have used the default mode config for <code class="docutils literal notranslate"><span class="pre">mtp.prune()</span></code>. You can see it using
-<a class="reference internal" href="../reference/generated/modelopt.torch.prune.config.html#modelopt.torch.prune.config.FastNASConfig" title="modelopt.torch.prune.config.FastNASConfig"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtp.config.FastNASConfig()</span></code></a>.
+<a class="reference internal" href="../reference/generated/modelopt.torch.prune.fastnas.html#modelopt.torch.prune.fastnas.FastNASConfig" title="modelopt.torch.prune.fastnas.FastNASConfig"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtp.fastnas.FastNASConfig()</span></code></a>.
 You can also specify custom mode configs to have a different search space. See
 <a class="reference internal" href="../reference/generated/modelopt.torch.prune.pruning.html#modelopt.torch.prune.pruning.prune" title="modelopt.torch.prune.pruning.prune"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtp.prune()</span></code></a> documentation for more information. An
 example config is shown below:</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">modelopt.torch.prune</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mtp</span>
 
 <span class="c1"># config to restrict the search space to have a Conv2d out channels as multiple of 64</span>
-<span class="n">ss_config</span> <span class="o">=</span> <span class="n">mtp</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">FastNASConfig</span><span class="p">()</span>
+<span class="n">ss_config</span> <span class="o">=</span> <span class="n">mtp</span><span class="o">.</span><span class="n">fastnas</span><span class="o">.</span><span class="n">FastNASConfig</span><span class="p">()</span>
 <span class="n">ss_config</span><span class="p">[</span><span class="s2">&quot;nn.Conv2d&quot;</span><span class="p">][</span><span class="s2">&quot;*&quot;</span><span class="p">][</span><span class="s2">&quot;channel_divisor&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">64</span>
 
 <span class="c1"># run pruning as shown above</span>

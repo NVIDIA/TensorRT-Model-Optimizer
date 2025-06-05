@@ -31,24 +31,24 @@ quant\_pooling
    .. autosummary::
       :nosignatures:
    
-      MaxPool1d
-      QuantMaxPool1d
-      MaxPool2d
-      QuantMaxPool2d
-      MaxPool3d
-      QuantMaxPool3d
-      AvgPool1d
-      QuantAvgPool1d
-      AvgPool2d
-      QuantAvgPool2d
-      AvgPool3d
-      QuantAvgPool3d
       AdaptiveAvgPool1d
-      QuantAdaptiveAvgPool1d
       AdaptiveAvgPool2d
-      QuantAdaptiveAvgPool2d
       AdaptiveAvgPool3d
+      AvgPool1d
+      AvgPool2d
+      AvgPool3d
+      MaxPool1d
+      MaxPool2d
+      MaxPool3d
+      QuantAdaptiveAvgPool1d
+      QuantAdaptiveAvgPool2d
       QuantAdaptiveAvgPool3d
+      QuantAvgPool1d
+      QuantAvgPool2d
+      QuantAvgPool3d
+      QuantMaxPool1d
+      QuantMaxPool2d
+      QuantMaxPool3d
    
    
 

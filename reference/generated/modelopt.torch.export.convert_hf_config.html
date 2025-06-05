@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>optim &mdash; Model Optimizer 0.29.0</title>
+  <title>convert_hf_config &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,13 +29,12 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="plugins" href="modelopt.torch.quantization.plugins.html" />
-    <link rel="prev" title="tensor_quantizer" href="modelopt.torch.quantization.nn.modules.tensor_quantizer.html" /> 
+    <link rel="next" title="distribute" href="modelopt.torch.export.distribute.html" />
+    <link rel="prev" title="export" href="modelopt.torch.export.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -96,31 +96,30 @@
 <li class="toctree-l2"><a class="reference internal" href="modelopt.onnx.html">onnx</a></li>
 <li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.distill.html">distill</a></li>
-<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.export.html">export</a></li>
+<li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.export.html">export</a><ul class="current">
+<li class="toctree-l4 current"><a class="current reference internal" href="#">convert_hf_config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_config_map.html">mcore_config_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.mcore_hf_export_map.html">mcore_hf_export_map</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config.html">model_config</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_export.html">model_config_export</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_config_utils.html">model_config_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.model_utils.html">model_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.postprocess.html">postprocess</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.quant_utils.html">quant_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_type.html">tensorrt_llm_type</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.tensorrt_llm_utils.html">tensorrt_llm_utils</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.transformer_engine.html">transformer_engine</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_hf.html">unified_export_hf</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.unified_export_megatron.html">unified_export_megatron</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.nas.html">nas</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.opt.html">opt</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.prune.html">prune</a></li>
-<li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a><ul class="current">
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.backends.html">backends</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.calib.html">calib</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.compress.html">modelopt.torch.quantization.compress</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.config.html">config</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.conversion.html">conversion</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.export_onnx.html">export_onnx</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.extensions.html">extensions</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.mode.html">mode</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_calib.html">model_calib</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.model_quant.html">model_quant</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.nn.html">nn</a></li>
-<li class="toctree-l4 current"><a class="current reference internal" href="#">optim</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.plugins.html">plugins</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.qtensor.html">qtensor</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.quant_modules.html">quant_modules</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.tensor_quant.html">tensor_quant</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.triton.html">triton</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.quantization.utils.html">utils</a></li>
-</ul>
-</li>
+<li class="toctree-l3"><a class="reference internal" href="modelopt.torch.quantization.html">quantization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.sparsity.html">sparsity</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.speculative.html">speculative</a></li>
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.trace.html">trace</a></li>
@@ -152,10 +151,10 @@
       <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="../1_modelopt_api.html">modelopt API</a></li>
           <li class="breadcrumb-item"><a href="modelopt.torch.html">torch</a></li>
-          <li class="breadcrumb-item"><a href="modelopt.torch.quantization.html">quantization</a></li>
-      <li class="breadcrumb-item active">optim</li>
+          <li class="breadcrumb-item"><a href="modelopt.torch.export.html">export</a></li>
+      <li class="breadcrumb-item active">convert_hf_config</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../../_sources/reference/generated/modelopt.torch.quantization.optim.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../../_sources/reference/generated/modelopt.torch.export.convert_hf_config.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -163,48 +162,67 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="optim">
-<h1>optim<a class="headerlink" href="#optim" title="Link to this heading"></a></h1>
-<p id="module-modelopt.torch.quantization.optim">Deprecated. Placeholder module for throwing deprecated error.</p>
+  <section id="convert-hf-config">
+<h1>convert_hf_config<a class="headerlink" href="#convert-hf-config" title="Link to this heading"></a></h1>
+<p id="module-modelopt.torch.export.convert_hf_config">Convert modelopt quantization export config to align with llm-compressor config format.</p>
 <p class="rubric">Functions</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.optim.freeze_parameters" title="modelopt.torch.quantization.optim.freeze_parameters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">freeze_parameters</span></code></a></p></td>
-<td><p>Deprecated.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.optim.group_parameters" title="modelopt.torch.quantization.optim.group_parameters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">group_parameters</span></code></a></p></td>
-<td><p>Deprecated.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.quantization.optim.match_parameters" title="modelopt.torch.quantization.optim.match_parameters"><code class="xref py py-obj docutils literal notranslate"><span class="pre">match_parameters</span></code></a></p></td>
-<td><p>Deprecated.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.quantization.optim.quant_weight_inplace" title="modelopt.torch.quantization.optim.quant_weight_inplace"><code class="xref py py-obj docutils literal notranslate"><span class="pre">quant_weight_inplace</span></code></a></p></td>
-<td><p>Deprecated.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.convert_hf_config.convert_hf_quant_config_format" title="modelopt.torch.export.convert_hf_config.convert_hf_quant_config_format"><code class="xref py py-obj docutils literal notranslate"><span class="pre">convert_hf_quant_config_format</span></code></a></p></td>
+<td><p>Converts modelopt quantization config dictionary to align with llm-compressor config format.</p></td>
 </tr>
 </tbody>
 </table>
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.optim.freeze_parameters">
-<span class="sig-name descname"><span class="pre">freeze_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.optim.freeze_parameters" title="Link to this definition"></a></dt>
-<dd><p>Deprecated. Placeholder function for throwing deprecated error.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.optim.group_parameters">
-<span class="sig-name descname"><span class="pre">group_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.optim.group_parameters" title="Link to this definition"></a></dt>
-<dd><p>Deprecated. Placeholder function for throwing deprecated error.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.optim.match_parameters">
-<span class="sig-name descname"><span class="pre">match_parameters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.optim.match_parameters" title="Link to this definition"></a></dt>
-<dd><p>Deprecated. Placeholder function for throwing deprecated error.</p>
-</dd></dl>
-
-<dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.quantization.optim.quant_weight_inplace">
-<span class="sig-name descname"><span class="pre">quant_weight_inplace</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.quantization.optim.quant_weight_inplace" title="Link to this definition"></a></dt>
-<dd><p>Deprecated. Placeholder function for throwing deprecated error.</p>
+<dt class="sig sig-object py" id="modelopt.torch.export.convert_hf_config.convert_hf_quant_config_format">
+<span class="sig-name descname"><span class="pre">convert_hf_quant_config_format</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.convert_hf_config.convert_hf_quant_config_format" title="Link to this definition"></a></dt>
+<dd><p>Converts modelopt quantization config dictionary to align with llm-compressor config format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>input_config</strong> (<em>dict</em>) – The original quantization config dictionary.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>dict</em></p>
+</dd>
+</dl>
+<p class="rubric">Example</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;producer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;modelopt&quot;</span><span class="p">,</span> <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="s2">&quot;0.19.0&quot;</span><span class="p">},</span>
+    <span class="s2">&quot;quantization&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;quant_algo&quot;</span><span class="p">:</span> <span class="s2">&quot;FP8&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;kv_cache_quant_algo&quot;</span><span class="p">:</span> <span class="s2">&quot;FP8&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;exclude_modules&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;lm_head&quot;</span><span class="p">],</span>
+    <span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><p>A new dictionary in the target format.</p>
+<p>Example (for FP8 input):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+    <span class="s2">&quot;config_groups&quot;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s2">&quot;group_0&quot;</span><span class="p">:</span> <span class="p">{</span>
+            <span class="s2">&quot;input_activations&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;dynamic&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;float&quot;</span><span class="p">},</span>
+            <span class="s2">&quot;weights&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;dynamic&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;num_bits&quot;</span><span class="p">:</span> <span class="mi">8</span><span class="p">,</span> <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;float&quot;</span><span class="p">},</span>
+        <span class="p">}</span>
+    <span class="p">},</span>
+    <span class="s2">&quot;ignore&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;lm_head&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;quant_algo&quot;</span><span class="p">:</span> <span class="s2">&quot;FP8&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;kv_cache_scheme&quot;</span><span class="p">:</span> <span class="s2">&quot;FP8&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;producer&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="s2">&quot;modelopt&quot;</span><span class="p">,</span> <span class="s2">&quot;version&quot;</span><span class="p">:</span> <span class="s2">&quot;0.29.0&quot;</span><span class="p">},</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</p>
+</dd>
+<dt class="field-even">Parameters<span class="colon">:</span></dt>
+<dd class="field-even"><p><strong>input_config</strong> (<em>dict</em>)</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><em>dict</em></p>
+</dd>
+</dl>
 </dd></dl>
 
 </section>
@@ -213,8 +231,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="modelopt.torch.quantization.nn.modules.tensor_quantizer.html" class="btn btn-neutral float-left" title="tensor_quantizer" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="modelopt.torch.quantization.plugins.html" class="btn btn-neutral float-right" title="plugins" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="modelopt.torch.export.html" class="btn btn-neutral float-left" title="export" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="modelopt.torch.export.distribute.html" class="btn btn-neutral float-right" title="distribute" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -37,8 +37,8 @@ logging
    .. autosummary::
       :nosignatures:
    
-      num2hrb
       no_stdout
+      num2hrb
       print_rank_0
       silence_matched_warnings
    

@@ -38,13 +38,13 @@ utils
       :nosignatures:
    
       convert_quantization_axis_to_reduce_axis
-      reduce_amax
+      export_torch_mode
       is_quantized
+      is_quantized_column_parallel_linear
       is_quantized_layer_with_weight
       is_quantized_linear
-      is_quantized_column_parallel_linear
       is_quantized_row_parallel_linear
+      reduce_amax
       replace_function
-      export_torch_mode
    
    

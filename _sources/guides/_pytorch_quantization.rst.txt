@@ -79,20 +79,8 @@ After PTQ, the model can be exported to ONNX with the normal PyTorch ONNX export
 ModelOpt also supports direct export of Huggingface or Nemo LLM models to TensorRT-LLM for deployment.
 Please see :doc:`TensorRT-LLM Deployment <../deployment/1_tensorrt_llm>` for more details.
 
-Compressing model weights after quantization
-============================================
-
-ModelOpt provides a API :meth:`mtq.compress() <modelopt.torch.quantization.compress>` to compress the model weights after quantization.
-This API can be used to reduce the memory footprint of the quantized model for future evaluation or fine-tuning such as QLoRA. Note that
-this API only supports selected quantization formats.
-
-After PTQ, the model can be compressed with the following code:
-
-.. code-block:: python
-
-    # Compress the model
-    mtq.compress(model)
-
+.. note::
+    To reduce the memory footprint of the quantized model, please refer to :doc:`Compress Quantized Models <./_compress_quantized_models>`.
 
 Quantization-aware Training (QAT)
 =================================
@@ -139,24 +127,24 @@ Please see :ref:`saving and restoring of ModelOpt-modified models <save-restore>
 how to save and restore the quantized model.
 
 
-Optimal Partial Quantization using AutoQuantize(``auto_quantize``)
+Optimal Partial Quantization using ``auto_quantize``
 ===================================================================
 
-:meth:`auto_quantize <modelopt.torch.quantization.model_quant.auto_quantize>` or ``AutoQuantize`` is a PTQ algorithm from ModelOpt which
+:meth:`auto_quantize <modelopt.torch.quantization.model_quant.auto_quantize>` is a PTQ algorithm from ModelOpt which
 quantizes a model by searching for the best quantization format per-layer
-while meeting the performance constraint specified by the user. ``AutoQuantize`` enables to trade-off model accuracy
+while meeting the performance constraint specified by the user. ``auto_quantize`` enables to trade-off model accuracy
 for performance. Please see :meth:`auto_quantize <modelopt.torch.quantization.model_quant.auto_quantize>` for more details
 on the API usage.
 
-Currently ``AutoQuantize`` supports only ``effective_bits`` as the performance constraint (for both weight-only
+Currently ``auto_quantize`` supports only ``effective_bits`` as the performance constraint (for both weight-only
 quantization and weight & activation quantization). ``effective_bits`` constraint specifies the effective number of bits for the quantized model.
 
 You may specify a ``effective_bits`` constraint such as 8.8 for partial quantization with :attr:`FP8_DEFAULT_CFG`.
-``AutoQuantize`` will skip quantizing the most quantization sensitive layers so that the final partially quantized model's
+``auto_quantize`` will skip quantizing the most quantization sensitive layers so that the final partially quantized model's
 effective bits is 8.8. This model will have a better accuracy than the model quantized with default configuration since quantization was
 skipped for some layers which are highly sensitive to quantization.
 
-Here is how to perform ``AutoQuantize``:
+Here is how to perform ``auto_quantize``:
 
 .. code::
 
@@ -179,12 +167,12 @@ Here is how to perform ``AutoQuantize``:
         return loss
 
 
-    # Perform AutoQuantize
+    # Perform auto_quantize
     model, search_state_dict = mtq.auto_quantize(
         model,
         constraints = {"effective_bits": 4.8},
         # supported quantization formats are listed in `modelopt.torch.quantization.config.choices`
-        quantization_formats = ["NVFP4_DEFAULT_CFG", "FP8_DEFAULT_CFG", None]
+        quantization_formats = [mtq.NVFP4_DEFAULT_CFG, mtq.FP8_DEFAULT_CFG]
         data_loader = calib_dataloader,
         forward_step=forward_step,
         loss_func=loss_func,

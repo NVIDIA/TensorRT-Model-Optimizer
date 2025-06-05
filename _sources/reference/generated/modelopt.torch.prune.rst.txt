@@ -12,22 +12,17 @@ prune
    :recursive:
 
 
-   modelopt.torch.prune.config
-
 
    modelopt.torch.prune.fastnas
+
 
 
    modelopt.torch.prune.gradnas
 
 
-   modelopt.torch.prune.mcore_gpt_minitron
-
-
-   modelopt.torch.prune.mode
-
 
    modelopt.torch.prune.plugins
+
 
 
    modelopt.torch.prune.pruning

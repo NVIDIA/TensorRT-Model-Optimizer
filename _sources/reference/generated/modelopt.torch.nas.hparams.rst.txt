@@ -12,7 +12,9 @@ hparams
    :recursive:
 
 
+
    modelopt.torch.nas.hparams.concat
+
 
 
    modelopt.torch.nas.hparams.container

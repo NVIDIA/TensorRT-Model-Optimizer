@@ -12,10 +12,13 @@ eagle
    :recursive:
 
 
+
    modelopt.torch.speculative.eagle.conversion
 
 
+
    modelopt.torch.speculative.eagle.eagle_model
+
 
 
    modelopt.torch.speculative.eagle.utils

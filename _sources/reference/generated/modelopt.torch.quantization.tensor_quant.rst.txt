@@ -31,11 +31,10 @@ tensor\_quant
    .. autosummary::
       :nosignatures:
    
-      FP4DynamicBlockQuantizationFunction
+      DynamicBlockQuantizationFunction
       FakeAffineTensorQuantFunction
       FakeTensorQuantFunction
       LegacyFakeTensorQuantFunction
-      MXFP8DynamicBlockQuantizationFunction
       ScaledE4M3Function
       StaticBlockQuantizationFunction
       TensorQuantFunction

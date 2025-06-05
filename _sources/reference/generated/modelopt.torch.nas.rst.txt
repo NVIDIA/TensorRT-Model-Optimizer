@@ -12,37 +12,45 @@ nas
    :recursive:
 
 
+
    modelopt.torch.nas.algorithms
+
 
 
    modelopt.torch.nas.autonas
 
 
-   modelopt.torch.nas.config
-
 
    modelopt.torch.nas.conversion
+
 
 
    modelopt.torch.nas.hparams
 
 
-   modelopt.torch.nas.mode
-
 
    modelopt.torch.nas.modules
+
+
+
+   modelopt.torch.nas.patch
+
 
 
    modelopt.torch.nas.plugins
 
 
+
    modelopt.torch.nas.registry
+
 
 
    modelopt.torch.nas.search_space
 
 
+
    modelopt.torch.nas.traced_hp
+
 
 
    modelopt.torch.nas.utils

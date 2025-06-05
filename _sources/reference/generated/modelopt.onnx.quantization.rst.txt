@@ -12,46 +12,61 @@ quantization
    :recursive:
 
 
+
    modelopt.onnx.quantization.calib_utils
+
 
 
    modelopt.onnx.quantization.extensions
 
 
+
    modelopt.onnx.quantization.fp8
+
 
 
    modelopt.onnx.quantization.graph_utils
 
 
+
    modelopt.onnx.quantization.gs_patching
+
 
 
    modelopt.onnx.quantization.int4
 
 
+
    modelopt.onnx.quantization.int8
+
 
 
    modelopt.onnx.quantization.operators
 
 
+
    modelopt.onnx.quantization.ort_patching
+
 
 
    modelopt.onnx.quantization.ort_utils
 
 
+
    modelopt.onnx.quantization.partitioning
+
 
 
    modelopt.onnx.quantization.qdq_utils
 
 
+
    modelopt.onnx.quantization.quant_utils
 
 
+
    modelopt.onnx.quantization.quantize
+
 
 
    modelopt.onnx.quantization.trt_utils

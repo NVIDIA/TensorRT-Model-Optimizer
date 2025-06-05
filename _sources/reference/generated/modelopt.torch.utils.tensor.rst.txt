@@ -37,9 +37,9 @@ tensor
    .. autosummary::
       :nosignatures:
    
-      torch_to
-      torch_detach
-      torch_to_numpy
       numpy_to_torch
+      torch_detach
+      torch_to
+      torch_to_numpy
    
    

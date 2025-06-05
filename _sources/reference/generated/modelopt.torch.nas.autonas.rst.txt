@@ -31,8 +31,10 @@ autonas
    .. autosummary::
       :nosignatures:
    
+      AutoNASModeDescriptor
       AutoNASPatchManager
       EvolveSearcher
+      ExportModeDescriptor
       IterativeSearcher
       RandomSearcher
    

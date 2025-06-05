@@ -56,6 +56,7 @@ layer\_utils
       get_enc_dec_models
       get_enc_dec_token_ids
       get_encoder_config
+      get_expert_linear_names
       get_experts_linear_names
       get_experts_list
       get_transformer_layers
@@ -70,7 +71,8 @@ layer\_utils
       is_quantlinear
       is_recurrent
       model_type_is_enc_dec
-      set_zero_amax_for_uncalibrated_experts
+      set_amax_for_uncalibrated_experts
+      set_amax_for_uncalibrated_experts_context
       update_experts_avg_prequant_scale
    
    

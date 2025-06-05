@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>network &mdash; Model Optimizer 0.29.0</title>
+  <title>network &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -169,14 +169,20 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.compare_dict" title="modelopt.torch.utils.network.compare_dict"><code class="xref py py-obj docutils literal notranslate"><span class="pre">compare_dict</span></code></a></p></td>
 <td><p>Compare two dictionaries and return keys with unmatched values.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_model_attributes" title="modelopt.torch.utils.network.get_model_attributes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_model_attributes</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.create_param_grad_clear_hook" title="modelopt.torch.utils.network.create_param_grad_clear_hook"><code class="xref py py-obj docutils literal notranslate"><span class="pre">create_param_grad_clear_hook</span></code></a></p></td>
+<td><p>Create a hook to clear gradients for a parameter.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_model_attributes" title="modelopt.torch.utils.network.get_model_attributes"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_model_attributes</span></code></a></p></td>
 <td><p>Get the key attributes of a PyTorch model.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_module_device" title="modelopt.torch.utils.network.get_module_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_module_device</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_module_device" title="modelopt.torch.utils.network.get_module_device"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_module_device</span></code></a></p></td>
 <td><p>Get the device of a PyTorch module.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_same_padding" title="modelopt.torch.utils.network.get_same_padding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_same_padding</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_same_padding" title="modelopt.torch.utils.network.get_same_padding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_same_padding</span></code></a></p></td>
 <td><p>Get the same padding for a given kernel size.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_unwrapped_name" title="modelopt.torch.utils.network.get_unwrapped_name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_unwrapped_name</span></code></a></p></td>
+<td><p>Get the cleaned module name (i.e, the name before wrapping with sharded modules).</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.init_model_from_model_like" title="modelopt.torch.utils.network.init_model_from_model_like"><code class="xref py py-obj docutils literal notranslate"><span class="pre">init_model_from_model_like</span></code></a></p></td>
 <td><p>Initialize a model from a model-like object.</p></td>
@@ -208,29 +214,23 @@
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.set_submodule" title="modelopt.torch.utils.network.set_submodule"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_submodule</span></code></a></p></td>
 <td><p>The set function that complements nn.Module.get_submodule().</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_model_args" title="modelopt.torch.utils.network.standardize_model_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_model_args</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_constructor_args" title="modelopt.torch.utils.network.standardize_constructor_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_constructor_args</span></code></a></p></td>
+<td><p>Standardize a constructor-like tuple.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_model_args" title="modelopt.torch.utils.network.standardize_model_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_model_args</span></code></a></p></td>
 <td><p>Standardize model arguments according to torch.onnx.export.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_model_like_tuple" title="modelopt.torch.utils.network.standardize_model_like_tuple"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_model_like_tuple</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_model_like_tuple" title="modelopt.torch.utils.network.standardize_model_like_tuple"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_model_like_tuple</span></code></a></p></td>
 <td><p>Standardize a model-like tuple.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_named_model_args" title="modelopt.torch.utils.network.standardize_named_model_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_named_model_args</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_named_model_args" title="modelopt.torch.utils.network.standardize_named_model_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_named_model_args</span></code></a></p></td>
 <td><p>Standardize model arguments according to torch.onnx.export and give them a name.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.standardize_constructor_args" title="modelopt.torch.utils.network.standardize_constructor_args"><code class="xref py py-obj docutils literal notranslate"><span class="pre">standardize_constructor_args</span></code></a></p></td>
-<td><p>Standardize a constructor-like tuple.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.unwrap_model" title="modelopt.torch.utils.network.unwrap_model"><code class="xref py py-obj docutils literal notranslate"><span class="pre">unwrap_model</span></code></a></p></td>
 <td><p>Unwrap a model that is wrapped by supported wrapper module or return original model.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.zero_grad" title="modelopt.torch.utils.network.zero_grad"><code class="xref py py-obj docutils literal notranslate"><span class="pre">zero_grad</span></code></a></p></td>
 <td><p>Set any gradients in the model's parameters to None.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.create_param_grad_clear_hook" title="modelopt.torch.utils.network.create_param_grad_clear_hook"><code class="xref py py-obj docutils literal notranslate"><span class="pre">create_param_grad_clear_hook</span></code></a></p></td>
-<td><p>Create a hook to clear gradients for a parameter.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.utils.network.get_unwrapped_name" title="modelopt.torch.utils.network.get_unwrapped_name"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_unwrapped_name</span></code></a></p></td>
-<td><p>Get the cleaned module name (i.e, the name before wrapping with sharded modules).</p></td>
 </tr>
 </tbody>
 </table>
@@ -241,8 +241,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>dict1</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
-<li><p><strong>dict2</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>) – </p></li>
+<li><p><strong>dict1</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
+<li><p><strong>dict2</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>Any</em><em>]</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -265,7 +265,7 @@ Important: For this to work, <code class="docutils literal notranslate"><span cl
 <dd><p>Get the key attributes of a PyTorch model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>dict</em>[<em>str</em>, <em>Any</em>]</p>
@@ -279,7 +279,7 @@ Important: For this to work, <code class="docutils literal notranslate"><span cl
 <dd><p>Get the device of a PyTorch module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>device</em></p>
@@ -293,7 +293,7 @@ Important: For this to work, <code class="docutils literal notranslate"><span cl
 <dd><p>Get the same padding for a given kernel size.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>kernel_size</strong> (<em>int</em><em> | </em><em>tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>kernel_size</strong> (<em>int</em><em> | </em><em>tuple</em><em>[</em><em>int</em><em>, </em><em>int</em><em>]</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>int</em> | <em>tuple</em></p>
@@ -307,7 +307,7 @@ Important: For this to work, <code class="docutils literal notranslate"><span cl
 <dd><p>Get the cleaned module name (i.e, the name before wrapping with sharded modules).</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>name</strong> (<em>str</em>) – </p>
+<dd class="field-odd"><p><strong>name</strong> (<em>str</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>str</em></p>
@@ -338,7 +338,7 @@ Model will be initialized as <code class="docutils literal notranslate"><span cl
 <dd><p>Check if the model is using channels last memory format.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -349,7 +349,7 @@ Model will be initialized as <code class="docutils literal notranslate"><span cl
 <dd><p>Check if a PyTorch model is parallelized.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -367,8 +367,9 @@ It can be seen here:
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>v</strong> (<em>int</em><em> | </em><em>float</em>) – </p></li>
-<li><p><strong>divisor</strong> (<em>int</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>v</strong> (<em>int</em><em> | </em><em>float</em>)</p></li>
+<li><p><strong>divisor</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>min_val</strong> (<em>int</em><em> | </em><em>None</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -384,8 +385,8 @@ It can be seen here:
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>target_model</strong> (<em>Module</em>) – </p></li>
+<li><p><strong>model</strong> (<em>Module</em>)</p></li>
+<li><p><strong>target_model</strong> (<em>Module</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -422,8 +423,8 @@ It can be seen here:
 <li><p><strong>network</strong> – The PyTorch model.</p></li>
 <li><p><strong>trainable_only</strong> (<em>bool</em>) – Whether to only count trainable parameters. Default is False.</p></li>
 <li><p><strong>unit</strong> (<em>float</em>) – The unit to return the number of parameters in. Default is 1e6 (million).</p></li>
-<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>args</strong> (<em>Tensor</em><em> | </em><em>tuple</em><em> | </em><em>None</em>) – </p></li>
+<li><p><strong>model</strong> (<em>Module</em>)</p></li>
+<li><p><strong>args</strong> (<em>Tensor</em><em> | </em><em>tuple</em><em> | </em><em>None</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
@@ -442,7 +443,7 @@ forward pass.</p>
 <dd><p>Remove all batch normalization layers in the network.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -510,9 +511,9 @@ run any post-processing or operations such as backward pass.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>target</strong> (<em>str</em>) – </p></li>
-<li><p><strong>target_submodule</strong> (<em>Module</em>) – </p></li>
+<li><p><strong>model</strong> (<em>Module</em>)</p></li>
+<li><p><strong>target</strong> (<em>str</em>)</p></li>
+<li><p><strong>target_submodule</strong> (<em>Module</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -524,7 +525,7 @@ run any post-processing or operations such as backward pass.</p></li>
 <dd><p>Standardize a constructor-like tuple.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>constructor_args</strong> (<em>Callable</em><em> | </em><em>tuple</em>) – </p>
+<dd class="field-odd"><p><strong>constructor_args</strong> (<em>Callable</em><em> | </em><em>tuple</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>tuple</em>[<em>Callable</em>, <em>tuple</em>, <em>dict</em>]</p>
@@ -542,7 +543,7 @@ run any post-processing or operations such as backward pass.</p></li>
 <li><p><strong>model_or_fw_or_sig</strong> (<em>Module</em><em> | </em><em>Callable</em><em> | </em><em>Signature</em>) – A nn.Module, its forward method, or its forward method’s signature.</p></li>
 <li><p><strong>args</strong> (<em>Any</em><em> | </em><em>tuple</em>) – Refer to the <code class="docutils literal notranslate"><span class="pre">dummy_input</span></code> parameter in
 <a class="reference internal" href="modelopt.torch.nas.algorithms.html#modelopt.torch.nas.algorithms.profile" title="modelopt.torch.nas.algorithms.profile"><code class="xref py py-meth docutils literal notranslate"><span class="pre">mtn.profile()</span></code></a>.</p></li>
-<li><p><strong>use_kwargs</strong> – Affects the return value, see below. For <code class="docutils literal notranslate"><span class="pre">use_kwargs==False</span></code>, the returned
+<li><p><strong>use_kwargs</strong> (<em>bool</em>) – Affects the return value, see below. For <code class="docutils literal notranslate"><span class="pre">use_kwargs==False</span></code>, the returned
 args are also compatible with <code class="docutils literal notranslate"><span class="pre">torch.onnx.export</span></code>.</p></li>
 </ul>
 </dd>
@@ -588,7 +589,7 @@ are processed via variable keyword arguments in the model’s <code class="docut
 <dd><p>Standardize a model-like tuple.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em><em> | </em><em>type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>tuple</em><em> | </em><em>Callable</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em><em> | </em><em>type</em><em>[</em><em>Module</em><em>] </em><em>| </em><em>tuple</em><em> | </em><em>Callable</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>tuple</em>[<em>type</em>[<em>Module</em>], <em>tuple</em>, <em>dict</em>]</p>
@@ -636,11 +637,11 @@ more info as well.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>model</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>warn</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>raise_error</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>msg</strong> (<em>str</em>) – </p></li>
-<li><p><strong>force_unwrap</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>model</strong> (<em>Module</em>)</p></li>
+<li><p><strong>warn</strong> (<em>bool</em>)</p></li>
+<li><p><strong>raise_error</strong> (<em>bool</em>)</p></li>
+<li><p><strong>msg</strong> (<em>str</em>)</p></li>
+<li><p><strong>force_unwrap</strong> (<em>bool</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -655,7 +656,7 @@ more info as well.</p>
 <dd><p>Set any gradients in the model’s parameters to None.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>

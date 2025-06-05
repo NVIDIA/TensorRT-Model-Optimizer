@@ -37,13 +37,13 @@ model\_quant
    .. autosummary::
       :nosignatures:
    
-      calibrate
-      postprocess_amax
-      quantize
       auto_quantize
+      calibrate
       disable_quantizer
       enable_quantizer
-      print_quant_summary
       fold_weight
+      postprocess_amax
+      print_quant_summary
+      quantize
    
    

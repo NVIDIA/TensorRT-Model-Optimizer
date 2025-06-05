@@ -37,7 +37,7 @@ sparsification
    .. autosummary::
       :nosignatures:
    
-      sparsify
       export
+      sparsify
    
    

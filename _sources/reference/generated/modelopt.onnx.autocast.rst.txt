@@ -1,8 +1,43 @@
-mcore\_gpt\_minitron
-====================
+autocast
+========
 
 .. List the submodules
 
+
+
+.. rubric:: Modules
+
+.. autosummary::
+   :toctree:
+   :recursive:
+
+
+
+   modelopt.onnx.autocast.convert
+
+
+
+   modelopt.onnx.autocast.graphsanitizer
+
+
+
+   modelopt.onnx.autocast.logging_config
+
+
+
+   modelopt.onnx.autocast.nodeclassifier
+
+
+
+   modelopt.onnx.autocast.precisionconverter
+
+
+
+   modelopt.onnx.autocast.referencerunner
+
+
+
+   modelopt.onnx.autocast.utils
 
 
 
@@ -15,7 +50,7 @@ mcore\_gpt\_minitron
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.prune.mcore_gpt_minitron
+.. automodule:: modelopt.onnx.autocast
    :members:
    :undoc-members:
 
@@ -26,24 +61,10 @@ mcore\_gpt\_minitron
    .. Overview table of available classes in the module
    
    
-   .. rubric:: Classes
-
-   .. autosummary::
-      :nosignatures:
-   
-      MCoreGPTMinitronSearcher
-   
    
 
 
    .. Overview table of available functions in the module
    
-   
-   .. rubric:: Functions
-
-   .. autosummary::
-      :nosignatures:
-   
-      get_supported_model_config_map
    
    

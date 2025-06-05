@@ -1,5 +1,5 @@
-mode
-====
+precisionconverter
+==================
 
 .. List the submodules
 
@@ -15,7 +15,7 @@ mode
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.nas.mode
+.. automodule:: modelopt.onnx.autocast.precisionconverter
    :members:
    :undoc-members:
 
@@ -31,8 +31,8 @@ mode
    .. autosummary::
       :nosignatures:
    
-      AutoNASModeDescriptor
-      ExportModeDescriptor
+      PrecisionConverter
+      PrecisionTypes
    
    
 

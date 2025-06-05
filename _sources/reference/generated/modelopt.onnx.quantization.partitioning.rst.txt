@@ -43,6 +43,6 @@ partitioning
       find_mha_partitions
       find_non_quantizable_partitions_from_patterns
       find_quantizable_nodes
-      get_skiped_output_layers
+      get_skipped_output_layers
    
    

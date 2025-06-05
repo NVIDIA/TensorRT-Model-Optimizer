@@ -12,16 +12,21 @@ modules
    :recursive:
 
 
+
    modelopt.torch.nas.modules.container
+
 
 
    modelopt.torch.nas.modules.conv
 
 
+
    modelopt.torch.nas.modules.linear
 
 
+
    modelopt.torch.nas.modules.norm
+
 
 
    modelopt.torch.nas.modules.utils

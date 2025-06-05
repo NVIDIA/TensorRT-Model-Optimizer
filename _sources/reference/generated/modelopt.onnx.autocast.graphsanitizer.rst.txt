@@ -1,4 +1,4 @@
-quant\_modules
+graphsanitizer
 ==============
 
 .. List the submodules
@@ -15,7 +15,7 @@ quant\_modules
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.quantization.quant_modules
+.. automodule:: modelopt.onnx.autocast.graphsanitizer
    :members:
    :undoc-members:
 
@@ -26,19 +26,17 @@ quant\_modules
    .. Overview table of available classes in the module
    
    
+   .. rubric:: Classes
+
+   .. autosummary::
+      :nosignatures:
+   
+      GraphSanitizer
+   
    
 
 
    .. Overview table of available functions in the module
    
-   
-   .. rubric:: Functions
-
-   .. autosummary::
-      :nosignatures:
-   
-      deactivate
-      enable_onnx_export
-      initialize
    
    

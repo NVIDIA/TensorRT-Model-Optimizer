@@ -12,16 +12,21 @@ qtensor
    :recursive:
 
 
+
    modelopt.torch.quantization.qtensor.base_qtensor
+
 
 
    modelopt.torch.quantization.qtensor.fp8_tensor
 
 
+
    modelopt.torch.quantization.qtensor.int4_tensor
 
 
+
    modelopt.torch.quantization.qtensor.int8_tensor
+
 
 
    modelopt.torch.quantization.qtensor.nf4_tensor

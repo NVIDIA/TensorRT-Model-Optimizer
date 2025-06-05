@@ -37,8 +37,8 @@ model\_calib
    .. autosummary::
       :nosignatures:
    
-      max_calibrate
       awq
+      max_calibrate
       smoothquant
       svdquant
    

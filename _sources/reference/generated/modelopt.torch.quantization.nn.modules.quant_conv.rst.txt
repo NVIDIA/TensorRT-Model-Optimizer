@@ -31,15 +31,15 @@ quant\_conv
    .. autosummary::
       :nosignatures:
    
-      Conv2d
-      QuantConv2d
-      Conv3d
-      QuantConv3d
       Conv1d
-      QuantConv1d
+      Conv2d
+      Conv3d
       ConvTranspose1d
       ConvTranspose2d
       ConvTranspose3d
+      QuantConv1d
+      QuantConv2d
+      QuantConv3d
       QuantConvTranspose1d
       QuantConvTranspose2d
       QuantConvTranspose3d

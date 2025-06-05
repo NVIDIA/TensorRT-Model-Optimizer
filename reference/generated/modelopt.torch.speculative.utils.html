@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>utils &mdash; Model Optimizer 0.29.0</title>
+  <title>utils &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -215,10 +215,14 @@ Each rank will then compare to this data and through error if different.</p>
 <span class="sig-name descname"><span class="pre">get_ground_truth</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">input_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">osl</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.AcceptanceRateValidation.get_ground_truth" title="Link to this definition"></a></dt>
 <dd><p>This function returns ground truth token ids from the base model.</p>
 <p>This function will be implemented in the plugins.</p>
-<p>Args:
-input_ids (torch.Tensor): the token ids of the input
-attention_mask (torch.Tensor): attention mask of the input
-osl (int): output sequence length</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>input_ids</strong> (<em>Tensor</em>) – the token ids of the input</p></li>
+<li><p><strong>osl</strong> (<em>int</em>) – output sequence length</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -242,17 +246,18 @@ osl (int): output sequence length</p>
 <p>A Residual Block module.</p>
 <p>This module performs a linear transformation followed by a SiLU activation,
 and then adds the result to the original input, creating a residual connection.</p>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>hidden_size</strong> (<em>int</em>) – The size of the hidden layers in the block.</p>
-</dd>
-</dl>
 <dl class="py method">
 <dt class="sig sig-object py" id="modelopt.torch.speculative.utils.ResBlock.__init__">
 <span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">hidden_size</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bias</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.speculative.utils.ResBlock.__init__" title="Link to this definition"></a></dt>
 <dd><p>Init function of ResBlock.</p>
-<p>Args:
-hidden_size (int): The size of the hidden layers in the block.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>hidden_size</strong> (<em>int</em>) – The size of the hidden layers in the block.</p></li>
+<li><p><strong>bias</strong> (<em>bool</em>)</p></li>
+</ul>
+</dd>
+</dl>
 </dd></dl>
 
 <dl class="py method">
@@ -261,13 +266,13 @@ hidden_size (int): The size of the hidden layers in the block.</p>
 <dd><p>Forward pass of the ResBlock.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>x</strong> (<em>torch.Tensor</em>) – Input tensor.</p>
+<dd class="field-odd"><p><strong>x</strong> (<em>Tensor</em>) – Input tensor.</p>
 </dd>
 <dt class="field-even">Returns<span class="colon">:</span></dt>
 <dd class="field-even"><p>Output after the residual connection and activation.</p>
 </dd>
 <dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p>torch.Tensor</p>
+<dd class="field-odd"><p><em>Tensor</em></p>
 </dd>
 </dl>
 </dd></dl>
@@ -286,7 +291,7 @@ hidden_size (int): The size of the hidden layers in the block.</p>
 <dd><p>Compute default attention_mask ans position_ids given input_ids.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>input_ids</strong> (<em>Tensor</em>) – </p>
+<dd class="field-odd"><p><strong>input_ids</strong> (<em>Tensor</em>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -298,9 +303,9 @@ hidden_size (int): The size of the hidden layers in the block.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>draft_logits</strong> (<em>List</em><em>[</em><em>torch.Tensor</em><em>]</em>) – a list of logits. Each logit represent a future position.</p></li>
-<li><p><strong>tree</strong> (<em>List</em><em>[</em><em>List</em><em>[</em><em>int</em><em>]</em><em>]</em>) – a tree for decoding. Each sublist is a branch from root where the number</p></li>
-<li><p><strong>index.</strong> (<em>represents the topk</em>) – </p></li>
+<li><p><strong>draft_logits</strong> (<em>list</em><em>[</em><em>Tensor</em><em>]</em>) – a list of logits. Each logit represent a future position.</p></li>
+<li><p><strong>tree</strong> (<em>list</em><em>[</em><em>list</em><em>[</em><em>int</em><em>]</em><em>]</em>) – a tree for decoding. Each sublist is a branch from root where the number</p></li>
+<li><p><strong>index.</strong> (<em>represents the topk</em>)</p></li>
 </ul>
 </dd>
 </dl>

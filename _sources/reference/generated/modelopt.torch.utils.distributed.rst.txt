@@ -31,8 +31,8 @@ distributed
    .. autosummary::
       :nosignatures:
    
-      ParallelState
       DistributedProcessGroup
+      ParallelState
    
    
 

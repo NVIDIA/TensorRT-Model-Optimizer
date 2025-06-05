@@ -38,9 +38,11 @@ network
       :nosignatures:
    
       compare_dict
+      create_param_grad_clear_hook
       get_model_attributes
       get_module_device
       get_same_padding
+      get_unwrapped_name
       init_model_from_model_like
       is_channels_last
       is_parallel
@@ -51,13 +53,11 @@ network
       remove_bn
       run_forward_loop
       set_submodule
+      standardize_constructor_args
       standardize_model_args
       standardize_model_like_tuple
       standardize_named_model_args
-      standardize_constructor_args
       unwrap_model
       zero_grad
-      create_param_grad_clear_hook
-      get_unwrapped_name
    
    

@@ -12,6 +12,7 @@ triton
    :recursive:
 
 
+
    modelopt.torch.quantization.triton.fp4_kernel
 
 

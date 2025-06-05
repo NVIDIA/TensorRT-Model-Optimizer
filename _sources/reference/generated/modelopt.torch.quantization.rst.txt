@@ -12,55 +12,65 @@ quantization
    :recursive:
 
 
+
    modelopt.torch.quantization.backends
+
 
 
    modelopt.torch.quantization.calib
 
 
+
    modelopt.torch.quantization.compress
+
 
 
    modelopt.torch.quantization.config
 
 
+
    modelopt.torch.quantization.conversion
+
 
 
    modelopt.torch.quantization.export_onnx
 
 
+
    modelopt.torch.quantization.extensions
+
 
 
    modelopt.torch.quantization.mode
 
 
+
    modelopt.torch.quantization.model_calib
+
 
 
    modelopt.torch.quantization.model_quant
 
 
+
    modelopt.torch.quantization.nn
 
-
-   modelopt.torch.quantization.optim
 
 
    modelopt.torch.quantization.plugins
 
 
+
    modelopt.torch.quantization.qtensor
 
-
-   modelopt.torch.quantization.quant_modules
 
 
    modelopt.torch.quantization.tensor_quant
 
 
+
    modelopt.torch.quantization.triton
+
 
 
    modelopt.torch.quantization.utils

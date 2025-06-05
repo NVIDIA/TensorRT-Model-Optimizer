@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_config_utils &mdash; Model Optimizer 0.29.0</title>
+  <title>model_config_utils &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -97,6 +97,7 @@
 <li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.distill.html">distill</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.export.html">export</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.convert_hf_config.html">convert_hf_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
@@ -211,7 +212,7 @@
 <dd><p>Load a dict to a <cite>ModelConfig</cite> instance.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>d</strong> (<em>dict</em>) – </p>
+<dd class="field-odd"><p><strong>d</strong> (<em>dict</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a></p>
@@ -225,7 +226,7 @@
 <dd><p>Converts the instance to a python dict.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>) – </p>
+<dd class="field-odd"><p><strong>model_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>dict</em></p>
@@ -239,7 +240,7 @@
 <dd><p>Packs the quantized linear weights in the model_config to the quantized format.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>) – </p>
+<dd class="field-odd"><p><strong>model_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ModelConfig" title="modelopt.torch.export.model_config.ModelConfig"><em>ModelConfig</em></a>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -256,7 +257,7 @@
 <dd><p>Recursively restores the model_config from json and loads np.ndarray or torch.Tensor weights from weights.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>weights</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>ndarray</em><em> | </em><em>Tensor</em><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>weights</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>ndarray</em><em> | </em><em>Tensor</em><em>]</em>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -272,9 +273,9 @@ when relevant. It is used to export quantization.json for auto_quant checkpoint.
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>weights</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>tensor</em><em>]</em>) – </p></li>
-<li><p><strong>prefix</strong> (<em>str</em>) – </p></li>
-<li><p><strong>layer_config_dict</strong> (<em>dict</em>) – </p></li>
+<li><p><strong>weights</strong> (<em>dict</em><em>[</em><em>str</em><em>, </em><em>tensor</em><em>]</em>)</p></li>
+<li><p><strong>prefix</strong> (<em>str</em>)</p></li>
+<li><p><strong>layer_config_dict</strong> (<em>dict</em>)</p></li>
 </ul>
 </dd>
 </dl>

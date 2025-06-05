@@ -1,5 +1,5 @@
-optim
-=====
+referencerunner
+===============
 
 .. List the submodules
 
@@ -15,7 +15,7 @@ optim
    __module__ should be manually overridden -- i.e. in the ``__init__.py`` which contains ``from xxx import YYY``,
    add in ``YYY.__module__ = __name__``.
 
-.. automodule:: modelopt.torch.quantization.optim
+.. automodule:: modelopt.onnx.autocast.referencerunner
    :members:
    :undoc-members:
 
@@ -26,20 +26,17 @@ optim
    .. Overview table of available classes in the module
    
    
+   .. rubric:: Classes
+
+   .. autosummary::
+      :nosignatures:
+   
+      ReferenceRunner
+   
    
 
 
    .. Overview table of available functions in the module
    
-   
-   .. rubric:: Functions
-
-   .. autosummary::
-      :nosignatures:
-   
-      freeze_parameters
-      group_parameters
-      match_parameters
-      quant_weight_inplace
    
    

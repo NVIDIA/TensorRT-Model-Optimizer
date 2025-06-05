@@ -12,25 +12,33 @@ opt
    :recursive:
 
 
+
    modelopt.torch.opt.config
+
 
 
    modelopt.torch.opt.conversion
 
 
+
    modelopt.torch.opt.dynamic
+
 
 
    modelopt.torch.opt.hparam
 
 
+
    modelopt.torch.opt.mode
+
 
 
    modelopt.torch.opt.plugins
 
 
+
    modelopt.torch.opt.searcher
+
 
 
    modelopt.torch.opt.utils

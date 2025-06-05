@@ -38,8 +38,8 @@ list
       :nosignatures:
    
       list_closest_to_median
+      stats
       val2list
       val2tuple
-      stats
    
    

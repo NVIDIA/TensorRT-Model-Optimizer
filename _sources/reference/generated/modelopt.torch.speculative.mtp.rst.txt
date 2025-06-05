@@ -12,10 +12,13 @@ mtp
    :recursive:
 
 
+
    modelopt.torch.speculative.mtp.conversion
 
 
+
    modelopt.torch.speculative.mtp.mtp_model
+
 
 
    modelopt.torch.speculative.mtp.utils

@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>traced_hp &mdash; Model Optimizer 0.29.0</title>
+  <title>traced_hp &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -100,11 +100,10 @@
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.nas.html">nas</a><ul class="current">
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.algorithms.html">algorithms</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.autonas.html">autonas</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.config.html">config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.conversion.html">conversion</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.hparams.html">hparams</a></li>
-<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.mode.html">mode</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.modules.html">modules</a></li>
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.patch.html">patch</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.plugins.html">plugins</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.registry.html">registry</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.nas.search_space.html">search_space</a></li>
@@ -163,11 +162,11 @@
 <p class="rubric">Classes</p>
 <table class="autosummary longtable docutils align-default">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHpRegistry" title="modelopt.torch.nas.traced_hp.TracedHpRegistry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TracedHpRegistry</span></code></a></p></td>
-<td><p>A simple registry to keep track of different traced hp classes and their symbols.</p></td>
-</tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHp" title="modelopt.torch.nas.traced_hp.TracedHp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TracedHp</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHp" title="modelopt.torch.nas.traced_hp.TracedHp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TracedHp</span></code></a></p></td>
 <td><p>A hparam that exhibits additional functionality required to handle tracing.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHpRegistry" title="modelopt.torch.nas.traced_hp.TracedHpRegistry"><code class="xref py py-obj docutils literal notranslate"><span class="pre">TracedHpRegistry</span></code></a></p></td>
+<td><p>A simple registry to keep track of different traced hp classes and their symbols.</p></td>
 </tr>
 </tbody>
 </table>
@@ -182,7 +181,7 @@
 <dd><p>Initialize a new hparam from an existing vanilla Trace.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>hp</strong> (<a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>) – </p>
+<dd class="field-odd"><p><strong>hp</strong> (<a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHp" title="modelopt.torch.nas.traced_hp.TracedHp"><em>TracedHp</em></a></p>
@@ -225,7 +224,7 @@ appropriate hparam based on the currently assigned hparam and the parent symbol.
 <dd><p>Get Hparam type associated with symbol.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>sym</strong> (<a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>) – </p>
+<dd class="field-odd"><p><strong>sym</strong> (<a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>type</em>[<a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHp" title="modelopt.torch.nas.traced_hp.TracedHp"><em>TracedHp</em></a>] | <em>None</em></p>
@@ -240,8 +239,8 @@ appropriate hparam based on the currently assigned hparam and the parent symbol.
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>sym</strong> (<a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>) – </p></li>
-<li><p><strong>hp</strong> (<a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>) – </p></li>
+<li><p><strong>sym</strong> (<a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a>)</p></li>
+<li><p><strong>hp</strong> (<a class="reference internal" href="modelopt.torch.opt.hparam.html#modelopt.torch.opt.hparam.Hparam" title="modelopt.torch.opt.hparam.Hparam"><em>Hparam</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -262,7 +261,7 @@ appropriate hparam based on the currently assigned hparam and the parent symbol.
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>sym_cls</strong> (<em>type</em><em>[</em><a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>sym_cls</strong> (<em>type</em><em>[</em><a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>]</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>Callable</em>[[<em>type</em>[<a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHp" title="modelopt.torch.nas.traced_hp.TracedHp"><em>TracedHp</em></a>]], <em>type</em>[<a class="reference internal" href="#modelopt.torch.nas.traced_hp.TracedHp" title="modelopt.torch.nas.traced_hp.TracedHp"><em>TracedHp</em></a>]]</p>
@@ -277,7 +276,7 @@ appropriate hparam based on the currently assigned hparam and the parent symbol.
 <p>It throws a KeyError if the hparam class is not registered.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>sym_cls</strong> (<em>type</em><em>[</em><a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>sym_cls</strong> (<em>type</em><em>[</em><a class="reference internal" href="modelopt.torch.trace.symbols.html#modelopt.torch.trace.symbols.Symbol" title="modelopt.torch.trace.symbols.Symbol"><em>Symbol</em></a><em>]</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>

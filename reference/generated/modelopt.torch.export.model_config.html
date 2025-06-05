@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>model_config &mdash; Model Optimizer 0.29.0</title>
+  <title>model_config &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -97,6 +97,7 @@
 <li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.distill.html">distill</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.export.html">export</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.convert_hf_config.html">convert_hf_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.layer_utils.html">layer_utils</a></li>
@@ -230,18 +231,18 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>qkv</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.QKVConfig" title="modelopt.torch.export.model_config.QKVConfig"><em>QKVConfig</em></a><em> | </em><a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>dense</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>k_cache_scaling_factor</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>v_cache_scaling_factor</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>k_cache_bias</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>v_cache_bias</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>kv_cache_dtype</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>rotary_dim</strong> (<em>int</em>) – </p></li>
-<li><p><strong>clip_qkv</strong> (<em>float</em>) – </p></li>
-<li><p><strong>rel_attn_table</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.RelativeAttentionTableConfig" title="modelopt.torch.export.model_config.RelativeAttentionTableConfig"><em>RelativeAttentionTableConfig</em></a>) – </p></li>
-<li><p><strong>q_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>k_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
+<li><p><strong>qkv</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.QKVConfig" title="modelopt.torch.export.model_config.QKVConfig"><em>QKVConfig</em></a><em> | </em><a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>dense</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>k_cache_scaling_factor</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>v_cache_scaling_factor</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>k_cache_bias</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>v_cache_bias</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>kv_cache_dtype</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>rotary_dim</strong> (<em>int</em>)</p></li>
+<li><p><strong>clip_qkv</strong> (<em>float</em>)</p></li>
+<li><p><strong>rel_attn_table</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.RelativeAttentionTableConfig" title="modelopt.torch.export.model_config.RelativeAttentionTableConfig"><em>RelativeAttentionTableConfig</em></a>)</p></li>
+<li><p><strong>q_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>k_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -323,9 +324,9 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>quantization</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>weight</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>bias</strong> (<em>Tensor</em>) – </p></li>
+<li><p><strong>quantization</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>weight</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>bias</strong> (<em>Tensor</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -362,78 +363,78 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>decoder_type</strong> (<em>str</em>) – </p></li>
-<li><p><strong>input_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>mlp_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>attention</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.AttentionConfig" title="modelopt.torch.export.model_config.AttentionConfig"><em>AttentionConfig</em></a>) – </p></li>
-<li><p><strong>recurrent</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.RecurrentConfig" title="modelopt.torch.export.model_config.RecurrentConfig"><em>RecurrentConfig</em></a>) – </p></li>
-<li><p><strong>post_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>pre_feedforward_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>post_feedforward_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>mlp</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><em>MLPConfig</em></a><em> | </em><a class="reference internal" href="#modelopt.torch.export.model_config.MOEConfig" title="modelopt.torch.export.model_config.MOEConfig"><em>MOEConfig</em></a>) – </p></li>
-<li><p><strong>num_attention_heads</strong> (<em>int</em>) – </p></li>
-<li><p><strong>attention_head_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>num_kv_heads</strong> (<em>int</em>) – </p></li>
-<li><p><strong>max_position_embeddings</strong> (<em>int</em>) – </p></li>
-<li><p><strong>rotary_pct</strong> (<em>float</em>) – </p></li>
-<li><p><strong>use_alibi</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>new_decoder_architecture</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>parallel_attention</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>apply_residual_connection_post_layernorm</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>use_cache</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>chatglm_version</strong> (<em>str</em>) – </p></li>
-<li><p><strong>rope_ratio</strong> (<em>float</em>) – </p></li>
-<li><p><strong>seq_length</strong> (<em>int</em>) – </p></li>
-<li><p><strong>qwen_type</strong> (<em>str</em>) – </p></li>
-<li><p><strong>rotary_base</strong> (<em>int</em>) – </p></li>
-<li><p><strong>partial_rotary_factor</strong> (<em>float</em>) – </p></li>
-<li><p><strong>original_max_position_embeddings</strong> (<em>int</em>) – </p></li>
-<li><p><strong>longrope_scaling_short_factors</strong> (<em>list</em><em>[</em><em>float</em><em>]</em>) – </p></li>
-<li><p><strong>longrope_scaling_long_factors</strong> (<em>list</em><em>[</em><em>float</em><em>]</em>) – </p></li>
-<li><p><strong>mup_attn_multiplier</strong> (<em>float</em>) – </p></li>
-<li><p><strong>mup_embedding_multiplier</strong> (<em>float</em>) – </p></li>
-<li><p><strong>mup_use_scaling</strong> (<em>float</em>) – </p></li>
-<li><p><strong>mup_width_multiplier</strong> (<em>float</em>) – </p></li>
-<li><p><strong>blocksparse_block_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>blocksparse_homo_head_pattern</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>blocksparse_num_local_blocks</strong> (<em>int</em>) – </p></li>
-<li><p><strong>blocksparse_vertical_stride</strong> (<em>int</em>) – </p></li>
-<li><p><strong>dense_attention_every_n_layers</strong> (<em>int</em>) – </p></li>
-<li><p><strong>gegelu_limit</strong> (<em>float</em>) – </p></li>
-<li><p><strong>longrope_short_mscale</strong> (<em>float</em>) – </p></li>
-<li><p><strong>longrope_long_mscale</strong> (<em>float</em>) – </p></li>
-<li><p><strong>moe_num_experts</strong> (<em>int</em>) – </p></li>
-<li><p><strong>moe_top_k</strong> (<em>int</em>) – </p></li>
-<li><p><strong>moe_tp_mode</strong> (<em>int</em>) – </p></li>
-<li><p><strong>moe_renorm_mode</strong> (<em>int</em>) – </p></li>
-<li><p><strong>alibi_bias_max</strong> (<em>int</em>) – </p></li>
-<li><p><strong>residual_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>residual_mlp</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><em>MLPConfig</em></a>) – </p></li>
-<li><p><strong>rnn_hidden_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>logits_soft_cap</strong> (<em>float</em>) – </p></li>
-<li><p><strong>emb_scale_by_sqrt_dim</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>layer_types</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
-<li><p><strong>attn_replacing_linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>mlp_replacing_linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>block_config</strong> (<em>dict</em>) – </p></li>
-<li><p><strong>final_logit_softcapping</strong> (<em>float</em>) – </p></li>
-<li><p><strong>attn_logit_softcapping</strong> (<em>float</em>) – </p></li>
-<li><p><strong>query_pre_attn_scalar</strong> (<em>float</em>) – </p></li>
-<li><p><strong>clip_qkv</strong> (<em>int</em>) – </p></li>
-<li><p><strong>cross_attention</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.AttentionConfig" title="modelopt.torch.export.model_config.AttentionConfig"><em>AttentionConfig</em></a>) – </p></li>
-<li><p><strong>cross_attention_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>self_attention</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.AttentionConfig" title="modelopt.torch.export.model_config.AttentionConfig"><em>AttentionConfig</em></a>) – </p></li>
-<li><p><strong>self_attention_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>attention_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>rel_attn_max_distance</strong> (<em>int</em>) – </p></li>
-<li><p><strong>rel_attn_num_buckets</strong> (<em>int</em>) – </p></li>
-<li><p><strong>rope_scaling</strong> (<em>dict</em>) – </p></li>
-<li><p><strong>cross_attention_layers</strong> (<em>dict</em>) – </p></li>
-<li><p><strong>vision_output_dim</strong> (<em>int</em>) – </p></li>
-<li><p><strong>gate_ffwd</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>gate_attn</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>sparse_mixer_epsilon</strong> (<em>float</em>) – </p></li>
-<li><p><strong>position_embedding_type</strong> (<em>str</em>) – </p></li>
+<li><p><strong>decoder_type</strong> (<em>str</em>)</p></li>
+<li><p><strong>input_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>mlp_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>attention</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.AttentionConfig" title="modelopt.torch.export.model_config.AttentionConfig"><em>AttentionConfig</em></a>)</p></li>
+<li><p><strong>recurrent</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.RecurrentConfig" title="modelopt.torch.export.model_config.RecurrentConfig"><em>RecurrentConfig</em></a>)</p></li>
+<li><p><strong>post_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>pre_feedforward_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>post_feedforward_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>mlp</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><em>MLPConfig</em></a><em> | </em><a class="reference internal" href="#modelopt.torch.export.model_config.MOEConfig" title="modelopt.torch.export.model_config.MOEConfig"><em>MOEConfig</em></a>)</p></li>
+<li><p><strong>num_attention_heads</strong> (<em>int</em>)</p></li>
+<li><p><strong>attention_head_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>num_kv_heads</strong> (<em>int</em>)</p></li>
+<li><p><strong>max_position_embeddings</strong> (<em>int</em>)</p></li>
+<li><p><strong>rotary_pct</strong> (<em>float</em>)</p></li>
+<li><p><strong>use_alibi</strong> (<em>bool</em>)</p></li>
+<li><p><strong>new_decoder_architecture</strong> (<em>bool</em>)</p></li>
+<li><p><strong>parallel_attention</strong> (<em>bool</em>)</p></li>
+<li><p><strong>apply_residual_connection_post_layernorm</strong> (<em>bool</em>)</p></li>
+<li><p><strong>use_cache</strong> (<em>bool</em>)</p></li>
+<li><p><strong>chatglm_version</strong> (<em>str</em>)</p></li>
+<li><p><strong>rope_ratio</strong> (<em>float</em>)</p></li>
+<li><p><strong>seq_length</strong> (<em>int</em>)</p></li>
+<li><p><strong>qwen_type</strong> (<em>str</em>)</p></li>
+<li><p><strong>rotary_base</strong> (<em>int</em>)</p></li>
+<li><p><strong>partial_rotary_factor</strong> (<em>float</em>)</p></li>
+<li><p><strong>original_max_position_embeddings</strong> (<em>int</em>)</p></li>
+<li><p><strong>longrope_scaling_short_factors</strong> (<em>list</em><em>[</em><em>float</em><em>]</em>)</p></li>
+<li><p><strong>longrope_scaling_long_factors</strong> (<em>list</em><em>[</em><em>float</em><em>]</em>)</p></li>
+<li><p><strong>mup_attn_multiplier</strong> (<em>float</em>)</p></li>
+<li><p><strong>mup_embedding_multiplier</strong> (<em>float</em>)</p></li>
+<li><p><strong>mup_use_scaling</strong> (<em>float</em>)</p></li>
+<li><p><strong>mup_width_multiplier</strong> (<em>float</em>)</p></li>
+<li><p><strong>blocksparse_block_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>blocksparse_homo_head_pattern</strong> (<em>bool</em>)</p></li>
+<li><p><strong>blocksparse_num_local_blocks</strong> (<em>int</em>)</p></li>
+<li><p><strong>blocksparse_vertical_stride</strong> (<em>int</em>)</p></li>
+<li><p><strong>dense_attention_every_n_layers</strong> (<em>int</em>)</p></li>
+<li><p><strong>gegelu_limit</strong> (<em>float</em>)</p></li>
+<li><p><strong>longrope_short_mscale</strong> (<em>float</em>)</p></li>
+<li><p><strong>longrope_long_mscale</strong> (<em>float</em>)</p></li>
+<li><p><strong>moe_num_experts</strong> (<em>int</em>)</p></li>
+<li><p><strong>moe_top_k</strong> (<em>int</em>)</p></li>
+<li><p><strong>moe_tp_mode</strong> (<em>int</em>)</p></li>
+<li><p><strong>moe_renorm_mode</strong> (<em>int</em>)</p></li>
+<li><p><strong>alibi_bias_max</strong> (<em>int</em>)</p></li>
+<li><p><strong>residual_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>residual_mlp</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><em>MLPConfig</em></a>)</p></li>
+<li><p><strong>rnn_hidden_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>logits_soft_cap</strong> (<em>float</em>)</p></li>
+<li><p><strong>emb_scale_by_sqrt_dim</strong> (<em>bool</em>)</p></li>
+<li><p><strong>layer_types</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>)</p></li>
+<li><p><strong>attn_replacing_linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>mlp_replacing_linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>block_config</strong> (<em>dict</em>)</p></li>
+<li><p><strong>final_logit_softcapping</strong> (<em>float</em>)</p></li>
+<li><p><strong>attn_logit_softcapping</strong> (<em>float</em>)</p></li>
+<li><p><strong>query_pre_attn_scalar</strong> (<em>float</em>)</p></li>
+<li><p><strong>clip_qkv</strong> (<em>int</em>)</p></li>
+<li><p><strong>cross_attention</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.AttentionConfig" title="modelopt.torch.export.model_config.AttentionConfig"><em>AttentionConfig</em></a>)</p></li>
+<li><p><strong>cross_attention_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>self_attention</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.AttentionConfig" title="modelopt.torch.export.model_config.AttentionConfig"><em>AttentionConfig</em></a>)</p></li>
+<li><p><strong>self_attention_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>attention_layernorm</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>rel_attn_max_distance</strong> (<em>int</em>)</p></li>
+<li><p><strong>rel_attn_num_buckets</strong> (<em>int</em>)</p></li>
+<li><p><strong>rope_scaling</strong> (<em>dict</em>)</p></li>
+<li><p><strong>cross_attention_layers</strong> (<em>dict</em>)</p></li>
+<li><p><strong>vision_output_dim</strong> (<em>int</em>)</p></li>
+<li><p><strong>gate_ffwd</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>gate_attn</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>sparse_mixer_epsilon</strong> (<em>float</em>)</p></li>
+<li><p><strong>position_embedding_type</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -826,7 +827,7 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.EmbeddingConfig.__init__" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>weight</strong> (<em>Tensor</em>) – </p>
+<dd class="field-odd"><p><strong>weight</strong> (<em>Tensor</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -864,8 +865,8 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>fc</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>proj</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
+<li><p><strong>fc</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>proj</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -897,10 +898,10 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>weight</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>bias</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>layernorm_type</strong> (<em>str</em>) – </p></li>
-<li><p><strong>eps</strong> (<em>float</em>) – </p></li>
+<li><p><strong>weight</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>bias</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>layernorm_type</strong> (<em>str</em>)</p></li>
+<li><p><strong>eps</strong> (<em>float</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -942,8 +943,8 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>hidden_act</strong> (<em>str</em>) – </p></li>
+<li><p><strong>linear</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>hidden_act</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -975,17 +976,17 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>quantization</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>linear_type</strong> (<em>str</em>) – </p></li>
-<li><p><strong>weight</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>bias</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>activation_scaling_factor</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>weights_scaling_factor</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>weights_scaling_factor_2</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>prequant_scaling_factor</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>per_channel_scale</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>awq_block_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>tp</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>quantization</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>linear_type</strong> (<em>str</em>)</p></li>
+<li><p><strong>weight</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>bias</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>activation_scaling_factor</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>weights_scaling_factor</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>weights_scaling_factor_2</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>prequant_scaling_factor</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>per_channel_scale</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>awq_block_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>tp</strong> (<em>bool</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1062,11 +1063,11 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>fc</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>proj</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>hidden_act</strong> (<em>str</em>) – </p></li>
-<li><p><strong>merge_gate_fc</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>fc</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>proj</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>hidden_act</strong> (<em>str</em>)</p></li>
+<li><p><strong>merge_gate_fc</strong> (<em>bool</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1113,11 +1114,11 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>router</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>experts</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ExpertConfig" title="modelopt.torch.export.model_config.ExpertConfig"><em>ExpertConfig</em></a>) – </p></li>
-<li><p><strong>shared_expert</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><em>MLPConfig</em></a>) – </p></li>
-<li><p><strong>shared_expert_gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>hidden_act</strong> (<em>str</em>) – </p></li>
+<li><p><strong>router</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>experts</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ExpertConfig" title="modelopt.torch.export.model_config.ExpertConfig"><em>ExpertConfig</em></a>)</p></li>
+<li><p><strong>shared_expert</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.MLPConfig" title="modelopt.torch.export.model_config.MLPConfig"><em>MLPConfig</em></a>)</p></li>
+<li><p><strong>shared_expert_gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>hidden_act</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1170,8 +1171,8 @@ And we will build tensorrt_llm engine from the context saved with this format.</
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>medusa_layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.LinearActConfig" title="modelopt.torch.export.model_config.LinearActConfig"><em>LinearActConfig</em></a><em>]</em>) – </p></li>
-<li><p><strong>lm_head</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
+<li><p><strong>medusa_layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.LinearActConfig" title="modelopt.torch.export.model_config.LinearActConfig"><em>LinearActConfig</em></a><em>]</em>)</p></li>
+<li><p><strong>lm_head</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1205,34 +1206,34 @@ pipeline_parallel &gt; 1 is only supported for TensorRT-LLM checkpoint.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>architecture</strong> (<em>str</em>) – </p></li>
-<li><p><strong>quantization</strong> (<em>str</em>) – </p></li>
-<li><p><strong>dtype</strong> (<em>str</em>) – </p></li>
-<li><p><strong>vocab_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>rank</strong> (<em>int</em>) – </p></li>
-<li><p><strong>tensor_parallel</strong> (<em>int</em>) – </p></li>
-<li><p><strong>pipeline_parallel</strong> (<em>int</em>) – </p></li>
-<li><p><strong>vocab_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>) – </p></li>
-<li><p><strong>position_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>) – </p></li>
-<li><p><strong>block_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>) – </p></li>
-<li><p><strong>ln_embed</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a><em>]</em>) – </p></li>
-<li><p><strong>ln_f</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>) – </p></li>
-<li><p><strong>lm_head</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>share_embedding_table</strong> (<em>bool</em>) – </p></li>
-<li><p><strong>medusa_heads</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.MedusaHeadConfig" title="modelopt.torch.export.model_config.MedusaHeadConfig"><em>MedusaHeadConfig</em></a><em>]</em>) – </p></li>
-<li><p><strong>num_medusa_heads</strong> (<em>int</em>) – </p></li>
-<li><p><strong>num_medusa_layers</strong> (<em>int</em>) – </p></li>
-<li><p><strong>enc_dec</strong> (<em>str</em>) – </p></li>
-<li><p><strong>encoder_hidden_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>encoder_num_heads</strong> (<em>int</em>) – </p></li>
-<li><p><strong>encoder_head_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>decoder_start_token_id</strong> (<em>int</em>) – </p></li>
-<li><p><strong>eos_token_id</strong> (<em>int</em>) – </p></li>
-<li><p><strong>bos_token_id</strong> (<em>int</em>) – </p></li>
-<li><p><strong>pad_token_id</strong> (<em>int</em>) – </p></li>
-<li><p><strong>conv1</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ConvConfig" title="modelopt.torch.export.model_config.ConvConfig"><em>ConvConfig</em></a>) – </p></li>
-<li><p><strong>conv2</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ConvConfig" title="modelopt.torch.export.model_config.ConvConfig"><em>ConvConfig</em></a>) – </p></li>
+<li><p><strong>architecture</strong> (<em>str</em>)</p></li>
+<li><p><strong>quantization</strong> (<em>str</em>)</p></li>
+<li><p><strong>dtype</strong> (<em>str</em>)</p></li>
+<li><p><strong>vocab_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>rank</strong> (<em>int</em>)</p></li>
+<li><p><strong>tensor_parallel</strong> (<em>int</em>)</p></li>
+<li><p><strong>pipeline_parallel</strong> (<em>int</em>)</p></li>
+<li><p><strong>vocab_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>)</p></li>
+<li><p><strong>position_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>)</p></li>
+<li><p><strong>block_embedding</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.EmbeddingConfig" title="modelopt.torch.export.model_config.EmbeddingConfig"><em>EmbeddingConfig</em></a>)</p></li>
+<li><p><strong>ln_embed</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>layers</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a><em>]</em>)</p></li>
+<li><p><strong>ln_f</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a>)</p></li>
+<li><p><strong>lm_head</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>share_embedding_table</strong> (<em>bool</em>)</p></li>
+<li><p><strong>medusa_heads</strong> (<em>list</em><em>[</em><a class="reference internal" href="#modelopt.torch.export.model_config.MedusaHeadConfig" title="modelopt.torch.export.model_config.MedusaHeadConfig"><em>MedusaHeadConfig</em></a><em>]</em>)</p></li>
+<li><p><strong>num_medusa_heads</strong> (<em>int</em>)</p></li>
+<li><p><strong>num_medusa_layers</strong> (<em>int</em>)</p></li>
+<li><p><strong>enc_dec</strong> (<em>str</em>)</p></li>
+<li><p><strong>encoder_hidden_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>encoder_num_heads</strong> (<em>int</em>)</p></li>
+<li><p><strong>encoder_head_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>decoder_start_token_id</strong> (<em>int</em>)</p></li>
+<li><p><strong>eos_token_id</strong> (<em>int</em>)</p></li>
+<li><p><strong>bos_token_id</strong> (<em>int</em>)</p></li>
+<li><p><strong>pad_token_id</strong> (<em>int</em>)</p></li>
+<li><p><strong>conv1</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ConvConfig" title="modelopt.torch.export.model_config.ConvConfig"><em>ConvConfig</em></a>)</p></li>
+<li><p><strong>conv2</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ConvConfig" title="modelopt.torch.export.model_config.ConvConfig"><em>ConvConfig</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1430,9 +1431,9 @@ pipeline_parallel &gt; 1 is only supported for TensorRT-LLM checkpoint.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>q</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>k</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>v</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
+<li><p><strong>q</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>k</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>v</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1518,12 +1519,12 @@ If the quanitzation is INT8_SQ, the concat value is returned.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>linear_y</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>y_bias</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>linear_x</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>linear_out</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>conv1d</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ConvConfig" title="modelopt.torch.export.model_config.ConvConfig"><em>ConvConfig</em></a>) – </p></li>
-<li><p><strong>rg_lru</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.RgLruConfig" title="modelopt.torch.export.model_config.RgLruConfig"><em>RgLruConfig</em></a>) – </p></li>
+<li><p><strong>linear_y</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>y_bias</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>linear_x</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>linear_out</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>conv1d</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.ConvConfig" title="modelopt.torch.export.model_config.ConvConfig"><em>ConvConfig</em></a>)</p></li>
+<li><p><strong>rg_lru</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.RgLruConfig" title="modelopt.torch.export.model_config.RgLruConfig"><em>RgLruConfig</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -1574,7 +1575,7 @@ If the quanitzation is INT8_SQ, the concat value is returned.</p>
 <span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weight</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.model_config.RelativeAttentionTableConfig.__init__" title="Link to this definition"></a></dt>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>weight</strong> (<em>Tensor</em>) – </p>
+<dd class="field-odd"><p><strong>weight</strong> (<em>Tensor</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>None</em></p>
@@ -1600,9 +1601,9 @@ If the quanitzation is INT8_SQ, the concat value is returned.</p>
 <dd><dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>recurrent_param</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>input_gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
-<li><p><strong>recurrent_gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>) – </p></li>
+<li><p><strong>recurrent_param</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>input_gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
+<li><p><strong>recurrent_gate</strong> (<a class="reference internal" href="#modelopt.torch.export.model_config.LinearConfig" title="modelopt.torch.export.model_config.LinearConfig"><em>LinearConfig</em></a>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>

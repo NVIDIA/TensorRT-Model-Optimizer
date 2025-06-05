@@ -12,7 +12,9 @@ medusa
    :recursive:
 
 
+
    modelopt.torch.speculative.medusa.conversion
+
 
 
    modelopt.torch.speculative.medusa.medusa_model

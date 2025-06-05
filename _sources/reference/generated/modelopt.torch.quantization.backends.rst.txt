@@ -12,13 +12,17 @@ backends
    :recursive:
 
 
+
    modelopt.torch.quantization.backends.fp8_per_tensor_gemm
+
 
 
    modelopt.torch.quantization.backends.gemm_registry
 
 
+
    modelopt.torch.quantization.backends.nvfp4_gemm
+
 
 
    modelopt.torch.quantization.backends.utils

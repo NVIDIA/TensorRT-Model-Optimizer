@@ -12,31 +12,41 @@
    :recursive:
 
 
+
    modelopt.torch.distill
+
 
 
    modelopt.torch.export
 
 
+
    modelopt.torch.nas
+
 
 
    modelopt.torch.opt
 
 
+
    modelopt.torch.prune
+
 
 
    modelopt.torch.quantization
 
 
+
    modelopt.torch.sparsity
+
 
 
    modelopt.torch.speculative
 
 
+
    modelopt.torch.trace
+
 
 
    modelopt.torch.utils

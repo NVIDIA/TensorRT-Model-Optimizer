@@ -12,7 +12,9 @@ llm
    :recursive:
 
 
+
    modelopt.deploy.llm.generate
+
 
 
    modelopt.deploy.llm.nemo_utils

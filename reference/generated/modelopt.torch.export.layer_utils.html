@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>layer_utils &mdash; Model Optimizer 0.29.0</title>
+  <title>layer_utils &mdash; Model Optimizer 0.31.0</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
       <link rel="stylesheet" type="text/css" href="../../_static/copybutton.css?v=76b2166b" />
@@ -19,7 +19,7 @@
       <script src="../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
-      <script src="../../_static/doctools.js?v=888ff710"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
       <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../_static/copybutton.js?v=20d3d275"></script>
@@ -29,7 +29,6 @@
       <script>let toggleOpenOnPrint = 'true';</script>
       <script src="../../_static/togglebutton.js?v=4a39c7ea"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script>var togglebuttonSelector = '.toggle, .admonition.dropdown';</script>
     <script src="../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../genindex.html" />
@@ -77,6 +76,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../guides/5_sparsity.html">Sparsity</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/6_save_load.html">Saving &amp; Restoring</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../guides/7_speculative_decoding.html">Speculative Decoding</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../guides/8_autocast.html">AutoCast (ONNX)</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Deployment</span></p>
 <ul>
@@ -97,6 +97,7 @@
 <li class="toctree-l2 current"><a class="reference internal" href="modelopt.torch.html">torch</a><ul class="current">
 <li class="toctree-l3"><a class="reference internal" href="modelopt.torch.distill.html">distill</a></li>
 <li class="toctree-l3 current"><a class="reference internal" href="modelopt.torch.export.html">export</a><ul class="current">
+<li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.convert_hf_config.html">convert_hf_config</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.distribute.html">distribute</a></li>
 <li class="toctree-l4"><a class="reference internal" href="modelopt.torch.export.hf_config_map.html">hf_config_map</a></li>
 <li class="toctree-l4 current"><a class="current reference internal" href="#">layer_utils</a></li>
@@ -225,50 +226,56 @@
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_encoder_config" title="modelopt.torch.export.layer_utils.get_encoder_config"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_encoder_config</span></code></a></p></td>
 <td><p>Get the encoder information for decoder model in enc-dec model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_linear_names" title="modelopt.torch.export.layer_utils.get_experts_linear_names"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_linear_names</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_expert_linear_names" title="modelopt.torch.export.layer_utils.get_expert_linear_names"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_expert_linear_names</span></code></a></p></td>
+<td><p>Get the list of linear names for the experts.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_linear_names" title="modelopt.torch.export.layer_utils.get_experts_linear_names"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_linear_names</span></code></a></p></td>
 <td><p>Returns linear layer names based on decoder type for MoE models.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_list" title="modelopt.torch.export.layer_utils.get_experts_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_list</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_experts_list" title="modelopt.torch.export.layer_utils.get_experts_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_experts_list</span></code></a></p></td>
 <td><p>Returns list of grouped experts by linear name for given module.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_transformer_layers" title="modelopt.torch.export.layer_utils.get_transformer_layers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_transformer_layers</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.get_transformer_layers" title="modelopt.torch.export.layer_utils.get_transformer_layers"><code class="xref py py-obj docutils literal notranslate"><span class="pre">get_transformer_layers</span></code></a></p></td>
 <td><p>Returns the root module of the transformer model.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_attention" title="modelopt.torch.export.layer_utils.is_attention"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_attention</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_attention" title="modelopt.torch.export.layer_utils.is_attention"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_attention</span></code></a></p></td>
 <td><p>Returns whether the module is an attention layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_conv" title="modelopt.torch.export.layer_utils.is_conv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_conv</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_conv" title="modelopt.torch.export.layer_utils.is_conv"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_conv</span></code></a></p></td>
 <td><p>Returns whether the module is a convolutional layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_decoder_list" title="modelopt.torch.export.layer_utils.is_decoder_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_decoder_list</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_decoder_list" title="modelopt.torch.export.layer_utils.is_decoder_list"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_decoder_list</span></code></a></p></td>
 <td><p>Returns whether the module is a decoder list.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_embedding" title="modelopt.torch.export.layer_utils.is_embedding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_embedding</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_embedding" title="modelopt.torch.export.layer_utils.is_embedding"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_embedding</span></code></a></p></td>
 <td><p>Returns whether the module is an embedding layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_layernorm" title="modelopt.torch.export.layer_utils.is_layernorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_layernorm</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_layernorm" title="modelopt.torch.export.layer_utils.is_layernorm"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_layernorm</span></code></a></p></td>
 <td><p>Returns whether the module is a layernorm layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_linear" title="modelopt.torch.export.layer_utils.is_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_linear" title="modelopt.torch.export.layer_utils.is_linear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_linear</span></code></a></p></td>
 <td><p>Returns whether the module is a linear layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_mlp" title="modelopt.torch.export.layer_utils.is_mlp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_mlp</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_mlp" title="modelopt.torch.export.layer_utils.is_mlp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_mlp</span></code></a></p></td>
 <td><p>Returns whether the module is an MLP layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_moe" title="modelopt.torch.export.layer_utils.is_moe"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_moe</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_moe" title="modelopt.torch.export.layer_utils.is_moe"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_moe</span></code></a></p></td>
 <td><p>Returns whether the module is an MOE layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_quantlinear" title="modelopt.torch.export.layer_utils.is_quantlinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantlinear</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_quantlinear" title="modelopt.torch.export.layer_utils.is_quantlinear"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_quantlinear</span></code></a></p></td>
 <td><p>Returns whether the module is a quantized linear layer.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_recurrent" title="modelopt.torch.export.layer_utils.is_recurrent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent</span></code></a></p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.is_recurrent" title="modelopt.torch.export.layer_utils.is_recurrent"><code class="xref py py-obj docutils literal notranslate"><span class="pre">is_recurrent</span></code></a></p></td>
 <td><p>Returns whether the module is a recurrent layer.</p></td>
 </tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="modelopt.torch.export.layer_utils.model_type_is_enc_dec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_type_is_enc_dec</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.model_type_is_enc_dec" title="modelopt.torch.export.layer_utils.model_type_is_enc_dec"><code class="xref py py-obj docutils literal notranslate"><span class="pre">model_type_is_enc_dec</span></code></a></p></td>
 <td><p>Check if model_type is a enc-dec model.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts" title="modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_zero_amax_for_uncalibrated_experts</span></code></a></p></td>
-<td><p>For experts that does not have valid amax value of input quantizer, we set them to 0.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts" title="modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_amax_for_uncalibrated_experts</span></code></a></p></td>
+<td><p>Set amax of uncalibrated experts to a given value or the max of existing amax value from other experts.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts_context" title="modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts_context"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_amax_for_uncalibrated_experts_context</span></code></a></p></td>
+<td><p>Set amax for uncalibrated experts in a context manager.</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="#modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale" title="modelopt.torch.export.layer_utils.update_experts_avg_prequant_scale"><code class="xref py py-obj docutils literal notranslate"><span class="pre">update_experts_avg_prequant_scale</span></code></a></p></td>
 <td><p>Registers experts_pre_quant_scale attribute of each expert with average pre_quant_scale amongst experts.</p></td>
@@ -282,9 +289,9 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>module</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>ext_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a>) – </p></li>
-<li><p><strong>tp_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>module</strong> (<em>Module</em>)</p></li>
+<li><p><strong>ext_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a>)</p></li>
+<li><p><strong>tp_size</strong> (<em>int</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -299,7 +306,7 @@
 <dd><p>Builds the conv config for this module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.ConvConfig" title="modelopt.torch.export.model_config.ConvConfig"><em>ConvConfig</em></a></p>
@@ -314,9 +321,9 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>module</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>decoder_type</strong> (<em>str</em>) – </p></li>
-<li><p><strong>tp_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>module</strong> (<em>Module</em>)</p></li>
+<li><p><strong>decoder_type</strong> (<em>str</em>)</p></li>
+<li><p><strong>tp_size</strong> (<em>int</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -332,8 +339,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>module</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>normalization_constant</strong> (<em>float</em>) – </p></li>
+<li><p><strong>module</strong> (<em>Module</em>)</p></li>
+<li><p><strong>normalization_constant</strong> (<em>float</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -349,8 +356,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>modules</strong> (<em>list</em><em>[</em><em>Module</em><em>]</em>) – </p></li>
-<li><p><strong>linear_type</strong> (<em>str</em>) – </p></li>
+<li><p><strong>modules</strong> (<em>list</em><em>[</em><em>Module</em><em>]</em>)</p></li>
+<li><p><strong>linear_type</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -365,7 +372,7 @@
 <dd><p>Builds the layernorm config from the module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.LayernormConfig" title="modelopt.torch.export.model_config.LayernormConfig"><em>LayernormConfig</em></a></p>
@@ -380,8 +387,8 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>module</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>linear_type</strong> (<em>str</em>) – </p></li>
+<li><p><strong>module</strong> (<em>Module</em>)</p></li>
+<li><p><strong>linear_type</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -401,7 +408,7 @@ an additional ‘lm_head’ (vocab_size, hidden_size) and a list (num_medusa_lay
 column-parallel.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em><em> | </em><em>None</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em><em> | </em><em>None</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>list</em>[<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MedusaHeadConfig" title="modelopt.torch.export.model_config.MedusaHeadConfig"><em>MedusaHeadConfig</em></a>] | <em>None</em></p>
@@ -416,9 +423,9 @@ column-parallel.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>module</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>hidden_act</strong> (<em>str</em><em> | </em><em>None</em>) – </p></li>
-<li><p><strong>merge_gate_fc</strong> (<em>bool</em>) – </p></li>
+<li><p><strong>module</strong> (<em>Module</em>)</p></li>
+<li><p><strong>hidden_act</strong> (<em>str</em><em> | </em><em>None</em>)</p></li>
+<li><p><strong>merge_gate_fc</strong> (<em>bool</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -433,7 +440,7 @@ column-parallel.</p>
 <dd><p>Builds the MOE config for the module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.MOEConfig" title="modelopt.torch.export.model_config.MOEConfig"><em>MOEConfig</em></a></p>
@@ -448,9 +455,9 @@ column-parallel.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>qkv_modules</strong> (<em>list</em><em>[</em><em>Module</em><em>]</em>) – </p></li>
-<li><p><strong>ext_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a>) – </p></li>
-<li><p><strong>tp_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>qkv_modules</strong> (<em>list</em><em>[</em><em>Module</em><em>]</em>)</p></li>
+<li><p><strong>ext_config</strong> (<a class="reference internal" href="modelopt.torch.export.model_config.html#modelopt.torch.export.model_config.DecoderLayerConfig" title="modelopt.torch.export.model_config.DecoderLayerConfig"><em>DecoderLayerConfig</em></a>)</p></li>
+<li><p><strong>tp_size</strong> (<em>int</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -465,7 +472,7 @@ column-parallel.</p>
 <dd><p>Builds the recurrent config for this module.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -477,8 +484,8 @@ column-parallel.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>experts</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>linear_names</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>) – </p></li>
+<li><p><strong>experts</strong> (<em>Module</em>)</p></li>
+<li><p><strong>linear_names</strong> (<em>list</em><em>[</em><em>str</em><em>]</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -495,7 +502,7 @@ and a final layernorm with optional embedding layernorm.
 Otherwise it will not be supported.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module_list</strong> (<em>list</em><em>[</em><em>Module</em><em>]</em>) – </p>
+<dd class="field-odd"><p><strong>module_list</strong> (<em>list</em><em>[</em><em>Module</em><em>]</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>tuple</em>[<em>bool</em>, <em>bool</em>, <em>bool</em>]</p>
@@ -510,10 +517,10 @@ Otherwise it will not be supported.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>v</strong> (<em>Tensor</em>) – </p></li>
-<li><p><strong>head_size</strong> (<em>int</em>) – </p></li>
-<li><p><strong>num_head</strong> (<em>int</em>) – </p></li>
-<li><p><strong>tp_size</strong> (<em>int</em>) – </p></li>
+<li><p><strong>v</strong> (<em>Tensor</em>)</p></li>
+<li><p><strong>head_size</strong> (<em>int</em>)</p></li>
+<li><p><strong>num_head</strong> (<em>int</em>)</p></li>
+<li><p><strong>tp_size</strong> (<em>int</em>)</p></li>
 </ul>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
@@ -547,12 +554,26 @@ Otherwise it will not be supported.</p>
 </dd></dl>
 
 <dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.get_expert_linear_names">
+<span class="sig-name descname"><span class="pre">get_expert_linear_names</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">module</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.get_expert_linear_names" title="Link to this definition"></a></dt>
+<dd><p>Get the list of linear names for the experts.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><em>list</em>[<em>str</em>]</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
 <dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.get_experts_linear_names">
 <span class="sig-name descname"><span class="pre">get_experts_linear_names</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">model</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.get_experts_linear_names" title="Link to this definition"></a></dt>
 <dd><p>Returns linear layer names based on decoder type for MoE models.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -564,8 +585,8 @@ Otherwise it will not be supported.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>module</strong> (<em>Module</em>) – </p></li>
-<li><p><strong>model_type</strong> (<em>str</em>) – </p></li>
+<li><p><strong>module</strong> (<em>Module</em>)</p></li>
+<li><p><strong>model_type</strong> (<em>str</em>)</p></li>
 </ul>
 </dd>
 </dl>
@@ -577,7 +598,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns the root module of the transformer model.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>model</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>list</em>[<em>Module</em>]</p>
@@ -591,7 +612,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is an attention layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -605,7 +626,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is a convolutional layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -619,7 +640,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is a decoder list.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -633,7 +654,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is an embedding layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -647,7 +668,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is a layernorm layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -661,7 +682,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is a linear layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -675,7 +696,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is an MLP layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -689,7 +710,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is an MOE layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -703,7 +724,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is a quantized linear layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -717,7 +738,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Returns whether the module is a recurrent layer.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>module</strong> (<em>Module</em>)</p>
 </dd>
 <dt class="field-even">Return type<span class="colon">:</span></dt>
 <dd class="field-even"><p><em>bool</em></p>
@@ -732,12 +753,36 @@ Otherwise it will not be supported.</p>
 </dd></dl>
 
 <dl class="py function">
-<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts">
-<span class="sig-name descname"><span class="pre">set_zero_amax_for_uncalibrated_experts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">experts</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.set_zero_amax_for_uncalibrated_experts" title="Link to this definition"></a></dt>
-<dd><p>For experts that does not have valid amax value of input quantizer, we set them to 0.</p>
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts">
+<span class="sig-name descname"><span class="pre">set_amax_for_uncalibrated_experts</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">experts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">set_amax_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts" title="Link to this definition"></a></dt>
+<dd><p>Set amax of uncalibrated experts to a given value or the max of existing amax value from other experts.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>experts</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>experts</strong> (<em>Module</em>) – a list of experts</p></li>
+<li><p><strong>set_amax_value</strong> (<em>float</em><em> | </em><em>None</em>) – set amax value to the given value.
+If None, set amax value to the max of existing amax value from other experts.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>a list of uncalibrated experts</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>uncalibrated_experts</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts_context">
+<span class="sig-name descname"><span class="pre">set_amax_for_uncalibrated_experts_context</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">experts</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">set_amax_value</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#modelopt.torch.export.layer_utils.set_amax_for_uncalibrated_experts_context" title="Link to this definition"></a></dt>
+<dd><p>Set amax for uncalibrated experts in a context manager.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>experts</strong> (<em>Module</em>)</p></li>
+<li><p><strong>set_amax_value</strong> (<em>float</em><em> | </em><em>None</em>)</p></li>
+</ul>
 </dd>
 </dl>
 </dd></dl>
@@ -748,7 +793,7 @@ Otherwise it will not be supported.</p>
 <dd><p>Registers experts_pre_quant_scale attribute of each expert with average pre_quant_scale amongst experts.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>experts</strong> (<em>Module</em>) – </p>
+<dd class="field-odd"><p><strong>experts</strong> (<em>Module</em>)</p>
 </dd>
 </dl>
 </dd></dl>
