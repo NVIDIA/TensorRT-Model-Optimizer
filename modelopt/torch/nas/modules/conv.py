@@ -251,6 +251,4 @@ class _DynamicConvTransposeNd(_DynamicConvNd):
             return None
         weight = self._parameters["weight"]  # retrieve full weight tensor
         c_in = weight.shape[0]
-        return torch.linalg.vector_norm(
-            torch.reshape(weight.detach().transpose(0, 1), (c_in, -1)), dim=1
-        )
+        return torch.linalg.vector_norm(torch.reshape(weight.detach(), (c_in, -1)), dim=1)
