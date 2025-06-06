@@ -139,7 +139,9 @@ class _DynamicConvNd(DynamicModule):
             return None
         weight = self._parameters["weight"]  # retrieve full weight tensor
         c_in = weight.shape[1]
-        return torch.norm(torch.reshape(weight.detach().transpose(0, 1), (c_in, -1)), dim=1)
+        return torch.linalg.vector_norm(
+            torch.reshape(weight.detach().transpose(0, 1), (c_in, -1)), dim=1
+        )
 
     def _setup(self):
         # only support ungrouped conv or grouped conv with in_channels == out_channels
@@ -249,4 +251,6 @@ class _DynamicConvTransposeNd(_DynamicConvNd):
             return None
         weight = self._parameters["weight"]  # retrieve full weight tensor
         c_in = weight.shape[0]
-        return torch.norm(torch.reshape(weight.detach(), (c_in, -1)), dim=1)
+        return torch.linalg.vector_norm(
+            torch.reshape(weight.detach().transpose(0, 1), (c_in, -1)), dim=1
+        )
