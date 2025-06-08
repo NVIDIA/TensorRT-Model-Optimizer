@@ -149,7 +149,7 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
 
     with SequentialQuantizer.convert_to_single_quantizer(module), torch.no_grad():
         for _, m in module.named_modules():
-            if hasattr(m, "weight") or (m.weight is None and m.weight.is_meta):
+            if hasattr(m, "weight") and (m.weight is None or m.weight.is_meta):
                 continue
             if (
                 hasattr(m, "weight_quantizer")
