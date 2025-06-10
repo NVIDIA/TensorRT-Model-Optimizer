@@ -1,0 +1,25 @@
+name: Code Quality
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        tox_env: ["pre-commit-all", "build-docs"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tox
+        run: pip install tox
+      - name: Run code quality checks
+        run: tox -e ${{ matrix.tox_env }}
