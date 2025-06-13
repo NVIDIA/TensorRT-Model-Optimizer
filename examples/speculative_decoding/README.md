@@ -23,13 +23,13 @@ Then, we adapt the fine-tuning data by calling this server. In this example, we 
 
 ```sh
 git clone https://huggingface.co/datasets/nvidia/Daring-Anteater
-python3 server_generate.py --data_path Daring-Anteater/train.jsonl --output_path finetune/data.jsonl --max_token 512
+python3 server_generate.py --data_path Daring-Anteater/train.jsonl --output_path finetune/data.jsonl --max_token 512 --chat
 ```
 
 To add a system prompt, use the `--system_prompt` argument:
 
 ```sh
-python3 server_generate.py --data_path Daring-Anteater/train.jsonl --output_path finetune/data.jsonl --max_token 512 --system_prompt <system_prompt_text>
+python3 server_generate.py --data_path Daring-Anteater/train.jsonl --output_path finetune/data.jsonl --max_token 512 --chat --system_prompt <system_prompt_text>
 ```
 
 #### SLURM Prepare Data
