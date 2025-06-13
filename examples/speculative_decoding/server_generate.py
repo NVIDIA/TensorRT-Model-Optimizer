@@ -81,7 +81,9 @@ def generate_data(messages, idx, system_prompt):
                 output_messages.append(system_message)
 
             for message in messages[::2]:
-                if message["role"].lower() != "user":
+                if 'from' in message:
+                    message = {'role': message['from'].lower(), 'content': message['value']}
+                if message["role"] != "user":
                     return
                 output_messages.append(message)
                 try:
@@ -116,18 +118,20 @@ def generate_data(messages, idx, system_prompt):
             from fastchat.model.model_adapter import get_conversation_template
 
             conv = get_conversation_template(model_name)
+            if system_prompt:
+                conv.set_system_message(system_prompt)
             conv.append_message(conv.roles[0], messages[0]["value"])
             conv.append_message(conv.roles[1], None)
             prompt = conv.get_prompt()
 
-            response = client.chat.completions.create(
+            response = client.completions.create(
                 model=model_name,
                 prompt=prompt,
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
-                ignore_eos=False,
-                skip_special_tokens=False,
-                spaces_between_special_tokens=False,
+                #ignore_eos=False,
+                #skip_special_tokens=False,
+                #spaces_between_special_tokens=False,
             )
             response = response.choices[0].text.strip()
             with open(args.output_path, "a") as f:
