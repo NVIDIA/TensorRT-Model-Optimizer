@@ -1,10 +1,13 @@
 name: Code Quality
 
 on:
-  push:
-    tags: ["[0-9]+.[0-9]+.[0-9]+"]
   pull_request:
     branches: [main, release/*]
+
+# Cancel previous runs if new commit is pushed to the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   code-quality:
@@ -15,7 +18,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install tox
-        run: pip install tox
       - name: Run code quality checks
-        run: tox -e pre-commit-all
+        run: pip install tox && tox -e pre-commit-all
