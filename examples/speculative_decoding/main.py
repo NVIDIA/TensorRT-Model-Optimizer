@@ -76,6 +76,7 @@ class TrainingArguments(transformers.TrainingArguments):
     dataloader_drop_last: bool = field(default=True)
     bf16: bool = field(default=True)
     mode: Literal["eagle", "medusa"] = "medusa"
+    freeze_base_model: bool = field(default=False, metadata={"help": "Freeze base model."})
 
 
 @dataclass
@@ -130,6 +131,7 @@ def train():
             model_max_length=training_args.model_max_length,
         )
         if tokenizer.chat_template is None:
+            print_rank_0("[WARNING] Filling chat template with default template. Check carefully.")
             tokenizer.chat_template = (
                 "{%- for message in messages %}"
                 "{{- '<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n' }}"
@@ -154,6 +156,16 @@ def train():
         else:
             raise Exception(f"{training_args.mode} is not supported!")
 
+        if training_args.freeze_base_model:
+            for name, param in model.named_parameters():
+                if not name.startswith(("medusa", "eagle")):
+                    param.requires_grad = False
+        trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total = sum(p.numel() for p in model.parameters())
+        print(f"Trainable params: {trainable:,} / {total:,} ({100 * trainable / total:.2f} %)")
+        if trainable == 0:
+            raise RuntimeError("No trainable parameters found!")
+
     print_rank_0("Loading dataset...")
     if training_args.mode == "medusa":
         data_module = make_medusa_supervised_data_module(tokenizer, data_args)
@@ -161,7 +173,7 @@ def train():
         data_module = make_eagle_supervised_data_module(tokenizer, data_args)
 
     trainer = Trainer(model=model, processing_class=tokenizer, args=training_args, **data_module)
-    trainer._move_model_to_device(model, trainer.args.device)
+    # trainer._move_model_to_device(model, trainer.args.device)
 
     # Manually enable this to return loss in eval
     trainer.can_return_loss = True
