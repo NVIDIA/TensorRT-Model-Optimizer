@@ -1,0 +1,33 @@
+name: Unit tests
+
+on:
+  pull_request:
+    branches: [main, release/*]
+    paths:
+      - ".github/workflows/unit_tests.yml"
+      - "modelopt/**"
+      - "tests/**"
+      - "setup.py"
+      - "tox.ini"
+
+# Cancel previous runs if new commit is pushed to the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Build onnxsim from sdists for Python 3.12 until http://github.com/daquexian/onnx-simplifier/pull/353
+      - name: Install dependencies
+        run: |
+          pip install onnxsim
+          pip install tox
+      - name: Run unit tests
+        run: tox -e py312-torch27-unit
