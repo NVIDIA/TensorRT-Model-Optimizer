@@ -99,6 +99,10 @@ elif mode == "eagle":
     }
 mtsp.convert(model, [(mode, config)])
 
+for name, param in model.named_parameters():
+    if not name.startswith(("medusa", "eagle")):
+        param.requires_grad = False
+
 tokenizer = transformers.AutoTokenizer.from_pretrained(ckpt_path)
 tokenizer.pad_token_id = tokenizer.eos_token_id
 
@@ -135,8 +139,9 @@ Next, we fine-tune the speculative decoding models with the base model frozen. H
             --num_epochs 1 --lr 1e-5 --save_steps 1000 \
             --output_dir medusa-tinyllama \
             --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer \
-            --num_gpu 1 \
-            --medusa_num_heads 2 --medusa_num_layers 1
+            --num_gpu 1 --train_bs 4 \
+            --medusa_num_heads 2 --medusa_num_layers 1 \
+            --freeze_base_model True
 
 ./launch.sh --model TinyLlama/TinyLlama-1.1B-Chat-v1.0 \
             --data finetune/data.jsonl \
@@ -144,8 +149,9 @@ Next, we fine-tune the speculative decoding models with the base model frozen. H
             --num_epochs 1 --lr 1e-5 --save_steps 1000 \
             --output_dir eagle-tinyllama \
             --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer \
-            --num_gpu 1 \
-            --eagle_num_layers 1
+            --num_gpu 1 --train_bs 4 \
+            --eagle_num_layers 1 \
+            --freeze_base_model True
 ```
 
 This will generate fine-tuned checkpoints in `output_dir` specified above.
