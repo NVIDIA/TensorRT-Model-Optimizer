@@ -81,8 +81,8 @@ def generate_data(messages, idx, system_prompt):
                 output_messages.append(system_message)
 
             for message in messages[::2]:
-                if 'from' in message:
-                    message = {'role': message['from'].lower(), 'content': message['value']}
+                if "from" in message:
+                    message = {"role": message["from"].lower(), "content": message["value"]}
                 if message["role"] != "user":
                     return
                 output_messages.append(message)
@@ -129,9 +129,11 @@ def generate_data(messages, idx, system_prompt):
                 prompt=prompt,
                 max_tokens=args.max_tokens,
                 temperature=args.temperature,
-                #ignore_eos=False,
-                #skip_special_tokens=False,
-                #spaces_between_special_tokens=False,
+                extra_body={
+                    "ignore_eos": False,
+                    "skip_special_tokens": False,
+                    "spaces_between_special_tokens": False,
+                },
             )
             response = response.choices[0].text.strip()
             with open(args.output_path, "a") as f:
