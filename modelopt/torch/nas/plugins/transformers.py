@@ -122,7 +122,9 @@ class _DynamicAttention(DynamicModule):
         out.in_features = hp_hidden_dim
 
         assert isinstance(out, nn.Linear)
-        hp_hidden_dim.register_importance(lambda: out._parameters["weight"].detach().norm(dim=0))
+        hp_hidden_dim.register_importance(
+            lambda: torch.linalg.norm(out._parameters["weight"].detach(), dim=0)
+        )
 
     def modify(
         self, *, n_heads_ratio: tuple[float, ...] | None = None, n_heads_divisor: int = 1

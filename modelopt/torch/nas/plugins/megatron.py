@@ -622,11 +622,15 @@ class _DynamicSelfAttention(DynamicModule):
     def _estimate_query_group_importance(self) -> TracedHp.Importance:
         """Return the importance of the ``num_query_groups`` hparam."""
         assert self._activations is not None, "No activations collected for importance estimation."
-        group_importance = self._activations.view(
-            self.get_hparam("num_heads_per_group").max,
-            self.get_hparam("num_query_groups").max,
-            self.config.kv_channels,
-        ).norm(p=2, dim=(0, 2))
+        group_importance = torch.linalg.norm(
+            self._activations.view(
+                self.get_hparam("num_heads_per_group").max,
+                self.get_hparam("num_query_groups").max,
+                self.config.kv_channels,
+            ),
+            ord=2,
+            dim=(0, 2),
+        )
         return group_importance
 
     def export(self) -> torch.nn.Module:
