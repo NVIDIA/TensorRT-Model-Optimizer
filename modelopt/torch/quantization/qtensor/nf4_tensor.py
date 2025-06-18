@@ -125,6 +125,10 @@ class NF4QTensor(BaseQuantizedTensor):
         Unlike the `quantize` method quantizing input data, this function quantizes float scales into
         int8 to further reduce memory usage of scales.
         """
+        # Add padding to scales if needed
+        scales = reduce_block_padding(
+            scales.view(-1), block_sizes={-1: scale_block_size}
+        )
         # Double quantization for the scales, int8 per-block quantization
         assert scales.numel() % scale_block_size == 0, (
             "Number of scales elements is not divisible by the scale block size."
