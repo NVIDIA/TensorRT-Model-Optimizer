@@ -50,6 +50,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       TRAIN_BS="${1#*=}"
       ;;
+    --gradient_accumulation_steps*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      GRAD_ACC_STEPS="${1#*=}"
+      ;;
     --medusa_num_heads*)
       if [[ "$1" != *=* ]]; then shift; fi
       MEDUSA_NUM_HEADS="${1#*=}"
@@ -74,6 +78,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       DO_EVAL="${1#*=}"
       ;;
+    --freeze_base_model*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      FREEZE="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
@@ -89,6 +97,7 @@ GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count())")
 # Calculate save_steps
 DEFAULT_SAVE_STEPS=$((192 / GPU_COUNT))
 
+# Default values
 MODEL=${MODEL:-"TinyLlama/TinyLlama-1.1B-Chat-v1.0"}
 MODE=${MODE:-"medusa"}
 OUTPUT_DIR=${OUTPUT_DIR:-"tinyllama-medusa"}
@@ -96,6 +105,7 @@ NUM_EPOCHS=${NUM_EPOCHS:-1}
 SAVE_STEPS=${SAVE_STEPS:-$DEFAULT_SAVE_STEPS}
 LR=${LR:-"1e-4"}
 TRAIN_BS=${TRAIN_BS:-4}
+GRAD_ACC_STEPS=${GRAD_ACC_STEPS:-1}
 MEDUSA_NUM_HEADS=${MEDUSA_NUM_HEADS:-1}
 MEDUSA_NUM_LAYERS=${MEDUSA_NUM_LAYERS:-1}
 EAGLE_NUM_LAYERS=${EAGLE_NUM_LAYERS:-1}
@@ -104,6 +114,8 @@ REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 NUM_GPU=${NUM_GPU:-1}
 DO_EVAL=${DO_EVAL:-"True"}
+FREEZE=${FREEZE:-"False"}
+
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
@@ -132,7 +144,7 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --num_train_epochs $NUM_EPOCHS \
     --per_device_train_batch_size $TRAIN_BS \
     --per_device_eval_batch_size $TRAIN_BS \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps $GRAD_ACC_STEPS \
     --do_eval $DO_EVAL \
     --eval_accumulation_steps 1 \
     --save_strategy steps \
@@ -144,6 +156,7 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --logging_steps 1 \
     --tf32 True \
     --data_path $DATA \
+    --freeze_base_model $FREEZE \
     $FSDP_ARGS \
     $SPECULATIVE_ARGS
 "

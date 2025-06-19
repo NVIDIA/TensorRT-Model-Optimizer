@@ -40,14 +40,26 @@ def preprocess(examples, tokenizer):
     }
     roles = ["user", "assistant"]
     for i in range(len(examples)):
+        skip = False
         messages = []
         source = examples[i]["conversations"]
-        if source[0]["from"].lower() != "user":
+        key_role = "from" if "from" in source[0] else "role"
+        if source[0][key_role].lower() != "user":
             # Skip the first one if it is not from human
             source = source[1:]
         for j, sentence in enumerate(source):
-            assert sentence["from"].lower() == roles[j % 2], f"{i}"
-            messages.append({"role": sentence["from"].lower(), "content": sentence["value"]})
+            if sentence[key_role].lower() != roles[j % 2]:
+                print_rank_0(
+                    f"Ignoring example {i} because of wrong role {sentence[key_role]} at message {j}."
+                )
+                skip = True
+                break
+            if key_role == "from":
+                messages.append({"role": sentence["from"].lower(), "content": sentence["value"]})
+            else:
+                messages.append(sentence)
+        if skip:
+            continue
         conversation = tokenizer.apply_chat_template(
             messages,
             tokenize=False,
