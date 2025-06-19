@@ -1,0 +1,22 @@
+name: Code Quality
+
+on:
+  pull_request:
+    branches: [main, release/*]
+
+# Cancel previous runs if new commit is pushed to the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run code quality checks
+        run: pip install tox && tox -e pre-commit-all
