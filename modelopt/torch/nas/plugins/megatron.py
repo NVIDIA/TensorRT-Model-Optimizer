@@ -616,7 +616,7 @@ class _DynamicSelfAttention(DynamicModule):
         attn_head_importance = self._activations.view(
             self.get_hparam("num_heads_per_group").max * self.get_hparam("num_query_groups").max,
             self.config.kv_channels,
-        ).norm(p=2, dim=1)
+        ).vector_norm(ord=2, dim=1)
         return attn_head_importance
 
     def _estimate_query_group_importance(self) -> TracedHp.Importance:
