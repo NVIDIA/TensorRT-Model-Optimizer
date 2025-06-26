@@ -174,8 +174,7 @@ class EagleModule(nn.Module):
     def __init__(self, config, decoder_layer_cls, num_layers, use_last_layernorm=False, bias=True):
         """Init function for EagleModule."""
         super().__init__()
-
-        self.fc = nn.Linear(2 * config.hidden_size, config.hidden_size, bias=bias)
+        self.fc = nn.Linear(3 * config.hidden_size, config.hidden_size, bias=bias)
         self.layers = nn.ModuleList(
             [decoder_layer_cls(config, layer_idx) for layer_idx in range(num_layers)]
         )
@@ -225,11 +224,13 @@ class EagleModule(nn.Module):
         )
 
         inputs_embeds = inputs_embeds.to(hidden_states.dtype).to(hidden_states.device)
-        hidden_states = self.fc(torch.cat((inputs_embeds, hidden_states), dim=-1))
+        hidden_states = self.fc(hidden_states)
+        proj_hidden_states = hidden_states
 
         for idx, decoder_layer in enumerate(self.layers):
             layer_outputs = decoder_layer(
                 hidden_states,
+                input_embeds=inputs_embeds,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
                 past_key_value=past_key_values,
@@ -245,7 +246,7 @@ class EagleModule(nn.Module):
 
         logits = lm_head(hidden_states).to(hidden_states.device)
 
-        return hidden_states, logits, past_key_values
+        return proj_hidden_states, hidden_states, logits, past_key_values
 
     def _prepare_decoder_attention_mask(
         self, attention_mask, input_shape, inputs_embeds, past_key_values_length
@@ -273,6 +274,77 @@ class EagleModule(nn.Module):
             )
 
         return combined_attention_mask
+
+
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaRMSNorm, LlamaDecoderLayer
+from typing import Optional, Tuple, Unpack
+from torch import nn
+from torch.nn import CrossEntropyLoss
+from transformers import Cache, DynamicCache, PreTrainedModel
+from transformers.trainer_pt_utils import LabelSmoother
+from transformers.utils import ModelOutput
+from transformers.models.llama.modeling_llama import FlashAttentionKwargs
+
+class ModifiedLlamaAttention(LlamaAttention):
+    def __init__(self, config, layer_idx):
+        super().__init__(config, layer_idx)
+        self.q_proj = nn.Linear(config.hidden_size * 2, config.num_attention_heads * config.head_dim, bias=config.attention_bias)
+        self.k_proj = nn.Linear(config.hidden_size * 2, config.num_key_value_heads * config.head_dim, bias=config.attention_bias)
+        self.v_proj = nn.Linear(config.hidden_size * 2 , config.num_key_value_heads * config.head_dim, bias=config.attention_bias)
+        self.o_proj = nn.Linear(config.num_attention_heads * config.head_dim, config.hidden_size, bias=config.attention_bias)
+
+class ModifiedLlamaDecoderLayer(LlamaDecoderLayer):
+    def __init__(self, config, layer_idx):
+        super().__init__(config, layer_idx)
+        self.self_attn = ModifiedLlamaAttention(config, layer_idx)
+        self.hidden_norm = LlamaRMSNorm(config.hidden_size, config.rms_norm_eps)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        input_embeds: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Cache] = None,
+        output_attentions: Optional[bool] = False,
+        use_cache: Optional[bool] = False,
+        cache_position: Optional[torch.LongTensor] = None,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # necessary, but kept here for BC
+        **kwargs: Unpack[FlashAttentionKwargs],
+    ) -> Tuple[torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]]:
+        residual = hidden_states
+
+        embeds = self.input_layernorm(input_embeds)
+        hidden_states = self.hidden_norm(hidden_states)
+        hidden_states = torch.cat([embeds, hidden_states], dim=-1)
+
+        # Self Attention
+        hidden_states, self_attn_weights = self.self_attn(
+            hidden_states=hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+            cache_position=cache_position,
+            position_embeddings=position_embeddings,
+            **kwargs,
+        )
+        # hidden_states = residual + hidden_states
+
+        # Fully Connected
+        # residual = hidden_states
+        hidden_states = self.post_attention_layernorm(hidden_states)
+        hidden_states = self.mlp(hidden_states)
+        # hidden_states = residual + hidden_states
+
+        outputs = (hidden_states,)
+        if output_attentions:
+            outputs += (self_attn_weights,)
+
+        return outputs
+
+    
 
 
 @EagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
@@ -313,23 +385,17 @@ class HFEagleModel(EagleModel):
             use_mtp_layernorm=use_mtp_layernorm,
         )
 
-        self.config.eagle = {
-            "num_hidden_layers": eagle_num_layers,
-            "num_attention_heads": self.config.num_attention_heads,
-            "head_dim": getattr(
-                self.config, "head_dim", self.config.hidden_size // self.config.num_attention_heads
-            ),
-            "intermediate_size": self.config.intermediate_size,
-            "hidden_size": self.config.hidden_size,
-            "num_key_value_heads": self.config.num_key_value_heads,
-            "rms_norm_eps": self.config.rms_norm_eps,
-            "max_position_embeddings": self.config.max_position_embeddings,
-            "rope_theta": self.config.rope_theta,
-            "use_input_layernorm_in_first_layer": use_input_layernorm_in_first_layer,
-            "use_last_layernorm": use_last_layernorm,
-        }
+        from copy import deepcopy
+        eagle_config = deepcopy(self.config)
+        # update the config
+        eagle_config.num_hidden_layers = eagle_num_layers
+        eagle_config.use_input_layernorm_in_first_layer = use_input_layernorm_in_first_layer
+        eagle_config.use_last_layernorm = use_last_layernorm
+
+        self.config.eagle = eagle_config
+        # type(self.model.layers[-1])
         self.eagle_module = EagleModule(
-            self.config, type(self.model.layers[-1]), eagle_num_layers, use_last_layernorm
+            self.config.eagle, ModifiedLlamaDecoderLayer, eagle_num_layers, use_last_layernorm
         )
 
         if hasattr(self.model.layers[-1].self_attn, "o_proj"):
@@ -396,8 +462,16 @@ class HFEagleModel(EagleModel):
             past_key_values = outputs.past_key_values
             if not isinstance(past_key_values, Cache):
                 past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            hidden_states = outputs.hidden_states[-1]
+
+            if self.use_aux_hidden_state:
+                aux_hidden_states = [
+                    outputs.hidden_states[layer_id] for layer_id in self.eagle_aux_hidden_state_layer_ids
+                ]
+                hidden_states = torch.cat(aux_hidden_states, dim=-1)
+            else:
+                hidden_states = outputs.hidden_states[-1]
             logits = outputs.logits
+
 
         # Shift left 1 token for eagle inputs
         zeropadding = torch.zeros(
@@ -428,7 +502,7 @@ class HFEagleModel(EagleModel):
             position_ids = position_ids.view(-1, seq_length).long()
         position_embeddings = self.model.rotary_emb(hidden_states, position_ids)
 
-        eagle_hidden_states, eagle_logits, eagle_cache = self.eagle_module(
+        hidden_states, eagle_hidden_states, eagle_logits, eagle_cache = self.eagle_module(
             hidden_states,
             inputs_embeds,
             self.lm_head,

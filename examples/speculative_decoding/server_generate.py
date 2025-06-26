@@ -81,8 +81,14 @@ def generate_data(messages, idx, system_prompt):
                 output_messages.append(system_message)
 
             for message in messages[::2]:
-                if message["role"].lower() != "user":
+                if message["from"].lower() != "user":
                     return
+
+                # transform message
+                message = {
+                    "role": message["from"].lower(),
+                    "content": message["value"],
+                }
                 output_messages.append(message)
                 try:
                     response = client.chat.completions.create(

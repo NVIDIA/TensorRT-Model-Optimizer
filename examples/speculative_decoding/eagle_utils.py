@@ -42,12 +42,12 @@ def preprocess(examples, tokenizer):
     for i in range(len(examples)):
         messages = []
         source = examples[i]["conversations"]
-        if source[0]["from"].lower() != "user":
+        if source[0]["role"].lower() != "user":
             # Skip the first one if it is not from human
             source = source[1:]
         for j, sentence in enumerate(source):
-            assert sentence["from"].lower() == roles[j % 2], f"{i}"
-            messages.append({"role": sentence["from"].lower(), "content": sentence["value"]})
+            assert sentence["role"].lower() == roles[j % 2], f"{i}"
+            messages.append({"role": sentence["role"].lower(), "content": sentence["content"]})
         conversation = tokenizer.apply_chat_template(
             messages,
             tokenize=False,

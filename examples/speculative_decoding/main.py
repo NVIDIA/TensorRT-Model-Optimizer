@@ -146,9 +146,13 @@ def train():
             mtsp.convert(model, [("medusa", config)])
         elif training_args.mode == "eagle":
             config = {
-                "eagle_num_layers": eagle_args.eagle_num_layers,
-                "use_input_layernorm_in_first_layer": eagle_args.use_input_layernorm_in_first_layer,
-                "use_last_layernorm": eagle_args.use_last_layernorm,
+                "eagle_num_layers": 1,
+                "eagle_hidden_state_distillation": False,
+                "eagle_disable_moe": True,
+                "use_aux_hidden_state": True,
+                "use_input_layernorm_in_first_layer": True,
+                "use_last_layernorm": True,
+                "use_mtp_layernorm": False,
             }
             mtsp.convert(model, [("eagle", config)])
         else:
