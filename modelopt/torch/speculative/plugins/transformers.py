@@ -427,8 +427,8 @@ class HFEagleModel(EagleModel):
         logits_to_keep: int = 0,
         loss_mask: torch.Tensor | None = None,
         freeze_base_model: bool = True,
-        classification_loss_coefficient: float | None = 0.1,
-        regression_loss_coefficient: float | None = 1.0,
+        classification_loss_coefficient: float | None = 1,
+        regression_loss_coefficient: float | None = 0.1,
         **kwargs,
     ) -> Any:
         """Forward pass of the EagleModel.
@@ -528,13 +528,14 @@ class HFEagleModel(EagleModel):
         if loss_mask is not None:
             # Shift hidden_states and logits to align with eagle counterparts
             zeropadding = torch.zeros(
-                hidden_states.shape[0],
+                outputs.hidden_states[-1].shape[0],
                 1,
-                hidden_states.shape[2],
+                outputs.hidden_states[-1].shape[2],
                 dtype=hidden_states.dtype,
                 device=hidden_states.device,
             )
-            hidden_states = torch.cat((hidden_states[:, 1:], zeropadding), dim=1).detach()
+            # use base model output for hidden states
+            hidden_states = torch.cat((outputs.hidden_states[-1][:, 1:], zeropadding), dim=1).detach()
             zeropadding = torch.zeros(
                 logits.shape[0], 1, logits.shape[2], dtype=logits.dtype, device=logits.device
             )
@@ -543,9 +544,10 @@ class HFEagleModel(EagleModel):
             regression_loss, classification_loss = self._eagle_loss(
                 hidden_states, base_model_logits, eagle_hidden_states, eagle_logits, loss_mask
             )
+            # use classification loss only for EAGLE-3
             eagle_loss = (
-                regression_loss_coefficient * regression_loss
-                + classification_loss_coefficient * classification_loss
+                regression_loss_coefficient * regression_loss +
+                classification_loss_coefficient * classification_loss
             )
             if loss is None:
                 loss = eagle_loss
@@ -574,3 +576,4 @@ class HFEagleModel(EagleModel):
             loss_mask.sum() + 1e-5
         )
         return regression_loss, classification_loss
+    
