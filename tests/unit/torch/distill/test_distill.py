@@ -111,6 +111,23 @@ def test_distillation_model_multiloss_balancer():
     distillation_model.compute_kd_loss(student_loss=output.mean())
 
 
+def test_distillation_model_mft():
+    student = tiny_mobilenet().train()
+    config = {
+        "teacher_model": tiny_alexnet,
+        "criterion": mtd.MFTLoss(threshold=0.2),
+        "loss_balancer": None,
+    }
+
+    distillation_model = mtd.convert(student, mode=[("kd_loss", config)])
+
+    input_tensor = get_input_tensor()
+    labels = torch.randint(0, 10, (input_tensor.size(0),))  # Dummy labels for MFT
+    distillation_model(input_tensor)
+    loss = distillation_model.compute_kd_loss(labels=labels)
+    assert isinstance(loss, torch.Tensor) and loss.numel() == 1
+
+
 def test_distillation_mode_default_config():
     student = tiny_mobilenet()
     with pytest.raises(AssertionError):

@@ -244,6 +244,7 @@ class DistillationModel(DynamicModule):
         student_loss: torch.Tensor | None = None,
         loss_reduction_fn: Callable | None = None,
         skip_balancer: bool = False,
+        labels: torch.Tensor | None = None,
     ) -> torch.Tensor | dict[str, torch.Tensor]:
         """Compute total loss for distillation backpropagation.
 
@@ -273,7 +274,9 @@ class DistillationModel(DynamicModule):
             out_t = teacher_layer._intermediate_output.pop(0)  # can store multiple in special cases
             student_layer._intermediate_output = None
 
-            loss = loss_fn(out_s, out_t)  # Student is pred, Teacher is target
+            loss = loss_fn(
+                out_s, out_t, **({"labels": labels} if labels is not None else {})
+            )  # Student is pred, Teacher is target
             if loss_reduction_fn is not None:
                 # Needed in cases where a loss mask is used on non-scalar loss-fn outputs, prior to
                 # reducing to a scalar loss value.

@@ -17,8 +17,6 @@
 
 """Different types of distillation losses."""
 
-from typing import override
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -45,7 +43,6 @@ class LogitsDistillationLoss(Loss):
         self._temperature: float = temperature
         self._reduction: str = reduction
 
-    @override
     def forward(self, logits_s: torch.Tensor, logits_t: torch.Tensor) -> torch.Tensor:
         """Compute KD loss on student and teacher logits.
 
@@ -79,21 +76,26 @@ class MFTLoss(Loss):
     This function implements the distillation loss found in the paper: https://arxiv.org/abs/2506.15702.
     """
 
-    def __init__(self, temperature: float = 1.0, reduction: str = "batchmean"):
+    def __init__(
+        self, temperature: float = 1.0, reduction: str = "batchmean", threshold: float = 0.2
+    ):
         """Constructor.
 
         Args:
             temperature: A value used to soften the logits_t and logits_s before computing the MFT loss on them.
             reduction: How to reduce the final pointwise loss before returning. Pass ``"none"`` to
                 use your own reduction function afterwards, i.e. with loss masks.
+            threshold: A value used to correct the teacher's distribution. It is used to ensure that
+                the separation between the correct and incorrect argmax tokens is large enough.
+                The value should be in the range [0, 1]. Defaults to 0.2.
         """
         super().__init__()
         self._temperature: float = temperature
         self._reduction: str = reduction
+        self._threshold: float = threshold
 
-    @override
     def forward(
-        self, logits_s: torch.Tensor, logits_t: torch.Tensor, labels: torch.Tensor, threshold: float
+        self, logits_s: torch.Tensor, logits_t: torch.Tensor, labels: torch.Tensor
     ) -> torch.Tensor:
         """Compute KD loss on student and teacher logits.
 
@@ -112,7 +114,7 @@ class MFTLoss(Loss):
         target_logits: torch.Tensor = logits_t / self._temperature  # (B, L, C)
         target_logits = target_logits.view(-1, target_logits.size(-1))  # (B, C)
         soft_targets = self.prepare_corrected_distributions(
-            target_logits, labels, threshold, apply_threshold_to_all=True
+            target_logits, labels, self._threshold, apply_threshold_to_all=True
         )
 
         kd_loss = F.kl_div(

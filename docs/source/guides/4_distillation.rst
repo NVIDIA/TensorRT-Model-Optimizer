@@ -48,7 +48,7 @@ Example usage:
         # If a tuple, it must be of the form (model_cls_or_callable,) or
         # (model_cls_or_callable, args) or (model_cls_or_callable, args, kwargs).
         "teacher_model": teacher_model,
-        "criterion": mtd.LogitsDistillationLoss(),
+        "criterion": mtd.LogitsDistillationLoss(), # Consider using mtd.MFTDistillationLoss() for Minifinetuning (when finetuning data is scarce)
         "loss_balancer": mtd.StaticLossBalancer(),
     }
     distillation_model = mtd.convert(model, mode=[("kd_loss", distillation_config)])
@@ -124,6 +124,9 @@ maps or logits) which the teacher has already mastered. This can serve multiple 
   **C.** Module replacement: One can replace a single module within a model with a more efficient one
   and use distillation on its original outputs to effectively re-integrate it into the whole model.
 
+  **D.** Minimal modification without catastrophic forgetting: A variant of distillation, called Minifinetuning,
+  allows for training a model on even small datasets without losing the original model's knowledge.
+
 Student
 ^^^^^^^
 
@@ -192,3 +195,15 @@ ground truth labels may be.
 
 
 .. _1: https://arxiv.org/abs/1803.03635
+
+Minifinetuning
+^^^^^^^^^^^^^^
+
+Minifinetuning is a technique that allows for training a model on even small datasets without losing the original
+model's knowledge. This is achieved by algorithmic modification of the teacher's distribution depending on its 
+performance on the new dataset. The goal is to ensure that the separation between the correct and incorrect argmax 
+tokens is large enough, which can be controlled by a threshold parameter. ModelOpt provides a pre-defined loss function 
+for this purpose, called :class:`MFTDistillationLoss <modelopt.torch.distill.losses.MFTDistillationLoss>`, which can 
+be used in place of the standard :class:`LogitsDistillationLoss <modelopt.torch.distill.losses.LogitsDistillationLoss>`.
+More information about the technique can be found in the original paper: 
+`Minifinetuning: Low-Data Generation Domain Adaptation through Corrective Self-Distillation <https://arxiv.org/abs/2506.15702>`_.
