@@ -17,12 +17,14 @@
 
 """Different types of distillation losses."""
 
+from typing import override
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.loss import _Loss as Loss
 
-__all__ = ["LogitsDistillationLoss", "MGDLoss"]
+__all__ = ["LogitsDistillationLoss", "MFTLoss", "MGDLoss"]
 
 
 class LogitsDistillationLoss(Loss):
@@ -40,9 +42,10 @@ class LogitsDistillationLoss(Loss):
                 use your own reduction function afterwards, i.e. with loss masks.
         """
         super().__init__()
-        self._temperature = temperature
-        self._reduction = reduction
+        self._temperature: float = temperature
+        self._reduction: str = reduction
 
+    @override
     def forward(self, logits_s: torch.Tensor, logits_t: torch.Tensor) -> torch.Tensor:
         """Compute KD loss on student and teacher logits.
 
@@ -70,6 +73,131 @@ class LogitsDistillationLoss(Loss):
         return kd_loss
 
 
+class MFTLoss(Loss):
+    """KL-divergence loss with Minifinetuning threshold modification.
+
+    This function implements the distillation loss found in the paper: https://arxiv.org/abs/2506.15702.
+    """
+
+    def __init__(self, temperature: float = 1.0, reduction: str = "batchmean"):
+        """Constructor.
+
+        Args:
+            temperature: A value used to soften the logits_t and logits_s before computing the MFT loss on them.
+            reduction: How to reduce the final pointwise loss before returning. Pass ``"none"`` to
+                use your own reduction function afterwards, i.e. with loss masks.
+        """
+        super().__init__()
+        self._temperature: float = temperature
+        self._reduction: str = reduction
+
+    @override
+    def forward(
+        self, logits_s: torch.Tensor, logits_t: torch.Tensor, labels: torch.Tensor, threshold: float
+    ) -> torch.Tensor:
+        """Compute KD loss on student and teacher logits.
+
+        Args:
+            logits_s: Student's logits, treated as prediction.
+            logits_t: Teacher's logits, treated as label.
+            labels: Labels for the ground truth, used to prepare the corrected teacher distributions.
+
+        .. note::
+
+            Assumes class logits dimension is last.
+        """
+        soft_log_probs = F.log_softmax(logits_s / self._temperature, dim=-1)  # (B, L, C)
+        soft_log_probs = soft_log_probs.view(-1, soft_log_probs.size(-1))  # (B, C)
+
+        target_logits: torch.Tensor = logits_t / self._temperature  # (B, L, C)
+        target_logits = target_logits.view(-1, target_logits.size(-1))  # (B, C)
+        soft_targets = self.prepare_corrected_distributions(
+            target_logits, labels, threshold, apply_threshold_to_all=True
+        )
+
+        kd_loss = F.kl_div(
+            soft_log_probs, soft_targets.detach(), reduction=self._reduction
+        )  # shape depends on reduction; "batchmean" would result in a scalar (1,)
+
+        # Since the magnitudes of the gradients produced by the soft logits scale as 1/(T^2),
+        # multiplying them by T^2 ensures that the relative contributions of the logits
+        # remain roughly unchanged while experimenting with meta-parameters.
+        kd_loss *= self._temperature**2
+
+        return kd_loss
+
+    def prepare_corrected_distributions(
+        self,
+        logits: torch.Tensor,
+        labels: torch.Tensor,
+        threshold: float,
+        apply_threshold_to_all: bool = True,
+    ) -> torch.Tensor:
+        """Prepare the corrected distributions for MFT loss.
+
+        Args:
+            logits: The logits from the teacher model, shape (batch_size * seq_len, vocab_size).
+            labels: The ground truth labels, shape (batch_size * seq_len).
+            threshold: The threshold value for the MFT correction.
+            apply_threshold_to_all: If True, apply the threshold correction to all tokens,
+                not just the incorrect argmax tokens. Defaults to True.
+
+        Returns:
+            A tensor containing the corrected distributions, shape (batch_size * seq_len, vocab_size).
+        """
+        # Ensure logits is a 2D tensor and labels is a 1D tensor
+        if logits.dim() != 2 or labels.dim() != 1:
+            raise ValueError("Logits must be a 2D tensor and labels must be a 1D tensor.")
+        # logits: (batch_size * seq_len, vocab_size)
+        # labels: (batch_size * seq_len)
+        distribution = F.softmax(logits, dim=-1)  # (batch_size * seq_len, vocab_size)
+
+        argmax = distribution.argmax(dim=-1)  # (batch_size * seq_len)
+        incorrect_argmax = argmax != labels  # (batch_size * seq_len)
+
+        p_argmax = torch.gather(distribution, 1, argmax.unsqueeze(1)).squeeze(
+            1
+        )  # (batch_size * seq_len)
+        p_label = torch.gather(distribution, 1, labels.unsqueeze(1)).squeeze(
+            1
+        )  # (batch_size * seq_len)
+
+        # correction of the distribution at the tokens where the argmax is incorrect
+        mixin_factor = (p_argmax - p_label + threshold) / (
+            1 + p_argmax - p_label + 1e-7
+        )  # (batch_size * seq_len)
+        adjusted_incorrect_distribution = distribution * (
+            1 - mixin_factor.unsqueeze(1)
+        )  # (batch_size * seq_len, vocab_size)
+        _ = adjusted_incorrect_distribution.scatter_add_(
+            1, labels.unsqueeze(1), mixin_factor.unsqueeze(1)
+        )  # (batch_size * seq_len, vocab_size)
+
+        if apply_threshold_to_all:
+            # correction of the distribution at the tokens where the argmax is correct but
+            #  the separation may not be large enough
+            capped_targets = torch.where(
+                p_label > 1 - threshold, 1, p_label + threshold
+            )  # (batch_size * seq_len)
+            mixin_factor = (capped_targets - p_argmax) / (
+                1 - p_argmax + 1e-7
+            )  # (batch_size * seq_len)
+            adjusted_correct_distribution = distribution * (
+                1 - mixin_factor.unsqueeze(1)
+            )  # (batch_size * seq_len, vocab_size)
+            _ = adjusted_correct_distribution.scatter_add_(
+                1, labels.unsqueeze(1), mixin_factor.unsqueeze(1)
+            )
+        else:
+            adjusted_correct_distribution = distribution
+
+        return torch.where(
+            incorrect_argmax.unsqueeze(1),
+            adjusted_incorrect_distribution,
+            adjusted_correct_distribution,
+        )  # (batch_size * seq_len, vocab_size)
+
+
 class MGDLoss(Loss):
     """PyTorch version of Masked Generative Distillation.
 
@@ -92,8 +220,8 @@ class MGDLoss(Loss):
             lambda_mgd: Masked ratio. Defaults to 0.65.
         """
         super().__init__()
-        self._alpha_mgd = alpha_mgd
-        self._lambda_mgd = lambda_mgd
+        self._alpha_mgd: float = alpha_mgd
+        self._lambda_mgd: float = lambda_mgd
 
         if num_student_channels != num_teacher_channels:
             self.align = nn.Conv2d(
