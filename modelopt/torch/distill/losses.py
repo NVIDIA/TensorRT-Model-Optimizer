@@ -101,18 +101,18 @@ class MFTLoss(Loss):
 
         Args:
             logits_s: Student's logits, treated as prediction.
-            logits_t: Teacher's logits, treated as label.
+            logits_t: Teacher's logits, treated as training target.
             labels: Labels for the ground truth, used to prepare the corrected teacher distributions.
 
         .. note::
 
             Assumes class logits dimension is last.
         """
-        soft_log_probs = F.log_softmax(logits_s / self._temperature, dim=-1)  # (B, L, C)
-        soft_log_probs = soft_log_probs.view(-1, soft_log_probs.size(-1))  # (B, C)
+        soft_log_probs = F.log_softmax(logits_s / self._temperature, dim=-1)  # (B, ..., C)
+        soft_log_probs = soft_log_probs.view(-1, soft_log_probs.size(-1))  # (new B, C)
 
-        target_logits: torch.Tensor = logits_t / self._temperature  # (B, L, C)
-        target_logits = target_logits.view(-1, target_logits.size(-1))  # (B, C)
+        target_logits: torch.Tensor = logits_t / self._temperature  # (B, ..., C)
+        target_logits = target_logits.view(-1, target_logits.size(-1))  # (new B, C)
         soft_targets = self.prepare_corrected_distributions(
             target_logits, labels, self._threshold, apply_threshold_to_all=True
         )
@@ -138,8 +138,8 @@ class MFTLoss(Loss):
         """Prepare the corrected distributions for MFT loss.
 
         Args:
-            logits: The logits from the teacher model, shape (batch_size * seq_len, vocab_size).
-            labels: The ground truth labels, shape (batch_size * seq_len).
+            logits: The logits from the teacher model, shape (batch, channels) # e.g. (batch_size * seq_len, vocab_size) in case of LMs
+            labels: The ground truth labels, shape (batch) # e.g. (batch_size * seq_len) in case of LMs
             threshold: The threshold value for the MFT correction.
             apply_threshold_to_all: If True, apply the threshold correction to all tokens,
                 not just the incorrect argmax tokens. Defaults to True.
@@ -150,43 +150,43 @@ class MFTLoss(Loss):
         # Ensure logits is a 2D tensor and labels is a 1D tensor
         if logits.dim() != 2 or labels.dim() != 1:
             raise ValueError("Logits must be a 2D tensor and labels must be a 1D tensor.")
-        # logits: (batch_size * seq_len, vocab_size)
-        # labels: (batch_size * seq_len)
-        distribution = F.softmax(logits, dim=-1)  # (batch_size * seq_len, vocab_size)
+        # logits: (batch, channels)
+        # labels: (batch)
+        distribution = F.softmax(logits, dim=-1)  # (batch, channels)
 
-        argmax = distribution.argmax(dim=-1)  # (batch_size * seq_len)
-        incorrect_argmax = argmax != labels  # (batch_size * seq_len)
+        argmax = distribution.argmax(dim=-1)  # (batch,)
+        incorrect_argmax = argmax != labels  # (batch,)
 
         p_argmax = torch.gather(distribution, 1, argmax.unsqueeze(1)).squeeze(
             1
-        )  # (batch_size * seq_len)
+        )  # (batch,)
         p_label = torch.gather(distribution, 1, labels.unsqueeze(1)).squeeze(
             1
-        )  # (batch_size * seq_len)
+        )  # (batch,)
 
         # correction of the distribution at the tokens where the argmax is incorrect
         mixin_factor = (p_argmax - p_label + threshold) / (
             1 + p_argmax - p_label + 1e-7
-        )  # (batch_size * seq_len)
+        )  # (batch,)
         adjusted_incorrect_distribution = distribution * (
             1 - mixin_factor.unsqueeze(1)
-        )  # (batch_size * seq_len, vocab_size)
+        )  # (batch, channels)
         _ = adjusted_incorrect_distribution.scatter_add_(
             1, labels.unsqueeze(1), mixin_factor.unsqueeze(1)
-        )  # (batch_size * seq_len, vocab_size)
+        )  # (batch, channels)
 
         if apply_threshold_to_all:
             # correction of the distribution at the tokens where the argmax is correct but
             #  the separation may not be large enough
             capped_targets = torch.where(
                 p_label > 1 - threshold, 1, p_label + threshold
-            )  # (batch_size * seq_len)
+            )  # (batch,)
             mixin_factor = (capped_targets - p_argmax) / (
                 1 - p_argmax + 1e-7
-            )  # (batch_size * seq_len)
+            )  # (batch,)
             adjusted_correct_distribution = distribution * (
                 1 - mixin_factor.unsqueeze(1)
-            )  # (batch_size * seq_len, vocab_size)
+            )  # (batch, channels)
             _ = adjusted_correct_distribution.scatter_add_(
                 1, labels.unsqueeze(1), mixin_factor.unsqueeze(1)
             )
@@ -197,7 +197,7 @@ class MFTLoss(Loss):
             incorrect_argmax.unsqueeze(1),
             adjusted_incorrect_distribution,
             adjusted_correct_distribution,
-        )  # (batch_size * seq_len, vocab_size)
+        )  # (batch, channels)
 
 
 class MGDLoss(Loss):
