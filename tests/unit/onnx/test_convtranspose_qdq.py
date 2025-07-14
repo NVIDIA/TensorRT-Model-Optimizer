@@ -39,7 +39,8 @@ def onnx_paths(tmp_path):
     }
 
 
-def test_convtranspose_qdq(model_and_input, onnx_paths):
+@pytest.mark.parametrize("high_precision_type", ["fp16", "fp32"])
+def test_convtranspose_qdq(model_and_input, onnx_paths, high_precision_type):
     """Test that ConvTranspose weight inputs don't have QuantizeLinear nodes."""
     model, dummy_input = model_and_input
     onnx_path = onnx_paths["onnx_path"]
@@ -53,6 +54,7 @@ def test_convtranspose_qdq(model_and_input, onnx_paths):
         str(onnx_path),
         quantize_mode="int8",
         output_path=str(quant_onnx_path),
+        high_precision_type=high_precision_type,
     )
 
     # Step 3: Load and verify quantized model

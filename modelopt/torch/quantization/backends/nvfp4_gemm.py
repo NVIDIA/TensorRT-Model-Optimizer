@@ -57,7 +57,10 @@ def nvfp4_gemm(quant_module, input_tensor, bias=None):
 
     if input_tensor.dtype == torch.float32:
         input_tensor = input_tensor.to(torch.float16)
-    input_global_scale = 448.0 * 6.0 / quant_module.input_quantizer.amax.float()
+    input_amax = quant_module.input_quantizer.amax
+    if input_amax is None:
+        input_amax = input_tensor.abs().amax()
+    input_global_scale = 448.0 * 6.0 / input_amax.float()
     output = torch.ops.quant.fp4_linear(
         input_tensor,
         weight_fp4,

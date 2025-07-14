@@ -269,7 +269,7 @@ def test_teacher_fwd_only(distillation_model):
     with distillation_model.only_teacher_forward():
         distillation_model(get_input_tensor())
 
-    assert len(distillation_model.teacher_model._intermediate_output) > 0
+    assert distillation_model.teacher_model._intermediate_output is not None
     assert distillation_model._intermediate_output is None
 
 
@@ -277,7 +277,7 @@ def test_student_fwd_only(distillation_model):
     with distillation_model.only_student_forward():
         distillation_model(get_input_tensor())
 
-    assert len(distillation_model.teacher_model._intermediate_output) == 0
+    assert distillation_model.teacher_model._intermediate_output is None
     assert distillation_model._intermediate_output is not None
 
 
@@ -287,9 +287,8 @@ def test_train_eval_mode_switch(distillation_model):
     distillation_model(get_input_tensor())
     assert distillation_model._intermediate_output is not None
     distillation_model.eval()
-    assert distillation_model._intermediate_output is False
+    assert distillation_model._intermediate_output is None
     distillation_model(get_input_tensor())
-    assert distillation_model._intermediate_output is False
+    assert distillation_model._intermediate_output is not None
     distillation_model.train()
-    distillation_model(get_input_tensor())
-    assert distillation_model._intermediate_output is not False
+    assert distillation_model._intermediate_output is None

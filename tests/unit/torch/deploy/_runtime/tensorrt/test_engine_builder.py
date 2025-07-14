@@ -16,132 +16,112 @@
 import json
 import os
 import sys
+from pathlib import Path
+from tempfile import gettempdir
 from types import ModuleType
 from unittest import mock
 
 import pytest
 
-from modelopt.torch._deploy._runtime.tensorrt.constants import (
-    DEFAULT_NUM_INFERENCE_PER_RUN,
-    WARMUP_TIME_MS,
-)
-
+# Patch mock tensorrt module
 tensorrt = ModuleType("tensorrt")
-tensorrt.Logger = mock.Mock(name="tensorrt_logger")  # type: ignore[attr-defined]
-tensorrt.tensorrt = mock.Mock(name="tensorrt_tensorrt")  # type: ignore[attr-defined]
-tensorrt.__version__ = "8.2"  # type: ignore[attr-defined]
-sys.modules[tensorrt.__name__] = tensorrt
-
-trex = ModuleType("trex")
-trex.EnginePlan = mock.Mock(name="trex_EnginePlan")  # type: ignore[attr-defined]
-trex.layer_type_formatter = mock.Mock(name="trex_layer_type_formatter")  # type: ignore[attr-defined]
-trex.to_dot = mock.Mock(name="trex_to_dot")  # type: ignore[attr-defined]
-trex.render_dot = mock.Mock(name="trex_render_dot")  # type: ignore[attr-defined]
-sys.modules[trex.__name__] = trex
+tensorrt.Logger = mock.Mock()
+tensorrt.tensorrt = mock.Mock()
+tensorrt.__version__ = "10.10"
+sys.modules["tensorrt"] = tensorrt
 
 from modelopt.torch._deploy._runtime.tensorrt.engine_builder import build_engine, profile_engine
 
 
 @pytest.fixture
-def setup_mock_tmp_path_and_engine_bytes(tmp_path):
+def setup_mocks():
+    tmp_path = Path(gettempdir()) / "modelopt_build/trt_artifacts"
+    engine_bytes = b"engine_bytes"
+    dummy_hash = "997930f2"
+    expected_engine_bytes = b"\x99y0\xf2" + b"A" * 28 + b",engine_bytes"
+
+    os.makedirs(tmp_path / "onnx", exist_ok=True)
+    (tmp_path / "model.engine").write_bytes(engine_bytes)
+
+    (tmp_path / f"{dummy_hash}-profile.json").write_text(
+        json.dumps([{"count": 1}, {"name": "dummy_layer", "averageMs": 0.001}])
+    )
+    (tmp_path / f"{dummy_hash}-layerInfo.json").write_text(
+        json.dumps({"Layers": [{"Name": "dummy_layer"}]})
+    )
+
+    mock_onnx = mock.Mock()
+    mock_onnx.model_name = "model"
+
     with (
         mock.patch(
             "modelopt.torch._deploy._runtime.tensorrt.engine_builder._run_command"
-        ) as mock_run_command,
+        ) as mock_run,
         mock.patch(
             "modelopt.torch._deploy._runtime.tensorrt.engine_builder.TemporaryDirectory"
-        ) as mock_temporary_directory,
+        ) as mock_tmp,
         mock.patch(
-            "modelopt.torch._deploy._runtime.tensorrt.engine_builder._draw_engine"
-        ) as mock_draw_engine,
+            "modelopt.torch._deploy._runtime.tensorrt.engine_builder.prepend_hash_to_bytes"
+        ) as mock_hash,
     ):
-        mock_run_command.return_value = (0, "success")
-        mock_temporary_directory.return_value.__enter__.return_value = tmp_path
-        mock_onnx_bytes = mock.Mock()
-        mock_onnx_bytes.model_name = "model"
-        mock_draw_engine.return_value = b"svg"
-
-        engine_bytes = b"engine_bytes"
-        os.makedirs(os.path.join(tmp_path, "model"), exist_ok=True)
-        with open(os.path.join(tmp_path, "model", "model.engine"), "wb") as f:
-            f.write(engine_bytes)
-
-        graph_json = {"name": "graph_json"}
-        with open(os.path.join(tmp_path, "model", "model.engine.graph.json"), "w") as f:
-            json.dump(graph_json, f)
-
-        graph_svg = b"svg"
-        with open(os.path.join(tmp_path, "model", "model.engine.graph.json.svg"), "wb") as f:
-            f.write(graph_svg)
-
-        expected_engine_bytes = b"\x99y0\xf2.\x99\xa3\xeeFe=\xb1\xa7\x85\xf7\xa5\xda\x1eW/\x1c\x12\xc7R\x1d\xb2t\x88\x0f\xb6b,engine_bytes"  # noqa: E501
-
-        yield (tmp_path, mock_run_command, expected_engine_bytes, mock_onnx_bytes)
+        mock_run.return_value = (0, "success")
+        mock_tmp.return_value.__enter__.return_value = str(tmp_path)
+        mock_hash.return_value = expected_engine_bytes
+        yield tmp_path, mock_run, mock_onnx, dummy_hash
 
 
-def test_build_engine(setup_mock_tmp_path_and_engine_bytes):
-    tmp_path, mock_run_command, expected_engine_bytes, mock_onnx_bytes = (
-        setup_mock_tmp_path_and_engine_bytes
-    )
-
-    engine_bytes, out, graph_svg = build_engine(
-        onnx_bytes=mock_onnx_bytes, draw_engine=True, verbose=True, output_dir=tmp_path
-    )
-
-    mock_run_command.assert_called_once_with(
-        f"trtexec --onnx={tmp_path}/onnx/model.onnx"
-        f" --saveEngine={tmp_path}/model/model.engine --skipInference"
-        " --builderOptimizationLevel=3"
-        f" --exportLayerInfo={tmp_path}/model/model.engine.graph.json"
-        " --verbose"
-    )
-
-    assert engine_bytes == expected_engine_bytes
-    assert out == b"success"
-    assert graph_svg == b"svg"
+def _assert_engine_saved(tmp_path, dummy_hash, engine_bytes, out):
+    assert not (tmp_path / "model.engine").exists()
+    assert (tmp_path / f"{dummy_hash}-model.engine").exists()
+    assert engine_bytes is not None and engine_bytes.startswith(b"\x99y0\xf2")
+    assert out == "success"
 
 
-def test_build_engine_dynamic_shapes(setup_mock_tmp_path_and_engine_bytes):
-    tmp_path, mock_run_command, expected_engine_bytes, mock_onnx_bytes = (
-        setup_mock_tmp_path_and_engine_bytes
-    )
+def test_build_engine(setup_mocks):
+    tmp_path, mock_run, mock_onnx, dummy_hash = setup_mocks
+    engine_bytes, out = build_engine(onnx_bytes=mock_onnx, verbose=True, output_dir=tmp_path)
 
-    dynamic_shapes = {
+    mock_run.assert_called_once()
+    _assert_engine_saved(tmp_path, dummy_hash, engine_bytes, out)
+
+
+def test_build_engine_dynamic_shapes(setup_mocks):
+    tmp_path, mock_run, mock_onnx, dummy_hash = setup_mocks
+    shapes = {
         "minShapes": {"input": [1, 3, 244, 244]},
         "optShapes": {"input": [16, 3, 244, 244]},
         "maxShapes": {"input": [32, 3, 244, 244]},
     }
-
-    engine_bytes, out, graph_svg = build_engine(
-        onnx_bytes=mock_onnx_bytes,
-        draw_engine=True,
-        dynamic_shapes=dynamic_shapes,
-        output_dir=tmp_path,
+    engine_bytes, out = build_engine(
+        onnx_bytes=mock_onnx, dynamic_shapes=shapes, output_dir=tmp_path
     )
 
-    mock_run_command.assert_called_once_with(
-        f"trtexec --onnx={tmp_path}/onnx/model.onnx"
-        " --minShapes=input:1x3x244x244 --optShapes=input:16x3x244x244"
-        f" --maxShapes=input:32x3x244x244 --saveEngine={tmp_path}/model/model.engine --skipInference"
-        " --builderOptimizationLevel=3"
-        f" --exportLayerInfo={tmp_path}/model/model.engine.graph.json"
-    )
-
-    assert engine_bytes == expected_engine_bytes
-    assert out == b"success"
-    assert graph_svg == b"svg"
+    mock_run.assert_called_once()
+    _assert_engine_saved(tmp_path, dummy_hash, engine_bytes, out)
 
 
-@pytest.mark.parametrize("kwargs", [{}, {"profiling_runs": 2}])
-def test_profile_engine_runs(setup_mock_tmp_path_and_engine_bytes, kwargs):
-    tmp_path, mock_run_command, _, _ = setup_mock_tmp_path_and_engine_bytes
-    profiled_data, out = profile_engine(engine_bytes=b"engine", onnx_node_names=[], **kwargs)
+@pytest.mark.parametrize("enable_layerwise", [False, True])
+@pytest.mark.parametrize("profiling_runs", [1, 2])
+def test_profile_engine_variants(setup_mocks, enable_layerwise, profiling_runs):
+    tmp_path, mock_run, _, dummy_hash = setup_mocks
+    engine_bytes = b"\x99y0\xf2" + b"A" * 28 + b",engine_bytes"
 
-    mock_run_command.assert_called_once_with(
-        f"trtexec --loadEngine={tmp_path}/engine --warmUp={WARMUP_TIME_MS}"
-        f" --avgRuns={DEFAULT_NUM_INFERENCE_PER_RUN}"
-        f" --iterations={kwargs.get('profiling_runs', 1) * DEFAULT_NUM_INFERENCE_PER_RUN}"
-    )
+    kwargs = {
+        "engine_bytes": engine_bytes,
+        "onnx_node_names": [],
+        "output_dir": tmp_path,
+        "profiling_runs": profiling_runs,
+        "enable_layerwise_profiling": enable_layerwise,
+    }
 
-    assert profiled_data == {}
-    assert out == b"success"
+    profiled_data, out = profile_engine(**kwargs)
+    mock_run.assert_called_once()
+
+    if enable_layerwise:
+        assert profiled_data == {"dummy_layer": 0.001}
+        assert (tmp_path / f"{dummy_hash}-profile.json").exists()
+        assert (tmp_path / f"{dummy_hash}-layerInfo.json").exists()
+    else:
+        assert profiled_data == {}
+
+    assert out == "success"

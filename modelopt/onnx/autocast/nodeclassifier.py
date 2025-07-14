@@ -28,7 +28,6 @@ import numpy as np
 import onnx
 
 from modelopt.onnx.autocast.logging_config import configure_logging, logger
-from modelopt.onnx.autocast.referencerunner import ReferenceRunner
 
 configure_logging()
 
@@ -190,37 +189,176 @@ class IORangeRule(NodeRuleBase):
             super()._log_skipped(node, **kwargs)
 
 
+class DepthOfReductionRule(NodeRuleBase):
+    """Rule for keeping nodes with high depth of reduction in high precision."""
+
+    def __init__(self, max_depth_of_reduction, reference_data, node_to_init_map, initializer_map):
+        """Initialize the rule.
+
+        Args:
+            max_depth_of_reduction: Maximum depth of reduction allowed in low precision.
+            reference_data: Reference data for checking I/O ranges.
+            node_to_init_map: Mapping from node names to their initializers.
+            initializer_map: Mapping from initializer names to initializers.
+        """
+        self.max_depth_of_reduction = max_depth_of_reduction
+        self.reference_data = reference_data
+        self.node_to_init_map = node_to_init_map
+        self.initializer_map = initializer_map
+        self.reduction_depth = 0
+
+    def _get_tensor_shape(self, tensor_name):
+        """Get tensor shape from reference data."""
+        if tensor_name in self.reference_data:
+            return self.reference_data[tensor_name].shape
+        if tensor_name in self.initializer_map:
+            return self.initializer_map[tensor_name].dims
+        return None
+
+    def _log_skipped(self, node, **kwargs):
+        """Log information about skipped nodes with depth of reduction violations."""
+        if self.reduction_depth > 0:
+            logger.info(
+                f"Skipping node {node.name}: depth of reduction {self.reduction_depth} exceeds "
+                f"{self.max_depth_of_reduction}."
+            )
+        else:
+            super()._log_skipped(node, **kwargs)
+
+    def _check_inner(self, node):
+        # All reduction ops rely on shape of input[0]
+        input_0_dims = self._get_tensor_shape(node.input[0]) if len(node.input) > 0 else None
+        if input_0_dims is None:
+            return False
+        self.reduction_depth = 0
+        if node.op_type == "Attention":
+            # Attention: input (batch_size, sequence_length, hidden_size)
+            # or (batch_size, kv_num_heads, total_sequence_length, head_size)
+            assert len(input_0_dims) == 3 or len(input_0_dims) == 4
+            hidden_size = (
+                input_0_dims[2] if len(input_0_dims) == 3 else input_0_dims[1] * input_0_dims[3]
+            )
+            self.reduction_depth = hidden_size
+        elif node.op_type == "Conv":
+            # Conv: input (N x C x D1 x D2 ... x Dn)
+            # weight (out_channels, in_channels, kD1, kD2, ... kDn)
+            # Reduction depth = in_channels * kernel_volume
+            weight_shape = self._get_tensor_shape(node.input[1]) if len(node.input) > 1 else None
+            if weight_shape is None:
+                return False
+            in_channels = weight_shape[1]
+            kernel_volume = np.prod(weight_shape[2:])
+            self.reduction_depth = in_channels * kernel_volume
+        elif node.op_type == "CumSum":
+            axis_name = node.input[1] if len(node.input) > 1 else None
+            if axis_name is None:
+                return False
+            # Find the axis initializer
+            axis_init = None
+            for init in self.node_to_init_map.get(node.name, []):
+                if init.name == axis_name:
+                    axis_init = init
+                    break
+            if axis_init is None:
+                return False
+            axis_array = onnx.numpy_helper.to_array(axis_init)
+            assert axis_array.ndim == 0 or (axis_array.ndim == 1 and axis_array.size == 1)
+            axis = int(axis_array.item())
+            if input_0_dims[axis] > self.max_depth_of_reduction:
+                self.reduction_depth = input_0_dims[axis]
+
+        elif node.op_type == "Gemm":
+            # GEMM: A (M, K) @ B (K, N) = C (M, N)
+            # Check for transpose attributes
+            trans_a = False
+            for attr in node.attribute:
+                if attr.name == "transA":
+                    trans_a = bool(attr.i)
+
+            # Get K dimension based on transpose flag
+            self.reduction_depth = (
+                input_0_dims[0] if trans_a else input_0_dims[1]
+            )  # A is (K, M) when transposed
+
+        elif node.op_type == "MatMul":
+            # MatMul: (..., M, K) @ (..., K, N) = (..., M, N)
+            # K is the last dimension of first input
+            if len(input_0_dims) >= 2:
+                self.reduction_depth = input_0_dims[-1]
+        elif node.op_type == "Mean":
+            self.reduction_depth = len(input_0_dims)
+        elif node.op_type in [
+            "ReduceL1",
+            "ReduceL2",
+            "ReduceLogSum",
+            "ReduceLogSumExp",
+            "ReduceMean",
+            "ReduceProd",
+            "ReduceSum",
+            "ReduceSumSquare",
+        ]:
+            if len(node.input) > 1:
+                axes_name = node.input[1]
+                # Find the axes initializer
+                axes_init = None
+                for init in self.node_to_init_map.get(node.name, []):
+                    if init.name == axes_name:
+                        axes_init = init
+                        break
+                if axes_init is None:
+                    return False
+                axes_array = onnx.numpy_helper.to_array(axes_init)
+                if axes_array.ndim == 0:
+                    axes_array = [int(axes_array.item())]
+                else:
+                    assert axes_array.ndim == 1
+                    axes_array = axes_array.astype(np.int64)
+            else:
+                axes_array = range(len(input_0_dims))
+            for axis in axes_array:
+                if input_0_dims[axis] > self.max_depth_of_reduction:
+                    self.reduction_depth = input_0_dims[axis]
+                    return True
+        return self.reduction_depth > self.max_depth_of_reduction
+
+
 class NodeClassifier:
     """Main class for classifying nodes into high and low precision groups."""
 
     def __init__(
         self,
-        model,
-        node_to_init_map,
-        nodes_to_exclude=None,
-        op_types_to_exclude=[],
-        custom_rule=None,
-        data_max=1000,
-        init_max=np.finfo(np.float16).max,
+        model: onnx.ModelProto,
+        node_to_init_map: dict[str, list[onnx.TensorProto]] | None = None,
+        initializer_map: dict[str, onnx.TensorProto] | None = None,
+        nodes_to_exclude: list[str] | None = None,
+        op_types_to_exclude: list[str] | None = None,
+        custom_rule: NodeRuleBase | None = None,
+        data_max: float | None = 1000.0,
+        init_max: float | None = np.finfo(np.float16).max,
+        max_depth_of_reduction: int | None = None,
     ):
         """Initialize the node classifier.
 
         Args:
             model: The ONNX model to classify nodes for.
             node_to_init_map: Mapping from node names to their initializers.
+            initializer_map: Mapping from initializer names to their tensors.
             nodes_to_exclude: List of regex patterns for node names to keep in high precision.
             op_types_to_exclude: List of operation types to keep in high precision.
             custom_rule: Optional custom classification rule.
             data_max: Maximum absolute value allowed for node I/O.
             init_max: Maximum absolute value allowed for initializers.
+            max_depth_of_reduction: Maximum depth of reduction allowed in low precision.
         """
         self.model = model
         self.node_to_init_map = node_to_init_map
+        self.initializer_map = initializer_map
         self.nodes_to_exclude = nodes_to_exclude
         self.op_types_to_exclude = op_types_to_exclude
         self.custom_rule = custom_rule
         self.data_max = data_max
         self.init_max = init_max
+        self.max_depth_of_reduction = max_depth_of_reduction
 
     def _gen_block_node_rules(self, reference_data):
         """Generate list of rules for blocking nodes from precision conversion.
@@ -242,23 +380,28 @@ class NodeClassifier:
             block_node_rules.append(
                 IORangeRule(self.data_max, reference_data, self.node_to_init_map)
             )
+        if self.max_depth_of_reduction is not None:
+            block_node_rules.append(
+                DepthOfReductionRule(
+                    self.max_depth_of_reduction,
+                    reference_data,
+                    self.node_to_init_map,
+                    self.initializer_map,
+                )
+            )
         if self.custom_rule:
             block_node_rules.append(self.custom_rule)
         return block_node_rules
 
-    def run(self, calibration_data=None):
+    def run(self, ref_outputs_dict=None):
         """Run node classification.
 
         Args:
-            calibration_data: Optional input data for reference execution.
+            ref_outputs_dict: Optional tensors' reference data.
 
         Returns:
             tuple: Lists of node names (low_precision_nodes, high_precision_nodes).
         """
-        ref_outputs_dict = None
-        if self.data_max is not None and self.data_max != np.inf:
-            ref_runner = ReferenceRunner(self.model)
-            ref_outputs_dict = ref_runner.run(calibration_data)
         block_node_rules = self._gen_block_node_rules(ref_outputs_dict)
         low_precision_nodes = []
         high_precision_nodes = []

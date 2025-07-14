@@ -21,11 +21,13 @@ from packaging.version import Version
 
 from modelopt.onnx.autocast.logging_config import configure_logging
 from modelopt.onnx.autocast.nodeclassifier import (
+    DepthOfReductionRule,
     DisabledNodeNameRegexRule,
     InitializerRangeRule,
     IORangeRule,
     NodeClassifier,
 )
+from modelopt.onnx.autocast.referencerunner import ReferenceRunner
 
 configure_logging("DEBUG")
 
@@ -122,6 +124,110 @@ def test_output_range_rule():
     assert rule.check(node8) is True
 
 
+def test_depth_of_reduction_rule():
+    # Create axes initializer for reduce operations
+    axes_init_large = numpy_helper.from_array(np.array([1], dtype=np.int64), name="axes_large")
+    axes_init_small = numpy_helper.from_array(np.array([2], dtype=np.int64), name="axes_small")
+    reduce_init = numpy_helper.from_array(np.ones([10, 50], dtype=np.float32), name="reduce_init")
+
+    reference_data = {
+        "matmul_output": np.ones([10, 30], dtype=np.float32),
+        "small_matmul_output": np.ones([5, 8], dtype=np.float32),
+        "conv_output": np.ones([1, 64, 62, 62], dtype=np.float32),
+        "small_conv_output": np.ones([1, 16, 15, 15], dtype=np.float32),
+        "reduce_output": np.ones([10, 1, 20], dtype=np.float32),
+        "small_reduce_output": np.ones([10, 100, 1], dtype=np.float32),
+        "matmul_input_a": np.ones([10, 50], dtype=np.float32),
+        "matmul_input_b": np.ones([50, 30], dtype=np.float32),
+        "small_matmul_a": np.ones([5, 10], dtype=np.float32),
+        "small_matmul_b": np.ones([10, 8], dtype=np.float32),
+        "conv_input": np.ones([1, 32, 64, 64], dtype=np.float32),
+        "conv_weight": np.ones([64, 32, 3, 3], dtype=np.float32),
+        "small_conv_input": np.ones([1, 8, 16, 16], dtype=np.float32),
+        "reduce_input": np.ones([10, 100, 20], dtype=np.float32),
+    }
+
+    node_to_init_map = {
+        "matmul_node": [],
+        "small_matmul_node": [],
+        "conv_node": [],
+        "small_conv_node": [],
+        "reduce_node": [axes_init_large],
+        "small_reduce_node": [axes_init_small],
+        "reduce_init_node": [reduce_init, axes_init_large],
+    }
+    initializer_map = {
+        "reduce_init": reduce_init,
+        "axes_large": axes_init_large,
+        "axes_small": axes_init_small,
+    }
+    # Test with threshold of 40
+    rule = DepthOfReductionRule(
+        max_depth_of_reduction=40,
+        reference_data=reference_data,
+        node_to_init_map=node_to_init_map,
+        initializer_map=initializer_map,
+    )
+
+    # MatMul nodes
+    matmul_node = helper.make_node(
+        "MatMul", ["matmul_input_a", "matmul_input_b"], ["matmul_output"], name="matmul_node"
+    )
+    small_matmul_node = helper.make_node(
+        "MatMul",
+        ["small_matmul_a", "small_matmul_b"],
+        ["small_matmul_output"],
+        name="small_matmul_node",
+    )
+
+    # Conv nodes
+    conv_node = helper.make_node(
+        "Conv", ["conv_input", "conv_weight"], ["conv_output"], name="conv_node"
+    )
+    small_conv_node = helper.make_node(
+        "Conv",
+        ["small_conv_input", "small_conv_weight"],
+        ["small_conv_output"],
+        name="small_conv_node",
+    )
+
+    # Reduce nodes
+    reduce_node = helper.make_node(
+        "ReduceSum", ["reduce_input", "axes_large"], ["reduce_output"], name="reduce_node"
+    )
+    small_reduce_node = helper.make_node(
+        "ReduceSum",
+        ["reduce_input", "axes_small"],
+        ["small_reduce_output"],
+        name="small_reduce_node",
+    )
+
+    reduce_init_node = helper.make_node(
+        "ReduceSum", ["reduce_init", "axes_large"], ["reduce_init_output"], name="reduce_init_node"
+    )
+
+    # Test MatMul: reduction depth 50 > 40, should be blocked
+    assert rule.check(matmul_node) is True
+
+    # Test small MatMul: reduction depth 10 < 40, should not be blocked
+    assert rule.check(small_matmul_node) is False
+
+    # Test Conv: reduction depth 288 > 40, should be blocked
+    assert rule.check(conv_node) is True
+
+    # Test small Conv: reduction depth 32 < 40, should not be blocked
+    assert rule.check(small_conv_node) is False
+
+    # Test Reduce: reduction depth 100 > 40, should be blocked
+    assert rule.check(reduce_node) is True
+
+    # Test small Reduce: reduction depth 20 < 40, should not be blocked
+    assert rule.check(small_reduce_node) is False
+
+    # Test ReduceInit: reduction depth 50 > 40, should be blocked
+    assert rule.check(reduce_init_node) is True
+
+
 @pytest.mark.skipif(
     Version(ort_version) < Version("1.21.0"), reason="WAR: Requires onnxruntime>=1.21.0"
 )
@@ -129,17 +235,19 @@ def test_node_classifier(test_model):
     node_to_init_map = {key: [] for key in ["add_node", "mul_node"]}
 
     # Test with data range constraints
+    ref_runner = ReferenceRunner(test_model)
     classifier = NodeClassifier(
         model=test_model,
         node_to_init_map=node_to_init_map,
-        data_max=3.0,
+        data_max=4.1,
     )
 
     # First set of inputs
     # add_out = X + Y : requires fp32
-    fp16_nodes, fp32_nodes = classifier.run(
-        calibration_data={"X": np.array([[0.2, 0.3], [0.3, 0.4]], dtype=np.float32)}
-    )
+    calibration_data = {"X": np.array([[0.2, 0.3], [0.3, 0.4]], dtype=np.float32)}
+    # Obtain reference data
+    ref_outputs_dict = ref_runner.run(calibration_data)
+    fp16_nodes, fp32_nodes = classifier.run(ref_outputs_dict)
     # Compute expected outputs for first set of inputs
     assert "add_node" in fp32_nodes
     assert "mul_node" in fp32_nodes  # add_out is input of mul_node
@@ -149,9 +257,10 @@ def test_node_classifier(test_model):
 
     # Second set of inputs
     # all within fp16 range
-    fp16_nodes, fp32_nodes = classifier.run(
-        calibration_data={"X": np.array([[-0.5, -1.5], [-3, -4]], dtype=np.float32)},
-    )
+    calibration_data = {"X": np.array([[-0.5, -1.5], [-3, -4]], dtype=np.float32)}
+    # Obtain reference data
+    ref_outputs_dict = ref_runner.run(calibration_data)
+    fp16_nodes, fp32_nodes = classifier.run(ref_outputs_dict)
     assert "add_node" in fp16_nodes
     assert "mul_node" in fp16_nodes
     assert len(fp16_nodes) + len(fp32_nodes) == 2

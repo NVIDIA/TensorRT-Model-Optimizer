@@ -38,11 +38,7 @@ def configure_logging(level=logging.INFO, log_file=None):
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
 
-    # Create console handler with formatting
-    console_handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter("[modelopt][onnx] - %(levelname)s - %(message)s")
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
 
     # Add file handler if log_file is specified
     if log_file:
@@ -57,7 +53,19 @@ def configure_logging(level=logging.INFO, log_file=None):
             logger.addHandler(file_handler)
             logger.info(f"Logging configured to write to file: {log_file}")
         except Exception as e:
-            logger.error(f"Failed to setup file logging to {log_file}: {e!s}")
+            print(
+                f"[modelopt][onnx] - ERROR - Failed to setup file logging to {log_file}: {e!s}",
+                file=sys.stderr,
+            )
+            print("[modelopt][onnx] - INFO - Falling back to console logging.", file=sys.stderr)
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setFormatter(formatter)
+            logger.addHandler(console_handler)
+    else:
+        # If no log_file is specified, log to stdout
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
 
     # Prevent log messages from propagating to the root logger
     logger.propagate = False

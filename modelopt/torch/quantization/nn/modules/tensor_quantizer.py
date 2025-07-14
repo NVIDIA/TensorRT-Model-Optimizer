@@ -22,6 +22,12 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.distributed as dist
+
+try:
+    from torch.distributed.tensor import DTensor
+except ImportError:
+    DTensor = None
+
 import torch.nn.functional as F
 from packaging.version import Version
 from torch import nn
@@ -38,6 +44,7 @@ from ...qtensor import (
     FP8QTensor,
     INT4QTensor,
     INT8QTensor,
+    MXFP4QTensor,
     NF4QTensor,
     NVFP4QTensor,
     QTensorWrapper,
@@ -577,6 +584,18 @@ class TensorQuantizer(nn.Module):
             buffer_to_register["_scale"] = _scale
             buffer_to_register["_double_scale"] = _double_scale
             buffer_to_register["_scale_zeros"] = _scale_zeros
+        elif (
+            self._block_sizes.get("scale_bits") == (8, 0)
+            and self._block_sizes.get("type") == "dynamic"
+        ):
+            # MX quantization
+            if self._num_bits == (2, 1):
+                outputs, scales = MXFP4QTensor.quantize(inputs, self._block_sizes[-1])
+                buffer_to_register["_scale"] = scales
+            else:
+                raise ValueError(
+                    f"Real quantization for MX {self._num_bits} format is not supported."
+                )
         elif self._block_sizes.get("scale_bits") == (4, 3):
             # NVFP4 default quantization
             # Return real quantized tensor and store scales inside TensorQuantizer
@@ -594,7 +613,7 @@ class TensorQuantizer(nn.Module):
             outputs, _scale = INT4QTensor.quantize(inputs, self._block_sizes[-1])
             buffer_to_register["_scale"] = _scale
         for k, v in buffer_to_register.items():
-            self.register_buffer(k, v)
+            self._set_buffer(k, v)
 
         # We assume _real_quantize is called when compress the model weights, and we set
         # self._dequantize to True so that future forward call will only do dequantize.
@@ -858,13 +877,18 @@ class TensorQuantizer(nn.Module):
         Returns:
             outputs: A Tensor of type output_dtype
         """
+        if DTensor is not None and isinstance(inputs, DTensor):
+            # TensorQuantizer only handles regular non-DTensor inputs
+            device_mesh, placements = inputs.device_mesh, inputs.placements
+            outputs = self.forward(inputs.to_local())
+            return DTensor.from_local(outputs, device_mesh, placements)
+
         if isinstance(inputs, (BaseQuantizedTensor, QTensorWrapper)):
             assert self._dequantize, "No dequantization stats in the tensor quantizer."
             return self.dequantize(inputs)
 
         # Early return if nothing is collected during the forward (e.g. MoE)
-        # len(inputs) will break the dynamic shape for torch_export
-        if not is_torch_export_mode() and len(inputs) == 0:
+        if inputs.numel() == 0:
             return inputs
 
         # Activation scaling for smoothquant
@@ -1118,9 +1142,9 @@ class TensorQuantizer(nn.Module):
 
     def sync_amax_across_distributed_group(self, parallel_group: DistributedProcessGroup):
         """Synchronize the amax across all ranks in the given group."""
-        if parallel_group.is_initialized() and self.amax is not None:
+        if parallel_group.is_initialized() and getattr(self, "_amax", None) is not None:
             try:
-                dist.all_reduce(self.amax, op=dist.ReduceOp.MAX, group=parallel_group.group)
+                dist.all_reduce(self._amax, op=dist.ReduceOp.MAX, group=parallel_group.group)
             except RuntimeError as e:
                 # This error happens if the distributed backend is using GPU and
                 # the tensor is not on GPU (or vice versa).
@@ -1151,6 +1175,12 @@ class TensorQuantizer(nn.Module):
             inputs = inputs - self.bias_calibrator.compute_bias()
 
         self._calibrator.collect(inputs)
+
+    def _set_buffer(self, key, value):
+        if hasattr(self, key):
+            setattr(self, key, value)
+        else:
+            self.register_buffer(key, value)
 
 
 class SequentialQuantizer(nn.Sequential):

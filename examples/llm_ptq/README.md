@@ -68,7 +68,7 @@ We support FP8 and NVFP4 quantized Llama 4 model Hugging Face checkpoint export 
 python hf_ptq.py --pyt_ckpt_path=<llama4 model path> --export_path=<quantized hf checkpoint> --qformat=[fp8|nvfp4] --export_fmt=hf
 ```
 
-The quantized checkpoint can be deployed following the TensorRT-LLM instructions.
+The quantized checkpoint can be deployed following the TensorRT-LLM instructions. Note since we only quantize the language model in Llama 4, the exported config has `Llama4ForCausalLM`, but TensorRT-LLM expects `Llama4ForConditionalGeneration` which is from the original Llama 4. Therefore our script will copy over the original config files to the exported checkpoint folder.
 
 #### For NeMo models like [nemotron](https://huggingface.co/nvidia/nemotron-3-8b-base-4k):
 
@@ -80,7 +80,7 @@ NeMo PTQ requires the NeMo package installed. It's recommended to start from the
 export GPT_MODEL_FILE=Nemotron-3-8B-Base-4k.nemo
 
 # Reinstall latest modelopt and build the extensions if not already done.
-pip install -U "nvidia-modelopt[torch]"
+pip install -U "nvidia-modelopt"
 python -c "import modelopt.torch.quantization.extensions as ext; ext.precompile()"
 
 scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant [fp8|nvfp4|int8_sq|int4_awq] --tp [1|2|4|8]
@@ -273,7 +273,7 @@ This example also covers the [lm_evaluation_harness](https://github.com/Eleuther
 
 ### PTQ (Post Training Quantization)
 
-PTQ can be achieved with simple calibration on a small set of training or evaluation data (typically 128-512 samples) after converting a regular PyTorch model to a quantized model. The accuracy of PTQ is typically robust across different choices of calibration data, so we use [`cnn_dailymail`](https://huggingface.co/datasets/cnn_dailymail) by default. Users can try other datasets by easily modifying the `get_calib_dataloader` in [example_utils.py](./example_utils.py).
+PTQ can be achieved with simple calibration on a small set of training or evaluation data (typically 128-512 samples) after converting a regular PyTorch model to a quantized model. The accuracy of PTQ is typically robust across different choices of calibration data, so we use [`cnn_dailymail`](https://huggingface.co/datasets/abisee/cnn_dailymail) by default. Users can try other datasets by easily modifying the `get_calib_dataloader` in [example_utils.py](./example_utils.py).
 
 ```python
 import modelopt.torch.quantization as mtq

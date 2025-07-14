@@ -17,5 +17,8 @@
 
 from modelopt.torch.utils import import_plugin
 
+with import_plugin("huggingface"):
+    from .huggingface import *
+
 with import_plugin("megatron"):
     from .megatron import *

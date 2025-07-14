@@ -189,6 +189,7 @@ def _dynamic_block_quantize_impl(
                 and scale_bits == (4, 3)
                 and triton_kernel.IS_AVAILABLE
                 and not DISABLE_TRITON_KERNEL
+                and amax is not None
             ):
                 return triton_kernel.fp4_fake_quant_block(inputs, amax.item())
             cuda_ext_mx = get_cuda_ext_mx(raise_if_failed=True)
@@ -321,7 +322,7 @@ class FakeTensorQuantFunction(Function):
         num_bits=8,
         unsigned=False,
         narrow_range=True,
-        trt_high_precision_dtype="Float",
+        trt_high_precision_dtype=None,
     ):
         """ONNX symbolic function."""
         return export_int8(
@@ -337,7 +338,7 @@ class FakeTensorQuantFunction(Function):
         num_bits=8,
         unsigned=False,
         narrow_range=True,
-        trt_high_precision_dtype="Float",
+        trt_high_precision_dtype=None,
     ):
         """Forward method."""
         if bias is not None:
@@ -392,13 +393,13 @@ class ScaledE4M3Function(Function):
 
     @staticmethod
     @symbolic_helper.parse_args("v", "t", "t", "i", "i", "s")
-    def symbolic(g, inputs, amax=None, bias=None, E=4, M=3, trt_high_precision_dtype="Float"):  # noqa: N803
+    def symbolic(g, inputs, amax=None, bias=None, E=4, M=3, trt_high_precision_dtype=None):  # noqa: N803
         """ONNX symbolic function."""
         return export_fp8(g, inputs, amax, trt_high_precision_dtype)
 
     @staticmethod
     # Default values could cause errors from TorchDynamo during torch.export
-    def forward(ctx, inputs, amax, bias, E, M, trt_high_precision_dtype="Float"):  # noqa: N803
+    def forward(ctx, inputs, amax, bias, E, M, trt_high_precision_dtype=None):  # noqa: N803
         """Forward method."""
         if E != 4 or M != 3:
             raise NotImplementedError("Only support E=4 & M=3 for now.")
@@ -436,7 +437,7 @@ def _dynamic_block_quantize_forward(
     amax,
     num_bits,
     scale_bits,
-    trt_high_precision_dtype="Half",
+    trt_high_precision_dtype=None,
     onnx_quantizer_type="dynamic",
 ):
     """Forward method."""
@@ -470,7 +471,7 @@ class DynamicBlockQuantizationFunction(Function):
         bias,
         num_bits,
         scale_bits,
-        trt_high_precision_dtype="Half",
+        trt_high_precision_dtype=None,
         onnx_quantizer_type="dynamic",
     ):
         """ONNX symbolic function."""
@@ -504,7 +505,7 @@ class DynamicBlockQuantizationFunction(Function):
         bias,
         num_bits,
         scale_bits,
-        trt_high_precision_dtype="Half",
+        trt_high_precision_dtype=None,
         onnx_quantizer_type="dynamic",
     ):
         """Forward method."""
@@ -549,7 +550,7 @@ class StaticBlockQuantizationFunction(FakeTensorQuantFunction):
         num_bits=8,
         unsigned=False,
         narrow_range=True,
-        trt_high_precision_dtype="Float",
+        trt_high_precision_dtype=None,
         block_size=None,
     ):
         """Forward method."""
@@ -639,7 +640,7 @@ class TensorQuantFunction(Function):
         num_bits=8,
         unsigned=False,
         narrow_range=True,
-        trt_high_precision_dtype="Float",
+        trt_high_precision_dtype=None,
     ):
         """ONNX symbolic function."""
         return export_int8(
@@ -655,7 +656,7 @@ class TensorQuantFunction(Function):
         num_bits=8,
         unsigned=False,
         narrow_range=True,
-        trt_high_precision_dtype="Float",
+        trt_high_precision_dtype=None,
     ):
         """Forward method.
 

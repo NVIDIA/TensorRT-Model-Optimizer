@@ -18,7 +18,7 @@
 import copy
 import math
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from warnings import warn
 
 import torch
@@ -30,7 +30,12 @@ if TYPE_CHECKING:
 
 # Use dict to store the config for each dataset.
 # If we want to export more options to user like target languages, we need more standardized approach like dataclass.
-SUPPORTED_DATASET_CONFIG = {
+SUPPORTED_DATASET_CONFIG: dict[str, Any] = {
+    "magpie": {
+        "config": {"path": "Magpie-Align/Magpie-Pro-MT-300K-v0.1"},
+        "target": "conversations",
+        "preprocess": lambda sample: "\n".join(turn["value"] for turn in sample),
+    },
     "cnn_dailymail": {
         "config": {"path": "cnn_dailymail", "name": "3.0.0"},
         "target": "article",
@@ -75,11 +80,11 @@ def _get_dataset_samples(dataset_name: str, num_samples: int) -> list[str]:
     if dataset_name in SUPPORTED_DATASET_CONFIG:
         from datasets import load_dataset
 
-        # Use streaming can reduce the downloading time for large datasets
+        dataset_config = SUPPORTED_DATASET_CONFIG[dataset_name]
         dataset = load_dataset(
             split="train",
             streaming=True,
-            **SUPPORTED_DATASET_CONFIG[dataset_name]["config"],
+            **dataset_config["config"],
         )
     else:
         raise NotImplementedError(
@@ -89,11 +94,19 @@ def _get_dataset_samples(dataset_name: str, num_samples: int) -> list[str]:
 
     # Access only the required samples
     samples = []
-    target_key = SUPPORTED_DATASET_CONFIG[dataset_name]["target"]
+    target_key = dataset_config["target"]
     for i, sample in enumerate(dataset):
         if i >= num_samples:
             break
-        samples.append(sample[target_key])
+
+        # Get raw value
+        value = sample[target_key]
+
+        # Apply preprocessing if defined
+        if "preprocess" in dataset_config:
+            value = dataset_config["preprocess"](value)
+
+        samples.append(value)
 
     return samples
 

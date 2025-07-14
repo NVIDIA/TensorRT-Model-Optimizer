@@ -17,6 +17,8 @@ import os
 
 import pytest
 from _test_utils.examples.run_command import run_llm_ptq_command
+from _test_utils.model import TINY_LLAMA_PATH
+from _test_utils.torch_misc import minimum_gpu, minimum_sm
 
 # TODO: Enable export Affine NVFP4 KV cache tests when supported by TRTLLM
 # TODO: sparsegpt test is disable due to some bug when sparsifying models with Pytorch 2.4.0a0+3bcc3cddb5.nv24.7
@@ -28,7 +30,7 @@ def llama_path(tiny_llama_path):
     fast_tests = os.getenv("MODELOPT_FAST_TESTS", "true").lower() == "true"
     if fast_tests:
         return tiny_llama_path
-    return "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    return TINY_LLAMA_PATH
 
 
 @pytest.mark.parametrize(
@@ -112,7 +114,8 @@ def test_llama_autoquant_kv_cache(llama_path, quant, export_fmt, kv_cache_quant)
         ("w4a8_awq", "tensorrt_llm", None, None),
     ],
 )
-def test_llama_sm89(require_sm89, llama_path, quant, export_fmt, sparsity, kv_cache_quant):
+@minimum_sm(89)
+def test_llama_sm89(llama_path, quant, export_fmt, sparsity, kv_cache_quant):
     run_llm_ptq_command(
         model=llama_path,
         quant=quant,
@@ -137,5 +140,6 @@ def test_llama_sm89(require_sm89, llama_path, quant, export_fmt, sparsity, kv_ca
         # ("fp16", "build", "sparsegpt", 1, 2),
     ],
 )
-def test_llama_multi_gpu(require_2_gpus, llama_path, quant, tasks, sparsity, tp, pp):
+@minimum_gpu(2)
+def test_llama_multi_gpu(llama_path, quant, tasks, sparsity, tp, pp):
     run_llm_ptq_command(model=llama_path, quant=quant, tasks=tasks, sparsity=sparsity, tp=tp, pp=pp)

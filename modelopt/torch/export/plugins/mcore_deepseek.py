@@ -14,101 +14,9 @@
 # limitations under the License.
 
 
-"""Custom mapping from Megatron Core models to their Hugging Face counter part."""
+"""Custom mapping from DeepSeek Hugging Face models to Megatron Core models."""
 
-import copy
-from typing import Any
-
-COL_PARALLEL = {"sharding_dim": 0}
-ROW_PARALLEL = {"sharding_dim": 1}
-
-
-class CustomModuleMapping:
-    """A custom module mapping from Megatron Core to its HF counter part."""
-
-    def __init__(
-        self, func_name: str = "", target_name_or_prefix: str = "", func_kwargs: dict[str, Any] = {}
-    ):
-        """Create a custom module mapping."""
-        self.func_name = func_name
-        self.target_name_or_prefix = target_name_or_prefix
-        self.func_kwargs = func_kwargs
-
-
-llama_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping(
-        "qkv_slicing",
-        "model.layers.{}.self_attn.",
-    ),
-    "linear_proj": CustomModuleMapping("name_remapping", "model.layers.{}.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "model.layers.{}.mlp."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.down_proj."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
-}
-
-medusa_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
-    # MedusaForCausalLM support
-    "lm_head": CustomModuleMapping(
-        "name_remapping", "medusa_heads.{}.1."
-    ),  # TODO: lm_head is hardcoded to .1 as currently only support using 1 layer in medusa head
-    # needs a fix
-    "linear": CustomModuleMapping("name_remapping", "medusa_heads.{}.{}.linear."),
-}
-
-eagle_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
-    "enorm": CustomModuleMapping("name_remapping", "enorm."),
-    "hnorm": CustomModuleMapping("name_remapping", "hnorm."),
-    "fc": CustomModuleMapping("name_remapping", "fc."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping("qkv_slicing", "layers.{}.self_attn."),
-    "linear_proj": CustomModuleMapping("name_remapping", "layers.{}.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "layers.{}.post_attention_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "layers.{}.mlp."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "layers.{}.mlp.down_proj."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "norm."),
-    "d2t": CustomModuleMapping("name_remapping", "d2t"),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
-}
-
-eagle3_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
-    "enorm": CustomModuleMapping("name_remapping", "midlayer.input_layernorm."),
-    "fc": CustomModuleMapping("name_remapping", "fc."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "midlayer.hidden_norm."),
-    "linear_qkv": CustomModuleMapping("qkv_slicing", "midlayer.self_attn."),
-    "linear_proj": CustomModuleMapping("name_remapping", "midlayer.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "midlayer.post_attention_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "midlayer.mlp."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "midlayer.mlp.down_proj."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "norm."),
-    "d2t": CustomModuleMapping("name_remapping", "d2t"),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
-}
-
-
-# Example on adding a new CausalLM.
-nemotron_causal_lm_export_delta: dict[str, CustomModuleMapping] = {
-    # NemotronForCausalLM is using square-relu where no gated handle is needed.
-    "linear_fc1": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.up_proj."),
-    # EagleForCausalLM support
-    "eagle_module.linear_fc1": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.mlp.up_proj."
-    ),
-}
-# Copy the Llama rule book and overwrite the delta
-nemotron_causal_lm_export = copy.deepcopy(llama_causal_lm_export)
-nemotron_causal_lm_export.update(nemotron_causal_lm_export_delta)
+from .mcore_custom import COL_PARALLEL, ROW_PARALLEL, CustomModuleMapping
 
 deepseek_causal_lm_export: dict[str, CustomModuleMapping] = {
     "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
@@ -275,37 +183,7 @@ deepseek_causal_lm_export: dict[str, CustomModuleMapping] = {
     ),
 }
 
-
-all_mcore_hf_export_mapping: dict[str, Any] = {
-    "DeepseekV2ForCausalLM": deepseek_causal_lm_export,
-    "DeepseekV3ForCausalLM": deepseek_causal_lm_export,
-    "LlamaForCausalLM": llama_causal_lm_export,
-    "Llama4ForConditionalGeneration": {},
-    "NemotronForCausalLM": nemotron_causal_lm_export,
-    "LlamaForCausalLMEagle": eagle_llama_causal_lm_export,
-    "LlamaForCausalLMEagle3": eagle3_llama_causal_lm_export,
-}
-
-
-llama_causal_lm_import: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens.", COL_PARALLEL),
-    "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping("qkv_merging", "model.layers.{}.self_attn.", COL_PARALLEL),
-    "linear_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.o_proj.", ROW_PARALLEL
-    ),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_merging", "model.layers.{}.mlp.", COL_PARALLEL),
-    "linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.down_proj.", ROW_PARALLEL
-    ),
-    "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head.", COL_PARALLEL),
-}
-
-deepseek_v3_causal_lm_import = {
+deepseek_causal_lm_import = {
     "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens.", COL_PARALLEL),
     "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
     "output_layer": CustomModuleMapping("name_remapping", "lm_head.", COL_PARALLEL),
@@ -412,10 +290,4 @@ deepseek_v3_causal_lm_import = {
     "mtp.local_experts.linear_fc2": CustomModuleMapping(
         "name_remapping", "model.layers.{}.mlp.experts.{}.down_proj.", ROW_PARALLEL
     ),
-}
-
-all_mcore_hf_import_mapping: dict[str, Any] = {
-    "LlamaForCausalLM": llama_causal_lm_import,
-    "DeepseekV2ForCausalLM": deepseek_v3_causal_lm_import,
-    "DeepseekV3ForCausalLM": deepseek_v3_causal_lm_import,
 }

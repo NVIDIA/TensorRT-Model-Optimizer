@@ -77,15 +77,21 @@ def get_tokenizer(ckpt_path, trust_remote_code=False, **kwargs):
     return tokenizer
 
 
-def get_processor(ckpt_path, model_type, device=None, trust_remote_code=False):
+def get_processor(
+    ckpt_path, model_type, device=None, trust_remote_code=False, attn_implementation=None
+):
     """
     Returns a :class:`modelopt.torch.utils.image_processor.MllamaImageProcessor` object.
     """
+    model_kwargs = {"trust_remote_code": trust_remote_code}
+    if attn_implementation is not None:
+        model_kwargs["attn_implementation"] = attn_implementation
+
     if model_type == "whisper":
         processor = AutoProcessor.from_pretrained(
             ckpt_path,
             padding_side="left",
-            trust_remote_code=trust_remote_code,
+            **model_kwargs,
         )
         if processor.tokenizer.pad_token is None:
             processor.tokenizer.pad_token = processor.tokenizer.eos_token
@@ -98,7 +104,7 @@ def get_processor(ckpt_path, model_type, device=None, trust_remote_code=False):
         processor = AutoProcessor.from_pretrained(
             ckpt_path,
             padding_side="left",
-            trust_remote_code=trust_remote_code,
+            **model_kwargs,
         )
         if processor.tokenizer.pad_token is None:
             processor.tokenizer.pad_token = processor.tokenizer.eos_token
@@ -128,6 +134,7 @@ def get_model(
     gpu_mem_percentage=0.8,
     trust_remote_code=False,
     use_seq_device_map=False,
+    attn_implementation=None,
 ):
     print(f"Initializing model from {ckpt_path}")
 
@@ -135,8 +142,15 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
+    config_kwargs = {"trust_remote_code": trust_remote_code}
+    if attn_implementation is not None:
+        config_kwargs["attn_implementation"] = attn_implementation
+
     # Note: Forcibly converting the model precision between bf16 and fp16 may introduce accuracy drop
-    model_kwargs = {"torch_dtype": "auto"}
+    model_kwargs = config_kwargs.copy()
+    # Don't set torch_dtype for VILA models as they handle it explicitly in their builder
+    if "vila" not in ckpt_path.lower():
+        model_kwargs.setdefault("torch_dtype", "auto")
 
     if "vila" in ckpt_path.lower():
         sys.path.append(os.path.join(ckpt_path, "..", "VILA"))
@@ -146,11 +160,14 @@ def get_model(
         hf_vila = AutoModel.from_pretrained(
             ckpt_path,
             device_map=device_map,
-            trust_remote_code=trust_remote_code,
+            **model_kwargs,
         )
         model = hf_vila.llm
     else:
-        hf_config = AutoConfig.from_pretrained(ckpt_path, trust_remote_code=trust_remote_code)
+        hf_config = AutoConfig.from_pretrained(
+            ckpt_path,
+            **config_kwargs,
+        )
 
         if use_seq_device_map:
             device_map = "sequential"
@@ -164,7 +181,6 @@ def get_model(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,
-                trust_remote_code=trust_remote_code,
             )
         elif hf_config.model_type == "llava":
             from transformers import LlavaForConditionalGeneration
@@ -196,7 +212,9 @@ def get_model(
             from transformers import AutoModelForSeq2SeqLM
 
             model = AutoModelForSeq2SeqLM.from_pretrained(
-                ckpt_path, device_map="cuda", **model_kwargs, trust_remote_code=trust_remote_code
+                ckpt_path,
+                device_map="cuda",
+                **model_kwargs,
             )
         elif hf_config.model_type == "mllama":
             from transformers import MllamaForConditionalGeneration
@@ -205,22 +223,26 @@ def get_model(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,
-                trust_remote_code=trust_remote_code,
             )
         elif hf_config.model_type == "llama4":
             model = AutoModelForCausalLM.from_pretrained(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,
-                trust_remote_code=trust_remote_code,
             )
         else:
             with init_empty_weights():
                 # When computing the device_map, assuming half precision by default,
                 # unless specified by the hf_config.
                 torch_dtype = getattr(hf_config, "torch_dtype", torch.float16)
+                model_kwargs2 = model_kwargs.copy()
+                model_kwargs2["torch_dtype"] = torch_dtype
+                # DeciLMForCausalLM does not support max_memory argument
+                if "architectures" in hf_config and "DeciLMForCausalLM" in hf_config.architectures:
+                    model_kwargs2.pop("max_memory", None)
                 model = AutoModelForCausalLM.from_config(
-                    hf_config, torch_dtype=torch_dtype, trust_remote_code=trust_remote_code
+                    hf_config,
+                    **model_kwargs2,
                 )
 
             max_memory = get_max_memory()
@@ -245,7 +267,6 @@ def get_model(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,
-                trust_remote_code=trust_remote_code,
             )
     model.eval()
     if device == "cuda" and not is_model_on_gpu(model):

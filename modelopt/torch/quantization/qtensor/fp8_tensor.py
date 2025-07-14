@@ -146,5 +146,6 @@ class FP8QTensor(BaseQuantizedTensor):
 
         # handle padded tensors
         slices = tuple(slice(0, dim) for dim in self.metadata["shape"])
+        scales = scales.to(self._quantized_data.device)
 
         return (quantized_data.to(dtype) * scales.to(dtype))[slices]

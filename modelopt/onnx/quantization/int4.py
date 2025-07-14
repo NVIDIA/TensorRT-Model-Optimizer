@@ -31,7 +31,7 @@ from onnxruntime.quantization.calibrate import CalibrationDataReader
 from tqdm import tqdm
 
 import modelopt.onnx.quantization.qdq_utils as qdq
-from modelopt.onnx.logging_config import logger
+from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.op_types import is_fusible_scaling_op
 from modelopt.onnx.quantization.calib_utils import RandomDataProvider
 from modelopt.onnx.quantization.graph_utils import (
@@ -454,8 +454,6 @@ def _quantize_awq_clip(
     augmented_onnx_file, augmented_onnx_path = tempfile.mkstemp(suffix=".onnx")
     os.close(augmented_onnx_file)
 
-    # TODO: Remove all manual ir_version changes in this file once ORT supports ir_version 11
-    augmented_model.ir_version = 10
     save_onnx(augmented_model, augmented_onnx_path, use_external_data_format)
     logger.info(f"Saving the model took {time.time() - t} seconds")
 
@@ -543,6 +541,7 @@ def _quantize_awq_clip(
     logger.info("Exporting the quantized graph")
     t = time.time()
     model = gs.export_onnx(graph_gs)
+    # Set ir_version to 10, remove it once ORT supports ir_version 11
     model.ir_version = 10
     logger.info(f"Exporting took {time.time() - t} seconds")
 
@@ -954,7 +953,6 @@ def _quantize_awq_lite(
     augmented_onnx_file, augmented_onnx_path = tempfile.mkstemp(suffix=".onnx")
     os.close(augmented_onnx_file)
 
-    augmented_model.ir_version = 10
     save_onnx(augmented_model, augmented_onnx_path, use_external_data_format)
     logger.info(f"Saving the model took {time.time() - t} seconds")
 
@@ -1157,7 +1155,7 @@ def _quantize_awq_lite(
             else:
                 scale_tensor = onnx.helper.make_tensor(
                     name=parent.output[0] + "_pre_quant_scale",
-                    data_type=onnx.helper.tensor_dtype_to_np_dtype(input_scale.dtype),
+                    data_type=onnx.helper.np_dtype_to_tensor_dtype(input_scale.dtype),
                     dims=input_scale.shape,
                     vals=(1.0 / input_scale).flatten().tolist(),
                 )
@@ -1198,6 +1196,7 @@ def _quantize_awq_lite(
     logger.info("Exporting the quantized graph")
     t = time.time()
     model = gs.export_onnx(graph_gs)
+    # Set ir_version to 10, remove it once ORT supports ir_version 11
     model.ir_version = 10
     logger.info(f"Exporting took {time.time() - t} seconds")
 
@@ -1220,6 +1219,7 @@ def quantize(
     use_zero_point: bool = False,
     block_size: int | None = None,
     nodes_to_exclude: list[str] | None = [r"/lm_head"],
+    log_level: str = "INFO",
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Applies INT4 Weight-Only-Quantization (WoQ) to an ONNX model.
@@ -1262,8 +1262,10 @@ def quantize(
                                              Default: 0.5.
                 - **awqclip_bsz_col** (int): Batch size for processing the column dimension in awq-clip.
                                          Default: 1024.
+        log_level: The logging level to use (default: logging.INFO)
     **Returns**: A quantized ONNX model in ONNX ModelProto format.
     """
+    configure_logging(level=log_level.upper())
     logger.info(f"Starting INT4 quantization with method: {calibration_method}")
     t_start = time.time()
 
@@ -1286,7 +1288,7 @@ def quantize(
 
     if isinstance(onnx_path, str):
         logger.info(f"Loading ONNX model from path: {onnx_path}")
-        onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
+        onnx_model = onnx.load(onnx_path, load_external_data=True)
     else:
         onnx_model = onnx_path
 

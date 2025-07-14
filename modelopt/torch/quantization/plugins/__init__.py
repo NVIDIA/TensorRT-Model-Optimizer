@@ -60,3 +60,6 @@ with import_plugin("peft"):
 
 with import_plugin("transformer_engine"):
     from .transformer_engine import *
+
+with import_plugin("transformers trainer"):
+    from .transformers_trainer import *

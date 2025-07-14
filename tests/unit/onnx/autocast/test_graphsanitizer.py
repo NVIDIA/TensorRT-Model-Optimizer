@@ -20,16 +20,16 @@ from onnx import TensorProto, helper, numpy_helper
 from modelopt.onnx.autocast.graphsanitizer import GraphSanitizer
 
 
-def create_layernorm_model(input_shape, epsilon=1e-5, add_scale=True, add_bias=True):
+def create_layernorm_model(input_shape, epsilon=1e-5, axis=-1, add_scale=True, add_bias=True):
     """Helper function to create an ONNX model with a decomposed LayerNorm pattern"""
     x = helper.make_tensor_value_info("X", TensorProto.FLOAT, input_shape)
     y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, input_shape)
 
     # Create nodes for LayerNorm pattern
-    mean = helper.make_node("ReduceMean", ["X"], ["mean"], axes=[-1])
+    mean = helper.make_node("ReduceMean", ["X"], ["mean"], axes=[axis])
     sub1 = helper.make_node("Sub", ["X", "mean"], ["sub1"])
     pow_node = helper.make_node("Pow", ["sub1", "pow_const"], ["pow_out"])
-    var_mean = helper.make_node("ReduceMean", ["pow_out"], ["var_mean"], axes=[-1])
+    var_mean = helper.make_node("ReduceMean", ["pow_out"], ["var_mean"], axes=[axis])
     add_eps = helper.make_node("Add", ["var_mean", "epsilon"], ["add_eps"])
     sqrt = helper.make_node("Sqrt", ["add_eps"], ["sqrt_out"])
     div = helper.make_node("Div", ["sub1", "sqrt_out"], ["div_out"])
@@ -54,10 +54,10 @@ def create_layernorm_model(input_shape, epsilon=1e-5, add_scale=True, add_bias=T
     ]
 
     if add_scale:
-        scale = np.random.randn(input_shape[-1]).astype(np.float32)
+        scale = np.random.random(input_shape[axis:]).astype(np.float32)
         initializers.append(numpy_helper.from_array(scale, name="scale"))
     if add_bias:
-        bias = np.random.randn(input_shape[-1]).astype(np.float32)
+        bias = np.random.random(input_shape[axis:]).astype(np.float32)
         initializers.append(numpy_helper.from_array(bias, name="bias"))
 
     # Create graph and model
@@ -70,11 +70,28 @@ def create_layernorm_model(input_shape, epsilon=1e-5, add_scale=True, add_bias=T
     return model
 
 
-@pytest.mark.parametrize("add_scale", [True, False])
+@pytest.mark.parametrize("axis", [-1, -2, 1, 2])
+def test_layernorm_with_axis(axis):
+    """Test LayerNorm pattern replacement with different axes and scale/bias combinations."""
+    input_shape = [2, 3, 4, 5]  # Multi-dimensional input
+    model = create_layernorm_model(input_shape, axis=axis)
+
+    sanitizer = GraphSanitizer(model)
+    sanitizer.replace_layernorm_pattern()
+
+    # Check that LayerNormalization node was created
+    ln_nodes = [n for n in sanitizer.model.graph.node if n.op_type == "LayerNormalization"]
+    assert len(ln_nodes) == 1
+
+    ln_node = ln_nodes[0]
+    assert ln_node.attribute[0].name == "axis"
+    assert ln_node.attribute[1].name == "epsilon"
+
+
 @pytest.mark.parametrize("add_bias", [True, False])
-def test_layernorm_with_scale_bias(add_scale, add_bias):
+def test_layernorm_with_bias(add_bias):
     """Test LayerNorm pattern replacement with scale and bias"""
-    model = create_layernorm_model([1, 32, 128], add_scale=add_scale, add_bias=add_bias)
+    model = create_layernorm_model([1, 32, 128], add_scale=True, add_bias=add_bias)
     sanitizer = GraphSanitizer(model)
     sanitizer.sanitize()
 
@@ -166,7 +183,3 @@ def test_invalid_layernorm_pattern():
 
     # Verify no LayerNorm transformation occurred
     assert not any(node.op_type == "LayerNormalization" for node in sanitizer.model.graph.node)
-
-
-if __name__ == "__main__":
-    pytest.main([__file__ + "::test_layernorm_with_scale_bias[True-False]"])

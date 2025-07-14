@@ -133,7 +133,7 @@ def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64):
     return gpt_model.cuda().eval()
 
 
-def _test_sharded_state_dict(tmp_path, config, hidden_size, modelopt_version, rank, size):
+def _test_sharded_state_dict(tmp_path, config, hidden_size, modelopt_version, compress, rank, size):
     # Must disable output_layer quantization since output_layer amax cannot be restore via
     # sharded_state_dict. All output_layer quantizers state are removed.
     config["quant_cfg"]["*output_layer*"] = {"enable": False}
@@ -154,6 +154,8 @@ def _test_sharded_state_dict(tmp_path, config, hidden_size, modelopt_version, ra
         return run_mcore_gpt_inference(model, prompt_tokens)
 
     model_ref = mtq.quantize(model_ref, config, forward_fn)
+    if compress:
+        mtq.compress(model_ref)
 
     for module in model_ref.modules():
         if hasattr(module, "_amax_for_smoothing"):
@@ -208,10 +210,14 @@ mixed_block_size_config["quant_cfg"].update(
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     ],
 )
-def test_homogeneous_sharded_state_dict(need_2_gpus, tmp_path, config):
+@pytest.mark.parametrize("compress", [False, True])
+def test_homogeneous_sharded_state_dict(need_2_gpus, tmp_path, config, compress):
+    if compress and config is mtq.W4A8_AWQ_BETA_CFG:
+        pytest.skip("W4A8_AWQ_BETA_CFG is not supported for compress")
+
     spawn_multiprocess_job(
         size=2,
-        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None),
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None, compress),
         backend="nccl",
     )
 
@@ -230,7 +236,7 @@ def test_homogeneous_sharded_state_dict(need_2_gpus, tmp_path, config):
 def test_heterogenous_sharded_state_dict(need_2_gpus, tmp_path, config):
     spawn_multiprocess_job(
         size=2,
-        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None),
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, None, False),
         backend="nccl",
     )
 
@@ -250,7 +256,7 @@ def test_heterogenous_sharded_state_dict(need_2_gpus, tmp_path, config):
 def test_sharded_state_dict_old_checkpoints(need_2_gpus, tmp_path, config, modelopt_version):
     spawn_multiprocess_job(
         size=2,
-        job=partial(_test_sharded_state_dict, tmp_path, config, 256, modelopt_version),
+        job=partial(_test_sharded_state_dict, tmp_path, config, 256, modelopt_version, False),
         backend="nccl",
     )
 

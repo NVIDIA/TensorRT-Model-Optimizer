@@ -36,6 +36,7 @@ TRTEXEC = "trtexec"
 
 # trtexec path within docker
 TRTEXEC_PATH = "trtexec"
+DEFAULT_ARTIFACT_DIR = "modelopt_build/trt_artifacts"
 
 # Default conversion params
 DEFAULT_VALIDATION_THRESHOLD = 1e-4

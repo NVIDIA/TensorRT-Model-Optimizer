@@ -381,7 +381,7 @@ def calibrate_weights(model, method="percentile", perchannel=True, percentile=99
             if axis is None:
                 input_weights = module.weight.abs().cpu().detach().numpy()
                 calib_hist, calib_bin_edges = np.histogram(
-                    input_weights, bins=2048, range=(0, input_weights.max())
+                    input_weights, bins=num_bins, range=(0, input_weights.max())
                 )
                 calib_hist = [calib_hist]
                 calib_bin_edges = [calib_bin_edges]

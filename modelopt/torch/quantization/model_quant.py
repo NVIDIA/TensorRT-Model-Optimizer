@@ -28,6 +28,7 @@ import modelopt.torch.quantization as mtq
 from modelopt.core.torch.quantization.algorithms import AutoQuantizeSearcher
 from modelopt.torch.opt import apply_mode
 from modelopt.torch.opt.searcher import ForwardLoop
+from modelopt.torch.opt.utils import forward_with_reshard
 from modelopt.torch.quantization.config import QuantizeConfig
 from modelopt.torch.quantization.conversion import set_quantizer_by_cfg
 
@@ -98,11 +99,12 @@ def calibrate(
     is_training = model.training
     model.eval()
 
-    apply_mode(
-        model,
-        mode=get_modelike_from_algo_cfg(algorithm),
-        mode_kwargs={"forward_loop": forward_loop},
-    )
+    with forward_with_reshard(model):
+        apply_mode(
+            model,
+            mode=get_modelike_from_algo_cfg(algorithm),
+            mode_kwargs={"forward_loop": forward_loop},
+        )
 
     # TODO: Re-enable when the CUDA error: unspecified launch failure is fixed.
     # clear_cuda_cache()

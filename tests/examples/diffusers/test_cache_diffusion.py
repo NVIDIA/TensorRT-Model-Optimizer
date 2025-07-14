@@ -16,8 +16,10 @@
 import subprocess
 import sys
 
+import pytest
 import torch
 from _test_utils.examples.run_command import MODELOPT_ROOT
+from _test_utils.model import PIXART_PATH, SXDL_PATH
 from diffusers import DiffusionPipeline, PixArtAlphaPipeline
 
 sys.path.append(str(MODELOPT_ROOT / "examples/diffusers/cache_diffusion"))
@@ -27,7 +29,7 @@ from cache_diffusion.utils import PIXART_DEFAULT_CONFIG, SDXL_DEFAULT_CONFIG
 
 def test_sdxl_cachify():
     pipe = DiffusionPipeline.from_pretrained(
-        "stabilityai/stable-diffusion-xl-base-1.0",
+        SXDL_PATH,
         torch_dtype=torch.float16,
         variant="fp16",
         use_safetensors=True,
@@ -44,9 +46,11 @@ def test_sdxl_cachify():
 
 
 def test_pixart_cachify():
-    pipe = PixArtAlphaPipeline.from_pretrained(
-        "PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16
-    ).to("cuda")
+    # Fail test if apex is installed
+    if "apex" in subprocess.check_output(["pip", "list"]).decode("utf-8"):
+        pytest.xfail("Apex is installed, test is expected to fail")
+
+    pipe = PixArtAlphaPipeline.from_pretrained(PIXART_PATH, torch_dtype=torch.float16).to("cuda")
     cachify.prepare(pipe, PIXART_DEFAULT_CONFIG)
 
     prompt = "a small cactus with a happy face in the Sahara desert"

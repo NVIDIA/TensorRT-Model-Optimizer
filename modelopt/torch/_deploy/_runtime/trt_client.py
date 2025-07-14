@@ -82,7 +82,7 @@ class TRTLocalClient(RuntimeClient):
         onnx_bytes = OnnxBytes.from_bytes(ir_bytes)
         onnx_model_file_bytes = onnx_bytes.get_onnx_model_file_bytes()
         self.node_names = get_node_names_from_bytes(onnx_model_file_bytes)
-        engine_bytes, _, _ = build_engine(
+        engine_bytes, _ = build_engine(
             onnx_bytes,
             dynamic_shapes=compilation_args.get("dynamic_shapes"),  # type: ignore[union-attr]
             plugin_config=compilation_args.get("plugin_config"),  # type: ignore[union-attr]

@@ -17,6 +17,7 @@ import os
 
 import onnx
 import onnx_graphsurgeon as gs
+import pytest
 import torch
 from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_onnx
 
@@ -33,13 +34,14 @@ def _assert_nodes_are_quantized(nodes):
     return True
 
 
-def test_int8(tmp_path):
+@pytest.mark.parametrize("high_precision_dtype", ["fp32", "fp16", "bf16"])
+def test_int8(tmp_path, high_precision_dtype):
     model_torch = SimpleMLP()
     input_tensor = torch.randn(2, 16, 16)
 
     onnx_path = os.path.join(tmp_path, "model.onnx")
     export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
-    moq.quantize(onnx_path, quantize_mode="int8")
+    moq.quantize(onnx_path, quantize_mode="int8", high_precision_dtype=high_precision_dtype)
 
     # Output model should be produced in the same tmp_path
     output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")

@@ -17,7 +17,8 @@
 
 import numpy as np
 import onnx
-from onnx import helper, numpy_helper, shape_inference
+import onnx_graphsurgeon as gs
+from onnx import helper, numpy_helper
 
 import modelopt.onnx.autocast.utils as utils
 import modelopt.onnx.utils as onnx_utils
@@ -27,16 +28,27 @@ from modelopt.onnx.autocast.logging_config import logger
 class GraphSanitizer:
     """A class for sanitizing ONNX model graphs, a part of the AutoCast tool."""
 
-    def __init__(self, model: onnx.ModelProto, min_opset: int = 13) -> None:
+    def __init__(
+        self,
+        model: onnx.ModelProto,
+        min_opset: int = 13,
+        max_ir_version: int | None = None,
+        trt_plugins: list[str] | None = [],
+    ) -> None:
         """Initialize GraphSanitizer.
 
         Args:
             model: ONNX model to sanitize
             min_opset: minimum opset version to use
+            max_ir_version: maximum IR version supported by ORT
+            trt_plugins: list of TensorRT plugin library paths in .so format (compiled shared library).
         """
         self.model = model
         self.min_opset = min_opset
+        self.max_ir_version = max_ir_version
         self.standard_ops = {schema.name for schema in onnx.defs.get_all_schemas()}
+        self.custom_ops = None
+        self.trt_plugins = trt_plugins
 
     def sanitize(self) -> None:
         """Sanitize the model graph.
@@ -46,9 +58,13 @@ class GraphSanitizer:
         """
         self.find_custom_nodes()
         self.remove_disconnected_outputs()
-        self.convert_opset(self.min_opset)
+        self.convert_opset()
         self.replace_layernorm_pattern()
+        self.ensure_graph_name_exists()
         onnx_utils.name_onnx_nodes(self.model.graph)
+        self.replace_custom_domain_nodes()
+        self.cleanup_model()
+        self.set_ir_version(self.max_ir_version)
 
     def find_custom_nodes(self) -> None:
         """Find custom nodes in the model.
@@ -56,12 +72,17 @@ class GraphSanitizer:
         Scans through all nodes in the graph and logs any nodes that use custom operators
         that are not part of the standard ONNX operator set.
         """
-        custom_ops = {
+        self.custom_ops = {
             node.op_type for node in self.model.graph.node if node.op_type not in self.standard_ops
         }
-        if custom_ops:
-            logger.error(f"Found custom operators: {custom_ops}")
-            raise ValueError("AutoCast does not support custom operators yet.")
+        if self.custom_ops:
+            from modelopt.onnx.trt_utils import infer_types_shapes_tensorrt, set_trt_plugin_domain
+
+            # Set TensorRT plugin domain info in the graph for ORT compatibility
+            self.model = set_trt_plugin_domain(self.model, self.custom_ops)
+
+            # Infer types and shapes in the graph for ORT compatibility
+            self.model = infer_types_shapes_tensorrt(self.model, self.trt_plugins)
 
     def remove_disconnected_outputs(self) -> None:
         """Remove disconnected outputs from the model."""
@@ -79,7 +100,7 @@ class GraphSanitizer:
         for tensor in tensors_to_remove:
             self.model.graph.output.remove(tensor)
 
-    def convert_opset(self, min_opset: int) -> None:
+    def convert_opset(self) -> None:
         """Convert the model to the given opset version.
 
         Args:
@@ -90,14 +111,47 @@ class GraphSanitizer:
         # Check all opset imports
         default_opsets = list(self.model.opset_import)
 
+        # Check for quantization nodes and update min_opset if needed
+        # Before opset 19, QuantizeLinear and DequantizeLinear data and scale must be fp32
+        has_quant_nodes = any(
+            node.op_type in ["QuantizeLinear", "DequantizeLinear"] for node in self.model.graph.node
+        )
+        if has_quant_nodes and self.min_opset < 19:
+            logger.warning(
+                f"Found QuantizeLinear/DequantizeLinear nodes. Updating minimum opset from {self.min_opset} to 19."
+            )
+            self.min_opset = 19
+
         # Convert if any default domain opset is below minimum
-        if any(op.version < min_opset for op in default_opsets):
-            invalid_opsets = [op.version for op in default_opsets if op.version < min_opset]
+        if any(op.version < self.min_opset for op in default_opsets):
+            invalid_opsets = [op.version for op in default_opsets if op.version < self.min_opset]
             try:
-                self.model = onnx.version_converter.convert_version(self.model, min_opset)
+                self.model = onnx.version_converter.convert_version(self.model, self.min_opset)
             except Exception as e:
-                logger.warning(f"Failed to convert model to opset {min_opset}: {e!s}")
+                logger.warning(f"Failed to convert model to opset {self.min_opset}: {e!s}")
                 logger.warning(f"Attempting to continue with the original opsets: {invalid_opsets}")
+
+    def set_ir_version(self, max_ir_version: int | None) -> None:
+        """Set the model's IR version to the maximum supported version.
+
+        Args:
+            max_ir_version: maximum IR version to use.
+
+        The method checks the IR version and cuts it off at the maximum supported version.
+        See https://onnxruntime.ai/docs/reference/compatibility.html#onnx-opset-support
+        """
+        if self.custom_ops:
+            # Set ir_version to 10, remove it once ORT supports ir_version 11
+            self.max_ir_version = 10
+            max_ir_version = max_ir_version or self.max_ir_version
+        if max_ir_version and self.model.ir_version > max_ir_version:
+            try:
+                self.model.ir_version = max_ir_version
+            except Exception as e:
+                logger.warning(f"Failed to set IR version to {max_ir_version}: {e!s}")
+                logger.warning(
+                    f"Attempting to continue with the original IR version: {self.model.ir_version}"
+                )
 
     def replace_layernorm_pattern(self) -> None:
         """Detects and replaces LayerNorm operation patterns.
@@ -134,7 +188,12 @@ class GraphSanitizer:
 
         if modified:
             self._update_opset_version()
-            self.model = shape_inference.infer_shapes(self.model, strict_mode=True)
+            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
+
+    def ensure_graph_name_exists(self) -> None:
+        """Ensures that the model's name exists."""
+        if not self.model.graph.name:
+            self.model.graph.name = "model"
 
     def _match_layernorm_pattern(self, mean_node: onnx.NodeProto) -> dict | None:
         """Match the sequence of operations that constitute a LayerNorm.
@@ -146,6 +205,7 @@ class GraphSanitizer:
             Dict | None: Pattern information if matched, None otherwise.
         """
         try:
+            axis = mean_node.attribute[0].ints[0]
             sub_node = utils.get_unique_consumer_node(self.model, mean_node.output[0])
             if sub_node.op_type != "Sub":
                 return None
@@ -206,7 +266,15 @@ class GraphSanitizer:
             scale = None
             bias = None
             final_node = div_node
-            nodes_to_remove = []
+            nodes_to_remove = [
+                mean_node,
+                sub_node,
+                pow_node,
+                var_mean_node,
+                add_eps_node,
+                sqrt_node,
+                div_node,
+            ]
 
             consumers = utils.get_consumer_nodes(self.model, div_node.output[0])
             if len(consumers) == 1 and consumers[0].op_type == "Mul":
@@ -228,62 +296,44 @@ class GraphSanitizer:
                 final_node = add_node
                 nodes_to_remove.append(add_node)
 
-            scale_bias = {
-                "scale": scale,
-                "bias": bias,
-                "final_node": final_node,
-                "nodes": nodes_to_remove,
-            }
+            if scale is not None:
+                scale_dimension = scale.shape
 
-            # Get input shape from value_info or graph input
-            input_shape = None
-            for vi in list(self.model.graph.value_info) + list(self.model.graph.input):
-                if vi.name == sub_node.input[0]:
-                    input_shape = [dim.dim_value for dim in vi.type.tensor_type.shape.dim]
-                    break
-
-            if input_shape is None:
-                logger.warning(
-                    f"Could not determine input shape for LayerNorm pattern at {mean_node.name}"
+            # Skip pattern if we can't determine the scale dimension
+            if scale_dimension is None:
+                logger.debug(
+                    f"Could not determine scale dimension for LayerNorm pattern at {mean_node.name}"
                 )
                 return None
 
             return {
                 "mean_node": mean_node,
                 "input_name": sub_node.input[0],
-                "input_shape": input_shape,
-                "output_name": scale_bias["final_node"].output[0],
+                "scale_dimension": scale_dimension,
+                "output_name": final_node.output[0],
                 "epsilon": epsilon,
-                "scale": scale_bias["scale"],
-                "bias": scale_bias["bias"],
-                "nodes_to_remove": [
-                    mean_node,
-                    sub_node,
-                    pow_node,
-                    var_mean_node,
-                    add_eps_node,
-                    sqrt_node,
-                    div_node,
-                ]
-                + scale_bias["nodes"],
+                "scale": scale,
+                "bias": bias,
+                "axis": axis,
+                "nodes_to_remove": nodes_to_remove,
             }
 
         except Exception as e:
             logger.debug(f"Failed to match LayerNorm pattern at {mean_node.name}: {e!s}")
             return None
 
-    def _create_layernorm_node(self, pattern: dict) -> tuple[onnx.NodeProto, dict]:
+    def _create_layernorm_node(self, pattern: dict) -> onnx.NodeProto:
         """Create a LayerNormalization node with optional bias."""
         ln_name = f"LayerNorm_{pattern['mean_node'].name}"
         scale_name = f"{ln_name}_scale"
         bias_name = f"{ln_name}_bias" if pattern["bias"] is not None else ""
-        axis = pattern["mean_node"].attribute[0].ints[0]
+        axis = pattern["axis"]
 
         # Always create scale tensor, default to ones if not provided
         scale_tensor = (
             pattern["scale"]
             if pattern["scale"] is not None
-            else np.ones(pattern["input_shape"][axis], dtype=np.float32)
+            else np.ones(pattern["scale_dimension"], dtype=np.float32)
         )
         self.model.graph.initializer.append(numpy_helper.from_array(scale_tensor, name=scale_name))
 
@@ -302,8 +352,6 @@ class GraphSanitizer:
             outputs=[pattern["output_name"]],
             name=ln_name,
             epsilon=pattern["epsilon"],
-            # Axis is determined by the axes parameter of the ReduceMean node in the pattern
-            # The pattern matching code ensures this is always [-1] for LayerNorm
             axis=axis,
         )
 
@@ -356,3 +404,19 @@ class GraphSanitizer:
                 value = numpy_helper.to_array(init)
                 return value if return_array else value.item()
         return None
+
+    def cleanup_model(self) -> None:
+        """Use GraphSurgeon to cleanup unused nodes, tensors and initializers."""
+        gs_graph = gs.import_onnx(self.model)
+        gs_graph.cleanup()
+        self.model = gs.export_onnx(gs_graph)
+
+    def replace_custom_domain_nodes(self):
+        """Replace custom domain nodes with standard ONNX nodes."""
+        for node in self.model.graph.node:
+            if node.domain.startswith("com.microsoft") and node.op_type in self.standard_ops:
+                logger.warning(
+                    f"Replacing custom domain node {node.name}, domain {node.domain} with standard ONNX "
+                    f"node {node.op_type}"
+                )
+                node.domain = ""

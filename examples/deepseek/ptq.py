@@ -305,6 +305,8 @@ def save_amax_and_quant_config(model, output_path: str, enable_fp8_kvcache: bool
 
         if exclude_modules:
             quant_config["quantization"]["exclude_modules"] = sorted(exclude_modules)
+            # add the last layer to the exlcude module as the mtp is not loaded in the quantized model
+            quant_config["quantization"]["exclude_modules"].append(f"layers.{len(model.layers)}*")
         if quantized_layers:
             quant_config["quantization"]["quantized_layers"] = quantized_layers
 

@@ -21,7 +21,7 @@ import pytest
 
 import modelopt.onnx.autocast.utils as utils
 import modelopt.onnx.utils as onnx_utils
-from modelopt.onnx.autocast import convert
+from modelopt.onnx.autocast import convert_to_mixed_precision
 from modelopt.onnx.autocast.logging_config import configure_logging
 
 configure_logging("DEBUG")
@@ -82,7 +82,7 @@ def temp_output_path(tmp_path):
 
 def test_invalid_model_path():
     with pytest.raises(FileNotFoundError):
-        convert(onnx_path="nonexistent.onnx")
+        convert_to_mixed_precision(onnx_path="nonexistent.onnx")
 
 
 def test_setup_mappings(simple_model):
@@ -115,7 +115,9 @@ def test_setup_mappings(simple_model):
 @pytest.mark.parametrize("keep_io_types", [True, False])
 def test_convert_simple_model(temp_model_path, temp_output_path, keep_io_types):
     # Convert the model
-    converted_model = convert(onnx_path=temp_model_path, keep_io_types=keep_io_types)
+    converted_model = convert_to_mixed_precision(
+        onnx_path=temp_model_path, keep_io_types=keep_io_types
+    )
 
     # Save the converted model
     onnx.save(converted_model, temp_output_path)

@@ -118,7 +118,10 @@ def get_parser() -> argparse.ArgumentParser:
     argparser.add_argument(
         "--use_external_data_format",
         action="store_true",
-        help="If True, <MODEL_NAME>.onnx_data will be used to load and/or write weights and constants.",
+        help=(
+            "If True or model size is larger than 2GB, "
+            "<MODEL_NAME>.onnx_data will be used to write weights and constants."
+        ),
     )
     argparser.add_argument(
         "--keep_intermediate_files",
@@ -153,11 +156,11 @@ def get_parser() -> argparse.ArgumentParser:
         "--trt_plugins",
         type=str,
         default=None,
+        nargs="+",
         help=(
-            "Specifies custom TensorRT plugin library paths in .so format (compiled shared library). "
-            'For multiple paths, separate them with a semicolon, i.e.: "lib_1.so;lib_2.so". '
-            "If this is not None, the TensorrtExecutionProvider is invoked, so make sure that the TensorRT libraries "
-            "are in the PATH or LD_LIBRARY_PATH variables."
+            "A space-separated list with the custom TensorRT plugin library paths in .so format (compiled shared "
+            "library). If this is not None, the TensorrtExecutionProvider is invoked, so make sure that the TensorRT "
+            "libraries are in the PATH or LD_LIBRARY_PATH variables."
         ),
     )
     argparser.add_argument(
@@ -175,9 +178,10 @@ def get_parser() -> argparse.ArgumentParser:
         "--high_precision_dtype",
         type=str,
         default=None,
+        choices=["fp32", "fp16", "bf16"],
         help=(
-            "High precision data type, one of ['fp32', 'fp16']. For int8 quantization, the default value is 'fp32' and "
-            "'fp16' for other quantization modes."
+            "High precision data type, one of ['fp32', 'fp16', 'bf16']. For int8 quantization, the default value is "
+            "'fp32' and 'fp16' for other quantization modes."
         ),
     )
     argparser.add_argument(
@@ -226,6 +230,14 @@ def get_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="If True, the given ONNX model will be simplified before quantization is performed.",
     )
+    argparser.add_argument(
+        "--calibrate_per_node",
+        action="store_true",
+        help=(
+            "If set, performs calibration per node instead of running inference over the entire network. "
+            "Useful for reducing memory consumption during large model inference."
+        ),
+    )
     return argparser
 
 
@@ -268,6 +280,7 @@ def main():
         use_zero_point=args.use_zero_point,
         passes=args.passes,
         simplify=args.simplify,
+        calibrate_per_node=args.calibrate_per_node,
     )
 
 

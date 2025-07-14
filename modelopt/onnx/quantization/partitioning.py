@@ -385,7 +385,7 @@ def find_layer_norm_partitions(graph: Graph) -> list[list[Node]]:
 
 
 def find_mha_partitions(graph: Graph) -> list[list[Node]]:
-    """Finds the MHA patterns in the graph that should not be quantized.
+    """Finds the MHA core (QK_AV) patterns in the graph that should not be quantized.
 
     A common MHA implementation looks like this:
     t -> MatMul -> (optional) Pointwise ops (such as Add, Mul, Sub) -> Softmax -> MatMul -> output
@@ -406,6 +406,7 @@ def find_mha_partitions(graph: Graph) -> list[list[Node]]:
                 if has_path_type(node, graph, chain_type, True, [], mha_partition):
                     mha_partitions.append(mha_partition)
 
+    logger.info(f"Found {len(mha_partitions)} MHA (QK_AV) Patterns")
     return mha_partitions
 
 

@@ -62,7 +62,7 @@ class Optimizer:
     def infer_shapes(self, return_onnx=False):
         """Infers shapes of the onnx graph."""
         onnx_graph = gs.export_onnx(self.graph)
-        if onnx_graph.ByteSize() > 2147483648:
+        if onnx_graph.ByteSize() > (2 * (1024**3)):  # 2GB limit
             temp_dir = tempfile.TemporaryDirectory().name
             os.makedirs(temp_dir, exist_ok=True)
             onnx_orig_path = os.path.join(temp_dir, "model.onnx")

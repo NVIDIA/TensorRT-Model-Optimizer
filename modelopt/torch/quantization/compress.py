@@ -20,6 +20,7 @@ __all__ = ["compress"]
 import fnmatch
 import warnings
 
+import torch
 import torch.nn as nn
 
 from modelopt.torch.opt import apply_mode
@@ -29,10 +30,22 @@ from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 
 from .backends.gemm_registry import enable_real_quant_gemm, is_real_quant_gemm_enabled
 from .config import CompressCfgType, CompressConfig
-from .conversion import _replace_quant_module, set_quantizer_attribute, update_quantize_metadata
+from .conversion import _replace_quant_module, set_quantizer_attribute
 from .nn.modules.quant_linear import RealQuantLinear
 from .qtensor import QTensorWrapper, pack_real_quantize_weight
 from .utils import is_quantized_linear
+
+try:
+    from .plugins.megatron import (
+        _MegatronColumnParallelLinear,
+        _MegatronRowParallelLinear,
+        _RealQuantMegatronColumnParallelLinear,
+        _RealQuantMegatronRowParallelLinear,
+    )
+
+    mcore_available = True
+except ImportError:
+    mcore_available = False
 
 RealQuantModuleRegistry = _DMRegistryCls("RealQuant")
 
@@ -43,8 +56,14 @@ def compress_convert(
     """Compress entry point."""
     for _, module in model.named_modules():
         if is_quantized_linear(module) and type(module) not in RealQuantModuleRegistry:
+            class_to_register = RealQuantLinear
+            if mcore_available:
+                if issubclass(type(module), _MegatronRowParallelLinear):
+                    class_to_register = _RealQuantMegatronRowParallelLinear
+                elif issubclass(type(module), _MegatronColumnParallelLinear):
+                    class_to_register = _RealQuantMegatronColumnParallelLinear
             RealQuantModuleRegistry.register({type(module): module.__class__.__name__})(
-                RealQuantLinear
+                class_to_register
             )
     # Convert QuantLinear to RealQuantLinear
     _replace_quant_module(
@@ -107,12 +126,48 @@ def compress_restore(
         config,
         use_real_quant_gemm=metadata.get("use_real_quant_gemm", False),
     )
+    # restore scale state in weight quantizer
+    if "real_quantizer_state" in metadata:
+        for name, module in model.named_modules():
+            if isinstance(module, RealQuantLinear) and name in metadata["real_quantizer_state"]:
+                if not metadata["real_quantizer_state"][name].items():
+                    raise ValueError(f"Cannot find real quantizer state for {name}")
+                module.weight_quantizer.set_from_modelopt_state(
+                    metadata["real_quantizer_state"][name]
+                )
+
+    # restore real quant tensor states
+    if "q_tensor_state" in metadata:
+        for name, module in model.named_modules():
+            if isinstance(module, RealQuantLinear) and name in metadata["q_tensor_state"]:
+                module._parameters["weight"] = QTensorWrapper(
+                    qtensor=torch.empty(
+                        metadata["q_tensor_state"][name]["quantized_data.shape"],
+                        dtype=metadata["q_tensor_state"][name]["quantized_data.dtype"],
+                        device=module.weight.device,
+                    ),
+                    metadata=metadata["q_tensor_state"][name]["metadata"],
+                )
     return model
 
 
 def update_compress_metadata(model: nn.Module, config: CompressConfig, metadata: MetadataDict):
-    update_quantize_metadata(model, config, metadata)
     metadata["use_real_quant_gemm"] = is_real_quant_gemm_enabled(model)
+
+    # save scales state in weight quantizer
+    real_quantizer_state = {}
+    for name, module in model.named_modules():
+        if isinstance(module, RealQuantLinear):
+            real_quantizer_state[name] = module.weight_quantizer.get_modelopt_state()
+
+    # real quant tensor states
+    q_tensor_state = {}
+    for name, module in model.named_modules():
+        if isinstance(module, RealQuantLinear) and isinstance(module.weight, QTensorWrapper):
+            q_tensor_state[name] = module.weight.get_state()
+
+    metadata["real_quantizer_state"] = real_quantizer_state
+    metadata["q_tensor_state"] = q_tensor_state
 
 
 def compress(model, config: CompressCfgType = None):

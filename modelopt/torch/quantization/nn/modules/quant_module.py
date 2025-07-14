@@ -174,13 +174,6 @@ class QuantLinearConvBase(QuantInputBase):
         self._register_temp_attribute("_enable_weight_quantization", False)
         self._register_dynamic_attribute("weight", self._get_quantized_weight)
 
-    @staticmethod
-    def initialize_real_qtensor_with_dummy_weight(module):
-        """Initalize the real qunatized tensors."""
-        from ...qtensor import pack_real_quantize_weight
-
-        pack_real_quantize_weight(module, force_quantize=True)
-
 
 class _LegacyQuantInputBaseMixin:
     """A mixin to support legacy quantized modules which needs to have an __init__ method."""

@@ -25,11 +25,12 @@ import onnx
 import onnx_graphsurgeon as gs
 from onnx import numpy_helper
 from onnx_graphsurgeon.ir.graph import Graph
-from onnxconverter_common import convert_float_to_float16
 from onnxruntime.quantization import CalibrationMethod
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
-from modelopt.onnx.logging_config import logger
+import modelopt.onnx.utils as onnx_utils
+from modelopt.onnx.autocast.convert import convert_to_f16
+from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.quantization.graph_utils import (
     build_non_residual_input_map,
     convert_fp16_io,
@@ -110,7 +111,7 @@ def int8_to_fp8(onnx_path: str) -> onnx.ModelProto:
         FP8 quantized ONNX model.
     """
     logger.info("Starting INT8 to FP8 conversion")
-    onnx_model = onnx.load(onnx_path)
+    onnx_model = onnx.load(onnx_path, load_external_data=True)
     graph = onnx_model.graph
     initializers = graph.initializer
     tensor_producers = get_tensor_producer_nodes(graph)
@@ -149,10 +150,10 @@ def int8_to_fp8(onnx_path: str) -> onnx.ModelProto:
             )
             zero_point = initializers[zero_point_idx]
             dtype = onnx.helper.tensor_dtype_to_np_dtype(zero_point.data_type)
-            vals = np.array(zero_point.int32_data, dtype=dtype).tolist()
+            vals = np.array(zero_point.int32_data, dtype=dtype).tobytes()
 
             np_zero_point = onnx.helper.make_tensor(
-                zero_point_name, onnx.TensorProto.FLOAT8E4M3FN, zero_point.dims, vals
+                zero_point_name, onnx.TensorProto.FLOAT8E4M3FN, zero_point.dims, vals, raw=True
             )
             initializers[zero_point_idx].CopyFrom(np_zero_point)
             processed_tensor.add(zero_point_name)
@@ -211,16 +212,19 @@ def quantize(
     nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = [],
-    trt_extra_plugin_lib_paths: str | None = None,
+    trt_extra_plugin_lib_paths: list[str] | None = None,
     high_precision_dtype: str = "fp16",
     mha_accumulation_dtype: str = "fp16",
     passes: list[str] = ["concat_elimination"],
+    log_level: str = "INFO",
+    calibrate_per_node: bool = False,
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies FP8 GEMM only quantization to an ONNX file.
 
-    Currently, ['Conv', 'Gemm', 'MatMul'] quantization is supported.
+    Currently, ['Conv', 'Gemm', 'MatMul', 'Residual-Add'] quantization is supported.
     """
+    configure_logging(level=log_level.upper())
     logger.info("Starting FP8 quantization process")
     t_start = time.time()
 
@@ -229,7 +233,8 @@ def quantize(
 
     # Load the onnx graph
     logger.info(f"Loading ONNX model from {onnx_path}")
-    onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
+    onnx_model = onnx.load(onnx_path, load_external_data=True)
+    onnx_model = onnx_utils.infer_shapes(onnx_model)
     graph = gs.import_onnx(onnx_model)
     graph.toposort()
 
@@ -249,7 +254,11 @@ def quantize(
     # Change the default configuration of ORT quantization
     op_types = {node.op for node in graph.nodes}
     trt_guided_options, _ = configure_ort(
-        list(op_types), op_types_to_quantize, trt_extra_plugin_lib_paths, calibration_eps
+        list(op_types),
+        op_types_to_quantize,
+        trt_extra_plugin_lib_paths,
+        calibration_eps,
+        calibrate_per_node,
     )
     logger.info(
         f"Quantizable op types in the model: {[t for t in op_types_to_quantize if t in op_types]}"
@@ -257,7 +266,7 @@ def quantize(
 
     # Collect node names to include in quantization
     no_quantize_inputs = []
-    nodes_to_quantize = expand_node_names_from_patterns(graph, nodes_to_quantize)  # type: ignore[arg-type]
+    nodes_to_quantize = expand_node_names_from_patterns(graph, nodes_to_quantize)
     if not nodes_to_quantize:
         nodes_to_quantize = [node.name for node in graph.nodes if node.op in op_types_to_quantize]
         _, no_quantize_inputs = build_non_residual_input_map(graph)
@@ -277,7 +286,7 @@ def quantize(
 
     if not nodes_to_quantize:
         logger.info("No node or node type is selected for quantization or model does not have them")
-        return
+        return onnx_model
     logger.debug(f"Selected nodes to quantize: {nodes_to_quantize}")
 
     if passes and "concat_elimination" in passes:
@@ -315,9 +324,9 @@ def quantize(
     remove_partial_input_qdq(graph, no_quantize_inputs)
     onnx_model = gs.export_onnx(graph)
 
-    if high_precision_dtype == "fp16":
-        # We need to convert float to float16 so as to speed up layers like LayerNorm or GroupNorm.
-        logger.info("Converting float tensors to float16")
+    if high_precision_dtype in ["fp16", "bf16"]:
+        # We need to convert float to float16/bfloat16 so as to speed up layers like LayerNorm or GroupNorm.
+        logger.info(f"Converting float tensors to {high_precision_dtype}")
         graph = gs.import_onnx(onnx_model)
         remove_output_initializers(graph, onnx_model.graph.initializer)
         convert_fp16_io(graph)
@@ -325,14 +334,15 @@ def quantize(
 
         # Record the old fp32 scale value of Resize node.
         resize_scale_inits = get_resize_scales(onnx_model)
-        # Convert to fp16 model.
-        onnx_model = convert_float_to_float16(
+        # Convert to fp16/bf16 model.
+        onnx_model = convert_to_f16(
             onnx_model,
             keep_io_types=True,
-            disable_shape_infer=True,
             op_block_list=["Resize"],
+            low_precision_type=high_precision_dtype,
+            trt_plugins=trt_extra_plugin_lib_paths,
         )
-        # Replace the fp16 scale with old fp32 scale.
+        # Replace the fp16/bf16 scale with old fp32 scale.
         onnx_model = replace_resize_scales(onnx_model, resize_scale_inits)
 
         current_opsets = {opset.domain: opset.version for opset in onnx_model.opset_import}

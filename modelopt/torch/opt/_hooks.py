@@ -18,6 +18,7 @@
 from contextlib import ExitStack, nullcontext
 
 import torch
+import torch.distributed.checkpoint.state_dict as distributed_state_dict
 import torch.nn as nn
 from packaging.version import Version
 
@@ -87,8 +88,20 @@ def reset_sharded_param_with_dm_check(self: FSDPParam):
         self._reset_sharded_param_original()
 
 
+def _get_model_state_dict_with_dm_check(model: nn.Module, *args, **kwargs):
+    """A batched version of get_model_state_dict ensuring compatibility with DMs."""
+    with ExitStack() as stack:
+        for module in model.modules():
+            if isinstance(module, DynamicModule):
+                stack.enter_context(module.reset_dynamic_attributes())
+        return distributed_state_dict.get_model_state_dict_original(model, *args, **kwargs)
+
+
 _fsdp_param._unsafe_setattr_param_original = _fsdp_param.unsafe_setattr_param
 _fsdp_param.unsafe_setattr_param = _unsafe_setattr_param_with_dm_check
 
 FSDPParam._reset_sharded_param_original = FSDPParam.reset_sharded_param
 FSDPParam.reset_sharded_param = reset_sharded_param_with_dm_check
+
+distributed_state_dict.get_model_state_dict_original = distributed_state_dict.get_model_state_dict
+distributed_state_dict.get_model_state_dict = _get_model_state_dict_with_dm_check

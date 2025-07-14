@@ -29,6 +29,14 @@ from modelopt.onnx.quantization.operators import QDQConvTranspose, QDQNormalizat
 from modelopt.onnx.quantization.ort_patching import patch_ort_modules
 
 
+def _check_lib_in_ld_library_path(ld_library_path, lib_pattern):
+    for directory in ld_library_path:
+        matches = glob.glob(os.path.join(directory, lib_pattern))
+        if matches:
+            return True, matches[0]
+    return False, None
+
+
 def _check_for_tensorrt(min_version: str = "10.0"):
     """Check if the `tensorrt` python package is installed and that it's >= min_version."""
     try:
@@ -54,14 +62,7 @@ def _check_for_libcudnn():
     env_variable = "PATH" if platform.system() == "Windows" else "LD_LIBRARY_PATH"
     ld_library_path = os.environ.get(env_variable, "").split(os.pathsep)
 
-    def _check_lib_in_ld_library_path(lib_pattern):
-        for directory in ld_library_path:
-            matches = glob.glob(os.path.join(directory, lib_pattern))
-            if matches:
-                return True, matches[0]
-        return False, None
-
-    found, lib_path = _check_lib_in_ld_library_path(lib_pattern)
+    found, lib_path = _check_lib_in_ld_library_path(ld_library_path, lib_pattern)
     if found:
         logger.info(
             f"{lib_pattern} is accessible in {lib_path}! Please check that this is the correct version needed"
@@ -73,6 +74,31 @@ def _check_for_libcudnn():
             f"{lib_pattern} is not accessible in {env_variable}! Please make sure that the path to that library"
             f" is in the env var to use the CUDA or TensorRT EP and ensure that the correct version is available."
             f" Versioning compatibility can be checked at https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements."
+        )
+    return found
+
+
+def _check_for_nv_tensorrt_rtx_libs():
+    logger.info("Checking for NvTensorRtRtx libs")
+    if platform.system() != "Windows":
+        # Validate libs and PATH settings for Linux usage (if any) of NvTensorRtRtx EP
+        raise NotImplementedError("NvTensorRtRtx EP on Linux is not yet supported.")
+    env_variable = "PATH" if platform.system() == "Windows" else "LD_LIBRARY_PATH"
+    lib_pattern = "tensorrt_rtx*.dll" if platform.system() == "Windows" else "libtensorrt_rtx*.so*"
+    ld_library_path = os.environ.get(env_variable, "").split(os.pathsep)
+
+    found, lib_path = _check_lib_in_ld_library_path(ld_library_path, lib_pattern)
+    if found:
+        logger.info(
+            f"{lib_pattern} is accessible in {lib_path}! Please check that this is the correct version needed"
+            f" for your ORT version at https://onnxruntime.ai/docs/execution-providers/TensorRTRTX-ExecutionProvider.html#requirements."
+        )
+    else:
+        logger.error(f" NvTensorRtRtx libs not found in {env_variable}")
+        raise FileNotFoundError(
+            f"{lib_pattern} is not accessible in {env_variable}! Please make sure that the path to required libraries"
+            f" is in the env var to use the NvTensorRtRtx EP and ensure that the correct version is available."
+            f" Versioning compatibility can be checked at https://onnxruntime.ai/docs/execution-providers/TensorRTRTX-ExecutionProvider.html#requirements."
         )
     return found
 
@@ -97,6 +123,13 @@ def _prepare_ep_list(calibration_eps: list[str]):
         elif "cpu" in ep:
             providers.append("CPUExecutionProvider")
             logger.debug("Added CPU EP")
+        elif "NvTensorRtRtx" in ep:
+            try:
+                _check_for_nv_tensorrt_rtx_libs()
+                providers.append("NvTensorRTRTXExecutionProvider")
+                logger.debug("Added NvTensorRtRtx EP")
+            except Exception as e:
+                logger.warning(f"Failed to enable ORT with NvTensorRtRtx EP: '{e}'")
         elif "trt" in ep:
             try:
                 _check_for_tensorrt()
@@ -114,7 +147,7 @@ def _prepare_ep_list(calibration_eps: list[str]):
 
 
 def update_trt_ep_support(
-    calibration_eps: list[str], has_dds_op: bool, has_custom_op: bool, trt_plugins: str
+    calibration_eps: list[str], has_dds_op: bool, has_custom_op: bool, trt_plugins: list[str]
 ):
     """Checks whether TRT should be enabled or disabled and updates the list of calibration EPs accordingly."""
     logger.debug(f"Updating TRT EP support - DDS ops: {has_dds_op}, Custom ops: {has_custom_op}")
@@ -130,8 +163,8 @@ def update_trt_ep_support(
         # If the model has a custom op and no plugin path was given, assume that this custom op is being implemented
         # by a TRT native plugin. In order to enable the TRT EP, 'trt_extra_plugin_lib_paths' needs to be != None.
         if not trt_plugins:
-            logger.debug("No TRT plugins provided, using empty string")
-            trt_plugins = ""
+            logger.debug("No TRT plugins provided, using empty list")
+            trt_plugins = []
         return trt_plugins
 
     if has_dds_op:
@@ -212,8 +245,9 @@ def get_quantizable_op_types(op_types_to_quantize: list[str]) -> list[str]:
 def configure_ort(
     op_types: list[str],
     op_types_to_quantize: list[str],
-    trt_extra_plugin_lib_paths: str | None = None,
+    trt_extra_plugin_lib_paths: list[str] | None = None,
     calibration_eps: list[str] | None = None,
+    calibrate_per_node: bool = False,
 ):
     """Configure and patches ORT to support ModelOpt ONNX quantization."""
     logger.info("Configuring ORT for ModelOpt ONNX quantization")
@@ -228,7 +262,7 @@ def configure_ort(
     )
 
     # Patch ORT modules to fix bugs and support some edge cases
-    patch_ort_modules()
+    patch_ort_modules(calibrate_per_node)
 
     # Remove copy, reduction and activation ops from ORT QDQ registry
     logger.debug("Removing non-quantizable ops from QDQ registry")
@@ -259,15 +293,17 @@ def configure_ort(
             del QDQRegistry[op_type]
 
     # Prepare TensorRT friendly quantization settings
+    if trt_extra_plugin_lib_paths is not None:
+        trt_extra_plugin_lib_paths = ";".join(trt_extra_plugin_lib_paths)
     trt_guided_options = {
         "QuantizeBias": False,
         "ActivationSymmetric": True,
         "OpTypesToExcludeOutputQuantization": op_types,  # No output quantization
         "AddQDQPairToWeight": True,  # Instead of quantizing the weights, add QDQ node
         "QDQOpTypePerChannelSupportToAxis": {
-            "Conv": 0,
-            "ConvTranspose": 1,
-        },  # per_channel should be True
+            "Conv": 0,  # Cout axis for Conv: [Cout, Cin, k1, k2]
+            "ConvTranspose": 1,  # Cout axis for ConvTranspose: [Cin, Cout, k1, k2]
+        },  # per_channel should be True (modeopt default)
         "DedicatedQDQPair": False,
         "ForceQuantizeNoInputCheck": (
             # By default, for some latent operators like MaxPool, Transpose, etc.,

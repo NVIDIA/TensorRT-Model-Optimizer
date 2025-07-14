@@ -15,7 +15,9 @@
 
 """Utilities for optimization."""
 
+import types
 from collections.abc import Generator
+from contextlib import contextmanager
 
 import torch.nn as nn
 
@@ -75,3 +77,54 @@ def get_hparam(model: nn.Module, name: str) -> Hparam:
 def search_space_size(model: nn.Module) -> int:
     """Return the size of the search space."""
     return _DynamicSpaceUnwrapped(model).size()
+
+
+@contextmanager
+def forward_with_reshard(model: nn.Module):
+    """Context manager to keep the mesh info of FSDPModule during forward pass.
+
+    FSDP2 models don't automatically reshard FSDPParam in the root module after forward passes with
+    auto_reshard. This prevents accessing original DTensor parameters via .parameters() after any forward
+    pass. Since calibration requires forward passes, initializing optimizers after calibration
+    would use unsharded parameters (not original). Without manual resharding, there's no clean way
+    to access original DTensor parameters. We have two options, 1) initialize optimizers before
+    calibration, but this is hard to control when integrating to third-party frameworks.
+    2) use this context manager to reshard FSDPParam in the root module after forward
+    passes.
+    """
+    try:
+        from torch.distributed._composable_state import _get_module_state
+        from torch.distributed.fsdp import FSDPModule
+    except Exception:
+        # If FSDP imports fail, act as a null context manager
+        yield
+        return
+
+    def _lazy_init_retain_mesh_info(self):
+        if self._fsdp_param_group and not hasattr(self, "_post_forward_mesh_info_before"):
+            self._post_forward_mesh_info_before = self._fsdp_param_group.post_forward_mesh_info
+        self._lazy_init_original()
+        if self._fsdp_param_group and not hasattr(self, "_post_forward_mesh_info_after"):
+            self._post_forward_mesh_info_after = self._fsdp_param_group.post_forward_mesh_info
+            self._fsdp_param_group.post_forward_mesh_info = self._post_forward_mesh_info_before
+
+    fsdp_states = []
+
+    for module in model.modules():
+        if isinstance(module, FSDPModule):
+            fsdp_state = _get_module_state(module)
+            if not hasattr(fsdp_state, "_lazy_init_original"):
+                fsdp_state._lazy_init_original = fsdp_state._lazy_init
+                fsdp_state._lazy_init = types.MethodType(_lazy_init_retain_mesh_info, fsdp_state)
+
+                fsdp_states.append(fsdp_state)
+    yield
+    for fsdp_state in fsdp_states:
+        if fsdp_state._fsdp_param_group and hasattr(fsdp_state, "_post_forward_mesh_info_after"):
+            fsdp_state._fsdp_param_group.post_forward_mesh_info = (
+                fsdp_state._post_forward_mesh_info_after
+            )
+            delattr(fsdp_state, "_post_forward_mesh_info_before")
+            delattr(fsdp_state, "_post_forward_mesh_info_after")
+        fsdp_state._lazy_init = fsdp_state._lazy_init_original
+        delattr(fsdp_state, "_lazy_init_original")

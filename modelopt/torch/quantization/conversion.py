@@ -26,7 +26,6 @@ from modelopt.torch.opt.conversion import ApplyModeError, ModelLikeModule, Model
 from modelopt.torch.opt.dynamic import _DMRegistryCls
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 from modelopt.torch.utils import get_unwrapped_name
-from modelopt.torch.utils.distributed import is_dtensor_sharded
 
 from .config import (
     QuantizeConfig,
@@ -57,12 +56,6 @@ def convert_to_quantized_model(model: ModelLikeModule, config: QuantizeConfig) -
     """Convert the model to a quantized one as per `config`."""
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
-
-    if is_dtensor_sharded(model):
-        raise NotImplementedError(
-            "ModelOpt does not support Dtensor sharded models to quantization/restore entry point yet. "
-            "Please shard the model after quantization/restore."
-        )
 
     replace_quant_module(model, version=ModeloptStateManager(model).state_version)
     set_quantizer_by_cfg(model, config.get("quant_cfg", {}))
@@ -130,10 +123,12 @@ def restore_quantizer_state(model: nn.Module, config: QuantizeConfig, metadata: 
 
     for name, module in model.named_modules():
         if isinstance(module, TensorQuantizer):
+            name = get_unwrapped_name(name)
             module.set_from_modelopt_state(quantizer_state_dict[name])
 
     for name, module in model.named_modules():
         if isinstance(module, QuantModule):
+            name = get_unwrapped_name(name)
             module.modelopt_post_restore(name)
 
     return model

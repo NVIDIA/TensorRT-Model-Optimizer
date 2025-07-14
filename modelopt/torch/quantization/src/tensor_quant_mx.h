@@ -82,7 +82,7 @@ CUDA_HOST_DEVICE float convert_int8_saturating(const float x) {
   int converted = std::rint(x);
 
   // saturate high & low
-  converted = std::clamp(converted, -INT8_MAX, INT8_MAX);
+  converted = std::clamp(converted, (int)(-INT8_MAX), (int)(INT8_MAX));
 
   // do the actual conversion.
   return static_cast<int8_t>(converted);

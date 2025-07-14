@@ -14,6 +14,7 @@
 # limitations under the License.
 
 
+import torch
 from transformers import AutoTokenizer
 
 import modelopt.torch.quantization as mtq
@@ -25,7 +26,7 @@ from modelopt.torch.utils.dataset_utils import (
     get_max_batch_size,
 )
 
-MAX_SEQ_LEN = 2048
+MAX_SEQ_LEN = 4096
 MAX_OUTPUT_LEN = 512
 
 # This is an example to customize the quantization config.
@@ -174,7 +175,8 @@ def quantize_model(
         device = model.model.device
 
     if batch_size == 0:
-        assert auto_quantize_bits is None, "auto_quantize requires batch_size to be set."
+        if auto_quantize_bits is not None or torch.distributed.is_initialized():
+            raise ValueError("We dont support automatic batch size inference for this case.")
 
         net = model.gpt2 if hasattr(model, "gpt2") else model.model
 

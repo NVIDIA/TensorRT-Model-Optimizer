@@ -25,7 +25,13 @@ import torch.nn as nn
 
 from modelopt import __version__
 from modelopt.torch.quantization.model_calib import enable_stats_collection, finish_stats_collection
-from modelopt.torch.quantization.qtensor import FP8QTensor, NVFP4QTensor, QTensorWrapper
+from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
+from modelopt.torch.quantization.qtensor import (
+    FP8QTensor,
+    MXFP4QTensor,
+    NVFP4QTensor,
+    QTensorWrapper,
+)
 from modelopt.torch.quantization.utils import is_quantized_linear
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
@@ -44,6 +50,7 @@ from .model_config import (
     QUANTIZATION_NVFP4,
     QUANTIZATION_NVFP4_AWQ,
     QUANTIZATION_W4A8_AWQ,
+    QUANTIZATION_W4A8_MXFP4_FP8,
 )
 
 logger = logging.getLogger(__name__)
@@ -219,6 +226,10 @@ def get_weight_scaling_factor(module: nn.Module) -> torch.Tensor:
             ),
         )[0]
 
+    if get_quantization_format(module) == QUANTIZATION_W4A8_MXFP4_FP8:
+        return MXFP4QTensor.quantize(
+            module.weight, block_size=module.weight_quantizer.block_sizes[-1]
+        )[1].reshape(*module.weight.shape[:-1], -1)
     return (
         get_scaling_factor(module.weight_quantizer) if hasattr(module, "weight_quantizer") else None
     )
@@ -408,6 +419,19 @@ def get_quantization_format(module) -> str | None:
                 return QUANTIZATION_NVFP4_AWQ
             if getattr(layer, "fused_with_layernorm", False):
                 return QUANTIZATION_NVFP4_AWQ
+            block_sizes = getattr(layer.weight_quantizer, "block_sizes", None)
+            scale_bits = block_sizes.get("scale_bits", None) if block_sizes else None
+            if (
+                layer.weight_quantizer.is_enabled
+                and block_sizes
+                and block_sizes.get("type", "static") == "dynamic"
+                and scale_bits
+                and scale_bits == (8, 0)
+                and layer.input_quantizer.is_enabled
+                and layer.input_quantizer.num_bits == (4, 3)
+                and layer.input_quantizer.block_sizes is None
+            ):
+                return QUANTIZATION_W4A8_MXFP4_FP8
             return QUANTIZATION_NVFP4
 
         # Raise error for unsupported num_bits
@@ -546,6 +570,11 @@ def process_layer_quant_config(layer_config_dict):
                 "has_zero_point": False,
                 "pre_quant_scale": True,
             }
+        elif v == "w4a8_mxfp4_fp8":
+            layer_config = {
+                "quant_algo": "W4A8_MXFP4_FP8",
+                "group_size": layer_config_dict[prefix + ".awq_block_size"],
+            }
         else:
             layer_config = {"quant_algo": v}
 
@@ -674,6 +703,9 @@ def to_quantized_weight(
             else weights_scaling_factor2,
         )[0]._quantized_data
 
+    if quantization == QUANTIZATION_W4A8_MXFP4_FP8:
+        return MXFP4QTensor.quantize(weight, block_size=block_size)[0]._quantized_data
+
     raise NotImplementedError(f"quantization format {quantization} not supported")
 
 
@@ -765,6 +797,18 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
         if isinstance(value, torch.Tensor) and value.dim() == 3 and value.shape[0] == 1:
             post_state_dict[key] = value.squeeze(0)
 
+    # remove real quant parameters from the state dict
+    keys_to_delete = []
+    for key, value in post_state_dict.items():
+        if any(
+            key.endswith("weight_quantizer." + q_key)
+            for q_key in RealQuantLinear.list_of_scale_tensors
+        ):
+            keys_to_delete.append(key)
+
+    for key in keys_to_delete:
+        del post_state_dict[key]
+
     return post_state_dict
 
 
@@ -849,7 +893,9 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
                     module.weight_quantizer[-1].amax = weight_amax
 
         elif (
-            modules[0].weight_quantizer.is_enabled and modules[0].weight_quantizer.amax.numel() == 1
+            modules[0].weight_quantizer.is_enabled
+            and modules[0].weight_quantizer.amax is not None
+            and modules[0].weight_quantizer.amax.numel() == 1
         ):
             weight_amax = torch.max(
                 torch.stack([module.weight_quantizer.amax for module in modules])

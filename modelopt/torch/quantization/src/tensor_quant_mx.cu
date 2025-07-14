@@ -82,7 +82,10 @@ __device__ __host__ cuda::std::tuple<float, float> compute_scale_e8m0_OCP(float 
   union {
     float f32;
     uint32_t u32;
-  } amax_bits = {.f32 = amax};
+  } amax_bits;
+
+  amax_bits.f32 = amax;
+
   uint32_t amax_exponent_field = (amax_bits.u32 >> 23) & 0xff;
   uint32_t amax_significand_field = amax_bits.u32 & 0x7fffff;
   int32_t lg2_amax = amax_exponent_field == 0
@@ -115,7 +118,10 @@ __device__ __host__ cuda::std::tuple<float, float> compute_scale_e8m0_NV(float a
   union {
     float f32;
     uint32_t u32;
-  } ratio_bits = {.f32 = ratio};
+  } ratio_bits;
+
+  ratio_bits.f32 = ratio;
+
   uint32_t ratio_exponent_field = (ratio_bits.u32 >> 23) & 0xff;
   uint32_t ratio_significand_field = ratio_bits.u32 & 0x7fffff;
   int32_t unscale_exponent =

@@ -64,6 +64,7 @@ def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
         vocab_size=vocab_size,
         activation_func=activation_func,
         normalization=normalization,
+        transformer_impl="modelopt",
     )
 
     if algo == "medusa":
@@ -104,11 +105,9 @@ def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
 @pytest.mark.parametrize(
     ("model_type", "arch", "algo"),
     [
-        ("nemotron", None, None),
         ("nemotron", "NemotronForCausalLM", None),
         ("nemotron", "NemotronForCausalLM", "eagle"),
         ("nemotron", "NemotronForCausalLM", "medusa"),
-        ("llama", None, None),
         ("llama", "LlamaForCausalLM", None),
         ("llama", "LlamaForCausalLM", "eagle"),
         ("llama", "LlamaForCausalLM", "medusa"),

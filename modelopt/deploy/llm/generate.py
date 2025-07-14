@@ -24,7 +24,6 @@ import tensorrt_llm
 import torch
 from packaging.version import Version
 from tensorrt_llm import SamplingParams
-from tensorrt_llm._torch.pyexecutor.config import PyTorchConfig
 from tensorrt_llm.bindings.executor import DecodingConfig
 from tensorrt_llm.llmapi import KvCacheConfig as TRT_KvCacheConfig
 from tensorrt_llm.llmapi.llm import LLM as TRT_LLM
@@ -89,10 +88,6 @@ class LLM(TRT_LLM):
         )
 
     def _build_torch_llm_from_config(self, checkpoint_dir, tokenizer, tp, trust_remote_code):
-        pytorch_config = PyTorchConfig(
-            use_cuda_graph=True, cuda_graph_padding_enabled=True, enable_overlap_scheduler=True
-        )
-
         kwargs = {}
         if tokenizer is not None:
             kwargs["tokenizer"] = tokenizer
@@ -111,8 +106,10 @@ class LLM(TRT_LLM):
             tensor_parallel_size=tp,
             trust_remote_code=trust_remote_code,
             enable_chunked_prefill=True,
-            pytorch_backend_config=pytorch_config,
             kv_cache_config=trt_kv_cache_config,
+            # pytorch backend configs
+            use_cuda_graph=True,
+            cuda_graph_padding_enabled=True,
             **kwargs,
         )
 

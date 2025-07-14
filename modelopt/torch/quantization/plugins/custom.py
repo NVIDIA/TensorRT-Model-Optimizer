@@ -30,27 +30,7 @@ from ..nn import QuantModule, SequentialQuantizer, TensorQuantizer
 from ..nn.modules.quant_linear import _QuantLinear
 from ..utils import multi_context, replace_function
 
-try:
-    from .huggingface import (
-        register_dbrx_moe_on_the_fly,
-        register_falcon_linears_on_the_fly,
-        register_hf_attentions_on_the_fly,
-    )
-except ImportError:
-
-    def _dummy_register(model):
-        pass
-
-    register_falcon_linears_on_the_fly = _dummy_register
-    register_dbrx_moe_on_the_fly = _dummy_register
-    register_hf_attentions_on_the_fly = _dummy_register
-
-
-CUSTOM_MODEL_PLUGINS = {
-    register_falcon_linears_on_the_fly,
-    register_dbrx_moe_on_the_fly,
-    register_hf_attentions_on_the_fly,
-}
+CUSTOM_MODEL_PLUGINS = set()
 
 
 # TODO: This is a temporary solution
@@ -160,7 +140,6 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
             _check_unsupported_states(
                 quantizer if isinstance(quantizer, TensorQuantizer) else quantizer[0]
             )
-
         if _has_state(self.weight_quantizer, "_amax"):
             self.weight_quantizer.reset_amax()
             max_calibrate(self.weight_quantizer, lambda wq: wq(self.weight), distributed_sync=False)
@@ -176,16 +155,13 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
             dummy_input = torch.ones(
                 (1, 1, self.weight.shape[1]), device=self.weight.device, dtype=self.weight.dtype
             )
-            # [TODO]: fp8_real_quant does not have all_reduce max implemented
             max_calibrate(self.input_quantizer, lambda iq: iq(dummy_input), distributed_sync=False)
         if _has_state(self.output_quantizer, "_amax"):
             self.output_quantizer.reset_amax()
             dummy_input = torch.ones(
                 (1, 1, self.weight.shape[0]), device=self.weight.device, dtype=self.weight.dtype
             )
-            # [TODO]: fp8_real_quant does not have all_reduce max implemented
             max_calibrate(self.output_quantizer, lambda oq: oq(dummy_input), distributed_sync=False)
-
         # If there are any other states, lets move them to the correct device
         super().modelopt_post_restore(prefix=prefix)
 

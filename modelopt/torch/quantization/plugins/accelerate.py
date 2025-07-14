@@ -51,7 +51,7 @@ def _get_cpu_offload_hook(hook):
 
 
 @contextmanager
-def weight_access_and_writeback_context(module, root_model=None):
+def weight_access_and_writeback_context(module):
     """Context manager for weight access and writeback for modules managed by accelerate."""
     assert hasattr(module, "_hf_hook")
     align_hook = _get_cpu_offload_hook(module._hf_hook)

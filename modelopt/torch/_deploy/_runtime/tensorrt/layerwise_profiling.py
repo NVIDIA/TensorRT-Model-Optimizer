@@ -15,6 +15,7 @@
 
 import json
 import logging
+from pathlib import Path
 
 from ..common import read_string
 from .constants import INPUT_DATA_KEY, NODE_NAME_DELIMITER, OUTPUT_DATA_KEY, UNNAMED_LAYER_KEY
@@ -42,7 +43,9 @@ def _merge_reformatters(layer_latency_dict: dict[str, float]) -> dict[str, float
     return layer_latency_dict
 
 
-def process_layerwise_result(profile_path: str, onnx_node_names: list[str]) -> dict[str, float]:
+def process_layerwise_result(
+    profile_path: str | Path, onnx_node_names: list[str] | None = None
+) -> dict[str, float]:
     """This module process the layerwise profiling result to make them mappable to PyTorch.
 
     Args:
@@ -77,7 +80,7 @@ def process_layerwise_result(profile_path: str, onnx_node_names: list[str]) -> d
 
 
 def map_trt_layers_to_onnx(
-    layerwise_result: dict[str, float], onnx_node_names: list[str]
+    layerwise_result: dict[str, float], onnx_node_names: list[str] | None = None
 ) -> dict[str, float]:
     """This module maps the TensorRT layers from profiling result with onnx nodes.
 
@@ -115,7 +118,7 @@ def map_trt_layers_to_onnx(
         keys = []
 
         # To match the longer name first, match from the last node
-        for node_name in reversed(onnx_node_names):
+        for node_name in reversed(onnx_node_names or []):
             if node_name in layer:
                 keys.append(node_name)
                 layer = layer.replace(node_name, "")  # Skip from further matching

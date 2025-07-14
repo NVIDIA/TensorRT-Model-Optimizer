@@ -106,7 +106,7 @@ To perform QAT, run:
    --num_epochs 2.0 \
    --lr 1e-5 \
    --do_train True \
-   --quant_cfg NVFP4_DEFAULT_CFG
+   --quant_cfg NVFP4_DEFAULT_CFG \
    --output_dir llama3-qat
 ```
 
@@ -128,6 +128,8 @@ You could also add your own customized quantization format to `CUSTOM_QUANT_CFG`
 
 > **_NOTE:_** `launch.sh` defaults to use `LlamaDecoderLayer` as the transformer layer class. If your model uses a different class, you can pass `--fsdp_transformer_layer_cls_to_wrap <your_layer_class>` to the `launch.sh` script.
 
+> **_NOTE:_** The script defaults to using FSDP1. To use FSDP2, pass "--use_fsdp2 True" to the `launch.sh` script. Note that FSDP2 is less stable than FSDP1 currently. Use it with caution.
+
 #### Results
 
 Here is an example result following the workflow above with slightly different hyper-parameters (We used an effective batch size of 128 by adjusting `--train_bs` and `--accum_steps` as per the available GPU memory).
@@ -145,6 +147,10 @@ for QAT over PTQ alone.
 > **_NOTE:_** From our experience, the QAT performs better with a larger batch size, so we recommend using a larger batch size if your hardware allows it.
 
 > **_NOTE:_** If you only use part of the dataset for fine-tuning/QAT, we recommend to use different data samples for fine-tuning and QAT, otherwise there may appear overfitting issues during the QAT stage.
+
+#### NeMo QAT/QAD Simplified Flow Example
+
+The [examples/nemo_run/qat](../nemo_run/qat) directory also contains an end-to-end NeMo QAT Simplified Flow example, which supports both QAT with cross-entropy loss and QAD (quantization-aware distillation) with knowledge-distillation loss between the full-precision teacher and quantized student models.
 
 #### Testing QAT model with LLM benchmarks for accuracy evaluation
 
@@ -173,7 +179,7 @@ To run QAT model with TRTLLM, run:
 ```sh
 cd ../llm_ptq
 
-./scripts/huggingface_example.sh --model ../llm_qat/llama2-qat --quant w4a8_awq
+./scripts/huggingface_example.sh --model ../llm_qat/llama3-qat --quant w4a8_awq
 ```
 
 Note: The QAT checkpoint for `w4a8_awq` config can be created by using `--quant_cfg W4A8_AWQ_BETA_CFG` in [QAT example](#end-to-end-qat-example).
@@ -213,3 +219,71 @@ To perform QLoRA training, run:
 ```
 
 > **_NOTE:_** QLoRA is currently an experimental feature designed to reduce the memory footprint during training. Deployment functionality is not yet available.
+
+## Quantization Aware Distillation (QAD)
+
+Quantization aware distillation (QAD) can be used improve accuracy of the model using the original full precision model as a teacher model.
+
+Here is an example workflow for performing QAD:
+
+.. note::
+QAD workflow is experimental and is subject to change.
+
+```python
+import modelopt.torch.opt as mto
+import modelopt.torch.distill as mtd
+import modelopt.torch.quantization as mtq
+from modelopt.torch.distill.plugins.huggingface import LMLogitsLoss
+from modelopt.torch.quantization.plugins.transformers_trainer import QADTrainer
+
+...
+
+# [Not shown] load model, tokenizer, data loaders etc
+# Create the distillation config
+distill_config = {
+   "teacher_model": (
+         _teacher_factory,
+         (
+            model_args.teacher_model,
+            training_args.cache_dir,
+         ),
+         {},
+   ),
+   "criterion": LMLogitsLoss(),
+   "expose_minimal_state_dict": False,
+}
+
+trainer = QADTrainer(
+   model=model,
+   processing_class=tokenizer,
+   args=training_args,
+   quant_args=quant_args,
+   distill_config=distill_config,
+   **data_module,
+)
+
+trainer.train()  # Train the quantized model using distillation (i.e, QAD)
+
+# Save the final student model weights; An example usage
+trainer.save_model(export_student=True)
+```
+
+#### End-to-end QAD example
+
+To perform QAD with logits loss, run:
+
+```sh
+./launch.sh --model llama3-finetune \
+   --num_epochs 3 \
+   --lr 4e-5 \
+   --quant_cfg NVFP4_DEFAULT_CFG \
+   --do_train True \
+   --output_dir llama-qad \
+   --distill True
+```
+
+> **_NOTE:_** QAD currently requires quantization to be applied before the FSDP wrapper. Training is not supported for models that exceed single GPU memory capacity.
+
+#### Testing and deploying QAD models
+
+The model generated after QAD is similar to QAT model. Refer to [Testing](#testing-qat-model-with-llm-benchmarks-for-accuracy-evaluation) and [Deployment](#deployment) for more details.

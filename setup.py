@@ -23,7 +23,7 @@ import setuptools
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
 version = os.environ.get(
-    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.31.0" if platform.system() == "Linux" else "0.27.0"
+    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.33.0" if platform.system() == "Linux" else "0.27.0"
 )
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
@@ -32,23 +32,31 @@ setup_kwargs = {}
 
 # Required and optional dependencies ###############################################################
 required_deps = [
+    # Common
     f"nvidia-modelopt-core=={version}",
     "ninja",  # for faster building of C++ / CUDA extensions
     "numpy",
     "packaging",
     "pydantic>=2.0",
+    "nvidia-ml-py>=12",
     "rich",
     "scipy",
     "tqdm",
+    # modelopt.torch
+    "pulp",
+    "regex",
+    "safetensors",
+    "torch>=2.4",
+    "torchprofile>=0.0.4",
+    "torchvision",
 ]
 
 optional_deps = {
-    "deploy": [],
     "onnx": [
         "cppimport",
         "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
+        "ml_dtypes",  # for bfloat16 conversion
         "onnx>=1.18.0",
-        "onnxconverter-common",
         "onnx-graphsurgeon",
         "onnxruntime~=1.22.0 ; platform_machine == 'aarch64' or platform_system == 'Darwin'",
         "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
@@ -56,22 +64,13 @@ optional_deps = {
         "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
         "polygraphy>=0.49.22",
     ],
-    "torch": [
-        "pulp",
-        "nvidia-ml-py>=12",
-        "regex",
-        "safetensors",
-        "torch>=2.4",
-        "torchprofile>=0.0.4",
-        "torchvision",
-    ],
     "hf": [
         "accelerate>=1.0.0",
         "datasets>=3.0.0",
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.12.0",
-        "transformers>=4.48.0,<4.52",
+        "transformers>=4.48,<4.54",  # Version match done in modelopt/torch/__init__.py as well
     ],
     # linter tools
     "dev-lint": [

@@ -131,12 +131,16 @@ def export_int8(
     num_bits: int,
     unsigned: bool,
     narrow_range: bool,
-    trt_high_precision_dtype: str,
+    trt_high_precision_dtype: str | None,
 ):
     """Export quantized model to INT8 ONNX."""
     assert num_bits == 8, "Only INT8 ONNX export is supported for now."
     output_shape = sym_help._get_tensor_sizes(inputs)
     maxbound = (1 << (num_bits - 1 + int(unsigned))) - 1
+
+    input_type = inputs.type().scalarType()
+    if trt_high_precision_dtype is None:
+        trt_high_precision_dtype = input_type
 
     if amax.numel() == 1:
         zero_point, axis = torch.tensor(0.0, device=amax.device), None
@@ -159,8 +163,6 @@ def export_int8(
     scale = amax / maxbound
     scale.masked_fill_(scale == 0, 1.0)
     scale = g.op("Constant", value_t=scale)
-
-    input_type = inputs.type().scalarType()
 
     assert trt_high_precision_dtype in (input_type, "Float"), (
         "TRT StronglyType requires both weights and amax to be in the BF16/FP16, or the QDQ in Float."
@@ -213,7 +215,7 @@ def _fp8_dequantize(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
     scale_inv: float,
-    trt_high_precision_dtype: str = "Float",
+    trt_high_precision_dtype: str,
     otype: str | None = None,
 ):
     """Helper Function for Dequantization."""
@@ -240,11 +242,14 @@ def export_fp8(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
     amax: float,
-    trt_high_precision_dtype: str,
+    trt_high_precision_dtype: str | None,
 ):
     """Export quantized model to FP8 ONNX."""
     scale = 1.0 if amax is None else 448.0 / float(amax)
     otype = inputs.type().scalarType()
+    if trt_high_precision_dtype is None:
+        trt_high_precision_dtype = otype
+
     q_tensor = _fp8_quantize(g, inputs, 1.0 / scale, trt_high_precision_dtype)
     return _fp8_dequantize(g, q_tensor, 1.0 / scale, trt_high_precision_dtype, otype)
 
@@ -459,7 +464,7 @@ def _fp4_dynamic_quantize(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
     scale: float,
-    trt_high_precision_dtype: str,
+    trt_high_precision_dtype: str | None,
     block_size: int,
     axis: int = -1,
     scale_type: int = onnx_dtype_map["Float8"],
@@ -467,6 +472,9 @@ def _fp4_dynamic_quantize(
     """Helper Function for Dynamic Quantization."""
     # TRT StronglyType only supports FP16 QDQ ops, so cast the input if needed.
     input_type = inputs.type().scalarType()
+    if trt_high_precision_dtype is None:
+        trt_high_precision_dtype = input_type
+
     if trt_high_precision_dtype != input_type:
         inputs = g.op("Cast", inputs, to_i=onnx_dtype_map[trt_high_precision_dtype])
 
@@ -492,7 +500,7 @@ def _fp4_dequantize(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
     scale: float | torch.Value,
-    trt_high_precision_dtype: str,
+    trt_high_precision_dtype: str | None,
 ):
     """Helper Function for Dequantization."""
     if isinstance(scale, float):
@@ -574,7 +582,7 @@ def export_fp4(
     block_size: int,
     amax: torch.Value,
     num_bits: tuple[int, int],
-    trt_high_precision_dtype: str,
+    trt_high_precision_dtype: str | None,
     onnx_quantizer_type: str,
 ):
     """Export quantized model to FP4 ONNX."""

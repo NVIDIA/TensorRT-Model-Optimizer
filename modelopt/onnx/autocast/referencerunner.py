@@ -30,6 +30,7 @@ import numpy as np
 import onnx
 
 from modelopt.onnx.autocast.logging_config import configure_logging, logger
+from modelopt.onnx.quantization.ort_utils import _prepare_ep_list
 
 configure_logging()
 
@@ -37,10 +38,25 @@ configure_logging()
 class ReferenceRunner:
     """A class to run ONNX models with ONNXRuntime for reference inference."""
 
-    def __init__(self, model: onnx.ModelProto):
+    def __init__(
+        self, model: onnx.ModelProto, providers: list[str] = ["cpu"], trt_plugins: list[str] = []
+    ):
         """Initialize with ONNX model path."""
         self.model = model
         self.input_names = [input.name for input in self.model.graph.input]
+        self.providers = self._prepare_ep_list_with_trt_plugin_path(providers, trt_plugins)
+
+    def _prepare_ep_list_with_trt_plugin_path(self, providers, trt_plugins):
+        providers = _prepare_ep_list(providers) or providers
+        if "TensorrtExecutionProvider" in providers:
+            providers.remove("TensorrtExecutionProvider")
+            # Ensure that the TRT EP is the first in the providers list to avoid fallback issues
+            trt_ep_options = (
+                {"trt_extra_plugin_lib_paths": ";".join(trt_plugins)} if trt_plugins else {}
+            )
+            providers.insert(0, ("TensorrtExecutionProvider", trt_ep_options))
+            logger.info(f"Successfully updated EPs for ORT: {providers}")
+        return providers
 
     def _load_inputs_from_json(self, input_data_path):
         """Load inputs from Polygraphy JSON format."""
@@ -107,7 +123,7 @@ class ReferenceRunner:
         model_copy = copy.deepcopy(self.model)
         modify_outputs = ModifyOnnxOutputs(model_copy, outputs=constants.MARK_ALL)
         serialize_onnx = BytesFromOnnx(modify_outputs)
-        build_onnxrt_session = SessionFromOnnx(serialize_onnx)
+        build_onnxrt_session = SessionFromOnnx(serialize_onnx, providers=self.providers)
         runners = [OnnxrtRunner(build_onnxrt_session)]
 
         # Comparator is used despite the fact that we are using ONNXRuntime
@@ -129,5 +145,15 @@ class ReferenceRunner:
             logger.error(f"ONNXRuntime execution failed with output:\n{captured_output}")
             raise Exception("ONNXRuntime failed to run, see logs for details")
 
-        # Convert results to OrderedDict to maintain output order
-        return OrderedDict(results[0][1][0])
+        # Get the output results
+        output_dict = OrderedDict(results[0][1][0])
+
+        # Include input data for completeness
+        input_data = next(iter(data_loader))
+
+        # Combine inputs and outputs in the returned dictionary
+        combined_dict = OrderedDict()
+        combined_dict.update(input_data)
+        combined_dict.update(output_dict)
+
+        return combined_dict

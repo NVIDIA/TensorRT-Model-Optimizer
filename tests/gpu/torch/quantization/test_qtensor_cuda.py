@@ -140,9 +140,22 @@ class TestQTensor:
                 4,
                 {-1: 4},
                 None,
-                torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7, 3]], dtype=torch.bfloat16),
+                torch.tensor([[0, 1, 2, 3, 4, 5, 6, 7, 3, 3]], dtype=torch.bfloat16),
                 torch.tensor(
-                    [[0.0000, 0.8516, 2.1406, 2.9844, 4.0000, 5.0000, 6.0000, 7.0000, 2.9844]],
+                    [
+                        [
+                            0.0000,
+                            0.8516,
+                            2.1406,
+                            2.9844,
+                            4.0000,
+                            5.0000,
+                            6.0000,
+                            7.0000,
+                            2.9844,
+                            2.9844,
+                        ]
+                    ],
                     dtype=torch.bfloat16,
                 ),
             ),
@@ -220,6 +233,14 @@ class TestQTensor:
                 torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
                 torch.tensor([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=torch.bfloat16),
             ),
+            # MXFP4
+            (
+                (2, 1),
+                {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+                None,
+                torch.randn([512, 512], dtype=torch.float32),
+                None,
+            ),
         ],
     )
     @pytest.mark.parametrize("device", ["cpu", "cuda"])
@@ -236,7 +257,21 @@ class TestQTensor:
 
         # De-quantize to origin dtype
         deq_x = quantizer(q_x)
-        assert torch.allclose(deq_x, test_output.to(device))
+
+        if test_output is not None:
+            assert torch.allclose(deq_x, test_output.to(device))
+
+        # compare with fake quant as well
+        if device == "cuda":
+            # skip for nf4
+            if block_sizes and "scale_block_sizes" in block_sizes:
+                return
+            fake_quant_attr_cfg = QuantizerAttributeConfig(
+                num_bits=num_bits, block_sizes=block_sizes, fake_quant=True, axis=axis
+            )
+            fake_quantizer = TensorQuantizer(fake_quant_attr_cfg).to(device)
+            fake_quant_x = fake_quantizer(x)
+            assert torch.allclose(fake_quant_x, deq_x.to(device), rtol=1e-1, atol=1e-1)
 
     @pytest.mark.parametrize("device", ["cuda", "cpu"])
     @pytest.mark.parametrize("block_size", [8])
@@ -357,7 +392,7 @@ class TestQTensor:
     @pytest.mark.parametrize(
         "test_input",
         [
-            torch.randn((14336, 4096), dtype=torch.float32),
+            torch.randn((32, 16), dtype=torch.float32),
             torch.tensor([[0.25, 0.75, 1.25], [1.75, 2.5, 3.5]], dtype=torch.float32),
             torch.tensor([[0.1, 2.5, 1.0, 4.8], [1.5, 1.25, 3.25, 5.0]], dtype=torch.float32),
             torch.tensor([[0, 0.75, 1.25], [1.75, 2.5, 5.5]], dtype=torch.float32),
@@ -396,11 +431,7 @@ class TestQTensor:
 
     @pytest.mark.parametrize(
         "input_shape",
-        [
-            (4096, 14336),
-            (8192, 28672),
-            (16384, 53248),
-        ],
+        [(16, 32)],
     )
     def test_cast_fp4_impl_gpu_mem(self, input_shape):
         def _get_gpu_mem_used():

@@ -137,6 +137,7 @@ def convert_quantization_axis_to_reduce_axis(input, axis):
     return reduce_axis
 
 
+@torch.no_grad()
 def reduce_amax(input, axis=None, keepdims=True, squeeze_scalar=True):
     """Compute the absolute maximum value of a tensor.
 
@@ -152,30 +153,24 @@ def reduce_amax(input, axis=None, keepdims=True, squeeze_scalar=True):
         axis: The dimensions to reduce. None or int or tuple of ints. If None (the default),
             reduces all dimensions. Must be in the range [-rank(input_tensor), rank(input_tensor)).
         keepdims: A boolean. If true, retains reduced dimensions with length 1. Default True
-        granularity: DEPRECTED. specifies if the statistic has to be calculated at tensor or channel granularity
 
     Returns:
         The reduced tensor.
-
-    Raises:
-        ValueError: Any axis which doesn't make sense or is not supported
-        ValueError: If unknown granularity is passed in.
     """
-    with torch.no_grad():
-        # A memory-efficient implementation that avoids copying input tensor
-        if axis is None:
-            max_val = torch.max(input)
-            min_val = torch.min(input)
-            output = torch.maximum(torch.abs(max_val), torch.abs(min_val))
-        else:
-            if isinstance(axis, int):
-                axis = (axis,)
-            max_val = torch.amax(input, dim=axis, keepdim=keepdims)
-            min_val = torch.amin(input, dim=axis, keepdim=keepdims)
-            output = torch.maximum(torch.abs(max_val), torch.abs(min_val))
-            if squeeze_scalar and output.numel() == 1:
-                output.squeeze_()
-        return output
+    # A memory-efficient implementation that avoids copying input tensor
+    if axis is None:
+        max_val = torch.max(input)
+        min_val = torch.min(input)
+        output = torch.maximum(torch.abs(max_val), torch.abs(min_val))
+    else:
+        if isinstance(axis, int):
+            axis = (axis,)
+        max_val = torch.amax(input, dim=axis, keepdim=keepdims)
+        min_val = torch.amin(input, dim=axis, keepdim=keepdims)
+        output = torch.maximum(torch.abs(max_val), torch.abs(min_val))
+        if squeeze_scalar and output.numel() == 1:
+            output.squeeze_()
+    return output
 
 
 def is_quantized(module):
@@ -211,6 +206,11 @@ def is_quantized_column_parallel_linear(module):
 def is_quantized_row_parallel_linear(module):
     """Check if a module is a quantized row parallel linear module."""
     return is_quantized_linear(module) and getattr(module, "_is_row_parallel", False)
+
+
+def is_quantized_parallel_linear(module):
+    """Check if a module is a quantized parallel linear module."""
+    return is_quantized_column_parallel_linear(module) or is_quantized_row_parallel_linear(module)
 
 
 @contextmanager
@@ -256,6 +256,94 @@ def is_pow2(n):
     return (n != 0) and (n & (n - 1) == 0)
 
 
+def _get_fsdp2_mesh(module: torch.nn.Module):
+    """Get the mesh info of the model."""
+    try:
+        from torch.distributed._composable_state import _get_module_state
+    except ImportError:
+        return None
+
+    fsdp_state = _get_module_state(module)
+    if (
+        fsdp_state._fsdp_param_group
+        and fsdp_state._fsdp_param_group.post_forward_mesh_info is not None
+    ):
+        return fsdp_state._fsdp_param_group.post_forward_mesh_info.mesh
+
+
+def _get_enclosing_fsdp_module(module: torch.nn.Module, root_model: torch.nn.Module):
+    """Get the enclosing FSDP module for a given module."""
+    try:
+        from torch.distributed.fsdp import FSDPModule
+    except ImportError:
+        return None
+
+    if isinstance(module, FSDPModule):
+        return module
+
+    name_to_module = dict(root_model.named_modules())
+    target_module_name = next((name for name, m in name_to_module.items() if m is module), None)
+
+    if target_module_name is None:
+        raise ValueError(f"Module {module} not found in the root model {root_model}.")
+
+    current_name = target_module_name
+    while "." in current_name:
+        parent_name = ".".join(current_name.split(".")[:-1])
+        parent_module = name_to_module.get(parent_name)
+        if parent_module and isinstance(parent_module, FSDPModule):
+            return parent_module
+        current_name = parent_name
+
+    if isinstance(root_model, FSDPModule):
+        return root_model
+
+
+@contextmanager
+def fsdp2_weight_access_and_writeback_context(module: torch.nn.Module, root_model: torch.nn.Module):
+    """Context manager for FSDP2 weight access and writeback.
+
+    Note this context will gather the weight across FSDP/HSDP shards. If TP is implemented with DTensor,
+    the weight will be a local tensor of the TP DTensor under this context.
+    """
+    from torch.distributed.tensor import Replicate
+
+    assert isinstance(root_model, torch.distributed.fsdp.FSDPModule), "We only support FSDP2"
+
+    assert not hasattr(module, "_hf_hook"), "We dont support FSDP2 with HF accelerate hooks"
+    assert isinstance(module.weight, torch.distributed.tensor.DTensor)
+    fsdp_module = _get_enclosing_fsdp_module(module, root_model)
+    assert fsdp_module is not None, "Module is not wrapped by FSDP"
+    fsdp_device_mesh = _get_fsdp2_mesh(fsdp_module)
+    fsdp_dim = fsdp_device_mesh.ndim
+
+    original_placements = module.weight.placements
+    original_device_mesh = module.weight.device_mesh
+    original_weight = module.weight
+    # Assuming the first fsdp_dim dimensions are for FSDP/HSDP, we only collect the tensor over FSDP/HSDP dimension,
+    # the TP will be handled by the TP reduction.
+    if fsdp_dim != original_device_mesh.ndim:
+        assert fsdp_device_mesh.mesh_dim_names == original_device_mesh.mesh_dim_names[:fsdp_dim], (
+            "FSDP2 mesh should be a slice of DTesnor's device mesh."
+        )
+
+    weight_collected = original_weight.redistribute(
+        placements=[Replicate()] * fsdp_dim + list(original_placements[fsdp_dim:]),
+        device_mesh=original_device_mesh,
+    )
+    new_weight = torch.nn.Parameter(weight_collected.to_local())
+    module._parameters["weight"] = new_weight
+
+    yield
+
+    original_weight.to_local().data.copy_(
+        weight_collected.redistribute(
+            placements=original_placements, device_mesh=original_device_mesh
+        ).to_local()
+    )
+    module._parameters["weight"] = original_weight
+
+
 @contextmanager
 def enable_weight_access_and_writeback(module, root_model):
     """Enable weight access and writeback for a module.
@@ -263,11 +351,15 @@ def enable_weight_access_and_writeback(module, root_model):
     Useful for modules with weight not intact such as Linear layer in FSDP wrapped model or
     HF accelerate CPU off-loaded models.
     """
-    if hasattr(module, "_hf_hook"):
+    if _get_enclosing_fsdp_module(module, root_model) is not None:
+        context = fsdp2_weight_access_and_writeback_context(module, root_model)
+    elif is_quantized_parallel_linear(module) and hasattr(module, "_hf_tp_plan"):
+        # HF transformers TP sharded linear layer
+        context = module.enable_weight_access_and_writeback()
+    elif hasattr(module, "_hf_hook"):
         from .plugins.accelerate import weight_access_and_writeback_context
 
         context = weight_access_and_writeback_context(module)
-    # TODO: add support for fsdp2
     else:
         context = nullcontext()
 

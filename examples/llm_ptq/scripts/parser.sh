@@ -40,7 +40,8 @@ parse_options() {
     USE_SEQ_DEVICE_MAP=false
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "type:,model:,quant:,kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,auto_quantize_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,use_seq_device_map,gpu_max_mem_percentage:,kv_cache_free_gpu_memory_fraction:,low_memory_mode,no-verbose" -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "type:,model:,quant:,kv_cache_quant:,tp:,calib_tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,auto_quantize_bits:,input:,output:,batch:,tasks:,export_fmt:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,use_seq_device_map,gpu_max_mem_percentage:,kv_cache_free_gpu_memory_fraction:,low_memory_mode,no-verbose,calib_dataset:" -n "$0" -- "$@")
+
   eval set -- "$ARGS"
   while true; do
     case "$1" in
@@ -71,6 +72,7 @@ parse_options() {
       --kv_cache_free_gpu_memory_fraction ) KV_CACHE_FREE_GPU_MEMORY_FRACTION="$2"; shift 2;;
       --no-verbose ) VERBOSE=false; shift;;
       --low_memory_mode ) LOW_MEMORY_MODE=true; shift;;
+      --calib_dataset ) CALIB_DATASET="$2"; shift 2;;
       -- ) shift; break ;;
       * ) break ;;
     esac
@@ -154,5 +156,6 @@ parse_options() {
   echo "gpu_max_mem_percentage: $GPU_MAX_MEM_PERCENTAGE"
   echo "kv_cache_free_gpu_memory_fraction: $KV_CACHE_FREE_GPU_MEMORY_FRACTION"
   echo "low_memory_mode: $LOW_MEMORY_MODE"
+  echo "calib_dataset: $CALIB_DATASET"
   echo "================="
 }
