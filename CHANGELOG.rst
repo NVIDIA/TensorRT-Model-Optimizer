@@ -1,7 +1,7 @@
 Model Optimizer Changelog (Linux)
 =================================
 
-0.33 (2025-07-xx)
+0.33 (2025-07-14)
 ^^^^^^^^^^^^^^^^^
 
 **Backward Breaking Changes**
