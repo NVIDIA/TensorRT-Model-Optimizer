@@ -47,7 +47,6 @@ def test_real_quantize(model_cls, config):
         config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {
             -1: 16,
             "scale_bits": 8,
-            "scale_block_sizes": {-1: 16},
         }
         if model_cls is SimpleConv or model_cls is SimpleConvLinear:
             pytest.skip(
@@ -102,7 +101,6 @@ def test_save_restore(model_cls, config):
         config["quant_cfg"]["*weight_quantizer"]["block_sizes"] = {
             -1: 16,
             "scale_bits": 8,
-            "scale_block_sizes": {-1: 16},
         }
         if model_cls is SimpleConv or model_cls is SimpleConvLinear:
             pytest.skip(

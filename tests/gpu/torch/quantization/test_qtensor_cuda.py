@@ -30,7 +30,10 @@ class TestQTensor:
     )
     @pytest.mark.parametrize("device", ["cpu", "cuda"])
     @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
-    def test_qtensor(self, num_bits, block_sizes, device, input_dtype):
+    @pytest.mark.parametrize(
+        ("input_shape", "check_memory"), [((256, 64), True), ((256, 32), False)]
+    )  # test
+    def test_qtensor(self, num_bits, block_sizes, device, input_dtype, input_shape, check_memory):
         nf4_attr_cfg = QuantizerAttributeConfig(
             num_bits=num_bits,
             block_sizes=block_sizes,
@@ -40,7 +43,7 @@ class TestQTensor:
 
         # Original tensor
         base_mem = torch.cuda.memory_allocated("cuda")
-        x = torch.rand(256, 64).to(device).to(dtype=input_dtype)
+        x = torch.rand(input_shape).to(device).to(dtype=input_dtype)
         x_allocated = torch.cuda.memory_allocated("cuda")
         bf16_mem_usage = x_allocated - base_mem
 
@@ -51,7 +54,7 @@ class TestQTensor:
         nf4_mem_usage = nf4_x_allocated - base_mem
 
         # Check the memory saving
-        if bf16_mem_usage > 0:
+        if bf16_mem_usage > 0 and check_memory:
             assert (nf4_mem_usage) / bf16_mem_usage < 0.3
 
         # De-quantize to origin dtype

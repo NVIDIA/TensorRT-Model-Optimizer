@@ -37,7 +37,7 @@ class INT4QTensor(BaseQuantizedTensor):
         return 2 ** (num_bits - 1) - 1
 
     @classmethod
-    def quantize(cls, input: torch.Tensor, block_size: int) -> torch.Tensor:
+    def quantize(cls, input: torch.Tensor, block_size: int) -> tuple:
         """Converting a tensor to a quantized format based on INT4 (AWQ) quantization.
 
         Args:

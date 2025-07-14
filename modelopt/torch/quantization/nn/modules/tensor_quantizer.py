@@ -575,7 +575,9 @@ class TensorQuantizer(nn.Module):
         ):
             # NF4 double quantization
             # Return real quantized tensor class and store scales inside the TensorQuantizer
-            outputs, scales = NF4QTensor.quantize(inputs, self._block_sizes[-1])
+            outputs, scales = NF4QTensor.quantize(
+                inputs, self._block_sizes[-1], self._block_sizes["scale_block_sizes"][-1]
+            )
             _scale, _double_scale, _scale_zeros = NF4QTensor.double_quantization(
                 scales,
                 self._block_sizes["scale_block_sizes"][-1],
