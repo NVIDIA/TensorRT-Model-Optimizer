@@ -613,20 +613,29 @@ class _DynamicSelfAttention(DynamicModule):
     def _estimate_all_head_importance(self) -> TracedHp.Importance:
         """Return the importance for num_attention_heads (num_heads_per_group * num_query_groups)."""
         assert self._activations is not None, "No activations collected for importance estimation."
-        attn_head_importance = self._activations.view(
-            self.get_hparam("num_heads_per_group").max * self.get_hparam("num_query_groups").max,
-            self.config.kv_channels,
-        ).norm(p=2, dim=1)
+        attn_head_importance = torch.linalg.vector_norm(
+            self._activations.view(
+                self.get_hparam("num_heads_per_group").max
+                * self.get_hparam("num_query_groups").max,
+                self.config.kv_channels,
+            ),
+            ord=2,
+            dim=1,
+        )
         return attn_head_importance
 
     def _estimate_query_group_importance(self) -> TracedHp.Importance:
         """Return the importance of the ``num_query_groups`` hparam."""
         assert self._activations is not None, "No activations collected for importance estimation."
-        group_importance = self._activations.view(
-            self.get_hparam("num_heads_per_group").max,
-            self.get_hparam("num_query_groups").max,
-            self.config.kv_channels,
-        ).norm(p=2, dim=(0, 2))
+        group_importance = torch.linalg.vector_norm(
+            self._activations.view(
+                self.get_hparam("num_heads_per_group").max,
+                self.get_hparam("num_query_groups").max,
+                self.config.kv_channels,
+            ),
+            ord=2,
+            dim=(0, 2),
+        )
         return group_importance
 
     def export(self) -> torch.nn.Module:
