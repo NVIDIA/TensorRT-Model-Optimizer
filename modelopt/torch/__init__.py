@@ -20,12 +20,22 @@ import warnings as _warnings
 from packaging.version import Version as _Version
 from torch import __version__ as _torch_version
 
-try:
-    from . import distill, nas, opt, prune, quantization, sparsity, speculative, utils
-except ImportError as e:
-    raise ImportError(f"{e}\nPlease install optional ``[torch]`` dependencies.")
+from . import distill, nas, opt, prune, quantization, sparsity, speculative, utils
 
 if _Version(_torch_version) < _Version("2.5"):
     _warnings.warn(
         "nvidia-modelopt will drop torch<2.5 support in a future release.", DeprecationWarning
     )
+
+# Since `hf` dependencies are optional and users have pre-installed transformers, we need to ensure
+# correct version is installed to avoid incompatibility issues.
+try:
+    from transformers import __version__ as _transformers_version
+
+    if not (_Version("4.48") <= _Version(_transformers_version) < _Version("4.54")):
+        _warnings.warn(
+            f"transformers version {_transformers_version} is incompatible with nvidia-modelopt and may cause issues. "
+            "Please install recommended version with `pip install nvidia-modelopt[hf]` if working with HF models.",
+        )
+except ImportError:
+    pass

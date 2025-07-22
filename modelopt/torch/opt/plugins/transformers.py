@@ -17,13 +17,14 @@
 
 import os
 import types
-import warnings
 from contextlib import contextmanager
 
 import torch
+import transformers
 from transformers import PreTrainedModel
 from transformers import modeling_utils as tf_modeling_utils
 
+from ..conversion import ModeloptStateManager
 from .huggingface import _new_save_pretrained, _patch_model_init_for_modelopt, register_for_patching
 
 __all__ = []
@@ -56,25 +57,11 @@ def _undo_torch_init_override_by_transformers():
 
 def _new_from_pretrained(cls, /, pretrained_model_name_or_path, *args, **kwargs):
     """Patch for `cls.from_pretrained` method to restore ModelOpt state."""
-    if kwargs.get("tp_plan") is not None:
-        raise NotImplementedError(
-            "ModelOpt does not support tensor parallelism for Huggingface transformers models yet. "
-            "Please use multi-GPU non-tensor parallel inference by specifying `device_map` in the `from_pretrained` API"
-        )
-
-    original_world_size = None
-    if kwargs.get("device_map") == "auto" and os.environ.get("WORLD_SIZE"):
-        # Transformers overrides device_map ="auto" when world_size is > 0 to use tensor parallelism
-        # We dont support tensor parallelism yet, so lets unset WORLD_SIZE env variable when the original
-        # `from_pretrained` is called and restore it after the model is loaded
-        # TODO: remove this once we support tensor parallelism
-        original_world_size = os.environ["WORLD_SIZE"]
-        del os.environ["WORLD_SIZE"]
-        warnings.warn(
-            f"Distributed setup with world_size={original_world_size} detected with device_map='auto' - Huggingface"
-            "transformers now uses tensor parallelism for this case. "
-            "ModelOpt does not support tensor parallelism for Huggingface transformers models yet. "
-            "Hence, overriding Huggingface transformers behavior to disable tensor parallelism."
+    if kwargs.get("tp_plan") is not None or (
+        kwargs.get("device_map") == "auto" and os.environ.get("WORLD_SIZE")
+    ):
+        assert transformers.__version__ >= "4.52.0", (
+            "Tensor parallelism with ModelOpt requires transformers >= 4.52.0"
         )
 
     with _patch_model_init_for_modelopt(
@@ -83,9 +70,6 @@ def _new_from_pretrained(cls, /, pretrained_model_name_or_path, *args, **kwargs)
         model = types.MethodType(cls._modelopt_cache["from_pretrained"].__func__, cls)(
             pretrained_model_name_or_path, *args, **kwargs
         )
-
-    if original_world_size is not None:
-        os.environ["WORLD_SIZE"] = original_world_size
 
     return model
 
@@ -101,12 +85,20 @@ def _new_from_config(cls, /, config, **kwargs):
     return model
 
 
+def _save_pretrained_with_checks(self, save_directory, *args, **kwargs):
+    if getattr(self, "_tp_size", None) is not None and ModeloptStateManager.is_converted(self):
+        raise NotImplementedError(
+            "ModelOpt does not support saving tensor parallel sharded Huggingface transformer models yet. "
+        )
+    return _new_save_pretrained(self, save_directory, *args, **kwargs)
+
+
 pretrained_model_patch_methods = [
     ("from_pretrained", classmethod(_new_from_pretrained)),
     # We need to patch _from_config of PreTrainedModel; from_config is a private method in _BaseAutoModelClass and
     # patching it is more complex
     ("_from_config", classmethod(_new_from_config)),
-    ("save_pretrained", _new_save_pretrained),
+    ("save_pretrained", _save_pretrained_with_checks),
 ]
 
 register_for_patching("transformers", PreTrainedModel, pretrained_model_patch_methods)

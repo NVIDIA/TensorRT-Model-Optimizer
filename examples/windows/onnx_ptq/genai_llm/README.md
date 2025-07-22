@@ -54,7 +54,7 @@ The table below lists key command-line arguments of the ONNX PTQ example script.
 | `--awqclip_alpha_step` | 0.05 (default) | Step-size for AWQ weight clipping, user-defined |
 | `--awqclip_alpha_min` | 0.5 (default) | Minimum AWQ weight-clipping threshold, user-defined |
 | `--awqclip_bsz_col` | 1024 (default) | Chunk size in columns during weight clipping, user-defined |
-| `--calibration_eps` | dml, cuda, cpu (default: [dml,cpu]) | List of calibration endpoints. |
+| `--calibration_eps` | dml, cuda, cpu, NvTensorRtRtx (default: [dml,cpu]) | List of calibration endpoints. |
 
 Run the following command to view all available parameters in the script:
 

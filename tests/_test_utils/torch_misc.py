@@ -15,6 +15,7 @@
 
 import random
 
+import pytest
 import torch
 
 from modelopt.torch.utils import flatten_tree
@@ -37,3 +38,18 @@ def set_seed(seed_value=42):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     random.seed(seed_value)
+
+
+def minimum_sm(sm):
+    major, minor = sm // 10, sm % 10
+    return pytest.mark.skipif(
+        torch.cuda.get_device_capability() < (major, minor),
+        reason=f"Requires sm{sm} or higher",
+    )
+
+
+def minimum_gpu(n):
+    return pytest.mark.skipif(
+        torch.cuda.device_count() < n,
+        reason=f"Requires at least {n} GPUs",
+    )

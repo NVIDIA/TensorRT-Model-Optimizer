@@ -24,9 +24,11 @@ through type checking and cleanup of redundant operations.
 from collections import namedtuple
 from copy import deepcopy
 
+import ml_dtypes
 import numpy as np
 import onnx
-from onnx import TensorProto, helper, numpy_helper, shape_inference
+import onnx_graphsurgeon as gs
+from onnx import TensorProto, helper, numpy_helper
 
 import modelopt.onnx.autocast.utils as utils
 import modelopt.onnx.utils as onnx_utils
@@ -43,6 +45,11 @@ PRECISION_MAP = {
 }
 
 ONNX_TYPES = [t.onnx_type for t in PRECISION_MAP.values()]
+
+OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Resize", "Upsample", "NonMaxSuppression", "Celu"]
+
+# Temporarily block these ops in low precision, as they are not supported yet
+OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop", "LSTM"])
 
 
 class PrecisionConverter:
@@ -64,7 +71,8 @@ class PrecisionConverter:
         node_to_init_map: dict[str, list[str]],
         keep_io_types: bool = False,
         low_precision_type: str = "fp16",
-        init_conversion_max_bytes: int = np.inf,
+        init_conversion_max_bytes: int | None = None,
+        custom_ops: set[str] | None = None,
     ) -> None:
         """Initialize PrecisionConverter.
 
@@ -77,13 +85,17 @@ class PrecisionConverter:
             low_precision_type: Precision to convert to.
             init_conversion_max_bytes: Maximum size in bytes for initializer conversion. Larger initializers will be
                                        cast at runtime.
+            custom_ops: List of custom ops.
         """
         self.model = deepcopy(model)
         self.value_info_map = value_info_map
         self.initializer_map = initializer_map
         self.node_to_init_map = node_to_init_map
         self.keep_io_types = keep_io_types
-        self.init_conversion_max_bytes = init_conversion_max_bytes
+        self.init_conversion_max_bytes = (
+            np.inf if init_conversion_max_bytes is None else init_conversion_max_bytes
+        )
+        self.custom_ops = custom_ops
         if low_precision_type not in ["fp16", "bf16"]:
             raise ValueError(f"Unsupported precision type: {low_precision_type}")
 
@@ -99,7 +111,9 @@ class PrecisionConverter:
         )
 
     def convert(
-        self, high_precision_nodes: list[str], low_precision_nodes: list[str]
+        self,
+        high_precision_nodes: list[str],
+        low_precision_nodes: list[str],
     ) -> onnx.ModelProto:
         """Convert model to mixed precision.
 
@@ -110,6 +124,14 @@ class PrecisionConverter:
         Returns:
             onnx.ModelProto: The converted mixed precision model.
         """
+        try:
+            self.model = onnx_utils.check_model(self.model)
+        except onnx.checker.ValidationError as e:
+            logger.error(f"Internal error: onnx.checker failed on input model {e}")
+            raise Exception(
+                "AutoCast can only operate on valid ONNX models, but the input model is invalid. See log for details."
+            )
+
         # Filter out nodes that are not allowed to be in low precision
         # This is done here and not in NodeClassifier because it is required for the model to be valid
         high_precision_nodes, low_precision_nodes = self._filter_unsupported_op_types(
@@ -149,17 +171,19 @@ class PrecisionConverter:
         )
 
         # Infer data types (and shapes), propagating the changes we made from graph inputs to outputs
-        # First clear type information for intermediates and outputs
-        for vi in self.model.graph.value_info:
-            vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
-        for out in self.model.graph.output:
-            out.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
-
-        # Run shape and type inference
-        # Populate type information with inferred types
-        self.model = shape_inference.infer_shapes(self.model, strict_mode=True, check_type=False)
-        # Sanity check: Verify type correctness
-        self.model = shape_inference.infer_shapes(self.model, strict_mode=True, check_type=True)
+        if self.custom_ops:
+            # Populate type information with inferred types
+            self.model = self._propagate_types_shapes_custom_ops(self.model)
+        else:
+            # Clear type information for intermediates and outputs
+            for vi in self.model.graph.value_info:
+                vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
+            for out in self.model.graph.output:
+                out.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
+            # Populate type information with inferred types
+            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=False)
+            # Sanity check: Verify type correctness
+            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=True)
 
         # Update value_info_map and initializer_map with casts we added
         self.value_info_map, self.initializer_map, self.node_to_init_map = utils.setup_mappings(
@@ -172,6 +196,120 @@ class PrecisionConverter:
         self._sanity_check()
 
         return self.model
+
+    def _propagate_types_shapes_custom_ops(self, model):
+        """Propagate types and shapes after insertion of 'Cast' nodes or other graph modifications."""
+        logger.info("Propagating tensor shapes and types in model with custom ops.")
+        graph = gs.import_onnx(model)
+        traversed_tensors = []
+
+        def _get_np_type(node, inp, opset=onnx.defs.onnx_opset_version()):
+            if node.op == "Cast":
+                return helper.tensor_dtype_to_np_dtype(node.attrs["to"])
+            elif not inp.dtype or inp.dtype == onnx.TensorProto.UNDEFINED:
+                return None
+            elif node.op not in self.custom_ops:
+                op_schema = onnx.defs.get_schema(node.op, opset)
+                out_types = list(op_schema.outputs[0].types)
+                inp_type = f"tensor({'float' if inp.dtype == 'float32' else inp.dtype})"
+                return (
+                    inp.dtype
+                    if inp_type in out_types
+                    else helper.tensor_dtype_to_np_dtype(
+                        onnx_utils.onnx_type_str_to_enum(out_types[0])
+                    )
+                )
+            return None
+
+        def _can_propagate_type(from_type, to_type):
+            from_type_onnx = helper.np_dtype_to_tensor_dtype(from_type)
+            to_type_onnx = helper.np_dtype_to_tensor_dtype(to_type)
+            return (
+                from_type_onnx in [*ONNX_TYPES, onnx.TensorProto.UNDEFINED]
+                and to_type_onnx in ONNX_TYPES
+            )
+
+        def _propagate_cast_type_through_nodes(node, np_type, iter=1):
+            # Return if node is of cast or quantize type (from iter=2)
+            indent = "  " * iter
+            if iter > 1 and any(op in node.op.lower() for op in ["cast", "quantize"]):
+                return
+
+            out = node.outputs[0]
+            # Return if there's no consumer node
+            is_graph_output_tensor = any(out.name == n.name for n in graph.outputs)
+            if is_graph_output_tensor or not out.outputs:
+                out.dtype = np_type
+                logger.debug(f"{indent}Updated type in {out.name} to {np_type}.")
+                return
+
+            # Search children nodes
+            for child_node in out.outputs:
+                for child_out in child_node.outputs:
+                    # Continue if the type is already correct
+                    if child_out.dtype and child_out.dtype == np_type:
+                        logger.debug(
+                            f"{indent}Type is already correct in {child_out.name}: {child_out.dtype}. Continue."
+                        )
+                        continue
+
+                    # Continue if the tensor was already traversed
+                    if child_out.name in traversed_tensors and all(
+                        inp.name in traversed_tensors for inp in child_node.inputs
+                    ):
+                        logger.debug(
+                            f"{indent}Tensor {child_out.name} of shape {child_out.shape} and type {child_out.dtype} "
+                            f"was already traversed. Continue."
+                        )
+                        return
+                    if child_out.dtype and child_out.dtype != onnx.TensorProto.UNDEFINED:
+                        traversed_tensors.append(child_out.name)
+
+                    # Update tensor type if the types are supported
+                    if child_out.dtype:
+                        if _can_propagate_type(child_out.dtype, np_type):
+                            child_out.dtype = np_type
+                            logger.debug(
+                                f"{indent}Updated type in {child_out.name} from {child_out.dtype} to {np_type}."
+                            )
+                    elif helper.np_dtype_to_tensor_dtype(np_type) in ONNX_TYPES:
+                        child_out.dtype = np_type
+                        logger.debug(
+                            f"{indent}Updated type in {child_out.name} from 'None' to {np_type}."
+                        )
+
+                    # Propagate types to the next node
+                    if child_out.outputs:
+                        _propagate_cast_type_through_nodes(child_node, np_type, iter=iter + 1)
+            return
+
+        # Propagate tensor types and shapes for all layers in the graph
+        for node in graph.nodes:
+            # Get input and type information
+            if not (inp := (node.inputs[0] if node.inputs else None)):
+                continue
+            if not (np_type := _get_np_type(node, inp)):
+                continue
+
+            # Propagate tensor types to outputs
+            for out in node.outputs:
+                # Update the output type if relevant
+                if not out.dtype or _can_propagate_type(out.dtype, np_type):
+                    out.dtype = np_type
+
+                # Set the output shape
+                if not out.shape:
+                    if isinstance(inp, gs.Constant):
+                        out.shape = inp.values.shape
+                    elif inp.inputs and inp.inputs[0].op == "Constant":
+                        out.shape = inp.inputs[0].attrs["value"].values.shape
+                    elif inp.shape:
+                        out.shape = inp.shape
+
+            # Propagate tensor types to the children nodes (until another Cast or Q node is met)
+            _propagate_cast_type_through_nodes(node, np_type)
+
+        return gs.export_onnx(graph)
 
     def _is_bf16(self, type: PrecisionTypes = None) -> bool:
         if type is None:
@@ -213,6 +351,16 @@ class PrecisionConverter:
             logger.warning(f"Did not find {tensor_name} in value info map! Assuming not castable")
             return False
 
+    def _is_empty_tensor(self, tensor_name: str) -> bool:
+        if tensor_name in self.value_info_map:
+            tensor_info = self.value_info_map[tensor_name]
+            for dim in tensor_info.type.tensor_type.shape.dim:
+                if (dim.HasField("dim_value") and dim.dim_value == 0) or (
+                    dim.HasField("dim_param") and dim.dim_param == "0"
+                ):
+                    return True
+        return False
+
     def _filter_unsupported_op_types(
         self, high_precision_nodes: list[str], low_precision_nodes: list[str]
     ) -> tuple[list[str], list[str]]:
@@ -222,7 +370,7 @@ class PrecisionConverter:
         # precision so we need to set Resize and Upsample to high precision
         for node in self.model.graph.node:
             if (
-                node.op_type in ["Resize", "Upsample", "NonMaxSuppression", "Celu"]
+                node.op_type in OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION
                 and node.name in low_precision_nodes
             ):
                 low_precision_nodes.remove(node.name)
@@ -279,14 +427,17 @@ class PrecisionConverter:
             from_type: PrecisionTypes,
             to_type: PrecisionTypes,
         ):
-            # If initializer is too large, skip conversion, perform cast instead
-            if (
-                init.raw_data
-                and len(init.raw_data) > self.init_conversion_max_bytes
-                and init.data_type == from_type.onnx_type
-            ):
+            if init.data_type != from_type.onnx_type:
                 logger.debug(
-                    f"Initializer {init.name} is too large, skipping initalizer conversion, cast in "
+                    f"Initializer {init.name} has data type {init.data_type}, and size {len(init.raw_data)},"
+                    "skipping conversion"
+                )
+                return False
+
+            # If initializer is too large, skip conversion, perform cast instead
+            if init.raw_data and len(init.raw_data) > self.init_conversion_max_bytes:
+                logger.debug(
+                    f"Initializer {init.name} is too large, skipping initializer conversion, cast in "
                     "runtime instead"
                 )
                 exclude_consumers = (
@@ -299,8 +450,6 @@ class PrecisionConverter:
                 assert from_type.str_short in PRECISION_MAP
                 assert to_type.str_short in PRECISION_MAP
                 assert from_type.str_short != to_type.str_short
-                if init.data_type != from_type.onnx_type:
-                    return False
 
                 if np_array.dtype == from_type.numpy_type:
                     consumers = [n.name for n in utils.get_consumer_nodes(self.model, init.name)]
@@ -335,28 +484,36 @@ class PrecisionConverter:
                         initializer_converted.append(init.name)
                         self.model.graph.initializer.remove(init)
 
-                    # Numpy does not support bfloat16, use ONNX utils to create the raw data instead
+                    # Numpy does not support bfloat16, use ml_dtypes to create the raw data instead
                     if self._is_bf16(to_type) and self._is_fp32(from_type):
                         new_init = onnx.TensorProto()
                         new_init.dims.extend(np_array.shape)
                         new_init.name = new_name
                         new_init.data_type = onnx.TensorProto.BFLOAT16
-                        bf16_bytes = np.vectorize(helper.float32_to_bfloat16)(np_array).astype(
-                            np.uint16
-                        )
+                        bf16_bytes = np_array.astype(ml_dtypes.bfloat16).view(np.uint16)
                         new_init.raw_data = bf16_bytes.tobytes()
                     else:
                         assert to_type.numpy_type is not None
-                        data_min, data_max = (
-                            np.finfo(to_type.numpy_type).min,
+                        data_max, data_lowest = (
                             np.finfo(to_type.numpy_type).max,
+                            np.finfo(to_type.numpy_type).smallest_subnormal,
                         )
-                        if np.any(np_array < data_min) or np.any(np_array > data_max):
+                        if np.any(np.abs(np_array) > data_max):
                             logger.warning(
-                                f"Initializer {init.name} used by node {node.name} contains values outside valid range,"
-                                "values will be clamped"
+                                f"Initializer {init.name} used by node {node.name} contains values larger than "
+                                f"largest {to_type.str_short} value, values will be clamped to {data_max}."
                             )
-                            np_array = np.clip(np_array, data_min, data_max)
+                            np_array = np.clip(np_array, -1 * data_max, data_max)
+                        if np.any((np_array != 0.0) & (np.abs(np_array) < data_lowest)):
+                            logger.warning(
+                                f"Initializer {init.name} used by node {node.name} contains values smaller than "
+                                f"smallest {to_type.str_short} value, values will be replaced with {data_lowest:.1e}."
+                            )
+                            np_array = np.where(
+                                (np_array != 0.0) & (np.abs(np_array) < data_lowest),
+                                data_lowest,
+                                np_array,
+                            )
                         new_array = np_array.astype(to_type.numpy_type)
                         new_init = numpy_helper.from_array(new_array, new_name)
                     self.model.graph.initializer.extend([new_init])
@@ -437,7 +594,7 @@ class PrecisionConverter:
                     init.name for init in self.model.graph.initializer
                 }
                 if is_fp_cast and not input_from_initializer:
-                    # Keep cast nodes that are nececcary producers of network outputs
+                    # Keep cast nodes that are necessary producers of network outputs
                     if any(node.input[0] == out.name for out in self.model.graph.output) and any(
                         node.output[0] == out.name for out in self.model.graph.output
                     ):
@@ -459,6 +616,32 @@ class PrecisionConverter:
             cast_to: Target precision type to cast to.
             exclude_consumers: List of consumer nodes to exclude from reconnection.
         """
+        # Empty tensors may have special handling in ONNX (e.g. for Resize scales) which can break when redundant casts
+        # are injected. Since there's no data, it's safe to only update the metadata.
+        if self._is_empty_tensor(tensor_name):
+            logger.debug(f"Fake-casting empty tensor: {tensor_name}")
+            if tensor_name in self.value_info_map:
+                tensor_info = self.value_info_map[tensor_name]
+                tensor_info.type.tensor_type.elem_type = cast_to.onnx_type
+                # Update the corresponding value_info in the model graph
+                for vi in self.model.graph.value_info:
+                    if vi.name == tensor_name:
+                        vi.type.tensor_type.elem_type = cast_to.onnx_type
+                        break
+
+                # Also check if tensor is output of a Constant node and update its value attribute
+                for node in self.model.graph.node:
+                    if node.op_type == "Constant" and tensor_name in node.output:
+                        logger.debug(f"Found {tensor_name} as output of Constant node {node.name}")
+                        for attr in node.attribute:
+                            if attr.name == "value" and attr.type == onnx.AttributeProto.TENSOR:
+                                attr.t.data_type = cast_to.onnx_type
+                                break
+                        break
+            else:
+                logger.error(f"Failed to fake-cast empty tensor: {tensor_name} not found.")
+            return
+
         cast_output_name = f"{tensor_name}_cast_to_{cast_to.str_short}"
 
         cast_node = helper.make_node(
@@ -563,9 +746,9 @@ class PrecisionConverter:
 
     def _is_same_type_cast(self, node: onnx.NodeProto) -> bool:
         assert node.op_type == "Cast"
-        input_type = self._get_tensor_type(node.input[0])
+        input_types = [self._get_tensor_type(inp) for inp in node.input]
         output_type = utils.get_cast_to_type(node)
-        return input_type == output_type and input_type is not None
+        return all(inp_type == output_type for inp_type in input_types) and input_types is not None
 
     def _is_sequential_cast(self, node: onnx.NodeProto) -> bool:
         assert node.op_type == "Cast"
@@ -604,8 +787,11 @@ class PrecisionConverter:
         1. Don't actually change the data type
         2. Could be replaced by a single cast operation
         """
-        self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
-        self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=True)
+        if self.custom_ops:
+            self.model = self._propagate_types_shapes_custom_ops(self.model)
+        else:
+            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
+            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=True)
 
         nodes_to_remove = []
         for node in self.model.graph.node:
@@ -617,11 +803,21 @@ class PrecisionConverter:
                     logger.debug(f"Found redundant same-type cast: {node.name}")
                     continue
 
-                # Find sequantial casts that don't change precision
+                # Find sequential casts that don't change precision
                 if self._is_sequential_cast(node):
                     nodes_to_remove.append(node)
                     self._bypass_cast_node(node)
                     logger.debug(f"Found removable double-cast: {node.name}")
+
+                # Find foldable Constant -> Cast. Initializers are handled by _convert_initializers.
+                if self._is_foldable_constant_cast_pattern(node):
+                    nodes_to_remove.append(node)
+                    cast_producers = utils.get_producer_nodes(self.model, node.input[0])
+                    assert len(cast_producers) == 1 and cast_producers[0].op_type == "Constant"
+                    constant_producer = cast_producers[0]
+                    self._convert_constant_values(constant_producer, node)
+                    self._bypass_cast_node(node)
+                    logger.debug(f"Found foldable Constant->Cast pattern, removing {node.name}")
 
         logger.debug(f"Removing redundant casts: {[n.name for n in nodes_to_remove]}")
         for node in nodes_to_remove:
@@ -670,7 +866,10 @@ class PrecisionConverter:
                     modified = True
                     logger.debug(f"Fixed network output names: {post_cast_name} -> {output.name}")
         if modified:
-            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=True)
+            if self.custom_ops:
+                self.model = self._propagate_types_shapes_custom_ops(self.model)
+            else:
+                self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=True)
             self.value_info_map, self.initializer_map, self.node_to_init_map = utils.setup_mappings(
                 self.model
             )
@@ -678,7 +877,7 @@ class PrecisionConverter:
     def _sanity_check(self):
         sanity_ok = True
         try:
-            onnx.checker.check_model(self.model)
+            onnx_utils.check_model(self.model)
         except onnx.checker.ValidationError as e:
             logger.error(f"Internal error: onnx.checker failed: {e}")
             sanity_ok = False
@@ -715,23 +914,25 @@ class PrecisionConverter:
                         f"Skipping validating type of disconnected output tensor {tensor.name}"
                     )
                     continue
-                expected_type = self.original_network_io[tensor.name]
-                actual_type = tensor.type.tensor_type.elem_type
+                original_type = self.original_network_io[tensor.name]
+                converted_type = tensor.type.tensor_type.elem_type
 
-                if self.keep_io_types:
-                    if actual_type != expected_type:
+                if converted_type != original_type:
+                    # There's one allowed exception: FP32 I/O converted to the selected low precision type with
+                    # keep_io_types=False
+                    if (
+                        original_type == onnx.TensorProto.FLOAT
+                        and converted_type == self.low_precision_type.onnx_type
+                        and not self.keep_io_types
+                    ):
+                        continue
+                    else:
                         logger.error(
-                            f"Internal error: Sanity check failed: I/O tensor {tensor.name} type is not preserved, "
-                            "keep_io_types=True"
+                            f"Internal error: Sanity check failed: Unexpected type in I/O tensor {tensor.name}, "
+                            f"keep_io_types={self.keep_io_types}, original type: {original_type}, converted type: "
+                            f"{converted_type}."
                         )
                         sanity_ok = False
-                elif actual_type == TensorProto.FLOAT:  # only convert float I/O
-                    logger.error(
-                        f"Internal error: Sanity check failed: I/O tensor {tensor.name} type is FP32, "
-                        "keep_io_types=False"
-                    )
-                    sanity_ok = False
-
         if not sanity_ok:
             raise Exception("Sanity Check Failed")
 
@@ -741,3 +942,81 @@ class PrecisionConverter:
         if tensor_name in self.initializer_map:
             return self.initializer_map[tensor_name].data_type
         raise Exception(f"did not find tensor {tensor_name}")
+
+    def _convert_constant_values(self, const_node, cast_node: onnx.NodeProto) -> None:
+        original_tensor = const_node.attribute[0].t
+        if original_tensor.data_type == onnx.TensorProto.BFLOAT16:
+            original_data = onnx_utils.read_f16_tensor_as_fp32(original_tensor)
+        else:
+            original_data = onnx.numpy_helper.to_array(original_tensor)
+
+        # Precompute casted value
+        cast_to_type = utils.get_cast_to_type(cast_node)
+        cast_dtype = onnx.helper.tensor_dtype_to_np_dtype(cast_to_type)
+
+        # Handle bfloat16 conversion manually since numpy doesn't support it natively
+        if cast_to_type == onnx.TensorProto.BFLOAT16:
+            casted_data = original_data.astype(ml_dtypes.bfloat16)
+        else:
+            casted_data = original_data.astype(cast_dtype)
+
+        # Workaround for 0-dimensional tensors (scalars)
+        if casted_data.ndim == 0:
+            casted_data = casted_data.reshape(1)
+
+        # Create a new constant node with casted data
+        if cast_to_type == onnx.TensorProto.BFLOAT16:
+            # Create TensorProto manually for bfloat16
+            tensor_proto = onnx.TensorProto()
+            tensor_proto.name = const_node.output[0]
+            tensor_proto.data_type = onnx.TensorProto.BFLOAT16
+            tensor_proto.dims.extend(casted_data.shape)
+            # Convert bfloat16 to raw bytes
+            bf16_bytes = casted_data.astype(ml_dtypes.bfloat16).view(np.uint16)
+            tensor_proto.raw_data = bf16_bytes.tobytes()
+        else:
+            # Create tensor manually to ensure proper handling
+            tensor_proto = onnx.numpy_helper.from_array(casted_data)
+            tensor_proto.name = const_node.output[0]
+
+        new_const_node = onnx.helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=const_node.output,
+            value=tensor_proto,
+            name=const_node.name,
+        )
+
+        # Replace the original constant node with the new constant node
+        # The scope of this function is to convert the constant node data. Removing the cast is done later.
+        for node in utils.get_consumer_nodes(self.model, const_node.name):
+            for i, input_name in enumerate(node.input):
+                if input_name == const_node.name:
+                    node.input[i] = new_const_node.output[0]
+                    break
+
+        const_idx = -1
+        for i, node in enumerate(self.model.graph.node):
+            if node == const_node:
+                const_idx = i
+                break
+
+        self.model.graph.node.remove(const_node)
+        self.model.graph.node.insert(const_idx, new_const_node)
+        # The Cast node is the sole consumer of the Constant node, guaranteed by _is_foldable_constant_cast_pattern
+        cast_node.input[0] = new_const_node.output[0]
+
+    def _is_foldable_constant_cast_pattern(self, node: onnx.NodeProto) -> bool:
+        """Constant -> Cast and Cast is the only consumer of the Constant node."""
+        assert node.op_type == "Cast"
+
+        producer = utils.get_producer_nodes(self.model, node.input[0])
+
+        const_producer = (
+            producer[0] if len(producer) == 1 and producer[0].op_type == "Constant" else None
+        )
+
+        if const_producer:
+            get_consumer_nodes = utils.get_consumer_nodes(self.model, const_producer.output[0])
+            return len(get_consumer_nodes) == 1 and get_consumer_nodes[0] == node
+        return False

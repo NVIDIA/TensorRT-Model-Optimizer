@@ -527,7 +527,7 @@ def _convert_weight(
     weight_array: np.ndarray,
     scale_array: np.ndarray,
     zp_array: np.ndarray,
-    next_node: onnx.NodeProto,
+    quantized_node: onnx.NodeProto,
 ) -> np.ndarray:
     """Convert a weight tensor to INT8/FP8 format based on scale and zero point.
 
@@ -535,7 +535,7 @@ def _convert_weight(
         weight_array: The weight tensor to convert
         scale_array: The scale tensor for quantization
         zp_array: The zero point tensor for quantization
-        next_node: The operation node that will use the converted weight
+        quantized_node: The operation node that will use the converted weight
 
     Returns:
         The converted weight tensor as a numpy array
@@ -544,39 +544,42 @@ def _convert_weight(
         ValueError: If scale shape doesn't match weight shape for the operation
 
     Note:
-        - For ConvTranspose, scale and zp are reshaped to [1, 1, out_channels, 1]
-        - For other ops, scale and zp should match the last dimension of weight
         - INT8 weights are clipped to [-128, 127]
         - FP8 weights use float8e4m3fn format
     """
-    # Handle weight transpose for specific operations
-    weight_transpose_ops = {"Conv", "Transpose", "Gemm"}
-    is_3d_matmul = next_node.op_type == "MatMul" and len(weight_array.shape) == 3
-    do_transpose = next_node.op_type in weight_transpose_ops or is_3d_matmul
+    # Per-op quantization axis mapping (must match ORT config)
+    weight_shape = weight_array.shape
+    op_type = quantized_node.op_type
 
-    if do_transpose:
-        weight_array = np.transpose(weight_array, axes=[0, 2, 1] if is_3d_matmul else None)
+    # Dynamically determine transB for Gemm
+    trans_b = 0
+    if op_type == "Gemm":
+        for attr in quantized_node.attribute:
+            if attr.name == "transB":
+                trans_b = attr.i
+                break
 
-    # Handle scale/zp reshaping based on op type
-    if next_node.op_type == "ConvTranspose":
-        assert len(weight_array.shape) >= 3, "ConvTranspose weight must have at least 3 dimensions"
-        # ConvTranspose: scale aligns with out_channels (weight.shape[1])
-        if scale_array.shape and weight_array.shape[1] != scale_array.shape[0]:
-            raise ValueError(
-                f"Scale shape {scale_array.shape} does not match ConvTranspose weight shape {weight_array.shape}"
-            )
-        reshape_dims = [1, scale_array.shape[0]] + [1] * (weight_array.ndim - 2)
-        scale_array = scale_array.reshape(*reshape_dims)
-        zp_array = zp_array.reshape(*reshape_dims)
-    else:
-        # Conv/Gemm/MatMul: scale aligns with last dim
-        if scale_array.shape and weight_array.shape[-1] != scale_array.shape[0]:
-            raise ValueError(
-                f"Scale shape {scale_array.shape} does not match weight shape {weight_array.shape}"
-            )
-        reshape_dims = [1] * (weight_array.ndim - 1) + [scale_array.shape[0]]
-        scale_array = scale_array.reshape(*reshape_dims)
-        zp_array = zp_array.reshape(*reshape_dims)
+    axis_map = {
+        "Conv": 0,
+        "ConvTranspose": 1,
+        "Gemm": 0 if trans_b else 1,
+        "MatMul": 1,
+    }
+
+    if op_type not in axis_map:
+        raise ValueError(f"Unsupported op_type for real weight quantization: {op_type}")
+
+    axis = axis_map[op_type]
+
+    if scale_array.shape and scale_array.shape[0] != weight_shape[axis]:
+        raise ValueError(
+            f"Scale shape {scale_array.shape} does not match weight shape {weight_shape} along axis {axis}"
+        )
+
+    reshape_dims = [1] * len(weight_shape)
+    reshape_dims[axis] = scale_array.shape[0]
+    scale_array = scale_array.reshape(*reshape_dims)
+    zp_array = zp_array.reshape(*reshape_dims)
 
     # Convert to INT8/FP8
     if zp_array.dtype == float8e4m3fn:
@@ -584,9 +587,6 @@ def _convert_weight(
     else:
         scaled = np.asarray((weight_array / scale_array).round())
         np.clip(scaled + zp_array, -128, 127, out=scaled)
-
-    if do_transpose:
-        scaled = np.transpose(scaled, axes=[0, 2, 1] if is_3d_matmul else None)
 
     return scaled
 

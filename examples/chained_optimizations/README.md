@@ -24,7 +24,7 @@ on fine-tuning and QAT.
 Install Model Optimizer with optional torch and huggingface dependencies:
 
 ```bash
-pip install "nvidia-modelopt[torch,hf]"
+pip install "nvidia-modelopt[hf]"
 ```
 
 ### Running the example

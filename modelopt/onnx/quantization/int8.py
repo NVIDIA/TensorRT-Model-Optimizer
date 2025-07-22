@@ -23,11 +23,11 @@ import onnx
 import onnx_graphsurgeon as gs
 from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
-from onnxconverter_common import convert_float_to_float16
 from onnxruntime.quantization import CalibrationMethod
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
-from modelopt.onnx.logging_config import logger
+from modelopt.onnx.autocast.convert import convert_to_f16
+from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.quantization.calib_utils import import_scales_from_calib_cache
 from modelopt.onnx.quantization.graph_utils import (
     build_non_residual_input_map,
@@ -53,6 +53,7 @@ from modelopt.onnx.quantization.qdq_utils import has_qdq_nodes, replace_scale_va
 def _find_nodes_to_quantize(
     graph: Graph,
     quantizable_op_types: list[str],
+    nodes_to_exclude: list[str] | None = None,
 ) -> tuple[list[Node], list[tuple[Node, Node, str]]]:
     logger.info("Finding nodes to quantize")
     # Build a map of add nodes to their non-residual inputs, i.e. fusible with Conv group
@@ -65,7 +66,7 @@ def _find_nodes_to_quantize(
 
     # partitioned_nodes keeps track of nodes that are already part of some partition.
     # Certain nodes of those partitions are quantizable. For example, heads.
-    partitioned_nodes = set(sum(non_quantizable_hard_coded_partitions, []))  # noqa: RUF017
+    partitioned_nodes = set(sum(non_quantizable_hard_coded_partitions, []) + nodes_to_exclude)  # noqa: RUF017
     cask_fusible_partitions, kgen_partitions = find_fusible_partitions(
         graph,
         partitioned_nodes,
@@ -81,6 +82,7 @@ def _find_nodes_to_quantize(
         cask_fusible_partitions,
         kgen_partitions,
         quantizable_op_types,
+        graph,
     )
     logger.info(
         f"Found {len(quantizable_partition_nodes)} quantizable partition "
@@ -117,9 +119,11 @@ def quantize(
     nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = [],
-    trt_extra_plugin_lib_paths: str | None = None,
+    trt_extra_plugin_lib_paths: list[str] | None = None,
     high_precision_dtype: str = "fp32",
     passes: list[str] = ["concat_elimination"],
+    log_level: str = "INFO",
+    calibrate_per_node: bool = False,
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies INT8 quantization to an ONNX file using the compiler friendly heuristics.
@@ -127,11 +131,13 @@ def quantize(
     Quantization of ['Add', 'AveragePool', 'BatchNormalization', 'Clip', 'Conv', 'ConvTranspose',
     'Gemm', 'GlobalAveragePool', 'MatMul', 'MaxPool', 'Mul'] op types are supported.
     """
+    configure_logging(level=log_level.upper())
     logger.info(f"Starting INT8 quantization with method: {calibration_method}")
     t_start = time.time()
 
     # Take the onnx graph
-    onnx_model = onnx.load(onnx_path, load_external_data=use_external_data_format)
+    onnx_model = onnx.load(onnx_path, load_external_data=True)
+
     graph = gs.import_onnx(onnx_model)
     graph.toposort()
     logger.debug(f"Loaded model with {len(graph.nodes)} nodes")
@@ -141,17 +147,41 @@ def quantize(
         logger.info("Model already has QDQ nodes, skipping quantization")
         return onnx_model
 
+    enable_gemv_detection_for_trt = kwargs.get("enable_gemv_detection_for_trt", True)
+    if enable_gemv_detection_for_trt:
+        # Either of m or n in matmul is 1, this matmul cannot utilize TensorCores.
+        # The perf of adding Q/DQ layers is not good in TRT. Thus, in this case,
+        # do not add Q/DQ layers to this matmul.
+        logger.info("Detecting GEMV patterns for TRT optimization")
+        matmul_nodes_to_exclude = find_nodes_from_matmul_to_exclude(
+            onnx_path,
+            use_external_data_format,
+            intermediate_generated_files,
+            calibration_data_reader,
+            calibration_eps,
+            calibration_shapes,
+        )
+        nodes_to_exclude.extend(matmul_nodes_to_exclude)  # type: ignore[union-attr]
+        logger.debug(f"Excluding {len(matmul_nodes_to_exclude)} MatMul nodes due to GEMV pattern")
+
+    # Collect node names to exclude from quantization
+    nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
+
     # Change the default configuration of ORT quantization
     op_types_to_quantize = op_types_to_quantize or []
     op_types = {node.op for node in graph.nodes}
     trt_guided_options, quantizable_op_types = configure_ort(
-        list(op_types), op_types_to_quantize, trt_extra_plugin_lib_paths, calibration_eps
+        list(op_types),
+        op_types_to_quantize,
+        trt_extra_plugin_lib_paths,
+        calibration_eps,
+        calibrate_per_node,
     )
     logger.info(f"Quantizable op types: {[t for t in quantizable_op_types if t in op_types]}")
 
     # Collect node names to include in quantization
     no_quantize_inputs = []
-    nodes_to_quantize = expand_node_names_from_patterns(graph, nodes_to_quantize)  # type: ignore[arg-type]
+    nodes_to_quantize = expand_node_names_from_patterns(graph, nodes_to_quantize)
     if not nodes_to_quantize:
         # If nodes_to_quantize is not passed, use user supplied op_types_to_quantize list
         nodes_to_quantize = [node.name for node in graph.nodes if node.op in op_types_to_quantize]
@@ -159,8 +189,7 @@ def quantize(
         # If op_types_to_quantize is not provided, use default QDQ placement algorithm
         if not nodes_to_quantize:
             quantizable_nodes, no_quantize_inputs = _find_nodes_to_quantize(
-                graph,
-                quantizable_op_types,
+                graph, quantizable_op_types, nodes_to_exclude
             )
             nodes_to_quantize = [node.name for node in quantizable_nodes]
 
@@ -180,25 +209,6 @@ def quantize(
         )
         nodes_to_quantize = list(set(nodes_to_quantize).intersection(iq_quantized_nodes))
 
-    enable_gemv_detection_for_trt = kwargs.get("enable_gemv_detection_for_trt", True)
-    if enable_gemv_detection_for_trt:
-        # Either of m or n in matmul is 1, this matmul cannot utilize TensorCores.
-        # The perf of adding Q/DQ layers is not good in TRT. Thus, in this case,
-        # do not add Q/DQ layers to this matmul.
-        logger.info("Detecting GEMV patterns for TRT optimization")
-        matmul_nodes_to_exclude = find_nodes_from_matmul_to_exclude(
-            onnx_path,
-            use_external_data_format,
-            intermediate_generated_files,
-            calibration_data_reader,
-            calibration_eps,
-        )
-        nodes_to_exclude.extend(matmul_nodes_to_exclude)  # type: ignore[union-attr]
-        logger.debug(f"Excluding {len(matmul_nodes_to_exclude)} MatMul nodes due to GEMV pattern")
-
-    # Collect node names to exclude from quantization
-    nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
-
     # Update the list of nodes to quantize
     nodes_to_quantize = [
         node_name for node_name in nodes_to_quantize if node_name not in nodes_to_exclude
@@ -207,7 +217,7 @@ def quantize(
 
     if not nodes_to_quantize:
         logger.info("No node or node type is selected for quantization or model does not have them")
-        return
+        return onnx_model
     logger.debug(f"Selected {len(nodes_to_quantize)} nodes to quantize: {nodes_to_quantize}")
 
     if passes and "concat_elimination" in passes:
@@ -252,11 +262,15 @@ def quantize(
     if calibration_cache_path:
         replace_scale_values(onnx_model.graph, act_scales_dict)
 
-    if high_precision_dtype == "fp16":
+    if high_precision_dtype in ["fp16", "bf16"]:
         # We need to convert float to float16 so as to speed up layers like LayerNorm or GroupNorm.
-        logger.info("Converting float32 tensors to float16")
-        onnx_model = convert_float_to_float16(
-            onnx_model, keep_io_types=True, disable_shape_infer=True
+        logger.info(f"Converting float32 tensors to {high_precision_dtype}")
+        # Note: from convert_to_f16's perspective, high_precision_dtype is the precision to reduce to from FP32
+        onnx_model = convert_to_f16(
+            onnx_model,
+            keep_io_types=True,
+            low_precision_type=high_precision_dtype,
+            trt_plugins=trt_extra_plugin_lib_paths,
         )
 
     logger.info(f"Quantization completed successfully in {time.time() - t_start} seconds")

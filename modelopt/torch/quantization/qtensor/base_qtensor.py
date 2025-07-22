@@ -87,12 +87,20 @@ class QTensorWrapper(torch.nn.Parameter):
         qtensor (BaseQuantizedTensor): The quantized tensor to be wrapped.
     """
 
-    def __new__(cls, qtensor: BaseQuantizedTensor):
+    def __new__(cls, qtensor: BaseQuantizedTensor | torch.Tensor, metadata: dict | None = None):
         """Create a new QTensorWrapper instance."""
-        quantized_tensor = qtensor._quantized_data
+        quantized_tensor = (
+            qtensor._quantized_data if isinstance(qtensor, BaseQuantizedTensor) else qtensor
+        )
         instance = super().__new__(cls, quantized_tensor, requires_grad=False)
-        instance.metadata = qtensor.metadata
-        instance.metadata["qtensor_class"] = qtensor.__class__
+        if metadata is None:
+            instance.metadata = qtensor.metadata
+            instance.metadata["qtensor_class"] = qtensor.__class__
+        else:
+            assert all(key in metadata for key in ["qtensor_class", "shape", "dtype"]), (
+                f"metadata: {metadata}"
+            )
+            instance.metadata = metadata
         return instance
 
     def dim(self):
@@ -115,37 +123,53 @@ class QTensorWrapper(torch.nn.Parameter):
             self.metadata["shape"], self.metadata["dtype"], self.data
         )
 
+    def get_state(self):
+        """Get the state of the QTensorWrapper."""
+        return {
+            "metadata": self.metadata,
+            "quantized_data.shape": self.data.shape,
+            "quantized_data.dtype": self.data.dtype,
+        }
+
+
+# Function to dynamically override load_state_dict
+def dynamically_update_state_methods(module):
+    # Original method
+    original_load_from_state_dict = module._load_from_state_dict
+
+    def custom_load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        """Override _load_from_state_dict to handle custom parameters dynamically."""
+        args_list = list(args)
+        deleted_stat_dict = {}
+
+        # Load parameters
+        for name, param in self.named_parameters():
+            if prefix + name in state_dict and isinstance(param, QTensorWrapper):
+                if param.data.is_meta:
+                    # Wrap the loaded tensor in a QTensorWrapper
+                    param = QTensorWrapper(state_dict[prefix + name], metadata=param.metadata)
+                    self.register_parameter(name, param)
+                else:
+                    param.copy_(state_dict[prefix + name])
+                deleted_stat_dict[prefix + name] = state_dict[prefix + name]
+                del state_dict[prefix + name]
+
+        # Set strict=False because weight keys are removed
+        kwargs = {}
+        if len(args_list) > 3:
+            args_list[1] = False
+        else:
+            kwargs = {"strict": False}
+        original_load_from_state_dict(state_dict, prefix, *args_list, **kwargs)
+        state_dict.update(**deleted_stat_dict)
+
+    module._load_from_state_dict = custom_load_from_state_dict.__get__(module, type(module))
+
 
 def pack_real_quantize_weight(module, force_quantize: bool = False):
     """Pack real quantized tensors to a compressed format and set proper load_state_dict function."""
     # Import SequentialQuantizer here to avoid circular import
     from ..nn import SequentialQuantizer
-
-    # Function to dynamically override load_state_dict
-    def dynamically_update_state_methods(module):
-        # Original method
-        original_load_from_state_dict = module._load_from_state_dict
-
-        def custom_load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
-            """Override _load_from_state_dict to handle custom parameters dynamically."""
-            args_list = list(args)
-
-            deleted_stat_dict = {}
-            for name, param in self.named_parameters():
-                if isinstance(param, QTensorWrapper) and prefix + name in state_dict:
-                    param.copy_(state_dict[prefix + name])
-                    deleted_stat_dict[prefix + name] = state_dict[prefix + name]
-                    del state_dict[prefix + name]
-            # Set strict=False because weight keys are removed
-            kwargs = {}
-            if len(args_list) > 3:
-                args_list[1] = False
-            else:
-                kwargs = {"strict": False}
-            original_load_from_state_dict(state_dict, prefix, *args_list, **kwargs)
-            state_dict.update(**deleted_stat_dict)
-
-        module._load_from_state_dict = custom_load_from_state_dict.__get__(module, type(module))
 
     with SequentialQuantizer.convert_to_single_quantizer(module), torch.no_grad():
         for _, m in module.named_modules():
@@ -160,4 +184,3 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
                     m.weight_quantizer._dequantize = False
                 real_quant_tensor = m.weight_quantizer(m.weight)
                 m.weight = QTensorWrapper(real_quant_tensor)
-                dynamically_update_state_methods(m)

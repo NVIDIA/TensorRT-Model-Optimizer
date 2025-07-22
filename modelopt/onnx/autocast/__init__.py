@@ -15,5 +15,5 @@
 
 """AutoCast package for converting FP32 ONNX models to mixed precision."""
 
-from .convert import convert
+from .convert import convert_to_f16, convert_to_mixed_precision
 from .logging_config import configure_logging

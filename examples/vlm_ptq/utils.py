@@ -83,6 +83,14 @@ def add_common_args(parser):
         help="Enables chunked context (only available with cpp session).",
     )
     parser.add_argument(
+        "--mm_embedding_offloading",
+        action="store_true",
+        help=(
+            "Enable position table offloading. When not specified, defaults to True if using with "
+            "--enable_chunked_context."
+        ),
+    )
+    parser.add_argument(
         "--use_py_session",
         default=False,
         action="store_true",

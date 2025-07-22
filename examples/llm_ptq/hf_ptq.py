@@ -64,6 +64,7 @@ QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
     "nvfp4_awq": mtq.NVFP4_AWQ_LITE_CFG,
     "fp8_pb_wo": mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     "fp8_pc_pt": mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
+    "w4a8_mxfp4_fp8": mtq.W4A8_MXFP4_FP8_CFG,
 }
 
 KV_QUANT_CFG_CHOICES = {
@@ -230,6 +231,7 @@ def main(args):
             gpu_mem_percentage=args.gpu_max_mem_percentage,
             trust_remote_code=args.trust_remote_code,
             use_seq_device_map=args.use_seq_device_map,
+            attn_implementation=args.attn_implementation,
         )
     else:
         assert args.export_fmt == "hf", (
@@ -244,8 +246,12 @@ def main(args):
                 quant_cfg, getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
             )
         with init_quantized_weights(quant_cfg, gpu_mem_percentage=args.gpu_max_mem_percentage):
+            model_kwargs = {"trust_remote_code": args.trust_remote_code}
+            if args.attn_implementation is not None:
+                model_kwargs["attn_implementation"] = args.attn_implementation
             model = AutoModelForCausalLM.from_pretrained(
-                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+                args.pyt_ckpt_path,
+                **model_kwargs,
             )
         calibration_only = True
     model_is_already_quantized = is_quantized(model)
@@ -267,7 +273,11 @@ def main(args):
         elif args.dataset != "scienceqa":
             raise ValueError("Only the scienceqa dataset is supported for the mllama model.")
         processor = get_processor(
-            args.pyt_ckpt_path, model_type, device, trust_remote_code=args.trust_remote_code
+            args.pyt_ckpt_path,
+            model_type,
+            device,
+            trust_remote_code=args.trust_remote_code,
+            attn_implementation=args.attn_implementation,
         )
     elif model_type == "whisper":
         if args.dataset is None:
@@ -543,6 +553,20 @@ def main(args):
                 model,
                 export_dir=export_path,
             )
+            if model_type == "llama4":
+                # TRT-LLM expects the original model config instead of the config from text model,
+                # so we need to copy the original model config to the export path.
+                # Also we copy the preprocessor config to the export path.
+                from transformers import AutoConfig, AutoProcessor
+
+                # Use HuggingFace API to handle both model IDs and local paths
+                AutoConfig.from_pretrained(
+                    args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+                ).save_pretrained(export_path)
+
+                AutoProcessor.from_pretrained(
+                    args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+                ).save_pretrained(export_path)
         else:
             raise NotImplementedError(f"{args.export_fmt} not supported")
 
@@ -583,7 +607,13 @@ if __name__ == "__main__":
         "--calib_size", help="Number of samples for calibration.", type=int, default=512
     )
     parser.add_argument("--export_path", default="exported_model")
-    parser.add_argument("--dataset", help="name of dataset.", type=str, default=None)
+    parser.add_argument(
+        "--dataset",
+        help="name of dataset.",
+        type=str,
+        default=None,
+        choices=["magpie", "cnn_dailymail", "pile", "pg19", "wikipedia"],
+    )
     parser.add_argument("--inference_tensor_parallel", type=int, default=1)
     parser.add_argument("--inference_pipeline_parallel", type=int, default=1)
     parser.add_argument("--awq_block_size", default=0, type=int)
@@ -663,6 +693,16 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
     )
+    parser.add_argument(
+        "--attn_implementation",
+        help=(
+            "Specify the attention implementation to use."
+            "This arg will be passed to the HF model loading if specified."
+        ),
+        default=None,
+        type=str,
+    )
+
     args = parser.parse_args()
 
     main(args)

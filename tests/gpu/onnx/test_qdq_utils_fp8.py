@@ -17,13 +17,15 @@ import os
 
 import onnx
 import onnx_graphsurgeon as gs
+import pytest
 import torch
 from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_onnx
 
 from modelopt.onnx.quantization.quantize import quantize
 
 
-def test_fused_q(tmp_path):
+@pytest.mark.parametrize("high_precision_dtype", ["fp32", "fp16", "bf16"])
+def test_fused_q(tmp_path, high_precision_dtype):
     model_torch = SimpleMLP()
     input_tensor = torch.randn(2, 16, 16)
 
@@ -31,7 +33,9 @@ def test_fused_q(tmp_path):
     export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
 
     # Quantize the model and export with only DQ nodes for weights
-    quantize(onnx_path, quantize_mode="fp8", dq_only=True)
+    quantize(
+        onnx_path, quantize_mode="fp8", dq_only=True, high_precision_dtype=high_precision_dtype
+    )
 
     # Output model should be produced in the same tmp_path
     output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")

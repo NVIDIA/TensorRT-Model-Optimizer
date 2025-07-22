@@ -53,7 +53,7 @@ from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
 
 try:
     from megatron.core.extensions.transformer_engine import TENorm
-    from megatron.core.inference.modelopt_support.gpt.model_specs import get_gpt_layer_modelopt_spec
+    from megatron.core.post_training.modelopt.gpt.model_specs import get_gpt_modelopt_spec
 
     HAS_TE = True
 except ImportError:
@@ -165,7 +165,7 @@ def get_mcore_gpt_model(
     else:
         assert HAS_TE, "Transformer Engine not installed"
         transformer_layer_spec = (
-            get_gpt_layer_modelopt_spec()
+            get_gpt_modelopt_spec(config)
             if transformer_impl == "modelopt"
             else get_gpt_layer_with_transformer_engine_spec()
         )
@@ -282,6 +282,12 @@ def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, 
     assert state_dict.keys() == state_dict_test.keys(), (
         f"{set(state_dict.keys()) - set(state_dict_test.keys())}"
     )
+
+    def convert_maybe_fp8(v):
+        if v.dtype == torch.float8_e4m3fn:
+            return v.to(torch.float16)
+        return v
+
     for k, v in state_dict.items():
         # sharded_state_dict will omit output_layer since we are lacking support on vocab padding
         # extra_state can be a byte Tensor where the value can change due to different serialized
@@ -293,7 +299,10 @@ def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, 
             or not isinstance(v, torch.Tensor)
         ):
             continue
-        assert torch.allclose(v, state_dict_test[k]), f"{k} v:{v}, s[k]: {state_dict_test[k]}"
+        assert v.dtype == state_dict_test[k].dtype, f"{k} v:{v}, s[k]: {state_dict_test[k]}"
+        assert torch.allclose(convert_maybe_fp8(v), convert_maybe_fp8(state_dict_test[k])), (
+            f"{k} v:{v}, s[k]: {state_dict_test[k]}"
+        )
 
     logits_test = forward_fn(model_test)
     assert torch.allclose(logits_ref, logits_test), f"ref: {logits_ref}, test: {logits_test}"

@@ -31,11 +31,10 @@
 
 import os
 from dataclasses import dataclass, field
+from warnings import warn
 
 import torch
 import transformers
-from torch.utils.data import DataLoader
-from transformers import Trainer, default_data_collator
 from transformers.trainer_utils import get_last_checkpoint
 from utils import (
     get_lora_config,
@@ -45,6 +44,12 @@ from utils import (
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
+from modelopt.torch.distill.plugins.huggingface import LMLogitsLoss
+from modelopt.torch.quantization.plugins.transformers_trainer import (
+    QADTrainer,
+    QATTrainer,
+    get_metrics_with_perplexity,
+)
 from modelopt.torch.utils import print_rank_0
 
 CUSTOM_QUANT_CFG = {
@@ -63,6 +68,10 @@ CUSTOM_QUANT_CFG = {
 @dataclass
 class ModelArguments:
     model_name_or_path: str = field(default="meta-llama/Llama-2-7b-hf")
+    teacher_model: str | None = field(
+        default=None,
+        metadata={"help": ("The name or path of the teacher model to use for distillation.")},
+    )
 
 
 @dataclass
@@ -86,6 +95,10 @@ class TrainingArguments(transformers.TrainingArguments):
                 "the LoRA adapter must be set, as quantized weights will be frozen during training."
             )
         },
+    )
+    distill: bool = field(
+        default=False,
+        metadata={"help": "Select if training with distillation."},
     )
 
 
@@ -139,9 +152,13 @@ class QuantizationArguments:
     )
 
 
-def get_metrics_with_perplexity(metrics):
-    metrics = {"perplexity": float(torch.exp(torch.tensor(metrics["eval_loss"]))), **metrics}
-    return metrics
+def _teacher_factory(model_name_or_path, cache_dir=None):
+    """Function to create a teacher model."""
+    return transformers.AutoModelForCausalLM.from_pretrained(
+        model_name_or_path,
+        cache_dir=cache_dir,
+        torch_dtype=torch.bfloat16,
+    )
 
 
 def train():
@@ -162,12 +179,11 @@ def train():
         print_rank_0(f"Last checkpoint detected: {last_checkpoint}")
 
     model = transformers.AutoModelForCausalLM.from_pretrained(
-        model_args.model_name_or_path if last_checkpoint is None else last_checkpoint,
+        model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
         torch_dtype=torch.bfloat16,
     )
     model.generation_config.do_sample = True
-
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         model_args.model_name_or_path, model_max_length=training_args.model_max_length
     )
@@ -181,6 +197,14 @@ def train():
         eval_size=data_args.eval_size,
     )
 
+    # Ensure calibration size doesn't exceed evaluation dataset size
+    eval_dataset_size = len(data_module["eval_dataset"])
+    if quant_args.calib_size > eval_dataset_size:
+        warn(
+            f"{quant_args.calib_size=} is larger than {eval_dataset_size=}. Setting calib_size to {eval_dataset_size}."
+        )
+        quant_args.calib_size = eval_dataset_size
+
     # Training
     checkpoint = None
     if training_args.resume_from_checkpoint is not None:
@@ -188,45 +212,46 @@ def train():
     elif last_checkpoint is not None:
         checkpoint = last_checkpoint
 
+    if checkpoint is not None and training_args.lora:
+        raise RuntimeError("Does not support LoRA resuming training yet!")
+
     # Torch >= 2.4 throws an error if `use_reentrant` is not set explicitly
     if training_args.gradient_checkpointing and training_args.gradient_checkpointing_kwargs is None:
         training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
 
-    trainer = Trainer(model=model, processing_class=tokenizer, args=training_args, **data_module)
-    trainer._move_model_to_device(model, trainer.args.device)
+    if quant_args.quant_cfg is not None:
+        quant_cfg = (
+            CUSTOM_QUANT_CFG[quant_args.quant_cfg]
+            if quant_args.quant_cfg in CUSTOM_QUANT_CFG
+            else getattr(mtq, quant_args.quant_cfg)
+        )
+    distill_kwargs = {}
+    if training_args.distill:
+        assert model_args.teacher_model is not None, "Teacher model is required for distillation."
+        distill_config = {
+            "teacher_model": (
+                _teacher_factory,
+                (
+                    model_args.teacher_model,
+                    training_args.cache_dir,
+                ),
+                {},
+            ),
+            "criterion": LMLogitsLoss(),
+            "expose_minimal_state_dict": False,  # FSDP forces us to disable this
+        }
+        distill_kwargs["distill_config"] = distill_config
+    trainer_cls = QADTrainer if training_args.distill else QATTrainer
 
-    if checkpoint is None:
-        if quant_args.quant_cfg is not None:
-            calib_dataloader = DataLoader(
-                data_module["train_dataset"],
-                batch_size=training_args.per_device_eval_batch_size,
-                shuffle=False,
-                collate_fn=default_data_collator,
-            )
-
-            if "AWQ" in quant_args.quant_cfg:
-                print_rank_0(
-                    "\n####\nAWQ calibration could take longer than other calibration methods. "
-                    "Consider reducing calib_size to reduce calibration time.\n####\n"
-                )
-
-            def calibrate_loop(model):
-                print_rank_0("Calibrating model...")
-                for i, data in enumerate(calib_dataloader):
-                    if i >= quant_args.calib_size // training_args.per_device_eval_batch_size:
-                        break
-                    data = {k: v.to(trainer.args.device) for k, v in data.items()}
-                    model(**data)
-
-            quant_cfg = (
-                CUSTOM_QUANT_CFG[quant_args.quant_cfg]
-                if quant_args.quant_cfg in CUSTOM_QUANT_CFG
-                else getattr(mtq, quant_args.quant_cfg)
-            )
-            model = mtq.quantize(model, quant_cfg, calibrate_loop)
-            torch.cuda.empty_cache()  # Lets make sure to free up the memory for training
-    else:
-        assert not training_args.lora, "Does not support LoRA resuming training yet!"
+    trainer = trainer_cls(
+        model=model,
+        processing_class=tokenizer,
+        args=training_args,
+        quant_args=quant_args,
+        quant_cfg=quant_cfg if quant_args.quant_cfg is not None else None,
+        **distill_kwargs,
+        **data_module,
+    )
 
     # add lora adapter
     if training_args.lora:
@@ -243,13 +268,22 @@ def train():
         trainer.train(resume_from_checkpoint=checkpoint)
 
     if training_args.do_eval:
-        metrics = trainer.evaluate()
-        metrics = get_metrics_with_perplexity(metrics)
-        print_rank_0(f"Evaluation results: \n{metrics}")
+        if not training_args.do_train:
+            # trainer.evaluate() will not prepare the model properly, especially for FSDP2,
+            # so we use the ``eval_on_start`` flag to evaluate the model and skip the training.
+            trainer.train(resume_from_checkpoint=checkpoint, eval_only=True)
+        else:
+            metrics = trainer.evaluate()
+            metrics = get_metrics_with_perplexity(metrics)
+            print_rank_0(f"Evaluation results: \n{metrics}")
 
     if training_args.do_train or quant_args.quant_cfg is not None:
+        print_rank_0("Saving the model...")
         trainer.save_state()
-        trainer.save_model(training_args.output_dir)
+        if training_args.distill:
+            trainer.save_model(training_args.output_dir, export_student=True)
+        else:
+            trainer.save_model(training_args.output_dir)
 
 
 if __name__ == "__main__":

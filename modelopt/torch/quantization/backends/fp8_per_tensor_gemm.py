@@ -37,15 +37,24 @@ def _to_fp8(x, scale):
 
 def fp8_per_tensor_gemm(quant_module, input, bias=None):
     """GEMM function for fp8 per tensor quantization."""
+    weight_amax = quant_module.weight_quantizer.amax
+    if weight_amax is None:
+        weight_amax = quant_module.weight.abs().amax()
+    input_amax = quant_module.input_quantizer.amax
+    if input_amax is None:
+        input_amax = input.abs().amax()
     if quant_module.weight.dtype != torch.float8_e4m3fn:
-        weight_fp8 = _to_fp8(quant_module.weight, quant_module.weight_quantizer.amax / 448.0)
+        weight_fp8 = _to_fp8(quant_module.weight, weight_amax / 448.0)
     else:
         weight_fp8 = quant_module.weight
+    # If input_amax is 0, it means the input is all zeros. So we set it to a small value to avoid division by zero.
+    if input_amax == 0:
+        input_amax = torch.tensor(1e-5, device=input_amax.device, dtype=input_amax.dtype)
     weight_fp8_t = weight_fp8.reshape(-1, weight_fp8.shape[-1]).t()
-    input_fp8 = _to_fp8(input, quant_module.input_quantizer.amax / 448.0)
+    input_fp8 = _to_fp8(input, input_amax / 448.0)
 
-    scale_a = (quant_module.input_quantizer.amax / 448.0).to(input_fp8.device).to(torch.float32)
-    scale_b = (quant_module.weight_quantizer.amax / 448.0).to(input_fp8.device).to(torch.float32)
+    scale_a = (input_amax / 448.0).to(device=input_fp8.device, dtype=torch.float32)
+    scale_b = (weight_amax / 448.0).to(device=input_fp8.device, dtype=torch.float32)
 
     ouptut = torch._scaled_mm(
         input_fp8.reshape(-1, input_fp8.shape[-1]),

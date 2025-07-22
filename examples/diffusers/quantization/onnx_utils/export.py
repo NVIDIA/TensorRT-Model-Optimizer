@@ -40,9 +40,9 @@ import onnx_graphsurgeon as gs
 import torch
 from diffusers.models.transformers import FluxTransformer2DModel, SD3Transformer2DModel
 from diffusers.models.unets import UNet2DConditionModel
-from onnxconverter_common import convert_float_to_float16
 from torch.onnx import export as onnx_export
 
+from modelopt.onnx.autocast.convert import convert_to_f16
 from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
 from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
 from modelopt.torch.utils import torch_to
@@ -403,9 +403,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
             convert_fp16_io(graph)
             onnx_model = gs.export_onnx(graph)
             onnx_model = convert_zp_fp8(onnx_model)
-            onnx_model = convert_float_to_float16(
-                onnx_model, keep_io_types=True, disable_shape_infer=True
-            )
+            onnx_model = convert_to_f16(onnx_model, keep_io_types=True)
             graph = gs.import_onnx(onnx_model)
             cast_resize_io(graph)
             onnx_model = gs.export_onnx(graph.cleanup())

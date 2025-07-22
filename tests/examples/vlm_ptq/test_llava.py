@@ -16,10 +16,11 @@
 
 import pytest
 from _test_utils.examples.run_command import run_vlm_ptq_command
-
-LLAVA_PATH = "llava-hf/llava-1.5-7b-hf"
+from _test_utils.model import LLAVA_PATH
+from _test_utils.torch_misc import minimum_gpu
 
 
 @pytest.mark.parametrize("quant", ["fp16"])
-def test_llava_multi_gpu(require_2_gpus, quant):
+@minimum_gpu(2)
+def test_llava_multi_gpu(quant):
     run_vlm_ptq_command(model=LLAVA_PATH, type="llava", quant=quant, tp=2)

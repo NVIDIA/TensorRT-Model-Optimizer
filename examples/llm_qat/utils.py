@@ -15,14 +15,33 @@
 
 import gc
 import types
+from contextlib import contextmanager
 from functools import partial
 
 import datasets
+import torch
 import transformers
 from peft import LoraConfig, TaskType
 from transformers import default_data_collator
 
 IGNORE_INDEX = -100
+
+
+@contextmanager
+def main_process_first():
+    """Context manager to run code on the main process first."""
+    if not torch.distributed.is_initialized():
+        yield
+        return
+
+    rank = torch.distributed.get_rank()
+    if rank == 0:
+        yield
+        torch.distributed.barrier()
+    else:
+        torch.distributed.barrier()
+        yield
+    torch.distributed.barrier()
 
 
 def get_daring_anteater(
@@ -46,8 +65,8 @@ def get_daring_anteater(
 
     def process_and_tokenize(sample):
         conversations = sample["conversations"]
-        all_input_ids = [tokenizer.bos_token_id]
-        all_labels = [IGNORE_INDEX]
+        all_input_ids = [tokenizer.bos_token_id] if tokenizer.bos_token_id else []
+        all_labels = [IGNORE_INDEX] if tokenizer.bos_token_id else []
 
         for conversation in conversations:
             role = conversation["from"]
@@ -84,14 +103,15 @@ def get_daring_anteater(
     if hasattr(get_daring_anteater, "cached_dataset"):
         dataset = get_daring_anteater.cached_dataset
     else:
-        dataset = datasets.load_dataset("nvidia/Daring-Anteater", split="train")
-        # Shuffle and subsample the dataset
-        eval_size = 2000 if eval_size == 0 else eval_size
-        train_size = len(dataset) - eval_size if train_size == 0 else train_size - eval_size
-        if train_size + eval_size < len(dataset):
-            dataset = dataset.shuffle(seed=42).select(range(train_size + eval_size))
-        dataset = dataset.map(process_and_tokenize, remove_columns=list(dataset.features))
-        dataset = dataset.train_test_split(test_size=eval_size, shuffle=True, seed=42)
+        with main_process_first():
+            dataset = datasets.load_dataset("nvidia/Daring-Anteater", split="train")
+            # Shuffle and subsample the dataset
+            eval_size = 2000 if eval_size == 0 else eval_size
+            train_size = len(dataset) - eval_size if train_size == 0 else train_size - eval_size
+            if train_size + eval_size < len(dataset):
+                dataset = dataset.shuffle(seed=42).select(range(train_size + eval_size))
+            dataset = dataset.map(process_and_tokenize, remove_columns=list(dataset.features))
+            dataset = dataset.train_test_split(test_size=eval_size, shuffle=True, seed=42)
         get_daring_anteater.cached_dataset = dataset  # type: ignore[attr-defined]
     return dataset[split]
 
@@ -110,6 +130,8 @@ def make_supervised_data_module(
         val_dataset = get_daring_anteater(
             tokenizer, "test", tokenizer.model_max_length, train_size, eval_size
         )
+    else:
+        raise ValueError(f"Dataset {dataset} not supported")
     return {
         "train_dataset": train_dataset,
         "eval_dataset": val_dataset,

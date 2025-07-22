@@ -316,16 +316,19 @@ def is_mlp(module: nn.Module) -> bool:
 
 def is_moe(module: nn.Module) -> bool:
     """Returns whether the module is an MOE layer."""
-    return type(module).__name__.lower() in [
-        "MixtralSparseMoeBlock".lower(),
-        "ArcticMoE".lower(),
-        "DbrxFFN".lower(),
-        "MoELayer".lower(),
-        "PhimoeSparseMoeBlock".lower(),
-        "DeepseekMoE".lower(),
-        "Qwen2MoeSparseMoeBlock".lower(),
-        "Qwen3MoeSparseMoeBlock".lower(),
-    ]
+    return any(
+        key in type(module).__name__.lower()
+        for key in [
+            "MixtralSparseMoeBlock".lower(),
+            "ArcticMoE".lower(),
+            "DbrxFFN".lower(),
+            "MoELayer".lower(),
+            "PhimoeSparseMoeBlock".lower(),
+            "DeepseekMoE".lower(),
+            "Qwen2MoeSparseMoeBlock".lower(),
+            "Qwen3MoeSparseMoeBlock".lower(),
+        ]
+    )
 
 
 def is_quantlinear(module: nn.Module) -> bool:
@@ -972,15 +975,22 @@ def _build_stacked_linear(experts: nn.Module, module_name, linear_type, num_expe
 
 def get_expert_linear_names(module: nn.Module) -> list[str]:
     """Get the list of linear names for the experts."""
-    if type(module).__name__.lower() in [
-        "Qwen2MoeSparseMoeBlock".lower(),
-        "Qwen3MoeSparseMoeBlock".lower(),
-        "DeepseekMoE".lower(),
-    ]:
+
+    def module_match_name_list(module, name_list):
+        """Check if the module name matches any of the names in the list.
+
+        e.g. module_match_name_list(QuantQwen3MoeSparseMoeBlock, ['Qwen3MoeSparseMoeBlock']) -> True
+
+        """
+        return any(name.lower() in type(module).__name__.lower() for name in name_list)
+
+    if module_match_name_list(
+        module, ["Qwen2MoeSparseMoeBlock", "Qwen3MoeSparseMoeBlock", "DeepseekMoE"]
+    ):
         return ["gate_proj", "down_proj", "up_proj"]
-    elif type(module).__name__.lower() in "MixtralMoeSparseMoeBlock".lower():
+    elif module_match_name_list(module, ["MixtralMoeSparseMoeBlock"]):
         return ["linear_fc1", "linear_fc2"]
-    elif type(module).__name__.lower() in "DBRXMoeSparseMoeBlock".lower():
+    elif module_match_name_list(module, ["DBRXMoeSparseMoeBlock"]):
         return ["w1_linear", "w2_linear", "v1_linear"]
     else:
         # assuing w1, w2, w3 by default
@@ -1028,7 +1038,7 @@ def set_amax_for_uncalibrated_experts(experts: nn.Module, set_amax_value: float 
             )
             # Use float32 dtype explicitly to ensure we create a floating point tensor
             module.input_quantizer.amax = torch.tensor(
-                set_amax_value, dtype=torch.float32, device=module.weight_quantizer.amax.device
+                set_amax_value, dtype=torch.float32, device=module.weight.device
             )
             uncalibrated_experts.append(module)
 

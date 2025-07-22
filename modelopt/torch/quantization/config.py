@@ -149,6 +149,7 @@ from modelopt.core.torch.quantization.config import NVFP4_AWQ_LITE_CFG as NVFP4_
 from modelopt.core.torch.quantization.config import NVFP4_DEFAULT_CFG as NVFP4_DEFAULT_CFG
 from modelopt.core.torch.quantization.config import NVFP4_KV_CFG as NVFP4_KV_CFG
 from modelopt.core.torch.quantization.config import NVFP4_KV_ROTATE_CFG as NVFP4_KV_ROTATE_CFG
+from modelopt.core.torch.quantization.config import NVFP4_MXFP8_CFG as NVFP4_MXFP8_CFG
 from modelopt.core.torch.quantization.config import (
     NVFP4_SVDQUANT_DEFAULT_CFG as NVFP4_SVDQUANT_DEFAULT_CFG,
 )
@@ -201,7 +202,11 @@ FP8_DEFAULT_CFG = {
 FP8_PER_CHANNEL_PER_TOKEN_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": 0},
-        "*input_quantizer": {"num_bits": (4, 3), "type": "dynamic", "block_sizes": {-1: None}},
+        "*input_quantizer": {
+            "num_bits": (4, 3),
+            "type": "dynamic",
+            "block_sizes": {-1: None},
+        },
         **_default_disabled_quantizer_cfg,
     },
     "algorithm": "max",
@@ -310,6 +315,19 @@ MXFP4_DEFAULT_CFG = {
     "algorithm": None,
 }
 
+W4A8_MXFP4_FP8_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+        },
+        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": None,
+}
+
 MXINT8_DEFAULT_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {
@@ -370,6 +388,7 @@ choices: set[str] = {
     "NVFP4_KV_CFG",
     "NVFP4_AFFINE_KV_CFG",
     "MXFP8_DEFAULT_CFG",
+    "W4A8_MXFP4_FP8_CFG",
 }
 
 BiasType = Literal["static", "dynamic"]
@@ -860,7 +879,7 @@ class _QuantizeExportConfig(ModeloptBaseConfig):
 
 def need_calibration(config):
     """Check if calibration is needed for the given config."""
-    if config["algorithm"] != "max":
+    if config["algorithm"] is not None and config["algorithm"] != "max":
         return True
 
     def _not_dynamic(cfg):

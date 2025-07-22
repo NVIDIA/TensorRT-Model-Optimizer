@@ -45,7 +45,15 @@ select = [
     "UP",    # pyupgrade
     "W",    # pycodestyle warnings
 ]
-extend-ignore = ["D105", "D417", "N812", "PLR0402", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLR0911", "PT011", "PT018", "RUF002", "RUF012", "SIM115", "UP038"]
+extend-ignore = [
+    "D105", "D417",
+    "N812",
+    "PLR0402", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLR0911",
+    "PT011", "PT018",
+    "RUF002", "RUF012",
+    "SIM115",
+    "UP038"
+]
 
 
 [tool.ruff.lint.per-file-ignores]

@@ -71,7 +71,7 @@ def make_model_input(
             config.hidden_size // config.num_attention_heads,
         )
 
-        if hasattr(config, "head_dim"):
+        if hasattr(config, "head_dim") and config.head_dim is not None:
             head_size = config.head_dim
 
         for i in range(config.num_hidden_layers):
@@ -251,14 +251,14 @@ def get_calib_inputs(
 
 def parse_calibration_eps(value):
     """Parse and validate the calibration_eps input."""
-    valid_choices = {"cuda", "cpu", "dml"}
+    valid_choices = {"cuda", "cpu", "dml", "NvTensorRtRtx"}
     # Split the input by commas and remove any surrounding whitespace
     eps = [item.strip() for item in value.split(",")]
     # Validate each calibration endpoint
     for ep in eps:
         if ep not in valid_choices:
             raise argparse.ArgumentTypeError(
-                f"Invalid calibration endpoint: '{ep}'. Choose from 'cuda', 'cpu', 'dml'."
+                f"Invalid calibration endpoint: '{ep}'. Choose from 'cuda', 'cpu', 'dml', 'NvTensorRtRtx'."
             )
     return eps
 
@@ -504,7 +504,7 @@ if __name__ == "__main__":
         "--calibration_eps",
         type=parse_calibration_eps,  # Use the custom parser
         default=["dml", "cpu"],  # Default as a list
-        help="Comma-separated list of calibration endpoints. Choose from 'cuda', 'cpu', 'dml'. Default is 'dml,cpu'.",
+        help="Comma-separated list of calibration endpoints. Choose from 'cuda', 'cpu', 'dml', 'NvTensorRtRtx'.",
     )
     parser.add_argument(
         "--trust_remote_code",

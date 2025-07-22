@@ -59,7 +59,7 @@ from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
 from modelopt.onnx.quantization.ort_utils import update_trt_ep_support
 from modelopt.onnx.quantization.qdq_utils import qdq_to_dq
-from modelopt.onnx.quantization.trt_utils import load_onnx_model
+from modelopt.onnx.trt_utils import load_onnx_model
 from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
 
 __all__ = ["quantize"]
@@ -70,18 +70,18 @@ def _preprocess_onnx(
     use_external_data_format: bool,
     output_path: str,
     enable_shared_constants_duplication: bool,
-    trt_plugins: str | None,
+    trt_plugins: list[str] | None,
     trt_plugins_precision: list[str] | None,
     override_shapes: str,
     simplify: bool = False,
-) -> tuple[str, list[str], bool, bool]:
+) -> tuple[str, list[str], bool, bool, bool]:
     logger.info(f"Preprocessing the model {onnx_path}")
     intermediate_generated_files = []
     output_dir = os.path.dirname(output_path)
     model_name = os.path.splitext(os.path.basename(onnx_path))[0]
 
     # Load the model and weights
-    onnx_model, has_custom_op, custom_ops, onnx_path = load_onnx_model(
+    onnx_model, has_custom_op, custom_ops, onnx_path, use_external_data_format = load_onnx_model(
         onnx_path,
         trt_plugins,
         override_shapes,
@@ -138,6 +138,7 @@ def _preprocess_onnx(
                 onnx_model = model_simp
                 onnx_path = os.path.join(output_dir, f"{model_name}_simp.onnx")
                 save_onnx(onnx_model, onnx_path, use_external_data_format)
+                intermediate_generated_files.append(onnx_path)
                 logger.info(f"Simplified model was validated and saved in {onnx_path}")
             else:
                 logger.warning(
@@ -185,9 +186,16 @@ def _preprocess_onnx(
             if precision == "fp16":
                 custom_ops_to_cast.append(op_type)
         if custom_ops_to_cast:
-            onnx_path = add_fp16_fp32_cast(onnx_path, custom_ops_to_cast)
+            onnx_path = add_fp16_fp32_cast(onnx_path, custom_ops_to_cast, use_external_data_format)
             intermediate_generated_files.append(onnx_path)
-    return onnx_path, intermediate_generated_files, has_custom_op, has_dds_op
+
+    return (
+        onnx_path,
+        intermediate_generated_files,
+        has_custom_op,
+        has_dds_op,
+        use_external_data_format,
+    )
 
 
 def quantize(
@@ -208,7 +216,7 @@ def quantize(
     output_path: str | None = None,
     log_level: str = "INFO",
     log_file: str | None = None,
-    trt_plugins: str | None = None,
+    trt_plugins: list[str] | None = None,
     trt_plugins_precision: list[str] | None = None,
     high_precision_dtype: str | None = None,
     mha_accumulation_dtype: str = "fp16",
@@ -218,6 +226,7 @@ def quantize(
     use_zero_point: bool = False,
     passes: list[str] = ["concat_elimination"],
     simplify: bool = False,
+    calibrate_per_node: bool = False,
     **kwargs: Any,
 ) -> None:
     """Quantizes the provided ONNX model.
@@ -266,10 +275,9 @@ def quantize(
         log_file:
             Path to the log file for the quantization process.
         trt_plugins:
-            Specifies custom TensorRT plugin library paths in .so format (compiled shared library).
-            For multiple paths, separate them with a semicolon, i.e.: "lib_1.so;lib_2.so".
-            If this is not None or the model has custom ops, TensorrtExecutionProvider becomes the first choice as
-            calibration execution provider, meaning that the TensorRT is a requirement.
+            A space-separated list with the custom TensorRT plugin library paths in .so format (compiled shared
+            library). If this is not None or the model has custom ops, TensorrtExecutionProvider becomes the first
+            choice as calibration execution provider, meaning that the TensorRT is a requirement.
         trt_plugins_precision:
             A space-separated list indicating the precision for each custom op.
             Each item should have the format <op_type>:<precision>, where precision can be fp32 (default) or fp16.
@@ -293,6 +301,9 @@ def quantize(
             List of optimization passes name, if set, appropriate pre/post-processing passes will be invoked.
         simplify:
             Simplify the given model before quantization.
+        calibrate_per_node:
+            Calibrate the model node by node instead of calibrating the entire model. This allowes calibration with
+            a lower system memory with the cost of longer calibration time.
         kwargs:
             Additional keyword arguments for int4 quantization, including:
             - awqlite_alpha_step (float): Alpha step for lite, range [0, 1].
@@ -304,10 +315,15 @@ def quantize(
         None, writes the quantized onnx model in the supplied output_path
         or writes to the same directory with filename like "<model_name>.quant.onnx".
     """
+    configure_logging(log_level.upper(), log_file)
     logger.info(f"Starting quantization process for model: {onnx_path}")
     logger.info(f"Quantization mode: {quantize_mode}")
 
-    configure_logging(log_level.upper(), log_file)
+    if calibrate_per_node and quantize_mode not in ["int8", "fp8"]:
+        raise ValueError(
+            "Per node calibration is only supported for int8 and fp8 quantization modes"
+        )
+
     # quantize_static creates a shape-inferred copy at the input model's directory
     # Needs to check if we have write permission to this directory
     assert onnx_path.endswith((".onnx", ".pb"))
@@ -339,15 +355,17 @@ def quantize(
 
     # We need to preprocess the model with naming, weight duplication etc.
     enable_shared_constants_duplication = kwargs.get("enable_shared_constants_duplication", True)
-    onnx_path, intermediate_generated_files, has_custom_op, has_dds_op = _preprocess_onnx(
-        onnx_path,
-        use_external_data_format,
-        output_path,
-        enable_shared_constants_duplication,
-        trt_plugins,
-        trt_plugins_precision,
-        override_shapes,  # type: ignore[arg-type]
-        simplify,
+    onnx_path, intermediate_generated_files, has_custom_op, has_dds_op, use_external_data_format = (
+        _preprocess_onnx(
+            onnx_path,
+            use_external_data_format,
+            output_path,
+            enable_shared_constants_duplication,
+            trt_plugins,
+            trt_plugins_precision,
+            override_shapes,  # type: ignore[arg-type]
+            simplify,
+        )
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
 
@@ -398,6 +416,8 @@ def quantize(
             high_precision_dtype=high_precision_dtype,  # type: ignore[arg-type]
             mha_accumulation_dtype=mha_accumulation_dtype,
             passes=passes,
+            log_level=log_level,
+            calibrate_per_node=calibrate_per_node,
             **kwargs,
         )
     elif "int4" in quantize_mode:
@@ -410,6 +430,7 @@ def quantize(
             block_size=block_size,
             nodes_to_exclude=nodes_to_exclude,
             use_zero_point=use_zero_point,
+            log_level=log_level,
             **kwargs,
         )
     else:
@@ -421,6 +442,7 @@ def quantize(
             onnx_model = qdq_to_dq(onnx_model)
         else:
             # Remove redundant cast nodes in the quantized model
+            # Note. This is called within the qdq_to_dq function as well
             remove_redundant_cast_nodes(onnx_model.graph)
 
         # Collect and print stats of the quantized model
@@ -436,6 +458,8 @@ def quantize(
         for file in intermediate_generated_files:
             if os.path.exists(file):
                 os.remove(file)
+            if use_external_data_format and os.path.exists(file + "_data"):
+                os.remove(file + "_data")
 
     # Check if the quantized model is valid
     try:

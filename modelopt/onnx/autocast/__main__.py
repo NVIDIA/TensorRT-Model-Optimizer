@@ -35,13 +35,11 @@
 import argparse
 import sys
 
-import onnx
-
+from modelopt.onnx import utils as onnx_utils
 from modelopt.onnx.autocast.convert import (
     DEFAULT_DATA_MAX,
-    DEFAULT_INIT_CONVERSION_MAX_BYTES,
     DEFAULT_INIT_MAX,
-    convert,
+    convert_to_mixed_precision,
 )
 from modelopt.onnx.autocast.logging_config import configure_logging, logger
 
@@ -103,8 +101,13 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--init_conversion_max_bytes",
         type=int,
-        default=DEFAULT_INIT_CONVERSION_MAX_BYTES,
         help="Maximum size in bytes for initializer conversion. Larger initializers will be cast at runtime.",
+    )
+    parser.add_argument(
+        "--max_depth_of_reduction",
+        type=int,
+        help="Maximum depth of reduction allowed in low precision. Nodes with higher reduction depths will remain in "
+        "FP32. If not provided, infinity will be used.",
     )
     parser.add_argument(
         "--keep_io_types",
@@ -118,6 +121,29 @@ def get_parser() -> argparse.ArgumentParser:
         help="Log level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
+    parser.add_argument(
+        "--providers",
+        type=str,
+        default=["cpu"],
+        nargs="+",
+        help=(
+            "List of Execution Providers (EPs) for ONNX-Runtime backend. "
+            "Any subset of ['trt', 'cuda:x', 'cpu'], where 'x' is the device id. "
+            "If a custom op is detected in the model, 'trt' will automatically be added to the EP list."
+        ),
+    )
+    parser.add_argument(
+        "--trt_plugins",
+        type=str,
+        default=[],
+        nargs="+",
+        help=(
+            "List of custom TensorRT plugin library paths in .so format (compiled shared library). "
+            "If this a non-empty list, the TensorrtExecutionProvider is invoked, so make sure that the TensorRT "
+            "libraries are in the PATH or LD_LIBRARY_PATH variables."
+        ),
+    )
+
     return parser
 
 
@@ -133,7 +159,7 @@ def main(argv=None):
     parser = get_parser()
     args = parser.parse_args(argv)
     configure_logging(args.log_level)
-    model_out = convert(
+    model_out = convert_to_mixed_precision(
         onnx_path=args.onnx_path,
         low_precision_type=args.low_precision_type,
         nodes_to_exclude=args.nodes_to_exclude,
@@ -143,14 +169,17 @@ def main(argv=None):
         keep_io_types=args.keep_io_types,
         calibration_data=args.calibration_data,
         init_conversion_max_bytes=args.init_conversion_max_bytes,
+        providers=args.providers,
+        trt_plugins=args.trt_plugins,
+        max_depth_of_reduction=args.max_depth_of_reduction,
     )
 
     output_path = args.output_path
     if output_path is None:
         output_path = args.onnx_path.replace(".onnx", f".{args.low_precision_type}.onnx")
 
-    onnx.save(model_out, output_path)
-    logger.info(f"Converterd model saved to {output_path}")
+    onnx_utils.save_onnx(model_out, output_path)
+    logger.info(f"Converted model saved to {output_path}")
     return model_out
 
 

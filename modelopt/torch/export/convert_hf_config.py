@@ -60,12 +60,24 @@ def convert_hf_quant_config_format(input_config: dict) -> dict:
     original_quantization_details = input_config.get("quantization", {})
     quant_algo_value = original_quantization_details.get("quant_algo")
 
-    # This structure is derived based on the example for "FP8"
+    # This structure is derived based on the example for "FP8" and "NVFP4"
     # TODO: Handle other quantization algorithms
     if quant_algo_value == "FP8":
         config_group_details = {
             "input_activations": {"dynamic": False, "num_bits": 8, "type": "float"},
             "weights": {"dynamic": False, "num_bits": 8, "type": "float"},
+        }
+        new_config["config_groups"] = {"group_0": config_group_details}
+    elif quant_algo_value == "NVFP4":
+        group_size = original_quantization_details.get("group_size", 16)
+        config_group_details = {
+            "input_activations": {
+                "dynamic": False,
+                "num_bits": 4,
+                "type": "float",
+                "group_size": group_size,
+            },
+            "weights": {"dynamic": False, "num_bits": 4, "type": "float", "group_size": group_size},
         }
         new_config["config_groups"] = {"group_0": config_group_details}
 
@@ -83,5 +95,7 @@ def convert_hf_quant_config_format(input_config: dict) -> dict:
     producer_info = input_config.get("producer")
     if producer_info:
         new_config["producer"] = producer_info
+
+    new_config["quant_library"] = "modelopt"
 
     return new_config

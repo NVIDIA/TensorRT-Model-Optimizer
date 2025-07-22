@@ -852,3 +852,174 @@ def test_unsupported_op_types_model():
     converter = PrecisionConverter(model, value_info_map, initializer_map, node_to_init_map)
     converter.convert(high_precision_nodes=[], low_precision_nodes=["celu", "resize", "nms"])
     onnx.checker.check_model(converter.model)
+
+
+@pytest.mark.parametrize("low_precision_type", ["fp16", "bf16"])
+@pytest.mark.parametrize("empty_tensor_target", ["low_precision", "high_precision"])
+def test_empty_tensor_handling(low_precision_type, empty_tensor_target):
+    """Test empty tensor handling for both low and high precision node targets."""
+    # Create model with empty float tensor from Constant layer
+    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2])
+    y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2])
+
+    # Create Constant node that outputs empty float tensor
+    empty_tensor = np.array([], dtype=np.float32)  # Empty float array
+    constant_node = helper.make_node(
+        "Constant",
+        [],
+        ["empty_tensor"],
+        name="constant_empty",
+        value=numpy_helper.from_array(empty_tensor, name="empty_value"),
+    )
+
+    # Use empty tensor in Concat operation (concatenating with itself effectively)
+    concat_node = helper.make_node(
+        "Concat", ["X", "empty_tensor"], ["concat_output"], name="concat", axis=0
+    )
+    relu_node = helper.make_node("Relu", ["concat_output"], ["Y"], name="relu")
+
+    graph = helper.make_graph(
+        [constant_node, concat_node, relu_node], "model_empty_tensor", [x], [y], []
+    )
+    model = helper.make_model(graph, producer_name="model_empty_tensor")
+    model.opset_import[0].version = 20
+    model.ir_version = 10
+    onnx.checker.check_model(model)
+
+    model = onnx_utils.infer_shapes(model)
+    value_info_map, initializer_map, node_to_init_map = utils.setup_mappings(model)
+    converter = PrecisionConverter(
+        model,
+        value_info_map,
+        initializer_map,
+        node_to_init_map,
+        keep_io_types=True,
+        low_precision_type=low_precision_type,
+    )
+
+    # Test empty tensor detection
+    assert converter._is_empty_tensor("empty_tensor")
+    assert not converter._is_empty_tensor("X")
+
+    # Convert based on target
+    if empty_tensor_target == "low_precision":
+        converted_model = converter.convert(
+            high_precision_nodes=["relu"], low_precision_nodes=["concat"]
+        )
+    else:
+        converted_model = converter.convert(
+            high_precision_nodes=["concat"], low_precision_nodes=["relu"]
+        )
+
+    # Verify model is valid and empty tensor type is updated in value_info
+    onnx.checker.check_model(converted_model)
+    empty_tensor_info = next(
+        vi for vi in converted_model.graph.value_info if vi.name == "empty_tensor"
+    )
+    expected_type = (
+        low_precision_onnx_type(low_precision_type)
+        if empty_tensor_target == "low_precision"
+        else TensorProto.FLOAT
+    )
+    assert empty_tensor_info.type.tensor_type.elem_type == expected_type
+
+
+@pytest.fixture
+def model_with_constant_cast_patterns():
+    """Create a model with constant->cast patterns for testing folding logic."""
+    # Create inputs and outputs
+    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+    y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [2, 3])
+
+    # Create constant values with different data types
+    fp32_scalar = np.array(2.5, dtype=np.float32)  # 0-dimensional tensor
+    fp32_array = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+
+    # Create constant nodes
+    const_scalar = helper.make_node(
+        "Constant",
+        [],
+        ["const_scalar"],
+        name="const_scalar",
+        value=numpy_helper.from_array(fp32_scalar, name="scalar_value"),
+    )
+
+    const_array = helper.make_node(
+        "Constant",
+        [],
+        ["const_array"],
+        name="const_array",
+        value=numpy_helper.from_array(fp32_array, name="array_value"),
+    )
+    # Create consumer nodes
+    add1 = helper.make_node("Add", ["X", "const_scalar"], ["add1_out"], name="add1")
+    add2 = helper.make_node("Add", ["X", "const_array"], ["add2_out"], name="add2")
+
+    # Create output node
+    mean = helper.make_node("Mean", ["add1_out", "add2_out"], ["Y"], name="mean")
+
+    graph = helper.make_graph(
+        [
+            const_scalar,
+            const_array,
+            add1,
+            add2,
+            mean,
+        ],
+        "model_constant_cast_patterns",
+        [x],
+        [y],
+        [],
+    )
+
+    model = helper.make_model(graph, producer_name="model_constant_cast_patterns")
+    model.opset_import[0].version = 20
+    model.ir_version = 10
+    onnx.checker.check_model(model)
+
+    model = onnx_utils.infer_shapes(model)
+    value_info_map, initializer_map, node_to_init_map = utils.setup_mappings(model)
+
+    return model, value_info_map, initializer_map, node_to_init_map
+
+
+@pytest.mark.parametrize("low_precision_type", ["fp16", "bf16"])
+def test_constant_cast_folding(model_with_constant_cast_patterns, low_precision_type):
+    """Test constant->cast folding as part of the full conversion process."""
+    model, value_info_map, initializer_map, node_to_init_map = model_with_constant_cast_patterns
+
+    converter = PrecisionConverter(
+        model,
+        value_info_map,
+        initializer_map,
+        node_to_init_map,
+        keep_io_types=True,
+        low_precision_type=low_precision_type,
+    )
+
+    # Convert with some nodes in low precision to trigger cast insertion
+    converted_model = converter.convert(
+        high_precision_nodes=["add3"],
+        low_precision_nodes=["add1", "add2", "mean"],
+    )
+
+    # Verify the model is valid
+    onnx.checker.check_model(converted_model)
+
+    # Check Constant nodes are converted to low precision
+    const_scalar = next(
+        n
+        for n in converted_model.graph.node
+        if n.op_type == "Constant" and n.name == "const_scalar"
+    )
+    const_array = next(
+        n for n in converted_model.graph.node if n.op_type == "Constant" and n.name == "const_array"
+    )
+    assert const_scalar.attribute[0].t.data_type == low_precision_onnx_type(low_precision_type)
+    assert const_array.attribute[0].t.data_type == low_precision_onnx_type(low_precision_type)
+
+    # Check that the constant nodes are consumed directly by the Add nodes
+    assert len(utils.get_consumer_nodes(converted_model, "const_scalar")) == 1
+    assert utils.get_consumer_nodes(converted_model, "const_scalar")[0].op_type == "Add"
+    assert len(utils.get_consumer_nodes(converted_model, "const_array")) == 1
+    assert utils.get_consumer_nodes(converted_model, "const_array")[0].op_type == "Add"

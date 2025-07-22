@@ -25,6 +25,7 @@ import torch
 from megatron.core import dist_checkpointing, mpu
 from megatron.core.dist_checkpointing.serialization import get_default_load_sharded_strategy
 from megatron.core.dist_checkpointing.strategies.common import COMMON_STATE_FNAME
+from megatron.core.dist_checkpointing.validation import StrictHandling
 from megatron.core.transformer.module import Float16Module
 from packaging.version import Version
 
@@ -132,6 +133,34 @@ def save_sharded_modelopt_state(
     dist_checkpointing.save(modelopt_state, modelopt_checkpoint_name, sharded_strategy)
 
 
+def _load_extra_state_from_sharded_checkpoint(
+    model: torch.nn.Module,
+    checkpoint_name: str | Path,
+    prefix: str,
+) -> None:
+    """Load extra state from sharded checkpoint.
+
+    Args:
+        model: the model to load extra state into
+        checkpoint_name: the checkpoint folder path
+        prefix: the prefix to add to the modelopt_state keys
+    """
+    sharded_state_dict = model.sharded_state_dict(prefix=prefix)
+    extra_sharded_state_dict = {k: v for k, v in sharded_state_dict.items() if "_extra_state" in k}
+    extra_state_dict = dist_checkpointing.load(
+        extra_sharded_state_dict,
+        checkpoint_name,
+        get_default_load_sharded_strategy(checkpoint_name),
+        strict=StrictHandling.LOG_ALL,
+    )
+    extra_state_dict_no_prefix = {}
+
+    for k, v in extra_state_dict.items():
+        if k.startswith(prefix):
+            extra_state_dict_no_prefix[k[len(prefix) :]] = v
+    model.load_state_dict(extra_state_dict_no_prefix, strict=False)
+
+
 def restore_sharded_modelopt_state(
     model: list[torch.nn.Module],
     checkpoint_name: str | Path,
@@ -190,33 +219,9 @@ def restore_sharded_modelopt_state(
         model[0] = mto.restore_from_modelopt_state(model[0], common_modelopt_state)
 
         try:
-            sharded_state_dict = model[0].sharded_state_dict(prefix=prefix)
-            extra_sharded_state_dict = {
-                k: v for k, v in sharded_state_dict.items() if "_extra_state" in k
-            }
-            extra_state_dict = dist_checkpointing.load(
-                extra_sharded_state_dict,
-                checkpoint_name,
-                get_default_load_sharded_strategy(checkpoint_name),
-            )
-            model[0].load_state_dict(extra_state_dict, strict=False)
+            _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, prefix)
         except:  # noqa: E722
             # [WAR]: nemo2 is calling this function with an empty prefix.
             # The prefix however should be `module.` instead. This should be fixed
             # from the NeMo side. This is just a WAR.
-            sharded_state_dict = model[0].sharded_state_dict(prefix="module.")
-            extra_sharded_state_dict = {}
-            for k, v in sharded_state_dict.items():
-                if "_extra_state" in k:
-                    extra_sharded_state_dict[k] = v
-            extra_state_dict = dist_checkpointing.load(
-                extra_sharded_state_dict,
-                checkpoint_name,
-                get_default_load_sharded_strategy(checkpoint_name),
-            )
-            extra_state_dict_no_prefix = {}
-
-            for k, v in extra_state_dict.items():
-                if k.startswith("module."):
-                    extra_state_dict_no_prefix[k[len("module.") :]] = v
-            model[0].load_state_dict(extra_state_dict_no_prefix, strict=False)
+            _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, "module.")

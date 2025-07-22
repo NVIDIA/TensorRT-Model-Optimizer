@@ -56,6 +56,8 @@ class CalibrationDataProvider(CalibrationDataReader):
                 with all the unknown dims filled with 1.
         """
         logger.info("Setting up CalibrationDataProvider for calibration")
+        # Tensor data is not required to generate the calibration data
+        # So even if the model has external data, we don't need to load them here
         onnx_model = onnx.load(onnx_path)
         input_names = get_input_names(onnx_model)
         input_shapes = {} if calibration_shapes is None else parse_shapes_spec(calibration_shapes)
@@ -120,6 +122,8 @@ class RandomDataProvider(CalibrationDataReader):
             logger.debug(
                 f"Loading ONNX model from: {onnx_path} to read the input shapes for RandomDataProvider"
             )
+            # Tensor data is not required to generate the calibration data
+            # So even if the model has external data, we don't need to load them here
             onnx_model = onnx.load(onnx_path)
         self.calibration_data_list: list[dict[str, np.ndarray]] = [
             gen_random_inputs(onnx_model, calibration_shapes)

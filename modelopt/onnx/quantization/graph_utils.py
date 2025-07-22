@@ -15,7 +15,6 @@
 
 """Provides ONNX graph related utils for QDQ placement."""
 
-import os
 import re
 from collections import defaultdict
 
@@ -26,11 +25,18 @@ from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
 from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
+from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 from modelopt.onnx.logging_config import logger
 from modelopt.onnx.op_types import is_copy_op, is_linear_op
 from modelopt.onnx.quantization.ort_utils import create_inference_session
-from modelopt.onnx.utils import find_lowest_common_ancestor, get_child_nodes, get_parent_nodes
+from modelopt.onnx.utils import (
+    find_lowest_common_ancestor,
+    get_child_nodes,
+    get_parent_nodes,
+    parse_shapes_spec,
+    save_onnx,
+)
 
 
 def is_const_input(tensor: Tensor) -> bool:
@@ -254,6 +260,7 @@ def filter_quantizable_kgen_heads(
     cask_fusible_partitions: list[list[Node]],
     kgen_partitions: list[list[Node]],
     quantizable_op_types: list[str],
+    graph: Graph,
 ) -> tuple[list[Node], list[tuple[Node, Node, str]]]:
     """Returns the list of kgen head names if it follows a CASK partition."""
     cask_partition_nodes = set()
@@ -271,24 +278,39 @@ def filter_quantizable_kgen_heads(
         if not is_copy_op(node.op):
             return False
 
-        return all(_is_following_cask_partition(parent) for parent in get_parent_nodes(node))
+        parent_nodes = get_parent_nodes(node)
+        if len(parent_nodes) == 0:
+            return False
 
-    def _is_mha_epilogue_pattern(node: Node):
+        return all(_is_following_cask_partition(parent) for parent in parent_nodes)
+
+    def _is_mha_epilogue_pattern(node: Node, graph: Graph):
         if head_node.op != "Add":
             return False
 
-        child_nodes = get_child_nodes(head_node)
-        if child_nodes:
-            if child_nodes[0].op != "Softmax":
-                return False
+        # Below are valid patterns:
+        # (1)
+        # Add -> Softmax -> MatMul
+        #
+        # (2)
+        # Add -> Flatten -> Softmax -> Reshape -> MatMul
+        #      \----------Shape-----/
+        #
+        mha_epilogue_path = ["Softmax", "MatMul"]
+        wild_card_types = ["Flatten", "Reshape"]
+        add_children = get_child_nodes(node)
 
-            child_nodes = get_child_nodes(child_nodes[0])
-            if child_nodes and child_nodes[0].op != "MatMul":
-                return False
-        else:
-            return False
+        for child in add_children:
+            if has_path_type(
+                child,
+                graph,
+                mha_epilogue_path,
+                is_forward=True,
+                wild_card_types=wild_card_types,
+            ):
+                return True
 
-        return True
+        return False
 
     def _has_other_quantizable_consumer(
         tensor: Tensor, quantizable_kgen_heads: list[Node], head_name: str
@@ -332,9 +354,8 @@ def filter_quantizable_kgen_heads(
         for parent in head_parents:
             # If the head is consuming output of any quantizable op, then it is quantizable
             if _is_following_cask_partition(parent) or parent.op in output_quantization_candidates:
-                # MHA pattern: MatMul -> Div/Mul -> Add -> Softmax -> MatMul
                 # The mask add of MHA should not be quantized
-                if _is_mha_epilogue_pattern(head_node):
+                if _is_mha_epilogue_pattern(head_node, graph):
                     no_quantize_inputs_of_head.append(
                         (parent, partition[0], parent.outputs[0].name)
                     )
@@ -453,14 +474,10 @@ def build_non_residual_input_map(
 
             # Generally if both the inputs have a backbone then both backbones are of the same type
             if backbone1 and backbone2:
-                if backbone1 == backbone2:
+                if backbone1 == backbone2 or backbone1.op != backbone2.op:
                     non_residual_inputs[node.name] = None
                     continue
 
-                assert backbone1.op == backbone2.op, (
-                    f"{backbone1.name} and {backbone2.name} are different types of backbone for"
-                    f" {node.name}!"
-                )
                 if d1 > d2:
                     non_residual_inputs[node.name] = node.inputs[0].name
                     no_quantize_inputs.append((input1_producer, node, node.inputs[0].name))
@@ -541,10 +558,13 @@ def _find_nodes_from_op_types_to_exclude(graph: Graph, op_types_to_exclude=None)
 
 
 def expand_node_names_from_patterns(
-    graph: onnx.GraphProto | Graph, name_patterns: list[str]
+    graph: onnx.GraphProto | Graph, name_patterns: list[str] | None = None
 ) -> list[str]:
     """Expand the node names from the given patterns."""
+    if not name_patterns:
+        return []
     node_list = getattr(graph, "nodes", None) or getattr(graph, "node", None) or []
+
     matched_node_names = []
     for pattern in name_patterns:
         matched_node_names.extend([node.name for node in node_list if re.match(pattern, node.name)])
@@ -578,11 +598,11 @@ def get_extended_model_outputs(
 
     Args:
         onnx_path:
-            Path to the original onnx model.
+            Path to the original onnx model, used for saving the extended model nearby if it is larger than 2GB.
         extended_model:
             The onnx model with some intermediate tensors marked as model outputs.
         use_external_data_format:
-            If not None, this path will be used to store the weights of the quantized model.
+            If True, external data path will be used to store the weights of the intermediate model.
         intermediate_generated_files:
             List of intermediate generated files that will be deleted after quantization.
         calibration_data_reader:
@@ -598,16 +618,9 @@ def get_extended_model_outputs(
 
     # Initialize ORT session.
     if use_external_data_format:
-        extended_onnx_path = f"{onnx_path[:-5]}.extended.onnx"
-        extended_model_external_data_path = f"{onnx_path[:-5]}.extended.onnx_data"
-        onnx.save_model(
-            extended_model,
-            extended_onnx_path,
-            save_as_external_data=True,
-            location=os.path.basename(extended_model_external_data_path),
-        )
+        extended_onnx_path = onnx_path.replace(".onnx", "_extended.onnx")
+        save_onnx(extended_model, extended_onnx_path, save_as_external_data=True)
         intermediate_generated_files.append(extended_onnx_path)
-        intermediate_generated_files.append(extended_model_external_data_path)
         session = create_inference_session(extended_onnx_path, calibration_eps)
     else:
         session = create_inference_session(extended_model.SerializeToString(), calibration_eps)
@@ -626,6 +639,7 @@ def find_nodes_from_matmul_to_exclude(
     intermediate_generated_files: list[str] | None = None,
     calibration_data_reader: CalibrationDataReader = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
+    calibration_shapes: str | None = None,
 ) -> list[str]:
     """Find MatMul nodes that meets gemv condition to exclude.
 
@@ -634,47 +648,123 @@ def find_nodes_from_matmul_to_exclude(
     TRT. Thus, in this case, do not add Q/DQ layers to this matmul.
 
     Args:
-        onnx_path:
-            Path to the onnx model.
-        use_external_data_format:
-            If not None, this path will be used to store the weights of the quantized model.
-        intermediate_generated_files:
-            List of intermediate generated files that will be deleted after quantization.
-        calibration_data_reader:
-            Calibration data reader for running inference.
-        calibration_eps:
-            Priority order for the execution providers (EP) to calibrate the model.
+        onnx_path: Path to the onnx model.
+        use_external_data_format: If True, external data path will be used to store the
+            weights of the intermediate model.
+        intermediate_generated_files: List of intermediate generated files that will be deleted after quantization.
+        calibration_data_reader: Calibration data reader for running inference.
+        calibration_shapes: Model input shapes for inference. If provided, symbolic shape inference will be used
+            instead of calibration_data_reader.
+        calibration_eps: Priority order for the execution providers (EP) to calibrate the model.
             Any subset of ['cuda:x', 'cpu', 'trt'], where 'x' is the device id.
 
     Returns:
         List of Nodes to exclude from quantization.
     """
-    model = onnx.load(onnx_path, load_external_data=use_external_data_format)
+    model = onnx.load(onnx_path, load_external_data=True)
     graph = gs.import_onnx(model)
 
     matmul_nodes = [node for node in graph.nodes if node.op in {"MatMul", "Gemm"}]
-
-    if len(matmul_nodes) == 0:
+    if not matmul_nodes:
         logger.debug("No MatMul nodes found in the model")
         return []
 
     nodes_to_exclude = []
     logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
-    # Then, add each matmul output as model's extended outputs.
+    if calibration_shapes:
+        nodes_to_exclude = _exclude_matmuls_by_symbolic_inference(
+            model, matmul_nodes, calibration_shapes
+        )
+    else:
+        if calibration_data_reader is None:
+            raise ValueError(
+                "Either calibration_shapes or calibration_data_reader must be provided"
+            )
+        nodes_to_exclude = _exclude_matmuls_by_inference(
+            onnx_path,
+            model,
+            matmul_nodes,
+            use_external_data_format,
+            intermediate_generated_files or [],
+            calibration_data_reader,
+            calibration_eps,
+        )
+
+    logger.debug(f"Matmul nodes to exclude: {nodes_to_exclude}")
+    return [*set(nodes_to_exclude)]
+
+
+def _exclude_matmuls_by_symbolic_inference(
+    model: onnx.ModelProto, matmul_nodes: list, calibration_shapes: str | None = None
+) -> list[str]:
+    """Use symbolic shape inference to find MatMuls with dimension 1."""
+    # Prepare model for symbolic inference
+    for graph_input in model.graph.input:
+        for dim in graph_input.type.tensor_type.shape.dim:
+            if dim.HasField("dim_param"):
+                dim.Clear()
+                dim.dim_value = 1
+
+    # Apply calibration shapes if provided
+    input_shapes = parse_shapes_spec(calibration_shapes) if calibration_shapes else {}
+    for graph_input in model.graph.input:
+        if graph_input.name in input_shapes:
+            input_shape = input_shapes[graph_input.name]
+            tensor_shape = graph_input.type.tensor_type.shape.dim
+            if len(tensor_shape) != len(input_shape):
+                raise ValueError(
+                    f"{graph_input.name} expects shape of rank {len(tensor_shape)}, "
+                    f"but calibration shape of rank {len(input_shape)} was passed."
+                )
+            for dim, new_dim_value in zip(tensor_shape, input_shape):
+                dim.dim_value = new_dim_value
+
+    model.graph.ClearField("value_info")
+    model = SymbolicShapeInference.infer_shapes(model)
+    value_info_map = {vi.name: vi for vi in model.graph.value_info}
+
+    nodes_to_exclude = []
+    for matmul_node in matmul_nodes:
+        output_name = matmul_node.outputs[0].name
+        value_info = value_info_map.get(output_name)
+        if not value_info:
+            raise RuntimeError(f"Shape inference did not find shape for {output_name}.")
+
+        dims = value_info.type.tensor_type.shape.dim
+        if len(dims) < 2:
+            raise RuntimeError(f"Shape for {output_name} is incorrect.")
+
+        if dims[-1].dim_value == 1 or dims[-2].dim_value == 1:
+            nodes_to_exclude.append(matmul_node.name)
+
+    return nodes_to_exclude
+
+
+def _exclude_matmuls_by_inference(
+    onnx_path: str,
+    model: onnx.ModelProto,
+    matmul_nodes: list,
+    use_external_data_format: bool,
+    intermediate_generated_files: list[str],
+    calibration_data_reader: CalibrationDataReader,
+    calibration_eps: list[str],
+) -> list[str]:
+    """Use actual inference to find MatMuls with dimension 1."""
+    # Add matmul outputs to model outputs
     for matmul_node in matmul_nodes:
         model.graph.output.extend([onnx.ValueInfoProto(name=matmul_node.outputs[0].name)])
 
-    # To get the shape info of the model, we run model inference once to get the shape info.
     output_map = get_extended_model_outputs(
         onnx_path,
         model,
         use_external_data_format,
-        intermediate_generated_files,  # type: ignore[arg-type]
+        intermediate_generated_files,
         calibration_data_reader,
         calibration_eps,
     )
 
+    nodes_to_exclude = []
     for matmul_node in matmul_nodes:
         matmul_output = output_map[matmul_node.outputs[0].name]
         if (
@@ -684,9 +774,7 @@ def find_nodes_from_matmul_to_exclude(
         ):
             nodes_to_exclude.append(matmul_node.name)
 
-    logger.debug(f"Matmul nodes to exclude: {nodes_to_exclude}")
-
-    return [*set(nodes_to_exclude)]
+    return nodes_to_exclude
 
 
 def find_nodes_from_mha_to_exclude(
@@ -711,7 +799,7 @@ def find_nodes_from_mha_to_exclude(
         onnx_path:
             Path to the onnx model.
         use_external_data_format:
-            If not None, this path will be used to store the weights of the quantized model.
+            If True, external data path will be used to store the weights of the intermediate model.
         nodes_to_exclude:
             List of Nodes to exclude from quantization.
         disable_mha_qdq:
@@ -730,7 +818,7 @@ def find_nodes_from_mha_to_exclude(
         List of Nodes to exclude from quantization.
     """
     logger.info(f"Analyzing MHA nodes for {quantize_mode} quantization")
-    model = onnx.load(onnx_path, load_external_data=use_external_data_format)
+    model = onnx.load(onnx_path, load_external_data=True)
     graph = gs.import_onnx(model)
 
     mha_partitions = find_mha_partitions(graph)
@@ -801,7 +889,7 @@ def find_nodes_from_mha_to_exclude(
     return [*set(nodes_to_exclude)]  # type: ignore[arg-type]
 
 
-def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16):
+def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16, use_external_data_format):
     """Adds cast_to_fp16 nodes to the inputs of a layer and cast_to_fp32 to the outputs."""
     logger.info(
         "Adding cast_to_fp16 nodes to the inputs of a layer and cast_to_fp32 to the outputs"
@@ -878,7 +966,7 @@ def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16):
     graph.cleanup().toposort()
 
     new_onnx_path = onnx_path.replace(".onnx", "_castFP16.onnx")
-    onnx.save(gs.export_onnx(graph), new_onnx_path)
+    save_onnx(gs.export_onnx(graph), new_onnx_path, use_external_data_format)
     return new_onnx_path
 
 

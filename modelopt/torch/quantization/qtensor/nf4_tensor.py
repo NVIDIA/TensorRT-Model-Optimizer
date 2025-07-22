@@ -74,7 +74,9 @@ class NF4QTensor(BaseQuantizedTensor):
     """
 
     @classmethod
-    def quantize(cls, input: torch.Tensor, block_size: int) -> torch.Tensor:
+    def quantize(
+        cls, input: torch.Tensor, block_size: int, scale_block_size: int | None = None
+    ) -> tuple:
         """Converting a tensor to a quantized format based on NF4 double quantization.
 
         Args:
@@ -116,6 +118,8 @@ class NF4QTensor(BaseQuantizedTensor):
             #               | byte  | byte  | byte  |
             packed_output_uint8 = quantized_output_uint8[::2] << 4 | quantized_output_uint8[1::2]
 
+        # pad the scales if needed
+        scales = reduce_block_padding(scales.view(-1), block_sizes={-1: scale_block_size})
         return cls(original_input.shape, original_input.dtype, packed_output_uint8), scales
 
     @classmethod
@@ -158,6 +162,9 @@ class NF4QTensor(BaseQuantizedTensor):
         block_sizes = kwarg["block_sizes"]
         double_scale = kwarg["double_scale"]
         scale_zeros = kwarg["scale_zeros"]
+
+        # unpadd the scales if needed
+        scales = scales.view(-1)[: (self._quantized_data.numel() * 2) // block_sizes[-1]]
 
         if cuda_ext and self._quantized_data.is_cuda:
             # with a custom cuda kernel

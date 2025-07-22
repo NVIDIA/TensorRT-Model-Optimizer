@@ -45,9 +45,9 @@ if [ "$EXPORT_FORMAT" = "hf" ]; then
     IFS=","
     for qformat in $QFORMAT; do
         case $qformat in
-        fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq) ;;
+        fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq | w4a8_mxfp4_fp8) ;;
         *)
-            echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq]" >&2
+            echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq, w4a8_mxfp4_fp8]" >&2
             exit 1
             ;;
         esac
@@ -74,9 +74,9 @@ esac
 IFS=","
 for qformat in $QFORMAT; do
     case $qformat in
-    fp8 | fp8_pc_pt | fp8_pb_wo | int8_sq | int4_awq | w4a8_awq | fp16 | bf16 | nvfp4 | nvfp4_awq) ;;
+    fp8 | fp8_pc_pt | fp8_pb_wo | int8_sq | int4_awq | w4a8_awq | fp16 | bf16 | nvfp4 | nvfp4_awq | w4a8_mxfp4_fp8) ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, fp8_pc_pt, fp8_pb_wo, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, fp8_pc_pt, fp8_pb_wo, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq, w4a8_mxfp4_fp8]" >&2
         exit 1
         ;;
     esac
@@ -144,6 +144,9 @@ fi
 
 if [ -n "$AUTO_QUANTIZE_BITS" ]; then
     PTQ_ARGS+=" --auto_quantize_bits=$AUTO_QUANTIZE_BITS "
+fi
+if [ -n "$CALIB_DATASET" ]; then
+    PTQ_ARGS+=" --dataset=$CALIB_DATASET "
 fi
 
 if [ -n "$KV_CACHE_QUANT" ]; then
@@ -427,10 +430,25 @@ if [[ $TASKS =~ "benchmark" ]]; then
         fi
     fi
 
-    if [ "$BUILD_MAX_BATCH_SIZE" -gt 1 ]; then
-        trtllm-bench --model $MODEL_PATH throughput --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
+    MODEL_ARGS=""
+    EXTRA_ARGS=""
+    if [ "$EXPORT_FORMAT" = "hf" ]; then
+        MODEL_ARGS="--model_path $ENGINE_DIR "
+        EXTRA_ARGS="--backend pytorch "
+        if [ "$TP" -ne 1 ]; then
+            EXTRA_ARGS+="--tp $TP "
+        fi
+        if [ "$PP" -ne 1 ]; then
+            EXTRA_ARGS+="--pp $PP "
+        fi
     else
-        trtllm-bench --model $MODEL_PATH latency --engine_dir $ENGINE_DIR --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
+        EXTRA_ARGS="--engine_dir $ENGINE_DIR "
+    fi
+
+    if [ "$BUILD_MAX_BATCH_SIZE" -gt 1 ]; then
+        trtllm-bench --model $MODEL_PATH $MODEL_ARGS throughput $EXTRA_ARGS --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
+    else
+        trtllm-bench --model $MODEL_PATH $MODEL_ARGS latency $EXTRA_ARGS --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
     fi
 
 fi

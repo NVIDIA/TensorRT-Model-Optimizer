@@ -37,7 +37,7 @@ class INT4QTensor(BaseQuantizedTensor):
         return 2 ** (num_bits - 1) - 1
 
     @classmethod
-    def quantize(cls, input: torch.Tensor, block_size: int) -> torch.Tensor:
+    def quantize(cls, input: torch.Tensor, block_size: int) -> tuple:
         """Converting a tensor to a quantized format based on INT4 (AWQ) quantization.
 
         Args:
@@ -50,6 +50,8 @@ class INT4QTensor(BaseQuantizedTensor):
         cuda_ext = get_cuda_ext()
 
         scale_quant_maxbound = cls._get_quant_maxbound(num_bits=4)
+
+        assert input.shape[-1] % 2 == 0, "Input tensor must have even number on last dimension."
 
         # pad the input if needed
         original_input = input
@@ -81,6 +83,8 @@ class INT4QTensor(BaseQuantizedTensor):
             #               | byte  | byte  | byte  |
             packed_output_uint8 = flattened[::2] << 4 | flattened[1::2]
 
+        # reshape the packed_output_uint8 to the original dimensions for sharding
+        packed_output_uint8 = packed_output_uint8.reshape(*original_input.shape[:-1], -1)
         return cls(original_input.shape, input.dtype, packed_output_uint8), scales
 
     def dequantize(self, dtype: torch.dtype = None, **kwarg):
@@ -96,7 +100,10 @@ class INT4QTensor(BaseQuantizedTensor):
 
         if cuda_ext and self._quantized_data.is_cuda:
             # use a custom cuda kernel if available
-            output = cuda_ext.INT4_dequantize(self._quantized_data, scales, block_sizes[-1])
+            scales = scales.to(self._quantized_data.device)
+            output = cuda_ext.INT4_dequantize(
+                self._quantized_data.view(-1), scales, block_sizes[-1]
+            )
             return (
                 output.view(-1)[: np.prod(self.metadata["shape"])]  # handle padding
                 .view(self.metadata["shape"])

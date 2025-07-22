@@ -18,12 +18,12 @@
 import io
 import os
 import tempfile
+import uuid
 from collections import defaultdict
 from typing import Any
 
 import numpy as np
 import onnx
-import onnx.onnx_cpp2py_export.checker as C
 import onnx_graphsurgeon as gs
 from onnx import numpy_helper
 from onnx.helper import get_attribute_value
@@ -319,9 +319,29 @@ def gen_random_inputs(
             else _get_tensor_shape(graph_input)
         )
 
-        input_dict[graph_input.name] = np.random.uniform(size=shape_arr).astype(
-            types_np[graph_input.name]
-        )
+        target_np_type = types_np[graph_input.name]
+        if np.issubdtype(target_np_type, np.integer):
+            # For integer types, generate random integers in a representative range
+            # Example: if it's int32, maybe -1000 to 1000, or 0 to 1000 if non-negative.
+            # This needs to be context-aware or have a sensible default.
+            # For token IDs (e.g. input_ids), a typical vocab size might be ~50000
+            if "ids" in graph_input.name:  # Heuristic for tokenizers
+                min_val, max_val = 0, 50000
+            elif "mask" in graph_input.name:  # Heuristic for attention masks (0 or 1)
+                min_val, max_val = 0, 2  # np.random.randint excludes high, so use 2 for 0,1
+            else:  # General integer case, small range
+                min_val, max_val = 0, 100
+            input_dict[graph_input.name] = np.random.randint(
+                min_val, max_val, size=shape_arr
+            ).astype(target_np_type)
+        elif np.issubdtype(target_np_type, np.floating):
+            # For float types, np.random.uniform() is fine, but ensure a decent range
+            # if default (0,1) is not good enough. E.g., np.random.uniform(-1.0, 1.0, size=shape_arr)
+            input_dict[graph_input.name] = np.random.uniform(
+                low=0.0, high=1.0, size=shape_arr
+            ).astype(target_np_type)
+        else:  # Fallback for other types (e.g. bool)
+            input_dict[graph_input.name] = np.random.uniform(size=shape_arr).astype(target_np_type)
 
     return input_dict
 
@@ -503,32 +523,23 @@ def duplicate_shared_constants(onnx_model: onnx.ModelProto) -> tuple[onnx.ModelP
         tensor_dict["inp_node"].inputs[tensor_dict["inp_idx"]] = new_tensor
 
     onnx_model = gs.export_onnx(graph)
-    # TODO: Remove manual ir_version change once ORT supports ir_version 11
-    onnx_model.ir_version = 10
     is_modified = bool(tensors)
     return onnx_model, is_modified
 
 
-def is_valid_onnx_model(file_path):
-    """Checks if the given file is a valid ONNX model."""
-    if not os.path.exists(file_path):
-        logger.info(f"No file found at {file_path}")
-        return False
-
-    try:
-        # Load the ONNX model
-        model = onnx.load(file_path)
-
-        # Check the model
+def check_model(model: onnx.ModelProto) -> onnx.ModelProto:
+    """Checks if the given model is valid."""
+    if model.ByteSize() > (2 * (1024**3)):  # 2GB limit
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # ONNX also looks in CWD, so we need to use a unique id
+            unique_id = str(uuid.uuid4())[:8]
+            onnx_tmp_path = os.path.join(temp_dir, f"model_{unique_id}.onnx")
+            save_onnx(model, onnx_tmp_path, save_as_external_data=True)
+            onnx.checker.check_model(onnx_tmp_path)
+            return onnx.load(onnx_tmp_path)
+    else:
         onnx.checker.check_model(model)
-        logger.info(f"ONNX model at {file_path} is valid")
-        return True
-    except C.ValidationError as e:
-        logger.error(f"The file is not a valid ONNX model {e}")
-    except Exception as e:
-        logger.error(f"An error occurred: {e}")
-
-    return False
+        return model
 
 
 def find_lowest_common_ancestor(node1: Node, node2: Node) -> tuple[str | None, int, int]:
@@ -603,7 +614,7 @@ def get_variable_inputs(node: Node) -> list[Variable]:
 
 def save_onnx(model: onnx.ModelProto, onnx_path: str, save_as_external_data: bool = False):
     """Save an ONNX model to given path. If a model is larger than 2GB, will save with external data."""
-    size_threshold = 2 * 1024 * 1024 * 1024
+    size_threshold = 2 * (1024**3)  # 2GB
     try:
         model_proto = model.SerializeToString()
         model_size = len(model_proto)
@@ -620,9 +631,15 @@ def save_onnx(model: onnx.ModelProto, onnx_path: str, save_as_external_data: boo
             logger.error(f"Failed to serialize model: {e!s}")
             raise
 
+    # Set ir_version to 10, remove it once ORT supports ir_version 11
+    model.ir_version = 10
+
     if save_as_external_data:
         external_data_path = os.path.basename(onnx_path) + "_data"
-        logger.debug(f"Saving external data to: {external_data_path}")
+        if os.path.exists(external_data_path):
+            logger.warning(f"Removing existing external data file: {external_data_path}")
+            os.remove(external_data_path)
+
         onnx.save_model(
             model,
             onnx_path,
@@ -678,20 +695,31 @@ def get_attribute(node: onnx.NodeProto, attr_name: str) -> Any:
 
 def infer_shapes(model: onnx.ModelProto, **kwargs):
     """Infers shapes of the onnx graph, handles large models."""
-    if model.ByteSize() > 2147483648:  # 2GB limit
-        temp_dir = tempfile.TemporaryDirectory().name
-        os.makedirs(temp_dir, exist_ok=True)
-        onnx_orig_path = os.path.join(temp_dir, "model.onnx")
-        onnx_inferred_path = os.path.join(temp_dir, "inferred.onnx")
-        onnx.save_model(
-            model,
-            onnx_orig_path,
-            save_as_external_data=True,
-            all_tensors_to_one_file=True,
-            convert_attribute=False,
-        )
-        onnx.shape_inference.infer_shapes_path(onnx_orig_path, onnx_inferred_path, **kwargs)
-        model = onnx.load(onnx_inferred_path)
+    if model.ByteSize() > (2 * (1024**3)):  # 2GB limit
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # ONNX also looks in CWD, so we need to use a unique id
+            unique_id = str(uuid.uuid4())[:8]
+            onnx_orig_path = os.path.join(temp_dir, f"model_{unique_id}.onnx")
+            onnx_inferred_path = os.path.join(temp_dir, f"inferred_{unique_id}.onnx")
+            save_onnx(model, onnx_orig_path, save_as_external_data=True)
+            onnx.shape_inference.infer_shapes_path(onnx_orig_path, onnx_inferred_path, **kwargs)
+            model = onnx.load(onnx_inferred_path)
+        return model
     else:
-        model = onnx.shape_inference.infer_shapes(model, **kwargs)
-    return model
+        return onnx.shape_inference.infer_shapes(model, **kwargs)
+
+
+def onnx_type_str_to_enum(dtype: str) -> int:
+    """Converts ONNX type in string format to onnx.TensorProto format.
+
+    Example: 'tensor(float16)' becomes onnx.TensorProto.FLOAT16
+
+    Args:
+        dtype: ONNX type in string format.
+
+    Returns:
+        int: ONNX type in enum format.
+    """
+    dtype = dtype.split("tensor(")[-1].split(")")[0]
+    dtype = "FLOAT" if dtype == "float32" else dtype.upper()
+    return getattr(onnx.TensorProto, dtype)

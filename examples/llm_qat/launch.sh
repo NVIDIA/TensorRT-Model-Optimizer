@@ -88,9 +88,21 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       LORA="${1#*=}"
       ;;
+    --teacher_model*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      TEACHER_MODEL="${1#*=}"
+      ;;
+    --distill*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      DISTILL="${1#*=}"
+      ;;
     --fsdp_transformer_layer_cls_to_wrap*)
       if [[ "$1" != *=* ]]; then shift; fi
       FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP="${1#*=}"
+      ;;
+    --use_fsdp2*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      USE_FSDP2="${1#*=}"
       ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
@@ -122,6 +134,8 @@ EVAL_BS=${EVAL_BS:-4}
 DO_TRAIN=${DO_TRAIN:-True}
 LORA=${LORA:-"False"}
 COMPRESS=${COMPRESS:-"False"}
+DISTILL=${DISTILL:-"False"}
+TEACHER_MODEL=${TEACHER_MODEL:-$MODEL}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 
 if [ -z $QUANT_CFG ]; then
@@ -135,19 +149,35 @@ if [ ! -z $MAX_STEPS ]; then
   OPTIONAL_ARGS="$OPTIONAL_ARGS --max_steps $MAX_STEPS"
 fi
 
-FSDP_ARGS="--fsdp 'full_shard auto_wrap' --fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
+CONFIG_FILE="fsdp1.yaml"
+FSDP_ARGS="--fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
+GRADIENT_CHECKPOINTING_ARGS="--gradient_checkpointing True"
+
+if [[ "${USE_FSDP2,,}" == "true" ]]; then
+  echo "Using FSDP2 instead of FSDP1. FSDP2 is not mature yet! Please use it with latest torch and transformers."
+  CONFIG_FILE="fsdp2.yaml"
+  GRADIENT_CHECKPOINTING_ARGS=""
+fi
+
+DISTILLATION_ARGS=""
+if [[ "${DISTILL}" == "True" ]]; then
+  DISTILLATION_ARGS="--distill $DISTILL --teacher_model $TEACHER_MODEL"
+  # Distillation does not work with memory efficient loading
+  FSDP_ARGS="$FSDP_ARGS --fsdp_cpu_ram_efficient_loading False"
+fi
 
 # real quantization does not work with FSDP
 if [[ "${COMPRESS,,}" == "true" ]]; then
   echo "Compression is not supported with FSDP. Disabling FSDP."
   FSDP_ARGS=""
+  CONFIG_FILE="ddp.yaml"
 fi
 
-CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
+CMD="accelerate launch --config-file accelerate_config/$CONFIG_FILE $FSDP_ARGS \
+    main.py \
     --model_name_or_path $MODEL \
     --model_max_length 4096 \
     --dataloader_drop_last True \
-    --bf16 True \
     --do_train $DO_TRAIN \
     --do_eval True \
     --output_dir $OUTPUT_DIR \
@@ -159,7 +189,6 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --per_device_eval_batch_size $EVAL_BS \
     --gradient_accumulation_steps $ACCUM_STEPS \
     --eval_accumulation_steps 1 \
-    --gradient_checkpointing True \
     --save_strategy steps \
     --save_steps $SAVE_STEPS \
     --eval_strategy steps \
@@ -172,10 +201,9 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 main.py \
     --lr_scheduler_type linear \
     --logging_steps 1 \
     --report_to tensorboard \
-    --tf32 True \
     --lora $LORA \
     --compress $COMPRESS \
-    $FSDP_ARGS $QUANT_ARGS $OPTIONAL_ARGS
+    $QUANT_ARGS $OPTIONAL_ARGS $GRADIENT_CHECKPOINTING_ARGS $DISTILLATION_ARGS
 "
 
 start_time=$(date +%s)

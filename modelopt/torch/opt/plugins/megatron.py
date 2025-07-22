@@ -74,6 +74,9 @@ def _modelopt_set_extra_state(self, state: Any):
 
     if isinstance(state, torch.Tensor):
         # Default format: byte tensor with pickled data
+        #
+        # TODO: possible deserialization improvement
+        # https://github.com/NVIDIA/TensorRT-LLM/blob/main/tensorrt_llm/executor/serialization.py
         extra_state = pickle.loads(state.detach().cpu().numpy().tobytes())  # nosec
     else:
         raise RuntimeError("Unsupported extra_state format.")

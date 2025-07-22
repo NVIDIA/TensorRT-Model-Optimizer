@@ -16,6 +16,7 @@
 import logging
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 
 def timeit(method: Callable) -> Callable:
@@ -37,7 +38,7 @@ def timeit(method: Callable) -> Callable:
             kw["log_time"][name] = (te - ts) * 1000
             return result, kw["log_time"][name]
         else:
-            logging.info(f"{method.__name__}: {(te - ts) * 1000} ms")
+            logging.info(f"Execution time for {method.__name__}: {(te - ts):.4f}s")
             return result
 
     return timed
@@ -51,23 +52,21 @@ def init_logging() -> None:
     )
 
 
-def read_bytes(file_path: str) -> bytes:
-    with open(file_path, "rb") as file:
-        file_bytes = file.read()
-        return file_bytes
+def read_bytes(file_path: str | Path) -> bytes:
+    path = Path(file_path)
+    return path.read_bytes()
 
 
-def read_string(file_path: str) -> str:
-    with open(file_path) as file:
-        data = file.read()
-        return data
+def read_string(file_path: str | Path) -> str:
+    path = Path(file_path)
+    return path.read_text()
 
 
-def write_bytes(data: bytes, file_path: str) -> None:
-    with open(file_path, "wb") as file:
-        file.write(data)
+def write_bytes(data: bytes, file_path: str | Path) -> None:
+    path = Path(file_path)
+    path.write_bytes(data)
 
 
-def write_string(data: str, file_path: str) -> None:
-    with open(file_path, "w") as file:
-        file.write(data)
+def write_string(data: str, file_path: str | Path) -> None:
+    path = Path(file_path)
+    path.write_text(data)

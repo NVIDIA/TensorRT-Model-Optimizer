@@ -35,21 +35,55 @@ The export API (:meth:`export_hf_checkpoint <modelopt.torch.export.unified_expor
 Deployment Support Matrix
 ==============================================
 
-Currently, we support the following quantization formats with the unified HF export API:
-#. FP8
-#. FP8_PB
-#. NVFP4
-#. NVFP4_AWQ
-#. INT4_AWQ
-#. W4A8_AWQ
+Supported Quantization Formats
+------------------------------
 
-For deployment with TensorRT-LLM, we support llama 3.1, 3.3, Mixtral 8x7B, with FP8 and NVFP4 checkpoints; Medusa and Eagle FP8 checkpoints are also tested.
+The unified HF export API supports the following quantization formats:
 
-For deployment with vLLM, we support llama 3.1, 3.3, Mixtral 8x7B, with FP8 checkpoints.
+1. FP8 - 8-bit floating point
+2. FP8_PB - 8-bit floating point with per-block scaling
+3. NVFP4 - NVIDIA 4-bit floating point
+4. NVFP4_AWQ - NVIDIA 4-bit floating point with AWQ optimization
+5. INT4_AWQ - 4-bit integer with AWQ optimization
+6. W4A8_AWQ - 4-bit weights and 8-bit activations with AWQ optimization
 
-For deployment with SGLang, we support llama 3.1, 3.3, with FP8 checkpoints.
+Framework-Specific Support
+--------------------------
 
-Other models and quantization formats may work, but they are not thoroughly tested.
+TensorRT-LLM
+~~~~~~~~~~~~
+
+Models:
+  * Llama 4, 3.1, 3.3 (FP8, NVFP4)
+  * Qwen 3 (FP8, NVFP4)
+  * Deepseek R1 (NVFP4)
+  * Mixtral 8x7B (FP8, NVFP4)
+  * Medusa (FP8)
+  * Eagle (FP8)
+
+Requirements: TensorRT-LLM v0.17.0 or later
+
+vLLM
+~~~~
+
+Models:
+  * Llama 3.1, 3.3 (FP8, NVFP4)
+  * Mixtral 8x7B (FP8)
+  * Deepseek R1 (NVFP4)
+
+Requirements: vLLM v0.9.1 or later
+
+SGLang
+~~~~~~
+
+Models:
+  * Llama 3.1, 3.3 (FP8, NVFP4)
+  * Deepseek R1 (NVFP4)
+  * Llama 4 (FP8)
+
+Requirements: SGLang v0.4.7 or later
+
+Note: While other models and quantization formats may work, they have not been thoroughly tested and validated.
 
 
 Deployment with Selected Inference Frameworks

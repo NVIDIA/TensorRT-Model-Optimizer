@@ -15,6 +15,8 @@ Currently ONNX quantization supports FP8, INT4 and INT8 quantization.
     ModelOpt ONNX quantization generates new ONNX models with QDQ nodes following TensorRT rules.
     For real speedup, the generated ONNX should be compiled into TensorRT engine.
 
+.. _ort_ep_requirements:
+
 Requirements
 ============
 

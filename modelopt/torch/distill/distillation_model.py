@@ -114,11 +114,11 @@ class DistillationModel(DynamicModule):
         #   `ato.restore()` so we check if they are present accidentally first.
         for student_layer, teacher_layer in self._layers_to_loss:
             setattr(student_layer, "_intermediate_output", None)
-            if output_capture_fwd_hook not in student_layer._forward_hooks.values():
-                student_layer.register_forward_hook(output_capture_fwd_hook)
-            setattr(teacher_layer, "_intermediate_output", [])
-            if output_capture_fwd_hook not in teacher_layer._forward_hooks.values():
-                teacher_layer.register_forward_hook(output_capture_fwd_hook)
+            if student_output_capture_fwd_hook not in student_layer._forward_hooks.values():
+                student_layer.register_forward_hook(student_output_capture_fwd_hook)
+            setattr(teacher_layer, "_intermediate_output", None)
+            if teacher_output_capture_fwd_hook not in teacher_layer._forward_hooks.values():
+                teacher_layer.register_forward_hook(teacher_output_capture_fwd_hook)
 
     @property
     def teacher_model(self) -> nn.ModuleList:
@@ -179,16 +179,11 @@ class DistillationModel(DynamicModule):
 
     def train(self, mode: bool = True):
         """Override to prevent warnings of stored intermediate outputs in future forwards."""
-        if self.training is True and mode is False:
-            # If switching from train to eval, clear outputs and stop forward hook
-            for student_layer, teacher_layer in self._layers_to_loss:
-                student_layer._intermediate_output = False
-                teacher_layer._intermediate_output = False
-        elif self.training is False and mode is True:
-            # If switching from eval to train, resume forward hook
+        if self.training != mode:
+            # When switching between train and eval, clear outputs
             for student_layer, teacher_layer in self._layers_to_loss:
                 student_layer._intermediate_output = None
-                teacher_layer._intermediate_output = []
+                teacher_layer._intermediate_output = None
         super().train(mode)
 
     def state_dict(self, *args, **kwargs) -> dict[str, Any]:
@@ -257,10 +252,6 @@ class DistillationModel(DynamicModule):
             If reduce is True, the scalar total loss weighted between ``student_loss`` and the distillation losses.
             If reduce is False, a dict of student model output loss and layer-wise distillation losses.
         """
-        if not self.training:
-            raise AssertionError(
-                "`DistillationModel.compute_kd_loss()` should only be called in training mode."
-            )
         if self._loss_balancer is None:
             assert student_loss is None, "Cannot pass in student loss without using Loss Balancer."
 
@@ -270,8 +261,9 @@ class DistillationModel(DynamicModule):
 
         for i, ((student_layer, teacher_layer), loss_fn) in enumerate(self._layers_to_loss.items()):
             out_s = student_layer._intermediate_output
-            out_t = teacher_layer._intermediate_output.pop(0)  # can store multiple in special cases
+            out_t = teacher_layer._intermediate_output
             student_layer._intermediate_output = None
+            teacher_layer._intermediate_output = None
 
             loss = loss_fn(out_s, out_t)  # Student is pred, Teacher is target
             if loss_reduction_fn is not None:
@@ -293,26 +285,30 @@ class DistillationModel(DynamicModule):
         return loss_total
 
 
-def output_capture_fwd_hook(module: nn.Module, input: Any, output: Any):  # pylint: disable=redefined-builtin
+def student_output_capture_fwd_hook(module: nn.Module, input: Any, output: Any):  # pylint: disable=redefined-builtin
     """A hook to capture layer output."""
     # NOTE: Defined externally to allow pickling.
 
-    if module._intermediate_output is False:
-        # Special indicator to temporarily disable hook when not training mode.
-        return
-    elif isinstance(module._intermediate_output, list):
-        # Teacher
-        if len(module._intermediate_output) > 0:
-            warnings.warn(
-                f"Teacher's Module `{type(module).__name__}` already has an intermediate output stored."
-                " This is undesired behavior unless Pipeline Parallelism is in use."
-            )
-        module._intermediate_output.append(output)
-    elif not getattr(module, "_only_teacher_fwd", False):  # might be hooked on entire model fwd
-        # Student
-        if module._intermediate_output is not None:
-            warnings.warn(
-                f"Student's Module `{type(module).__name__}` already has an intermediate output stored."
-                " This is undesired behavior unless Gradient Checkpointing is in use."
-            )
-        module._intermediate_output = output
+    if getattr(module, "_only_teacher_fwd", False):
+        return  # Might be hooked on entire model fwd
+    if module.training and module._intermediate_output is not None:
+        warnings.warn(
+            f"Student's Module `{type(module).__name__}` already has an intermediate output stored."
+            " This is undesired behavior unless Activation Checkpointing is in use."
+        )
+
+    module._intermediate_output = output
+
+
+def teacher_output_capture_fwd_hook(module: nn.Module, input: Any, output: Any):  # pylint: disable=redefined-builtin
+    """A hook to capture layer output."""
+    # NOTE: Defined externally to allow pickling.
+
+    if module._intermediate_output is not None:
+        # NOTE: cannot tell if train or eval since teacher is always eval
+        warnings.warn(
+            f"Teacher's Module `{type(module).__name__}` already has an intermediate output stored."
+            " This is expected when `DistillationModel.compute_kd_loss` is not called in eval mode."
+        )
+
+    module._intermediate_output = output

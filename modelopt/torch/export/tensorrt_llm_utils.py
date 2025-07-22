@@ -345,7 +345,8 @@ def convert_to_tensorrt_llm_config(
     else:
         raise NotImplementedError(
             f"Cannot export tensorrt_llm checkpoint for model {decoder_type}: {config_architecture}. "
-            "It's not supported by TensorRT-LLM yet."
+            "It's not supported by TensorRT-LLM yet. Please try exporting the model to unified HF "
+            "checkpoint with ModelOpt and deploy the checkpoint with TensorRT-LLM pytorch backend."
         )
 
     # For Mixtral and Arctic

@@ -79,6 +79,7 @@ def test_partitioning(tmp_path):
         cask_fusible_partitions,
         kgen_partitions,
         quantizable_op_types,
+        graph,
     )
     assert not quantizable_kgen_heads
 

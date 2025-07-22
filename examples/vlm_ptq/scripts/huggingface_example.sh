@@ -132,10 +132,6 @@ if $TRUST_REMOTE_CODE; then
     PTQ_ARGS+=" --trust_remote_code "
 fi
 
-if [ "${MODEL_TYPE}" = "mllama" ]; then
-    PTQ_ARGS+=" --dataset scienceqa "
-fi
-
 case "${MODEL_TYPE}" in
     "vila")
         VISUAL_FEATURE=196
@@ -150,6 +146,7 @@ case "${MODEL_TYPE}" in
         VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
         ;;
     "mllama")
+        PTQ_ARGS+=" --kv_cache_qformat none "
         VLM_ARGS=" --max_encoder_input_len=6404 --skip_run"
         ;;
 esac

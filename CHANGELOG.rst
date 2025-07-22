@@ -1,6 +1,27 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.33 (2025-07-14)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+- PyTorch dependencies for ``modelopt.torch`` features are no longer optional and ``pip install nvidia-modelopt`` is now same as ``pip install nvidia-modelopt[torch]``.
+
+**Deprecations**
+
+**New Features**
+
+- Upgrade TensorRT-LLM dependency to 0.20.
+- Add new CNN QAT example to demonstrate how to use ModelOpt for QAT.
+- Add support for ONNX models with custom TensorRT ops in Autocast.
+- Add quantization aware distillation (QAD) support in ``llm_qat`` example.
+- Add support for BF16 in ONNX quantization.
+- Add per node calibration support in ONNX quantization.
+- ModelOpt now supports quantization of tensor-parallel sharded Huggingface transformer models. This requires ``transformers>=4.52.0``.
+- Support quantization of FSDP2 wrapped models and add FSDP2 support in the ``llm_qat`` example.
+- Add NeMo 2 Simplified Flow examples for quantization aware training/distillation (QAT/QAD), speculative decoding, pruning & distilllation.
+
 0.31 (2025-06-04)
 ^^^^^^^^^^^^^^^^^
 
@@ -28,6 +49,7 @@ Model Optimizer Changelog (Linux)
 - ModelOpt now supports advanced quantization algorithms such as AWQ, SVDQuant and SmoothQuant for cpu-offloaded Huggingface models.
 - Add AutoCast tool to convert ONNX models to FP16 or BF16.
 - Add ``--low_memory_mode`` flag in the llm_ptq example support to initialize HF models with compressed weights and reduce peak memory of PTQ and quantized checkpoint export.
+- Support ``NemotronHForCausalLM``, ``Qwen3ForCausalLM``, ``Qwen3MoeForCausalLM`` Megatron Core model import/export (from/to HuggingFace).
 
 0.29 (2025-05-08)
 ^^^^^^^^^^^^^^^^^

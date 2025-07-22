@@ -16,8 +16,8 @@
 
 import pytest
 from _test_utils.examples.run_command import run_llm_ptq_command
-
-MIXTRAL_PATH = "AIChenKai/TinyLlama-1.1B-Chat-v1.0-x2-MoE"
+from _test_utils.model import MIXTRAL_PATH
+from _test_utils.torch_misc import minimum_sm
 
 
 @pytest.mark.parametrize(("quant", "export_fmt"), [("fp16", "tensorrt_llm")])
@@ -25,6 +25,7 @@ def test_mixtral(quant, export_fmt):
     run_llm_ptq_command(model=MIXTRAL_PATH, quant=quant, export_fmt=export_fmt)
 
 
+@minimum_sm(89)
 @pytest.mark.parametrize(("quant", "export_fmt"), [("fp8", "tensorrt_llm"), ("fp8", "hf")])
-def test_mixtral_sm89(require_sm89, quant, export_fmt):
+def test_mixtral_sm89(quant, export_fmt):
     run_llm_ptq_command(model=MIXTRAL_PATH, quant=quant, export_fmt=export_fmt)

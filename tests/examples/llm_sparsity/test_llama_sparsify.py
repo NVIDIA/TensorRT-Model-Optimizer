@@ -20,6 +20,7 @@ from _test_utils.examples.run_command import (
     run_llm_sparsity_command,
     run_llm_sparsity_ft_command,
 )
+from _test_utils.torch_misc import minimum_gpu
 
 
 @pytest.fixture(scope="session")
@@ -95,7 +96,8 @@ def test_llama_sparsity_finetune(tiny_llama_path, tmp_path, data_path, sparsity_
         ("sparsegpt", "fp16"),
     ],
 )
+@minimum_gpu(2)
 def test_llama_sparsity_finetune_multi_gpu(
-    require_2_gpus, tiny_llama_path, tmp_path, data_path, sparsity_fmt, dtype
+    tiny_llama_path, tmp_path, data_path, sparsity_fmt, dtype
 ):
     _test_llama_sparsity_finetune(tiny_llama_path, tmp_path, data_path, sparsity_fmt, dtype)

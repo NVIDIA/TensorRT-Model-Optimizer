@@ -46,7 +46,7 @@ def test_onnx_simplification(tmp_path):
         assert identity_nodes, "ONNX model doesn't contain Identity nodes as expected."
 
         # Quantize model with simplification enabled
-        quantize(f.name, simplify=True)
+        quantize(f.name, simplify=True, keep_intermediate_files=True)
 
         # Output model should be produced in the same tmp_path
         simplified_onnx_path = f.name.replace(".onnx", "_simp.onnx")

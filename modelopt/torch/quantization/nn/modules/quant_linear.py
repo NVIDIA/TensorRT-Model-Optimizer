@@ -20,7 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ... import backends, tensor_quant
-from ...qtensor.base_qtensor import QTensorWrapper
+from ...qtensor.base_qtensor import QTensorWrapper, dynamically_update_state_methods
 from ...utils import is_torch_export_mode
 from .quant_module import (
     QuantLinearConvBase,
@@ -134,6 +134,8 @@ class SVDQuantLinear(QuantLinearConvBase):
 class RealQuantLinear(QuantModule):
     """Quantized version of nn.Linear with real quantization."""
 
+    list_of_scale_tensors = ["_scale", "double_scale", "_scale_zeros"]
+
     def forward(self, input, *args, **kwargs):
         """RealQuant layer forward function."""
         # For torch.export, we use the default fake quant
@@ -141,7 +143,14 @@ class RealQuantLinear(QuantModule):
             return super().forward(input, *args, **kwargs)
 
         # Check if real-quant GEMM is available
-        if hasattr(self, "_use_real_quant_gemm") and self._use_real_quant_gemm:
+        if (
+            hasattr(self, "_use_real_quant_gemm")
+            and self._use_real_quant_gemm
+            and input.numel() > 1
+            # If we need to calibrate the input, we fallback to fake quant
+            and not (self.input_quantizer.is_enabled and self.input_quantizer._if_calib)
+        ):
+            # If the input is not quantized, we use the default GEMM.
             real_quant_gemm = (
                 self._real_quant_gemm_cache
                 if hasattr(self, "_real_quant_gemm_cache")
@@ -192,3 +201,6 @@ class RealQuantLinear(QuantModule):
         # Monkey patch the _parameters.__setitem__ to real quant the weight when loading
         # HF acclerate loades the weight by directly assigning the weight through the _parameters dict.
         self._parameters = RealQuantParameterDict(self.weight_quantizer, self._parameters)
+
+        # Function to dynamically override load_state_dict
+        dynamically_update_state_methods(self)

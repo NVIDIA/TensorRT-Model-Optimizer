@@ -21,3 +21,10 @@ NOTE: Some tests (e.g. `llm_ptq`) have an option to disable using a smaller prox
 ```bash
 MODELOPT_FAST_TESTS=false ROOT_SAVE_PATH=/tmp/test_llm_ptq/ pytest tests/examples/llm_ptq/
 ```
+
+## Environment variables
+
+The following environment variables can be set to control the behavior of the tests:
+
+- `MODELOPT_FAST_TESTS`: If set to `false`, the tests will use the original model instead of a smaller proxy model. Default is `true`.
+- `MODELOPT_LOCAL_MODEL_ROOT`: If set, the tests will use the local model directory instead of downloading the model from the internet. Default is not set, which means the model will be downloaded.

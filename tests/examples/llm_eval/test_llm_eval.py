@@ -16,9 +16,11 @@
 import subprocess
 
 from _test_utils.examples.run_command import run_llm_ptq_command
+from _test_utils.torch_misc import minimum_sm
 
 
-def test_llama_eval_fp8(require_sm89, tiny_llama_path):
+@minimum_sm(89)
+def test_llama_eval_fp8(tiny_llama_path):
     try:
         run_llm_ptq_command(
             model=tiny_llama_path,

@@ -25,20 +25,8 @@ def num_gpus():
 
 
 @pytest.fixture(scope="session")
-def require_2_gpus(num_gpus):
-    if num_gpus < 2:
-        pytest.skip("At least 2 GPUs required")
-
-
-@pytest.fixture(scope="session")
 def cuda_capability():
     return torch.cuda.get_device_capability()
-
-
-@pytest.fixture(scope="session")
-def require_sm89(cuda_capability):
-    if not cuda_capability >= (8, 9):
-        pytest.skip("CUDA capability>=8.9 required")
 
 
 @pytest.fixture(scope="session")
@@ -51,12 +39,3 @@ def tiny_llama_path(tmp_path_factory):
             intermediate_size=512,
         )
     )
-
-
-# AutoDeploy is only avaialble after TRT-LLM 0.19
-@pytest.fixture(scope="session")
-def require_autodeploy():
-    try:
-        import tensorrt_llm._torch.auto_deploy  # noqa: F401
-    except ImportError:
-        pytest.skip("TRT-LLM 0.19+ required for AutoDeploy examples.")

@@ -16,6 +16,7 @@
 """Test of quantization with FSDP2."""
 
 import copy
+from functools import partial
 
 import pytest
 import torch
@@ -32,11 +33,12 @@ from modelopt.torch.opt.dynamic import _pytorch_managed
 
 
 def _test_fsdp2_simple_linear(rank, size):
-    model = nn.Linear(128, 128).cuda(rank)
-    inputs = torch.randn(2, 2, 128).cuda(rank)
+    dim = 32
+    model = nn.Linear(dim, dim).cuda(rank)
+    inputs = torch.randn(2, 2, dim).cuda(rank)
 
     synchronize_state_dict(model)
-
+    fsdp_model_after = copy.deepcopy(model)
     model = mtq.quantize(model, mtq.INT8_DEFAULT_CFG, lambda model: model(inputs))
 
     manager = model._get_dm_attribute_manager()
@@ -51,19 +53,35 @@ def _test_fsdp2_simple_linear(rank, size):
 
     assert torch.allclose(out_ref, out_test)
 
+    # quantize after fsdp2
+    fsdp_model_after = fully_shard(fsdp_model_after)
+    fsdp_model_after = mtq.quantize(
+        fsdp_model_after, mtq.INT8_DEFAULT_CFG, lambda model: model(inputs)
+    )
+    out_fsdp_model_after = fsdp_model_after(inputs)
+    assert torch.allclose(out_ref, out_fsdp_model_after)
 
-def _test_netsted_fsdp2_backward(rank, size):
+
+def _test_nested_fsdp2_backward(rank, size, quant_cfg):
+    dim = 32
     torch.manual_seed(1)
     model = nn.Sequential(
-        nn.Sequential(nn.Linear(128, 128), nn.Linear(128, 128)),
-        nn.Sequential(nn.Linear(128, 128), nn.Linear(128, 128)),
-        nn.Linear(128, 128),
+        nn.Sequential(nn.Linear(dim, dim), nn.Linear(dim, dim)),
+        nn.Sequential(nn.Linear(dim, dim), nn.Linear(dim, dim)),
+        nn.Linear(dim, dim),
     ).cuda()
-    inputs = torch.randn(2, 2, 128).cuda()
+    inputs = torch.randn(2, 2, dim).cuda()
     inputss = inputs.detach().clone()
     synchronize_state_dict(model)
+    # test for quantization after fsdp2
+    fsdp_model_quant_after = copy.deepcopy(model)
 
-    model = mtq.quantize(model, mtq.INT8_DEFAULT_CFG, lambda model: model(inputs))
+    def forward_loop(model):
+        model(inputs)
+
+    forward_loop = forward_loop if quant_cfg != mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG else None
+
+    model = mtq.quantize(model, quant_cfg, forward_loop)
     fsdp_model = copy.deepcopy(model)
 
     optimizer_ref = torch.optim.SGD(model.parameters(), lr=0.1)
@@ -78,7 +96,16 @@ def _test_netsted_fsdp2_backward(rank, size):
     out_test = fsdp_model(inputs)
     out_test.sum().backward()
 
+    fully_shard(fsdp_model_quant_after[0])
+    fully_shard(fsdp_model_quant_after[1])
+    fsdp_model_quant_after = fully_shard(fsdp_model_quant_after)
+    fsdp_model_quant_after = mtq.quantize(fsdp_model_quant_after, quant_cfg, forward_loop)
+    optimizer_quant_after = torch.optim.SGD(fsdp_model_quant_after.parameters(), lr=0.1)
+    out_quant_after = fsdp_model_quant_after(inputs)
+    out_quant_after.sum().backward()
+
     assert torch.allclose(out_ref, out_test)
+    assert torch.allclose(out_ref, out_quant_after)
 
     optimizer_ref.step()
     optimizer_ref.zero_grad()
@@ -86,9 +113,14 @@ def _test_netsted_fsdp2_backward(rank, size):
     optimizer_test.step()
     optimizer_test.zero_grad()
 
+    optimizer_quant_after.step()
+    optimizer_quant_after.zero_grad()
+
     out_ref_1 = model(inputss)
     out_test_1 = fsdp_model(inputss)
+    out_quant_after_1 = fsdp_model_quant_after(inputss)
     assert torch.allclose(out_ref_1, out_test_1, rtol=1e-4)
+    assert torch.allclose(out_ref_1, out_quant_after_1, rtol=1e-4)
 
 
 @pytest.mark.parametrize("device_count", get_device_counts())
@@ -97,5 +129,12 @@ def test_fsdp_simple_linear(device_count):
 
 
 @pytest.mark.parametrize("device_count", get_device_counts())
-def test_nested_fsdp2_backward(device_count):
-    spawn_multiprocess_job(size=device_count, job=_test_netsted_fsdp2_backward, backend="nccl")
+@pytest.mark.parametrize(
+    "quant_cfg", [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT8_SMOOTHQUANT_CFG, mtq.INT4_AWQ_CFG]
+)
+def test_nested_fsdp2_backward(device_count, quant_cfg):
+    spawn_multiprocess_job(
+        size=device_count,
+        job=partial(_test_nested_fsdp2_backward, quant_cfg=quant_cfg),
+        backend="nccl",
+    )

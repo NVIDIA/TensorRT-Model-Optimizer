@@ -12,6 +12,7 @@
 - [PTQ for VLMs](./vlm_ptq/README.md) covers how to use Post-training quantization (PTQ) and export to [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for deployment for popular Vision Language Models (VLMs).
 - [PTQ for ONNX Models](./onnx_ptq/README.md) shows how to quantize the ONNX models in INT4 or INT8 quantization mode. The examples also include the deployment of quantized ONNX models using TensorRT.
 - [QAT for LLMs](./llm_qat/README.md) demonstrates the recipe and workflow for Quantization-aware Training (QAT), which can further preserve model accuracy at low precisions (e.g., INT4, or FP4 in [NVIDIA Blackwell platform](https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/)).
+- [QAT for CNNs](./cnn_qat/README.md) demonstrates the recipe and workflow for Quantization-aware Training (QAT) of CNN models, which can further preserve model accuracy at low precisions like INT8, FP8 etc.
 - [AutoDeploy for AutoQuant LLM models](./llm_autodeploy/README.md) demonstrates how to deploy mixed-precision models using ModelOpt's AutoQuant and TRT-LLM's AutoDeploy.
 
 ### Pruning

@@ -16,9 +16,9 @@ Latest Model Optimizer (``nvidia-modelopt``) currently has the following system 
 +-------------------------+-----------------------------+
 | CUDA                    |  >=12.0                     |
 +-------------------------+-----------------------------+
-| PyTorch (Optional)      |  >=2.4                      |
+| PyTorch                 |  >=2.4                      |
 +-------------------------+-----------------------------+
-| TensorRT-LLM (Optional) |  0.18                       |
+| TensorRT-LLM (Optional) |  0.20                       |
 +-------------------------+-----------------------------+
 | ONNX Runtime (Optional) |  1.22                       |
 +-------------------------+-----------------------------+
@@ -107,8 +107,8 @@ optional dependencies as described below.
 
 **Identify correct partial dependencies**
 
-Note that when installing ``nvidia-modelopt`` without any optional dependencies, only the barebone
-requirements are installed and none of the modules will work without the appropriate optional
+Note that when installing ``nvidia-modelopt`` without any optional dependencies, only the ``modelopt.torch`` package
+requirements are installed and other modules may not work without the appropriate optional
 dependencies or ``[all]`` optional dependencies. Below is a list of optional dependencies that
 need to be installed to correctly use the corresponding modules:
 
@@ -118,14 +118,10 @@ need to be installed to correctly use the corresponding modules:
 
     *   - Module
         - Optional dependencies
-    *   - ``modelopt.deploy``
-        - ``[deploy]``
     *   - ``modelopt.onnx``
         - ``[onnx]``
-    *   - ``modelopt.torch``
-        - ``[torch]``
     *   - ``modelopt.torch._deploy``
-        - ``[torch, deploy]``
+        - ``[onnx]``
 
 Additionally, we support installing dependencies for following 3rd-party packages:
 
