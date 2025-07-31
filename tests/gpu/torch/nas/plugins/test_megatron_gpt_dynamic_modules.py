@@ -24,9 +24,8 @@ skip_if_no_megatron(apex_or_te_required=True)
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
     get_mcore_gpt_model,
-    initialize_for_megatron,
-    run_mcore_gpt_inference,
-    run_mcore_gpt_inference_with_dummy_input,
+    run_mcore_inference,
+    run_mcore_inference_with_dummy_input,
 )
 from _test_utils.torch_misc import set_seed
 from megatron.core.parallel_state import destroy_model_parallel
@@ -39,7 +38,7 @@ from megatron.core.transformer.transformer_layer import TransformerLayer
 import modelopt.torch.nas as mtn
 from modelopt.torch.nas.plugins.megatron import (
     _DynamicColumnParallelLinear,
-    _DynamicGPTModel,
+    _DynamicMCoreLanguageModel,
     _DynamicMLP,
     _DynamicProjRowParallelLinear,
     _DynamicQKVColumnParallelLinear,
@@ -65,15 +64,14 @@ def _test_gpt_search_space(
     num_layers = min(size * 2, 8)
     hidden_size = 256
     ffn_hidden_size = 128
-    max_sequence_length = 32
+    max_sequence_length = 16
     vocab_size = 64
     batch_size = 2
-
-    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=size)
 
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=size,
+        initialize_megatron=True,
         num_layers=num_layers,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
@@ -87,7 +85,7 @@ def _test_gpt_search_space(
 
     model = mtn.convert(model, "mcore_gpt_minitron")
 
-    assert isinstance(model, _DynamicGPTModel)
+    assert isinstance(model, _DynamicMCoreLanguageModel)
     for m in model.modules():
         if isinstance(m, VocabParallelEmbedding):
             assert isinstance(m, _DynamicVocabParallelEmbedding)
@@ -104,24 +102,26 @@ def _test_gpt_search_space(
 
     # NOTE: `search_space_size` does not reduce across TP/PP groups
     ss_size_per_pp = search_space_size(model)
+    ffn_hidden_size_choices = ffn_hidden_size // channel_divisor
+    hidden_size_choices = hidden_size // channel_divisor
+    num_layers_per_pp = num_layers // size
     assert (
         ss_size_per_pp
-        == (num_attention_heads * ffn_hidden_size // channel_divisor) ** (num_layers / size)
-        * hidden_size
+        == (num_attention_heads * ffn_hidden_size_choices) ** num_layers_per_pp
         * num_layers
-        // channel_divisor
+        * hidden_size_choices
     )
 
     # Make sure forward pass works on min and centroid subnets
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
     for sample_func in [min, max, centroid]:
         mtn.sample(model, sample_func)
-        output = run_mcore_gpt_inference(model, prompt_tokens)
+        output = run_mcore_inference(model, prompt_tokens)
         assert output.shape == (batch_size, max_sequence_length, vocab_size)
 
     # Make sure export and forward pass works on centroid model
     mtn.export(model)
-    _ = run_mcore_gpt_inference(model, prompt_tokens, model.hidden_size)
+    _ = run_mcore_inference(model, prompt_tokens, model.hidden_size)
     assert not any(named_dynamic_modules(model))
 
 
@@ -157,13 +157,10 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
     vocab_size = 128
     batch_size = 2
 
-    initialize_for_megatron(
-        tensor_model_parallel_size=1, pipeline_model_parallel_size=size, seed=SEED
-    )
-
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=size,
+        initialize_megatron=True,
         num_layers=num_layers,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
@@ -184,27 +181,27 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
 
     # Compute activations for sorting
     for _ in range(5):
-        run_mcore_gpt_inference_with_dummy_input(model, batch_size)
+        run_mcore_inference_with_dummy_input(model, batch_size)
 
     # Get the output of the original model
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
-    y1 = run_mcore_gpt_inference(model, prompt_tokens)
+    y1 = run_mcore_inference(model, prompt_tokens)
 
     search_space.sort_parameters()
 
     # check if all ffn_hidden_size, num_heads_per_group, num_query_groups, hidden_size have been sorted
-    num_sortable_per_pp = sum(
-        1 for _, hp in search_space.named_hparams(configurable=True) if hp.importance is not None
-    )
-    expected_num_sortable_hps_per_layer = 4
-    assert num_sortable_per_pp == expected_num_sortable_hps_per_layer * num_layers // size
+    sortable_per_pp = [
+        n for n, hp in search_space.named_hparams(configurable=True) if hp.importance is not None
+    ]
+    # 3 hps per layer + 1 for hidden_size (num_layers is not sorted!)
+    assert len(sortable_per_pp) == 3 * num_layers // size + 1
 
     # Export since sorting force reassigns SelfAttention weights which we dont want to re-sort!
     # TODO: ideally we shouldn't need this
     search_space.export()
 
     # sanity check if the model functionality is preserved after sorting
-    y2 = run_mcore_gpt_inference(model, prompt_tokens)
+    y2 = run_mcore_inference(model, prompt_tokens)
 
     # # check if the inference results after sorting is the same
     assert all(
@@ -230,18 +227,15 @@ def test_expand_head_indices():
 
 
 def test_megatron_self_attention_head_sorting(distributed_setup_size_1):
-    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=SEED)
-
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=1,
+        initialize_megatron=True,
         num_layers=1,
         hidden_size=16,
         num_attention_heads=8,
         num_query_groups=2,
         ffn_hidden_size=16,
-        max_sequence_length=32,
-        vocab_size=32,
         activation_func="squared_relu",
     )
 

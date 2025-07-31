@@ -23,7 +23,7 @@ from _test_utils.torch_dist.plugins.megatron_common import (
     MegatronModel,
     get_mcore_gpt_model,
     initialize_for_megatron,
-    run_mcore_gpt_inference,
+    run_mcore_inference,
     sharded_state_dict_test_helper,
 )
 from _test_utils.torch_misc import set_seed
@@ -151,7 +151,7 @@ def _test_sharded_state_dict(tmp_path, config, hidden_size, modelopt_version, co
     ).cuda()
 
     def forward_fn(model):
-        return run_mcore_gpt_inference(model, prompt_tokens)
+        return run_mcore_inference(model, prompt_tokens)
 
     model_ref = mtq.quantize(model_ref, config, forward_fn)
     if compress:
@@ -272,7 +272,7 @@ def test_regular_state_dict(distributed_setup_size_1, hidden_size):
     ).cuda()
 
     def forward_fn(model):
-        return run_mcore_gpt_inference(model, prompt_tokens)
+        return run_mcore_inference(model, prompt_tokens)
 
     model_ref = mtq.quantize(model_ref, mixed_precision_config, forward_fn)
 
@@ -316,7 +316,7 @@ def _test_fp8_real_quantize_helper(rank, size):
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     def forward_fn(model):
-        return run_mcore_gpt_inference(model, prompt_tokens)
+        return run_mcore_inference(model, prompt_tokens)
 
     forward_fn(model)
 

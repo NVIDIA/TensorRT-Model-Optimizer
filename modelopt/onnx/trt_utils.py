@@ -276,3 +276,103 @@ def load_onnx_model(
         static_shaped_onnx_path or onnx_path,
         use_external_data_format,
     )
+
+
+def interpret_trt_plugins_precision_flag(
+    onnx_model: onnx.ModelProto,
+    trt_plugins_precision: list[str],
+    quantize_mode: str,
+) -> tuple[dict, dict]:
+    """Convert custom ops precision flag to dictionaries with custom op and I/O indices to be cast/quantized.
+
+    Args:
+        onnx_model: ONNX model to detect with nodes need to be cast/quantized.
+        trt_plugins_precision: List indicating the precision for each custom op.
+        quantize_mode: String indicating the quantization mode.
+
+    Returns:
+        Dictionary with custom ops to cast containing the I/O indices to cast.
+        Dictionary with custom ops to quantize containing the I/O indices to quantize.
+    """
+    # If custom op precisions are given, check if they're supported (fp32, fp16, int8, fp8)
+    custom_ops_to_cast = {}
+    custom_ops_to_quantize = {}
+    supported_precisions = ["fp32", "fp16", "int8", "fp8"]
+    logger.debug("Processing custom op precisions")
+
+    graph = gs.import_onnx(onnx_model)
+
+    for trt_plugin_precision in trt_plugins_precision:
+        assert trt_plugin_precision.count(":") in [1, 2], (
+            "Plugin precision is incorrectly formatted."
+            " Please check that it's in the format <op_type>:<precision> or"
+            " <op_type>:[<inp1_precision>,<inp2_precision>,...]:[<out1_precision>,<out2_precision>,...]."
+        )
+        # Split only on the first ":" to get 'op_type'
+        op_type, precision = trt_plugin_precision.split(":", 1)
+        custom_op_nodes = [node for node in graph.nodes if node.op == op_type]
+        if not custom_op_nodes:
+            logger.warning(f"No nodes of type {op_type} were found. Skipping.")
+            continue
+        num_inps = max([len(node.inputs) for node in custom_op_nodes])
+        num_outs = max([len(node.outputs) for node in custom_op_nodes])
+
+        # Now split the remainder of the string to get the I/O precisions
+        if trt_plugin_precision.count(":") == 1:
+            if precision not in supported_precisions:
+                logger.warning(f"Precision {precision} is not supported. Skipping.")
+            if precision == "fp16":
+                custom_ops_to_cast[op_type] = {
+                    "inp": list(range(num_inps)),
+                    "out": list(range(num_outs)),
+                }
+            if precision in ["int8", "fp8"]:
+                if precision != quantize_mode:
+                    precision = quantize_mode
+                    logger.warning(
+                        f"Requested custom op precision ({precision}) is different than quantize mode: "
+                        f"{quantize_mode}. Mixed {precision}+{quantize_mode} precision is not yet supported. "
+                        f"Setting the custom op precision to be the same as quantize mode."
+                    )
+                custom_ops_to_quantize[op_type] = {
+                    "inp": list(range(num_inps)),
+                    "out": list(range(num_outs)),
+                }
+        else:
+            inp_precision, out_precision = precision.split(":")
+            inp_precision = inp_precision.strip("[]").split(",")
+            out_precision = out_precision.strip("[]").split(",")
+            if not all(p in supported_precisions for p in inp_precision + out_precision):
+                logger.warning(
+                    f"One or more precisions in {inp_precision + out_precision} are not supported. Skipping those."
+                )
+            assert len(inp_precision) == num_inps, (
+                f"Number of inputs doesn't match expectation: {len(inp_precision)} vs {num_inps}."
+            )
+            assert len(out_precision) == num_outs, (
+                f"Number of outputs doesn't match expectation: {len(out_precision)} vs {num_outs}."
+            )
+
+            if any(
+                p in ["int8", "fp8"] and p != quantize_mode for p in inp_precision + out_precision
+            ):
+                logger.warning(
+                    f"Requested custom op precision ('inp': {inp_precision}, 'out': {out_precision}) is different "
+                    f"than quantize mode: {quantize_mode}. Such mixed precision is not yet supported. "
+                    f"Setting the custom op precision to be the same as quantize mode."
+                )
+
+            # Will cast the inputs to FP16 and the outputs back to FP32
+            inp_precision_cast = [i for i, p in enumerate(inp_precision) if p == "fp16"]
+            out_precision_cast = [i for i, p in enumerate(out_precision) if p in ["fp16", "fp32"]]
+            custom_ops_to_cast[op_type] = {"inp": inp_precision_cast, "out": out_precision_cast}
+
+            # Will add Q/DQ nodes in the requested I/O indices
+            inp_precision_quant = [i for i, p in enumerate(inp_precision) if p in ["int8", "fp8"]]
+            out_precision_quant = [i for i, p in enumerate(out_precision) if p in ["int8", "fp8"]]
+            custom_ops_to_quantize[op_type] = {
+                "inp": inp_precision_quant,
+                "out": out_precision_quant,
+            }
+
+    return custom_ops_to_cast, custom_ops_to_quantize

@@ -15,28 +15,6 @@
 
 """Nvidia TensorRT Model Optimizer (modelopt)."""
 
-import sys as _sys
-import warnings as _warnings
 from importlib.metadata import version as _version
 
 __version__ = _version("nvidia-modelopt")
-
-
-try:
-    # Import from local source if available
-    from . import core
-
-    __core_version__ = __version__
-except ImportError:
-    # Import from nvidia-modelopt-core wheel installation
-    import modelopt_core as core  # type: ignore[no-redef]
-
-    _sys.modules["modelopt.core"] = core
-    __core_version__ = _version("nvidia-modelopt-core")
-
-# Versions need to be the same for compatibility
-if __version__.split(".")[:2] != __core_version__.split(".")[:2]:
-    _warnings.warn(
-        f"Version mismatch between nvidia-modelopt ({__version__}) and nvidia-modelopt-core"
-        f" ({__core_version__}). Please ensure both versions are the same for compatibility."
-    )

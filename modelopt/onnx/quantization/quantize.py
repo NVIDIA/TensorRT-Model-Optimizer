@@ -50,7 +50,7 @@ from modelopt.onnx.quantization.calib_utils import (
 )
 from modelopt.onnx.quantization.fp8 import quantize as quantize_fp8
 from modelopt.onnx.quantization.graph_utils import (
-    add_fp16_fp32_cast,
+    cast_custom_ops,
     find_nodes_from_mha_to_exclude,
     print_stat,
     remove_redundant_cast_nodes,
@@ -58,8 +58,8 @@ from modelopt.onnx.quantization.graph_utils import (
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
 from modelopt.onnx.quantization.ort_utils import update_trt_ep_support
-from modelopt.onnx.quantization.qdq_utils import qdq_to_dq
-from modelopt.onnx.trt_utils import load_onnx_model
+from modelopt.onnx.quantization.qdq_utils import qdq_to_dq, remove_input_dq_and_output_q
+from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag, load_onnx_model
 from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
 
 __all__ = ["quantize"]
@@ -74,7 +74,8 @@ def _preprocess_onnx(
     trt_plugins_precision: list[str] | None,
     override_shapes: str,
     simplify: bool = False,
-) -> tuple[str, list[str], bool, bool, bool]:
+    quantize_mode: str = "int8",
+) -> tuple[str, onnx.ModelProto, list[str], bool, bool, bool, dict]:
     logger.info(f"Preprocessing the model {onnx_path}")
     intermediate_generated_files = []
     output_dir = os.path.dirname(output_path)
@@ -172,29 +173,27 @@ def _preprocess_onnx(
         logger.info(f"Model is cloned to {onnx_path} after naming the nodes")
         intermediate_generated_files.append(onnx_path)
 
-    # If custom op precisions are given, check if they're fp16. If so, add cast_to_fp16 before all inputs and
-    # cast_to_fp32 after all outputs.
+    # If custom op precisions are given, add Cast or Q/DQ where appropriate.
+    custom_ops_to_quantize = {}
     if trt_plugins_precision:
-        logger.debug("Processing custom op precisions")
-        custom_ops_to_cast = []
-        for trt_plugin_precision in trt_plugins_precision:
-            assert ":" in trt_plugin_precision, (
-                "Plugin pre cision is incorrectly formatted."
-                " Please check that it's in the format <op_type>:<precision>."
-            )
-            op_type, precision = trt_plugin_precision.split(":")
-            if precision == "fp16":
-                custom_ops_to_cast.append(op_type)
+        custom_ops_to_cast, custom_ops_to_quantize = interpret_trt_plugins_precision_flag(
+            onnx_model, trt_plugins_precision, quantize_mode
+        )
         if custom_ops_to_cast:
-            onnx_path = add_fp16_fp32_cast(onnx_path, custom_ops_to_cast, use_external_data_format)
+            onnx_model = cast_custom_ops(onnx_model, custom_ops_to_cast)
+            onnx_path = os.path.join(output_dir, f"{model_name}_castFP16.onnx")
+            save_onnx(onnx_model, onnx_path, use_external_data_format)
+            logger.info(f"Model is cloned to {onnx_path} after casting tensors to FP16")
             intermediate_generated_files.append(onnx_path)
 
     return (
         onnx_path,
+        onnx_model,
         intermediate_generated_files,
         has_custom_op,
         has_dds_op,
         use_external_data_format,
+        custom_ops_to_quantize,
     )
 
 
@@ -239,8 +238,8 @@ def quantize(
         calibration_data:
             Calibration data, either a numpy array or list/dict of numpy arrays.
         calibration_method:
-            Calibration method choices. Options are int8: 'entropy' (default) and 'max',
-            fp8: 'max' (default) and int4: 'awq_clip' (default), 'awq_lite', 'awq_full' and 'rtn_dq'.
+            Calibration method choices. Options are int8/fp8: {'entropy' (default), 'max'}
+            and int4: {'awq_clip' (default), 'awq_lite', 'awq_full', 'rtn_dq'}.
         calibration_cache_path:
             Path to pre-calculated activation tensor ranges, also known as calibration cache.
         calibration_shapes:
@@ -355,17 +354,24 @@ def quantize(
 
     # We need to preprocess the model with naming, weight duplication etc.
     enable_shared_constants_duplication = kwargs.get("enable_shared_constants_duplication", True)
-    onnx_path, intermediate_generated_files, has_custom_op, has_dds_op, use_external_data_format = (
-        _preprocess_onnx(
-            onnx_path,
-            use_external_data_format,
-            output_path,
-            enable_shared_constants_duplication,
-            trt_plugins,
-            trt_plugins_precision,
-            override_shapes,  # type: ignore[arg-type]
-            simplify,
-        )
+    (
+        onnx_path,
+        onnx_model,
+        intermediate_generated_files,
+        has_custom_op,
+        has_dds_op,
+        use_external_data_format,
+        custom_ops_to_quantize,
+    ) = _preprocess_onnx(
+        onnx_path,
+        use_external_data_format,
+        output_path,
+        enable_shared_constants_duplication,
+        trt_plugins,
+        trt_plugins_precision,
+        override_shapes,  # type: ignore[arg-type]
+        simplify,
+        quantize_mode,
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
 
@@ -398,10 +404,9 @@ def quantize(
 
     if quantize_mode in ["fp8", "int8"]:
         quantize_func = quantize_int8 if quantize_mode == "int8" else quantize_fp8
-        default_calibration_method = "entropy" if quantize_mode == "int8" else "max"
         onnx_model = quantize_func(
             onnx_path=onnx_path,
-            calibration_method=calibration_method or default_calibration_method,
+            calibration_method=calibration_method or "entropy",
             calibration_data_reader=calibration_data_reader,
             calibration_cache_path=calibration_cache_path,
             calibration_shapes=calibration_shapes,
@@ -418,6 +423,7 @@ def quantize(
             passes=passes,
             log_level=log_level,
             calibrate_per_node=calibrate_per_node,
+            custom_ops_to_quantize=list(custom_ops_to_quantize.keys()),
             **kwargs,
         )
     elif "int4" in quantize_mode:
@@ -438,8 +444,18 @@ def quantize(
 
     if onnx_model:
         # Fuse Q nodes for INT8/FP8 mode
-        if quantize_mode in ["int8", "fp8"] and dq_only:
-            onnx_model = qdq_to_dq(onnx_model)
+        if quantize_mode in ["int8", "fp8"]:
+            if dq_only:
+                onnx_model = qdq_to_dq(onnx_model)
+            if custom_ops_to_quantize:
+                # Remove DQ nodes from the input and Q from the output of the requested custom ops
+                onnx_model = remove_input_dq_and_output_q(
+                    onnx_model, quantizable_custom_ops=custom_ops_to_quantize
+                )
+            # Sort nodes topologically
+            graph = gs.import_onnx(onnx_model)
+            graph.toposort().cleanup()
+            onnx_model = gs.export_onnx(graph)
         else:
             # Remove redundant cast nodes in the quantized model
             # Note. This is called within the qdq_to_dq function as well

@@ -25,6 +25,10 @@ import modelopt.onnx.quantization as moq
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.utils import save_onnx
 
+# TODO: Rename this script to *_int4.py
+#       For that, we need to investigate failure in 'pytest tests/unit/onnx'.
+#       test_quantize_int8.py::test_int8[bf16] fails if this script runs after the int4 test, but not before.
+
 
 def _matmul_model(w: np.ndarray, in_shape: Sequence[int], out_shape: Sequence[int], tmp_path):
     # Assumes

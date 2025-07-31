@@ -16,84 +16,149 @@
 
 """Custom mapping from Llama Hugging Face models to Megatron Core models."""
 
-from .mcore_custom import COL_PARALLEL, ROW_PARALLEL, CustomModuleMapping
+from .mcore_custom import (
+    COL_TP,
+    PACK_COL_ETP,
+    PACK_EP,
+    PACK_ROW_ETP,
+    REPLICATE,
+    ROW_TP,
+    CustomModuleMapping,
+    GatedMLPMerging,
+    GatedMLPSlicing,
+    NameRemapping,
+    PackNameRemapping,
+    QKVMerging,
+    QKVSlicing,
+    UnpackNameRemapping,
+)
 
 llama_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping(
-        "qkv_slicing",
-        "model.layers.{}.self_attn.",
+    "word_embeddings": NameRemapping("model.embed_tokens."),
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm."),
+    "linear_qkv": QKVSlicing("model.layers.{}.self_attn."),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj."),
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm."),
+    "linear_fc1": GatedMLPSlicing("model.layers.{}.mlp."),
+    "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj."),
+    "final_layernorm": NameRemapping("model.norm."),
+    "output_layer": NameRemapping("lm_head."),
+}
+
+llama4_causal_lm_export: dict[str, CustomModuleMapping | bool] = {
+    "word_embeddings": NameRemapping("language_model.model.embed_tokens."),
+    "input_layernorm": NameRemapping("language_model.model.layers.{}.input_layernorm."),
+    # self_attn
+    "linear_qkv": QKVSlicing("language_model.model.layers.{}.self_attn."),
+    "linear_proj": NameRemapping("language_model.model.layers.{}.self_attn.o_proj."),
+    # mlp
+    "pre_mlp_layernorm": NameRemapping("language_model.model.layers.{}.post_attention_layernorm."),
+    "shared_experts.linear_fc1": GatedMLPSlicing(
+        "language_model.model.layers.{}.feed_forward.shared_expert.",
     ),
-    "linear_proj": CustomModuleMapping("name_remapping", "model.layers.{}.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
+    "shared_experts.linear_fc2": NameRemapping(
+        "language_model.model.layers.{}.feed_forward.shared_expert.down_proj.",
     ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "model.layers.{}.mlp."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.down_proj."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+    # moe_layer
+    "router": NameRemapping("language_model.model.layers.{}.feed_forward.router."),
+    "use_packed_local_experts": True,
+    "local_experts.linear_fc1": PackNameRemapping(
+        "language_model.model.layers.{}.feed_forward.experts.gate_up_proj",
+        {"layer_type": "linear_fc1"},
+    ),
+    "local_experts.linear_fc2": PackNameRemapping(
+        "language_model.model.layers.{}.feed_forward.experts.down_proj",
+        {"layer_type": "linear_fc2"},
+    ),
+    "final_layernorm": NameRemapping("language_model.model.norm."),
+    "output_layer": NameRemapping("language_model.lm_head."),
 }
 
 medusa_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
     # MedusaForCausalLM support
-    "lm_head": CustomModuleMapping(
-        "name_remapping", "medusa_heads.{}.1."
+    "lm_head": NameRemapping(
+        "medusa_heads.{}.1."
     ),  # TODO: lm_head is hardcoded to .1 as currently only support using 1 layer in medusa head
     # needs a fix
-    "linear": CustomModuleMapping("name_remapping", "medusa_heads.{}.{}.linear."),
+    "linear": NameRemapping("medusa_heads.{}.{}.linear."),
 }
 
 eagle_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
-    "enorm": CustomModuleMapping("name_remapping", "enorm."),
-    "hnorm": CustomModuleMapping("name_remapping", "hnorm."),
-    "fc": CustomModuleMapping("name_remapping", "fc."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping("qkv_slicing", "layers.{}.self_attn."),
-    "linear_proj": CustomModuleMapping("name_remapping", "layers.{}.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "layers.{}.post_attention_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "layers.{}.mlp."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "layers.{}.mlp.down_proj."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "norm."),
-    "d2t": CustomModuleMapping("name_remapping", "d2t"),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+    "word_embeddings": NameRemapping("embed_tokens."),
+    "enorm": NameRemapping("enorm."),
+    "hnorm": NameRemapping("hnorm."),
+    "fc": NameRemapping("fc."),
+    "input_layernorm": NameRemapping("layers.{}.input_layernorm."),
+    "linear_qkv": QKVSlicing("layers.{}.self_attn."),
+    "linear_proj": NameRemapping("layers.{}.self_attn.o_proj."),
+    "pre_mlp_layernorm": NameRemapping("layers.{}.post_attention_layernorm."),
+    "linear_fc1": GatedMLPSlicing("layers.{}.mlp."),
+    "linear_fc2": NameRemapping("layers.{}.mlp.down_proj."),
+    "final_layernorm": NameRemapping("norm."),
+    "d2t": NameRemapping("d2t"),
+    "output_layer": NameRemapping("lm_head."),
 }
 
 eagle3_llama_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "embed_tokens."),
-    "enorm": CustomModuleMapping("name_remapping", "midlayer.input_layernorm."),
-    "fc": CustomModuleMapping("name_remapping", "fc."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "midlayer.hidden_norm."),
-    "linear_qkv": CustomModuleMapping("qkv_slicing", "midlayer.self_attn."),
-    "linear_proj": CustomModuleMapping("name_remapping", "midlayer.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "midlayer.post_attention_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "midlayer.mlp."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "midlayer.mlp.down_proj."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "norm."),
-    "d2t": CustomModuleMapping("name_remapping", "d2t"),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+    "word_embeddings": NameRemapping("embed_tokens."),
+    "enorm": NameRemapping("midlayer.input_layernorm."),
+    "fc": NameRemapping("fc."),
+    "input_layernorm": NameRemapping("midlayer.hidden_norm."),
+    "linear_qkv": QKVSlicing("midlayer.self_attn."),
+    "linear_proj": NameRemapping("midlayer.self_attn.o_proj."),
+    "pre_mlp_layernorm": NameRemapping("midlayer.post_attention_layernorm."),
+    "linear_fc1": GatedMLPSlicing("midlayer.mlp."),
+    "linear_fc2": NameRemapping("midlayer.mlp.down_proj."),
+    "final_layernorm": NameRemapping("norm."),
+    "d2t": NameRemapping("d2t"),
+    "output_layer": NameRemapping("lm_head."),
 }
 
 
 llama_causal_lm_import: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens.", COL_PARALLEL),
-    "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping("qkv_merging", "model.layers.{}.self_attn.", COL_PARALLEL),
-    "linear_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.o_proj.", ROW_PARALLEL
+    "word_embeddings": NameRemapping("model.embed_tokens.", COL_TP),
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm.", REPLICATE),
+    "linear_qkv": QKVMerging("model.layers.{}.self_attn.", COL_TP),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj.", ROW_TP),
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm.", REPLICATE),
+    "linear_fc1": GatedMLPMerging("model.layers.{}.mlp.", COL_TP),
+    "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj.", ROW_TP),
+    "final_layernorm": NameRemapping("model.norm.", REPLICATE),
+    "output_layer": NameRemapping("lm_head.", COL_TP),
+}
+
+llama4_causal_lm_import: dict[str, CustomModuleMapping | bool] = {
+    "word_embeddings": NameRemapping("language_model.model.embed_tokens.", COL_TP),
+    "input_layernorm": NameRemapping("language_model.model.layers.{}.input_layernorm.", REPLICATE),
+    "linear_qkv": QKVMerging("language_model.model.layers.{}.self_attn.", COL_TP),
+    "linear_proj": NameRemapping("language_model.model.layers.{}.self_attn.o_proj.", ROW_TP),
+    "pre_mlp_layernorm": NameRemapping(
+        "language_model.model.layers.{}.post_attention_layernorm.", REPLICATE
     ),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
+    "shared_experts.linear_fc1": GatedMLPMerging(
+        "language_model.model.layers.{}.feed_forward.shared_expert.", COL_TP
     ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_merging", "model.layers.{}.mlp.", COL_PARALLEL),
-    "linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.down_proj.", ROW_PARALLEL
+    "shared_experts.linear_fc2": NameRemapping(
+        "language_model.model.layers.{}.feed_forward.shared_expert.down_proj.", ROW_TP
     ),
-    "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head.", COL_PARALLEL),
+    "router": NameRemapping("language_model.model.layers.{}.feed_forward.router.", REPLICATE),
+    "use_packed_local_experts": True,
+    "local_experts.linear_fc1_etp": UnpackNameRemapping(
+        "language_model.model.layers.{}.feed_forward.experts.gate_up_proj",
+        PACK_COL_ETP | {"layer_type": "linear_fc1"},
+    ),
+    "local_experts.linear_fc2_etp": UnpackNameRemapping(
+        "language_model.model.layers.{}.feed_forward.experts.down_proj",
+        PACK_ROW_ETP | {"layer_type": "linear_fc2"},
+    ),
+    "local_experts.linear_fc1_ep": UnpackNameRemapping(
+        "language_model.model.layers.{}.feed_forward.experts.gate_up_proj",
+        PACK_EP | {"layer_type": "linear_fc1"},
+    ),
+    "local_experts.linear_fc2_ep": UnpackNameRemapping(
+        "language_model.model.layers.{}.feed_forward.experts.down_proj",
+        PACK_EP | {"layer_type": "linear_fc2"},
+    ),
+    "final_layernorm": NameRemapping("language_model.model.norm.", REPLICATE),
+    "output_layer": NameRemapping("language_model.lm_head.", COL_TP),
 }

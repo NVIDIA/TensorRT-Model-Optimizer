@@ -8,7 +8,7 @@ This example takes an ONNX model as input, along with the necessary quantization
 
 ### Setup
 
-1. Install ModelOpt-Windows. Refer [installation instructions](../README.md).
+1. Install ModelOpt-Windows. Refer [installation instructions](../../README.md).
 
 1. Install required dependencies
 
@@ -43,7 +43,7 @@ The table below lists key command-line arguments of the ONNX PTQ example script.
 |---------------------------|------------------------------------------------------|-------------------------------------------------------------|
 | `--calib_size` | 32 (default), 64, 128 | Specifies the calibration size. |
 | `--dataset` | cnn (default), pilevel | Choose calibration dataset: cnn_dailymail or pile-val. |
-| `--algo` | awq_lite (default), awq_clip | Select the quantization algorithm. |
+| `--algo` | awq_lite (default), awq_clip, rtn, rtn_dq | Select the quantization algorithm. |
 | `--onnx_path` | input .onnx file path | Path to the input ONNX model. |
 | `--output_path` | output .onnx file path | Path to save the quantized ONNX model. |
 | `--use_zero_point` | True, False (default) | Enable zero-point based quantization. |
@@ -54,7 +54,7 @@ The table below lists key command-line arguments of the ONNX PTQ example script.
 | `--awqclip_alpha_step` | 0.05 (default) | Step-size for AWQ weight clipping, user-defined |
 | `--awqclip_alpha_min` | 0.5 (default) | Minimum AWQ weight-clipping threshold, user-defined |
 | `--awqclip_bsz_col` | 1024 (default) | Chunk size in columns during weight clipping, user-defined |
-| `--calibration_eps` | dml, cuda, cpu, NvTensorRtRtx (default: [dml,cpu]) | List of calibration endpoints. |
+| `--calibration_eps` | dml, cuda, cpu, NvTensorRtRtx (default: [dml,cpu]) | List of execution-providers to use for session run during calibration |
 
 Run the following command to view all available parameters in the script:
 
@@ -62,11 +62,20 @@ Run the following command to view all available parameters in the script:
 python quantize.py --help
 ```
 
+Note:
+
+1. For the `algo` argument, we have following options to choose form: awq_lite, awq_clip, rtn, rtn_dq.
+   - The 'awq_lite' option does core AWQ scale search and INT4 quantization.
+   - The 'awq_clip' option primarily does weight clipping and INT4 quantization.
+   - The 'rtn' option does INT4 RTN quantization with Q->DQ nodes for weights.
+   - The 'rtn_dq' option does INT4 RTN quantization with only DQ nodes for weights.
+1. RTN algorithm doesn't use calibration-data.
+
 Please refer to `quantize.py` for further details on command-line parameters.
 
 ### Evaluate the Quantized Model
 
-To evaluate the quantized model, please refer to the [accuracy benchmarking](../accuracy_benchmark/README.md) and [onnxruntime-genai performance benchmarking](https://github.com/microsoft/onnxruntime-genai/tree/main/benchmark/python).
+To evaluate the quantized model, please refer to the [accuracy benchmarking](../../accuracy_benchmark/README.md) and [onnxruntime-genai performance benchmarking](https://github.com/microsoft/onnxruntime-genai/tree/main/benchmark/python).
 
 ### Deployment
 

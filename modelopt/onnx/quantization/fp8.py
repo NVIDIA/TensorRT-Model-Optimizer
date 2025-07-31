@@ -32,18 +32,16 @@ import modelopt.onnx.utils as onnx_utils
 from modelopt.onnx.autocast.convert import convert_to_f16
 from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.quantization.graph_utils import (
-    build_non_residual_input_map,
     convert_fp16_io,
     expand_node_names_from_patterns,
     find_nodes_to_exclude,
     get_concat_eliminated_tensors,
-    get_resize_scales,
     get_tensor_producer_nodes,
     insert_fp8_mha_casts,
     remove_output_initializers,
     remove_partial_input_qdq,
-    replace_resize_scales,
 )
+from modelopt.onnx.quantization.int8 import _find_nodes_to_quantize
 from modelopt.onnx.quantization.ort_patching import _quantize_static as quantize_static
 from modelopt.onnx.quantization.ort_utils import configure_ort
 from modelopt.onnx.quantization.qdq_utils import has_qdq_nodes
@@ -99,19 +97,18 @@ def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
     return unsupported_conv_nodes
 
 
-def int8_to_fp8(onnx_path: str) -> onnx.ModelProto:
+def int8_to_fp8(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     """Converts the INT8 quantized model to FP8 quantized model.
 
     Note. This conversion works only for max calibrated INT8 models.
 
     Args:
-        onnx_path: Path to the INT8 quantized ONNX model.
+        onnx_model: INT8 quantized ONNX model.
 
     Returns:
         FP8 quantized ONNX model.
     """
     logger.info("Starting INT8 to FP8 conversion")
-    onnx_model = onnx.load(onnx_path, load_external_data=True)
     graph = onnx_model.graph
     initializers = graph.initializer
     tensor_producers = get_tensor_producer_nodes(graph)
@@ -125,6 +122,11 @@ def int8_to_fp8(onnx_path: str) -> onnx.ModelProto:
         np_fp8_scale = (np_scale * 448.0) / 127.0
         dtype = onnx.helper.tensor_dtype_to_np_dtype(scale.data_type)
         return numpy_helper.from_array(np_fp8_scale.astype(dtype), scale_name)
+
+    def _update_tensor_type(tensor_name):
+        tensor = onnx_utils.get_tensor_by_name(onnx_model, tensor_name)
+        if tensor:
+            tensor.type.tensor_type.elem_type = onnx.TensorProto.FLOAT8E4M3FN
 
     def _convert(node: onnx.NodeProto):
         scale_name = node.input[1]
@@ -158,7 +160,15 @@ def int8_to_fp8(onnx_path: str) -> onnx.ModelProto:
             initializers[zero_point_idx].CopyFrom(np_zero_point)
             processed_tensor.add(zero_point_name)
 
+        # Update the Q input tensor type and the DQ output tensor type
+        if node.op_type == "QuantizeLinear":
+            for out in node.output:
+                _update_tensor_type(out)
+        if node.op_type == "DequantizeLinear":
+            _update_tensor_type(node.input[0])
+
     # Iterate through the nodes and convert the scales and zero points
+    # Also update the Q input tensor type and the DQ output tensor type
     for node in graph.node:
         if node.op_type in ["DequantizeLinear", "QuantizeLinear"]:
             _convert(node)
@@ -201,7 +211,7 @@ def upgrade_opset_21(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
 
 def quantize(
     onnx_path: str,
-    calibration_method: str = "max",
+    calibration_method: str = "entropy",
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str | None = None,
     calibration_shapes: str | None = None,
@@ -218,6 +228,7 @@ def quantize(
     passes: list[str] = ["concat_elimination"],
     log_level: str = "INFO",
     calibrate_per_node: bool = False,
+    custom_ops_to_quantize: list[str] = [],
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies FP8 GEMM only quantization to an ONNX file.
@@ -227,9 +238,6 @@ def quantize(
     configure_logging(level=log_level.upper())
     logger.info("Starting FP8 quantization process")
     t_start = time.time()
-
-    if calibration_method != "max":
-        raise RuntimeError("Only the max calibration method is supported for FP8 quantization.")
 
     # Load the onnx graph
     logger.info(f"Loading ONNX model from {onnx_path}")
@@ -243,22 +251,28 @@ def quantize(
         logger.info("Model already has QDQ nodes, skipping quantization")
         return onnx_model
 
-    # The quantizable op types for FP8 are limited to Conv, Gemm, and Matmul
-    fp8_supported_op_types = ["Gemm", "MatMul", "Conv"]
+    # The quantizable op types for FP8 are limited to Conv, Gemm, Matmul, and Residual-Add
+    fp8_supported_op_types = ["Gemm", "MatMul", "Conv", "Add"]
     op_types_to_quantize = op_types_to_quantize or fp8_supported_op_types
     if not set(op_types_to_quantize) <= set(fp8_supported_op_types):
         raise RuntimeError(
             f"Unsupported op types in fp8 mode: '{set(op_types_to_quantize) - set(fp8_supported_op_types)}'"
         )
+    op_types_to_quantize.extend(list(custom_ops_to_quantize))
+
+    # Collect node names to exclude from quantization
+    nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
+    nodes_to_exclude.extend(_find_unsupported_fp8_convs_to_exclude(graph))  # type: ignore[union-attr]
 
     # Change the default configuration of ORT quantization
     op_types = {node.op for node in graph.nodes}
-    trt_guided_options, _ = configure_ort(
+    trt_guided_options, quantizable_op_types = configure_ort(
         list(op_types),
         op_types_to_quantize,
         trt_extra_plugin_lib_paths,
         calibration_eps,
         calibrate_per_node,
+        custom_ops_to_quantize,
     )
     logger.info(
         f"Quantizable op types in the model: {[t for t in op_types_to_quantize if t in op_types]}"
@@ -268,16 +282,10 @@ def quantize(
     no_quantize_inputs = []
     nodes_to_quantize = expand_node_names_from_patterns(graph, nodes_to_quantize)
     if not nodes_to_quantize:
-        nodes_to_quantize = [node.name for node in graph.nodes if node.op in op_types_to_quantize]
-        _, no_quantize_inputs = build_non_residual_input_map(graph)
-        if no_quantize_inputs:
-            op_types_to_quantize.append("Add")
-            add_nodes = [dst.name for _, dst, _ in no_quantize_inputs]
-            nodes_to_quantize.extend(add_nodes)
-
-    # Collect node names to exclude from quantization
-    nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
-    nodes_to_exclude.extend(_find_unsupported_fp8_convs_to_exclude(graph))  # type: ignore[union-attr]
+        quantizable_nodes, no_quantize_inputs = _find_nodes_to_quantize(
+            graph, quantizable_op_types, nodes_to_exclude
+        )
+        nodes_to_quantize = [node.name for node in quantizable_nodes]
 
     # Update the list of nodes to quantize
     nodes_to_quantize = [
@@ -300,9 +308,9 @@ def quantize(
     os.close(tmp_onnx_file)
     logger.debug(f"Created temporary file for intermediate model: {tmp_onnx_path}")
 
-    # Quantize in INT8 mode using ORT's MinMax calibration method, with
-    # ActivationSymmetric as True, which is equivalent to max calibration
-    logger.info("Starting INT8 quantization with MinMax calibration")
+    # Quantize in INT8 mode using ORT's Entropy or MinMax calibration method, with
+    # ActivationSymmetric as True. For MinMax, that's equivalent to max calibration.
+    logger.info(f"Starting INT8 quantization with '{calibration_method}' calibration")
     quantize_static(
         onnx_path,
         tmp_onnx_path,
@@ -312,14 +320,20 @@ def quantize(
         per_channel=True,
         extra_options=trt_guided_options,
         use_external_data_format=use_external_data_format,
-        calibrate_method=CalibrationMethod.MinMax,
+        calibrate_method=(
+            CalibrationMethod.Entropy
+            if calibration_method == "entropy"
+            # With ActivationSymmetric as True, MinMax calibration is equivalent to max calibration
+            else CalibrationMethod.MinMax
+        ),
     )
     intermediate_generated_files.append(tmp_onnx_path)
     if use_external_data_format:
         intermediate_generated_files.append(tmp_onnx_path + ".data")
 
     # Post-processing of the onnx model after ORT quantization
-    onnx_model = int8_to_fp8(tmp_onnx_path)
+    logger.info("Starting post-processing of quantized model")
+    onnx_model = onnx.load(tmp_onnx_path)
     graph = gs.import_onnx(onnx_model)
     remove_partial_input_qdq(graph, no_quantize_inputs)
     onnx_model = gs.export_onnx(graph)
@@ -332,8 +346,6 @@ def quantize(
         convert_fp16_io(graph)
         onnx_model = gs.export_onnx(graph)
 
-        # Record the old fp32 scale value of Resize node.
-        resize_scale_inits = get_resize_scales(onnx_model)
         # Convert to fp16/bf16 model.
         onnx_model = convert_to_f16(
             onnx_model,
@@ -342,8 +354,6 @@ def quantize(
             low_precision_type=high_precision_dtype,
             trt_plugins=trt_extra_plugin_lib_paths,
         )
-        # Replace the fp16/bf16 scale with old fp32 scale.
-        onnx_model = replace_resize_scales(onnx_model, resize_scale_inits)
 
         current_opsets = {opset.domain: opset.version for opset in onnx_model.opset_import}
         opset_of_default_onnx_domain = current_opsets.get("", 0)
@@ -357,6 +367,8 @@ def quantize(
             # The compiler only has FP32 accumulation kernels for FP8 MHAs.
             logger.info("Inserting Cast nodes to enable FP8+FP16 MHA")
             onnx_model = insert_fp8_mha_casts(onnx_model)
+
+    onnx_model = int8_to_fp8(onnx_model)
 
     logger.info(f"FP8 quantization completed in {time.time() - t_start:.2f} seconds")
     return onnx_model

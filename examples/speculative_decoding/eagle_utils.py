@@ -42,12 +42,24 @@ def preprocess(examples, tokenizer):
     for i in range(len(examples)):
         messages = []
         source = examples[i]["conversations"]
-        if source[0]["from"].lower() != "user":
+
+        # Detect format: either role/content or from/value
+        def get_role_content(item):
+            if "role" in item and "content" in item:
+                return item["role"], item["content"]
+            elif "from" in item and "value" in item:
+                return item["from"], item["value"]
+            else:
+                raise ValueError(f"Unknown conversation format: {item}")
+
+        first_role, _ = get_role_content(source[0])
+        if first_role.lower() != "user":
             # Skip the first one if it is not from human
             source = source[1:]
         for j, sentence in enumerate(source):
-            assert sentence["from"].lower() == roles[j % 2], f"{i}"
-            messages.append({"role": sentence["from"].lower(), "content": sentence["value"]})
+            role, content = get_role_content(sentence)
+            assert role.lower() == roles[j % 2], f"{i}"
+            messages.append({"role": role.lower(), "content": content})
         conversation = tokenizer.apply_chat_template(
             messages,
             tokenize=False,

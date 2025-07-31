@@ -29,6 +29,7 @@ from modelopt.onnx import utils
 from modelopt.onnx.logging_config import logger
 from modelopt.onnx.quantization.graph_utils import (
     get_tensor_consumer_nodes,
+    get_tensor_from_name,
     get_tensor_producer_nodes,
     remove_redundant_cast_nodes,
 )
@@ -495,7 +496,7 @@ def _get_scale_and_zp(
     return scale_array, zp_array
 
 
-def _get_succesive_consumers(
+def _get_successive_consumers(
     node: onnx.NodeProto, tensor_consumers: dict[str, list[onnx.NodeProto]]
 ) -> tuple[onnx.NodeProto, onnx.NodeProto]:
     """Get the DequantizeLinear node and its consumer node for a given QuantizeLinear node.
@@ -654,7 +655,7 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
             scale_array, zp_array = _get_scale_and_zp(node, initializers, tensor_producers)
 
             # Validate Q->DQ->Op pattern and get consumers
-            dq_node, quantized_node = _get_succesive_consumers(node, tensor_consumers)
+            dq_node, quantized_node = _get_successive_consumers(node, tensor_consumers)
 
             # Convert weight
             scaled = _convert_weight(weight_array, scale_array, zp_array, quantized_node)
@@ -692,6 +693,137 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
     # Note. This optimization is used by diffusers through --dq_only option, so keeping it here as well
     remove_redundant_cast_nodes(graph)
     logger.info(f"Removed {len(q_indices)} Q nodes and redundant cast nodes")
+
+    return onnx_model
+
+
+def remove_input_dq_and_output_q(
+    onnx_model: onnx.ModelProto, quantizable_custom_ops: dict
+) -> onnx.ModelProto:
+    """Remove DQ nodes from the input and Q from the output of quantized custom ops for TensorRT compatibility.
+
+    TensorRT requires only Q nodes in the inputs and only DQ nodes in the outputs of custom ops.
+    For more information, see https://docs.nvidia.com/deeplearning/tensorrt/latest/inference-library/work-quantized-types.html#q-dq-interaction-with-plugins
+
+    Args:
+        onnx_model: ONNX model protobuf to convert
+        quantizable_custom_ops: dictionary of custom ops and I/O indices to perform Q and DQ deletions as needed.
+
+    Returns:
+        ONNX model protobuf with only Q in the inputs and only DQ in the outputs of custom ops.
+
+    Raises:
+        ValueError: If the model is invalid or removal fails
+        RuntimeError: If graph operations fail
+    """
+    logger.info("Deleting DQ nodes in the input and Q nodes in the output of custom ops.")
+    if not isinstance(onnx_model, onnx.ModelProto):
+        raise ValueError("Input must be an ONNX model protobuf")
+
+    graph = onnx_model.graph
+    if not graph.node:
+        raise ValueError("Model graph is empty")
+
+    initializers, tensor_producers, tensor_consumers = _get_graph_metadata(graph)
+    q_nodes = [
+        (idx, node) for idx, node in enumerate(graph.node) if node.op_type == "QuantizeLinear"
+    ]
+    dq_nodes = [
+        (idx, node) for idx, node in enumerate(graph.node) if node.op_type == "DequantizeLinear"
+    ]
+    q_indices = []
+    dq_indices = []
+
+    # Remove DQ nodes in the input of custom ops
+    for node_idx, node in dq_nodes:
+        consumers = tensor_consumers[node.output[0]]
+        for inp_name in node.input:
+            logger.debug(f"Processing QDQ node for input {inp_name}")
+
+            # Ignore initializers (scale, zero_point)
+            if inp_name in initializers:
+                continue
+
+            try:
+                # Update the previous Q node output name, each DQ should only have one Q producer
+                q_node = tensor_producers[inp_name]
+                assert isinstance(q_node, onnx.NodeProto), (
+                    f"Expected producer {node.name} to be of type NodeProto"
+                )
+                assert q_node.op_type == "QuantizeLinear", (
+                    f"Expected QuantizeLinear producer for {node.name}"
+                )
+
+                # Only remove DQs from the inputs of custom ops
+                if consumers[0].op_type not in quantizable_custom_ops:
+                    continue
+
+                # Rewire graph to connect Q with the node after DQ (skip DQ)
+                for consumer in consumers:
+                    for cons_idx, cons_inp in enumerate(consumer.input):
+                        if cons_inp == node.output[0]:
+                            # If the input tensor is meant to be quantized, delete DQ. Otherwise, delete both Q/DQ.
+                            if cons_idx in quantizable_custom_ops[consumer.op_type]["inp"]:
+                                consumer.input[cons_idx] = q_node.output[0]
+                            else:
+                                q_node_prev = tensor_producers[q_node.input[0]]
+                                consumer.input[cons_idx] = q_node_prev.output[0]
+                            break
+
+                # Track DequantizeLinear node indices for cleanup
+                dq_indices.append(node_idx)
+
+            except Exception as e:
+                raise RuntimeError(f"Failed to convert node {node.name}: {e!s}")
+
+    # Remove Q nodes in the output of custom ops
+    for node_idx, node in q_nodes:
+        for out_name in node.output:
+            logger.debug(f"Processing QDQ node for output {out_name}")
+
+            try:
+                # Update the Q node output name, each Q should only have one DQ consumer
+                dq_node = tensor_consumers[out_name]
+                assert len(dq_node) == 1, f"Expected single consumer for {node.name}"
+                assert dq_node[0].op_type == "DequantizeLinear", (
+                    f"Expected DequantizeLinear producer for {node.name}"
+                )
+
+                # Only remove Qs from the output of custom ops
+                if (
+                    node.input[0] in initializers
+                    or get_tensor_from_name(graph, node.input[0]) in graph.input
+                ):
+                    continue
+                producer = tensor_producers[node.input[0]]
+                if producer.op_type not in quantizable_custom_ops:
+                    continue
+
+                # Rewire graph to connect the output of custom op to the input of DQ (skip Q)
+                # If the output tensor is meant to be quantized, delete Q. Otherwise, delete both Q/DQ.
+                if quantizable_custom_ops[producer.op_type]["out"]:
+                    dq_node[0].input[0] = producer.output[0]
+                else:
+                    dq_node_next = tensor_consumers[dq_node[0].output[0]]
+                    dq_node_next[0].input[0] = producer.output[0]
+
+                # Track QuantizeLinear node indices for cleanup
+                q_indices.append(node_idx)
+
+            except Exception as e:
+                raise RuntimeError(f"Failed to convert node {node.name}: {e!s}")
+
+    # Remove processed nodes
+    for node_idx in sorted(q_indices + dq_indices, reverse=True):
+        del graph.node[node_idx]
+
+    logger.info(
+        f"Removed {len(q_indices)} Q node{'' if len(q_indices) == 1 else 's'} and"
+        f" {len(dq_indices)} DQ node{'' if len(dq_indices) == 1 else 's'}"
+    )
+
+    # TODO: remove manual ir_version change once ORT supports ir_version 11
+    onnx_model.ir_version = 10
 
     return onnx_model
 

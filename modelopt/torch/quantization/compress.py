@@ -89,7 +89,6 @@ def compress_convert(
             raise ValueError(
                 f"Invalid compression configuration: {to_compress}, expected a boolean as value."
             )
-
     # If real quant quantizer is present, real quantize the weights.
     pack_real_quantize_weight(model)
 

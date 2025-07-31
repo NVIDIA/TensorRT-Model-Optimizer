@@ -52,7 +52,8 @@ extend-ignore = [
     "PT011", "PT018",
     "RUF002", "RUF012",
     "SIM115",
-    "UP038"
+    "UP038", "UP032",
+    "SIM108", "SIM102",
 ]
 
 

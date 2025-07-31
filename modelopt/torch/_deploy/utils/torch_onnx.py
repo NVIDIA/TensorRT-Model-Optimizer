@@ -28,6 +28,7 @@ import onnx
 import torch
 import torch.nn as nn
 from onnx import ModelProto
+from onnxconverter_common import convert_float_to_float16
 from packaging.version import Version
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
@@ -459,7 +460,12 @@ def get_onnx_bytes_and_metadata(
         onnx_opt_graph = qdq_to_dq(onnx_opt_graph)
 
     if weights_dtype == "float16":
-        onnx_opt_graph = convert_to_f16(onnx_opt_graph, keep_io_types=False)
+        if is_fp4_quantized(model) or is_mxfp8_quantized(model):
+            onnx_opt_graph = convert_float_to_float16(
+                onnx_opt_graph, keep_io_types=False, disable_shape_infer=True
+            )
+        else:
+            onnx_opt_graph = convert_to_f16(onnx_opt_graph, keep_io_types=False)
 
     # If the onnx model contains external data store the external tensors in one file and save the onnx model
     if has_external_data(onnx_save_path):

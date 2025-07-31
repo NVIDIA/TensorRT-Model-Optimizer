@@ -287,6 +287,8 @@ class _QuantMegatronMLP(_MegatronMLP):
 
 
 class _RealQuantMegatronColumnParallelLinear(RealQuantLinear, _MegatronColumnParallelLinear):
+    allow_real_quant_gemm = False  # We don't support real quant gemm for ColumnParallelLinear
+
     def _parameter_to_keep_in_quantizer_state_dict(self, key):
         return any(k in key for k in self.list_of_scale_tensors)
 
@@ -310,6 +312,8 @@ class _RealQuantMegatronColumnParallelLinear(RealQuantLinear, _MegatronColumnPar
 
 
 class _RealQuantMegatronRowParallelLinear(RealQuantLinear, _MegatronRowParallelLinear):
+    allow_real_quant_gemm = False  # We don't support real quant gemm for RowParallelLinear
+
     def _parameter_to_keep_in_quantizer_state_dict(self, key):
         return any(k in key for k in self.list_of_scale_tensors)
 

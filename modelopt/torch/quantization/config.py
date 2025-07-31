@@ -141,18 +141,6 @@ from typing import Literal
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
-# use the form "from x import y as y" syntax to direct mypy that these configs are re-exported
-from modelopt.core.torch.quantization.config import NVFP4_AFFINE_KV_CFG as NVFP4_AFFINE_KV_CFG
-from modelopt.core.torch.quantization.config import NVFP4_AWQ_CLIP_CFG as NVFP4_AWQ_CLIP_CFG
-from modelopt.core.torch.quantization.config import NVFP4_AWQ_FULL_CFG as NVFP4_AWQ_FULL_CFG
-from modelopt.core.torch.quantization.config import NVFP4_AWQ_LITE_CFG as NVFP4_AWQ_LITE_CFG
-from modelopt.core.torch.quantization.config import NVFP4_DEFAULT_CFG as NVFP4_DEFAULT_CFG
-from modelopt.core.torch.quantization.config import NVFP4_KV_CFG as NVFP4_KV_CFG
-from modelopt.core.torch.quantization.config import NVFP4_KV_ROTATE_CFG as NVFP4_KV_ROTATE_CFG
-from modelopt.core.torch.quantization.config import NVFP4_MXFP8_CFG as NVFP4_MXFP8_CFG
-from modelopt.core.torch.quantization.config import (
-    NVFP4_SVDQUANT_DEFAULT_CFG as NVFP4_SVDQUANT_DEFAULT_CFG,
-)
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 from modelopt.torch.utils.network import ConstructorLike
 
@@ -369,25 +357,237 @@ FP8_AFFINE_KV_CFG = {
     "algorithm": "max",
 }
 
+NVFP4_DEFAULT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": "max",
+}
+
+
+NVFP4_AWQ_LITE_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": "awq_lite",
+}
+
+NVFP4_AWQ_CLIP_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": {"method": "awq_clip"},
+}
+
+NVFP4_AWQ_FULL_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": {"method": "awq_full", "alpha_step": 0.1},
+}
+
+
+NVFP4_AFFINE_KV_CFG = {
+    "quant_cfg": {
+        "*[kv]_bmm_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+            "bias": {-2: None, -4: None, "type": "static"},
+        },
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+NVFP4_KV_CFG = {
+    "quant_cfg": {
+        "*[kv]_bmm_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+# Moved from examples/diffusers/quantization/config.py to here
+NVFP4_FP8_MHA_CONFIG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*output_quantizer": {"enable": False},
+        "*q_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "*k_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "*v_bmm_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "*softmax_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "transformer_blocks*bmm2_output_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+NVFP4_KV_ROTATE_CFG = {
+    "quant_cfg": {
+        "*q_bmm_quantizer": {
+            "enable": False,
+            "rotate": True,
+        },
+        "*k_bmm_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+            "rotate": True,
+        },
+        "*v_bmm_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+    },
+    "algorithm": "max",
+}
+
+NVFP4_SVDQUANT_DEFAULT_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": {"method": "svdquant", "lowrank": 32},
+}
+
+NVFP4_FP8_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+            "enable": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": "max",
+}
+
+
 choices: set[str] = {
+    "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
+    "FP8_AFFINE_KV_CFG",
+    "FP8_DEFAULT_CFG",
+    "FP8_KV_CFG",
+    "FP8_PER_CHANNEL_PER_TOKEN_CFG",
+    "INT4_AWQ_CFG",
+    "INT4_BLOCKWISE_WEIGHT_ONLY_CFG",
     "INT8_DEFAULT_CFG",
     "INT8_SMOOTHQUANT_CFG",
-    "FP8_DEFAULT_CFG",
-    "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
-    "FP8_PER_CHANNEL_PER_TOKEN_CFG",
-    "INT4_BLOCKWISE_WEIGHT_ONLY_CFG",
-    "INT4_AWQ_CFG",
-    "W4A8_AWQ_BETA_CFG",
-    "NVFP4_DEFAULT_CFG",
-    "NVFP4_AWQ_LITE_CFG",
+    "MXFP4_DEFAULT_CFG",
+    "MXFP8_DEFAULT_CFG",
+    "MXINT8_DEFAULT_CFG",
+    "NVFP4_AFFINE_KV_CFG",
     "NVFP4_AWQ_CLIP_CFG",
     "NVFP4_AWQ_FULL_CFG",
-    "NVFP4_KV_ROTATE_CFG",
-    "FP8_KV_CFG",
-    "FP8_AFFINE_KV_CFG",
+    "NVFP4_AWQ_LITE_CFG",
+    "NVFP4_DEFAULT_CFG",
+    "NVFP4_FP8_MHA_CONFIG",
     "NVFP4_KV_CFG",
-    "NVFP4_AFFINE_KV_CFG",
-    "MXFP8_DEFAULT_CFG",
+    "NVFP4_KV_ROTATE_CFG",
+    "NVFP4_FP8_CFG",
+    "NVFP4_SVDQUANT_DEFAULT_CFG",
+    "W4A8_AWQ_BETA_CFG",
     "W4A8_MXFP4_FP8_CFG",
 }
 

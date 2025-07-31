@@ -401,7 +401,7 @@ if __name__ == "__main__":
         "--algo",
         type=str,
         default="awq_lite",
-        help="Device for calibration data",
+        help="Algorithm or calibration-method to use. Choose from [awq_lite, awq_clip, rtn, rtn_dq]",
     )
     parser.add_argument(
         "--dataset",

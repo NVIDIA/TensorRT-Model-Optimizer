@@ -70,6 +70,12 @@ if [[ -z "$FP8_HF_PATH" ]]; then
     usage
 fi
 
+# for KIMI-K2, copy tiktoken.model to tokenizer to the quantized checkpoint
+if [[ -f "$FP8_HF_PATH/tiktoken.model" ]]; then
+    echo "tiktoken.model found in $FP8_HF_PATH"
+    cp $FP8_HF_PATH/tiktoken.model $FP4_PATH/
+fi
+
 # Copy miscellaneous files to the quantized checkpoint
 mkdir -p $FP4_PATH
 cp $FP8_HF_PATH/*.json $FP8_HF_PATH/*.py $FP4_PATH/

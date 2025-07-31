@@ -309,7 +309,10 @@ class TensorQuantizer(nn.Module):
 
     @bias_type.setter
     def bias_type(self, value):
-        assert value in ["static", "dynamic"], "bias_type must be either 'static' or 'dynamic'."
+        assert value in [
+            "static",
+            "dynamic",
+        ], "bias_type must be either 'static' or 'dynamic'."
         self._bias["type"] = value
 
     @property
@@ -525,7 +528,7 @@ class TensorQuantizer(nn.Module):
 
     def _validate_amax(self, amax):
         # Dynamic control flow is not supported by torch dynamo
-        if not is_torch_export_mode():
+        if not is_torch_export_mode() and not torch._dynamo.is_compiling():
             assert torch.all(amax >= 0) and not torch.any(torch.isinf(amax)), (
                 f"Got invalid amax: {amax}"
             )
@@ -663,7 +666,12 @@ class TensorQuantizer(nn.Module):
                     )
 
                     outputs = scaled_e4m3(
-                        inputs, amax, self.bias_value, E, M, self._trt_high_precision_dtype
+                        inputs,
+                        amax,
+                        self.bias_value,
+                        E,
+                        M,
+                        self._trt_high_precision_dtype,
                     )
                 else:
                     # Integer static quantization, e.g., INT4_BLOCKWISE
@@ -908,8 +916,12 @@ class TensorQuantizer(nn.Module):
             self._input_dtype = inputs.dtype if hasattr(inputs, "dtype") else None
             return inputs
 
-        # GLOBALS could break TorchDynamo for some Pytorch versions (i.e., 2.3.0)
-        if not is_torch_export_mode() and GLOBALS.in_onnx_export:
+        if (
+            not is_torch_export_mode()
+            and not torch._dynamo.is_compiling()
+            and GLOBALS.in_onnx_export
+        ):
+            # GLOBALS could break TorchDynamo for some Pytorch versions (i.e., 2.3.0)
             self._check_onnx_readiness(inputs)
 
         if self.block_sizes is not None and self._fake_quant:
@@ -1288,6 +1300,9 @@ class SequentialQuantizer(nn.Sequential):
 
         yield
 
-        for parent_module, sequential_quantizers_list in original_sequential_quantizers.items():
+        for (
+            parent_module,
+            sequential_quantizers_list,
+        ) in original_sequential_quantizers.items():
             for name, sequential_quantizer in sequential_quantizers_list:
                 setattr(parent_module, name, sequential_quantizer)

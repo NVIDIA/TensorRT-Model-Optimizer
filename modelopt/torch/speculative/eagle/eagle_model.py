@@ -15,6 +15,8 @@
 
 """Eagle model to support eagle decoding."""
 
+import torch
+
 from modelopt.torch.opt.dynamic import DynamicModule
 
 
@@ -36,6 +38,7 @@ class EagleModel(DynamicModule):
         eagle_disable_moe,
         draft_vocab_size,
         use_mtp_layernorm,
+        parallel_draft_step,
     ):
         """Base Eagle Model modify function. Child class should implement the details."""
         self.eagle_num_layers = eagle_num_layers
@@ -47,6 +50,7 @@ class EagleModel(DynamicModule):
         self.eagle_disable_moe = eagle_disable_moe
         self.draft_vocab_size = draft_vocab_size
         self.use_mtp_layernorm = use_mtp_layernorm
+        self.parallel_draft_step = parallel_draft_step
 
         # Use default aux_hidden_state layers if use_aux_hidden_state is True
         # but no layer id is given
@@ -57,3 +61,7 @@ class EagleModel(DynamicModule):
             assert not self.eagle_hidden_state_distillation, (
                 "EAGLE-3 does not support hidden state distillation!"
             )
+
+        if self.parallel_draft_step > 1:
+            for i in range(self.parallel_draft_step - 1):
+                self.register_buffer(f"mask_token_{i}", torch.tensor(-1))

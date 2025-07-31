@@ -979,6 +979,48 @@ def quantize_llama4_experts_for_hf_export(module: nn.Module):
     assert module.gate_up_proj_input_quantizer.is_enabled
     assert module.down_proj_input_quantizer.is_enabled
 
+    # Handle uncalibrated input quantizers that have None amax values
+    input_quantizers = [
+        module.gate_up_proj_input_quantizer,
+        module.down_proj_input_quantizer,
+    ]
+
+    # Only handle amax for non-dynamic quantizers
+    non_dynamic_quantizers = [q for q in input_quantizers if not getattr(q, "_dynamic", False)]
+
+    if non_dynamic_quantizers:
+        # Find the maximum amax value from non-None quantizers
+        valid_amax_values = [
+            quantizer.amax for quantizer in non_dynamic_quantizers if quantizer.amax is not None
+        ]
+
+        device = module.gate_up_proj.device
+
+        # If all quantizers have None amax, set a default value
+        if not valid_amax_values:
+            default_amax = torch.tensor(1.0, dtype=torch.float32, device=device)
+            warn(
+                "All input quantizers have None amax values. Setting default amax to 1.0. "
+                "This typically occurs when experts are not activated during calibration. "
+                "Consider increasing your calibration dataset size to ensure all experts are exercised."
+            )
+            for quantizer in non_dynamic_quantizers:
+                if quantizer.amax is None:
+                    quantizer.amax = default_amax.clone()
+        else:
+            # Set None amax values to the maximum of existing values
+            max_amax = torch.max(torch.stack(valid_amax_values))
+            if max_amax.device != device:
+                max_amax = max_amax.to(device)
+            for quantizer in non_dynamic_quantizers:
+                if quantizer.amax is None:
+                    warn(
+                        f"Missing amax value for input quantizer. Setting it to {max_amax.item()} for export. "
+                        "This typically occurs when certain experts are not activated during calibration. "
+                        "Consider increasing your calibration dataset size to ensure all experts are exercised."
+                    )
+                    quantizer.amax = max_amax.clone()
+
     for weight_name in ["gate_up_proj", "down_proj"]:
         weight = getattr(module, weight_name)
         weight_quantizer = getattr(module, f"{weight_name}_weight_quantizer")
@@ -1049,6 +1091,11 @@ def quantize_llama4_experts_for_hf_export(module: nn.Module):
 
     for input_name in ["gate_up_proj", "down_proj"]:
         input_quantizer = getattr(module, f"{input_name}_input_quantizer")
+
+        # Skip processing for dynamic quantization since it doesn't have fixed amax
+        if getattr(input_quantizer, "_dynamic", False):
+            continue
+
         if input_quantizer.num_bits == (4, 3):
             assert not input_quantizer.block_sizes
 

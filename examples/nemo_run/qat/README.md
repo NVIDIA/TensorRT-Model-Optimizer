@@ -17,7 +17,37 @@ To run SFT properly you may also need to clone NeMo and Megatron-LM at the respe
 
 ### Running the Flow
 
+#### QAT
+
 From the `nemo_run` folder, launch the example with `python qat/nemo_qat_flow.py --model-name <hf-model-name> --finetune-recipe <recipe-name>`. Available NeMo recipe names are listed [here](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/llm/recipes). To provide your own custom dataset, use the `--data-path` flag, otherwise the default [LIMA](https://huggingface.co/datasets/GAIR/lima) dataset will be used.
+
+To perform QAT, run:
+
+```bash
+python qat/nemo_qat_flow.py \
+    --model-name meta-llama/Meta-Llama-3.1-8B-Instruct \
+    --finetune-recipe llama31_8b \
+    --algorithm fp8 \
+    --chat-template llama_chat_template.txt \
+    --experiment llama3_qat_nemo
+```
+
+> **_NOTE:_** To enable KV cache quantization, add `--enable-kv-cache` and specify qformat using `--kv-cache-qformat <fp8, nvfp4>`.
+
+#### QAD
+
+In order to train using QAD, launch the example with `python qat/nemo_qat_flow.py --model-name <hf-model-name> --distill`. It will utilize `distillation_recipe` with quantized student model and full precision teacher model to train the quantized model.
+
+To perform QAD training, run:
+
+```bash
+python qat/nemo_qat_flow.py \
+    --model-name meta-llama/Meta-Llama-3.1-8B-Instruct \
+    --distill \
+    --algorithm fp8 \
+    --chat-template llama_chat_template.txt \
+    --experiment llama3_qad_nemo
+```
 
 ### Custom Chat Template
 

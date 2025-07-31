@@ -294,6 +294,7 @@ class HFEagleModel(EagleModel):
         eagle_disable_moe,  # Not used in HFEagleModel
         draft_vocab_size,
         use_mtp_layernorm,
+        parallel_draft_step=1,
         ffn_hidden_size=0,
     ):
         """Constructor.
@@ -311,6 +312,7 @@ class HFEagleModel(EagleModel):
             eagle_disable_moe=eagle_disable_moe,
             draft_vocab_size=draft_vocab_size,
             use_mtp_layernorm=use_mtp_layernorm,
+            parallel_draft_step=parallel_draft_step,
         )
 
         self.config.eagle = {

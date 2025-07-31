@@ -32,10 +32,10 @@ import torch.nn as nn
 import transformers
 from transformers.models.t5.modeling_t5 import T5Attention
 
-from modelopt.core.torch.quantization.algorithms import AutoQuantizeSearcher
 from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.utils.distributed import ParallelState
 
+from ..algorithms import AutoQuantizeSearcher
 from ..conversion import register
 from ..nn import QuantInputBase, QuantModule, QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import _QuantLinear

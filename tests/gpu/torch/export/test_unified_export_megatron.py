@@ -21,20 +21,15 @@ import torch
 import transformers
 from _test_utils.import_helper import skip_if_no_megatron
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    get_mcore_gpt_model,
-    initialize_for_megatron,
-)
+from _test_utils.torch_dist.plugins.megatron_common import get_mcore_gpt_model
 from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
 
 skip_if_no_megatron(apex_or_te_required=True)
 
 import modelopt.torch.speculative as mtsp
 from modelopt.torch.export import export_mcore_gpt_to_hf, import_mcore_gpt_from_hf
-from modelopt.torch.speculative.plugins.megatron import (
-    _DynamicEagleGPTModel,
-    _DynamicMedusaGPTModel,
-)
+from modelopt.torch.speculative.plugins.megatron_eagle import _DynamicEagleGPTModel
+from modelopt.torch.speculative.plugins.megatron_medusa import _DynamicMedusaGPTModel
 
 
 def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
@@ -50,11 +45,10 @@ def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
     activation_func = "squared_relu" if model_type == "nemotron" else "swiglu"
     normalization = "LayerNorm" if model_type == "nemotron" else "RMSNorm"
 
-    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
-
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=size,
         pipeline_model_parallel_size=1,
+        initialize_megatron=True,
         num_layers=num_layers,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
@@ -147,11 +141,10 @@ def _test_unified_import_megatron(tiny_llama_dir, rank, size):
     activation_func = "swiglu"
     normalization = "RMSNorm"
 
-    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
-
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=size,
         pipeline_model_parallel_size=1,
+        initialize_megatron=True,
         num_layers=num_layers,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,

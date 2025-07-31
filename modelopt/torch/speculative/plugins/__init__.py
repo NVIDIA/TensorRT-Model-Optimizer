@@ -23,8 +23,11 @@ write your own one. Currently, we support plugins for
 
 from modelopt.torch.utils import import_plugin
 
-with import_plugin("megatron"):
-    from .megatron import *
+with import_plugin("megatron_eagle"):
+    from .megatron_eagle import *
+
+with import_plugin("megatron_medusa"):
+    from .megatron_medusa import *
 
 with import_plugin("transformers"):
     from .transformers import *

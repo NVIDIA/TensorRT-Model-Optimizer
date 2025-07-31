@@ -185,12 +185,34 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             ["Relu", "BiasAdd", "ConstMul", conv_type],
             ["BatchNormalization", "BiasAdd", conv_type],
             ["Relu", "BatchNormalization", "BiasAdd", conv_type],
+            ["MaxPool", "Relu", "BatchNormalization", "BiasAdd", conv_type],
         ]
     for idx, path_type in enumerate(fusible_linear_path_types):
         if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=[]):
             return _get_backbone(node)
 
     return None
+
+
+def get_tensor_from_name(graph: onnx.GraphProto, tensor_name: str) -> onnx.ValueInfoProto | None:
+    """Returns a ValueInfoProto given a tensor name.
+
+    Args:
+        graph: ONNX model graph
+        tensor_name: String with tensor name.
+
+    Returns:
+        onnx.ValueInfoProto: actual graph tensor.
+    """
+    # Search in inputs
+    vi = next((vi for vi in graph.input if vi.name == tensor_name), None)
+    # If not found, search in outputs
+    if vi is None:
+        vi = next((vi for vi in graph.output if vi.name == tensor_name), None)
+    # If not found, search in value_info (intermediate tensors)
+    if vi is None:
+        vi = next((vi for vi in graph.value_info if vi.name == tensor_name), None)
+    return vi
 
 
 def get_tensor_producer_nodes(
@@ -889,11 +911,9 @@ def find_nodes_from_mha_to_exclude(
     return [*set(nodes_to_exclude)]  # type: ignore[arg-type]
 
 
-def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16, use_external_data_format):
-    """Adds cast_to_fp16 nodes to the inputs of a layer and cast_to_fp32 to the outputs."""
-    logger.info(
-        "Adding cast_to_fp16 nodes to the inputs of a layer and cast_to_fp32 to the outputs"
-    )
+def cast_custom_ops(onnx_model: onnx.ModelProto, ops_to_cast: dict) -> onnx.ModelProto:
+    """Adds cast_to_fp16 nodes to the inputs and cast_to_fp32 to the outputs of a layer in the requested indices."""
+    logger.info("Casting custom ops in the requested inputs and outputs")
     name_dict = {}
 
     def _get_unique_name(old_name):
@@ -902,6 +922,10 @@ def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16, use_external_data_
             return old_name
         name_dict[old_name] = name_dict[old_name] + 1
         return old_name + "_" + str(name_dict[old_name])
+
+    def _is_castable_tensor(tensor) -> bool:
+        castable_types = ["float16", "float32", "double"]
+        return tensor.dtype and tensor.dtype in castable_types
 
     def _add_cast_node_inp(tensor, precision="fp16", suffix=""):
         if precision == "fp16":
@@ -949,25 +973,32 @@ def add_fp16_fp32_cast(onnx_path, custom_ops_to_cast_to_fp16, use_external_data_
         graph.nodes.append(cast_node)
         return cast_inp
 
-    graph = gs.import_onnx(onnx.load(onnx_path))
-    castable_nodes = [n for n in graph.nodes if n.op in custom_ops_to_cast_to_fp16]
+    graph = gs.import_onnx(onnx_model)
+    castable_nodes = [n for n in graph.nodes if n.op in ops_to_cast]
 
     for node in castable_nodes:
-        # Cast all inputs to FP16
-        for inp_idx, inp in enumerate(node.inputs):
-            cast_out = _add_cast_node_inp(inp)
-            node.inputs[inp_idx] = cast_out
+        inp_idxs = ops_to_cast[node.op]["inp"]
+        out_idxs = ops_to_cast[node.op]["out"]
 
-        # Cast all outputs from FP16 back to FP32
+        # Cast relevant inputs to FP16
+        for inp_idx, inp in enumerate(node.inputs):
+            if inp_idx in inp_idxs and _is_castable_tensor(inp):
+                cast_out = _add_cast_node_inp(inp)
+                node.inputs[inp_idx] = cast_out
+
+        # Cast relevant outputs from FP16 back to FP32
         for out_idx, out in enumerate(node.outputs):
-            cast_inp = _add_cast_node_out(out)
-            node.outputs[out_idx] = cast_inp
+            if out_idx in out_idxs and _is_castable_tensor(out):
+                cast_inp = _add_cast_node_out(out)
+                node.outputs[out_idx] = cast_inp
 
     graph.cleanup().toposort()
 
-    new_onnx_path = onnx_path.replace(".onnx", "_castFP16.onnx")
-    save_onnx(gs.export_onnx(graph), new_onnx_path, use_external_data_format)
-    return new_onnx_path
+    onnx_model = gs.export_onnx(graph)
+    # TODO: remove manual ir_version change once ORT supports ir_version 11
+    onnx_model.ir_version = 10
+
+    return onnx_model
 
 
 def print_stat(graph: Graph) -> None:
@@ -1230,24 +1261,6 @@ def get_resize_scales(onnx_model):
                     resize_scale_inits[node.name] = (init.data_type, init.raw_data)
                     break
     return resize_scale_inits
-
-
-def replace_resize_scales(onnx_model, resize_scale_inits):
-    """Replace Resize op's fp16 scale value with old fp32 scale."""
-    if len(resize_scale_inits) == 0:
-        return onnx_model
-
-    graph = gs.import_onnx(onnx_model)
-    for node in graph.nodes:
-        if node.op == "Resize" and node.name in resize_scale_inits:
-            cast_node = node.inputs[2].inputs[0]
-            scale = cast_node.inputs[0]
-            for new_init in onnx_model.graph.initializer:
-                if new_init.name == scale.name:
-                    old_data_type, old_raw_data = resize_scale_inits[node.name]
-                    new_init.data_type = old_data_type
-                    new_init.raw_data = old_raw_data
-    return onnx_model
 
 
 def get_concat_eliminated_tensors(

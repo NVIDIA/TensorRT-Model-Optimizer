@@ -94,3 +94,28 @@ class QDQConvTranspose(QDQOperatorBase):
             self.quantizer.quantize_bias_tensor(
                 node.name, node.input[2], node.input[0], node.input[1]
             )
+
+
+class QDQCustomOp(QDQOperatorBase):
+    """By default, ORT does not quantize custom ops. This module is intended to help with that.
+
+    Note. QDQOperatorBase is not sufficient for dynamic input and output only quantization.
+    """
+
+    def __init__(self, onnx_quantizer, onnx_node):
+        """Normalization quantizer init."""
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def quantize(self):
+        """Main function to quantize the custom ops."""
+        node = self.node
+
+        # Quantize only the dynamic inputs with type FLOAT or FLOAT16
+        for inp in node.input:
+            if self.quantizer._is_tensor_quantizable(inp):
+                self.quantizer.quantize_activation_tensor(inp)
+
+        # Quantize the outputs with type FLOAT or FLOAT16
+        for out in node.output:
+            if self.quantizer._is_tensor_quantizable(out):
+                self.quantizer.quantize_activation_tensor(out)

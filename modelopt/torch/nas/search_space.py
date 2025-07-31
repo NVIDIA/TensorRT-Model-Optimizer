@@ -24,7 +24,8 @@ import torch.nn as nn
 from modelopt.torch.opt import RulesDict
 from modelopt.torch.opt.dynamic import DynamicModule, DynamicSpace, _DMRegistryCls
 from modelopt.torch.trace import Symbol, SymMap, analyze_symbols
-from modelopt.torch.utils import random
+from modelopt.torch.utils import print_rank_0, random
+from modelopt.torch.utils.distributed import is_master, rank
 
 from .registry import DMRegistry
 from .traced_hp import TracedHp, TracedHpRegistry
@@ -127,12 +128,17 @@ class SearchSpace(DynamicSpace):
         return self.config()
 
     @torch.no_grad()
-    def sort_parameters(self, hps_to_sort: set[str] | None = None) -> None:
+    def sort_parameters(self, hps_to_sort: set[str] | None = None, verbose: bool = False) -> None:
         """A graph propagation based parameter sorting algorithm.
 
         Args:
             hps_to_sort: A set of hparam names to sort. If not provided or empty, all hparams will be sorted.
+            verbose: Whether to print the search space and hparam importances.
         """
+        print_rank_0("Sorting parameters...")
+        if verbose:
+            self.print_summary()
+
         # get config and set to max
         config = self.config()
         self.sample(sample_func=max)
@@ -149,6 +155,8 @@ class SearchSpace(DynamicSpace):
             # compute order from importance and enforce it
             order = torch.argsort(importance, descending=True)
             hp.enforce_order(order)
+            if verbose:
+                print(f"Sorted {name} for rank {rank()} with {importance=}")
 
         # now that we have enforced an order we can force reassign all parameters/buffers!
         for _, mod in self.named_dynamic_modules():
@@ -163,7 +171,9 @@ class SearchSpace(DynamicSpace):
 
     def print_summary(self, skipped_hparams: list[str] = ["kernel_size"]) -> None:
         """Print a summary of the search space."""
-        print("\nSearch Space Summary:\n{:-^100}".format(""))
+        if not is_master():
+            return
+        print(f"\nSearch Space Summary for rank {rank()}:\n{'-' * 100}")
         hp_visited = set()  # Only highlight configurable hparams once
         for name, hp in self.named_hparams():
             if not any(name.endswith(s) for s in skipped_hparams):

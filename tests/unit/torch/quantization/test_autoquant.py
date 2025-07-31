@@ -23,7 +23,7 @@ from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, 
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
-from modelopt.core.torch.quantization.algorithms import (
+from modelopt.torch.quantization.algorithms import (
     QuantRecipe,
     QuantRecipeHparam,
     estimate_quant_compression,

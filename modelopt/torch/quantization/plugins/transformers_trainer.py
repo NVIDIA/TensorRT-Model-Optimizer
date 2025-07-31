@@ -205,6 +205,9 @@ class QADTrainer(QATTrainer, KDTrainer):
         self.model.cuda()
         if self.quant_cfg is not None and not is_quantized(self.model):
             self._quantize_model(use_eval_loop=False)
+        if getattr(self.args, "lora_config", None) is not None:
+            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            print_rank_0("Lora adapter added.")
         self._convert_to_distillation_model()
 
     def _convert_to_distillation_model(self):

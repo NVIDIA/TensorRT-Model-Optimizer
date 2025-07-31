@@ -177,7 +177,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
             --export_fmt=$EXPORT_FORMAT \
-            --vlm \
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"

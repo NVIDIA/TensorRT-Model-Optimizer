@@ -35,6 +35,7 @@ from modelopt.torch.nas.utils import sort_parameters
 from modelopt.torch.opt.config import ModeloptBaseConfig, get_kwargs_for_create_model_with_rules
 from modelopt.torch.opt.searcher import BaseSearcher, SearchConfig, SearchStateDict
 from modelopt.torch.opt.utils import named_hparams
+from modelopt.torch.utils import print_rank_0
 
 from ..fastnas import FastNASModeDescriptor
 from ..pruning import PruneModeRegistry
@@ -61,12 +62,20 @@ def get_supported_model_config_map() -> dict[type, str]:
         pass
 
     try:
+        from megatron.core.models.mamba import MambaModel
+
+        supported_model_config_map[MambaModel] = "config"
+    except Exception:
+        pass
+
+    try:
         from nemo.collections import llm
         from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import (
             MegatronGPTModel,
         )
 
         supported_model_config_map[MegatronGPTModel] = "cfg"
+        # NOTE: llm.MambaModel is a subclass of llm.GPTModel
         supported_model_config_map[llm.GPTModel] = "config"
     except Exception:
         pass
@@ -126,12 +135,13 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
             )
             self.hps_to_sort.add("num_heads_per_group")
 
-        for n, hp in named_hparams(self.model, configurable=True):
+        for n, hp in named_hparams(self.model, unique=True):
             hp_name = n.split(".")[-1]
-            if hp_name in export_config:
+            if hp.is_configurable and hp_name in export_config:
                 assert export_config[hp_name] in hp.choices, (
-                    f"Invalid choice for {hp_name}! Available choices: {hp.choices}"
+                    f"Invalid choice {export_config[hp_name]} for {n}! Available choices: {hp.choices}"
                 )
+            hp.reset_choices()  # Make sure ConcatHparam choices are updated after modify()
 
     def run_search(self) -> None:
         """Run actual search."""
@@ -150,9 +160,10 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
         assert self.forward_loop is not None
         is_training = self.model.training
         self.model.eval()
+        print_rank_0("Running forward loop...")
         with torch.no_grad():
             self.forward_loop(self.model)
-        sort_parameters(self.model, self.hps_to_sort)
+        sort_parameters(self.model, self.hps_to_sort, verbose=True)
         self.model.train(is_training)
 
         # Prune homogeneously
@@ -181,6 +192,12 @@ MCoreGPTMinitronConfig: type[ModeloptBaseConfig] = create_model(
         registry=DMRegistry,
         default_rules={
             "megatron.core.models.gpt.GPTModel": {
+                "hidden_size_divisor": 64,
+                "num_heads_per_group_divisor": 1,
+                "num_query_groups_divisor": 1,
+                "ffn_hidden_size_divisor": 64,
+            },
+            "megatron.core.models.mamba.MambaModel": {
                 "hidden_size_divisor": 64,
                 "num_heads_per_group_divisor": 1,
                 "num_query_groups_divisor": 1,

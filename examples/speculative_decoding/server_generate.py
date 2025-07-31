@@ -81,9 +81,24 @@ def generate_data(messages, idx, system_prompt):
                 output_messages.append(system_message)
 
             for message in messages[::2]:
-                if message["role"].lower() != "user":
+                # Detect message format
+                if "from" in message and "value" in message:
+                    role = message["from"].lower()
+                    content = message["value"]
+                elif "role" in message and "content" in message:
+                    role = message["role"].lower()
+                    content = message["content"]
+                else:
+                    raise ValueError(f"Message format not recognized: {message}")
+
+                if role != "user":
                     return
-                output_messages.append(message)
+                output_messages.append(
+                    {
+                        "role": "user",
+                        "content": content,
+                    }
+                )
                 try:
                     response = client.chat.completions.create(
                         model=model_name,
@@ -155,6 +170,11 @@ if os.path.exists(args.output_path):
                 done = True
                 break
 finished_ids = set(finished_ids)
+
+# Ensure the output directory exists before writing to the output file
+output_dir = os.path.dirname(args.output_path)
+if output_dir and not os.path.exists(output_dir):
+    os.makedirs(output_dir, exist_ok=True)
 
 if done:
     print("All conversations already generated")

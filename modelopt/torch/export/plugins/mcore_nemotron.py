@@ -16,82 +16,75 @@
 
 """Custom mapping from Nemotron Hugging Face models to Megatron Core models."""
 
-from .mcore_custom import COL_PARALLEL, ROW_PARALLEL, CustomModuleMapping
+from .mcore_custom import (
+    COL_TP,
+    REPLICATE,
+    ROW_TP,
+    CustomModuleMapping,
+    NameRemapping,
+    QKVMerging,
+    QKVSlicing,
+)
 
 # Example on adding a new CausalLM.
 nemotron_causal_lm_export: dict[str, CustomModuleMapping] = {
     # NemotronForCausalLM is using square-relu where no gated handle is needed.
-    "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
-    "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
-    "linear_qkv": CustomModuleMapping(
-        "qkv_slicing",
-        "model.layers.{}.self_attn.",
-    ),
-    "linear_proj": CustomModuleMapping("name_remapping", "model.layers.{}.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
-    ),
+    "word_embeddings": NameRemapping("model.embed_tokens."),
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm."),
+    "linear_qkv": QKVSlicing("model.layers.{}.self_attn."),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj."),
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm."),
     # NemotronForCausalLM is using square-relu where no gated handle is needed.
-    "linear_fc1": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.up_proj."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.down_proj."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+    "linear_fc1": NameRemapping("model.layers.{}.mlp.up_proj."),
+    "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj."),
+    "final_layernorm": NameRemapping("model.norm."),
+    "output_layer": NameRemapping("lm_head."),
 }
 
 
 nemotron_h_causal_lm_import: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "backbone.embeddings.", COL_PARALLEL),
-    "final_norm": CustomModuleMapping("name_remapping", "backbone.norm_f."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head.", COL_PARALLEL),
+    "word_embeddings": NameRemapping("backbone.embeddings.", COL_TP),
+    "final_norm": NameRemapping("backbone.norm_f.", REPLICATE),
+    "output_layer": NameRemapping("lm_head.", COL_TP),
     # Mamba
-    "norm": CustomModuleMapping("name_remapping", "backbone.layers.{}.norm."),
-    "mixer_norm": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.norm."),
-    "A_log": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.A_log"),
-    "D": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.D"),
-    "dt_bias": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.dt_bias"),
-    "conv1d": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.conv1d."),
-    "in_proj": CustomModuleMapping(
-        "name_remapping", "backbone.layers.{}.mixer.in_proj.", COL_PARALLEL
-    ),
-    "out_proj": CustomModuleMapping(
-        "name_remapping", "backbone.layers.{}.mixer.out_proj.", ROW_PARALLEL
-    ),
+    "norm": NameRemapping("backbone.layers.{}.norm.", REPLICATE),
+    "mixer_norm": NameRemapping("backbone.layers.{}.mixer.norm.", REPLICATE),
+    "A_log": NameRemapping("backbone.layers.{}.mixer.A_log", REPLICATE),
+    "D": NameRemapping("backbone.layers.{}.mixer.D", REPLICATE),
+    "dt_bias": NameRemapping("backbone.layers.{}.mixer.dt_bias", REPLICATE),
+    "conv1d": NameRemapping("backbone.layers.{}.mixer.conv1d.", REPLICATE),
+    "in_proj": NameRemapping("backbone.layers.{}.mixer.in_proj.", COL_TP),
+    "out_proj": NameRemapping("backbone.layers.{}.mixer.out_proj.", ROW_TP),
     # Attention
-    "input_layernorm": CustomModuleMapping("name_remapping", "backbone.layers.{}.norm."),
-    "linear_qkv": CustomModuleMapping("qkv_merging", "backbone.layers.{}.mixer.", COL_PARALLEL),
-    "linear_proj": CustomModuleMapping(
-        "name_remapping", "backbone.layers.{}.mixer.o_proj.", ROW_PARALLEL
-    ),
+    "input_layernorm": NameRemapping("backbone.layers.{}.norm.", REPLICATE),
+    "linear_qkv": QKVMerging("backbone.layers.{}.mixer.", COL_TP),
+    "linear_proj": NameRemapping("backbone.layers.{}.mixer.o_proj.", ROW_TP),
     # MLP
-    "pre_mlp_layernorm": CustomModuleMapping("name_remapping", "backbone.layers.{}.norm."),
-    "linear_fc1": CustomModuleMapping(
-        "name_remapping", "backbone.layers.{}.mixer.up_proj.", COL_PARALLEL
-    ),
-    "linear_fc2": CustomModuleMapping(
-        "name_remapping", "backbone.layers.{}.mixer.down_proj.", ROW_PARALLEL
-    ),
+    "pre_mlp_layernorm": NameRemapping("backbone.layers.{}.norm.", REPLICATE),
+    "linear_fc1": NameRemapping("backbone.layers.{}.mixer.up_proj.", COL_TP),
+    "linear_fc2": NameRemapping("backbone.layers.{}.mixer.down_proj.", ROW_TP),
 }
 
 
 nemotron_h_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "backbone.embeddings."),
-    "final_norm": CustomModuleMapping("name_remapping", "backbone.norm_f."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+    "word_embeddings": NameRemapping("backbone.embeddings."),
+    "final_norm": NameRemapping("backbone.norm_f."),
+    "output_layer": NameRemapping("lm_head."),
     # Mamba
-    "norm": CustomModuleMapping("name_remapping", "backbone.layers.{}.norm."),
-    "mixer_norm": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.norm."),
-    "A_log": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.A_log"),
-    "D": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.D"),
-    "dt_bias": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.dt_bias"),
-    "conv1d": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.conv1d."),
-    "in_proj": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.in_proj."),
-    "out_proj": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.out_proj."),
+    "norm": NameRemapping("backbone.layers.{}.norm."),
+    "mixer_norm": NameRemapping("backbone.layers.{}.mixer.norm."),
+    "A_log": NameRemapping("backbone.layers.{}.mixer.A_log"),
+    "D": NameRemapping("backbone.layers.{}.mixer.D"),
+    "dt_bias": NameRemapping("backbone.layers.{}.mixer.dt_bias"),
+    "conv1d": NameRemapping("backbone.layers.{}.mixer.conv1d."),
+    "in_proj": NameRemapping("backbone.layers.{}.mixer.in_proj."),
+    "out_proj": NameRemapping("backbone.layers.{}.mixer.out_proj."),
     # Attention
-    "input_layernorm": CustomModuleMapping("name_remapping", "backbone.layers.{}.norm."),
-    "linear_qkv": CustomModuleMapping("qkv_slicing", "backbone.layers.{}.mixer."),
-    "linear_proj": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.o_proj."),
+    "input_layernorm": NameRemapping("backbone.layers.{}.norm."),
+    "linear_qkv": QKVSlicing("backbone.layers.{}.mixer."),
+    "linear_proj": NameRemapping("backbone.layers.{}.mixer.o_proj."),
     # MLP
-    "pre_mlp_layernorm": CustomModuleMapping("name_remapping", "backbone.layers.{}.norm."),
-    "linear_fc1": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.up_proj."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "backbone.layers.{}.mixer.down_proj."),
+    "pre_mlp_layernorm": NameRemapping("backbone.layers.{}.norm."),
+    "linear_fc1": NameRemapping("backbone.layers.{}.mixer.up_proj."),
+    "linear_fc2": NameRemapping("backbone.layers.{}.mixer.down_proj."),
 }

@@ -20,7 +20,13 @@ from typing import Any
 import torch
 from accelerate import infer_auto_device_map, init_empty_weights
 from accelerate.utils import get_max_memory
-from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoProcessor,
+    AutoTokenizer,
+    Llama4ForConditionalGeneration,
+)
 
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
 
@@ -225,7 +231,7 @@ def get_model(
                 **model_kwargs,
             )
         elif hf_config.model_type == "llama4":
-            model = AutoModelForCausalLM.from_pretrained(
+            model = Llama4ForConditionalGeneration.from_pretrained(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,

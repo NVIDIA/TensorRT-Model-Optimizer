@@ -21,6 +21,8 @@ from .mcore_deepseek import deepseek_causal_lm_export, deepseek_causal_lm_import
 from .mcore_llama import (
     eagle3_llama_causal_lm_export,
     eagle_llama_causal_lm_export,
+    llama4_causal_lm_export,
+    llama4_causal_lm_import,
     llama_causal_lm_export,
     llama_causal_lm_import,
 )
@@ -35,7 +37,7 @@ all_mcore_hf_export_mapping: dict[str, Any] = {
     "DeepseekV2ForCausalLM": deepseek_causal_lm_export,
     "DeepseekV3ForCausalLM": deepseek_causal_lm_export,
     "LlamaForCausalLM": llama_causal_lm_export,
-    "Llama4ForConditionalGeneration": {},
+    "Llama4ForConditionalGeneration": llama4_causal_lm_export,
     "NemotronForCausalLM": nemotron_causal_lm_export,
     "NemotronHForCausalLM": nemotron_h_causal_lm_export,
     "LlamaForCausalLMEagle": eagle_llama_causal_lm_export,
@@ -46,6 +48,7 @@ all_mcore_hf_export_mapping: dict[str, Any] = {
 
 all_mcore_hf_import_mapping: dict[str, Any] = {
     "LlamaForCausalLM": llama_causal_lm_import,
+    "Llama4ForConditionalGeneration": llama4_causal_lm_import,
     "DeepseekV2ForCausalLM": deepseek_causal_lm_import,
     "DeepseekV3ForCausalLM": deepseek_causal_lm_import,
     "NemotronHForCausalLM": nemotron_h_causal_lm_import,

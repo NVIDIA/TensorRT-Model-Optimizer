@@ -243,6 +243,7 @@ def train():
         distill_kwargs["distill_config"] = distill_config
     trainer_cls = QADTrainer if training_args.distill else QATTrainer
 
+    training_args.lora_config = get_lora_config()
     trainer = trainer_cls(
         model=model,
         processing_class=tokenizer,
@@ -252,14 +253,6 @@ def train():
         **distill_kwargs,
         **data_module,
     )
-
-    # add lora adapter
-    if training_args.lora:
-        model.add_adapter(get_lora_config(), adapter_name="adapter")
-
-    # compress model weights after lora adapter inserted to prevent training error
-    if checkpoint is None and quant_args.compress:
-        mtq.compress(model)
 
     # There could be GPU memory leak during QAT causing OOM. This is a workaround to fix it.
     monkey_patch_training_step_to_fix_memory_leak(trainer)

@@ -90,16 +90,16 @@ def _find_nodes_to_quantize(
     )
 
     quantizable_nodes = quantizable_kgen_heads + quantizable_partition_nodes
-    paritially_quantizable_nodes = [dst for _, dst, _ in no_quantize_inputs]
+    partially_quantizable_nodes = [dst for _, dst, _ in no_quantize_inputs]
     # Quantize all inputs of partially quantizable nodes by ORT
     # but remove QDQ from non-quantizable inputs in the post-processing step
-    quantizable_nodes.extend(paritially_quantizable_nodes)
+    quantizable_nodes.extend(partially_quantizable_nodes)
 
     quantizable_nodes.extend(
         find_quantizable_nodes(graph, quantizable_nodes, partitioned_nodes, quantizable_op_types)
     )
 
-    skip_list = get_skipped_output_layers(graph, paritially_quantizable_nodes)
+    skip_list = get_skipped_output_layers(graph, partially_quantizable_nodes)
     quantizable_nodes = [node for node in quantizable_nodes if node.name not in skip_list]
     logger.info(f"Total number of quantizable nodes: {len(quantizable_nodes)}")
 
@@ -124,6 +124,7 @@ def quantize(
     passes: list[str] = ["concat_elimination"],
     log_level: str = "INFO",
     calibrate_per_node: bool = False,
+    custom_ops_to_quantize: list[str] = [],
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies INT8 quantization to an ONNX file using the compiler friendly heuristics.
@@ -169,6 +170,8 @@ def quantize(
 
     # Change the default configuration of ORT quantization
     op_types_to_quantize = op_types_to_quantize or []
+    if op_types_to_quantize:
+        op_types_to_quantize.extend(custom_ops_to_quantize)
     op_types = {node.op for node in graph.nodes}
     trt_guided_options, quantizable_op_types = configure_ort(
         list(op_types),
@@ -176,6 +179,7 @@ def quantize(
         trt_extra_plugin_lib_paths,
         calibration_eps,
         calibrate_per_node,
+        custom_ops_to_quantize,
     )
     logger.info(f"Quantizable op types: {[t for t in quantizable_op_types if t in op_types]}")
 

@@ -63,3 +63,6 @@ with import_plugin("transformer_engine"):
 
 with import_plugin("transformers trainer"):
     from .transformers_trainer import *
+
+with import_plugin("vllm"):
+    from .vllm import *

@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-from onnx import numpy_helper
+from onnx import ValueInfoProto, numpy_helper
 from onnx.helper import get_attribute_value
 from onnx_graphsurgeon import Constant, Node, Variable
 
@@ -285,6 +285,22 @@ def _convert_types_to_np(types: dict[str, int] | list[int] | int) -> Any:
         return [onnx.helper.tensor_dtype_to_np_dtype(type_) for type_ in types]
     else:
         return onnx.helper.tensor_dtype_to_np_dtype(types)
+
+
+def get_tensor_by_name(onnx_model: onnx.ModelProto, tensor_name: str) -> ValueInfoProto | None:
+    """This function returns a tensor from its name.
+
+    Args:
+        onnx_model: ONNX model.
+        tensor_name: tensor name.
+
+    Returns:
+        tensor
+    """
+    for tensor in onnx_model.graph.value_info:
+        if tensor.name == tensor_name:
+            return tensor
+    return None
 
 
 def gen_random_inputs(

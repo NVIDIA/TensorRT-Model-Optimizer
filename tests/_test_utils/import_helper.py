@@ -41,7 +41,7 @@ def skip_if_no_libcudnn():
         pytest.skip(f"{e}!", allow_module_level=True)
 
 
-def skip_if_no_megatron(apex_or_te_required: bool = False):
+def skip_if_no_megatron(apex_or_te_required: bool = False, mamba_required: bool = False):
     try:
         import megatron  # noqa: F401
     except ImportError:
@@ -50,16 +50,26 @@ def skip_if_no_megatron(apex_or_te_required: bool = False):
     try:
         import apex  # noqa: F401
 
-        HAS_APEX = True  # noqa: N806
+        has_apex = True
     except ImportError:
-        HAS_APEX = False  # noqa: N806
+        has_apex = False
 
     try:
         import transformer_engine  # noqa: F401
 
-        HAS_TE = True  # noqa: N806
+        has_te = True
     except ImportError:
-        HAS_TE = False  # noqa: N806
+        has_te = False
 
-    if apex_or_te_required and not HAS_APEX and not HAS_TE:
+    try:
+        import mamba_ssm  # noqa: F401
+
+        has_mamba = True
+    except ImportError:
+        has_mamba = False
+
+    if apex_or_te_required and not has_apex and not has_te:
         pytest.skip("Apex or TE required for Megatron test", allow_module_level=True)
+
+    if mamba_required and not has_mamba:
+        pytest.skip("Mamba required for Megatron test", allow_module_level=True)

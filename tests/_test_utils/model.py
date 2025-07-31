@@ -62,3 +62,19 @@ LLAVA_PATH = _select_path(
     remote_id="llava-hf/llava-1.5-7b-hf",
     local_id="llava-1.5-7b-hf",
 )
+
+# Diffusers
+FLUX_SCHNELL_PATH = _select_path(
+    remote_id="hf-internal-testing/tiny-flux-pipe",
+    local_id="black-forest-labs/FLUX.1-schnell",
+)
+
+SDXL_1_0_PATH = _select_path(
+    remote_id="hf-internal-testing/tiny-sdxl-pipe",
+    local_id="stabilityai/stable-diffusion-xl-base-1.0",
+)
+
+SD3_PATH = _select_path(
+    remote_id="hf-internal-testing/tiny-sd3-pipe",
+    local_id="stabilityai/stable-diffusion-3-medium-diffusers",
+)

@@ -50,6 +50,7 @@ def convert_to_eagle_model(model: nn.Module, config: EagleConfig) -> ConvertRetu
         draft_vocab_size=config.draft_vocab_size,
         use_mtp_layernorm=config.use_mtp_layernorm,
         ffn_hidden_size=config.ffn_hidden_size,
+        parallel_draft_step=config.parallel_draft_step,
     )
 
     # no metadata, all specifed via config.

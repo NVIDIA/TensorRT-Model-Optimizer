@@ -25,7 +25,7 @@ from onnxruntime.quantization.registry import QDQRegistry, QLinearOpsRegistry
 from packaging.version import Version
 
 from modelopt.onnx.logging_config import logger
-from modelopt.onnx.quantization.operators import QDQConvTranspose, QDQNormalization
+from modelopt.onnx.quantization.operators import QDQConvTranspose, QDQCustomOp, QDQNormalization
 from modelopt.onnx.quantization.ort_patching import patch_ort_modules
 
 
@@ -248,6 +248,7 @@ def configure_ort(
     trt_extra_plugin_lib_paths: list[str] | None = None,
     calibration_eps: list[str] | None = None,
     calibrate_per_node: bool = False,
+    custom_ops_to_quantize: list[str] = [],
 ):
     """Configure and patches ORT to support ModelOpt ONNX quantization."""
     logger.info("Configuring ORT for ModelOpt ONNX quantization")
@@ -260,6 +261,8 @@ def configure_ort(
     QDQRegistry["HardSwish"] = (
         QDQOperatorBase  # Example: mobilenet_v3_opset17, efficientvit_b3_opset17
     )
+    for custom_op in custom_ops_to_quantize:
+        QDQRegistry[custom_op] = QDQCustomOp
 
     # Patch ORT modules to fix bugs and support some edge cases
     patch_ort_modules(calibrate_per_node)
@@ -293,17 +296,20 @@ def configure_ort(
             del QDQRegistry[op_type]
 
     # Prepare TensorRT friendly quantization settings
+    no_output_quantization_op_types = [
+        op_type for op_type in op_types if op_type not in custom_ops_to_quantize
+    ]
     if trt_extra_plugin_lib_paths is not None:
         trt_extra_plugin_lib_paths = ";".join(trt_extra_plugin_lib_paths)
     trt_guided_options = {
         "QuantizeBias": False,
         "ActivationSymmetric": True,
-        "OpTypesToExcludeOutputQuantization": op_types,  # No output quantization
+        "OpTypesToExcludeOutputQuantization": no_output_quantization_op_types,  # No output quantization
         "AddQDQPairToWeight": True,  # Instead of quantizing the weights, add QDQ node
         "QDQOpTypePerChannelSupportToAxis": {
             "Conv": 0,  # Cout axis for Conv: [Cout, Cin, k1, k2]
             "ConvTranspose": 1,  # Cout axis for ConvTranspose: [Cin, Cout, k1, k2]
-        },  # per_channel should be True (modeopt default)
+        },  # per_channel should be True (modelopt default)
         "DedicatedQDQPair": False,
         "ForceQuantizeNoInputCheck": (
             # By default, for some latent operators like MaxPool, Transpose, etc.,

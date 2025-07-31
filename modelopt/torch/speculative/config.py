@@ -136,6 +136,13 @@ class EagleConfig(ModeloptBaseConfig):
         ),
     )
 
+    parallel_draft_step: int = ModeloptField(
+        default=1,
+        description=(
+            "The number of tokens generated in parallel draft. If set to 1, draft is not in parallel mode."
+        ),
+    )
+
 
 class MTPConfig(ModeloptBaseConfig):
     """MTP config."""

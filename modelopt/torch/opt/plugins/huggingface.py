@@ -64,7 +64,15 @@ def _get_modelopt_state_path(model_name_or_path: str) -> str:
 def _patch_model_init_for_modelopt(cls, model_path, extra_context=None):
     """Patch for `cls.init` method to restore ModelOpt state after `init`."""
     # Note: Keeping original config in local as the package will be shared among threads
-    _original__init__ = cls.__init__
+    added_original_init = False
+    if hasattr(cls, "original_init"):
+        _original__init__ = cls.original_init
+    else:
+        _original__init__ = cls.__init__
+        cls.original_init = _original__init__
+        # Avoid patching the init method twice, which can happen if one model is wrapped in another
+        # e.g. in the case of distillation
+        added_original_init = True
 
     @functools.wraps(_original__init__)
     def new_init_fn(self, *args, **kwargs):
@@ -81,6 +89,8 @@ def _patch_model_init_for_modelopt(cls, model_path, extra_context=None):
     try:
         yield
     finally:
+        if added_original_init:
+            delattr(cls, "original_init")
         cls.__init__ = _original__init__
 
 

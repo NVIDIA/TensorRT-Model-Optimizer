@@ -19,11 +19,18 @@ from megatron.core.models.gpt import GPTModel
 
 from ..symbols import Symbol, SymInfo, SymMap
 
+try:
+    from megatron.core.models.mamba import MambaModel
+
+    HAS_MAMBA = True
+except ImportError:
+    HAS_MAMBA = False
+
 
 # NOTE: No need to register symbols for VocabParallelEmbedding, SelfAttention, MLP, LayerNorm, Row/Col Parallel Linear,
-# etc. as they are not traced and manually handled in the _DynamicGPTModel class
-@SymMap.register(GPTModel)
-def get_megatron_gpt_model_sym_info(mod: GPTModel) -> SymInfo:
-    """Get symbol information for ``GPTModel`` layers."""
+# etc. as they are not traced and manually handled in the _DynamicMCoreLanguageModel class
+@SymMap.register([GPTModel] + ([MambaModel] if HAS_MAMBA else []))
+def get_megatron_language_model_sym_info(mod) -> SymInfo:
+    """Get symbol information for ``GPTModel`` and ``MambaModel`` layers."""
     hidden_size = Symbol(is_searchable=True)
     return SymInfo(is_shape_preserving=True, hidden_size=hidden_size)

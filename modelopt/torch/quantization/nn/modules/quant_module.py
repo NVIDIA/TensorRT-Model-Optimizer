@@ -88,20 +88,30 @@ class QuantModule(DynamicModule):
 
     def fold_weight(self):
         """Fold the weight for faster eval."""
-        if (
-            hasattr(self, "weight_quantizer")
-            and hasattr(self, "weight")
-            and self.weight_quantizer.fake_quant
-        ):
-            self.weight.data.copy_(self.weight_quantizer(self.weight.float()).to(self.weight.dtype))
-            self.weight_quantizer.disable()
-            _attrs = [
-                "_pre_quant_scale",
-                "_amax",
-            ]
-            for attr in _attrs:
-                if hasattr(self.weight_quantizer, attr):
-                    delattr(self.weight_quantizer, attr)
+        # Handle all attributes that end with _weight_quantizer
+        for name in dir(self):
+            attr = getattr(self, name)
+            if (
+                name.endswith("weight_quantizer")
+                and isinstance(attr, TensorQuantizer)
+                and attr.fake_quant
+            ):
+                # Get the corresponding weight name by removing _weight_quantizer suffix
+                weight_name = name[:-10]
+
+                assert hasattr(self, weight_name), (
+                    f"{name} doesn't have a corresponding {weight_name} in {self.__class__.__name__}"
+                )
+                weight = getattr(self, weight_name)
+                weight.data.copy_(attr(weight.float()).to(weight.dtype))
+                attr.disable()
+                _attrs = [
+                    "_pre_quant_scale",
+                    "_amax",
+                ]
+                for attr_name in _attrs:
+                    if hasattr(attr, attr_name):
+                        delattr(attr, attr_name)
 
 
 QuantModuleRegistry = _DMRegistryCls("Quant", QuantModule)

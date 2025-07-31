@@ -15,6 +15,8 @@
 
 """Quantized Linear."""
 
+import warnings
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -135,6 +137,7 @@ class RealQuantLinear(QuantModule):
     """Quantized version of nn.Linear with real quantization."""
 
     list_of_scale_tensors = ["_scale", "double_scale", "_scale_zeros"]
+    allow_real_quant_gemm = True
 
     def forward(self, input, *args, **kwargs):
         """RealQuant layer forward function."""
@@ -149,6 +152,8 @@ class RealQuantLinear(QuantModule):
             and input.numel() > 1
             # If we need to calibrate the input, we fallback to fake quant
             and not (self.input_quantizer.is_enabled and self.input_quantizer._if_calib)
+            # Our forward might not work for every implementation, so we allow user to disable it
+            and self.allow_real_quant_gemm
         ):
             # If the input is not quantized, we use the default GEMM.
             real_quant_gemm = (
@@ -204,3 +209,13 @@ class RealQuantLinear(QuantModule):
 
         # Function to dynamically override load_state_dict
         dynamically_update_state_methods(self)
+
+    def _apply(self, fn):
+        """Override the _apply method to ensure that the weight is real-quantized."""
+        # Check if fn is a tensor_cast_fun and print warning if so
+        if hasattr(fn, "__name__") and "tensor_cast" in fn.__name__.lower():
+            warnings.warn("RealQuantLinear does not support tensor_cast_fun.")
+            return self
+        else:
+            # Process the function normally
+            return super()._apply(fn)

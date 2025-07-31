@@ -15,12 +15,22 @@
 
 """Convert modelopt quantization export config to align with llm-compressor config format."""
 
+from typing import Any
 
-def convert_hf_quant_config_format(input_config: dict) -> dict:
+
+def convert_hf_quant_config_format(input_config: dict[str, Any]) -> dict[str, Any]:
     """Converts modelopt quantization config dictionary to align with llm-compressor config format.
 
     Args:
         input_config: The original quantization config dictionary.
+
+    Note:
+        The "targets" field specifies which PyTorch module types to quantize. Compressed-tensors
+        works with any PyTorch module type and uses dynamic matching against module.__class__.__name__.
+        Typically this includes "Linear" modules, but can also include "Embedding" and other types.
+
+        See: https://github.com/neuralmagic/compressed-tensors/blob/fa6a48f1da6b47106912bcd25eba7171ba7cfec7/src/sparsetensors/quantization/quant_scheme.py#L29
+        Example usage: https://github.com/neuralmagic/compressed-tensors/blob/9938a6ec6e10498d39a3071dfd1c40e3939ee80b/tests/test_quantization/lifecycle/test_apply.py#L118
 
     Example:
 
@@ -55,7 +65,7 @@ def convert_hf_quant_config_format(input_config: dict) -> dict:
                 "producer": {"name": "modelopt", "version": "0.29.0"},
             }
     """
-    new_config = {}
+    new_config: dict[str, Any] = {}
 
     original_quantization_details = input_config.get("quantization", {})
     quant_algo_value = original_quantization_details.get("quant_algo")
@@ -66,6 +76,7 @@ def convert_hf_quant_config_format(input_config: dict) -> dict:
         config_group_details = {
             "input_activations": {"dynamic": False, "num_bits": 8, "type": "float"},
             "weights": {"dynamic": False, "num_bits": 8, "type": "float"},
+            "targets": ["Linear"],
         }
         new_config["config_groups"] = {"group_0": config_group_details}
     elif quant_algo_value == "NVFP4":
@@ -78,6 +89,7 @@ def convert_hf_quant_config_format(input_config: dict) -> dict:
                 "group_size": group_size,
             },
             "weights": {"dynamic": False, "num_bits": 4, "type": "float", "group_size": group_size},
+            "targets": ["Linear"],
         }
         new_config["config_groups"] = {"group_0": config_group_details}
 
@@ -90,12 +102,16 @@ def convert_hf_quant_config_format(input_config: dict) -> dict:
 
     kv_cache_quant_algo = original_quantization_details.get("kv_cache_quant_algo")
     if kv_cache_quant_algo:
-        new_config["kv_cache_scheme"] = kv_cache_quant_algo
+        if kv_cache_quant_algo == "FP8":
+            new_config["kv_cache_scheme"] = {"dynamic": False, "num_bits": 8, "type": "float"}
+        else:
+            # TODO: Handle other kv cache quantization algorithms
+            new_config["kv_cache_scheme"] = kv_cache_quant_algo
 
     producer_info = input_config.get("producer")
     if producer_info:
         new_config["producer"] = producer_info
 
-    new_config["quant_library"] = "modelopt"
+    new_config["quant_method"] = "modelopt"
 
     return new_config

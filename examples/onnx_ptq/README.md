@@ -11,12 +11,18 @@ Note that this example is for ONNX model quantization. For end to end quantizati
 
 ### Linux
 
-Please follow the main [README](../README.md#docker) to build the docker image with TensorRT 10.x pre-installed.
+Build the Docker image (will be tagged `docker.io/library/onnx_ptq_examples:latest`)<br>
 
-The container can be run with the following command:
+This Docker image includes the latest publicly available TensorRT version, providing access to cutting-edge features and superior performance compared to the public modelopt_examples Docker [image](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/docker/Dockerfile).
 
 ```bash
-docker run --user 0:0 -it --gpus all --shm-size=2g -v /path/to/ImageNet/dataset:/workspace/imagenet docker.io/library/modelopt_examples:latest
+./docker/build.sh
+```
+
+Run the docker image
+
+```bash
+docker run --user 0:0 -it --gpus all --shm-size=2g -v /path/to/ImageNet/dataset:/workspace/imagenet docker.io/library/onnx_ptq_examples:latest
 ```
 
 ### Prepare the example model

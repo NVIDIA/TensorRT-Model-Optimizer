@@ -276,6 +276,13 @@ def _select_tensors_to_calibrate(calibrator, model: onnx.ModelProto):
                         and (tensor_name not in initializer)
                     ):
                         tensors_to_calibrate.add(tensor_name)
+            for tensor_name in node.output:
+                if tensor_name in value_infos:
+                    vi = value_infos[tensor_name]
+                    if vi.type.HasField("tensor_type") and (
+                        vi.type.tensor_type.elem_type in tensor_type_to_calibrate
+                    ):
+                        tensors_to_calibrate.add(tensor_name)
 
     return tensors_to_calibrate, value_infos
 

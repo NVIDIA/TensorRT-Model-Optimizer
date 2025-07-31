@@ -96,6 +96,18 @@ def get_parser():
         help="Number of GPUs for quantization. Some models require a different number of GPUs for PTQ vs training.",
         default=8,
     )
+    parser.add_argument(
+        "--kv-cache-qformat",
+        type=str,
+        default="fp8",
+        choices=["fp8", "nvfp4"],
+        help="KV-cache quantization format",
+    )
+    parser.add_argument(
+        "--enable_kv_cache", help="Enables KV-cache quantization", action="store_true"
+    )
+    parser.add_argument("--disable_kv_cache", dest="enable_kv_cache", action="store_false")
+    parser.set_defaults(enable_kv_cache=None)
     return parser
 
 
@@ -181,6 +193,11 @@ if __name__ == "__main__":
             ptq_model_out,
             "--export_format",
             "nemo",
+            "--algorithm",
+            args.algorithm,
+            "--kv_cache_qformat",
+            args.kv_cache_qformat,
+            "--enable_kv_cache" if args.enable_kv_cache else "--disable_kv_cache",
             "-ctp",
             f"{args.ptq_gpus}",
         ],

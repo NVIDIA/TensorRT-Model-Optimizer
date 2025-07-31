@@ -1204,11 +1204,15 @@ class DynamicSpace:
         """
         return any(True for _ in self.named_dynamic_modules())
 
-    def named_hparams(self, configurable: bool | None = None) -> Iterator[tuple[str, Hparam]]:
+    def named_hparams(
+        self, configurable: bool | None = None, unique: bool | None = None
+    ) -> Iterator[tuple[str, Hparam]]:
         """Recursively yield the name and instance of *all* hparams.
 
         Args:
             configurable: Whether to include configurable hparams.
+            unique: Whether to include unique hparams. If ``configurable`` is set to ``True``,
+                then ``unique`` will be set to ``True`` by default.
 
         Yields:
             (name, Hparam): tuple containing the name and hparam.
@@ -1218,9 +1222,13 @@ class DynamicSpace:
         """
         _memo = set()
         assert configurable in [None, True], "Only all or configurable hparams are supported!"
+        assert unique in [None, True], "Only all or unique hparams are supported!"
+        if configurable:
+            unique = True
+
         for mod_name, mod in self.named_dynamic_modules():
             for hp_name, hp in mod.named_hparams(configurable=configurable):
-                if configurable is None or hp not in _memo:
+                if unique is None or hp not in _memo:
                     yield mod_name + ("." if mod_name else "") + hp_name, hp
                     _memo.add(hp)
 

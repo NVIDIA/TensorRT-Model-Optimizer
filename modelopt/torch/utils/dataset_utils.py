@@ -213,6 +213,7 @@ def get_max_batch_size(
     max_sample_length: int = 512,
     sample_memory_usage_ratio: float = 1.0,
     sample_input_single_batch: torch.Tensor = None,
+    enable_grad: bool = False,
 ):
     """Get the maximum batch size that can be used for the model."""
 
@@ -238,7 +239,7 @@ def get_max_batch_size(
         )
 
     # Calculate single batch inference with dummy input.
-    with torch.no_grad():
+    with torch.set_grad_enabled(enable_grad):
         infer_method(sample_input_single_batch)
     free_mem_after, max_allocated_after = _get_free_gpu_mem()
 
@@ -267,7 +268,7 @@ def get_max_batch_size(
     # For some models on multi GPU, we observe the memory per batch is not a constant.
     # So we just test the target batch size and make sure we do not go OOM.
     while target_data_batch > 1:
-        with torch.no_grad():
+        with torch.set_grad_enabled(enable_grad):
             try:
                 infer_method(target_input)
                 break

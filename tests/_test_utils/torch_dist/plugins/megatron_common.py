@@ -13,16 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+from warnings import warn
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from _test_utils.import_helper import skip_if_no_megatron
-from packaging.version import Version
 
 skip_if_no_megatron()
 
-from megatron.core import __version__ as mcore_version
 from megatron.core import dist_checkpointing
 from megatron.core.inference.communication_utils import broadcast_from_last_pipeline_stage
 from megatron.core.inference.model_inference_wrappers.gpt.gpt_inference_wrapper import (
@@ -36,6 +35,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_local_spec,
     get_gpt_layer_with_transformer_engine_spec,
 )
+from megatron.core.models.mamba import MambaModel
 from megatron.core.parallel_state import (
     initialize_model_parallel,
     is_pipeline_first_stage,
@@ -43,6 +43,8 @@ from megatron.core.parallel_state import (
 )
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.tensor_parallel.random import model_parallel_cuda_manual_seed
+from megatron.core.transformer.attention import SelfAttention
+from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_config import TransformerConfig
 
@@ -56,14 +58,25 @@ try:
     from megatron.core.post_training.modelopt.gpt.model_specs import get_gpt_modelopt_spec
 
     HAS_TE = True
-except ImportError:
+except ImportError as e:
+    warn(f"Transformer Engine not installed: {e}")
     HAS_TE = False
+
+try:
+    from megatron.core.post_training.modelopt.mamba.model_specs import get_mamba_stack_modelopt_spec
+    from megatron.core.ssm.mamba_layer import MambaLayer
+
+    HAS_MAMBA = True
+except ImportError as e:
+    warn(f"Mamba not installed: {e}")
+    HAS_MAMBA = False
 
 try:
     import apex  # noqa: F401
 
     HAS_APEX = True
-except ImportError:
+except ImportError as e:
+    warn(f"Apex not installed: {e}")
     HAS_APEX = False
 
 
@@ -118,24 +131,29 @@ class MegatronModel(MegatronModule):
 def get_mcore_gpt_model(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
+    initialize_megatron: bool = False,
     *,
     num_layers: int = 2,
-    num_layers_in_first_pipeline_stage: int | None = None,
-    num_layers_in_last_pipeline_stage: int | None = None,
     hidden_size: int = 64,
     num_attention_heads: int = 8,
     num_query_groups: int | None = None,
     ffn_hidden_size: int | None = 128,
-    max_sequence_length: int = 32,
+    max_sequence_length: int = 16,
     vocab_size: int = 64,
     activation_func: str = "swiglu",
     normalization: str = "LayerNorm",
     transformer_impl: str = "modelopt" if HAS_TE else "local",
+    # Uneven PP
+    num_layers_in_first_pipeline_stage: int | None = None,
+    num_layers_in_last_pipeline_stage: int | None = None,
 ) -> GPTModel:
     assert activation_func in ["swiglu", "squared_relu"]
     assert normalization in ["LayerNorm", "RMSNorm"]
     assert transformer_impl in ["local", "transformer_engine", "modelopt"]
-    print(f"Using `transformer_impl={transformer_impl}` model spec for building GPT Model.")
+    print(f"Using `{transformer_impl=}` model spec for building GPT Model.")
+
+    if initialize_megatron:
+        initialize_for_megatron(tensor_model_parallel_size, pipeline_model_parallel_size)
 
     def squared_relu(x):
         return torch.pow(F.relu(x), 2)
@@ -154,18 +172,17 @@ def get_mcore_gpt_model(
         gated_linear_unit=(activation_func == "swiglu"),
         pipeline_dtype=torch.float32,
         add_bias_linear=False,
-        # Uneven PP
         num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
         num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
     )
 
     if transformer_impl == "local":
         assert HAS_APEX, "Apex not installed"
-        transformer_layer_spec = get_gpt_layer_local_spec()
+        transformer_layer_spec = get_gpt_layer_local_spec(normalization=normalization)
     else:
         assert HAS_TE, "Transformer Engine not installed"
         transformer_layer_spec = (
-            get_gpt_modelopt_spec(config)
+            get_gpt_modelopt_spec(config, remap_te_layernorm=True)
             if transformer_impl == "modelopt"
             else get_gpt_layer_with_transformer_engine_spec()
         )
@@ -184,26 +201,99 @@ def get_mcore_gpt_model(
     return model
 
 
+def get_mcore_mamba_model(
+    tensor_model_parallel_size: int = 1,
+    pipeline_model_parallel_size: int = 1,
+    initialize_megatron: bool = False,
+    *,
+    num_layers: int = 3,
+    hybrid_override_pattern: str | None = None,
+    hidden_size: int = 64,
+    num_attention_heads: int = 8,
+    num_query_groups: int | None = None,
+    ffn_hidden_size: int | None = 128,
+    max_sequence_length: int = 4,
+    vocab_size: int = 64,
+    # Mamba-specific parameters
+    mamba_state_dim: int = 32,
+    mamba_head_dim: int = 16,
+    mamba_num_groups: int = 2,
+    # Uneven PP
+    num_layers_in_first_pipeline_stage: int | None = None,
+    num_layers_in_last_pipeline_stage: int | None = None,
+) -> MambaModel:
+    assert HAS_MAMBA, "Mamba not installed"
+
+    if initialize_megatron:
+        initialize_for_megatron(tensor_model_parallel_size, pipeline_model_parallel_size)
+
+    config = TransformerConfig(
+        tensor_model_parallel_size=tensor_model_parallel_size,
+        pipeline_model_parallel_size=pipeline_model_parallel_size,
+        sequence_parallel=False,
+        num_layers=num_layers,
+        hidden_size=hidden_size,
+        num_attention_heads=num_attention_heads,
+        num_query_groups=num_query_groups,
+        ffn_hidden_size=ffn_hidden_size,
+        pipeline_dtype=torch.float32,
+        mamba_state_dim=mamba_state_dim,
+        mamba_head_dim=mamba_head_dim,
+        mamba_num_groups=mamba_num_groups,
+        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
+        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
+    )
+
+    if hybrid_override_pattern is None:
+        # Generate pattern by repeating "M*-" and trimming to match num_layers
+        # For num_layers=3, return "M*-" (Mamba -> Attention -> MLP)
+        # For num_layers=5, return "M*-M*" (Mamba -> Attention -> MLP -> Mamba -> Attention)
+        hybrid_override_pattern = ("M*-" * num_layers)[:num_layers]
+    else:
+        assert len(hybrid_override_pattern) == num_layers
+    print(f"Using `{hybrid_override_pattern=}` for building Mamba Model.")
+
+    model = MambaModel(
+        config=config,
+        mamba_stack_spec=get_mamba_stack_modelopt_spec(remap_te_layernorm=True),
+        vocab_size=vocab_size,
+        max_sequence_length=max_sequence_length,
+        hybrid_override_pattern=hybrid_override_pattern,
+        pre_process=is_pipeline_first_stage(),
+        post_process=is_pipeline_last_stage(),
+        share_embeddings_and_output_weights=False,
+        position_embedding_type="rope",
+    )
+    return model
+
+
 @torch.no_grad()
-def run_mcore_gpt_inference(
-    model: GPTModel, prompt_tokens: torch.Tensor, active_hidden_size: int | None = None
+def run_mcore_inference(
+    model: GPTModel | MambaModel,
+    prompt_tokens: torch.Tensor,
+    active_hidden_size: int | None = None,
 ) -> torch.Tensor:
-    """Run inference on a wrapped Megatron GPT model.
+    """Run inference on a wrapped Megatron GPT or Mamba model.
 
     Args:
-        model: Megatron GPT model.
+        model: Megatron GPT or Mamba model.
         prompt_tokens: Input tokens for inference.
         active_hidden_size: Hidden size to use for inference. If not provided, infer the hidden_size
-            from `model.decoder.layers[0].self_attention.linear_qkv.input_size`.
             NOTE: `model.config.hidden_size` may not be the same as the active hidden size
                 for the model since for a NAS search space-converted model, the hidden size
                 may be different until the model is exported.
             NOTE: If depth pruned model and some PP have 0 layers, this would not work.
     """
     batch_size = prompt_tokens.shape[0]
-    active_hidden_size = (
-        active_hidden_size or model.decoder.layers[0].self_attention.linear_qkv.input_size
-    )
+    if active_hidden_size is None:
+        if HAS_MAMBA and isinstance(model.decoder.layers[0], MambaLayer):
+            active_hidden_size = model.decoder.layers[0].mixer.d_model
+        elif isinstance(model.decoder.layers[0].self_attention, SelfAttention):
+            active_hidden_size = model.decoder.layers[0].self_attention.linear_qkv.input_size
+        elif isinstance(model.decoder.layers[0].mlp, MLP):
+            active_hidden_size = model.decoder.layers[0].mlp.linear_fc1.input_size
+        else:
+            raise ValueError(f"Cannot infer hidden size from {type(model.decoder.layers[0])=}")
     inference_wrapper_config = InferenceWrapperConfig(
         hidden_size=active_hidden_size,
         inference_batch_times_seqlen_threshold=batch_size * model.max_sequence_length,
@@ -213,13 +303,10 @@ def run_mcore_gpt_inference(
     )
     wrapped_model = GPTInferenceWrapper(model, inference_wrapper_config)
     wrapped_model.prep_model_for_inference(prompt_tokens)
-    if Version(mcore_version) >= Version("0.11"):
-        inference_input = wrapped_model.prep_inference_input(prompt_tokens)
-        inference_input = wrapped_model.get_batch_for_context_window(
-            inference_input, 0, model.max_sequence_length
-        )
-    else:
-        inference_input = wrapped_model.get_batch_for_context_window(0, model.max_sequence_length)
+    inference_input = wrapped_model.prep_inference_input(prompt_tokens)
+    inference_input = wrapped_model.get_batch_for_context_window(
+        inference_input, 0, model.max_sequence_length
+    )
 
     # Note: This is returned in all TP ranks or last PP stage in PP models
     logits = wrapped_model.run_one_forward_step(inference_input)
@@ -231,14 +318,14 @@ def run_mcore_gpt_inference(
     return logits  # shape: (batch_size, max_sequence_length, vocab_size)
 
 
-def run_mcore_gpt_inference_with_dummy_input(
-    model: GPTModel, batch_size: int = 2, hidden_size: int | None = None
+def run_mcore_inference_with_dummy_input(
+    model: GPTModel | MambaModel, batch_size: int = 2, hidden_size: int | None = None
 ) -> torch.Tensor:
-    """Run inference on a wrapped Megatron GPT model."""
+    """Run inference on a wrapped Megatron GPT or Mamba model."""
     prompt_tokens = torch.randint(
         0, model.vocab_size, (batch_size, model.max_sequence_length)
     ).cuda()
-    return run_mcore_gpt_inference(model, prompt_tokens, hidden_size)
+    return run_mcore_inference(model, prompt_tokens, hidden_size)
 
 
 def initialize_for_megatron(

@@ -18,7 +18,7 @@ import torch
 from calib.plugin_calib import PercentileCalibrator
 from utils import filter_func
 
-from modelopt.core.torch.quantization.config import NVFP4_FP8_MHA_CONFIG  # noqa: F401
+from modelopt.torch.quantization.config import NVFP4_FP8_MHA_CONFIG  # noqa: F401
 
 FP8_DEFAULT_CONFIG = {
     "quant_cfg": {

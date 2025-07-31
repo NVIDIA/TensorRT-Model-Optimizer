@@ -16,278 +16,128 @@
 
 """Custom mapping from DeepSeek Hugging Face models to Megatron Core models."""
 
-from .mcore_custom import COL_PARALLEL, ROW_PARALLEL, CustomModuleMapping
+from .mcore_custom import (
+    COL_ETP,
+    COL_TP,
+    REPLICATE,
+    ROW_ETP,
+    ROW_TP,
+    CustomModuleMapping,
+    GatedMLPMerging,
+    GatedMLPSlicing,
+    NameRemapping,
+)
 
 deepseek_causal_lm_export: dict[str, CustomModuleMapping] = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens."),
-    "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head."),
+    "word_embeddings": NameRemapping("model.embed_tokens."),
+    "final_layernorm": NameRemapping("model.norm."),
+    "output_layer": NameRemapping("lm_head."),
     # Multi-Latent Attention (V3 has lora on q as well)
-    "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
-    "linear_q_proj": CustomModuleMapping("name_remapping", "model.layers.{}.self_attn.q_proj."),
-    "linear_q_down_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_a_proj."
-    ),
-    "linear_q_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_a_layernorm."
-    ),
-    "linear_q_up_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_b_proj."
-    ),
-    "linear_kv_down_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_a_proj_with_mqa."
-    ),
-    "linear_kv_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_a_layernorm."
-    ),
-    "linear_kv_up_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_b_proj."
-    ),
-    "linear_proj": CustomModuleMapping("name_remapping", "model.layers.{}.self_attn.o_proj."),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
-    ),
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm."),
+    "linear_q_proj": NameRemapping("model.layers.{}.self_attn.q_proj."),
+    "linear_q_down_proj": NameRemapping("model.layers.{}.self_attn.q_a_proj."),
+    "linear_q_layernorm": NameRemapping("model.layers.{}.self_attn.q_a_layernorm."),
+    "linear_q_up_proj": NameRemapping("model.layers.{}.self_attn.q_b_proj."),
+    "linear_kv_down_proj": NameRemapping("model.layers.{}.self_attn.kv_a_proj_with_mqa."),
+    "linear_kv_layernorm": NameRemapping("model.layers.{}.self_attn.kv_a_layernorm."),
+    "linear_kv_up_proj": NameRemapping("model.layers.{}.self_attn.kv_b_proj."),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj."),
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm."),
     # MLP for dense layers
-    "linear_fc1": CustomModuleMapping("gated_mlp_slicing", "model.layers.{}.mlp."),
-    "linear_fc2": CustomModuleMapping("name_remapping", "model.layers.{}.mlp.down_proj."),
+    "linear_fc1": GatedMLPSlicing("model.layers.{}.mlp."),
+    "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj."),
     # MoE shared experts
-    "router": CustomModuleMapping(
-        "name_remapping",
-        "model.layers.{}.mlp.gate.",
-        {"mapping": {"expert_bias": "e_score_correction_bias"}},
+    "router": NameRemapping(
+        "model.layers.{}.mlp.gate.", {"mapping": {"expert_bias": "e_score_correction_bias"}}
     ),
-    "shared_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "model.layers.{}.mlp.shared_experts."
-    ),
-    "shared_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.shared_experts.down_proj."
-    ),
+    "shared_experts.linear_fc1": GatedMLPSlicing("model.layers.{}.mlp.shared_experts."),
+    "shared_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.shared_experts.down_proj."),
     # MoE local experts
-    "local_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "model.layers.{}.mlp.experts.{}."
-    ),
-    "local_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.experts.{}.down_proj."
-    ),
-    # MedusaForCausalLM support
-    "medusa_heads.lm_head": CustomModuleMapping(
-        "name_remapping", "medusa_heads.{}.1."
-    ),  # TODO: lm_head is hardcoded to .1 as currently only support using 1 layer in medusa head
-    # needs a fix
-    "medusa_heads.medusa_layers.linear": CustomModuleMapping(
-        "name_remapping", "medusa_heads.{}.{}.linear."
-    ),
-    # EagleForCausalLM support
-    "eagle_module.fc": CustomModuleMapping("name_remapping", "eagle_module.fc."),
-    "eagle_module.input_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.input_layernorm."
-    ),
-    "eagle_module.linear_q_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.q_proj."
-    ),
-    "eagle_module.linear_q_down_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.q_a_proj."
-    ),
-    "eagle_module.linear_q_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.q_a_layernorm."
-    ),
-    "eagle_module.linear_q_up_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.q_b_proj."
-    ),
-    "eagle_module.linear_kv_down_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.kv_a_proj_with_mqa."
-    ),
-    "eagle_module.linear_kv_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.kv_a_layernorm."
-    ),
-    "eagle_module.linear_kv_up_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.kv_b_proj."
-    ),
-    "eagle_module.linear_proj": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.self_attn.o_proj."
-    ),
-    "eagle_module.pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.post_attention_layernorm."
-    ),
-    "eagle_module.router": CustomModuleMapping(
-        "name_remapping",
-        "eagle_module.layers.{}.mlp.gate.",
-        {"mapping": {"expert_bias": "e_score_correction_bias"}},
-    ),
-    "eagle_module.shared_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "eagle_module.layers.{}.mlp.shared_experts."
-    ),
-    "eagle_module.shared_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.mlp.shared_experts.down_proj."
-    ),
-    "eagle_module.local_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "eagle_module.layers.{}.mlp.experts.{}."
-    ),
-    "eagle_module.local_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.mlp.experts.{}.down_proj."
-    ),
-    "eagle_module.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "eagle_module.layers.{}.mlp."
-    ),
-    "eagle_module.linear_fc2": CustomModuleMapping(
-        "name_remapping", "eagle_module.layers.{}.mlp.down_proj."
-    ),
-    # MTPCausalLM support
-    "mtp.fc": CustomModuleMapping("name_remapping", "mtp.{}.fc."),
-    "mtp.enorm": CustomModuleMapping("name_remapping", "mtp.{}.enorm."),
-    "mtp.hnorm": CustomModuleMapping("name_remapping", "mtp.{}.hnorm."),
-    "mtp.input_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.input_layernorm."
-    ),
-    "mtp.linear_q_proj": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.self_attn.q_proj."
-    ),
-    "mtp.linear_q_down_proj": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.self_attn.q_a_proj."
-    ),
-    "mtp.linear_q_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.self_attn.q_a_layernorm."
-    ),
-    "mtp.linear_q_up_proj": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.self_attn.q_b_proj."
-    ),
-    "mtp.linear_kv_down_proj": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.self_attn.kv_a_proj_with_mqa."
-    ),
-    "mtp.linear_kv_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.self_attn.kv_a_layernorm."
-    ),
-    "mtp.linear_kv_up_proj": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.self_attn.kv_b_proj."
-    ),
-    "mtp.linear_proj": CustomModuleMapping("name_remapping", "mtp.{}.layers.{}.self_attn.o_proj."),
-    "mtp.pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.post_attention_layernorm."
-    ),
-    "mtp.router": CustomModuleMapping(
-        "name_remapping",
-        "mtp.{}.layers.{}.mlp.gate.",
-        {"mapping": {"expert_bias": "e_score_correction_bias"}},
-    ),
-    "mtp.shared_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "mtp.{}.layers.{}.mlp.shared_experts."
-    ),
-    "mtp.shared_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.mlp.shared_experts.down_proj."
-    ),
-    "mtp.local_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_slicing", "mtp.{}.layers.{}.mlp.experts.{}."
-    ),
-    "mtp.local_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "mtp.{}.layers.{}.mlp.experts.{}.down_proj."
-    ),
+    "local_experts.linear_fc1": GatedMLPSlicing("model.layers.{}.mlp.experts.{}."),
+    "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj."),
 }
 
+
+eagle_mtp_deepseek_causal_lm_export: dict[str, CustomModuleMapping] = {
+    "fc": NameRemapping("eh_proj."),
+    "enorm": NameRemapping("enorm."),
+    "hnorm": NameRemapping("hnorm."),
+    "input_layernorm": NameRemapping("layers.{}.input_layernorm."),
+    "linear_q_proj": NameRemapping("layers.{}.self_attn.q_proj."),
+    "linear_q_down_proj": NameRemapping("layers.{}.self_attn.q_a_proj."),
+    "linear_q_layernorm": NameRemapping("layers.{}.self_attn.q_a_layernorm."),
+    "linear_q_up_proj": NameRemapping("layers.{}.self_attn.q_b_proj."),
+    "linear_kv_down_proj": NameRemapping("layers.{}.self_attn.kv_a_proj_with_mqa."),
+    "linear_kv_layernorm": NameRemapping("layers.{}.self_attn.kv_a_layernorm."),
+    "linear_kv_up_proj": NameRemapping("layers.{}.self_attn.kv_b_proj."),
+    "linear_proj": NameRemapping("layers.{}.self_attn.o_proj."),
+    "pre_mlp_layernorm": NameRemapping("layers.{}.post_attention_layernorm."),
+    "router": NameRemapping(
+        "layers.{}.mlp.gate.", {"mapping": {"expert_bias": "e_score_correction_bias"}}
+    ),
+    "shared_experts.linear_fc1": GatedMLPSlicing("layers.{}.mlp.shared_experts."),
+    "shared_experts.linear_fc2": NameRemapping("layers.{}.mlp.shared_experts.down_proj."),
+    "local_experts.linear_fc1": GatedMLPSlicing("layers.{}.mlp.experts.{}."),
+    "local_experts.linear_fc2": NameRemapping("layers.{}.mlp.experts.{}.down_proj."),
+}
+
+
 deepseek_causal_lm_import = {
-    "word_embeddings": CustomModuleMapping("name_remapping", "model.embed_tokens.", COL_PARALLEL),
-    "final_layernorm": CustomModuleMapping("name_remapping", "model.norm."),
-    "output_layer": CustomModuleMapping("name_remapping", "lm_head.", COL_PARALLEL),
+    "word_embeddings": NameRemapping("model.embed_tokens.", COL_TP),
+    "final_layernorm": NameRemapping("model.norm.", REPLICATE),
+    "output_layer": NameRemapping("lm_head.", COL_TP),
     # Per-layer
-    "input_layernorm": CustomModuleMapping("name_remapping", "model.layers.{}.input_layernorm."),
-    "linear_q_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_proj.", COL_PARALLEL
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm.", REPLICATE),
+    "linear_q_proj": NameRemapping("model.layers.{}.self_attn.q_proj.", COL_TP),
+    "linear_q_down_proj": NameRemapping("model.layers.{}.self_attn.q_a_proj.", REPLICATE),
+    "linear_q_layernorm": NameRemapping("model.layers.{}.self_attn.q_a_layernorm.", REPLICATE),
+    "linear_q_up_proj": NameRemapping("model.layers.{}.self_attn.q_b_proj.", COL_TP),
+    "linear_kv_down_proj": NameRemapping(
+        "model.layers.{}.self_attn.kv_a_proj_with_mqa.", REPLICATE
     ),
-    "linear_q_down_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_a_proj.", COL_PARALLEL
-    ),
-    "linear_q_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_a_layernorm."
-    ),
-    "linear_q_up_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_b_proj.", COL_PARALLEL
-    ),
-    "linear_kv_down_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_a_proj_with_mqa.", COL_PARALLEL
-    ),
-    "linear_kv_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_a_layernorm."
-    ),
-    "linear_kv_up_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_b_proj.", COL_PARALLEL
-    ),
-    "linear_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.o_proj.", ROW_PARALLEL
-    ),
-    "pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
-    ),
-    "linear_fc1": CustomModuleMapping("gated_mlp_merging", "model.layers.{}.mlp.", COL_PARALLEL),
-    "linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.down_proj.", ROW_PARALLEL
-    ),
+    "linear_kv_layernorm": NameRemapping("model.layers.{}.self_attn.kv_a_layernorm.", REPLICATE),
+    "linear_kv_up_proj": NameRemapping("model.layers.{}.self_attn.kv_b_proj.", COL_TP),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj.", ROW_TP),
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm.", REPLICATE),
+    "linear_fc1": GatedMLPMerging("model.layers.{}.mlp.", COL_TP),
+    "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj.", ROW_TP),
     # MoE shared experts
-    "router": CustomModuleMapping(
-        "name_remapping",
-        "model.layers.{}.mlp.gate.",
-        {"mapping": {"expert_bias": "e_score_correction_bias"}},
+    "router": NameRemapping(
+        "model.layers.{}.mlp.gate.", {"mapping": {"expert_bias": "e_score_correction_bias"}}
     ),
-    "shared_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_merging", "model.layers.{}.mlp.shared_experts.", COL_PARALLEL
-    ),
-    "shared_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.shared_experts.down_proj.", ROW_PARALLEL
+    "shared_experts.linear_fc1": GatedMLPMerging("model.layers.{}.mlp.shared_experts.", COL_TP),
+    "shared_experts.linear_fc2": NameRemapping(
+        "model.layers.{}.mlp.shared_experts.down_proj.", ROW_TP
     ),
     # MoE local experts
-    "local_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_merging", "model.layers.{}.mlp.experts.{}.", COL_PARALLEL
+    "local_experts.linear_fc1": GatedMLPMerging("model.layers.{}.mlp.experts.{}.", COL_ETP),
+    "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj.", ROW_ETP),
+}
+
+
+eagle_mtp_deepseek_causal_lm_import: dict[str, CustomModuleMapping] = {
+    "fc": NameRemapping("model.layers.{}.eh_proj.", REPLICATE),
+    "enorm": NameRemapping("model.layers.{}.enorm.", REPLICATE),
+    "hnorm": NameRemapping("model.layers.{}.hnorm.", REPLICATE),
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm.", REPLICATE),
+    "linear_q_proj": NameRemapping("model.layers.{}.self_attn.q_proj.", COL_TP),
+    "linear_q_down_proj": NameRemapping("model.layers.{}.self_attn.q_a_proj.", REPLICATE),
+    "linear_q_layernorm": NameRemapping("model.layers.{}.self_attn.q_a_layernorm.", REPLICATE),
+    "linear_q_up_proj": NameRemapping("model.layers.{}.self_attn.q_b_proj.", COL_TP),
+    "linear_kv_down_proj": NameRemapping(
+        "model.layers.{}.self_attn.kv_a_proj_with_mqa.", REPLICATE
     ),
-    "local_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.experts.{}.down_proj.", ROW_PARALLEL
+    "linear_kv_layernorm": NameRemapping("model.layers.{}.self_attn.kv_a_layernorm.", REPLICATE),
+    "linear_kv_up_proj": NameRemapping("model.layers.{}.self_attn.kv_b_proj.", COL_TP),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj.", ROW_TP),
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm.", REPLICATE),
+    "router": NameRemapping(
+        "model.layers.{}.mlp.gate.", {"mapping": {"expert_bias": "e_score_correction_bias"}}
     ),
-    # MTP
-    "mtp.fc": CustomModuleMapping("name_remapping", "model.layers.{}.eh_proj."),
-    "mtp.enorm": CustomModuleMapping("name_remapping", "model.layers.{}.enorm."),
-    "mtp.hnorm": CustomModuleMapping("name_remapping", "model.layers.{}.hnorm."),
-    "mtp.input_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.input_layernorm."
+    "shared_experts.linear_fc1": GatedMLPMerging("model.layers.{}.mlp.shared_experts.", COL_TP),
+    "shared_experts.linear_fc2": NameRemapping(
+        "model.layers.{}.mlp.shared_experts.down_proj.", ROW_TP
     ),
-    "mtp.linear_q_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_proj.", COL_PARALLEL
-    ),
-    "mtp.linear_q_down_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_a_proj.", COL_PARALLEL
-    ),
-    "mtp.linear_q_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_a_layernorm."
-    ),
-    "mtp.linear_q_up_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.q_b_proj.", COL_PARALLEL
-    ),
-    "mtp.linear_kv_down_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_a_proj_with_mqa.", COL_PARALLEL
-    ),
-    "mtp.linear_kv_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_a_layernorm."
-    ),
-    "mtp.linear_kv_up_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.kv_b_proj.", COL_PARALLEL
-    ),
-    "mtp.linear_proj": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.self_attn.o_proj.", ROW_PARALLEL
-    ),
-    "mtp.pre_mlp_layernorm": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.post_attention_layernorm."
-    ),
-    "mtp.router": CustomModuleMapping(
-        "name_remapping",
-        "model.layers.{}.mlp.gate.",
-        {"mapping": {"expert_bias": "e_score_correction_bias"}},
-    ),
-    "mtp.shared_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_merging", "model.layers.{}.mlp.shared_experts.", COL_PARALLEL
-    ),
-    "mtp.shared_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.shared_experts.down_proj.", ROW_PARALLEL
-    ),
-    "mtp.local_experts.linear_fc1": CustomModuleMapping(
-        "gated_mlp_merging", "model.layers.{}.mlp.experts.{}.", COL_PARALLEL
-    ),
-    "mtp.local_experts.linear_fc2": CustomModuleMapping(
-        "name_remapping", "model.layers.{}.mlp.experts.{}.down_proj.", ROW_PARALLEL
-    ),
+    "local_experts.linear_fc1": GatedMLPMerging("model.layers.{}.mlp.experts.{}.", COL_ETP),
+    "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj.", ROW_ETP),
 }

@@ -15,8 +15,8 @@
 
 """Plugin to add NAS/Pruning support for megatron-core GPT model."""
 
-from collections.abc import Callable, Sequence
 from typing import Any
+from warnings import warn
 
 import torch
 import torch.nn as nn
@@ -48,10 +48,8 @@ from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
 from modelopt.torch.opt.dynamic import DynamicModule
-from modelopt.torch.opt.hparam import HPType
 from modelopt.torch.opt.searcher import ConstraintsDict
 from modelopt.torch.opt.utils import named_hparams
-from modelopt.torch.trace import Symbol
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import (
     get_module_device,
@@ -68,11 +66,14 @@ from ..algorithms import (
     ConstraintsFunc,
     ConstraintsRes,
 )
+from ..hparams.concat import build_concat_hp
 from ..modules import _DynamicLayerNorm
 from ..modules.utils import get_sliced_tensor, get_sliced_tensor_by_slices
 from ..registry import DMRegistry
 from ..search_space import SampleFunc
 from ..traced_hp import TracedHp
+
+SUPPORTED_MODELS = {GPTModel: "megatron.core.models.gpt.GPTModel"}
 
 try:
     from megatron.core.extensions.transformer_engine import TEDotProductAttention
@@ -81,7 +82,16 @@ try:
 except ImportError:
     HAS_TE = False
 
-__all__ = ["_DynamicGPTModel", "drop_mcore_gpt_layers"]
+try:
+    from megatron.core.models.mamba import MambaModel
+
+    SUPPORTED_MODELS[MambaModel] = "megatron.core.models.mamba.MambaModel"
+
+    HAS_MAMBA = True
+except ImportError:
+    HAS_MAMBA = False
+
+__all__ = ["drop_mcore_gpt_layers", "drop_mcore_language_model_layers"]
 
 
 class _DynamicParallelLinear(DynamicModule):
@@ -141,9 +151,8 @@ class _DynamicVocabParallelEmbedding(DynamicModule):
         self._register_hparam("embedding_dim", TracedHp(list(range(1, self.embedding_dim + 1))))
         self._register_dynamic_attribute("weight", self._get_weight)
 
-    def _get_weight(
-        self, mod: "_DynamicVocabParallelEmbedding", weight: torch.Tensor
-    ) -> torch.Tensor:
+    @staticmethod
+    def _get_weight(mod: "_DynamicVocabParallelEmbedding", weight: torch.Tensor) -> torch.Tensor:
         """Return the weight tensor of the embedding layer."""
         return get_sliced_tensor(mod, weight, None, "embedding_dim")
 
@@ -166,52 +175,6 @@ class _DynamicFusedLayerNorm(_DynamicLayerNorm):
         self._register_dynamic_attribute("hidden_size", self._get_normalized_shape)
 
 
-class RepeatedTracedHp(TracedHp):
-    """An hparam repeated N number of times to form a longer hparam.
-
-    One key difference from ConcatTracedHp is that in ConcatTracedHp, the input hparams are not configurable,
-    and only the concatenated hparam is configurable. In RepeatedTracedHp, its the opposite.
-    """
-
-    def __init__(self, hparam: TracedHp, num_repeats: int) -> None:
-        """Initialize the repeated hparam."""
-        self._hparam = hparam
-        self._num_repeats = num_repeats
-        choices = [c * self._num_repeats for c in self._hparam.choices]
-        original = self._hparam.original * self._num_repeats
-        super().__init__(choices, original)
-        self._is_configurable = False
-        self._importance_estimators = None
-
-    @property  # type: ignore[misc]
-    def active(self) -> int:
-        """Return the active value of the hparam."""
-        assert isinstance(self._hparam.active, int)
-        return self._hparam.active * self._num_repeats
-
-    @property
-    def active_slice(self) -> TracedHp.ActiveSlice:
-        """Return the currently active sorted indices or slice corresponding to the active value."""
-        hp_active_slice = self._hparam.active_slice
-        if isinstance(hp_active_slice, slice):
-            hp_active_slice = torch.LongTensor(range(hp_active_slice.stop))
-
-        active_slice = torch.cat(
-            [hp_active_slice + i * self._hparam.max for i in range(self._num_repeats)]
-        )
-        return active_slice
-
-    @property  # type: ignore[misc]
-    def choices(self) -> Sequence[HPType]:
-        """Return available choices."""
-        return [c * self._num_repeats for c in self._hparam.choices]
-
-    def _resolve_dependencies(
-        self, sym: Symbol, get_hp: Callable[[Symbol], TracedHp]
-    ) -> dict[Symbol, TracedHp]:
-        raise NotImplementedError("RepeatedTracedHp does not support `_resolve_dependencies`!")
-
-
 @DMRegistry.register({MLP: "megatron.core.transformer.mlp.MLP"})
 class _DynamicMLP(DynamicModule):
     """A ``megatron.core.transformer.mlp.MLP`` layer with dynamic hyperparams."""
@@ -226,7 +189,7 @@ class _DynamicMLP(DynamicModule):
 
         ffn_hidden_size = TracedHp(list(range(1, self.config.ffn_hidden_size + 1)))
         fc1_output_size = (
-            RepeatedTracedHp(ffn_hidden_size, 2)
+            build_concat_hp([ffn_hidden_size] * 2)
             if self.config.gated_linear_unit
             else ffn_hidden_size
         )
@@ -648,41 +611,30 @@ class _DynamicSelfAttention(DynamicModule):
         return self
 
 
-@DMRegistry.register(
-    {TransformerLayer: "megatron.core.transformer.transformer_layer.TransformerLayer"}
-)
-class _DynamicTransformerLayer(DynamicModule):
-    """A ``megatron.core.transformer.transformer_layer.TransformerLayer`` layer with dynamic hyperparams."""
+class MambaTransformerLayerMixin(nn.Module):
+    """A mixin for MambaLayer and TransformerLayer to share the same logic."""
 
-    def _setup(self):
-        # Convert the layernorms, self-attention, and mlp layers to dynamic modules
-        self.input_layernorm = DMRegistry.convert(self.input_layernorm)
-        self.self_attention = DMRegistry.convert(self.self_attention)
-        self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
-        self.mlp = DMRegistry.convert(self.mlp)
-
-        # Register forward hook to collect activations for importance estimation
+    def _setup_mixin(self):
+        """Setup the mixin."""
         self._register_temp_attribute("_scores", 0.0)
         self.hook_handle = self.register_forward_hook(
             self._layer_imp_forward_hook, with_kwargs=True
         )
 
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        self.input_layernorm.num_features = hidden_size
-        self.self_attention.linear_qkv.input_size = hidden_size
-        self.self_attention.linear_proj.output_size = hidden_size
-        self.pre_mlp_layernorm.num_features = hidden_size
-        self.mlp.linear_fc1.input_size = hidden_size
-        self.mlp.linear_fc2.output_size = hidden_size
+    def _export_mixin(self):
+        """Export the mixin."""
+        self.hook_handle.remove()
 
     def _layer_imp_forward_hook(self, module, args, kwargs, output) -> None:
         """Hook to collect cosine similarity between input and output to rank layers for depth pruning."""
         hidden_states = kwargs["hidden_states"] if "hidden_states" in kwargs else args[0]
 
-        output, _ = output  # [seq_len, batch_size, hidden_size]
+        if isinstance(self, TransformerLayer):
+            output, _ = output  # [seq_len, batch_size, hidden_size]
 
         # Dont aggregate activations from non-max subnets (e.g. from profiling)
-        if hidden_states.shape[-1] != self.input_layernorm.get_hparam("num_features").max:
+        # NOTE: max_hidden_size is set in set_hidden_size_hp for both DyamicModule classes below!
+        if hidden_states.shape[-1] != self.max_hidden_size:
             return
 
         with torch.no_grad():
@@ -692,48 +644,87 @@ class _DynamicTransformerLayer(DynamicModule):
             global_score = reduce_from_tensor_model_parallel_region(score).item()
             self._scores += global_score  # aggregate sum instead of mean of scores for simplicity
 
+
+@DMRegistry.register(
+    {TransformerLayer: "megatron.core.transformer.transformer_layer.TransformerLayer"}
+)
+class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
+    """A ``megatron.core.transformer.transformer_layer.TransformerLayer`` layer with dynamic hyperparams."""
+
+    def _setup(self):
+        # Convert the layernorms, self-attention, and mlp layers to dynamic modules
+        # NOTE: Mamba stack layers have either Attention or MLP, not both unlike GPT models
+        if isinstance(self.self_attention, SelfAttention):
+            self.input_layernorm = DMRegistry.convert(self.input_layernorm)
+            self.self_attention = DMRegistry.convert(self.self_attention)
+        if isinstance(self.mlp, MLP):
+            self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
+            self.mlp = DMRegistry.convert(self.mlp)
+
+        # Register forward hook to collect activations for importance estimation
+        self._setup_mixin()
+
+    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
+        if isinstance(self.self_attention, SelfAttention):
+            self.input_layernorm.num_features = hidden_size
+            self.self_attention.linear_qkv.input_size = hidden_size
+            self.self_attention.linear_proj.output_size = hidden_size
+        if isinstance(self.mlp, MLP):
+            self.pre_mlp_layernorm.num_features = hidden_size
+            self.mlp.linear_fc1.input_size = hidden_size
+            self.mlp.linear_fc2.output_size = hidden_size
+
+        self._register_temp_attribute("max_hidden_size", hidden_size.max)
+
     def modify(
         self,
         *,
         num_heads_per_group_divisor: int = 1,
         num_query_groups_divisor: int = 1,
         ffn_hidden_size_divisor: int = 1,
+        **kwargs,  # Unused hparams
     ) -> None:
         # Modify SelfAttention hparams
-        for hp_name, divisor in [
-            ("num_heads_per_group", num_heads_per_group_divisor),
-            ("num_query_groups", num_query_groups_divisor),
-        ]:
-            hp = self.self_attention.get_hparam(hp_name)
-            choices = {int(make_divisible(c, divisor)) for c in hp.choices}  # type: ignore[arg-type]
-            hp.choices = list(set(hp.choices) & choices | {hp.original})
+        if isinstance(self.self_attention, SelfAttention):
+            for hp_name, divisor in [
+                ("num_heads_per_group", num_heads_per_group_divisor),
+                ("num_query_groups", num_query_groups_divisor),
+            ]:
+                hp = self.self_attention.get_hparam(hp_name)
+                choices = {int(make_divisible(c, divisor)) for c in hp.choices}
+                hp.choices = list(set(hp.choices) & choices | {hp.original})
 
         # Modify MLP hparams
-        hp_mlp = self.mlp.get_hparam("ffn_hidden_size")
-        choices = {int(make_divisible(c, ffn_hidden_size_divisor)) for c in hp_mlp.choices}  # type: ignore[arg-type]
-        hp_mlp.choices = list(set(hp_mlp.choices) & choices | {hp_mlp.original})
+        if isinstance(self.mlp, MLP):
+            hp_mlp = self.mlp.get_hparam("ffn_hidden_size")
+            choices = {int(make_divisible(c, ffn_hidden_size_divisor)) for c in hp_mlp.choices}
+            hp_mlp.choices = list(set(hp_mlp.choices) & choices | {hp_mlp.original})
 
     def export(self):
         """Export the dynamic module to a torch.nn.Module."""
-        self.hook_handle.remove()
-        self.input_layernorm.export()
-        self.self_attention.export()
-        self.pre_mlp_layernorm.export()
-        self.mlp.export()
+        self._export_mixin()
+        if isinstance(self.self_attention, SelfAttention):
+            self.input_layernorm.export()
+            self.self_attention.export()
+        if isinstance(self.mlp, MLP):
+            self.pre_mlp_layernorm.export()
+            self.mlp.export()
         super().export()
         return self
 
     def freeze(self):
         """Freeze the dynamic module."""
         super().freeze()
-        self.input_layernorm.freeze()
-        self.self_attention.freeze()
-        self.pre_mlp_layernorm.freeze()
-        self.mlp.freeze()
+        if isinstance(self.self_attention, SelfAttention):
+            self.input_layernorm.freeze()
+            self.self_attention.freeze()
+        if isinstance(self.mlp, MLP):
+            self.pre_mlp_layernorm.freeze()
+            self.mlp.freeze()
 
 
-@DMRegistry.register({GPTModel: "megatron.core.models.gpt.GPTModel"})
-class _DynamicGPTModel(DynamicModule):
+@DMRegistry.register(SUPPORTED_MODELS)
+class _DynamicMCoreLanguageModel(DynamicModule):
     """A ``megatron.core.models.gpt.GPTModel`` model with dynamic hyperparams."""
 
     def _setup(self):
@@ -764,9 +755,19 @@ class _DynamicGPTModel(DynamicModule):
             self.decoder.layers[i] = DMRegistry.convert(self.decoder.layers[i])
             self.decoder.layers[i].set_hidden_size_hp(hidden_size)
 
+        # NOTE: GPTModel has final_layernorm, MambaModel has final_norm
+        self._register_temp_attribute(
+            "final_norm_attr_name",
+            "final_layernorm" if hasattr(self.decoder, "final_layernorm") else "final_norm",
+        )
+
         if is_pipeline_last_stage():
-            self.decoder.final_layernorm = DMRegistry.convert(self.decoder.final_layernorm)
-            self.decoder.final_layernorm.num_features = hidden_size
+            setattr(
+                self.decoder,
+                self.final_norm_attr_name,
+                DMRegistry.convert(getattr(self.decoder, self.final_norm_attr_name)),
+            )
+            getattr(self.decoder, self.final_norm_attr_name).num_features = hidden_size
             self.output_layer = DMRegistry.convert(self.output_layer)
             self.output_layer.input_size = hidden_size
             self.output_layer.get_hparam("output_size").choices = [self.output_layer.output_size]
@@ -775,13 +776,20 @@ class _DynamicGPTModel(DynamicModule):
         self._register_temp_attribute("_activations", {})
         self.hook_handles = []
         for layer in self.decoder.layers:
-            self.hook_handles.append(
-                layer.input_layernorm.register_forward_hook(self._emb_layernorm_forward_hook)
-            )
-            self.hook_handles.append(
-                layer.pre_mlp_layernorm.register_forward_hook(self._emb_layernorm_forward_hook)
-            )
-        hidden_size.register_importance(self._estimate_importance)  # type: ignore[union-attr]
+            if isinstance(layer, TransformerLayer):
+                if isinstance(layer.self_attention, SelfAttention):
+                    self.hook_handles.append(
+                        layer.input_layernorm.register_forward_hook(
+                            self._emb_layernorm_forward_hook
+                        )
+                    )
+                if isinstance(layer.mlp, MLP):
+                    self.hook_handles.append(
+                        layer.pre_mlp_layernorm.register_forward_hook(
+                            self._emb_layernorm_forward_hook
+                        )
+                    )
+        hidden_size.register_importance(self._estimate_hidden_size_importance)  # type: ignore[union-attr]
 
     def _emb_layernorm_forward_hook(self, module, input, output) -> None:
         """Hook to collect activations for importance estimation.
@@ -804,7 +812,7 @@ class _DynamicGPTModel(DynamicModule):
         else:
             self._activations[module] += activations
 
-    def _estimate_importance(self) -> TracedHp.Importance:
+    def _estimate_hidden_size_importance(self) -> TracedHp.Importance:
         """Return the activation magnitude-based importance of the hidden_size."""
         assert self._activations, "No activations collected for importance estimation."
         aggregated_activations = [
@@ -868,7 +876,7 @@ class _DynamicGPTModel(DynamicModule):
         # sort layers by scores and drop the lowest ones
         sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
         layers_to_drop = [layer for layer, _ in sorted_layers[num_layers_hp.active :]]  # type: ignore[misc]
-        drop_mcore_gpt_layers(self, layers_to_drop=layers_to_drop)
+        drop_mcore_language_model_layers(self, layers_to_drop=layers_to_drop)
 
     def export(self) -> torch.nn.Module:
         """Export the dynamic module to a torch.nn.Module."""
@@ -886,7 +894,7 @@ class _DynamicGPTModel(DynamicModule):
         for layer in self.decoder.layers:
             layer.export()
         if is_pipeline_last_stage():
-            self.decoder.final_layernorm.export()
+            getattr(self.decoder, self.final_norm_attr_name).export()
             self.output_layer.export()
         super().export()
         return self
@@ -898,23 +906,27 @@ class _DynamicGPTModel(DynamicModule):
             layer.freeze()
 
 
-def drop_mcore_gpt_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:
+def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:
     """Remove given layers (1-indexed) of the model (works with TP and/or PP).
 
-    If model is a wrapper around GPTModel, we unwrap it to get the actual GPTModel.
+    If model is a wrapper around GPTModel or MambaModel, it will be unwrapped.
     """
-    # NOTE: If this function is invoked from _DynamicGPTModel during export, model.config.num_layers is already updated
+    # NOTE: If this function is invoked from _DynamicMCoreLanguageModel during export,
+    # model.config.num_layers is already updated
     layers_to_drop = sorted(layers_to_drop)
     assert layers_to_drop[0] >= 1, (
         f"Layers to drop should be in range 1 to {model.config.num_layers}, got {layers_to_drop}."
     )
 
+    supported_model_types = tuple(SUPPORTED_MODELS.keys())
     for m in model.modules():
-        if isinstance(m, GPTModel):
+        if isinstance(m, supported_model_types):
             model = m
             break
-    assert isinstance(model, GPTModel), f"Model should have {GPTModel} submodule, got {model}"
-    print_rank_0(f"Dropping layers {layers_to_drop} from {GPTModel}.")
+    assert isinstance(model, supported_model_types), (
+        f"Model should have one of {supported_model_types} submodule, got {model}"
+    )
+    print_rank_0(f"Dropping layers {layers_to_drop} from {type(model)}.")
 
     # get the number of layers remaining in each pp rank
     layers_remaining_per_pp = torch.zeros(
@@ -959,6 +971,15 @@ def drop_mcore_gpt_layers(model: nn.Module, *, layers_to_drop: list[int]) -> Non
         del layer
 
     model.config.num_layers = new_num_layers
+
+
+def drop_mcore_gpt_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:
+    """[DEPRECATED] Remove given layers (1-indexed) of the model (works with TP and/or PP)."""
+    warn(
+        "`drop_mcore_gpt_layers` is deprecated in favor of `drop_mcore_language_model_layers`.",
+        DeprecationWarning,
+    )
+    drop_mcore_language_model_layers(model, layers_to_drop=layers_to_drop)
 
 
 class MegatronConstraintsFunc(ConstraintsFunc):

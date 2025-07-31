@@ -45,7 +45,16 @@ IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 def change_format(conversations):
     chat = []
     for conversation in conversations:
-        turn = {"role": conversation["from"].lower(), "content": conversation["value"].lower()}
+        # Detect format: either role/content or from/value
+        if "role" in conversation and "content" in conversation:
+            role = conversation["role"]
+            content = conversation["content"]
+        elif "from" in conversation and "value" in conversation:
+            role = conversation["from"]
+            content = conversation["value"]
+        else:
+            raise ValueError(f"Unknown conversation format: {conversation}")
+        turn = {"role": role.lower(), "content": content.lower()}
         chat.append(turn)
     return chat
 

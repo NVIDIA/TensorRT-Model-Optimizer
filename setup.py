@@ -15,16 +15,14 @@
 
 """The package setup script for modelopt customizing certain aspects of the installation process."""
 
-import os
-import platform
-
 import setuptools
+from setuptools_scm import get_version
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-version = os.environ.get(
-    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.33.0" if platform.system() == "Linux" else "0.27.0"
-)
+# TODO: Set version to static stable release version when creating the release branch
+# version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "X.Y.Z")
+version = get_version(root=".", fallback_version="0.0.0")
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -33,7 +31,6 @@ setup_kwargs = {}
 # Required and optional dependencies ###############################################################
 required_deps = [
     # Common
-    f"nvidia-modelopt-core=={version}",
     "ninja",  # for faster building of C++ / CUDA extensions
     "numpy",
     "packaging",
@@ -56,11 +53,13 @@ optional_deps = {
         "cppimport",
         "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
         "ml_dtypes",  # for bfloat16 conversion
-        "onnx>=1.18.0",
         "onnx-graphsurgeon",
+        "onnx>=1.18.0",
+        "onnxconverter-common",
         "onnxruntime~=1.22.0 ; platform_machine == 'aarch64' or platform_system == 'Darwin'",
         "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
         "onnxruntime-gpu==1.20.0; platform_system == 'Windows'",
+        "onnxscript",  # For test_onnx_dynamo_export unit test
         "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
         "polygraphy>=0.49.22",
     ],
@@ -70,7 +69,7 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.12.0",
-        "transformers>=4.48,<4.54",  # Version match done in modelopt/torch/__init__.py as well
+        "transformers>=4.48,<5.0",  # Version match done in modelopt/torch/__init__.py as well
     ],
     # linter tools
     "dev-lint": [
@@ -82,13 +81,12 @@ optional_deps = {
     # testing
     "dev-test": [
         "coverage",
-        "onnxscript",  # For test_onnx_dynamo_export unit test
         "pytest",
         "pytest-cov",
         "pytest-timeout",
         "timm",
-        "tox",
-        "tox-current-env>=0.0.12",  # Incompatible with tox==4.18.0
+        "tox>4.18",
+        "tox-current-env>=0.0.12",
     ],
     # docs
     "dev-docs": [

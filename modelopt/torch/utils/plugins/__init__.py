@@ -13,34 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import pytest
+"""Handles utility plugins for third-party modules."""
 
+from modelopt.torch.utils import import_plugin
 
-@pytest.fixture(scope="session")
-def int8_args():
-    # fmt: off
-    return [
-        "--format", "int8",
-        "--calib-size", "8",
-        "--collect-method", "min-mean",
-        "--percentile", "1.0",
-        "--alpha", "0.8",
-        "--quant-level", "3.0",
-        "--n-steps", "20",
-        "--batch-size", "2",
-        "--quant-algo", "smoothquant",
-    ]
-    # fmt: on
+with import_plugin("megatron_generate"):
+    from .megatron_generate import *
 
-
-@pytest.fixture(scope="session")
-def fp8_args():
-    # fmt: off
-    return [
-        "--format", "fp8",
-        "--calib-size", "8",
-        "--quant-level", "3.0",
-        "--n-steps", "20",
-        "--batch-size", "2",
-    ]
-    # fmt: on
+with import_plugin("megatron_mmlu"):
+    from .megatron_mmlu import *

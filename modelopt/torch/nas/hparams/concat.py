@@ -19,6 +19,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterator
 from itertools import product
 from math import prod
+from warnings import warn
 
 import numpy as np
 import torch
@@ -51,6 +52,8 @@ class ConcatTracedHp(TracedHp):
             # use itertools.product and iterate over all combinations
             yield from product(*all_choices)
             return
+        else:
+            warn(f"ConcatTracedHp: {n_combos=} is larger than {n_max=}. Pruning combinations.")
 
         # otherwise, we use a pruned set of combinations based on immediate vicinity of each value
 
@@ -103,6 +106,12 @@ class ConcatTracedHp(TracedHp):
                 sum_to_cost[s] = cost
                 sum_to_combo[s] = combo_full
         return sum_to_combo
+
+    def _set_hp_start_idx(self) -> None:
+        """Compute start indices for input hps."""
+        # NOTE: the last index is the length of the concatenated hp
+        hp_start_idx = np.concatenate(([0], np.cumsum([hp.max for hp in self._inputs])))
+        self._hp_start_idx = torch.asarray(hp_start_idx, dtype=torch.long)
 
     @property
     def active(self) -> int:
@@ -273,9 +282,38 @@ class ConcatTracedHp(TracedHp):
             hp_in.choices = [combo[i] for combo in sum_to_combo.values()]
             hp_in._is_configurable = False
 
-        # compute start indices for input hp
-        # NOTE: the last index is the length of the concatenated hp
-        hp_start_idx = np.concatenate(([0], np.cumsum([hp.max for hp in self._inputs])))
-        self._hp_start_idx = torch.asarray(hp_start_idx, dtype=torch.long)
+        self._set_hp_start_idx()
 
         return mapping
+
+    def reset_choices(self) -> None:
+        """Reset the choices of the concat hparam.
+
+        Useful if we want to reset choices after input hparam choices are changed during modify().
+        """
+        self._sum_to_combo = self._get_sum_to_combo()
+        self._set_hp_start_idx()
+        with self._force_configurable():
+            self.choices = list(self._sum_to_combo)
+
+
+def build_concat_hp(inputs: list[TracedHp]):
+    """Initialize a non-configurable concat hparam from a list of input hparams.
+
+    One key difference from ConcatTracedHp via tracing is that in ConcatTracedHp, the input hparams
+    are not configurable, and only the concatenated hparam is configurable. In build_concat_hp, its the opposite.
+
+    This is useful for building concat hparams from a list of configurable input hparams instead of
+    tracing (e.g. for megatron language model DynamicModule).
+    """
+    concat_hp = object.__new__(ConcatTracedHp)
+    concat_hp._inputs = inputs
+    concat_hp._sum_to_combo = concat_hp._get_sum_to_combo()
+    concat_hp._set_hp_start_idx()
+
+    choices = list(concat_hp._sum_to_combo)
+    concat_hp.__init__(choices)  # type: ignore[misc]
+    concat_hp._is_configurable = False
+    concat_hp._importance_estimators = None
+
+    return concat_hp

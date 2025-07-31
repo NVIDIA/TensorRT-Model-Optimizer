@@ -27,7 +27,6 @@ from megatron.core.dist_checkpointing.serialization import get_default_load_shar
 from megatron.core.dist_checkpointing.strategies.common import COMMON_STATE_FNAME
 from megatron.core.dist_checkpointing.validation import StrictHandling
 from megatron.core.transformer.module import Float16Module
-from packaging.version import Version
 
 import modelopt
 import modelopt.torch.opt as mto
@@ -140,6 +139,9 @@ def _load_extra_state_from_sharded_checkpoint(
 ) -> None:
     """Load extra state from sharded checkpoint.
 
+    Note: since extra_state is a subset of full the sharded_state_dict, we use
+        strict=StrictHandling.LOG_UNEXPECTED instead of LOG_ALL.
+
     Args:
         model: the model to load extra state into
         checkpoint_name: the checkpoint folder path
@@ -151,7 +153,7 @@ def _load_extra_state_from_sharded_checkpoint(
         extra_sharded_state_dict,
         checkpoint_name,
         get_default_load_sharded_strategy(checkpoint_name),
-        strict=StrictHandling.LOG_ALL,
+        strict=StrictHandling.LOG_UNEXPECTED,
     )
     extra_state_dict_no_prefix = {}
 
@@ -193,35 +195,21 @@ def restore_sharded_modelopt_state(
 
     print(f"nvidia-modelopt ckpt/inst version: {modelopt_load_version}/{modelopt.__version__}")
 
-    is_dev_load_ver = "dev" in modelopt_load_version
-    is_legacy_load_ver = Version(modelopt_load_version) <= Version("0.30.0")
+    # After 0.29, we no longer store (or shard) any quantizer_state in the modelopt_state.
+    # quantizer_state (or other per-module state) is stored with the main distributed
+    # checkpoint as extra_state at the QuantModule level.
+    #
+    # The process of resuming modelopt_state becomes 2-phase:
+    # 1. Load the global modelopt_state and call mto.restore_from_modelopt_state.
+    #    Modes are restored in order. Modes with per-module state stored as
+    #    extra_state are partially restored (stop at DynamicModule replacement)
+    #
+    model[0] = mto.restore_from_modelopt_state(model[0], common_modelopt_state)
 
-    if is_legacy_load_ver and not is_dev_load_ver:
-        raise ValueError(
-            "nvidia-modelopt>0.29 updated how model_state is stored NeMo-MCore "
-            "distributed checkpoint (`torch-dist`). Newly generated checkpoints "
-            "can no longer be loaded with older nvidia-modelopt<=0.29."
-            "Old checkpoints also cannot be loaded. To convert the checkpoint, use"
-            "legacy modelopt to load and store in `torch` instead of `torch-dist`."
-            "Load the `torch` checkpoint with nvidia-modelopt>0.29 and store"
-            "`torch-dist` again to complete."
-        )
-    else:
-        # After 0.29, we no longer store (or shard) any quantizer_state in the modelopt_state.
-        # quantizer_state (or other per-module state) is stored with the main distributed
-        # checkpoint as extra_state at the QuantModule level.
-        #
-        # The process of resuming modelopt_state becomes 2-phase:
-        # 1. Load the global modelopt_state and call mto.restore_from_modelopt_state.
-        #    Modes are restored in order. Modes with per-module state stored as
-        #    extra_state are partially restored (stop at DynamicModule replacement)
-        #
-        model[0] = mto.restore_from_modelopt_state(model[0], common_modelopt_state)
-
-        try:
-            _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, prefix)
-        except:  # noqa: E722
-            # [WAR]: nemo2 is calling this function with an empty prefix.
-            # The prefix however should be `module.` instead. This should be fixed
-            # from the NeMo side. This is just a WAR.
-            _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, "module.")
+    try:
+        _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, prefix)
+    except:  # noqa: E722
+        # [WAR]: nemo2 is calling this function with an empty prefix.
+        # The prefix however should be `module.` instead. This should be fixed
+        # from the NeMo side. This is just a WAR.
+        _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, "module.")

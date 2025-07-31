@@ -31,7 +31,7 @@ from modelopt.onnx.quantization.graph_utils import (
     has_path_type,
     is_const_input,
 )
-from modelopt.onnx.utils import get_child_nodes, get_variable_inputs
+from modelopt.onnx.utils import get_child_nodes, get_parent_nodes, get_variable_inputs
 
 
 def _build_fusible_partition(
@@ -282,6 +282,16 @@ def find_quantizable_nodes(
 
         return False
 
+    def _has_quantizable_producer(node: Node, quantizable_node_set: set[str]) -> bool:
+        parents = get_parent_nodes(node)
+        for parent_node in parents:
+            if (parent_node.name in quantizable_node_set) or (
+                (is_copy_op(parent_node.op) or parent_node.op == "Cast")
+                and _has_quantizable_producer(parent_node, quantizable_node_set)
+            ):
+                return True
+        return False
+
     quantizable_nodes = []
     pooling_and_window_ops = []
     for node in graph.nodes:
@@ -313,6 +323,7 @@ def find_quantizable_nodes(
         node
         for node in pooling_and_window_ops
         if _has_quantizable_consumer(node, quantizable_node_set)
+        or _has_quantizable_producer(node, quantizable_node_set)
     )
 
     return quantizable_nodes

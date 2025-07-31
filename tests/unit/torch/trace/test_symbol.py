@@ -19,14 +19,6 @@ import torch.nn as nn
 from modelopt.torch.trace import RobustTracer, Symbol, SymMap
 from modelopt.torch.trace.modules.nn import get_conv_sym_info, get_linear_sym_info
 
-try:
-    import megatron  # noqa: F401
-    import transformer_engine  # noqa: F401
-
-    SKIP = True
-except ImportError:
-    SKIP = False
-
 
 def test_symbol_cls():
     sym = Symbol(elastic_dims={1, 2}, cl_type=Symbol.CLType.INCOMING)
@@ -117,11 +109,7 @@ def test_sym_map(model):
     assert_num_symbols()
 
 
-@pytest.mark.skipif(SKIP, reason="This cpu unit test will fail on GPU with Megatron/TE installed!")
 def test_sym_map_registry():
-    # NOTE: If running with transformer_engine or megatron-core installed, this test will fail.
-    # Ignoring this error for now, as it will only be there if running CPU tests on a GPU machine
-    # with the above packages installed.
     mods_in_registry = {
         nn.Linear,
         nn.BatchNorm1d,
@@ -148,6 +136,20 @@ def test_sym_map_registry():
 
         mods_in_registry.add(BertAttention)
         mods_in_registry.add(GPTJAttention)
+    except ImportError:
+        pass
+
+    try:
+        from megatron.core.models.gpt import GPTModel
+
+        mods_in_registry.add(GPTModel)
+    except ImportError:
+        pass
+
+    try:
+        from megatron.core.models.mamba import MambaModel
+
+        mods_in_registry.add(MambaModel)
     except ImportError:
         pass
 

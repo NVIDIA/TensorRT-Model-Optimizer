@@ -184,13 +184,17 @@ def _reset_before_sample(model: nn.Module):
         PatchManager.get_manager(model).reset_before_sample()
 
 
-def sort_parameters(model: nn.Module, hps_to_sort: set[str] | None = None) -> None:
+def sort_parameters(
+    model: nn.Module, hps_to_sort: set[str] | None = None, verbose: bool = False
+) -> None:
     """Sort the parameters of the model according to the stored importances.
 
     Args:
+        model: A model that contains DynamicModule(s).
         hps_to_sort: A set of hparam names to sort. If not provided or empty, all hparams will be sorted.
+        verbose: Whether to print the search space and hparam importances.
     """
-    _SearchSpaceUnwrapped(model).sort_parameters(hps_to_sort)
+    _SearchSpaceUnwrapped(model).sort_parameters(hps_to_sort, verbose)
 
 
 def print_search_space_summary(

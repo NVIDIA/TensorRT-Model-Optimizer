@@ -158,7 +158,7 @@ class RealQuantizeModeDescriptor(ModeDescriptor):
     def next_modes(self) -> set[str] | None:
         """Real quantization should be the last mode in the chain."""
         # TODO: update this to support QLoRA
-        return {"max_calibrate"}
+        return {"max_calibrate", "eagle"}
 
     @property
     def config_class(self) -> type[ModeloptBaseConfig]:

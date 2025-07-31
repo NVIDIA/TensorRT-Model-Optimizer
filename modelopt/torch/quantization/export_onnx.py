@@ -592,7 +592,7 @@ def export_fp4(
             sx_f32_per_tensor = 1.0
         else:
             assert num_bits == (2, 1)
-            sx_f32_per_tensor = float(amax) / 6.0
+            sx_f32_per_tensor = float(amax) / 6.0 / 448.0
 
         x_f4, sx_f8 = _fp4_dynamic_quantize(
             g, inputs, sx_f32_per_tensor, trt_high_precision_dtype, block_size

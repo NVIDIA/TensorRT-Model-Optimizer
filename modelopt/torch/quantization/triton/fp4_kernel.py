@@ -33,7 +33,7 @@ def fp4_fake_quant_kernel(
     y_ptr,
     M,
     N,
-    global_scale,
+    global_scale_ptr,
     BLOCK_SIZE: tl.constexpr,
     TILE_SIZE: tl.constexpr,
     NUM_FP4_BLOCKS: tl.constexpr,
@@ -45,13 +45,16 @@ def fp4_fake_quant_kernel(
         y_ptr (tl.pointer): Pointer to the output buffer
         M (int): Number of rows in the matrix
         N (int): Number of columns in the matrix
-        global_scale (float): Global scaling factor
+        global_scale_ptr (tl.pointer): Pointer to the global scaling factor tensor
         BLOCK_SIZE (tl.constexpr): Size of each FP4 quantization block
         TILE_SIZE (tl.constexpr): Size of the processing block
         NUM_FP4_BLOCKS (tl.constexpr): Number of FP4 blocks within TILE_SIZE
     """
     pid_m = tl.program_id(axis=0)
     pid_n = tl.program_id(axis=1)
+
+    # Load global scale from tensor
+    global_scale = tl.load(global_scale_ptr)
 
     # Calculate offsets
     offs_m = pid_m * TILE_SIZE + tl.arange(0, TILE_SIZE)
@@ -117,7 +120,7 @@ def fp4_fake_quant_kernel(
 
 def fp4_fake_quant_block(
     x: torch.Tensor,
-    global_amax: float,
+    global_amax: torch.Tensor,
     block_size: int = 16,
     tile_size: int = 128,
 ) -> torch.Tensor:
@@ -125,7 +128,8 @@ def fp4_fake_quant_block(
 
     Args:
         x (torch.Tensor): Input tensor of shape (M, N)
-        global_scale (float): Global scaling factor
+        global_amax (torch.Tensor): Global max value of the input tensor
+            This needs to be a tensor to be cuda-graph compatible
         block_size (int): Size of FP4 quantization blocks
         tile_size (int): Size of processing blocks
 
@@ -139,7 +143,10 @@ def fp4_fake_quant_block(
     M, N = x.size()
     y = torch.empty_like(x, dtype=torch.get_default_dtype())
 
-    grid = lambda meta: (triton.cdiv(M, meta["TILE_SIZE"]), triton.cdiv(N, meta["TILE_SIZE"]))
+    grid = lambda meta: (
+        triton.cdiv(M, meta["TILE_SIZE"]),
+        triton.cdiv(N, meta["TILE_SIZE"]),
+    )
     global_scale = (global_amax / 6.0) / 448.0
     num_fp4_blocks = tile_size // block_size
     fp4_fake_quant_kernel[grid](

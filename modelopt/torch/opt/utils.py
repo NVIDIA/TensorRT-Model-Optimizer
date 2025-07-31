@@ -58,10 +58,10 @@ def is_dynamic(model: nn.Module) -> bool:
 
 
 def named_hparams(
-    model: nn.Module, configurable: bool | None = None
+    model: nn.Module, configurable: bool | None = None, unique: bool | None = None
 ) -> Generator[tuple[str, Hparam], None, None]:
     """Recursively yield the name and instance of *all* hparams."""
-    yield from _DynamicSpaceUnwrapped(model).named_hparams(configurable)
+    yield from _DynamicSpaceUnwrapped(model).named_hparams(configurable, unique)
 
 
 def named_dynamic_modules(model: nn.Module) -> Generator[tuple[str, DynamicModule], None, None]:

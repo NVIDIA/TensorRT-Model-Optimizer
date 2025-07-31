@@ -110,6 +110,10 @@ class CalibrationDataProvider(CalibrationDataReader):
         assert len(self.calibration_data_list) > 0, "Calibration data list is empty!"
         return self.calibration_data_list[0]
 
+    def rewind(self):
+        """Rewinds the data reader to the first index."""
+        self.calibration_data_reader = iter(self.calibration_data_list)
+
 
 class RandomDataProvider(CalibrationDataReader):
     """Calibration data reader class with random data provider."""
@@ -141,6 +145,10 @@ class RandomDataProvider(CalibrationDataReader):
         """
         assert len(self.calibration_data_list) > 0, "Calibration data list is empty!"
         return self.calibration_data_list[0]
+
+    def rewind(self):
+        """Rewinds the data reader to the first index."""
+        self.calibration_data_reader = iter(self.calibration_data_list)
 
 
 def import_scales_from_calib_cache(cache_path: str) -> dict[str, float]:

@@ -161,9 +161,9 @@ def dq_tensor(w: np.ndarray, s: np.ndarray, block_size: int, zp: np.ndarray = No
 
 def quantize_rtn(
     onnx_model: onnx.ModelProto,
-    gemm_io_type: onnx.TensorProto.DataType,
     block_size: int,
     dq_only: bool = False,
+    nodes_to_exclude: list[str] = [],
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the RTN (Round-to-Nearest) algorithm.
 
@@ -178,11 +178,15 @@ def quantize_rtn(
     t_start = time.time()
 
     graph = gs.import_onnx(onnx_model)
-    gemm_nodes = [node for node in graph.nodes if node.op in ["Gemm", "MatMul"]]
+    nodes_to_exclude = expand_node_names_from_patterns(graph, nodes_to_exclude)
+    gemm_nodes = [
+        node
+        for node in graph.nodes
+        if node.op in ["Gemm", "MatMul"] and node.name not in nodes_to_exclude
+    ]
     logger.info(f"Found {len(gemm_nodes)} Gemm/MatMul nodes to quantize")
 
     gemm_tensors = {}
-    act_tensors = []
     for gemm in gemm_nodes:
         for in_tensor in gemm.inputs:
             if not isinstance(in_tensor, gs.Constant):
@@ -191,27 +195,24 @@ def quantize_rtn(
                 # 1D blocked quantization not supported.
                 continue
             gemm_tensors[in_tensor.name] = in_tensor
-            act_tensors.append(gemm.inputs[0])
 
     gemm_weights = {name: tensor.values for name, tensor in gemm_tensors.items()}
     logger.info(f"Found {len(gemm_weights)} quantizable weights")
 
     logger.info("Computing scales for gemm weights")
     scales = {}
+    gemm_io_type = {}
     for name, w in gemm_weights.items():
         logger.debug(f"Computing scales for weight {name} of shape {w.shape}")
         s, zp = find_scales(np.asarray(w), block_size)
         assert zp is None, "zero-point is not enabled but zp is found non-None"
         scales[name] = s
+        gemm_io_type[name] = onnx.helper.np_dtype_to_tensor_dtype(cast("int", w.dtype))
 
     # Change the scale type to the expected type, fp16 by default
     for name in scales:
         s = scales[name]
-        scales[name] = s.astype(onnx.helper.tensor_dtype_to_np_dtype(gemm_io_type))
-
-    # Change the input activation type to the expected type, fp16 by default
-    for act_tensor in act_tensors:
-        _change_input_type(onnx_model.graph, act_tensor.name, gemm_io_type)
+        scales[name] = s.astype(onnx.helper.tensor_dtype_to_np_dtype(gemm_io_type[name]))
 
     # Import the update graph
     graph = gs.import_onnx(onnx_model)
@@ -350,19 +351,13 @@ def _find_quantizable_weights(
 ) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int]]:
     """Finds the quantizable weights from the graph."""
     wa_pack = []
-    gemm_nodes = [node for node in graph.node if node.op_type in ["Gemm", "MatMul"]]
+    gemm_nodes = [
+        node
+        for node in graph.node
+        if node.op_type in ["Gemm", "MatMul"] and node.name not in nodes_to_exclude
+    ]
     initializer_idxs = {initializer.name: idx for idx, initializer in enumerate(graph.initializer)}
     for gemm in gemm_nodes:
-        exclude_this_node = False
-
-        for i in range(len(nodes_to_exclude)):
-            if nodes_to_exclude[i] in gemm.name:
-                exclude_this_node = True
-                break
-
-        if exclude_this_node:
-            continue
-
         if gemm.input[0] in initializer_idxs:
             # Ex. two const input to MatMul_115 in fastvit0.onnx
             # Note. RTN algorithm will quantize these weights though
@@ -884,6 +879,7 @@ def run_awq_scale_search_per_subgraph(
 def get_parent_child_nodes_map(
     graph: onnx.GraphProto,
     wa_pack: list[tuple[gs.Tensor, gs.Tensor, bool, int]],
+    nodes_to_exclude: list[str],
 ):
     """Get mapping of parent nodes to their MatMul/Gemm nodes with quantizable weights."""
     parent_child_nodes_map = {}
@@ -894,7 +890,7 @@ def get_parent_child_nodes_map(
         parent_name = output_name_to_node[act_tensor.name].name
         parent_child_nodes_map[parent_name] = []
         for node in input_name_to_nodes[act_tensor.name]:
-            if node.op_type in ["Gemm", "MatMul"]:
+            if node.op_type in ["Gemm", "MatMul"] and node.name not in nodes_to_exclude:
                 parent_child_nodes_map[parent_name].append(node)
 
     return parent_child_nodes_map, input_name_to_nodes
@@ -934,7 +930,7 @@ def _quantize_awq_lite(
     wa_pack = _find_quantizable_weights(graph, nodes_to_exclude)
     if fuse_nodes:
         parent_child_nodes_map, input_name_to_nodes = get_parent_child_nodes_map(
-            onnx_model.graph, wa_pack
+            onnx_model.graph, wa_pack, nodes_to_exclude
         )
 
     # Add input activations to graph output
@@ -1141,11 +1137,13 @@ def _quantize_awq_lite(
                 for inp in parent.input:
                     if initializer_map.get(inp) is not None:
                         tensor = initializer_map[inp]
+                        old_dim = tensor.dims
                         tensor_array = numpy_helper.to_array(
                             tensor,
                             base_dir=os.path.dirname(augmented_onnx_path),
                         )
                         new_tensor = np.asarray(tensor_array) / input_scale
+                        new_tensor = new_tensor.reshape(old_dim)
                         new_tensor = numpy_helper.from_array(new_tensor.get(), tensor.name)
                         # replace initializer with new scaled array
                         tensor.CopyFrom(new_tensor)
@@ -1277,8 +1275,6 @@ def quantize(
         block_size = 128
         logger.info(f"Using default block size: {block_size}")
 
-    gemm_io_type: onnx.TensorProto.DataType = onnx.TensorProto.FLOAT
-
     # set config params
     nodes_to_exclude = nodes_to_exclude or []
     logger.debug(f"Excluding nodes matching patterns: {nodes_to_exclude}")
@@ -1301,7 +1297,10 @@ def quantize(
 
     if calibration_method in ["rtn", "rtn_dq", "rtn_trt", "rtn_trt_dq"]:
         onnx_model = quantize_rtn(
-            onnx_model, gemm_io_type, block_size, dq_only="dq" in calibration_method
+            onnx_model,
+            block_size,
+            dq_only="dq" in calibration_method,
+            nodes_to_exclude=nodes_to_exclude,
         )
     elif calibration_method in ["awq_lite", "awq_full"]:
         do_weight_clipping = False

@@ -24,8 +24,9 @@ Setup Steps for Olive with ModelOpt-Windows
             $ pip install onnxruntime-genai-directml>=0.4.0
             $ pip install onnxruntime-directml==1.20.0
 
+   - Above onnxruntime and onnxruntime-genai packages enable Olive workflow with DirectML Execution-Provider (EP). To use other EPs, install corresponding packages.
 
-     Additionally, ensure that dependencies for TensorRT Model Optimizer - Windows are met as mentioned in the :ref:`Install-Page-Standalone-Windows`.
+   - Additionally, ensure that dependencies for TensorRT Model Optimizer - Windows are met as mentioned in the :ref:`Install-Page-Standalone-Windows`.
 
 **2. Configure Olive for TensorRT Model Optimizer – Windows**
 
@@ -36,7 +37,11 @@ Setup Steps for Olive with ModelOpt-Windows
 
    - **Add Other Passes:** Add additional passes to the Olive configuration file as needed for the desired Olive workflow of your input model. [Refer `phi3 <https://github.com/microsoft/Olive/tree/main/examples/phi3#quantize-models-with-nvidia-tensorrt-model-optimizer>`_ Olive example]
 
-**4. Run the Optimization**
+**4. Install other dependencies**
+
+   - Install other requirements as needed by the Olive scripts and config.
+
+**5. Run the Optimization**
 
    - **Execute Optimization:** To start the optimization process, run the following commands:
 
@@ -56,4 +61,5 @@ Setup Steps for Olive with ModelOpt-Windows
 
 **Note**:
 
-#. Currently, the TensorRT-Model Optimizer - Windows only supports Onnx Runtime GenAI based models in the Olive workflow.
+#. Currently, the TensorRT-Model Optimizer - Windows only supports Onnx Runtime GenAI based LLM models in the Olive workflow.
+#. To try out different LLMs and EPs in the Olive workflow of ModelOpt-Windows, refer the details provided in `phi3 <https://github.com/microsoft/Olive/tree/main/examples/phi3#quantize-models-with-nvidia-tensorrt-model-optimizer>`_ Olive example.

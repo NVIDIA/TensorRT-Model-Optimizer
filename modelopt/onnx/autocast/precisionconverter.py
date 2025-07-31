@@ -175,11 +175,15 @@ class PrecisionConverter:
             # Populate type information with inferred types
             self.model = self._propagate_types_shapes_custom_ops(self.model)
         else:
-            # Clear type information for intermediates and outputs
+            # Clear type/shape information for intermediates and outputs
             for vi in self.model.graph.value_info:
                 vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
+                for idx, d in enumerate(vi.type.tensor_type.shape.dim):
+                    vi.type.tensor_type.shape.dim[idx].dim_param = "unk"
             for out in self.model.graph.output:
                 out.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
+                for idx, d in enumerate(out.type.tensor_type.shape.dim):
+                    out.type.tensor_type.shape.dim[idx].dim_param = "unk"
             # Populate type information with inferred types
             self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=False)
             # Sanity check: Verify type correctness
@@ -230,9 +234,9 @@ class PrecisionConverter:
             )
 
         def _propagate_cast_type_through_nodes(node, np_type, iter=1):
-            # Return if node is of cast or quantize type (from iter=2)
+            # Return if node is of cast type (from iter=2)
             indent = "  " * iter
-            if iter > 1 and any(op in node.op.lower() for op in ["cast", "quantize"]):
+            if iter > 1 and any(op in node.op.lower() for op in ["cast"]):
                 return
 
             out = node.outputs[0]

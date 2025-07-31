@@ -26,12 +26,30 @@ from transformers import (
     BertForQuestionAnswering,
     LlamaConfig,
     LlamaForCausalLM,
+    Qwen3Config,
+    Qwen3ForCausalLM,
     T5Config,
     T5Model,
     T5Tokenizer,
 )
 
 import modelopt.torch.opt as mto
+
+
+def get_tiny_qwen3(**config_kwargs) -> Qwen3ForCausalLM:
+    kwargs = {
+        "hidden_size": 32,
+        "intermediate_size": 32,
+        "num_hidden_layers": 2,
+        "num_attention_heads": 16,
+        "num_key_value_heads": 2,
+        "max_position_embeddings": 32,
+        "vocab_size": 32,
+    }
+    kwargs.update(**config_kwargs)
+    tiny_qwen3 = Qwen3ForCausalLM(Qwen3Config(**kwargs))
+
+    return tiny_qwen3
 
 
 def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:

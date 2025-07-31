@@ -62,6 +62,10 @@ Example usage:
     meta model. Thus, the same callable must be available in the namespace when restoring via
     the :meth:`mto.restore <modelopt.torch.opt.conversion.restore>` utility.
 
+.. tip::
+    When training the student on a small corpus of ground truth data, consider using :class:`MFTLoss <modelopt.torch.distill.MFTLoss>` for to perform Minifinetuning in lieu of the standard
+    :class:`LogitsDistillationLoss <modelopt.torch.distill.losses.LogitsDistillationLoss>`. This will allow the student to learn from the teacher's distribution while adapting to the new data, improving the specialization of the new data without overwriting teacher's general knowledge.
+
 .. note::
     As the model is not of the same class anymore, calling ``type()`` on the model after conversion
     will not work as expected.
@@ -123,6 +127,9 @@ maps or logits) which the teacher has already mastered. This can serve multiple 
 
   **C.** Module replacement: One can replace a single module within a model with a more efficient one
   and use distillation on its original outputs to effectively re-integrate it into the whole model.
+
+  **D.** Minimal modification without catastrophic forgetting: A variant of distillation, called Minifinetuning,
+  allows for training a model on even small datasets without losing the original model's knowledge.
 
 Student
 ^^^^^^^
@@ -192,3 +199,15 @@ ground truth labels may be.
 
 
 .. _1: https://arxiv.org/abs/1803.03635
+
+Minifinetuning
+^^^^^^^^^^^^^^
+
+Minifinetuning is a technique that allows for training a model on even small datasets without losing the original
+model's knowledge. This is achieved by algorithmic modification of the teacher's distribution depending on its
+performance on the new dataset. The goal is to ensure that the separation between the correct and incorrect argmax
+tokens is large enough, which can be controlled by a threshold parameter. ModelOpt provides a pre-defined loss function
+for this purpose, called :class:`MFTDistillationLoss <modelopt.torch.distill.losses.MFTDistillationLoss>`, which can
+be used in place of the standard :class:`LogitsDistillationLoss <modelopt.torch.distill.losses.LogitsDistillationLoss>`.
+More information about the technique can be found in the original paper:
+`Minifinetuning: Low-Data Generation Domain Adaptation through Corrective Self-Distillation <https://arxiv.org/abs/2506.15702>`_.

@@ -85,7 +85,8 @@ def auto_quantize(
     # Check if all provided quantization formats are supported
     if args.export_fmt == "hf":
         assert all(
-            qformat in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq", "w4a8_awq", "fp8_pb_wo"]
+            qformat
+            in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq", "w4a8_awq", "fp8_pb_wo", "w4a8_mxfp4_fp8"]
             for qformat in qformat_list
         ), (
             "One or more quantization formats provided are not supported for unified checkpoint export"
@@ -110,9 +111,7 @@ def auto_quantize(
         # TRTLLM only support one quantization format or None (do not quantize, internally supported)
         quantization_formats=[QUANT_CFG_CHOICES[format] for format in qformat_list],
         num_calib_steps=len(calib_dataloader),
-        num_score_steps=min(
-            len(calib_dataloader), 128 // batch_size
-        ),  # Limit the number of score steps to avoid long calibration time
+        num_score_steps=len(calib_dataloader),
         verbose=True,
         disabled_layers=["*lm_head*"],
     )
@@ -218,6 +217,7 @@ def main(args):
                     "nvfp4_awq",
                     "w4a8_awq",
                     "fp8_pb_wo",
+                    "w4a8_mxfp4_fp8",
                 ]
                 or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES
             ), f"Quantization format {args.qformat} not supported for HF export path"
@@ -263,6 +263,9 @@ def main(args):
         device = model.model.device
     processor = None
     tokenizer = None
+
+    full_model = model
+
     if model_type == "mllama":
         if args.dataset is None:
             args.dataset = "scienceqa"
@@ -300,6 +303,13 @@ def main(args):
         # Left padding usually provides better calibration result.
         tokenizer.padding_side = "left"
 
+        # We only quantize the language model for VLMs other than the type supported above.
+        if hasattr(model, "language_model"):
+            assert model_type == "llama4", (
+                "Only llama4 should reach here. Please uncomment this check if you are modelopt developers."
+            )
+            model = model.language_model
+
     if args.sparsity_fmt != "dense":
         if args.batch_size == 0:
             # Sparse algorithm takes more GPU memory so we reduce the batch_size by 4.
@@ -335,10 +345,6 @@ def main(args):
             )
 
         if args.batch_size == 0:
-            # TODO: Enable auto-batch size calculation for auto_quantize
-            assert args.auto_quantize_bits is None, (
-                "auto_quantize requires batch_size to be specified, please specify batch_size."
-            )
             # Calibration/sparsification will actually take much more memory than regular inference
             # due to intermediate tensors for fake quantization. Setting sample_memory_usage_ratio
             # to 2 to avoid OOM for AWQ/SmoothQuant fake quantization as it will take more memory than inference.
@@ -358,10 +364,14 @@ def main(args):
                 )
             else:
                 sample_input_single_batch = None
+
+            run_auto_quant = args.auto_quantize_bits is not None
+
             args.batch_size = get_max_batch_size(
                 model,
-                sample_memory_usage_ratio=sample_memory_usage_ratio,
+                sample_memory_usage_ratio=sample_memory_usage_ratio if not run_auto_quant else 1.0,
                 sample_input_single_batch=sample_input_single_batch,
+                enable_grad=run_auto_quant,
             )
             args.batch_size = min(args.batch_size, args.calib_size)
 
@@ -550,23 +560,9 @@ def main(args):
             )
         elif args.export_fmt == "hf":
             export_hf_checkpoint(
-                model,
+                full_model,
                 export_dir=export_path,
             )
-            if model_type == "llama4":
-                # TRT-LLM expects the original model config instead of the config from text model,
-                # so we need to copy the original model config to the export path.
-                # Also we copy the preprocessor config to the export path.
-                from transformers import AutoConfig, AutoProcessor
-
-                # Use HuggingFace API to handle both model IDs and local paths
-                AutoConfig.from_pretrained(
-                    args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-                ).save_pretrained(export_path)
-
-                AutoProcessor.from_pretrained(
-                    args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-                ).save_pretrained(export_path)
         else:
             raise NotImplementedError(f"{args.export_fmt} not supported")
 
@@ -638,12 +634,6 @@ if __name__ == "__main__":
         default="fp8",
         choices=KV_QUANT_CFG_CHOICES.keys(),
         help="Specify KV cache quantization format, default to fp8 if not provided",
-    )
-    parser.add_argument(
-        "--vlm",
-        help="Specify whether this is a visual-language model",
-        default=False,
-        action="store_true",
     )
     parser.add_argument(
         "--export_fmt",

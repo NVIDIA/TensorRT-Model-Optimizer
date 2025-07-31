@@ -137,6 +137,9 @@ class Hparam:
         else:
             assert val_set == curr, f"Cannot update choices: current {curr}, new: {val_set}"
 
+    def reset_choices(self) -> None:
+        """Reset the choices of the hparam."""
+
     @property
     def min(self) -> HPType:
         """Return min value from among choices."""

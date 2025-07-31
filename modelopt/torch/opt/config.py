@@ -84,10 +84,10 @@ class ModeloptBaseConfig(BaseModel):
         """Get the field name from the given key (can be name or alias of field)."""
         assert isinstance(key, str), f"key must be a string, got {type(key)}"
 
-        if key in self.model_fields or key in self._iterable_model_extra:
+        if key in type(self).model_fields or key in self._iterable_model_extra:
             return key
         else:
-            for name, field_info in self.model_fields.items():
+            for name, field_info in type(self).model_fields.items():
                 if field_info.alias == key:
                     return name
             raise AttributeError(f"Key {key} not found in the config.")
@@ -121,7 +121,7 @@ class ModeloptBaseConfig(BaseModel):
 
     def __iter__(self) -> Iterator[str]:
         """Iterate over aliases (or name if alias is not defined) of fields."""
-        for field_name, field_info in self.model_fields.items():
+        for field_name, field_info in type(self).model_fields.items():
             yield field_info.alias or field_name
         yield from self._iterable_model_extra
 

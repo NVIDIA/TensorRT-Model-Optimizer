@@ -56,7 +56,13 @@ import modelopt.torch.quantization as mtq
 from modelopt.torch.export.model_config import KV_CACHE_FP8
 from modelopt.torch.export.quant_utils import get_quant_config
 from modelopt.torch.quantization.nn import TensorQuantizer
+from modelopt.torch.quantization.utils import (
+    is_quantized_column_parallel_linear,
+    is_quantized_parallel_linear,
+    is_quantized_row_parallel_linear,
+)
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
+from modelopt.torch.utils.distributed import ParallelState
 
 sys.path.append(str(Path(__file__).resolve().parent / "DeepSeek-V3/inference"))
 import model as deekseep_model
@@ -105,6 +111,11 @@ def monkey_patch_deepseek_model():
         def _setup(self):
             self.input_quantizer = TensorQuantizer()
             self.weight_quantizer = TensorQuantizer()
+            # Use TP parallel state
+            self._parallel_state = ParallelState(data_parallel_group=-1, tensor_parallel_group=None)
+            self._is_column_parallel = True
+
+            assert is_quantized_column_parallel_linear(self)
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             y = linear(
@@ -124,6 +135,11 @@ def monkey_patch_deepseek_model():
         def _setup(self):
             self.input_quantizer = TensorQuantizer()
             self.weight_quantizer = TensorQuantizer()
+            # Use TP parallel state
+            self._parallel_state = ParallelState(data_parallel_group=-1, tensor_parallel_group=None)
+            self._is_row_parallel = True
+
+            assert is_quantized_row_parallel_linear(self)
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             y = linear(
@@ -146,6 +162,10 @@ def monkey_patch_deepseek_model():
         def _setup(self):
             self.input_quantizer = TensorQuantizer()
             self.weight_quantizer = TensorQuantizer()
+            # No parallel state.
+            self._parallel_state = ParallelState(data_parallel_group=-1, tensor_parallel_group=-1)
+
+            assert not is_quantized_parallel_linear(self)
 
         def forward(self, x: torch.Tensor) -> torch.Tensor:
             y = linear(
@@ -237,6 +257,9 @@ def ptq(
 
     ## handle DeepSeek model structures
     transformer = model.model if hasattr(model, "model") else model
+
+    # make sure all processes are ready before starting the calibration
+    dist.barrier()
 
     ## quant config
     mtq_cfg = getattr(mtq, quant_cfg)
@@ -332,9 +355,12 @@ if __name__ == "__main__":
     parser.add_argument("--calib_size", type=int, default=512, help="samples for calibration.")
     parser.add_argument("--enable_fp8_kvcache", type=bool, default=True, help="enable fp8 kvcache.")
     parser.add_argument("--enable_wo_quant", action="store_true", help="enable MLA wo quant.")
+    parser.add_argument("--trust_remote_code", action="store_true", help="trust remote code.")
 
     args = parser.parse_args()
     model = load_deepseek_model(args.config, args.model_path, args.batch_size)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_path, trust_remote_code=args.trust_remote_code
+    )
     model = ptq(model, tokenizer, args.quant_cfg, args.batch_size, args.calib_size)
     save_amax_and_quant_config(model, args.output_path, args.enable_fp8_kvcache)

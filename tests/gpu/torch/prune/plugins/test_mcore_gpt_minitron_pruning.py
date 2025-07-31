@@ -24,8 +24,7 @@ skip_if_no_megatron(apex_or_te_required=True)
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
     get_mcore_gpt_model,
-    initialize_for_megatron,
-    run_mcore_gpt_inference_with_dummy_input,
+    run_mcore_inference_with_dummy_input,
 )
 
 import modelopt.torch.prune as mtp
@@ -47,7 +46,7 @@ def _test_mcore_gpt_pruning(
 ):
     hidden_size = 256
     ffn_hidden_size = 256
-    max_sequence_length = 32
+    max_sequence_length = 16
     vocab_size = 64
     batch_size = 2
 
@@ -67,11 +66,10 @@ def _test_mcore_gpt_pruning(
         else:
             raise ValueError(f"Unsupported size {size}")
 
-    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=size)
-
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=size,
+        initialize_megatron=True,
         num_layers=num_layers,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
@@ -87,7 +85,7 @@ def _test_mcore_gpt_pruning(
 
     def forward_loop(m):
         for _ in range(5):
-            run_mcore_gpt_inference_with_dummy_input(m, batch_size, hidden_size)
+            run_mcore_inference_with_dummy_input(m, batch_size, hidden_size)
 
     pruned_ffn = ffn_hidden_size // pruned_ffn_div
     pruned_num_attention_heads = num_attention_heads // pruned_num_attention_heads_div
@@ -132,7 +130,7 @@ def _test_mcore_gpt_pruning(
         )
 
     # Assert forward pass works on the pruned model
-    run_mcore_gpt_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
+    run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
 
     # Assert model.config is updated for correct save/restoring
     assert model.config.ffn_hidden_size == pruned_ffn

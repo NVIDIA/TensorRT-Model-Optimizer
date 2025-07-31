@@ -25,7 +25,6 @@ from torch.onnx import symbolic_helper
 import modelopt.torch.quantization.triton as triton_kernel
 
 from .config import QuantizerAttributeConfig
-from .export_onnx import export_fp4, export_fp8, export_int8, export_mxfp8
 from .extensions import get_cuda_ext, get_cuda_ext_fp8, get_cuda_ext_mx
 
 mx_format_map = {
@@ -191,7 +190,7 @@ def _dynamic_block_quantize_impl(
                 and not DISABLE_TRITON_KERNEL
                 and amax is not None
             ):
-                return triton_kernel.fp4_fake_quant_block(inputs, amax.item())
+                return triton_kernel.fp4_fake_quant_block(inputs, amax)
             cuda_ext_mx = get_cuda_ext_mx(raise_if_failed=True)
             return cuda_ext_mx.fused_amax_convert(
                 inputs,
@@ -325,6 +324,8 @@ class FakeTensorQuantFunction(Function):
         trt_high_precision_dtype=None,
     ):
         """ONNX symbolic function."""
+        from .export_onnx import export_int8
+
         return export_int8(
             g, inputs, amax, num_bits, unsigned, narrow_range, trt_high_precision_dtype
         )
@@ -395,6 +396,8 @@ class ScaledE4M3Function(Function):
     @symbolic_helper.parse_args("v", "t", "t", "i", "i", "s")
     def symbolic(g, inputs, amax=None, bias=None, E=4, M=3, trt_high_precision_dtype=None):  # noqa: N803
         """ONNX symbolic function."""
+        from .export_onnx import export_fp8
+
         return export_fp8(g, inputs, amax, trt_high_precision_dtype)
 
     @staticmethod
@@ -411,7 +414,12 @@ class ScaledE4M3Function(Function):
         ctx.amax = amax
 
         outputs = quantize_op(
-            inputs, amax, num_bits=8, exponent_bits=4, unsigned=False, narrow_range=False
+            inputs,
+            amax,
+            num_bits=8,
+            exponent_bits=4,
+            unsigned=False,
+            narrow_range=False,
         )
 
         if bias is not None:
@@ -424,7 +432,9 @@ class ScaledE4M3Function(Function):
         """Implements straight through estimation with clipping."""
         (inputs,) = ctx.saved_tensors
         amax = torch.tensor(
-            ctx.amax if ctx.amax is not None else 448.0, dtype=torch.float32, device=inputs.device
+            ctx.amax if ctx.amax is not None else 448.0,
+            dtype=torch.float32,
+            device=inputs.device,
         )
         grad_inputs = _fake_tensor_quant_backward(inputs, amax, grad_outputs)
         return grad_inputs, None, None, None, None, None
@@ -453,7 +463,13 @@ def _dynamic_block_quantize_forward(
     scale_exponent_bits = scale_bits[0]
     scale_num_bits = scale_bits[0] + scale_bits[1] + 1
     outputs = dynamic_block_quantize_op(
-        inputs, block_size, amax, num_bits, exponent_bits, scale_num_bits, scale_exponent_bits
+        inputs,
+        block_size,
+        amax,
+        num_bits,
+        exponent_bits,
+        scale_num_bits,
+        scale_exponent_bits,
     )
     return outputs
 
@@ -475,6 +491,8 @@ class DynamicBlockQuantizationFunction(Function):
         onnx_quantizer_type="dynamic",
     ):
         """ONNX symbolic function."""
+        from .export_onnx import export_fp4, export_mxfp8
+
         if num_bits == (2, 1) and scale_bits == (4, 3):
             return export_fp4(
                 g,
@@ -643,6 +661,8 @@ class TensorQuantFunction(Function):
         trt_high_precision_dtype=None,
     ):
         """ONNX symbolic function."""
+        from .export_onnx import export_int8
+
         return export_int8(
             g, inputs, amax, num_bits, unsigned, narrow_range, trt_high_precision_dtype
         )

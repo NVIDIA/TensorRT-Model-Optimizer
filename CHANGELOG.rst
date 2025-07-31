@@ -1,6 +1,19 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.35 (2025-08-xx)
+^^^^^^^^^^^^^^^^^
+
+**Backward Breaking Changes**
+
+**Deprecations**
+
+**New Features**
+
+- (Experimental) Add quantization support for custom TensorRT op in ONNX models.
+- Add support for Minifinetuning (MFT; https://arxiv.org/abs/2506.15702) self-corrective distillation, which enables training on small datasets with severely mitigated catastrophic forgetting.
+- Add tree decoding support for Megatron Eagle models.
+
 0.33 (2025-07-14)
 ^^^^^^^^^^^^^^^^^
 
@@ -20,7 +33,7 @@ Model Optimizer Changelog (Linux)
 - Add per node calibration support in ONNX quantization.
 - ModelOpt now supports quantization of tensor-parallel sharded Huggingface transformer models. This requires ``transformers>=4.52.0``.
 - Support quantization of FSDP2 wrapped models and add FSDP2 support in the ``llm_qat`` example.
-- Add NeMo 2 Simplified Flow examples for quantization aware training/distillation (QAT/QAD), speculative decoding, pruning & distilllation.
+- Add NeMo 2 Simplified Flow examples for quantization aware training/distillation (QAT/QAD), speculative decoding, pruning & distillation.
 
 0.31 (2025-06-04)
 ^^^^^^^^^^^^^^^^^

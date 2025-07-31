@@ -34,6 +34,10 @@ if int4.has_cupy:
 else:
     import numpy as np
 
+# TODO: Rename this script to test_onnx_torch_int4_awq.py
+#       For that, we need to investigate failure in 'pytest tests/gpu/onnx'.
+#       test_qdq_utils_fp8.py::test_fused_q[bf16,fp16] fails if this script runs after the int4 test, but not before.
+
 
 def test_int4_awq(tmp_path):
     def _forward_loop(model, dataloader):
