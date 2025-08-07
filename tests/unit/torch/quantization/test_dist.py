@@ -43,5 +43,5 @@ def _test_data_parallel_helper(rank, size):
     dist.destroy_process_group()
 
 
-def test_data_parallel():
+def test_data_parallel(skip_on_windows):
     spawn_multiprocess_job(2, _test_data_parallel_helper, backend="gloo")

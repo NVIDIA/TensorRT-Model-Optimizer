@@ -16,11 +16,9 @@
 import os
 
 import pytest
-import torch
 from _test_utils.opt_utils import apply_mode_with_sampling
 
 pytest.importorskip("transformers")
-import transformers
 from _test_utils.torch_model.transformers_models import (
     create_tiny_bert_dir,
     tf_modelopt_state_and_output_tester,
@@ -28,10 +26,6 @@ from _test_utils.torch_model.transformers_models import (
 from transformers import AutoModelForQuestionAnswering, BertForQuestionAnswering
 
 
-@pytest.mark.skipif(
-    transformers.__version__ >= "4.52" and torch.__version__ <= "2.4",
-    reason="Skip when transformers > 4.52 and torch <= 2.4",
-)
 def test_pruned_transformers_save_restore(tmp_path):
     tiny_bert_dir = create_tiny_bert_dir(tmp_path)
     model_ref = BertForQuestionAnswering.from_pretrained(tiny_bert_dir)

@@ -289,7 +289,7 @@ def _test_data_parallel_auto_quantize(rank, size):
     assert search_history["best"]["is_satisfied"]
 
 
-def test_data_parallel_auto_quantize():
+def test_data_parallel_auto_quantize(skip_on_windows):
     spawn_multiprocess_job(4, _test_data_parallel_auto_quantize, backend="gloo")
 
 
