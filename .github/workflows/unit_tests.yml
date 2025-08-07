@@ -24,10 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # Build onnxsim from sdists for Python 3.12 until http://github.com/daquexian/onnx-simplifier/pull/353
       - name: Install dependencies
-        run: |
-          pip install onnxsim
-          pip install tox
+        run: pip install tox
       - name: Run unit tests
         run: tox -e py312-torch27-unit

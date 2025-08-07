@@ -1,0 +1,34 @@
+name: GPU tests
+
+on:
+  push:
+    branches: ["pull-request/[0-9]+"]
+    paths:
+      - ".github/workflows/gpu_tests.yml"
+      - "modelopt/**"
+      - "tests/**"
+      - "setup.py"
+      - "tox.ini"
+
+# Cancel previous runs if new commit is pushed to the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gpu-tests:
+    # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
+    runs-on: linux-amd64-gpu-h100-latest-1
+    timeout-minutes: 60
+    container:
+      image: nvcr.io/nvidia/pytorch:25.04-py3
+      env:
+        GIT_DEPTH: 1000 # For correct version for tests/gpu/torch/quantization/plugins/test_megatron.py
+        LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}" # Add libcudnn*.so and libnv*.so to path.
+        PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: pip install tox-current-env
+      - name: Run gpu tests
+        run: tox -e py312-cuda12-gpu --current-env
