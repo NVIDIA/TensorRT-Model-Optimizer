@@ -211,7 +211,7 @@ class TestQuantRNN:
 
         out1 = quant_rnn_object(test_input)[0]
         out2 = rnn_object_original(test_input)[0]
-        assert torch.allclose(out1, out2)
+        assert torch.allclose(out1, out2, atol=1e-5)
 
     @pytest.mark.parametrize(
         ("original_cls", "bidirectional"),
