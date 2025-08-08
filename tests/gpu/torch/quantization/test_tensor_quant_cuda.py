@@ -231,7 +231,7 @@ class Testfp4:
             assert torch.allclose(quantized_outputs, expected_outputs)
             if triton_kernel.IS_AVAILABLE:
                 quantized_outputs_triton = triton_kernel.fp4_fake_quant_block(
-                    inputs, inputs.abs().amax().item()
+                    inputs, inputs.abs().amax()
                 )
                 assert torch.allclose(quantized_outputs_triton, expected_outputs)
 

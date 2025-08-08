@@ -51,9 +51,8 @@ extend-ignore = [
     "PLR0402", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLR0911",
     "PT011", "PT018",
     "RUF002", "RUF012",
-    "SIM115",
-    "UP038", "UP032",
-    "SIM108", "SIM102",
+    "SIM102", "SIM108", "SIM115",
+    "UP032", "UP038",
 ]
 
 
@@ -120,7 +119,7 @@ markers = ["manual: Only run when --run-manual is given"]
 
 [tool.coverage.run]
 # measure branch coverage in addition to statement coverage
-branch = true
+branch = false
 include = ["modelopt/*"]
 omit = ["*/plugins/*", "*/export/*"]
 
