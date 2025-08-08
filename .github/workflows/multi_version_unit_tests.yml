@@ -7,7 +7,7 @@ on:
     paths:
       - ".github/workflows/multi_version_unit_tests.yml"
       - "modelopt/**"
-      - "tests/**"
+      - "tests/unit/**"
       - "setup.py"
       - "tox.ini"
 
@@ -28,10 +28,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.${{ matrix.py }}"
-      - name: Install dependencies
-        run: pip install tox
       - name: Run unit tests
-        run: tox -e py3${{ matrix.py }}-torch28-unit
+        run: pip install tox && tox -e py3${{ matrix.py }}-torch28-unit
   multi-torch-unit:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -43,7 +41,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dependencies
-        run: pip install tox
       - name: Run unit tests
-        run: tox -e py312-torch${{ matrix.torch }}-unit
+        run: pip install tox && tox -e py312-torch${{ matrix.torch }}-unit

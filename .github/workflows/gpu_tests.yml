@@ -3,12 +3,13 @@ name: GPU tests
 on:
   push:
     branches: ["pull-request/[0-9]+"]
-    paths:
-      - ".github/workflows/gpu_tests.yml"
-      - "modelopt/**"
-      - "tests/**"
-      - "setup.py"
-      - "tox.ini"
+    # TODO: paths cannot be used since push happens to copied PR and only latest commit to PR is used
+    # paths:
+    #   - ".github/workflows/gpu_tests.yml"
+    #   - "modelopt/**"
+    #   - "tests/gpu/**"
+    #   - "setup.py"
+    #   - "tox.ini"
 
 # Cancel previous runs if new commit is pushed to the same PR
 concurrency:
@@ -28,7 +29,7 @@ jobs:
         PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
-        run: pip install tox-current-env
+      - name: Setup proxy cache
+        uses: nv-gha-runners/setup-proxy-cache@main
       - name: Run gpu tests
-        run: tox -e py312-cuda12-gpu --current-env
+        run: pip install tox-current-env && tox -e py312-cuda12-gpu --current-env

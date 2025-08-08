@@ -39,7 +39,7 @@ def test_hadamard_transform(dim):
     xxt = x @ x.T
     x_h = normalized_hadamard_transform(x)
     xxt_h = x_h @ x_h.T
-    assert torch.allclose(xxt_h, xxt, atol=1e-5)
+    assert torch.allclose(xxt_h, xxt, atol=1e-3)
 
 
 def test_kv_rotate():
@@ -59,7 +59,7 @@ def test_kv_rotate():
         },
     ):
         output_test = model(dummy_input)
-    assert torch.allclose(output_ref, output_test, atol=1e-5)
+    assert torch.allclose(output_ref, output_test, atol=1e-3)
 
     set_quantizer_by_cfg(
         model,

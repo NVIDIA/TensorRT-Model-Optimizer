@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/partial_unit_tests.yml"
       - "modelopt/**"
-      - "tests/**"
+      - "tests/unit/**"
       - "setup.py"
       - "tox.ini"
 
@@ -27,7 +27,5 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dependencies
-        run: pip install tox
       - name: Run unit tests
-        run: tox -e py312-partial-unit-${{ matrix.test-env }}
+        run: pip install tox && tox -e py312-partial-unit-${{ matrix.test-env }}
