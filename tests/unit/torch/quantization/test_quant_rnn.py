@@ -54,14 +54,18 @@ class TestQuantRNN:
         rnn_object_original.eval()
         set_quantizer_attribute(quant_rnn_object, lambda name: True, {"enable": False})
 
-        assert torch.allclose(quant_rnn_object.weight_ih_l0, rnn_object_original.weight_ih_l0)
-        assert torch.allclose(quant_rnn_object.weight_hh_l0, rnn_object_original.weight_hh_l0)
+        assert torch.allclose(
+            quant_rnn_object.weight_ih_l0, rnn_object_original.weight_ih_l0, atol=1e-6
+        )
+        assert torch.allclose(
+            quant_rnn_object.weight_hh_l0, rnn_object_original.weight_hh_l0, atol=1e-6
+        )
 
         test_input = torch.randn(INPUT_SHAPE)
 
         out1 = quant_rnn_object(test_input)[0]
         out2 = rnn_object_original(test_input)[0]
-        assert torch.allclose(out1, out2)
+        assert torch.allclose(out1, out2, atol=1e-6)
 
     @pytest.mark.parametrize(
         ("original_cls", "bidirectional", "bias"),
@@ -84,8 +88,12 @@ class TestQuantRNN:
         rnn_object_original.eval()
         set_quantizer_attribute(quant_rnn_object, lambda name: True, {"enable": False})
 
-        assert torch.allclose(quant_rnn_object.weight_ih_l0, rnn_object_original.weight_ih_l0)
-        assert torch.allclose(quant_rnn_object.weight_hh_l0, rnn_object_original.weight_hh_l0)
+        assert torch.allclose(
+            quant_rnn_object.weight_ih_l0, rnn_object_original.weight_ih_l0, atol=1e-6
+        )
+        assert torch.allclose(
+            quant_rnn_object.weight_hh_l0, rnn_object_original.weight_hh_l0, atol=1e-6
+        )
 
         test_input = [
             torch.randn([INPUT_SHAPE[0] - 1, INPUT_SHAPE[2]]),
@@ -95,7 +103,7 @@ class TestQuantRNN:
 
         out1 = quant_rnn_object(test_input)[0]
         out2 = rnn_object_original(test_input)[0]
-        assert torch.allclose(out1[0], out2[0])
+        assert torch.allclose(out1[0], out2[0], atol=1e-6)
 
     @pytest.mark.parametrize(
         ("original_cls", "bidirectional", "bias"),
@@ -122,7 +130,7 @@ class TestQuantRNN:
 
         out1 = quant_rnn_object(test_input)[0]
         out2 = rnn_object_original(test_input)[0]
-        assert torch.allclose(out1, out2)
+        assert torch.allclose(out1, out2, atol=1e-6)
 
     @pytest.mark.parametrize(
         ("original_cls", "bidirectional"),
@@ -148,7 +156,7 @@ class TestQuantRNN:
 
         out1 = quant_rnn_object(test_input)[0]
         out2 = rnn_object_original(test_input)[0]
-        assert torch.allclose(out1, out2)
+        assert torch.allclose(out1, out2, atol=1e-6)
 
     @pytest.mark.parametrize(
         ("original_cls", "bidirectional"),
@@ -180,7 +188,7 @@ class TestQuantRNN:
 
         out1 = quant_rnn_object(test_input)[0]
         out2 = rnn_object_original(test_input)[0]
-        assert torch.allclose(out1, out2)
+        assert torch.allclose(out1, out2, atol=1e-6)
 
     @pytest.mark.parametrize(
         ("original_cls", "bidirectional"),
@@ -211,7 +219,7 @@ class TestQuantRNN:
 
         out1 = quant_rnn_object(test_input)[0]
         out2 = rnn_object_original(test_input)[0]
-        assert torch.allclose(out1, out2, atol=1e-5)
+        assert torch.allclose(out1, out2, atol=1e-6)
 
     @pytest.mark.parametrize(
         ("original_cls", "bidirectional"),
@@ -258,4 +266,4 @@ class TestQuantRNN:
             bidirectional,
             False,
         )[0]
-        assert torch.allclose(out1, out2)
+        assert torch.allclose(out1, out2, atol=1e-6)

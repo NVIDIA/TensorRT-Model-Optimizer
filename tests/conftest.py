@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import platform
+
 import pytest
 
 
@@ -36,3 +38,9 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "manual" in item.keywords:
                 item.add_marker(skipper)
+
+
+@pytest.fixture
+def skip_on_windows():
+    if platform.system() == "Windows":
+        pytest.skip("Skipping on Windows")

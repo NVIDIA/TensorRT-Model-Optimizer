@@ -1,10 +1,10 @@
-name: Unit tests
+name: Partial install unit tests
 
 on:
   pull_request:
     branches: [main, release/*]
     paths:
-      - ".github/workflows/unit_tests.yml"
+      - ".github/workflows/partial_unit_tests.yml"
       - "modelopt/**"
       - "tests/**"
       - "setup.py"
@@ -16,12 +16,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  unit-tests:
-    runs-on: ${{ matrix.os }}
+  partial-unit:
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        test-env: [onnx, torch]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,4 +30,4 @@ jobs:
       - name: Install dependencies
         run: pip install tox
       - name: Run unit tests
-        run: tox -e py312-torch28-unit
+        run: tox -e py312-partial-unit-${{ matrix.test-env }}

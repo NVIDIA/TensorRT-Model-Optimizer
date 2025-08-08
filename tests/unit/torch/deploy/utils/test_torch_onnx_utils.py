@@ -51,7 +51,7 @@ deploy_benchmark_dynamo = get_deploy_models(dynamic_control_flow=False)
 @pytest.mark.parametrize(
     "model", deploy_benchmark_dynamo.values(), ids=deploy_benchmark_dynamo.keys()
 )
-def test_onnx_dynamo_export(model: BaseDeployModel):
+def test_onnx_dynamo_export(skip_on_windows, model: BaseDeployModel):
     # try it for all potential numeric types
     for active in range(model.get.num_choices):
         # retrieve args

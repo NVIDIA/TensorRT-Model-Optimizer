@@ -8,6 +8,8 @@ Model Optimizer Changelog (Linux)
 
 **Deprecations**
 
+- Deprecate ``torch<2.5`` support.
+
 **New Features**
 
 - (Experimental) Add quantization support for custom TensorRT op in ONNX models.

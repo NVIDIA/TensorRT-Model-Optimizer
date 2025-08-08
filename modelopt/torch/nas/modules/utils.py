@@ -40,9 +40,9 @@ def get_sliced_tensor_by_slices(
     tensor_sliced = tensor
     for i, _ in enumerate(slices):
         if sum(not isinstance(s, slice) for s in slices) < 2:
-            tensor_sliced = tensor_sliced[slices]
+            tensor_sliced = tensor_sliced[tuple(slices)]
             break
-        tensor_sliced = tensor_sliced[slices[: i + 1]]
+        tensor_sliced = tensor_sliced[tuple(slices[: i + 1])]
         slices[i] = slice(None)  # replace with a vanilla slice ("[:]") for next slicing iteration
 
     # return sliced, contiguous tensor
