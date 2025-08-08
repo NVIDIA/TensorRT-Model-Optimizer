@@ -6,9 +6,9 @@ on:
   push:
     branches: [main, release/*]
 
-# Cancel previous runs if new commit is pushed to the same PR
+# Cancel previous runs if new commit is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages

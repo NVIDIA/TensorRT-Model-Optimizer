@@ -7,7 +7,6 @@
 [![Documentation](https://img.shields.io/badge/Documentation-latest-brightgreen.svg?style=flat)](https://nvidia.github.io/TensorRT-Model-Optimizer)
 [![version](https://img.shields.io/pypi/v/nvidia-modelopt?label=Release)](https://pypi.org/project/nvidia-modelopt/)
 [![license](https://img.shields.io/badge/License-Apache%202.0-blue)](./LICENSE)
-[![codecov](https://codecov.io/github/NVIDIA/TensorRT-Model-Optimizer/graph/badge.svg?token=r1bw4LC1WH)](https://codecov.io/github/NVIDIA/TensorRT-Model-Optimizer)
 
 [Examples](#examples) |
 [Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer) |

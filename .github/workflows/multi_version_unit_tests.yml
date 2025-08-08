@@ -8,6 +8,7 @@ on:
       - ".github/workflows/multi_version_unit_tests.yml"
       - "modelopt/**"
       - "tests/unit/**"
+      - "pyproject.toml"
       - "setup.py"
       - "tox.ini"
 
