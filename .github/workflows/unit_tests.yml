@@ -7,12 +7,22 @@ on:
       - ".github/workflows/unit_tests.yml"
       - "modelopt/**"
       - "tests/unit/**"
+      - "pyproject.toml"
+      - "setup.py"
+      - "tox.ini"
+  push:
+    branches: [main, release/*]
+    paths:
+      - ".github/workflows/unit_tests.yml"
+      - "modelopt/**"
+      - "tests/unit/**"
+      - "pyproject.toml"
       - "setup.py"
       - "tox.ini"
 
-# Cancel previous runs if new commit is pushed to the same PR
+# Cancel previous runs if new commit is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,6 +43,7 @@ jobs:
           fail_ci_if_error: true
           verbose: true
   unit-tests-windows:
+    if: github.event_name == 'pull_request'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

@@ -8,6 +8,7 @@ on:
     #   - ".github/workflows/gpu_tests.yml"
     #   - "modelopt/**"
     #   - "tests/gpu/**"
+    #   - "pyproject.toml"
     #   - "setup.py"
     #   - "tox.ini"
 
