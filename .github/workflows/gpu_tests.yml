@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check-changes:
+  check-file-changes:
     runs-on: ubuntu-latest
     outputs:
       any_changed: ${{ steps.changed-tests.outputs.any_changed }}
@@ -32,8 +32,8 @@ jobs:
             setup.py
           base_sha: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}
   wait-checks:
-    needs: [check-changes]
-    if: needs.check-changes.outputs.any_changed == 'true'
+    needs: [check-file-changes]
+    if: needs.check-file-changes.outputs.any_changed == 'true'
     uses: ./.github/workflows/_wait_for_checks.yml
     permissions:
       checks: read
@@ -42,8 +42,8 @@ jobs:
       match_pattern: '^DCO$|^linux$' # Wait for DCO and Unit tests / linux to pass
       delay: 300s
   gpu-tests:
-    needs: [check-changes, wait-checks]
-    if: needs.check-changes.outputs.any_changed == 'true'
+    needs: [check-file-changes, wait-checks]
+    if: needs.check-file-changes.outputs.any_changed == 'true'
     # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
     runs-on: linux-amd64-gpu-h100-latest-1
     timeout-minutes: 60

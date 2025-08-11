@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  wait-dco:
+  check-dco:
     uses: ./.github/workflows/_wait_for_checks.yml
     permissions:
       checks: read
@@ -34,7 +34,7 @@ jobs:
     with:
       match_pattern: '^DCO$'
   linux:
-    needs: [wait-dco]
+    needs: [check-dco]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
