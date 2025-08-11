@@ -3,18 +3,11 @@ name: GPU tests
 on:
   push:
     branches: ["pull-request/[0-9]+"]
-    # TODO: paths cannot be used since push happens to copied PR and only latest commit to PR is used
-    # paths:
-    #   - ".github/workflows/gpu_tests.yml"
-    #   - "modelopt/**"
-    #   - "tests/gpu/**"
-    #   - "pyproject.toml"
-    #   - "setup.py"
-    #   - "tox.ini"
+    # NOTE: paths cannot be used since push happens to copied PR and only latest commit to PR is used
 
 # Cancel previous runs if new commit is pushed to the same PR
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -25,6 +18,26 @@ jobs:
     secrets: inherit
     with:
       match_pattern: '^DCO$'
+  check-changes:
+    needs: [wait-dco]
+    runs-on: ubuntu-latest
+    outputs:
+      any_changed: ${{ steps.changed-tests.outputs.any_changed }}
+    steps:
+      - id: get-pr-info
+        uses: nv-gha-runners/get-pr-info@main
+      - name: Check for changes in test-relevant directories
+        id: changed-tests
+        uses: step-security/changed-files@v46.0.5
+        with:
+          files: |
+            .github/workflows/gpu_tests.yml
+            modelopt/**
+            tests/gpu/**
+            tox.ini
+            pyproject.toml
+            setup.py
+          base_sha: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}
   wait-unit-tests:
     needs: [wait-dco]
     uses: ./.github/workflows/_wait_for_checks.yml
@@ -35,7 +48,8 @@ jobs:
       match_pattern: '^linux$' # Unit tests / linux
       delay: 60s
   gpu-tests:
-    needs: [wait-unit-tests]
+    needs: [check-changes, wait-unit-tests]
+    if: needs.check-changes.outputs.any_changed == 'true'
     # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
     runs-on: linux-amd64-gpu-h100-latest-1
     timeout-minutes: 60
@@ -47,7 +61,6 @@ jobs:
         PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
     steps:
       - uses: actions/checkout@v4
-      - name: Setup proxy cache
-        uses: nv-gha-runners/setup-proxy-cache@main
+      - uses: nv-gha-runners/setup-proxy-cache@main
       - name: Run gpu tests
         run: pip install tox-current-env && tox -e py312-cuda12-gpu --current-env
