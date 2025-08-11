@@ -11,19 +11,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  wait-dco:
-    uses: ./.github/workflows/_wait_for_checks.yml
-    permissions:
-      checks: read
-    secrets: inherit
-    with:
-      match_pattern: '^DCO$'
   check-changes:
-    needs: [wait-dco]
     runs-on: ubuntu-latest
     outputs:
       any_changed: ${{ steps.changed-tests.outputs.any_changed }}
     steps:
+      - uses: actions/checkout@v4
       - id: get-pr-info
         uses: nv-gha-runners/get-pr-info@main
       - name: Check for changes in test-relevant directories
@@ -38,17 +31,18 @@ jobs:
             pyproject.toml
             setup.py
           base_sha: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}
-  wait-unit-tests:
-    needs: [wait-dco]
+  wait-checks:
+    needs: [check-changes]
+    if: needs.check-changes.outputs.any_changed == 'true'
     uses: ./.github/workflows/_wait_for_checks.yml
     permissions:
       checks: read
     secrets: inherit
     with:
-      match_pattern: '^linux$' # Unit tests / linux
-      delay: 60s
+      match_pattern: '^DCO$|^linux$' # Wait for DCO and Unit tests / linux to pass
+      delay: 300s
   gpu-tests:
-    needs: [check-changes, wait-unit-tests]
+    needs: [check-changes, wait-checks]
     if: needs.check-changes.outputs.any_changed == 'true'
     # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
     runs-on: linux-amd64-gpu-h100-latest-1
