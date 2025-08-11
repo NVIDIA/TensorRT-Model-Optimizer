@@ -1,0 +1,8 @@
+# Allow atmost 5% coverage drop from main branch.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 5%
+    patch: false

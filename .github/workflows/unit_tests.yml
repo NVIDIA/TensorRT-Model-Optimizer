@@ -22,11 +22,19 @@ on:
 
 # Cancel previous runs if new commit is pushed
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
-  unit-tests:
+  check-dco:
+    uses: ./.github/workflows/_wait_for_checks.yml
+    permissions:
+      checks: read
+    secrets: inherit
+    with:
+      match_pattern: '^DCO$'
+  linux:
+    needs: [check-dco]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -42,8 +50,9 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: true
           verbose: true
-  unit-tests-windows:
+  windows:
     if: github.event_name == 'pull_request'
+    needs: [linux]
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -53,3 +62,48 @@ jobs:
           python-version: "3.12"
       - name: Run unit tests (without coverage)
         run: pip install tox && tox -e py312-torch28-unit
+  multi-py:
+    if: github.event_name == 'pull_request'
+    needs: [linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        py: [10, 11]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.${{ matrix.py }}"
+      - name: Run unit tests
+        run: pip install tox && tox -e py3${{ matrix.py }}-torch28-unit
+  multi-torch:
+    if: github.event_name == 'pull_request'
+    needs: [linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        torch: [25, 26, 27]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        run: pip install tox && tox -e py312-torch${{ matrix.torch }}-unit
+  partial-install:
+    if: github.event_name == 'pull_request'
+    needs: [linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        test-env: [onnx, torch]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        run: pip install tox && tox -e py312-partial-unit-${{ matrix.test-env }}
