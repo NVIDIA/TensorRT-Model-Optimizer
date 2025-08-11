@@ -14,11 +14,28 @@ on:
 
 # Cancel previous runs if new commit is pushed to the same PR
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  wait-dco:
+    uses: ./.github/workflows/_wait_for_checks.yml
+    permissions:
+      checks: read
+    secrets: inherit
+    with:
+      match_pattern: '^DCO$'
+  wait-unit-tests:
+    needs: [wait-dco]
+    uses: ./.github/workflows/_wait_for_checks.yml
+    permissions:
+      checks: read
+    secrets: inherit
+    with:
+      match_pattern: '^linux$' # Unit tests / linux
+      delay: 60s
   gpu-tests:
+    needs: [wait-unit-tests]
     # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
     runs-on: linux-amd64-gpu-h100-latest-1
     timeout-minutes: 60
