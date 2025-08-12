@@ -1,3 +1,4 @@
+# NOTE: Make sure this file is consistent with .gitlab/tests.yml
 name: Unit tests
 
 on:
@@ -84,7 +85,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       matrix:
-        torch: [25, 26, 27]
+        torch: [26, 27]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
