@@ -5,6 +5,8 @@ on:
     branches: [main, release/*]
   push:
     branches: [main, release/*]
+  schedule:
+    - cron: "0 0 * * *" # Nightly
 
 # Cancel previous runs if new commit is pushed
 concurrency:

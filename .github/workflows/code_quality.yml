@@ -3,6 +3,8 @@ name: Code Quality
 on:
   pull_request:
     branches: [main, release/*]
+  schedule:
+    - cron: "0 0 * * *" # Nightly
 
 # Cancel previous runs if new commit is pushed to the same PR
 concurrency:

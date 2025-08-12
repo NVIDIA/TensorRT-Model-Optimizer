@@ -20,6 +20,8 @@ on:
       - "pyproject.toml"
       - "setup.py"
       - "tox.ini"
+  schedule:
+    - cron: "0 0 * * *" # Nightly
 
 # Cancel previous runs if new commit is pushed
 concurrency:

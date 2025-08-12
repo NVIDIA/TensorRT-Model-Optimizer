@@ -5,6 +5,8 @@ on:
   push:
     branches: ["pull-request/[0-9]+"]
     # NOTE: paths cannot be used since push happens to copied PR and only latest commit to PR is used
+  schedule:
+    - cron: "0 0 * * *" # Nightly
 
 # Cancel previous runs if new commit is pushed to the same PR
 concurrency:
