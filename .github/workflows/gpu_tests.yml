@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   check-file-changes:
+    if: startsWith(github.ref, 'refs/heads/pull-request/')
     runs-on: ubuntu-latest
     outputs:
       any_changed: ${{ steps.changed-tests.outputs.any_changed }}

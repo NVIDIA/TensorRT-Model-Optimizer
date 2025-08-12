@@ -1,8 +1,10 @@
-[CONFIGURATION] @kevalmorabia97 @RalphMao
-.pre-commit-config.yaml
-CONTRIBUTING.md
-LICENSE
-pyproject.toml
-SECURITY.md
-setup.py
-tox.ini
+# Configuration files
+.github @kevalmorabia97 @RalphMao
+.gitlab @kevalmorabia97 @RalphMao
+.pre-commit-config.yaml @kevalmorabia97 @RalphMao
+CONTRIBUTING.md @kevalmorabia97 @RalphMao
+LICENSE @kevalmorabia97 @RalphMao
+pyproject.toml @kevalmorabia97 @RalphMao
+SECURITY.md @kevalmorabia97 @RalphMao
+setup.py @kevalmorabia97 @RalphMao
+tox.ini @kevalmorabia97 @RalphMao
