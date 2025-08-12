@@ -20,6 +20,7 @@ from setuptools_scm import get_version
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
+# Hello
 # TODO: Set version to static stable release version when creating the release branch
 # version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "X.Y.Z")
 version = get_version(root=".", fallback_version="0.0.0")
