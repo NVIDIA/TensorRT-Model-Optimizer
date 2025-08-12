@@ -25,7 +25,6 @@ from torch.onnx import symbolic_helper
 import modelopt.torch.quantization.triton as triton_kernel
 
 from .config import QuantizerAttributeConfig
-from .export_onnx import export_fp4, export_fp8, export_int8, export_mxfp8
 from .extensions import get_cuda_ext, get_cuda_ext_fp8, get_cuda_ext_mx
 
 mx_format_map = {
@@ -325,6 +324,8 @@ class FakeTensorQuantFunction(Function):
         trt_high_precision_dtype=None,
     ):
         """ONNX symbolic function."""
+        from .export_onnx import export_int8
+
         return export_int8(
             g, inputs, amax, num_bits, unsigned, narrow_range, trt_high_precision_dtype
         )
@@ -395,6 +396,8 @@ class ScaledE4M3Function(Function):
     @symbolic_helper.parse_args("v", "t", "t", "i", "i", "s")
     def symbolic(g, inputs, amax=None, bias=None, E=4, M=3, trt_high_precision_dtype=None):  # noqa: N803
         """ONNX symbolic function."""
+        from .export_onnx import export_fp8
+
         return export_fp8(g, inputs, amax, trt_high_precision_dtype)
 
     @staticmethod
@@ -475,6 +478,8 @@ class DynamicBlockQuantizationFunction(Function):
         onnx_quantizer_type="dynamic",
     ):
         """ONNX symbolic function."""
+        from .export_onnx import export_fp4, export_mxfp8
+
         if num_bits == (2, 1) and scale_bits == (4, 3):
             return export_fp4(
                 g,
@@ -643,6 +648,8 @@ class TensorQuantFunction(Function):
         trt_high_precision_dtype=None,
     ):
         """ONNX symbolic function."""
+        from .export_onnx import export_int8
+
         return export_int8(
             g, inputs, amax, num_bits, unsigned, narrow_range, trt_high_precision_dtype
         )

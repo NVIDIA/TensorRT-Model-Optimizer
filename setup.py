@@ -23,7 +23,7 @@ import setuptools
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
 version = os.environ.get(
-    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.33.0" if platform.system() == "Linux" else "0.27.0"
+    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.33.1" if platform.system() == "Linux" else "0.27.0"
 )
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
@@ -56,11 +56,13 @@ optional_deps = {
         "cppimport",
         "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
         "ml_dtypes",  # for bfloat16 conversion
-        "onnx>=1.18.0",
         "onnx-graphsurgeon",
+        "onnx>=1.18.0",
+        "onnxconverter-common",
         "onnxruntime~=1.22.0 ; platform_machine == 'aarch64' or platform_system == 'Darwin'",
         "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
         "onnxruntime-gpu==1.20.0; platform_system == 'Windows'",
+        "onnxscript",  # For test_onnx_dynamo_export unit test
         "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
         "polygraphy>=0.49.22",
     ],
@@ -82,13 +84,12 @@ optional_deps = {
     # testing
     "dev-test": [
         "coverage",
-        "onnxscript",  # For test_onnx_dynamo_export unit test
         "pytest",
         "pytest-cov",
         "pytest-timeout",
         "timm",
-        "tox",
-        "tox-current-env>=0.0.12",  # Incompatible with tox==4.18.0
+        "tox>4.18",
+        "tox-current-env>=0.0.12",
     ],
     # docs
     "dev-docs": [

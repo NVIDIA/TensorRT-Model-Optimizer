@@ -17,6 +17,7 @@
 
 import collections.abc
 import json
+import re
 import tempfile
 import warnings
 from collections import defaultdict
@@ -97,7 +98,12 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     handles = []
     model_type = type(model).__name__.lower()
 
+    fused_linears = {}
+    module_names = set()
+
     for name, module in model.named_modules():
+        module_names.add(name)
+
         # For MoE models update pre_quant_scale to average pre_quant_scale amongst experts
         if is_moe(module) and ("awq" in quantization_format):
             # update_experts_avg_prequant_scale(module)
@@ -151,6 +157,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         ]:
             # Fuse modules that have the same input
             preprocess_linear_fusion(modules)
+            fused_linears[modules[0].name] = [module.name for module in modules]
 
         # Fuse layernorms
         if (
@@ -160,6 +167,29 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+
+    # The dummy forward may not be able to activate all the experts.
+    # Process experts by naming rules like experts.0, experts.1, etc.
+    for name, modules_fused in fused_linears.items():
+        if re.search(r"experts?\.\d+", name):
+            expert_id = 0
+            while True:
+                new_expert_name = re.sub(r"(experts?\.)\d+", rf"\g<1>{expert_id}", name, count=1)
+                if new_expert_name in fused_linears:
+                    expert_id += 1
+                    continue
+                if new_expert_name not in module_names:
+                    break
+
+                new_expert_modules = []
+                for name_fused in modules_fused:
+                    new_expert_name = re.sub(r"(experts?\.)\d+", rf"\g<1>{expert_id}", name_fused)
+                    assert new_expert_name in module_names
+                    new_expert_modules.append(model.get_submodule(new_expert_name))
+
+                preprocess_linear_fusion(new_expert_modules)
+
+                expert_id += 1
 
 
 def _export_hf_checkpoint(

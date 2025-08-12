@@ -1,7 +1,7 @@
 Model Optimizer Changelog (Linux)
 =================================
 
-0.33 (2025-07-xx)
+0.33 (2025-07-14)
 ^^^^^^^^^^^^^^^^^
 
 **Backward Breaking Changes**
@@ -20,7 +20,8 @@ Model Optimizer Changelog (Linux)
 - Add per node calibration support in ONNX quantization.
 - ModelOpt now supports quantization of tensor-parallel sharded Huggingface transformer models. This requires ``transformers>=4.52.0``.
 - Support quantization of FSDP2 wrapped models and add FSDP2 support in the ``llm_qat`` example.
-- Add NeMo 2 Simplified Flow examples for quantization aware training/distillation (QAT/QAD), speculative decoding, pruning & distilllation.
+- Add NeMo 2 Simplified Flow examples for quantization aware training/distillation (QAT/QAD), speculative decoding, pruning & distillation.
+- Fix a Qwen3 MOE model export issue.
 
 0.31 (2025-06-04)
 ^^^^^^^^^^^^^^^^^

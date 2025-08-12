@@ -27,7 +27,7 @@ from transformers import (
     LlamaConfig,
     LlamaForCausalLM,
     T5Config,
-    T5Model,
+    T5ForConditionalGeneration,
     T5Tokenizer,
 )
 
@@ -50,7 +50,7 @@ def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:
     return tiny_llama
 
 
-def get_tiny_t5(**config_kwargs) -> T5Model:
+def get_tiny_t5(**config_kwargs) -> T5ForConditionalGeneration:
     kwargs = {
         "vocab_size": 32,
         "d_model": 32,
@@ -63,7 +63,7 @@ def get_tiny_t5(**config_kwargs) -> T5Model:
         "decoder_start_token_id": 0,
     }
     kwargs.update(**config_kwargs)
-    t5_model = T5Model(T5Config(**kwargs))
+    t5_model = T5ForConditionalGeneration(T5Config(**kwargs))
 
     return t5_model
 
