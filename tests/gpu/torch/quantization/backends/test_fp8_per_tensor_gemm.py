@@ -20,7 +20,34 @@ from _test_utils.torch_quantization.quantize_common import compute_backward_grad
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.backends import gemm_registry
+from modelopt.torch.quantization.backends.fp8_per_tensor_gemm import Fp8PerTensorLinear
 from modelopt.torch.quantization.backends.utils import fp8_compatible
+
+
+@pytest.mark.skipif(not fp8_compatible(), reason="FP8 is not supported on this GPU")
+@pytest.mark.parametrize("model_cls", [SimpleLinear])
+@pytest.mark.parametrize("config", [mtq.FP8_DEFAULT_CFG])
+def test_fp8_per_tensor_gemm_available(model_cls, config):
+    """Test for fp8_per_tensor_gemm function with hardware-friendly dimensions."""
+    model = model_cls().cuda()
+    calib_data = [model.get_input().cuda() for _ in range(8)]
+
+    def forward_loop(model, run_backward=False):
+        for batch in calib_data:
+            output = model(batch)
+            if run_backward:
+                output.sum().backward()
+
+    mtq.quantize(model, config, forward_loop)
+    mtq.compress(model)
+
+    # Take the first module in the net
+    module = model.net[0]
+    input_tensor = calib_data[0].clone()
+
+    # Find the matching GEMM implementation
+    gemm_forward = gemm_registry.find_match(module, input_tensor, [], {})
+    assert gemm_forward == Fp8PerTensorLinear.apply
 
 
 @pytest.mark.skipif(not fp8_compatible(), reason="FP8 is not supported on this GPU")
@@ -45,7 +72,7 @@ def test_fp8_per_tensor_gemm(model_cls, config):
     expected = torch.nn.functional.linear(input_tensor, module.weight, bias=None)
 
     # Find the matching GEMM implementation
-    gemm_forward = gemm_registry.find_match(module, input_tensor, [], {})
+    gemm_forward = Fp8PerTensorLinear.apply
     assert gemm_forward is not None
 
     # Test without bias

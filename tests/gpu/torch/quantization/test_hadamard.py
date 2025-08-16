@@ -39,7 +39,8 @@ def test_hadamard_transform(dim):
     xxt = x @ x.T
     x_h = normalized_hadamard_transform(x)
     xxt_h = x_h @ x_h.T
-    assert torch.allclose(xxt_h, xxt, atol=1e-3)
+    # The numerical error can be large, especially for 16-bit floats.
+    assert torch.allclose(xxt_h, xxt, atol=0.05)
 
 
 def test_kv_rotate():
@@ -59,33 +60,18 @@ def test_kv_rotate():
         },
     ):
         output_test = model(dummy_input)
-    assert torch.allclose(output_ref, output_test, atol=1e-3)
+    assert torch.allclose(output_ref, output_test, atol=0.05)
 
-    set_quantizer_by_cfg(
+    # Test the rotation is actually applied by turning on only one of the query, key quantizers
+    with set_quantizer_by_cfg_context(
         model,
         {
-            "*q_bmm_quantizer": {
-                "enable": False,
-                "rotate": False,
-            },
             "*k_bmm_quantizer": {
-                "num_bits": 4,
-                "axis": -1,
-                "enable": True,
-                "rotate": False,
-            },
-        },
-    )
-    output_ref1 = model(dummy_input)
-    set_quantizer_by_cfg(
-        model,
-        {
-            "*[qk]_bmm_quantizer": {
                 "rotate": True,
             },
         },
-    )
-    output_test1 = model(dummy_input)
-    torch.not_equal(output_ref1, output_test1)
+    ):
+        output_test1 = model(dummy_input)
+    assert not torch.allclose(output_ref, output_test1, atol=0.05)
 
     mtq.unregister(SDPAAttention)

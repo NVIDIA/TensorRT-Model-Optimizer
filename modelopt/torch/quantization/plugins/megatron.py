@@ -16,14 +16,12 @@
 """Support quantization for megatron linear layers."""
 
 import warnings
-from contextlib import contextmanager
 from typing import Any
 
 import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import torch
-import torch.nn as nn
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
@@ -41,11 +39,31 @@ from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
 __all__ = []
 
 
+def real_quant_module_get_extra_state(self) -> dict:
+    """Populating real_quantizer_state and q_tensor_state."""
+    extra_state = {}
+
+    if isinstance(self, RealQuantLinear) and isinstance(self.weight, QTensorWrapper):
+        real_quantizer_state = self.weight_quantizer.get_modelopt_state()
+        q_tensor_state = self.weight.get_state()
+    elif isinstance(self, RealQuantLinear):
+        real_quantizer_state = self.weight_quantizer.get_modelopt_state()
+        q_tensor_state = {}
+    else:
+        real_quantizer_state = None
+        q_tensor_state = None
+
+    extra_state["modelopt_real_quantizer_state"] = real_quantizer_state
+    extra_state["modelopt_q_tensor_state"] = q_tensor_state
+
+    return extra_state
+
+
 def quant_module_get_extra_state(self) -> dict:
     """Populating the extra_state when state_dict() is called.
 
-    quantizer_state is usually stored with in the modelopt_state
-    metadata where the keys are the full module name. The issue
+    quantizer_state, real_quantizer_state, and q_tensor_state are usually stored
+    with in the modelopt_state metadata where the keys are the full module name. The issue
     is that NeMo-MCore model's full module name can change
     if pipeline-parallelism (PP) and expert-parallelism (EP)
     are changing. Alternatively, we store quantizer_state in
@@ -60,14 +78,61 @@ def quant_module_get_extra_state(self) -> dict:
         return extra_state
 
     quantizer_state = {}
-
     for name, module in self.named_modules():
         if isinstance(module, TensorQuantizer):
             quantizer_state[name] = module.get_modelopt_state()
 
     extra_state["modelopt_quantizer_state"] = quantizer_state
 
+    # Handle real_quantizer_state and q_tensor_state
+    extra_state.update(real_quant_module_get_extra_state(self))
+
     return extra_state
+
+
+def real_quant_module_set_extra_state(self, state: Any):
+    """Restore q_tensor_state when load_state_dict() is called.
+
+    We skip restoring real_quantizer_state (if exists), since it is the same as
+    the weight_quantizer fake quantizer_state.
+
+    Finally, q_tensor_state is restored if meta device initialization is used. During
+    meta-device initialization, real_quantize is not called.
+    QTensorWrapper should replace the original weight parameter. Due to TP, we also need
+    to adjust q_tensor_data_shape and its metadata shape attribute to use the local weight shape.
+
+    When not using meta device initialization, real_quantize is called during compress mode
+    restore where the QTensor will be recomputed based on the local weights. Hence we don't
+    need to restore q_tensor_state.
+
+    Note:
+        The entire restore process can happen on meta device and be materialized later
+        with to_empty(). However, to_empty() will reassign the parameter and the
+        QTensorWrapper will be removed. We patch RealQuantLinear._apply to preserve
+        QTensorWarpper when to_empty() is applied.
+    """
+    q_tensor_state = state.get("modelopt_q_tensor_state", None)
+
+    if q_tensor_state is not None:
+        q_tensor_metadata = q_tensor_state["metadata"]
+        q_tensor_metadata["shape"] = self.weight.shape
+        q_tensor_data_dtype = q_tensor_state["quantized_data.dtype"]
+        q_tensor_shape = self.weight.shape
+
+        # If q_tensor_data_type is uint8, then it is compressed format of 2 elements.
+        if q_tensor_data_dtype == torch.uint8:
+            q_tensor_shape = list(q_tensor_shape)
+            q_tensor_shape[-1] = q_tensor_shape[-1] // 2
+            q_tensor_shape = torch.Size(q_tensor_shape)
+
+        self._parameters["weight"] = QTensorWrapper(
+            qtensor=torch.empty(
+                q_tensor_shape,  # Use the local shape directly (TP-aware)
+                dtype=q_tensor_data_dtype,
+                device=self.weight.device,
+            ),
+            metadata=q_tensor_metadata,
+        )
 
 
 def quant_module_set_extra_state(self, state: Any):
@@ -84,17 +149,28 @@ def quant_module_set_extra_state(self, state: Any):
     The 2nd load_state_dict() is loading all states including amax and
     scalars. We disable QuantModule.modelopt_post_restore() to avoid
     reinitialization since set_extra_state() is called at the end.
+
+    We first restore all fake quantizer_state. Per QuantModule can have
+    weight_quantizer, input_quantizer, and output_quantizer.
+
+    Once all quantizer_state are resumed, modelopt_post_restore() is called
+    to adjust the shape of all buffers (amax, pre_qunat_scale, _scale, ...) since
+    the local shape can be different from the shape in the state due to change
+    in tensor parallelism (TP).
     """
-    if state is None:
+    if state is None or not self.allow_post_restore:
         return
 
     quantizer_state = state.get("modelopt_quantizer_state", None)
 
-    if quantizer_state is not None and self.allow_post_restore:
+    if quantizer_state is not None:
         for name, module in self.named_modules():
             if isinstance(module, TensorQuantizer):
-                module.set_from_modelopt_state(quantizer_state[name])
+                module.set_from_modelopt_state(quantizer_state[name], properties_only=False)
         self.modelopt_post_restore()
+
+    # Handle real_quantizer_state and q_tensor_state
+    real_quant_module_set_extra_state(self, state)
 
     self.allow_post_restore = False
 
@@ -286,8 +362,9 @@ class _QuantMegatronMLP(_MegatronMLP):
     ]
 
 
-class _RealQuantMegatronColumnParallelLinear(RealQuantLinear, _MegatronColumnParallelLinear):
-    allow_real_quant_gemm = False  # We don't support real quant gemm for ColumnParallelLinear
+class _RealQuantMegatronParallelLinear(RealQuantLinear):
+    allow_real_quant_gemm = True
+    _scale_tensor_shard_axis = None
 
     def _parameter_to_keep_in_quantizer_state_dict(self, key):
         return any(k in key for k in self.list_of_scale_tensors)
@@ -299,74 +376,74 @@ class _RealQuantMegatronColumnParallelLinear(RealQuantLinear, _MegatronColumnPar
                 any(k.endswith(suffix) for suffix in self.list_of_scale_tensors)
                 and state_dict[k].dim() > 1
             ):
-                shard_axis_dict[k] = 0
+                assert self._scale_tensor_shard_axis is not None, (
+                    "scale_tensor_shard_axis is not set, please set it in the subclass"
+                )
+                shard_axis_dict[k] = self._scale_tensor_shard_axis
         return shard_axis_dict
 
     def modelopt_post_restore(self, prefix: str = ""):
-        # First follow the fake quant behavior to initialize tensor_quantizers
-        with _view_as_fake_quant_module(self):
-            super().modelopt_post_restore(prefix=prefix)
+        """Post restore to correctly configure the realquant scales.
 
-        # Restore dtype of real quant parameters in tensor_quanitzer
-        _restore_real_quant_parameters(self)
+        ModelOpt restores the TensorQuantizer states such as `_amax` and `_pre_quant_scale` to their
+        shape before saving. However this is not enough for MCore/distributed frameworks since the tensor parallelism
+        could change between saving and restoring. If the tensor parallelism changes, the shape of the quantizer
+        states also changes. So we need to re-calculate the quantizer states.
 
+        Note:
+            During real quantization, weight_quantizer._fake_quant is set to False which trigger the real quant
+            forward path and lead to error. We enable the weight_quantizer fake_quant forward path while recompute
+            the correct shape.
+        """
+        self.weight_quantizer._fake_quant = True
+        super().modelopt_post_restore(prefix=prefix)
+        self.weight_quantizer._fake_quant = False
 
-class _RealQuantMegatronRowParallelLinear(RealQuantLinear, _MegatronRowParallelLinear):
-    allow_real_quant_gemm = False  # We don't support real quant gemm for RowParallelLinear
+        if hasattr(self.weight_quantizer, "_scale"):
+            # Recompute all real quantization buffer shapes
+            self.weight_quantizer._real_quantize(self.weight)
 
-    def _parameter_to_keep_in_quantizer_state_dict(self, key):
-        return any(k in key for k in self.list_of_scale_tensors)
+    def _forward_impl(self, input, *args, **kwargs):
+        """Use real quant gemm if available.
 
-    def _get_shard_axis_dict(self, state_dict):
-        shard_axis_dict = super()._get_shard_axis_dict(state_dict)
-        for k in state_dict:
-            if (
-                any(k.endswith(suffix) for suffix in self.list_of_scale_tensors)
-                and state_dict[k].dim() > 1
-            ):
-                shard_axis_dict[k] = 1
-        return shard_axis_dict
+        Here the forward is patched such that real quant gemm can be called if available. Both conditions
+        below must be satisfied (static and dynamic check based on input args) to use the kernel.
+        Otherwise, we fallback.
 
-    def modelopt_post_restore(self, prefix: str = ""):
-        # Fisrt follow the fake quant behavior to initialize tensor_quantizers
-        with _view_as_fake_quant_module(self):
-            super().modelopt_post_restore(prefix=prefix)
-
-        # Restore dtype of real quant parameters in tensor_quanitzer
-        _restore_real_quant_parameters(self)
-
-
-@contextmanager
-def _view_as_fake_quant_module(module: RealQuantLinear):
-    """View the module as a fake quantized module."""
-    # skip if the module is not a RealQuantLinear or QTensorWrapper
-    if not isinstance(module, RealQuantLinear):
-        yield
-        return
-    assert isinstance(module.weight, QTensorWrapper), "module.weight is not a QTensorWrapper"
-    try:
-        quantized_weight = module.weight
-        dummy_dequantized_weight = torch.rand(
-            module.weight.metadata["shape"],
-            dtype=module.weight.metadata["dtype"],
-            device=module.weight.device,
-        )
-        module.weight_quantizer._fake_quant = True
-        module.weight_quantizer._dequantize = False
-        module.weight = nn.Parameter(dummy_dequantized_weight)
-        yield
-    finally:
-        module.weight_quantizer._fake_quant = False
-        module.weight_quantizer._dequantize = True
-        module.weight = quantized_weight
+        Note:
+            RealQuantLinear.forward() is doing the same check inside and will fall back to use the super
+            class forward(). This is not desired since _forward_impl introduces much more args and kwargs
+            while the original forward only takes 1 positional argument. We must above the fallback path
+            in RealQuantLinear.forward().
+        """
+        if self._should_run_real_quant_gemm and self.get_real_quant_gemm_impl(
+            input, *args, **kwargs
+        ):
+            allreduce_dgrad = kwargs.get("allreduce_dgrad", False)
+            tp_group = kwargs.get("tp_group")
+            return RealQuantLinear.forward(
+                self,
+                input,
+                allreduce_dgrad=allreduce_dgrad,
+                tp_group=tp_group,
+            )
+        else:
+            return super()._forward_impl(input, *args, **kwargs)
 
 
-def _restore_real_quant_parameters(module: RealQuantLinear):
-    """Restore the real quant parameters in the tensor_quanitzer by performing real weight quantization again."""
-    dequantized_weight = module.weight_quantizer(module.weight)
-    module.weight_quantizer._fake_quant = False
-    module.weight_quantizer._dequantize = False
-    for k in ["_scale", "double_scale", "_scale_zeros"]:
-        if hasattr(module.weight_quantizer, k):
-            delattr(module.weight_quantizer, k)
-    module.weight = QTensorWrapper(module.weight_quantizer(dequantized_weight))
+class _RealQuantMegatronColumnParallelLinear(
+    _RealQuantMegatronParallelLinear, _MegatronColumnParallelLinear
+):
+    _scale_tensor_shard_axis = 0
+
+    def forward(self, input, *args, **kwargs):
+        return _MegatronColumnParallelLinear.forward(self, input, *args, **kwargs)
+
+
+class _RealQuantMegatronRowParallelLinear(
+    _RealQuantMegatronParallelLinear, _MegatronRowParallelLinear
+):
+    _scale_tensor_shard_axis = 1
+
+    def forward(self, input, *args, **kwargs):
+        return _MegatronRowParallelLinear.forward(self, input, *args, **kwargs)

@@ -54,7 +54,7 @@ def fp4_fake_quant_kernel(
     pid_n = tl.program_id(axis=1)
 
     # Load global scale from tensor
-    global_scale = tl.load(global_scale_ptr)
+    global_scale = tl.load(global_scale_ptr).to(tl.float32)
 
     # Calculate offsets
     offs_m = pid_m * TILE_SIZE + tl.arange(0, TILE_SIZE)
@@ -67,12 +67,13 @@ def fp4_fake_quant_kernel(
 
     # Reshape for block processing
     x_reshaped = tl.reshape(x, (TILE_SIZE, NUM_FP4_BLOCKS, BLOCK_SIZE))
+    x_abs = tl.abs(x_reshaped)
 
     # Calculate max values for each FP4 block
-    block_max = tl.max(tl.abs(x_reshaped), axis=2, keep_dims=True)
+    block_max = tl.max(x_abs, axis=2, keep_dims=True)
     # global_scale = global_amax / (448 * 6)
     block_max_quant = (
-        tl.clamp((block_max / (6.0 * global_scale)), -448.0, 448.0).to(tl.float8e4nv).to(tl.float32)
+        tl.minimum((block_max / (6.0 * global_scale)), 448.0).to(tl.float8e4nv).to(tl.float32)
         * global_scale
     )
 
@@ -80,11 +81,13 @@ def fp4_fake_quant_kernel(
     block_max_quant_broadcast = tl.broadcast_to(
         block_max_quant, (TILE_SIZE, NUM_FP4_BLOCKS, BLOCK_SIZE)
     )
-
-    x_scaled = x_reshaped / block_max_quant_broadcast
+    # Set scale to 1 if block amax is 0
+    block_max_quant_broadcast = tl.where(
+        block_max_quant_broadcast < 1e-5, 1.0, block_max_quant_broadcast
+    )
+    abs_scaled = x_abs / block_max_quant_broadcast
 
     # Quantize to FP4 values: {0, ±0.5, ±1, ±1.5, ±2, ±3, ±4, ±6}, following round to even
-    abs_scaled = tl.abs(x_scaled)
     q_val = tl.where(
         abs_scaled <= 0.25,
         0.0,
@@ -108,10 +111,8 @@ def fp4_fake_quant_kernel(
     )
 
     # Apply signs and rescale
-    sign = tl.where(x_scaled >= 0, 1.0, -1.0)
-
     x_rescaled = q_val * block_max_quant_broadcast
-    x_rescaled = x_rescaled * sign
+    x_rescaled = tl.where(x_reshaped >= 0, x_rescaled, -x_rescaled)
 
     # Reshape back and store
     x_rescaled = tl.reshape(x_rescaled, (TILE_SIZE, TILE_SIZE))

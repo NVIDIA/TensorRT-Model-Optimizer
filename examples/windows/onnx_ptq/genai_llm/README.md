@@ -116,3 +116,11 @@ Please refer to [support matrix](https://nvidia.github.io/TensorRT-Model-Optimiz
 1. **Check Input Model**
 
    During INT4 AWQ execution, the input onnx model (one mentioned in `--onnx_path` argument) will be run with onnxruntime (ORT) for calibration (using ORT EP mentioned in `--calibration_eps` argument). So, make sure that input onnx model is running fine with the specified ORT EP.
+
+1. **Config availability for calibration with NvTensorRtRtx EP**
+
+   Note that while using `NvTensorRtRtx` for INT4 AWQ quantization, profile (min/max/opt ranges) of input-shapes of the model is created internally using the details from the model's config (e.g. config.json in HuggingFace model card). This input-shapes-profile is used during onnxruntime session creation. Make sure that config.json is available in the model-directory if `model_name` is a local model path (instead of HuggingFace model-name).
+
+1. **Error - Invalid Position-IDs input to the ONNX model**
+
+   The ONNX models produced using ONNX GenerativeAI (GenAI) have different IO bindings for models produced using different execution-providers (EPs). For instance, model built with DML EP has position-ids input in the ONNX model but models builts using CUDA EP or NvTensorRtRtx EP don't have position-ids inputs. So, set `add_position_ids` command-line argument to `true` or `false` depending on the base model, or set that value (hard-code) in the quantize script if required.
