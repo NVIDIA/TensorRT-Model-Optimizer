@@ -581,6 +581,7 @@ class TensorQuantizer(nn.Module):
             outputs, scales = NF4QTensor.quantize(
                 inputs, self._block_sizes[-1], self._block_sizes["scale_block_sizes"][-1]
             )
+
             _scale, _double_scale, _scale_zeros = NF4QTensor.double_quantization(
                 scales,
                 self._block_sizes["scale_block_sizes"][-1],
@@ -1095,11 +1096,11 @@ class TensorQuantizer(nn.Module):
         """
         metadata = {"params": {}, "buffers": {}}
         for k, v in self._parameters.items():
-            metadata["params"][k] = {"shape": v.shape}
+            metadata["params"][k] = {"shape": v.shape, "dtype": v.dtype}
         for k, v in self._buffers.items():
             if k in self._non_persistent_buffers_set:
                 continue
-            metadata["buffers"][k] = {"shape": v.shape}
+            metadata["buffers"][k] = {"shape": v.shape, "dtype": v.dtype}
         return metadata
 
     def _del_pytorch_state(self):
@@ -1112,9 +1113,11 @@ class TensorQuantizer(nn.Module):
         # Lets delete existing parameters and buffers and create fresh ones
         self._del_pytorch_state()
         for k, v in metadata.get("params", {}).items():
-            self.register_parameter(k, nn.Parameter(torch.empty(v["shape"])))
+            dtype = v.get("dtype", None)
+            self.register_parameter(k, nn.Parameter(torch.empty(v["shape"], dtype=dtype)))
         for k, v in metadata.get("buffers", {}).items():
-            self.register_buffer(k, torch.empty(v["shape"]))
+            dtype = v.get("dtype", None)
+            self.register_buffer(k, torch.empty(v["shape"], dtype=dtype))
 
     def get_modelopt_state(self, properties_only: bool = False) -> dict[str, Any]:
         """Get meta state to be saved in checkpoint.

@@ -42,7 +42,7 @@ def remove_per_module_state(
     """Remove metadata from the modelopt_state.
 
     The metadata of the modelopt_state contains keys which may change with different pipeline
-    parallelism. As a result, the metadata must be stored as several ShardedObject with
+    and expert parallelism. As a result, the metadata must be stored as several ShardedObject with
     global and local layer offset mapping.
 
     Args:
@@ -57,6 +57,8 @@ def remove_per_module_state(
         if metadata is not None:
             _ = metadata.pop("quantizer_state", None)
             _ = metadata.pop("subnet_config", None)
+            _ = metadata.pop("real_quantizer_state", None)
+            _ = metadata.pop("q_tensor_state", None)
         else:
             config["metadata"] = {}
 
@@ -206,10 +208,4 @@ def restore_sharded_modelopt_state(
     #
     model[0] = mto.restore_from_modelopt_state(model[0], common_modelopt_state)
 
-    try:
-        _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, prefix)
-    except:  # noqa: E722
-        # [WAR]: nemo2 is calling this function with an empty prefix.
-        # The prefix however should be `module.` instead. This should be fixed
-        # from the NeMo side. This is just a WAR.
-        _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, "module.")
+    _load_extra_state_from_sharded_checkpoint(model[0], checkpoint_name, prefix)

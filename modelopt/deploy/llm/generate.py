@@ -25,6 +25,7 @@ import torch
 from packaging.version import Version
 from tensorrt_llm import SamplingParams
 from tensorrt_llm.bindings.executor import DecodingConfig
+from tensorrt_llm.llmapi import CudaGraphConfig
 from tensorrt_llm.llmapi import KvCacheConfig as TRT_KvCacheConfig
 from tensorrt_llm.llmapi.llm import LLM as TRT_LLM
 from tensorrt_llm.llmapi.tokenizer import TokenizerBase, TransformersTokenizer
@@ -49,11 +50,12 @@ class LLM(TRT_LLM):
     """A wrapper over the ``tensorrt_llm.llmapi.llm.LLM`` for LLM profiling and validation."""
 
     def _build_trt_llm_from_config(
-        self, config, engine_dir, tokenizer, kv_cache_config, medusa_choices
+        self, config, engine_dir, tokenizer, kv_cache_config, medusa_choices, max_batch_size
     ):
         build_config = config["build_config"]
         world_size = config.get("pretrained_config", {}).get("mapping", {}).get("world_size", 1)
-        max_tokens_kv_cache = build_config["max_seq_len"] * build_config["max_batch_size"]
+        max_batch_size = max(max_batch_size, build_config["max_batch_size"])
+        max_tokens_kv_cache = build_config["max_seq_len"] * max_batch_size
 
         trt_kv_cache_config = TRT_KvCacheConfig(enable_block_reuse=False)
 
@@ -87,7 +89,9 @@ class LLM(TRT_LLM):
             **kwargs,
         )
 
-    def _build_torch_llm_from_config(self, checkpoint_dir, tokenizer, tp, trust_remote_code):
+    def _build_torch_llm_from_config(
+        self, checkpoint_dir, tokenizer, tp, trust_remote_code, max_batch_size
+    ):
         kwargs = {}
         if tokenizer is not None:
             kwargs["tokenizer"] = tokenizer
@@ -100,6 +104,15 @@ class LLM(TRT_LLM):
             enable_block_reuse=False, free_gpu_memory_fraction=0.85
         )
 
+        cuda_graph_config = None
+        if max_batch_size > 0:
+            cuda_graph_config = CudaGraphConfig(
+                batch_sizes=[2**i for i in range(int((max_batch_size - 1).bit_length()))]
+                + [max_batch_size],
+                max_batch_size=max_batch_size,
+                enable_padding=True,
+            )
+
         super().__init__(
             backend="pytorch",
             model=checkpoint_dir,
@@ -108,8 +121,7 @@ class LLM(TRT_LLM):
             enable_chunked_prefill=True,
             kv_cache_config=trt_kv_cache_config,
             # pytorch backend configs
-            use_cuda_graph=True,
-            cuda_graph_padding_enabled=True,
+            cuda_graph_config=cuda_graph_config,
             **kwargs,
         )
 
@@ -121,6 +133,7 @@ class LLM(TRT_LLM):
         medusa_choices: Any = None,
         tp: int = 0,
         trust_remote_code: bool = False,
+        max_batch_size: int = 0,
     ):
         """Initializes the LLM runner class.
 
@@ -132,6 +145,8 @@ class LLM(TRT_LLM):
             medusa_choices: The medusa choices for the decoding config.
             tp: the tensor parallel size (for the torch backend). If 0, it will be set to the number of GPUs.
             trust_remote_code: whether to trust the remote code (for the torch backend).
+            max_batch_size: Max batch size for the LLM backend. If 0, it will be set to the max batch size
+                in the engine config.
         """
         assert Version(tensorrt_llm.__version__) >= Version("0.17.0")
 
@@ -140,7 +155,12 @@ class LLM(TRT_LLM):
 
             if "build_config" in config:
                 self._build_trt_llm_from_config(
-                    config, checkpoint_dir, tokenizer, kv_cache_config, medusa_choices
+                    config,
+                    checkpoint_dir,
+                    tokenizer,
+                    kv_cache_config,
+                    medusa_choices,
+                    max_batch_size,
                 )
 
                 self._is_torch = False
@@ -152,7 +172,9 @@ class LLM(TRT_LLM):
                     "medusa_choices is not supported with the torch llmapi"
                 )
 
-                self._build_torch_llm_from_config(checkpoint_dir, tokenizer, tp, trust_remote_code)
+                self._build_torch_llm_from_config(
+                    checkpoint_dir, tokenizer, tp, trust_remote_code, max_batch_size
+                )
                 self._is_torch = True
                 self._max_seq_len = config["max_position_embeddings"]
                 self._max_beam_width = 1

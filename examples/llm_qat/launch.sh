@@ -166,12 +166,13 @@ if [[ "${DISTILL}" == "True" ]]; then
   FSDP_ARGS="$FSDP_ARGS --fsdp_cpu_ram_efficient_loading False"
 fi
 
-# real quantization does not work with FSDP
-if [[ "${COMPRESS,,}" == "true" ]]; then
-  echo "Compression is not supported with FSDP. Disabling FSDP."
+# real quantization does not work with FSDP, only works with FSDP2
+if [[ "${COMPRESS,,}" == "true" && "${USE_FSDP2,,}" != "true" ]]; then
+  echo "Compression is not supported with FSDP. Disabling FSDP and using DDP."
   FSDP_ARGS=""
   CONFIG_FILE="ddp.yaml"
 fi
+
 
 CMD="accelerate launch --config-file accelerate_config/$CONFIG_FILE $FSDP_ARGS \
     main.py \

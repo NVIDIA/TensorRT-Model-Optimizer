@@ -15,45 +15,11 @@
 
 import pytest
 import torch
+from _test_utils.torch_export.export_utils import ToyModel, partial_fp8_config, partial_w4a8_config
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export.layer_utils import get_quantization_format
 from modelopt.torch.export.model_config import QUANTIZATION_FP8, QUANTIZATION_W4A8_AWQ
-
-
-class ToyModel(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.linears = torch.nn.Sequential(
-            torch.nn.Linear(10, 10),
-            torch.nn.Linear(10, 10),
-            torch.nn.Linear(10, 10),
-        )
-
-    def forward(self, x):
-        return self.linears(x)
-
-
-partial_fp8_config = {
-    "quant_cfg": {
-        "*.1.weight_quantizer": {"num_bits": (4, 3), "axis": None},
-        "*.1.input_quantizer": {"num_bits": (4, 3), "axis": None},
-        "default": {"num_bits": 8, "enable": False},
-    },
-    "algorithm": "max",
-}
-
-partial_w4a8_config = {
-    "quant_cfg": {
-        "*.2.weight_quantizer": [
-            {"num_bits": 4, "block_sizes": {-1: 128, "type": "static"}, "enable": True},
-            {"num_bits": (4, 3), "axis": None, "enable": True},
-        ],
-        "*.2.input_quantizer": {"num_bits": (4, 3), "axis": None, "enable": True},
-        "default": {"num_bits": 8, "enable": False},
-    },
-    "algorithm": "awq_lite",
-}
 
 
 @pytest.mark.parametrize(

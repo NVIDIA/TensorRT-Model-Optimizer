@@ -44,18 +44,31 @@ class QuantConvLinear(nn.Module):
 class SimpleLinear(nn.Module):
     """Test Linear model for ONNX export."""
 
-    def __init__(self):
+    def __init__(self, bias=True, dtype=torch.float32, add_linear=False):
         super().__init__()
+        self.add_linear = add_linear
         self.net = nn.Sequential(
-            nn.Linear(16, 32), nn.ReLU(), nn.Linear(32, 64), nn.ReLU(), nn.Linear(64, 16)
+            nn.Linear(16, 32, bias=bias, dtype=dtype),
+            nn.ReLU(),
+            nn.Linear(32, 64, bias=bias, dtype=dtype),
+            nn.ReLU(),
+            nn.Linear(64, 16, bias=bias, dtype=dtype),
         )
+        if add_linear:
+            self.linear1 = nn.Linear(16, 16, bias=bias, dtype=dtype)
 
     def forward(self, x):
-        return self.net(x)
+        x = self.net(x)
+        if self.add_linear:
+            x = self.linear1(x)
+        return x
 
     @classmethod
     def get_input(cls):
-        return torch.randn(2, 16)
+        return torch.randn(
+            2,
+            16,
+        )
 
 
 class SimpleConv(nn.Module):

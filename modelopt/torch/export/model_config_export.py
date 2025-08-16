@@ -545,11 +545,8 @@ def export_tensorrt_llm_checkpoint(
             save_file(weights, weights_path)
 
     except Exception as e:
-        fallback_model_path = export_dir / f"modelopt_model.{dist.rank()}.pth"
-        torch.save(model.state_dict(), fallback_model_path)
         warn(
             "Cannot export model to the model_config. The modelopt-optimized model state_dict"
-            f" (including the quantization factors) is saved to {fallback_model_path} using"
-            " torch.save for further inspection."
+            " can be saved with torch.save for further inspection."
         )
         raise e

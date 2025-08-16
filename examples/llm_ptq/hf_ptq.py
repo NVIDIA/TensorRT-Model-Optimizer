@@ -46,6 +46,7 @@ from modelopt.torch.utils.dataset_utils import (
     create_forward_loop,
     get_dataset_dataloader,
     get_max_batch_size,
+    get_supported_datasets,
 )
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
 from modelopt.torch.utils.memory_monitor import launch_memory_monitor
@@ -195,6 +196,9 @@ def main(args):
     # launch a memory monitor to read the currently used GPU memory.
     launch_memory_monitor()
 
+    # Force eager execution for all model types.
+    torch.compiler.set_stance("force_eager")
+
     # Check that only one quantization format is provided for non auto_quant case
     if not args.auto_quantize_bits:
         assert len(args.qformat.split(",")) == 1, (
@@ -267,14 +271,6 @@ def main(args):
     full_model = model
 
     if model_type == "mllama":
-        if args.dataset is None:
-            args.dataset = "scienceqa"
-            warnings.warn(
-                "Currently only the scienceqa dataset is supported for the mllama model. "
-                "Overriding dataset to scienceqa."
-            )
-        elif args.dataset != "scienceqa":
-            raise ValueError("Only the scienceqa dataset is supported for the mllama model.")
         processor = get_processor(
             args.pyt_ckpt_path,
             model_type,
@@ -283,20 +279,12 @@ def main(args):
             attn_implementation=args.attn_implementation,
         )
     elif model_type == "whisper":
-        if args.dataset is None:
-            args.dataset = "peoples_speech"
-            warnings.warn(
-                "Currently only the peoples_speech dataset is supported for the whisper model. "
-                "Overriding dataset to peoples_speech."
-            )
-        elif args.dataset != "peoples_speech":
-            raise ValueError("Only the peoples_speech dataset is supported for the whisper model.")
         processor = get_processor(
             args.pyt_ckpt_path, model_type, device, trust_remote_code=args.trust_remote_code
         )
     else:
         if args.dataset is None:
-            args.dataset = "cnn_dailymail"
+            args.dataset = ["cnn_dailymail"]
             warnings.warn("No dataset specified. Defaulting to cnn_dailymail.")
         tokenizer = get_tokenizer(args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code)
         default_padding_side = tokenizer.padding_side
@@ -305,16 +293,31 @@ def main(args):
 
         # We only quantize the language model for VLMs other than the type supported above.
         if hasattr(model, "language_model"):
-            assert model_type == "llama4", (
-                "Only llama4 should reach here. Please uncomment this check if you are modelopt developers."
-            )
+            parent_model = model  # llama4 case
+            if isinstance(type(model).__dict__.get("language_model"), property):
+                assert hasattr(model, "model") and hasattr(model.model, "language_model"), (
+                    "Expected language_model in model.model, but attribute not found. "
+                    "This may indicate an unsupported model structure."
+                )
+                parent_model = model.model  # gemma3, qwen2.5 VL case
+
+            disabled_quant_cfg = {
+                "quant_cfg": {"default": {"enable": False}},
+                "algorithm": "max",
+            }
+
+            for name, child in parent_model.named_children():
+                # Apply disabled quant to all children except language_model so we can exclude them during HF export.
+                if name != "language_model":
+                    mtq.quantize(child, disabled_quant_cfg, forward_loop=None)
+
             model = model.language_model
 
     if args.sparsity_fmt != "dense":
         if args.batch_size == 0:
             # Sparse algorithm takes more GPU memory so we reduce the batch_size by 4.
             args.batch_size = max(get_max_batch_size(model) // 4, 1)
-            args.batch_size = min(args.batch_size, args.calib_size)
+            args.batch_size = min(args.batch_size, sum(args.calib_size))
 
         print(f"Use calib batch_size {args.batch_size}")
 
@@ -373,7 +376,7 @@ def main(args):
                 sample_input_single_batch=sample_input_single_batch,
                 enable_grad=run_auto_quant,
             )
-            args.batch_size = min(args.batch_size, args.calib_size)
+            args.batch_size = min(args.batch_size, sum(args.calib_size))
 
         print(f"Use calib batch_size {args.batch_size}")
 
@@ -383,17 +386,17 @@ def main(args):
                 "The MllamaImageProcessor must be set."
             )
             calib_dataloader = get_vlm_dataset_dataloader(
-                dataset_name=args.dataset,
+                dataset_name=args.dataset[0] if args.dataset else "scienceqa",
                 processor=processor,
                 batch_size=args.batch_size,
-                num_samples=args.calib_size,
+                num_samples=args.calib_size[0],
             )
         elif model_type == "whisper":
             assert processor is not None and isinstance(processor, WhisperProcessor), (
                 "The AutoProcessor must be set."
             )
             calib_dataloader, first_text = get_speech_dataset_dataloader(
-                dataset_name=args.dataset,
+                dataset_name=args.dataset[0] if args.dataset else "peoples_speech",
                 processor=processor,
                 batch_size=args.batch_size,
                 num_samples=args.calib_size,
@@ -454,7 +457,7 @@ def main(args):
                 "input_features" if model_type == "whisper" else "input_ids"
             ][0:1]
             try:
-                generated_ids_before_ptq = model.generate(input_ids, max_new_tokens=100)
+                generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
             except Exception as e:
                 print(
                     "Error during model generation. Please check if your transformers version is "
@@ -472,7 +475,8 @@ def main(args):
             torch.cuda.empty_cache()
             generated_ids_after_ptq = None
             if model_type != "llama4":
-                generated_ids_after_ptq = model.generate(input_ids, max_new_tokens=100)
+                # Our fake quantizer may not be fully compatible with torch.compile.
+                generated_ids_after_ptq = full_model.generate(input_ids, max_new_tokens=100)
             else:
                 warnings.warn(
                     "Llama4 Maverick generation after quantization has a bug. Skipping generation sample."
@@ -600,15 +604,23 @@ if __name__ == "__main__":
         default=0,
     )
     parser.add_argument(
-        "--calib_size", help="Number of samples for calibration.", type=int, default=512
+        "--calib_size",
+        help=(
+            "Number of samples for calibration. If a comma separated list of values is provided, "
+            "each value will be used as the calibration size for the corresponding dataset."
+        ),
+        type=str,
+        default="512",
     )
     parser.add_argument("--export_path", default="exported_model")
     parser.add_argument(
         "--dataset",
-        help="name of dataset.",
+        help=(
+            f"name of a dataset, or a comma separated list of datasets. "
+            f"dataset choices are {get_supported_datasets()}"
+        ),
         type=str,
         default=None,
-        choices=["magpie", "cnn_dailymail", "pile", "pg19", "wikipedia"],
     )
     parser.add_argument("--inference_tensor_parallel", type=int, default=1)
     parser.add_argument("--inference_pipeline_parallel", type=int, default=1)
@@ -695,4 +707,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    args.dataset = args.dataset.split(",") if args.dataset else None
+    args.calib_size = [int(num_sample) for num_sample in args.calib_size.split(",")]
     main(args)

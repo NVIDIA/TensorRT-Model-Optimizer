@@ -96,10 +96,9 @@ def _patch_model_init_for_modelopt(cls, model_path, extra_context=None):
 
 def _new_save_pretrained(self, save_directory, *args, **kwargs):
     """Patch for `cls.save_pretrained` method to save ModelOpt state."""
+    save_modelopt_state = kwargs.pop("save_modelopt_state", True)
     outputs = self._modelopt_cache["save_pretrained"](self, save_directory, *args, **kwargs)
-    if ModeloptStateManager.is_converted(self) and not getattr(
-        self, "_disable_modelopt_save", False
-    ):
+    if save_modelopt_state and ModeloptStateManager.is_converted(self):
         path = _get_modelopt_state_path(save_directory)
         torch.save(modelopt_state(self), path)
         print_rank_0(f"Saved ModelOpt state to {path}")

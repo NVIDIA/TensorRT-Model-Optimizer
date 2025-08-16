@@ -279,7 +279,10 @@ def _get_safetensor_slices(
             tensor_slice = f.get_slice(key)
             assert tensor_slice is not None
             shape = tensor_slice.get_shape()
-            assert len(shape) in (2, 3), f"Shape {shape} is not supported!"
+            assert len(shape) in (1, 2, 3), f"Shape {shape} is not supported!"
+            # 1 for bias case
+            # 3 for packed MoE case
+
             # MCore tensor parallel model sharding
             sharding_dim = parallel_config.sharding_dim
             parallel_group = parallel_config.parallel_group
@@ -339,6 +342,9 @@ def _get_safetensor_slices(
                         raise ValueError(
                             f"Unsupported sharding_dim: {sharding_dim} for shape: {shape}"
                         )
+                elif len(shape) == 1:
+                    # For bias case
+                    tensor = tensor_slice[rank_offset : rank_offset + per_rank_size]
                 else:
                     raise ValueError(f"Unsupported shape: {shape}")
     return tensor

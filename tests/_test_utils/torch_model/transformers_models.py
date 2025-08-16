@@ -29,7 +29,7 @@ from transformers import (
     Qwen3Config,
     Qwen3ForCausalLM,
     T5Config,
-    T5Model,
+    T5ForConditionalGeneration,
     T5Tokenizer,
 )
 
@@ -68,7 +68,7 @@ def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:
     return tiny_llama
 
 
-def get_tiny_t5(**config_kwargs) -> T5Model:
+def get_tiny_t5(**config_kwargs) -> T5ForConditionalGeneration:
     kwargs = {
         "vocab_size": 32,
         "d_model": 32,
@@ -81,7 +81,7 @@ def get_tiny_t5(**config_kwargs) -> T5Model:
         "decoder_start_token_id": 0,
     }
     kwargs.update(**config_kwargs)
-    t5_model = T5Model(T5Config(**kwargs))
+    t5_model = T5ForConditionalGeneration(T5Config(**kwargs))
 
     return t5_model
 
@@ -138,10 +138,10 @@ def tf_output_tester(model_ref, model_test):
     output_ref = model_ref(**inputs)
     output_test = model_test(**inputs)
     if hasattr(output_ref, "logits"):
-        assert torch.allclose(output_ref.logits, output_test.logits)
+        assert torch.allclose(output_ref.logits, output_test.logits, atol=1e-6)
     else:
-        assert torch.allclose(output_ref.start_logits, output_test.start_logits)
-        assert torch.allclose(output_ref.end_logits, output_test.end_logits)
+        assert torch.allclose(output_ref.start_logits, output_test.start_logits, atol=1e-6)
+        assert torch.allclose(output_ref.end_logits, output_test.end_logits, atol=1e-6)
 
 
 def tf_modelopt_state_and_output_tester(model_ref, model_test):

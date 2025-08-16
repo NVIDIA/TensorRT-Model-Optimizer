@@ -18,15 +18,10 @@ import sys
 from typing import Any
 
 import torch
+import transformers
 from accelerate import infer_auto_device_map, init_empty_weights
 from accelerate.utils import get_max_memory
-from transformers import (
-    AutoConfig,
-    AutoModelForCausalLM,
-    AutoProcessor,
-    AutoTokenizer,
-    Llama4ForConditionalGeneration,
-)
+from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
 
@@ -148,7 +143,7 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
-    config_kwargs = {"trust_remote_code": trust_remote_code}
+    config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
     if attn_implementation is not None:
         config_kwargs["attn_implementation"] = attn_implementation
 
@@ -182,61 +177,24 @@ def get_model(
             max_memory = {key: value * gpu_mem_percentage for key, value in max_memory.items()}
             model_kwargs["max_memory"] = max_memory
 
+        if hf_config.model_type == "bart":
+            # device_map "auto" and "cuda" triggers error regarding meta tensor from safetensors
+            device_map = None
+
         if is_speculative(hf_config):
             model = AutoModelForCausalLM.from_pretrained(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,
             )
-        elif hf_config.model_type == "llava":
-            from transformers import LlavaForConditionalGeneration
-
-            hf_llava = LlavaForConditionalGeneration.from_pretrained(
-                ckpt_path, device_map=device_map, **model_kwargs
-            )
-            model = hf_llava.language_model
-        elif hf_config.model_type == "t5":
-            from transformers import AutoModelForSeq2SeqLM
-
-            model = AutoModelForSeq2SeqLM.from_pretrained(
-                ckpt_path, device_map=device_map, **model_kwargs
-            )
-        elif hf_config.model_type == "bart":
-            from transformers import AutoModelForSeq2SeqLM
-
-            # device_map "auto" and "cuda" triggers error regarding meta tensor from safetensors
-            model = AutoModelForSeq2SeqLM.from_pretrained(
-                ckpt_path, device_map=None, **model_kwargs
-            ).to(device)
-        elif hf_config.model_type == "whisper":
-            from transformers import WhisperForConditionalGeneration
-
-            model = WhisperForConditionalGeneration.from_pretrained(
-                ckpt_path, device_map=device_map, **model_kwargs
-            )
-        elif hf_config.model_type == "glm":
-            from transformers import AutoModelForSeq2SeqLM
-
-            model = AutoModelForSeq2SeqLM.from_pretrained(
-                ckpt_path,
-                device_map="cuda",
-                **model_kwargs,
-            )
-        elif hf_config.model_type == "mllama":
-            from transformers import MllamaForConditionalGeneration
-
-            model = MllamaForConditionalGeneration.from_pretrained(
-                ckpt_path,
-                device_map=device_map,
-                **model_kwargs,
-            )
-        elif hf_config.model_type == "llama4":
-            model = Llama4ForConditionalGeneration.from_pretrained(
-                ckpt_path,
-                device_map=device_map,
-                **model_kwargs,
-            )
         else:
+            architecture = hf_config.architectures[0]
+
+            assert hasattr(transformers, architecture), (
+                f"Architecture {architecture} not found in transformers: {transformers.__version__}"
+            )
+            auto_model_module = getattr(transformers, architecture)
+
             with init_empty_weights():
                 # When computing the device_map, assuming half precision by default,
                 # unless specified by the hf_config.
@@ -246,7 +204,7 @@ def get_model(
                 # DeciLMForCausalLM does not support max_memory argument
                 if "architectures" in hf_config and "DeciLMForCausalLM" in hf_config.architectures:
                     model_kwargs2.pop("max_memory", None)
-                model = AutoModelForCausalLM.from_config(
+                model = auto_model_module._from_config(
                     hf_config,
                     **model_kwargs2,
                 )
@@ -269,7 +227,7 @@ def get_model(
                 )
                 model_kwargs["max_memory"] = max_memory
 
-            model = AutoModelForCausalLM.from_pretrained(
+            model = auto_model_module.from_pretrained(
                 ckpt_path,
                 device_map=device_map,
                 **model_kwargs,

@@ -174,7 +174,10 @@ def quantizer_state(model: nn.Module) -> dict[str, Any]:
 
 def replace_quant_module(model: nn.Module, version=None, registry=QuantModuleRegistry):
     """Recursively replace the module with quantized module."""
-    from .plugins.custom import register_custom_model_plugins_on_the_fly
+    from .plugins.custom import (
+        register_custom_model_plugins_on_the_fly,
+        register_custom_post_conversion_plugins,
+    )
 
     assert not is_quantized(model), "Model must not be quantized!"
     register_custom_model_plugins_on_the_fly(model)
@@ -183,7 +186,7 @@ def replace_quant_module(model: nn.Module, version=None, registry=QuantModuleReg
         model = registry.convert(model)
 
     _replace_quant_module(model, version=version, registry=registry)
-
+    register_custom_post_conversion_plugins(model)
     replaced_modules = sum(isinstance(m, TensorQuantizer) for _, m in model.named_modules())
     print(f"Inserted {replaced_modules} quantizers")
 

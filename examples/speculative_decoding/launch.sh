@@ -18,6 +18,10 @@ set -eo pipefail
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --training_seq_len*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      TRAINING_SEQ_LEN="${1#*=}"
+      ;;
     --model*)
       if [[ "$1" != *=* ]]; then shift; fi
       MODEL="${1#*=}"
@@ -62,6 +66,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       EAGLE_NUM_LAYERS="${1#*=}"
       ;;
+    --draft_vocab_size*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      DRAFT_VOCAB_SIZE="${1#*=}"
+      ;;
     --fsdp_transformer_layer_cls_to_wrap*)
       if [[ "$1" != *=* ]]; then shift; fi
       FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP="${1#*=}"
@@ -99,16 +107,18 @@ TRAIN_BS=${TRAIN_BS:-4}
 MEDUSA_NUM_HEADS=${MEDUSA_NUM_HEADS:-1}
 MEDUSA_NUM_LAYERS=${MEDUSA_NUM_LAYERS:-1}
 EAGLE_NUM_LAYERS=${EAGLE_NUM_LAYERS:-1}
+DRAFT_VOCAB_SIZE=${DRAFT_VOCAB_SIZE:-0}
 REDRAFTER_TOKENS=${REDRAFTER_TOKENS:-1}
 REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 NUM_GPU=${NUM_GPU:-1}
 DO_EVAL=${DO_EVAL:-"True"}
+TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-2048}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
 elif [[ "$MODE" == "eagle" ]]; then
-  SPECULATIVE_ARGS="--eagle_num_layers $EAGLE_NUM_LAYERS"
+  SPECULATIVE_ARGS="--eagle_num_layers $EAGLE_NUM_LAYERS --draft_vocab_size $DRAFT_VOCAB_SIZE"
 else
   echo "Only medusa and eagle supported for now!"
   exit 1
@@ -125,7 +135,7 @@ fi
 CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --mode $MODE \
     --model_name_or_path $MODEL \
-    --model_max_length 2048 \
+    --training_seq_len $TRAINING_SEQ_LEN \
     --dataloader_drop_last True \
     --bf16 True \
     --output_dir $OUTPUT_DIR \

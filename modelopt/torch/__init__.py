@@ -22,9 +22,9 @@ from torch import __version__ as _torch_version
 
 from . import distill, nas, opt, prune, quantization, sparsity, speculative, utils
 
-if _Version(_torch_version) < _Version("2.6"):
+if _Version(_torch_version) < _Version("2.7"):
     _warnings.warn(
-        "nvidia-modelopt will drop torch<2.6 support in a future release.", DeprecationWarning
+        "nvidia-modelopt will drop torch<2.7 support in a future release.", DeprecationWarning
     )
 
 # Since `hf` dependencies are optional and users have pre-installed transformers, we need to ensure

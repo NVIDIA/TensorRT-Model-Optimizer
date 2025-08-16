@@ -19,13 +19,8 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-from packaging.version import Version
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP  # noqa: N817
-
-if Version(torch.__version__) >= Version("2.6"):
-    from torch.distributed.fsdp import fully_shard
-else:
-    from torch.distributed._composable.fsdp.fully_shard import fully_shard
+from torch.distributed.fsdp import fully_shard
 
 from modelopt.torch.opt.dynamic import DynamicModule, _pytorch_managed
 

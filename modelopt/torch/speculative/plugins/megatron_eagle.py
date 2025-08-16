@@ -434,24 +434,26 @@ class EagleModule(MegatronModule):
         # This linear was previously a ColumnParallelLinear. We changed it to a normal linear
         # since ColumnParallelLinear will have try to gather the input sequence when sequence
         # parallel is used and does not allow gathering the outputs.
-        self.fc = Linear(
-            eagle_config.hidden_size * fc_input_size_multiplier,
-            eagle_config.hidden_size,
-            config=eagle_config,
-            init_method=(lambda w: None),  # not used
-            bias=bias,
-        ).to(device)
+        with torch.device(device):
+            self.fc = Linear(
+                eagle_config.hidden_size * fc_input_size_multiplier,
+                eagle_config.hidden_size,
+                config=eagle_config,
+                init_method=(lambda w: None),  # not used
+                bias=bias,
+            )
 
         self.rotary_pos_emb = rotary_pos_emb
 
         # Eagle does not use the final_layernorm in decoder.
-        self.decoder = EagleTransformerBlock(
-            config=eagle_config,
-            spec=eagle_transformer_layer_spec,
-            post_layer_norm=use_last_layernorm,
-            pre_process=True,
-            post_process=True,
-        ).to(device)
+        with torch.device(device):
+            self.decoder = EagleTransformerBlock(
+                config=eagle_config,
+                spec=eagle_transformer_layer_spec,
+                post_layer_norm=use_last_layernorm,
+                pre_process=True,
+                post_process=True,
+            )
 
         if self._num_aux_hidden_states > 0:
             layer = self.decoder.layers[0]
