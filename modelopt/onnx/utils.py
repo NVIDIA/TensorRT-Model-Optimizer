@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-from onnx import ValueInfoProto, numpy_helper
+from onnx import TensorProto, ValueInfoProto, numpy_helper
 from onnx.helper import get_attribute_value
 from onnx_graphsurgeon import Constant, Node, Variable
 
@@ -287,8 +287,15 @@ def _convert_types_to_np(types: dict[str, int] | list[int] | int) -> Any:
         return onnx.helper.tensor_dtype_to_np_dtype(types)
 
 
-def get_tensor_by_name(onnx_model: onnx.ModelProto, tensor_name: str) -> ValueInfoProto | None:
+def get_tensor_by_name(
+    onnx_model: onnx.ModelProto, tensor_name: str
+) -> ValueInfoProto | TensorProto | None:
     """This function returns a tensor from its name.
+
+    This function searches for a tensor in the model's:
+    1. Value info (shape/type info, no data)
+    2. Initializers (TensorProto, contains actual data)
+    3. Inputs and outputs
 
     Args:
         onnx_model: ONNX model.
@@ -297,10 +304,15 @@ def get_tensor_by_name(onnx_model: onnx.ModelProto, tensor_name: str) -> ValueIn
     Returns:
         tensor
     """
-    for tensor in onnx_model.graph.value_info:
-        if tensor.name == tensor_name:
-            return tensor
-    return None
+    tensor_val = next(
+        (tens for tens in onnx_model.graph.value_info if tens.name == tensor_name), None
+    )
+    tensor_init = next(
+        (tens for tens in onnx_model.graph.initializer if tens.name == tensor_name), None
+    )
+    tensor_inp = next((tens for tens in onnx_model.graph.input if tens.name == tensor_name), None)
+    tensor_out = next((tens for tens in onnx_model.graph.output if tens.name == tensor_name), None)
+    return tensor_val or tensor_init or tensor_inp or tensor_out
 
 
 def gen_random_inputs(

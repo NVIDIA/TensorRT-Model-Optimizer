@@ -31,7 +31,12 @@ from .mcore_nemotron import (
     nemotron_h_causal_lm_export,
     nemotron_h_causal_lm_import,
 )
-from .mcore_qwen import qwen3_causal_lm_export, qwen3_causal_lm_import
+from .mcore_qwen import (
+    qwen3_causal_lm_export,
+    qwen3_causal_lm_import,
+    qwen25_causal_lm_export,
+    qwen25_causal_lm_import,
+)
 
 all_mcore_hf_export_mapping: dict[str, Any] = {
     "DeepseekV2ForCausalLM": deepseek_causal_lm_export,
@@ -44,6 +49,7 @@ all_mcore_hf_export_mapping: dict[str, Any] = {
     "LlamaForCausalLMEagle3": eagle3_llama_causal_lm_export,
     "Qwen3ForCausalLM": qwen3_causal_lm_export,
     "Qwen3MoeForCausalLM": qwen3_causal_lm_export,
+    "Qwen2ForCausalLM": qwen25_causal_lm_export,
 }
 
 all_mcore_hf_import_mapping: dict[str, Any] = {
@@ -54,4 +60,5 @@ all_mcore_hf_import_mapping: dict[str, Any] = {
     "NemotronHForCausalLM": nemotron_h_causal_lm_import,
     "Qwen3ForCausalLM": qwen3_causal_lm_import,
     "Qwen3MoeForCausalLM": qwen3_causal_lm_import,
+    "Qwen2ForCausalLM": qwen25_causal_lm_import,
 }

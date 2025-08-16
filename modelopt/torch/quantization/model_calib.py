@@ -33,12 +33,28 @@ from .nn import QuantModule, SequentialQuantizer, TensorQuantizer
 from .utils import (
     enable_weight_access_and_writeback,
     is_quantized_column_parallel_linear,
-    is_quantized_layer_with_weight,
     is_quantized_linear,
     is_quantized_row_parallel_linear,
+    quantizer_attr_names,
+    weight_attr_names,
 )
 
 __all__ = ["awq", "max_calibrate", "smoothquant", "svdquant"]
+
+
+def weight_only_quantize(model: nn.Module):
+    """Just quantize the weights of the model."""
+    seen_modules = set()
+    for name, module in model.named_modules():
+        if module in seen_modules:
+            continue
+        for weight_name in weight_attr_names(module):
+            with enable_weight_access_and_writeback(module, model):
+                weight_quantizer = getattr(
+                    module, quantizer_attr_names(weight_name).weight_quantizer
+                )
+                weight_quantizer(getattr(module, weight_name))
+        seen_modules.add(module)
 
 
 @torch.no_grad()
@@ -55,18 +71,9 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
     """
     enable_stats_collection(model)
     if forward_loop is None:
-        # Lets do a weight only calibration
-        def forward_loop(model: nn.Module):
-            seen_modules = set()
-            for name, module in model.named_modules():
-                if module in seen_modules:
-                    continue
-                if is_quantized_layer_with_weight(module) and hasattr(module, "weight_quantizer"):
-                    with enable_weight_access_and_writeback(module, model):
-                        module.weight_quantizer(module.weight)
-                    seen_modules.add(module)
-
-    forward_loop(model)
+        weight_only_quantize(model)
+    else:
+        forward_loop(model)
     finish_stats_collection(model)
 
     if not distributed_sync:
@@ -629,7 +636,8 @@ def awq_lite(
 
     AWQLiteHelper.cache_mode = False
     print("Searching awq_lite parameters...")
-    forward_loop(model)
+    with torch.no_grad():
+        forward_loop(model)
 
     def postprocess(module):
         update_best_params(module)
@@ -711,7 +719,8 @@ def awq_clip(
             else:
                 self.loss = {
                     k: torch.zeros(
-                        (co, math.ceil(ci / self.block_size)), device=module.weight.device
+                        (co, math.ceil(ci / self.block_size)),
+                        device=module.weight.device,
                     )
                     for k in clip_ratios
                 }
@@ -791,7 +800,10 @@ def awq_clip(
                     ]
                     if cur_w.shape[-1] % block_size != 0:
                         cur_w = F.pad(
-                            cur_w, (0, block_size - cur_w.shape[-1] % block_size), "constant", 0
+                            cur_w,
+                            (0, block_size - cur_w.shape[-1] % block_size),
+                            "constant",
+                            0,
                         )
                     cur_w = cur_w.reshape(w.shape)
                     cur_out = (inputs * cur_w).sum(dim=-1)  # co_bsz, max_tokens, n_block
@@ -818,7 +830,12 @@ def awq_clip(
             max_calibrate(self.input_quantizer, lambda input_quantizer: input_quantizer(input))
             self.input_quantizer.disable()
         try:
-            _clip_search(self, self.input_quantizer(input), max_co_batch_size, max_tokens_per_batch)
+            _clip_search(
+                self,
+                self.input_quantizer(input),
+                max_co_batch_size,
+                max_tokens_per_batch,
+            )
         except RuntimeError as e:
             if "CUDA out of memory" in str(e):
                 raise RuntimeError(

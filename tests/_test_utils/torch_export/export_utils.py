@@ -18,13 +18,14 @@ import torch
 
 # Models
 class ToyModel(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, dims=[10, 10, 10, 10]):
         super().__init__()
-        self.linears = torch.nn.Sequential(
-            torch.nn.Linear(10, 10),
-            torch.nn.Linear(10, 10),
-            torch.nn.Linear(10, 10),
-        )
+        assert len(dims) >= 2
+        if len(dims) == 2:
+            self.linears = torch.nn.Linear(dims[0], dims[1])
+        else:
+            linears = [torch.nn.Linear(dims[i], dims[i + 1]) for i in range(len(dims) - 1)]
+            self.linears = torch.nn.Sequential(*linears)
 
     def forward(self, x):
         return self.linears(x)

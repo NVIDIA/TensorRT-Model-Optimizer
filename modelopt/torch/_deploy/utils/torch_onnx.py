@@ -410,28 +410,19 @@ def get_onnx_bytes_and_metadata(
         else nullcontext()
     )
     with torch.inference_mode(), autocast, quantizer_context:
-        if not dynamo_export or Version(torch.__version__) >= Version("2.6"):
-            additional_kwargs = {}
-            if not dynamo_export and Version(torch.__version__) >= Version("2.8"):
-                additional_kwargs["dynamic_axes"] = dynamic_axes
-            torch.onnx.export(
-                model,
-                dummy_input,
-                onnx_save_path,
-                input_names=input_names,
-                output_names=output_names,
-                opset_version=onnx_opset,
-                dynamo=dynamo_export,
-                **additional_kwargs,
-            )
-        else:  # torch < 2.6 with dynamo export
-            export_options = torch.onnx.ExportOptions(dynamic_shapes=True)
-            dummy_input_args, dummy_input_kwargs = split_args_kwargs(dummy_input)
-            if dummy_input_kwargs is None:
-                dummy_input_kwargs = {}
-            torch.onnx.dynamo_export(
-                model, *dummy_input_args, export_options=export_options, **dummy_input_kwargs
-            ).save(onnx_save_path)
+        additional_kwargs = {}
+        if not dynamo_export and Version(torch.__version__) >= Version("2.8"):
+            additional_kwargs["dynamic_axes"] = dynamic_axes
+        torch.onnx.export(
+            model,
+            dummy_input,
+            onnx_save_path,
+            input_names=input_names,
+            output_names=output_names,
+            opset_version=onnx_opset,
+            dynamo=dynamo_export,
+            **additional_kwargs,
+        )
 
     # Check that export worked
     assert len(os.listdir(onnx_path)) > 0, "Torch to onnx export failed."
@@ -463,7 +454,7 @@ def get_onnx_bytes_and_metadata(
         onnx_opt_graph = qdq_to_dq(onnx_opt_graph)
 
     if weights_dtype == "float16":
-        if is_fp4_quantized(model) or is_mxfp8_quantized(model):
+        if not use_autocast:
             onnx_opt_graph = convert_float_to_float16(
                 onnx_opt_graph, keep_io_types=False, disable_shape_infer=True
             )

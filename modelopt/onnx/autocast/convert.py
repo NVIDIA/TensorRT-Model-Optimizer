@@ -169,9 +169,10 @@ def convert_to_f16(
     """
     assert low_precision_type in ["fp16", "bf16"], "low_precision_type must be either fp16 or bf16"
 
+    # Opset 21 is needed for NVFP4 quantization support (DQ with 'block_size' attribute)
     sanitizer = GraphSanitizer(
         model,
-        min_opset=19,
+        min_opset=21,
         trt_plugins=trt_plugins,
         max_ir_version=LATEST_IR_VERSION_SUPPORTED_BY_ORT,
     )

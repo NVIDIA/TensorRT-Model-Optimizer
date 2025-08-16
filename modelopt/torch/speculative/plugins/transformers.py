@@ -30,12 +30,14 @@
 """Support speculative decoding for huggingface models."""
 
 import contextlib
+import copy
 from typing import Any
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers import Cache, DynamicCache, PreTrainedModel
+from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaRMSNorm
 from transformers.trainer_pt_utils import LabelSmoother
 from transformers.utils import ModelOutput
 
@@ -44,7 +46,7 @@ from ..eagle.eagle_model import EagleModel
 from ..eagle.utils import RMSNorm, expand_mask, make_causal_mask
 from ..medusa.conversion import MedusaDMRegistry
 from ..medusa.medusa_model import MedusaModel
-from ..utils import ResBlock
+from ..utils import AcceptanceRateValidation, ResBlock
 
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 
@@ -171,23 +173,107 @@ class HFMedusaModel(MedusaModel):
 class EagleModule(nn.Module):
     """Eagle module used in EAGLE model."""
 
-    def __init__(self, config, decoder_layer_cls, num_layers, use_last_layernorm=False, bias=True):
+    def __init__(
+        self,
+        config,
+        decoder_layer_cls,
+    ):
         """Init function for EagleModule."""
         super().__init__()
-
-        self.fc = nn.Linear(2 * config.hidden_size, config.hidden_size, bias=bias)
+        self.config = config
         self.layers = nn.ModuleList(
-            [decoder_layer_cls(config, layer_idx) for layer_idx in range(num_layers)]
+            [
+                decoder_layer_cls(config, layer_idx)
+                for layer_idx in range(config.eagle["num_hidden_layers"])
+            ]
         )
-        if use_last_layernorm:
+        if config.eagle["use_last_layernorm"]:
             self.norm = RMSNorm(config.hidden_size, config.rms_norm_eps)
+
+        # Optionally, we use a smaller vocab table for eagle module
+        if config.eagle["draft_vocab_size"] > 0:
+            # Need an extra lm_head for eagle module since vocab size is reduced.
+            assert config.eagle["draft_vocab_size"] <= config.vocab_size, (
+                "EAGLE module's vocab size should be <= base model vocab size!"
+            )
+
+            # Initialize the buffers to zero.
+            # Their values depend on specific tokenzier and calibrate dataset, and should be set in training script.
+            self.register_buffer(
+                "d2t", torch.zeros(config.eagle["draft_vocab_size"], dtype=torch.int64)
+            )
+            self.eagle_lm_head = nn.Linear(
+                config.hidden_size,
+                config.eagle["draft_vocab_size"],
+                bias=False,
+            )
+
+        if not config.eagle["use_aux_hidden_state"]:
+            # In Eagle-1, the FC concentrate input embeddings and hidden states
+            self.fc = nn.Linear(2 * config.hidden_size, config.hidden_size, bias=False)
+        else:
+            # In EAGLE-3, the FC concentrate hidden states from multiple base model layers
+            self.fc = nn.Linear(
+                len(config.eagle["eagle_aux_hidden_state_layer_ids"]) * config.hidden_size,
+                config.hidden_size,
+                bias=False,
+            )
+
+            first_layer_attn = self.layers[0].self_attn
+            if not isinstance(first_layer_attn, LlamaAttention):
+                raise ValueError("EAGLE-3 only support LlamaAttention.")
+
+            # EAGLE-3's first attention require [input_layernorm_output, aux_hidden_states]
+            first_layer_attn.register_forward_pre_hook(
+                self._eagle3_attention_forward_pre_hook, with_kwargs=True
+            )
+
+            # Modify qkv projection in first layer to accept 2h hidden size.
+            first_layer_attn.q_proj = nn.Linear(
+                first_layer_attn.q_proj.in_features * 2,
+                first_layer_attn.q_proj.out_features,
+                bias=first_layer_attn.config.attention_bias,
+            )
+            first_layer_attn.k_proj = nn.Linear(
+                first_layer_attn.k_proj.in_features * 2,
+                first_layer_attn.k_proj.out_features,
+                bias=first_layer_attn.config.attention_bias,
+            )
+            first_layer_attn.v_proj = nn.Linear(
+                first_layer_attn.v_proj.in_features * 2,
+                first_layer_attn.v_proj.out_features,
+                bias=first_layer_attn.config.attention_bias,
+            )
+
+            # In EAGLE-3, input_embeds and hidden_states are normalized separately before concatenation.
+            self.input_embeds_norm = LlamaRMSNorm(
+                config.hidden_size, eps=config.eagle["rms_norm_eps"]
+            )
+            self.hidden_norm = LlamaRMSNorm(config.hidden_size, eps=config.eagle["rms_norm_eps"])
+
+            # Disable input norm in first layer. We normed embeds and h individually before.
+            self.layers[0].input_layernorm = nn.Identity()
+
+    def _eagle3_attention_forward_pre_hook(self, module, args, kwargs):
+        """Concat input_embeds and hidden_states for EAGLE-3's first attention layer."""
+        if "hidden_states" not in kwargs:
+            raise ValueError("hidden_states not found in kwargs")
+        if self._input_embeds is None:
+            raise ValueError("self._input_embeds is None")
+
+        input_embeds = self._input_embeds
+        self._input_embeds = None
+        kwargs["hidden_states"] = torch.cat(
+            (input_embeds, self.hidden_norm(kwargs["hidden_states"])), dim=-1
+        )
+
+        return args, kwargs
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         inputs_embeds: torch.Tensor,
-        lm_head: nn.Module,
-        attention_mask: torch.Tensor | None = None,
+        attention_mask: torch.Tensor,
         loss_mask: torch.Tensor | None = None,
         logits: torch.Tensor | None = None,
         position_ids: torch.LongTensor | None = None,
@@ -216,18 +302,16 @@ class EagleModule(nn.Module):
         else:
             position_ids = position_ids.view(-1, seq_length).long()
 
-        if attention_mask is None:
-            attention_mask = torch.ones(
-                (batch_size, seq_length_with_past), dtype=torch.bool, device=hidden_states.device
-            )
-        attention_mask = self._prepare_decoder_attention_mask(
-            attention_mask, (batch_size, seq_length), hidden_states, past_key_values_length
-        )
-
         inputs_embeds = inputs_embeds.to(hidden_states.dtype).to(hidden_states.device)
-        hidden_states = self.fc(torch.cat((inputs_embeds, hidden_states), dim=-1))
+        if self.config.eagle["use_aux_hidden_state"]:
+            # In EAGLE-3, we save input embeddings to attribute, and use it in first decoder layer by hook function
+            # Also, we normalize input embeddings and hidden states before concatenating them.
+            # The default input norm in first layer attn will be disabled.
+            self._input_embeds = self.input_embeds_norm(inputs_embeds)
+        else:  # EAGLE-1
+            hidden_states = self.fc(torch.cat((inputs_embeds, hidden_states), dim=-1))
 
-        for idx, decoder_layer in enumerate(self.layers):
+        for decoder_layer in self.layers:
             layer_outputs = decoder_layer(
                 hidden_states,
                 attention_mask=attention_mask,
@@ -238,41 +322,13 @@ class EagleModule(nn.Module):
                 position_embeddings=position_embeddings,
             )
 
-            hidden_states = layer_outputs[0]
+            hidden_states = layer_outputs
 
-        if hasattr(self, "norm"):
-            hidden_states = self.norm(hidden_states)
+        pre_norm_h = hidden_states
 
-        logits = lm_head(hidden_states).to(hidden_states.device)
+        post_norm_h = self.norm(hidden_states) if hasattr(self, "norm") else hidden_states
 
-        return hidden_states, logits, past_key_values
-
-    def _prepare_decoder_attention_mask(
-        self, attention_mask, input_shape, inputs_embeds, past_key_values_length
-    ):
-        # create causal mask
-        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-        combined_attention_mask = None
-        if input_shape[-1] > 1:
-            combined_attention_mask = make_causal_mask(
-                input_shape,
-                inputs_embeds.dtype,
-                device=inputs_embeds.device,
-                past_key_values_length=past_key_values_length,
-            )
-
-        if attention_mask is not None:
-            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            expanded_attn_mask = expand_mask(
-                attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]
-            ).to(inputs_embeds.device)
-            combined_attention_mask = (
-                expanded_attn_mask
-                if combined_attention_mask is None
-                else expanded_attn_mask + combined_attention_mask
-            )
-
-        return combined_attention_mask
+        return post_norm_h, pre_norm_h, past_key_values
 
 
 @EagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
@@ -282,6 +338,26 @@ class HFEagleModel(EagleModel):
     def _set_default_aux_hidden_state_layers(self):
         num_layers = self.config.num_hidden_layers
         self.eagle_aux_hidden_state_layer_ids = [1, num_layers // 2 - 1, num_layers - 4]
+
+    def _collect_aux_hidden_states_forward_hook(self, module, input, output) -> None:
+        """Collect auxiliary hidden states from base model intermediate layers, save them in attribute."""
+        hidden_states = (
+            output.clone().detach()
+            if isinstance(output, torch.Tensor)
+            else output[0].clone().detach()
+        )
+        self._aux_hidden_states.append(hidden_states)
+
+    def pop_aux_hidden_states(self):
+        """Return aux hidden states from base model, and clear the list."""
+        # In PTQ, forward method will be called with try and except to find max batch size.
+        # This leads to uncleared aux hidden states in the front of the list.
+        # To fix it, we only return the last num_aux_h items in the list.
+        num_aux_h = len(self.eagle_aux_hidden_state_layer_ids)
+        aux_h_list = self._aux_hidden_states[-num_aux_h:]
+        self._aux_hidden_states.clear()
+
+        return aux_h_list
 
     def modify(
         self,
@@ -315,6 +391,9 @@ class HFEagleModel(EagleModel):
             parallel_draft_step=parallel_draft_step,
         )
 
+        if use_aux_hidden_state and not eagle_aux_hidden_state_layer_ids:
+            self._set_default_aux_hidden_state_layers()
+
         self.config.eagle = {
             "num_hidden_layers": eagle_num_layers,
             "num_attention_heads": self.config.num_attention_heads,
@@ -329,9 +408,14 @@ class HFEagleModel(EagleModel):
             "rope_theta": self.config.rope_theta,
             "use_input_layernorm_in_first_layer": use_input_layernorm_in_first_layer,
             "use_last_layernorm": use_last_layernorm,
+            "use_aux_hidden_state": use_aux_hidden_state,
+            "eagle_aux_hidden_state_layer_ids": self.eagle_aux_hidden_state_layer_ids,
+            "draft_vocab_size": draft_vocab_size,
         }
+
         self.eagle_module = EagleModule(
-            self.config, type(self.model.layers[-1]), eagle_num_layers, use_last_layernorm
+            config=self.config,
+            decoder_layer_cls=LlamaDecoderLayer,
         )
 
         if hasattr(self.model.layers[-1].self_attn, "o_proj"):
@@ -348,6 +432,318 @@ class HFEagleModel(EagleModel):
         for param in self.lm_head.parameters():
             param.requires_grad = False
 
+        # EAGLE-3 auxiluary hidden_states
+        if self.use_aux_hidden_state:
+            self._aux_hidden_states = []
+            for layer_idx, layer in enumerate(self.model.layers):
+                if layer_idx in self.eagle_aux_hidden_state_layer_ids:
+                    layer.register_forward_hook(self._collect_aux_hidden_states_forward_hook)
+
+    def _prepare_decoder_attention_mask(
+        self, attention_mask, input_shape, inputs_embeds, past_key_values_length
+    ):
+        """Expand the 2-D attention mask to 4-D and apply causal mask."""
+        # create causal mask
+        # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+        combined_attention_mask = None
+        if input_shape[-1] > 1:
+            combined_attention_mask = make_causal_mask(
+                input_shape,
+                inputs_embeds.dtype,
+                device=inputs_embeds.device,
+                past_key_values_length=past_key_values_length,
+            )
+
+        if attention_mask is not None:
+            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
+            expanded_attn_mask = expand_mask(
+                attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]
+            ).to(inputs_embeds.device)
+            combined_attention_mask = (
+                expanded_attn_mask
+                if combined_attention_mask is None
+                else expanded_attn_mask + combined_attention_mask
+            )
+
+        return combined_attention_mask
+
+    def _get_eagle_module_inputs(
+        self,
+        input_ids,
+        eagle_input_hidden_states,
+        attention_mask,
+        position_ids,
+        eagle_cache,
+    ):
+        """Helper function to prepare eagle inputs for the 0th eagle forward pass."""
+        b, seq_length, _ = eagle_input_hidden_states.shape
+        past_key_values_length = eagle_cache.get_seq_length() if eagle_cache is not None else 0
+        seq_length_with_past = seq_length + past_key_values_length
+
+        # Prepare eagle_input_ids: Shift left 1 token
+        zeropadding = torch.zeros(
+            input_ids.shape[0], 1, dtype=input_ids.dtype, device=input_ids.device
+        )
+        eagle_input_ids = torch.cat((input_ids[:, 1:], zeropadding), dim=1)
+
+        # Prepare attention_mask
+        if attention_mask is not None:  # Shift left 1 token for attention_mask
+            zeropadding = torch.zeros(
+                attention_mask.shape[0], 1, dtype=attention_mask.dtype, device=attention_mask.device
+            )
+            attention_mask = torch.cat((attention_mask[:, 1:], zeropadding), dim=1)
+        else:
+            attention_mask = torch.ones(  # Initialize default attention_mask
+                (b, seq_length_with_past), dtype=torch.bool, device=eagle_input_hidden_states.device
+            )
+
+        # Expand the 2-D attention mask to 4-D and apply causal mask.
+        attention_mask = self._prepare_decoder_attention_mask(
+            attention_mask, (b, seq_length), eagle_input_hidden_states, past_key_values_length
+        )
+
+        # Prepare position_ids
+        if position_ids is None:
+            position_ids = torch.arange(
+                past_key_values_length,
+                seq_length + past_key_values_length,
+                dtype=torch.long,
+                device=eagle_input_hidden_states.device,
+            )
+            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
+        else:
+            position_ids = position_ids.view(-1, seq_length).long()
+
+        return eagle_input_ids, attention_mask, position_ids
+
+    def _concat_eagle_inputs(
+        self,
+        input_ids_0,
+        eagle_input_hidden_states_0,
+        attention_mask_0,
+        position_ids_0,
+        eagle_generated_hs,
+    ):
+        """Helper function to prepare eagle inputs for second-fourth eagle forward pass during training-time-testing.
+
+        This is a slow version, focusing on the correctness only. TODO: optimize this.
+        Parameters:
+            input_ids_0: [b, seq_length], input_ids from the 0th eagle step
+            base_model_hidden_states: [b, seq_length, h]
+            eagle_input_hidden_states_0: [b, seq_length, h]
+            attention_mask_0: [b, seq_length, seq_length], from the 0th eagle step.
+            position_ids_0: [b, seq_length], from the 0th eagle step.
+            eagle_generated_hs: [b, seq_length * n_steps, h], from the LAST eagle step.
+        """
+        b, seq_length, h = eagle_input_hidden_states_0.shape
+        dtypemin = torch.finfo(attention_mask_0.dtype).min
+
+        if eagle_generated_hs.shape[1] == seq_length:
+            # This is the second step of eagle forward
+
+            # Concat input_ids
+            cat_input_ids = torch.cat((input_ids_0, input_ids_0), dim=-1)
+
+            # Concat hidden_states
+            cat_eagle_input_hidden_states = torch.cat(
+                (
+                    eagle_input_hidden_states_0,
+                    torch.zeros(
+                        (b, 1, h),
+                        dtype=eagle_input_hidden_states_0.dtype,
+                        device=eagle_input_hidden_states_0.device,
+                    ),
+                    eagle_generated_hs[:, :-1, :],
+                ),
+                dim=1,
+            )
+
+            # Expand attn_mask
+            zero_mask = torch.ones_like(attention_mask_0).bool()
+            mask_2_1 = attention_mask_0.clone().detach()
+            mask_2_1[:, :, :, :-1] = mask_2_1[:, :, :, 1:]
+            mask_2_2 = torch.ones_like(attention_mask_0).bool()
+            for i in range(1, seq_length - 1):
+                mask_2_2[:, :, i, i] = False
+            cat_attention_mask = torch.cat(
+                (
+                    torch.cat((attention_mask_0, zero_mask), dim=-1),
+                    torch.cat((mask_2_1, mask_2_2), dim=-1),
+                ),
+                dim=-2,
+            )
+            cat_attention_mask = cat_attention_mask.masked_fill(cat_attention_mask == 1, dtypemin)
+
+            # Concat position_ids
+            cat_position_ids = torch.cat((position_ids_0, position_ids_0), dim=-1)
+
+        elif eagle_generated_hs.shape[1] == seq_length * 2:
+            cat_input_ids = torch.cat((input_ids_0, input_ids_0, input_ids_0), dim=-1)
+            cat_eagle_input_hidden_states = torch.cat(
+                (
+                    eagle_input_hidden_states_0,
+                    torch.zeros(
+                        (b, 1, h),
+                        dtype=eagle_input_hidden_states_0.dtype,
+                        device=eagle_input_hidden_states_0.device,
+                    ),
+                    eagle_generated_hs[:, :-1, :],
+                ),
+                dim=1,
+            )
+            zero_mask = torch.ones_like(attention_mask_0).bool()
+            mask_2_1 = attention_mask_0.clone().detach()
+            mask_2_1[:, :, :, :-1] = mask_2_1[:, :, :, 1:]
+            mask_2_2 = torch.ones_like(attention_mask_0).bool()
+            for i in range(1, seq_length - 1):
+                mask_2_2[:, :, i, i] = False
+
+            mask_3_1 = mask_2_1.clone().detach()
+            mask_3_1[:, :, :, :-1] = mask_3_1[:, :, :, 1:]
+            mask_3_2 = mask_2_2.clone().detach()
+            mask_3_2[:, :, :, :-1] = mask_3_2[:, :, :, 1:]
+            mask_3_2[:, :, 1, 0] = True
+            mask_3_3 = mask_2_2.clone().detach()
+            mask_3_3[:, :, 1, 1] = True
+            cat_attention_mask = torch.cat(
+                (
+                    torch.cat((attention_mask_0, zero_mask, zero_mask), dim=-1),
+                    torch.cat((mask_2_1, mask_2_2, zero_mask), dim=-1),
+                    torch.cat((mask_3_1, mask_3_2, mask_3_3), dim=-1),
+                ),
+                dim=-2,
+            )
+
+            cat_attention_mask = cat_attention_mask.masked_fill(cat_attention_mask == 1, dtypemin)
+            cat_position_ids = torch.cat((position_ids_0, position_ids_0, position_ids_0), dim=-1)
+
+        elif eagle_generated_hs.shape[1] == seq_length * 3:
+            cat_input_ids = torch.cat((input_ids_0, input_ids_0, input_ids_0, input_ids_0), dim=-1)
+            cat_eagle_input_hidden_states = torch.cat(
+                (
+                    eagle_input_hidden_states_0,
+                    torch.zeros(
+                        (b, 1, h),
+                        dtype=eagle_input_hidden_states_0.dtype,
+                        device=eagle_input_hidden_states_0.device,
+                    ),
+                    eagle_generated_hs[:, :-1, :],
+                ),
+                dim=1,
+            )
+            zero_mask = torch.ones_like(attention_mask_0).bool()
+            mask_2_1 = attention_mask_0.clone().detach()
+            mask_2_1[:, :, :, :-1] = mask_2_1[:, :, :, 1:]
+            mask_2_2 = torch.ones_like(attention_mask_0).bool()
+            for i in range(1, seq_length - 1):
+                mask_2_2[:, :, i, i] = False
+
+            mask_3_1 = mask_2_1.clone().detach()
+            mask_3_1[:, :, :, :-1] = mask_3_1[:, :, :, 1:]
+            mask_3_2 = mask_2_2.clone().detach()
+            mask_3_2[:, :, :, :-1] = mask_3_2[:, :, :, 1:]
+            mask_3_2[:, :, 1, 0] = True
+            mask_3_3 = mask_2_2.clone().detach()
+            mask_3_3[:, :, 1, 1] = True
+
+            mask_4_1 = mask_3_1.clone().detach()
+            mask_4_1[:, :, :, :-1] = mask_4_1[:, :, :, 1:]
+            mask_4_2 = mask_3_2.clone().detach()
+            mask_4_2[:, :, :, :-1] = mask_4_2[:, :, :, 1:]
+            mask_4_2[:, :, 2, 0] = True
+            mask_4_3 = mask_3_3.clone().detach()
+            mask_4_3[:, :, :, :-1] = mask_4_3[:, :, :, 1:]
+            mask_4_3[:, :, 2, 1] = True
+            mask_4_4 = mask_3_3.clone().detach()
+            mask_4_4[:, :, 2, 2] = True
+
+            cat_attention_mask = torch.cat(
+                (
+                    torch.cat((attention_mask_0, zero_mask, zero_mask, zero_mask), dim=-1),
+                    torch.cat((mask_2_1, mask_2_2, zero_mask, zero_mask), dim=-1),
+                    torch.cat((mask_3_1, mask_3_2, mask_3_3, zero_mask), dim=-1),
+                    torch.cat((mask_4_1, mask_4_2, mask_4_3, mask_4_4), dim=-1),
+                ),
+                dim=-2,
+            )
+            cat_attention_mask = cat_attention_mask.masked_fill(cat_attention_mask == 1, dtypemin)
+            cat_position_ids = torch.cat(
+                (position_ids_0, position_ids_0, position_ids_0, position_ids_0), dim=-1
+            )
+
+        else:
+            raise ValueError(
+                f"EAGLE generated hidden states shape {eagle_generated_hs.shape} is not supported"
+            )
+
+        return cat_eagle_input_hidden_states, cat_input_ids, cat_attention_mask, cat_position_ids
+
+    def _base_model_forward(
+        self,
+        input_ids,
+        attention_mask,
+        position_ids,
+        past_key_values,
+        freeze_base_model,
+        labels,
+        kwargs,
+    ):
+        with torch.no_grad() if freeze_base_model else contextlib.nullcontext():
+            outputs = super().forward(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                output_hidden_states=True,
+                **kwargs,
+            )
+            past_key_values = outputs.past_key_values
+            if not isinstance(past_key_values, Cache):
+                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+            base_model_hidden_states = outputs.hidden_states[-1]
+            base_model_logits = outputs.logits
+
+            # Optionally, compute base model loss when we want to tune the base model.
+            base_model_loss = None
+            if not freeze_base_model and labels is not None:  # Base model loss
+                loss_fct = CrossEntropyLoss()
+                loss_logits = base_model_logits.view(-1, base_model_logits.shape[-1])
+                labels = labels.view(-1)
+                base_model_loss = loss_fct(loss_logits, labels)
+
+        # Map the base model logits to the draft vocab
+        if self.draft_vocab_size > 0 and self.training:
+            reverse_mapping = (
+                torch.arange(len(self.eagle_module.d2t)).to(self.eagle_module.d2t.device)
+                + self.eagle_module.d2t
+            )
+            base_model_logits = base_model_logits[:, :, reverse_mapping]
+
+        return base_model_hidden_states, base_model_logits, base_model_loss, past_key_values
+
+    def _eagle_forward(
+        self,
+        eagle_input_hidden_states,
+        inputs_embeds,
+        attention_mask,
+        position_ids,
+        position_embeddings,
+    ):
+        eagle_postnorm_h, eagle_prenorm_h, eagle_cache = self.eagle_module(
+            eagle_input_hidden_states,
+            inputs_embeds,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            use_cache=True,
+            position_embeddings=position_embeddings,
+        )
+        eagle_lm_head = (
+            self.eagle_module.eagle_lm_head if self.draft_vocab_size > 0 else self.lm_head
+        )
+        eagle_logits = eagle_lm_head(eagle_postnorm_h)
+
+        return eagle_postnorm_h, eagle_prenorm_h, eagle_logits, eagle_cache
+
     def forward(
         self,
         input_ids: torch.LongTensor,
@@ -363,8 +759,8 @@ class HFEagleModel(EagleModel):
         logits_to_keep: int = 0,
         loss_mask: torch.Tensor | None = None,
         freeze_base_model: bool = True,
-        classification_loss_coefficient: float | None = 0.1,
-        regression_loss_coefficient: float | None = 1.0,
+        classification_loss_coefficient: float | None = 1,
+        regression_loss_coefficient: float | None = 0,
         **kwargs,
     ) -> Any:
         """Forward pass of the EagleModel.
@@ -380,125 +776,346 @@ class HFEagleModel(EagleModel):
         else:
             eagle_cache = None
 
-        with torch.no_grad() if freeze_base_model else contextlib.nullcontext():
-            outputs = super().forward(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                inputs_embeds=inputs_embeds,
-                labels=None,
-                use_cache=use_cache,
-                output_attentions=output_attentions,
-                output_hidden_states=True,
-                cache_position=cache_position,
-                logits_to_keep=logits_to_keep,
-                **kwargs,
-            )
-            past_key_values = outputs.past_key_values
-            if not isinstance(past_key_values, Cache):
-                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            hidden_states = outputs.hidden_states[-1]
-            logits = outputs.logits
+        if self.training:
+            assert eagle_cache is None, "eagle_cache should be None in training"
+            assert past_key_values is None, "past_key_values should be None in training"
 
-        # Shift left 1 token for eagle inputs
-        zeropadding = torch.zeros(
-            input_ids.shape[0], 1, dtype=input_ids.dtype, device=input_ids.device
+        if loss_mask is None:
+            loss_mask = torch.ones_like(input_ids, dtype=torch.bool, device=input_ids.device)
+
+        # ====First, we run base model forward====
+        base_model_hidden_states, base_model_logits, base_model_loss, past_key_values = (
+            self._base_model_forward(
+                input_ids,
+                attention_mask,
+                position_ids,
+                past_key_values,
+                freeze_base_model,
+                labels,
+                kwargs,
+            )
         )
-        eagle_input_ids = torch.cat((input_ids[:, 1:], zeropadding), dim=1)
-        if attention_mask is not None:
-            zeropadding = torch.zeros(
-                attention_mask.shape[0], 1, dtype=attention_mask.dtype, device=attention_mask.device
+
+        # ====Run eagle forward====
+        eagle_loss = None
+        if self.training:
+            # In EAGLE-3, we have an additional FC layer to concentrate hidden states from multiple base model layers
+            batch_size, seq_length, _ = base_model_hidden_states.shape
+            if self.config.eagle["use_aux_hidden_state"]:
+                eagle_input_hidden_states = self.eagle_module.fc(
+                    torch.cat(self.pop_aux_hidden_states(), dim=-1)
+                )
+            else:
+                eagle_input_hidden_states = base_model_hidden_states
+
+            # Get eagle inputs for the first eagle forward pass
+            eagle_input_ids, attention_mask_0, position_ids = self._get_eagle_module_inputs(
+                input_ids,
+                eagle_input_hidden_states,
+                attention_mask,
+                position_ids,
+                eagle_cache,
             )
-            attention_mask = torch.cat((attention_mask[:, 1:], zeropadding), dim=1)
+            with torch.no_grad():
+                inputs_embeds = self.model.embed_tokens(eagle_input_ids)
+            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states, position_ids)
 
-        with torch.no_grad():
-            inputs_embeds = self.model.embed_tokens(eagle_input_ids)
-
-        _, seq_length, _ = hidden_states.shape
-        device = hidden_states.device
-        past_key_values_length = eagle_cache.get_seq_length() if eagle_cache is not None else 0
-        if position_ids is None:
-            position_ids = torch.arange(
-                past_key_values_length,
-                seq_length + past_key_values_length,
-                dtype=torch.long,
-                device=device,
+            # Then, we run eagle forward
+            eagle_postnorm_h, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
+                eagle_input_hidden_states,
+                inputs_embeds,
+                attention_mask_0,
+                position_ids,
+                position_embeddings,
             )
-            position_ids = position_ids.unsqueeze(0).view(-1, seq_length)
-        else:
-            position_ids = position_ids.view(-1, seq_length).long()
-        position_embeddings = self.model.rotary_emb(hidden_states, position_ids)
 
-        eagle_hidden_states, eagle_logits, eagle_cache = self.eagle_module(
-            hidden_states,
-            inputs_embeds,
-            self.lm_head,
-            attention_mask=attention_mask,
-            position_ids=position_ids,
-            past_key_values=eagle_cache,
-            use_cache=True,
-            output_attentions=output_attentions,
-            position_embeddings=position_embeddings,
-        )
-        if not isinstance(eagle_cache, Cache):
-            eagle_cache = DynamicCache.from_legacy_cache(eagle_cache)
-        past_key_values.eagle_cache = eagle_cache
+            if not isinstance(eagle_cache, Cache):
+                eagle_cache = DynamicCache.from_legacy_cache(eagle_cache)
+            past_key_values.eagle_cache = eagle_cache
 
-        loss = None
-        if not freeze_base_model and labels is not None:
-            loss_fct = CrossEntropyLoss()
-            loss_logits = logits.view(-1, logits.shape[-1])
-            labels = labels.view(-1)
-            base_model_loss = loss_fct(loss_logits, labels)
-            loss = base_model_loss
-
-        if loss_mask is not None:
-            # Shift hidden_states and logits to align with eagle counterparts
-            zeropadding = torch.zeros(
-                hidden_states.shape[0],
-                1,
-                hidden_states.shape[2],
-                dtype=hidden_states.dtype,
-                device=hidden_states.device,
-            )
-            hidden_states = torch.cat((hidden_states[:, 1:], zeropadding), dim=1).detach()
-            zeropadding = torch.zeros(
-                logits.shape[0], 1, logits.shape[2], dtype=logits.dtype, device=logits.device
-            )
-            base_model_logits = torch.cat((logits[:, 1:], zeropadding), dim=1).detach()
-
+            # Compute loss on the eagle modules
             regression_loss, classification_loss = self._eagle_loss(
-                hidden_states, base_model_logits, eagle_hidden_states, eagle_logits, loss_mask
+                base_model_hidden_states[:, 1:],
+                base_model_logits[:, 1:],
+                eagle_postnorm_h[:, :-1],
+                eagle_logits[:, :-1],
+                loss_mask[:, 1:],
             )
             eagle_loss = (
                 regression_loss_coefficient * regression_loss
                 + classification_loss_coefficient * classification_loss
             )
-            if loss is None:
-                loss = eagle_loss
-            else:
-                loss += eagle_loss
+
+        # ====Perform training-time-testing with 3 extra eagle forward passes====
+        if self.training:
+            # ====Second step of eagle forward====
+            eagle_input_hidden_states_1, eagle_input_ids_1, attention_mask_1, position_ids_1 = (
+                self._concat_eagle_inputs(
+                    eagle_input_ids,
+                    eagle_input_hidden_states,
+                    attention_mask_0,
+                    position_ids,
+                    eagle_prenorm_h,
+                )
+            )
+            with torch.no_grad():
+                inputs_embeds = self.model.embed_tokens(eagle_input_ids_1)
+            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states_1, position_ids_1)
+            eagle_postnorm_h, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
+                eagle_input_hidden_states_1,
+                inputs_embeds,
+                attention_mask_1,
+                position_ids_1,
+                position_embeddings,
+            )
+
+            regression_loss, classification_loss = self._eagle_loss(
+                # base model predict +1 tok, while eagle predict +2
+                # so we shift base model outputs compared to eagle outputs
+                base_model_hidden_states[:, 1:],
+                base_model_logits[:, 1:],
+                eagle_postnorm_h[
+                    :,
+                    -seq_length:-1,
+                ],
+                eagle_logits[
+                    :,
+                    -seq_length:-1,
+                ],
+                # additionally, we mask the first n tok of eagle outputs at nth TTT step
+                torch.cat(
+                    (
+                        torch.zeros(batch_size, 1, dtype=loss_mask.dtype, device=loss_mask.device),
+                        loss_mask[:, 2:],
+                    ),
+                    dim=1,
+                ),
+            )
+            eagle_loss += (
+                regression_loss_coefficient * regression_loss
+                + classification_loss_coefficient * classification_loss
+            )
+
+            # ====Third step of eagle forward====
+            eagle_input_hidden_states_2, eagle_input_ids_2, attention_mask_2, position_ids_2 = (
+                self._concat_eagle_inputs(
+                    eagle_input_ids,
+                    eagle_input_hidden_states,
+                    attention_mask_0,
+                    position_ids,
+                    eagle_prenorm_h,
+                )
+            )
+            with torch.no_grad():
+                inputs_embeds = self.model.embed_tokens(eagle_input_ids_2)
+            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states_2, position_ids_2)
+            eagle_postnorm_h, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
+                eagle_input_hidden_states_2,
+                inputs_embeds,
+                attention_mask_2,
+                position_ids_2,
+                position_embeddings,
+            )
+
+            regression_loss, classification_loss = self._eagle_loss(
+                base_model_hidden_states[:, 1:],
+                base_model_logits[:, 1:],
+                eagle_postnorm_h[:, -seq_length:-1, :],
+                eagle_logits[
+                    :,
+                    -seq_length:-1,
+                ],
+                torch.cat(
+                    (
+                        torch.zeros(batch_size, 2, dtype=loss_mask.dtype, device=loss_mask.device),
+                        loss_mask[:, 3:],
+                    ),
+                    dim=1,
+                ),
+            )
+            eagle_loss += (
+                regression_loss_coefficient * regression_loss
+                + classification_loss_coefficient * classification_loss
+            )
+
+            # ====Fourth step of eagle forward====
+            eagle_input_hidden_states_3, eagle_input_ids_3, attention_mask_3, position_ids_3 = (
+                self._concat_eagle_inputs(
+                    eagle_input_ids,
+                    eagle_input_hidden_states,
+                    attention_mask_0,
+                    position_ids,
+                    eagle_prenorm_h,
+                )
+            )
+            with torch.no_grad():
+                inputs_embeds = self.model.embed_tokens(eagle_input_ids_3)
+            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states_3, position_ids_3)
+            eagle_postnorm_h, _, eagle_logits, eagle_cache = self._eagle_forward(
+                eagle_input_hidden_states_3,
+                inputs_embeds,
+                attention_mask_3,
+                position_ids_3,
+                position_embeddings,
+            )
+
+            regression_loss, classification_loss = self._eagle_loss(
+                base_model_hidden_states[:, 1:],
+                base_model_logits[:, 1:],
+                eagle_postnorm_h[
+                    :,
+                    -seq_length:-1,
+                ],
+                eagle_logits[
+                    :,
+                    -seq_length:-1,
+                ],
+                torch.cat(
+                    (
+                        torch.zeros(batch_size, 3, dtype=loss_mask.dtype, device=loss_mask.device),
+                        loss_mask[:, 4:],
+                    ),
+                    dim=1,
+                ),
+            )
+            eagle_loss += (
+                regression_loss_coefficient * regression_loss
+                + classification_loss_coefficient * classification_loss
+            )
+
+        # Finally, we merge base model loss and eagle loss, raise error if both are None
+        if base_model_loss is not None and eagle_loss is not None:
+            loss = base_model_loss + eagle_loss
+        elif base_model_loss is not None:
+            loss = base_model_loss
+        elif eagle_loss is not None:
+            loss = eagle_loss
+        else:
+            loss = None
+            assert not self.training, ValueError(
+                "Both base_model_loss and eagle_loss are skipped. At least one loss must be computed."
+            )
 
         return ModelOutput(
             loss=loss,
-            logits=logits,
-            eagle_logits=eagle_logits,
-            past_key_values=outputs.past_key_values,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
+            logits=base_model_logits,
+            past_key_values=past_key_values,
+            hidden_states=base_model_hidden_states,
         )
 
-    def _eagle_loss(self, hidden_states, logits, eagle_hidden_states, eagle_logits, loss_mask):
+    def _eagle_loss(
+        self,
+        base_model_hidden_states,
+        base_model_logits,
+        eagle_hidden_states,
+        eagle_logits,
+        loss_mask,
+    ):
         """Function for EAGLE loss computing."""
         loss_mask = loss_mask[:, :, None]
         criterion = nn.SmoothL1Loss(reduction="none")
-        classification_loss = nn.Softmax(dim=2)(logits) * nn.LogSoftmax(dim=2)(eagle_logits)
+        classification_loss = nn.Softmax(dim=2)(base_model_logits) * nn.LogSoftmax(dim=2)(
+            eagle_logits
+        )
         classification_loss = -torch.sum(torch.sum(loss_mask * classification_loss, 2)) / (
             loss_mask.sum() + 1e-5
         )
-        regression_loss = criterion(eagle_hidden_states, hidden_states)
+        regression_loss = criterion(eagle_hidden_states, base_model_hidden_states)
         regression_loss = torch.sum(torch.mean(loss_mask * regression_loss, 2)) / (
             loss_mask.sum() + 1e-5
         )
         return regression_loss, classification_loss
+
+    @torch.no_grad()
+    def pseudo_speculative_generate(
+        self,
+        input_ids: torch.Tensor,
+        steps: int = 1,
+    ):
+        """Pseudo generate of the EAGLE GPTModel.
+
+        Returns:
+            base_token (torch.Tensor): token from base model
+            draft_tokens (torch.Tensor): draft tokens from eagle module
+        """
+        base_model_outputs = super().forward(
+            input_ids=input_ids,
+            output_hidden_states=True,
+        )
+
+        base_model_hidden_states = base_model_outputs.hidden_states[-1]
+        base_model_logits = base_model_outputs.logits
+        base_token = base_model_logits[:, -1:, :].argmax(dim=-1)
+
+        # Early return
+        if steps < 1:
+            if hasattr(self, "_aux_hidden_states"):
+                _ = self.pop_aux_hidden_states()
+            return base_token, None
+
+        eagle_ids = torch.cat((input_ids[:, 1:], base_token), dim=-1)
+
+        if self.use_aux_hidden_state:
+            # EAGLE-3
+            # Only the first iteration input_hidden_states are from aux_hidden_state layers
+            # Gather _aux_hidden_states from all devices before concatenation
+            gathered_aux_hidden_states = self.pop_aux_hidden_states()
+            gathered_aux_hidden_states = [
+                h.to(input_ids.device) for h in gathered_aux_hidden_states
+            ]
+            eagle_input_hidden_states = self.eagle_module.fc(
+                torch.cat(gathered_aux_hidden_states, dim=-1)
+            )
+
+        else:
+            eagle_input_hidden_states = base_model_hidden_states
+
+        draft_tokens = []
+        for _ in range(steps):
+            # Get eagle inputs for the first eagle forward pass
+            _, eagle_attention_mask, eagle_position_ids = self._get_eagle_module_inputs(
+                input_ids,
+                eagle_input_hidden_states,
+                None,
+                None,
+                None,
+            )
+            position_embeddings = self.model.rotary_emb(
+                eagle_input_hidden_states, eagle_position_ids
+            )
+
+            _, eagle_prenorm_h, eagle_logits, _ = self._eagle_forward(
+                eagle_input_hidden_states,
+                self.model.embed_tokens(eagle_ids),
+                eagle_attention_mask,
+                eagle_position_ids,
+                position_embeddings,
+            )
+
+            draft_token = eagle_logits[:, -1:, :].argmax(dim=-1)
+            if self.draft_vocab_size > 0:
+                draft_token += self.eagle_module.d2t[draft_token]
+            draft_tokens.append(draft_token)
+
+            eagle_ids = torch.cat((eagle_ids, draft_token.to(eagle_ids.device)), dim=-1)
+            eagle_input_hidden_states = torch.cat(
+                (eagle_input_hidden_states, eagle_prenorm_h[:, -1:, :]), dim=1
+            )
+
+        draft_tokens = torch.cat(draft_tokens, dim=-1).to(base_token.device)
+
+        return base_token, draft_tokens
+
+
+class HFARValidation(AcceptanceRateValidation):
+    """This is the subclass for HF model AR validation."""
+
+    def get_ground_truth(self, input_ids, osl):
+        """This function returns ground truth output tokens from the base model."""
+        input_ids = copy.deepcopy(input_ids).to(torch.cuda.current_device())
+        for _ in range(osl):
+            input_id, _ = self.model.pseudo_speculative_generate(input_ids, steps=0)
+            input_ids = torch.cat((input_ids, input_id), dim=-1)
+            if input_id[0, 0] == self.end_token:
+                break
+        return input_ids

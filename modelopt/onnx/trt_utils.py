@@ -22,7 +22,12 @@ import onnx
 import onnx_graphsurgeon as gs
 
 from modelopt.onnx.logging_config import logger
-from modelopt.onnx.utils import get_dynamic_graph_inputs, parse_shapes_spec, save_onnx
+from modelopt.onnx.utils import (
+    get_dynamic_graph_inputs,
+    get_tensor_by_name,
+    parse_shapes_spec,
+    save_onnx,
+)
 
 try:
     import tensorrt as trt
@@ -108,35 +113,79 @@ def get_custom_layers(
     return custom_layers, all_tensor_info
 
 
-def infer_types_shapes(graph: gs.Graph, all_tensor_info: dict) -> None:
-    """Updates tensor shapes in ORT graph.
+def infer_types_shapes(model: onnx.ModelProto, all_tensor_info: dict) -> onnx.ModelProto:
+    """Updates tensor shapes in ONNX graph.
 
     Args:
-        graph: ONNX model's GS graph.
+        model: ONNX model.
         all_tensor_info: Dictionary containing tensors information.
 
     Returns:
-        None. In-memory modification of graph.
+        onnx.ModelProto: ONNX model with inferred types and shapes.
     """
     logger.debug("Inferring types and shapes for graph tensors")
 
-    def _map_trt_to_python_type(trt_type: trt.DataType):
+    def _map_trt_to_onnx_type(trt_type: trt.DataType):
+        trt_to_onnx_dtype_mapping = {
+            trt.float32: onnx.TensorProto.FLOAT,
+            trt.float16: onnx.TensorProto.FLOAT16,
+            trt.bfloat16: onnx.TensorProto.BFLOAT16,
+            trt.int4: onnx.TensorProto.INT4,
+            trt.int8: onnx.TensorProto.INT8,
+            trt.uint8: onnx.TensorProto.UINT8,
+            trt.int32: onnx.TensorProto.INT32,
+            trt.int64: onnx.TensorProto.INT64,
+            trt.bool: onnx.TensorProto.BOOL,
+            trt.fp8: onnx.TensorProto.FLOAT8E4M3FN,
+            trt.fp4: onnx.TensorProto.FLOAT4E2M1,
+        }
         try:
-            return trt.nptype(trt_type)
+            return trt_to_onnx_dtype_mapping[trt_type]
         except TypeError as e:
             logger.warning(f"{e}. TRT datatype: {trt_type}. Setting to None")
             return None
 
-    updated_tensors = 0
-    for node in graph.nodes:
-        for out in node.outputs:
-            if out.name in all_tensor_info:
-                out.shape = all_tensor_info[out.name]["shape"]
-                out.dtype = out.dtype or _map_trt_to_python_type(all_tensor_info[out.name]["dtype"])
-                updated_tensors += 1
+    def _create_tensor_shape_proto_from_np_arr(np_arr):
+        new_shape_proto = onnx.TensorShapeProto()
+        for dim_val in np_arr:
+            dim = onnx.TensorShapeProto.Dimension()
+            setattr(dim, "dim_param" if isinstance(dim_val, str) else "dim_value", dim_val)
+            new_shape_proto.dim.append(dim)
+        return new_shape_proto
 
-    logger.info(f"Updated {updated_tensors} tensors with type and shape information")
+    for node in model.graph.node:
+        for out in node.output:
+            if out not in all_tensor_info:
+                continue
+
+            tensor = get_tensor_by_name(model, out)
+            if isinstance(tensor, onnx.ValueInfoProto):
+                if not tensor.type.tensor_type.elem_type:
+                    tensor.type.tensor_type.elem_type = _map_trt_to_onnx_type(
+                        all_tensor_info[tensor.name]["dtype"]
+                    )
+                if all_tensor_info[tensor.name]["shape"]:
+                    tensor.type.tensor_type.shape.CopyFrom(
+                        _create_tensor_shape_proto_from_np_arr(
+                            all_tensor_info[tensor.name]["shape"]
+                        )
+                    )
+            elif tensor is None:
+                tensor = onnx.helper.make_tensor_value_info(
+                    name=out,
+                    elem_type=_map_trt_to_onnx_type(all_tensor_info[out]["dtype"]),
+                    shape=all_tensor_info[out]["shape"],
+                )
+                model.graph.value_info.append(tensor)
+
+    logger.info("Updated tensors with type and shape information")
+
+    # Topologically sort graph
+    graph = gs.import_onnx(model)
     graph.cleanup().toposort()
+    model = gs.export_onnx(graph)
+
+    return model
 
 
 def set_trt_plugin_domain(model: onnx.ModelProto, custom_ops: list[str]) -> onnx.ModelProto:
@@ -188,10 +237,7 @@ def infer_types_shapes_tensorrt(
         _, all_tensor_info = get_custom_layers(model, trt_plugins, strongly_typed)
 
     # Ensure that all tensors in the graph have type and shape info
-    graph = gs.import_onnx(model)
-    infer_types_shapes(graph, all_tensor_info)
-    model = gs.export_onnx(graph)
-    return model
+    return infer_types_shapes(model, all_tensor_info)
 
 
 def load_onnx_model(

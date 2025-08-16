@@ -52,6 +52,7 @@ from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
     restore_sharded_modelopt_state,
     save_sharded_modelopt_state,
 )
+from modelopt.torch.utils import to_empty_if_meta_device
 
 try:
     from megatron.core.extensions.transformer_engine import TENorm
@@ -134,6 +135,8 @@ def get_mcore_gpt_model(
     initialize_megatron: bool = False,
     *,
     num_layers: int = 2,
+    num_layers_in_first_pipeline_stage: int | None = None,
+    num_layers_in_last_pipeline_stage: int | None = None,
     hidden_size: int = 64,
     num_attention_heads: int = 8,
     num_query_groups: int | None = None,
@@ -143,9 +146,8 @@ def get_mcore_gpt_model(
     activation_func: str = "swiglu",
     normalization: str = "LayerNorm",
     transformer_impl: str = "modelopt" if HAS_TE else "local",
-    # Uneven PP
-    num_layers_in_first_pipeline_stage: int | None = None,
-    num_layers_in_last_pipeline_stage: int | None = None,
+    use_cpu_initialization: bool = False,
+    bf16: bool = True,
 ) -> GPTModel:
     assert activation_func in ["swiglu", "squared_relu"]
     assert normalization in ["LayerNorm", "RMSNorm"]
@@ -163,6 +165,8 @@ def get_mcore_gpt_model(
         pipeline_model_parallel_size=pipeline_model_parallel_size,
         sequence_parallel=False,
         num_layers=num_layers,
+        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
+        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
         num_query_groups=num_query_groups,
@@ -170,10 +174,10 @@ def get_mcore_gpt_model(
         activation_func=squared_relu if activation_func == "squared_relu" else F.silu,
         normalization=normalization,
         gated_linear_unit=(activation_func == "swiglu"),
-        pipeline_dtype=torch.float32,
         add_bias_linear=False,
-        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
-        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
+        use_cpu_initialization=use_cpu_initialization,
+        pipeline_dtype=torch.bfloat16 if bf16 else torch.float32,
+        bf16=bf16,
     )
 
     if transformer_impl == "local":
@@ -197,6 +201,8 @@ def get_mcore_gpt_model(
         share_embeddings_and_output_weights=False,
         position_embedding_type="rope",
     )
+    if bf16:
+        model = model.to(torch.bfloat16)
 
     return model
 
@@ -207,6 +213,8 @@ def get_mcore_mamba_model(
     initialize_megatron: bool = False,
     *,
     num_layers: int = 3,
+    num_layers_in_first_pipeline_stage: int | None = None,
+    num_layers_in_last_pipeline_stage: int | None = None,
     hybrid_override_pattern: str | None = None,
     hidden_size: int = 64,
     num_attention_heads: int = 8,
@@ -214,13 +222,11 @@ def get_mcore_mamba_model(
     ffn_hidden_size: int | None = 128,
     max_sequence_length: int = 4,
     vocab_size: int = 64,
+    bf16: bool = True,
     # Mamba-specific parameters
     mamba_state_dim: int = 32,
     mamba_head_dim: int = 16,
     mamba_num_groups: int = 2,
-    # Uneven PP
-    num_layers_in_first_pipeline_stage: int | None = None,
-    num_layers_in_last_pipeline_stage: int | None = None,
 ) -> MambaModel:
     assert HAS_MAMBA, "Mamba not installed"
 
@@ -232,16 +238,17 @@ def get_mcore_mamba_model(
         pipeline_model_parallel_size=pipeline_model_parallel_size,
         sequence_parallel=False,
         num_layers=num_layers,
+        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
+        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
         hidden_size=hidden_size,
         num_attention_heads=num_attention_heads,
         num_query_groups=num_query_groups,
         ffn_hidden_size=ffn_hidden_size,
-        pipeline_dtype=torch.float32,
         mamba_state_dim=mamba_state_dim,
         mamba_head_dim=mamba_head_dim,
         mamba_num_groups=mamba_num_groups,
-        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
-        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
+        pipeline_dtype=torch.bfloat16 if bf16 else torch.float32,
+        bf16=bf16,
     )
 
     if hybrid_override_pattern is None:
@@ -262,8 +269,10 @@ def get_mcore_mamba_model(
         pre_process=is_pipeline_first_stage(),
         post_process=is_pipeline_last_stage(),
         share_embeddings_and_output_weights=False,
-        position_embedding_type="rope",
+        position_embedding_type="none",
     )
+    if bf16:
+        model = model.to(torch.bfloat16)
     return model
 
 
@@ -298,7 +307,7 @@ def run_mcore_inference(
         hidden_size=active_hidden_size,
         inference_batch_times_seqlen_threshold=batch_size * model.max_sequence_length,
         fp32_residual_connection=False,
-        params_dtype=torch.float,
+        params_dtype=torch.bfloat16 if model.config.bf16 else torch.float32,
         padded_vocab_size=model.vocab_size,
     )
     wrapped_model = GPTInferenceWrapper(model, inference_wrapper_config)
@@ -312,7 +321,7 @@ def run_mcore_inference(
     logits = wrapped_model.run_one_forward_step(inference_input)
     logits = broadcast_from_last_pipeline_stage(
         [batch_size, model.max_sequence_length, model.vocab_size],
-        dtype=torch.float32,
+        dtype=torch.bfloat16 if model.config.bf16 else torch.float32,
         tensor=logits,
     )
     return logits  # shape: (batch_size, max_sequence_length, vocab_size)
@@ -353,7 +362,9 @@ def load_distributed_checkpoint(checkpoint_path, gpt_model):
     return gpt_model
 
 
-def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, version=None):
+def sharded_state_dict_test_helper(
+    tmp_path, model_ref, model_test, forward_fn, meta_device=False, version=None
+):
     logits_ref = forward_fn(model_ref)
     state_dict = copy.deepcopy(model_ref.state_dict())
 
@@ -363,6 +374,8 @@ def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, 
 
     # Restore model_test from `torch-dist`.
     restore_sharded_modelopt_state([model_test], tmp_path)
+    if meta_device:
+        to_empty_if_meta_device(model_test, device="cuda")
     model_test = load_distributed_checkpoint(tmp_path, model_test)
 
     state_dict_test = model_test.state_dict()
@@ -392,4 +405,8 @@ def sharded_state_dict_test_helper(tmp_path, model_ref, model_test, forward_fn, 
         )
 
     logits_test = forward_fn(model_test)
-    assert torch.allclose(logits_ref, logits_test), f"ref: {logits_ref}, test: {logits_test}"
+
+    logits_diff = (logits_test - logits_ref) / logits_ref
+    assert torch.allclose(logits_ref, logits_test), (
+        f"diff: {logits_diff.max()} ref: {logits_ref}, test: {logits_test}"
+    )

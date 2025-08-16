@@ -69,3 +69,31 @@ qwen3_causal_lm_export: dict[str, CustomModuleMapping] = {
     "local_experts.linear_fc1": GatedMLPSlicing("model.layers.{}.mlp.experts.{}."),
     "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj."),
 }
+
+qwen25_causal_lm_import: dict[str, CustomModuleMapping] = {
+    "word_embeddings": NameRemapping("model.embed_tokens.", COL_TP),
+    "final_layernorm": NameRemapping("model.norm.", REPLICATE),
+    "output_layer": NameRemapping("lm_head.", COL_TP),
+    # Attention
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm.", REPLICATE),
+    "linear_qkv": QKVMerging("model.layers.{}.self_attn.", COL_TP),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj.", ROW_TP),
+    # MLP
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm.", REPLICATE),
+    "linear_fc1": GatedMLPMerging("model.layers.{}.mlp.", COL_TP),
+    "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj.", ROW_TP),
+}
+
+qwen25_causal_lm_export: dict[str, CustomModuleMapping] = {
+    "word_embeddings": NameRemapping("model.embed_tokens."),
+    "final_layernorm": NameRemapping("model.norm."),
+    "output_layer": NameRemapping("lm_head."),
+    # Attention
+    "input_layernorm": NameRemapping("model.layers.{}.input_layernorm."),
+    "linear_qkv": QKVSlicing("model.layers.{}.self_attn."),
+    "linear_proj": NameRemapping("model.layers.{}.self_attn.o_proj."),
+    # MLP
+    "pre_mlp_layernorm": NameRemapping("model.layers.{}.post_attention_layernorm."),
+    "linear_fc1": GatedMLPSlicing("model.layers.{}.mlp."),
+    "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj."),
+}

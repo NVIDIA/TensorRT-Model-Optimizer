@@ -189,6 +189,10 @@ def train():
     )
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
+    # We set model.config.use_cache to False for training when gradient_checkpointing=False.
+    # Currently useful for FSDP2 to allow for setting activation_checkpointing=True in the config file.åå
+    model.config.use_cache = False
+
     print_rank_0("Loading dataset...")
     data_module = make_supervised_data_module(
         dataset=data_args.dataset,
@@ -243,7 +247,9 @@ def train():
         distill_kwargs["distill_config"] = distill_config
     trainer_cls = QADTrainer if training_args.distill else QATTrainer
 
-    training_args.lora_config = get_lora_config()
+    if training_args.lora:
+        training_args.lora_config = get_lora_config()
+
     trainer = trainer_cls(
         model=model,
         processing_class=tokenizer,

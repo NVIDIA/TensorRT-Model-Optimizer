@@ -169,6 +169,7 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
         max_sequence_length=max_sequence_length,
         vocab_size=vocab_size,
         activation_func=activation_func,
+        bf16=False,
     )
 
     # Randomize layernorm weights instead of all zeros or ones

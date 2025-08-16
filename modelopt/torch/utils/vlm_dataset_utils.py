@@ -25,7 +25,7 @@ from .image_processor import MllamaImageProcessor
 # Use dict to store the config for each dataset.
 # If we want to export more options to user like target languages, we need more standardized approach like dataclass.
 SUPPORTED_VLM_DATASET_CONFIG: dict[str, dict[str, Any]] = {
-    "scienceqa": {"config": {"path": "derek-thomas/ScienceQA"}},
+    "scienceqa": {"config": {"path": "derek-thomas/ScienceQA", "split": "train"}},
 }
 
 __all__ = ["get_supported_vlm_datasets", "get_vlm_dataset_dataloader"]
@@ -47,7 +47,6 @@ def _get_vlm_dataset(dataset_name: str, num_samples: int):
 
         # Use streaming can reduce the downloading time for large datasets
         dataset = load_dataset(
-            split="train",
             **SUPPORTED_VLM_DATASET_CONFIG[dataset_name]["config"],
         )
     else:

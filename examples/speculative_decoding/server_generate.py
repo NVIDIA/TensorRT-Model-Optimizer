@@ -91,7 +91,7 @@ def generate_data(messages, idx, system_prompt):
                 else:
                     raise ValueError(f"Message format not recognized: {message}")
 
-                if role != "user":
+                if role not in ["user", "human"]:
                     return
                 output_messages.append(
                     {

@@ -15,6 +15,7 @@
 
 """ModelOpt plugin for transformers Trainer."""
 
+import gc
 import os
 from contextlib import contextmanager, suppress
 
@@ -27,12 +28,30 @@ from modelopt.torch.distill import KDLossConfig
 from modelopt.torch.distill.mode import _convert_for_kd
 from modelopt.torch.distill.plugins.huggingface import KDTrainer
 from modelopt.torch.opt.conversion import restore_from_modelopt_state
-from modelopt.torch.quantization.utils import is_quantized
+from modelopt.torch.quantization.utils import (
+    calibrate_with_adapters,
+    disable_lora_quantizers_in_config,
+    is_quantized,
+)
 from modelopt.torch.utils import print_rank_0
 
 
 class EvalOnlyError(Exception):
     """Exception to raise when evaluation is only needed."""
+
+
+def check_awq_smoothquant(quant_cfg):
+    # TODO: Remove this once deepspeed for AWQ and SmoothQuant is added
+    """Get the quantization type from the configuration."""
+    if quant_cfg is None:
+        return False
+    algorithm = quant_cfg.get("algorithm", {})
+    is_awq_smoothquant = False
+    # Check SmoothQuant and AWQ
+    if algorithm and ("smoothquant" in algorithm or "awq" in algorithm):
+        is_awq_smoothquant = True
+
+    return is_awq_smoothquant
 
 
 def get_metrics_with_perplexity(metrics):
@@ -95,7 +114,7 @@ class QATTrainer(Trainer):
     ):
         """Initialize the trainer with modelopt states."""
         self.quant_args = quant_args
-        if quant_cfg is None and quant_args.quant_cfg is not None:
+        if quant_cfg is None and getattr(quant_args, "quant_cfg", None) is not None:
             quant_cfg = getattr(mtq, quant_args.quant_cfg)
         self.quant_cfg = quant_cfg
         self._eval_without_training = False
@@ -105,6 +124,17 @@ class QATTrainer(Trainer):
             getattr(self.accelerator.state.fsdp_plugin, "fsdp_version", 1) == 2
         )
         self._modelopt_state_path = os.path.join(self.args.output_dir, "modelopt_state_train.pth")
+
+        # Add lora adapter before quantizing the model
+        if getattr(self.args, "lora_config", None) is not None:
+            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            disable_lora_quantizers_in_config(self.quant_cfg, self.args.lora_config.target_modules)
+            print_rank_0("Lora adapter added.")
+
+        assert self.is_deepspeed_enabled and not check_awq_smoothquant(self.quant_cfg), (
+            f"QAT DeepSpeed does not currently support AWQ or SmoothQuant: {self.quant_cfg}"
+        )
+
         # FSDP1 requires pre-restoring the quantized model if the modelopt state exists.
         if os.path.exists(self._modelopt_state_path) and not self._is_fsdp2:
             self._quantize_model()
@@ -142,10 +172,18 @@ class QATTrainer(Trainer):
             )
             data_loader = self.get_eval_dataloader(dataset)
             forward_loop = self._get_quantize_forward_loop(data_loader, use_eval_loop)
+            with calibrate_with_adapters(model, self.args):
+                print_rank_0("Quantizing the model...")
+                mtq.quantize(model, self.quant_cfg, forward_loop)
+                print_rank_0("Quantization done!")
 
-            print_rank_0("Quantizing the model...")
-            mtq.quantize(model, self.quant_cfg, forward_loop)
-            print_rank_0("Quantization done!")
+            if getattr(self.quant_args, "compress", False):
+                print_rank_0("Compressing model after calibration")
+                mtq.compress(model)
+
+            # Force garbage collection to free up memory
+            gc.collect()
+
             print_rank_0(f"Saving modelopt state to {self._modelopt_state_path}")
             save_modelopt_state_with_weights(model, self._modelopt_state_path, save_weights=True)
             torch.cuda.empty_cache()
@@ -177,7 +215,7 @@ class QATTrainer(Trainer):
         self._original_evaluate_on_start = (
             self.args.eval_on_start if not self._eval_without_training else True
         )
-        if self.quant_args.quant_cfg is not None and not is_quantized(self.model):
+        if getattr(self.quant_args, "quant_cfg", None) is not None and not is_quantized(self.model):
             self.args.eval_on_start = True
         with suppress(EvalOnlyError):
             super().train(*args, **kwargs)

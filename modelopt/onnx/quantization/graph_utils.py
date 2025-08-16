@@ -354,6 +354,7 @@ def filter_quantizable_kgen_heads(
         "BatchNormalization",
         "GlobalAveragePool",
         "MaxPool",
+        "Mul",  # Example: VoVNet
     ]
 
     for partition in kgen_partitions:

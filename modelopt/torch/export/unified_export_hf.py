@@ -17,6 +17,7 @@
 
 import collections.abc
 import json
+import re
 import tempfile
 import warnings
 from collections import defaultdict
@@ -27,7 +28,8 @@ import torch
 import torch.nn as nn
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
-from modelopt.torch.quantization.nn import SequentialQuantizer
+from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
+from modelopt.torch.quantization.utils import quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
 from .layer_utils import (
@@ -59,7 +61,6 @@ from .quant_utils import (
     get_weight_scaling_factor_2,
     postprocess_state_dict,
     preprocess_linear_fusion,
-    quantize_llama4_experts_for_hf_export,
     to_quantized_weight,
 )
 
@@ -97,7 +98,12 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     handles = []
     model_type = type(model).__name__.lower()
 
+    fused_linears = {}
+    module_names = set()
+
     for name, module in model.named_modules():
+        module_names.add(name)
+
         # For MoE models update pre_quant_scale to average pre_quant_scale amongst experts
         if is_moe(module) and ("awq" in quantization_format):
             # update_experts_avg_prequant_scale(module)
@@ -151,6 +157,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         ]:
             # Fuse modules that have the same input
             preprocess_linear_fusion(modules)
+            fused_linears[modules[0].name] = [module.name for module in modules]
 
         # Fuse layernorms
         if (
@@ -160,6 +167,185 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+
+    # The dummy forward may not be able to activate all the experts.
+    # Process experts by naming rules like experts.0, experts.1, etc.
+    for name, modules_fused in fused_linears.items():
+        if re.search(r"experts?\.\d+", name):
+            expert_id = 0
+            while True:
+                new_expert_name = re.sub(r"(experts?\.)\d+", rf"\g<1>{expert_id}", name, count=1)
+                if new_expert_name in fused_linears:
+                    expert_id += 1
+                    continue
+                if new_expert_name not in module_names:
+                    break
+
+                new_expert_modules = []
+                for name_fused in modules_fused:
+                    new_expert_name = re.sub(r"(experts?\.)\d+", rf"\g<1>{expert_id}", name_fused)
+                    assert new_expert_name in module_names
+                    new_expert_modules.append(model.get_submodule(new_expert_name))
+
+                preprocess_linear_fusion(new_expert_modules)
+
+                expert_id += 1
+
+
+def _export_quantized_weight(
+    sub_module: nn.Module, dtype: torch.dtype, weight_name: str = "weight"
+):
+    """For the given weight attr of the sub_module, export the quantization info of it.
+
+    The export includes converting weight tensor to correct quantized values and quantized dtype,
+    and registering scaling factors.
+    """
+    quantization_format = get_quantization_format(sub_module)
+    if quantization_format == QUANTIZATION_NONE:
+        return
+
+    block_size = get_weight_block_size(sub_module, weight_name)
+    quantizer_attrs = quantizer_attr_names(weight_name)
+    weight: nn.Parameter = getattr(sub_module, weight_name)
+    weight_quantizer: TensorQuantizer | SequentialQuantizer = getattr(
+        sub_module, quantizer_attrs.weight_quantizer
+    )
+    input_quantizer: TensorQuantizer | SequentialQuantizer | None = getattr(
+        sub_module, quantizer_attrs.input_quantizer, None
+    )
+    output_quantizer: TensorQuantizer | SequentialQuantizer | None = getattr(
+        sub_module, quantizer_attrs.output_quantizer, None
+    )
+
+    if quantization_format == QUANTIZATION_FP8:
+        # Convert amax to float32
+        weight_quantizer._amax = weight_quantizer._amax.to(torch.float32)
+
+        if weight_quantizer._amax.dim() == 1:
+            # Per-tensor amax
+            weight_scaling_factor = torch.tensor(
+                weight_quantizer.amax.item() / weight_quantizer.maxbound
+            )
+        else:
+            # Per-channel amax
+            weight_scaling_factor = torch.tensor(weight_quantizer.amax / weight_quantizer.maxbound)
+
+        sub_module.register_buffer(
+            quantizer_attrs.weight_scale,
+            weight_scaling_factor,
+        )
+
+        if hasattr(input_quantizer, "_amax"):
+            assert input_quantizer is not None
+            input_quantizer._amax = input_quantizer._amax.to(torch.float32)
+
+            sub_module.register_buffer(
+                quantizer_attrs.input_scale,
+                get_activation_scaling_factor(
+                    sub_module, input_quantizer_name=quantizer_attrs.input_quantizer
+                ).squeeze(),
+            )
+
+        if hasattr(output_quantizer, "_amax"):
+            assert output_quantizer is not None
+            output_quantizer._amax = output_quantizer._amax.to(torch.float32)
+    else:
+        # Register weight_scale and input_scale
+        if quantization_format == QUANTIZATION_FP8_PB_REAL:
+            sub_module.register_buffer(
+                quantizer_attrs.weight_scale,
+                weight_quantizer._scale.to(torch.float32),
+            )
+            del weight_quantizer._scale
+        else:
+            sub_module.register_buffer(
+                quantizer_attrs.weight_scale, get_weight_scaling_factor(sub_module, weight_name)
+            )
+
+        if (
+            input_quantizer is not None
+            and "disabled" not in repr(input_quantizer)
+            and input_quantizer.amax is not None
+        ):
+            sub_module.register_buffer(
+                quantizer_attrs.input_scale,
+                get_activation_scaling_factor(
+                    sub_module, input_quantizer_name=quantizer_attrs.input_quantizer
+                ).squeeze(),
+            )
+
+    if quantization_format in [
+        QUANTIZATION_NVFP4_AWQ,
+        QUANTIZATION_NVFP4,
+        QUANTIZATION_W4A8_AWQ,
+    ]:
+        # Register weight_scale_2
+        sub_module.register_buffer(
+            quantizer_attrs.weight_scale_2,
+            get_weight_scaling_factor_2(sub_module, weight_name).squeeze(),
+        )
+
+    weight_scale: torch.Tensor | None = getattr(sub_module, quantizer_attrs.weight_scale, None)
+    weight_scale_2: torch.Tensor | None = getattr(sub_module, quantizer_attrs.weight_scale_2, None)
+
+    quantized_weight = to_quantized_weight(
+        weight.to(dtype),
+        weight_scale,
+        quantization_format,
+        weight_scale_2,
+        block_size,
+    )
+    setattr(sub_module, weight_name, nn.Parameter(quantized_weight, requires_grad=False))
+
+
+def _handle_llama4_experts_amax(module: nn.Module):
+    """Handle the amax values for the experts in the Llama4 model."""
+    # Handle uncalibrated input quantizers that have None amax values
+    input_quantizers = [
+        module.gate_up_proj_input_quantizer,
+        module.down_proj_input_quantizer,
+    ]
+
+    # Only handle enabled input quantizers
+    enabled_input_quantizers = [q for q in input_quantizers if q.is_enabled]
+
+    # Only handle amax for non-dynamic quantizers
+    non_dynamic_quantizers = [
+        q for q in enabled_input_quantizers if not getattr(q, "_dynamic", False)
+    ]
+
+    if non_dynamic_quantizers:
+        # Find the maximum amax value from non-None quantizers
+        valid_amax_values = [
+            quantizer.amax for quantizer in non_dynamic_quantizers if quantizer.amax is not None
+        ]
+
+        device = module.gate_up_proj.device
+
+        # If all quantizers have None amax, set a default value
+        if not valid_amax_values:
+            default_amax = torch.tensor(1.0, dtype=torch.float32, device=device)
+            warnings.warn(
+                "All input quantizers have None amax values. Setting default amax to 1.0. "
+                "This typically occurs when experts are not activated during calibration. "
+                "Consider increasing your calibration dataset size to ensure all experts are exercised."
+            )
+            for quantizer in non_dynamic_quantizers:
+                if quantizer.amax is None:
+                    quantizer.amax = default_amax.clone()
+        else:
+            # Set None amax values to the maximum of existing values
+            max_amax = torch.max(torch.stack(valid_amax_values))
+            if max_amax.device != device:
+                max_amax = max_amax.to(device)
+            for quantizer in non_dynamic_quantizers:
+                if quantizer.amax is None:
+                    warnings.warn(
+                        f"Missing amax value for input quantizer. Setting it to {max_amax.item()} for export. "
+                        "This typically occurs when certain experts are not activated during calibration. "
+                        "Consider increasing your calibration dataset size to ensure all experts are exercised."
+                    )
+                    quantizer.amax = max_amax.clone()
 
 
 def _export_hf_checkpoint(
@@ -268,98 +454,14 @@ def _export_hf_checkpoint(
     has_quantized_layers = False
 
     for name, sub_module in layer_pool.items():
-        if is_quantlinear(sub_module):
-            quantization_format = get_quantization_format(sub_module)
-            block_size = get_weight_block_size(sub_module)
-
-            # Track if any layer is quantized
-            if quantization_format != QUANTIZATION_NONE:
-                has_quantized_layers = True
-
-            if quantization_format == QUANTIZATION_FP8:
-                # Convert amax to float32
-                sub_module.weight_quantizer._amax = sub_module.weight_quantizer._amax.to(
-                    torch.float32
-                )
-
-                if sub_module.weight_quantizer._amax.dim() == 1:
-                    weight_scaling_factor = torch.tensor(
-                        sub_module.weight_quantizer.amax.item()
-                        / sub_module.weight_quantizer.maxbound
-                    )
-                else:
-                    # Per-channel amax
-                    weight_scaling_factor = torch.tensor(
-                        sub_module.weight_quantizer.amax / sub_module.weight_quantizer.maxbound
-                    )
-
-                sub_module.register_buffer(
-                    "weight_scale",
-                    weight_scaling_factor,
-                )
-
-                if hasattr(sub_module.input_quantizer, "_amax"):
-                    sub_module.input_quantizer._amax = sub_module.input_quantizer._amax.to(
-                        torch.float32
-                    )
-
-                    sub_module.register_buffer(
-                        "input_scale",
-                        get_activation_scaling_factor(sub_module).squeeze(),
-                    )
-
-                if hasattr(sub_module.output_quantizer, "_amax"):
-                    sub_module.output_quantizer._amax = sub_module.output_quantizer._amax.to(
-                        torch.float32
-                    )
-
-            if quantization_format in [
-                QUANTIZATION_NVFP4_AWQ,
-                QUANTIZATION_NVFP4,
-                QUANTIZATION_W4A8_AWQ,
-            ]:
-                # Register weight_scale_2
-                sub_module.register_buffer(
-                    "weight_scale_2",
-                    get_weight_scaling_factor_2(sub_module).squeeze(),
-                )
-
-            if quantization_format not in [QUANTIZATION_FP8, QUANTIZATION_NONE]:
-                # Register weight_scale and input_scale
-                if quantization_format == QUANTIZATION_FP8_PB_REAL:
-                    sub_module.register_buffer(
-                        "weight_scale",
-                        sub_module.weight_quantizer._scale.to(torch.float32),
-                    )
-                    del sub_module.weight_quantizer._scale
-                else:
-                    sub_module.register_buffer(
-                        "weight_scale", get_weight_scaling_factor(sub_module)
-                    )
-                    # Remove size-1 dimensions for blocked fp8 scales
-                    sub_module.weight_scale.squeeze()
-
-                if (
-                    hasattr(sub_module, "input_quantizer")
-                    and "disabled" not in repr(sub_module.input_quantizer)
-                    and sub_module.input_quantizer.amax is not None
-                ):
-                    sub_module.register_buffer(
-                        "input_scale", get_activation_scaling_factor(sub_module).squeeze()
-                    )
-
-            # Check if quantization format is None, to support auto_quant
-            if quantization_format != QUANTIZATION_NONE:
-                quantized_weight = to_quantized_weight(
-                    sub_module.weight.to(dtype),
-                    sub_module.weight_scale,
-                    quantization_format,
-                    sub_module.weight_scale_2 if hasattr(sub_module, "weight_scale_2") else None,
-                    block_size,
-                )
-                sub_module.weight = nn.Parameter(quantized_weight, requires_grad=False)
-        elif "Llama4TextExperts" in type(sub_module).__name__:
-            quantize_llama4_experts_for_hf_export(sub_module)
+        if get_quantization_format(sub_module) != QUANTIZATION_NONE:
+            has_quantized_layers = True
+            if is_quantlinear(sub_module):
+                _export_quantized_weight(sub_module, dtype)
+            elif "Llama4TextExperts" in type(sub_module).__name__:
+                _handle_llama4_experts_amax(sub_module)
+                for weight_name in ["gate_up_proj", "down_proj"]:
+                    _export_quantized_weight(sub_module, dtype, weight_name)
 
     quantized_state_dict = model.state_dict()
 
@@ -400,9 +502,9 @@ def export_hf_checkpoint(
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
         # Save model
-        if not save_modelopt_state:
-            model._disable_modelopt_save = True
-        model.save_pretrained(export_dir, state_dict=post_state_dict)
+        model.save_pretrained(
+            export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
+        )
 
         original_config = f"{export_dir}/config.json"
         config_data = {}
@@ -416,11 +518,8 @@ def export_hf_checkpoint(
             json.dump(config_data, file, indent=4)
 
     except Exception as e:
-        fallback_model_path = f"{export_dir}/modelopt_model.pth"
-        torch.save(model.state_dict(), fallback_model_path)
         warnings.warn(
             "Cannot export model to the model_config. The modelopt-optimized model state_dict"
-            f" (including the quantization factors) is saved to {fallback_model_path} using"
-            " torch.save for further inspection."
+            " can be saved with torch.save for further inspection."
         )
         raise e
