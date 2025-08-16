@@ -45,7 +45,7 @@ class ConcatTracedHp(TracedHp):
         n_combos = prod(len(c_list) for c_list in all_choices)
 
         # we don't wanna iterate over more than that to keep it fast
-        n_max = 2e5
+        n_max = 5e7  # takes 4s
 
         # if we have less than n_max combinations, we can iterate over all of them
         if n_combos <= n_max:

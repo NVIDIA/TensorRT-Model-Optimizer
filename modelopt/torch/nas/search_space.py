@@ -153,7 +153,8 @@ class SearchSpace(DynamicSpace):
             if importance is None:
                 continue
             # compute order from importance and enforce it
-            order = torch.argsort(importance, descending=True)
+            # NOTE: use .argsort() instead of torch.argsort() so hp can overwrite the behavior
+            order = importance.argsort(descending=True)
             hp.enforce_order(order)
             if verbose:
                 print(f"Sorted {name} for rank {rank()} with {importance=}")

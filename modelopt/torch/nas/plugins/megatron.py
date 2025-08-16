@@ -15,6 +15,7 @@
 
 """Plugin to add NAS/Pruning support for megatron-core GPT model."""
 
+from collections.abc import Callable, Sequence
 from typing import Any
 from warnings import warn
 
@@ -48,8 +49,10 @@ from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
 from modelopt.torch.opt.dynamic import DynamicModule
+from modelopt.torch.opt.hparam import HPType
 from modelopt.torch.opt.searcher import ConstraintsDict
 from modelopt.torch.opt.utils import named_hparams
+from modelopt.torch.trace import Symbol
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import (
     get_module_device,
@@ -83,7 +86,10 @@ except ImportError:
     HAS_TE = False
 
 try:
+    import mamba_ssm  # noqa: F401
     from megatron.core.models.mamba import MambaModel
+    from megatron.core.ssm.mamba_layer import MambaLayer
+    from megatron.core.ssm.mamba_mixer import ExtendedRMSNorm, MambaMixer
 
     SUPPORTED_MODELS[MambaModel] = "megatron.core.models.mamba.MambaModel"
 
@@ -723,6 +729,367 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
             self.mlp.freeze()
 
 
+class MambaNumHeadsHp(TracedHp):
+    """An hparam for Mamba's num_heads.
+
+    Need special handling for active_slice property to trim heads within each group.
+    """
+
+    def __init__(
+        self, choices: Sequence[HPType], original: HPType | None = None, ngroups: int = 1
+    ) -> None:
+        super().__init__(choices, original)
+        self.ngroups = ngroups
+
+    @property
+    def active_slice(self) -> TracedHp.ActiveSlice:
+        """Return the currently active sorted indices by trimming heads within each group."""
+        if self._slice_order is None:
+            if self.active == self.max:
+                return slice(self.active)
+            slice_order = torch.arange(self.max)
+        else:
+            slice_order = self._slice_order
+        target_nheads_per_group = self.active // self.ngroups
+        return slice_order.view(self.ngroups, -1)[:, :target_nheads_per_group].flatten()  # type: ignore[misc]
+
+
+class MambaDInnerHp(TracedHp):
+    """An hparam for Mamba's d_inner.
+
+    Mamba's d_inner is a multiplication of mamba_num_heads and mamba_head_dim hparams.
+    """
+
+    def __init__(self, mamba_num_heads: MambaNumHeadsHp, mamba_head_dim: TracedHp) -> None:
+        """Initialize the Mamba d_inner hparam."""
+        self._mamba_num_heads = mamba_num_heads
+        self._mamba_head_dim = mamba_head_dim
+        choices = self._get_choices()
+        original = mamba_num_heads.original * mamba_head_dim.original
+        super().__init__(choices, original)
+        self._is_configurable = False
+        self._importance_estimators = None
+
+    @property  # type: ignore[misc]
+    def active(self) -> int:
+        """Return the active value of the hparam."""
+        assert isinstance(self._mamba_num_heads.active, int)
+        assert isinstance(self._mamba_head_dim.active, int)
+        return self._mamba_num_heads.active * self._mamba_head_dim.active
+
+    @property
+    def active_slice(self) -> TracedHp.ActiveSlice:
+        """Return the currently active sorted indices or slice corresponding to the active value."""
+        num_heads_active_slice = self._mamba_num_heads.active_slice
+        head_dim_active_slice = self._mamba_head_dim.active_slice
+        if isinstance(num_heads_active_slice, slice):
+            num_heads_active_slice = torch.LongTensor(range(num_heads_active_slice.stop))
+        if isinstance(head_dim_active_slice, slice):
+            head_dim_active_slice = torch.LongTensor(range(head_dim_active_slice.stop))
+
+        indices = torch.arange(self.max).view(self._mamba_num_heads.max, self._mamba_head_dim.max)
+        active_slice = indices[num_heads_active_slice, :][:, head_dim_active_slice].flatten()
+
+        # check if active_slice corresponds to the vanilla slice
+        if torch.equal(active_slice, torch.arange(self.max)):
+            return slice(self.max)
+
+        return active_slice
+
+    def _get_choices(self) -> Sequence[HPType]:
+        return sorted(
+            {
+                num_heads * head_dim
+                for num_heads in self._mamba_num_heads.choices
+                for head_dim in self._mamba_head_dim.choices
+            }
+        )
+
+    def reset_choices(self) -> None:
+        """Reset the choices of the Mamba d_inner hparam using updated choices of mamba_num_heads and mamba_head_dim."""
+        self._choices = self._get_choices()
+
+    @property  # type: ignore[misc]
+    def choices(self) -> Sequence[HPType]:
+        """Return available choices."""
+        return self._get_choices()
+
+    def _resolve_dependencies(
+        self, sym: Symbol, get_hp: Callable[[Symbol], TracedHp]
+    ) -> dict[Symbol, TracedHp]:
+        raise NotImplementedError("MambaDInnerHp does not support `_resolve_dependencies`!")
+
+
+class _DynamicExtendedRMSNorm(DynamicModule):
+    """A ``megatron.core.ssm.mamba_mixer.ExtendedRMSNorm`` (GroupNorm) layer with dynamic hyperparams.
+
+    Very similar to _DynamicGroupNorm but with group_size dynamic attribute instead of num_groups.
+    Will be registered to DMRegistry if Mamba is available.
+    """
+
+    def _setup(self):
+        # register hidden_size as hyperparameter
+        orig_hidden_size = self.weight.shape[0]
+        num_groups = orig_hidden_size // self.group_size
+        choices = [
+            c
+            for c in range(num_groups, orig_hidden_size + 1)
+            if c % num_groups == 0 and c % self.group_size == 0
+        ]
+        self._register_hparam("hidden_size", TracedHp(choices, original=orig_hidden_size))
+
+        # register num_groups as a dynamic attribute so group size is same
+        self._register_temp_attribute("_num_groups", num_groups)
+        self._register_dynamic_attribute("group_size", self._get_group_size)
+
+        # register dynamic attributes
+        dyn_attrs = ["weight", "bias"]
+        for attr in dyn_attrs:
+            self._register_dynamic_attribute(attr, self._cut_to_active_hidden_size)
+
+    @staticmethod
+    def _get_group_size(mod: "_DynamicExtendedRMSNorm", value: int) -> int:
+        return mod.hidden_size // mod._num_groups
+
+    @staticmethod
+    def _cut_to_active_hidden_size(mod: "_DynamicExtendedRMSNorm", value: torch.Tensor | None):
+        return get_sliced_tensor(mod, value, "hidden_size")
+
+
+class _DynamicMambaMixer(DynamicModule):
+    """A ``megatron.core.ssm.mamba_mixer.MambaMixer`` layer with dynamic hyperparams.
+
+    Will be registered to DMRegistry if Mamba is available.
+    """
+
+    def _setup(self):
+        assert self.d_inner == self.nheads * self.headdim, "d_inner must be nheads * headdim"
+
+        # Register hyperparameters for Mamba heads and head dimensions
+        # NOTE: d_model will be overwritten in set_hidden_size_hp to model's hidden_size hp
+        # along with related hparams (in_proj.input_size, norm.hidden_size, out_proj.output_size)
+        d_model = TracedHp(list(range(1, self.d_model + 1)))
+        mamba_num_heads = MambaNumHeadsHp(list(range(1, self.nheads + 1)), ngroups=self.ngroups)
+        mamba_head_dim = TracedHp(list(range(1, self.headdim + 1)))
+        d_inner = MambaDInnerHp(mamba_num_heads, mamba_head_dim)
+        bc = TracedHp([2 * self.ngroups * self.d_state])  # not configurable
+
+        self._register_hparam("d_model", d_model)
+        self._register_hparam("d_inner", d_inner)
+        self._register_hparam("mamba_num_heads", mamba_num_heads)
+        self._register_hparam("mamba_head_dim", mamba_head_dim)
+        self._register_hparam("bc", bc)
+        self._register_dynamic_attribute("d_inner_local", lambda mod, val: self.d_inner)
+
+        # Register dynamic attributes
+        self._register_dynamic_attribute("nheads", lambda mod, val: self.mamba_num_heads)
+        self._register_dynamic_attribute("nheads_local", lambda mod, val: self.nheads)
+        self._register_dynamic_attribute("headdim", lambda mod, val: self.mamba_head_dim)
+
+        # Convert to dynamic modules
+        self.in_proj = DMRegistry.convert(self.in_proj)
+        self.in_proj.output_size = build_concat_hp(
+            [d_inner, d_inner, bc, mamba_num_heads]
+        )  # z, x, B, C, dt
+
+        conv_dim = build_concat_hp([d_inner, bc])  # z, B, C
+        self.conv1d = DMRegistry.convert(self.conv1d)
+        self.conv1d.in_channels = conv_dim
+        self.conv1d.out_channels = conv_dim
+        ks = self.conv1d.get_hparam("kernel_size")
+        ks.choices = [ks.original]
+
+        if self.rmsnorm:
+            self.norm = DMRegistry.convert(self.norm)
+            self.norm.hidden_size = d_inner
+
+        self.out_proj = DMRegistry.convert(self.out_proj)
+        self.out_proj.input_size = d_inner
+
+        # Register dynamic attributes for Mamba-specific parameters
+        self._register_dynamic_attribute("dt_bias", self._get_dt_bias_A_log_D)
+        self._register_dynamic_attribute("A_log", self._get_dt_bias_A_log_D)
+        self._register_dynamic_attribute("D", self._get_dt_bias_A_log_D)
+        assert not self.D_has_hdim, "D_has_hdim is not supported yet"
+
+        # Register importance estimator for mamba heads
+        self._register_temp_attribute("_activations", None)
+        self.hook_handle = self.in_proj.register_forward_hook(self._mamba_in_proj_forward_hook)
+        mamba_num_heads.register_importance(self._estimate_head_importance)
+        mamba_head_dim.register_importance(self._estimate_head_dim_importance)
+
+    @staticmethod
+    def _get_dt_bias_A_log_D(mod: "_DynamicMambaMixer", data: torch.Tensor) -> torch.Tensor:  # noqa: N802
+        """Return the sliced data based on mamba_num_heads's active_slice."""
+        return get_sliced_tensor(mod, data, "mamba_num_heads")
+
+    def _estimate_head_and_head_dim_rankings(self):
+        """Get the rankings of Mamba heads and head dimensions.
+
+        Returns:
+            head_ranking: Ranking of Mamba heads of shape [mamba_num_heads.max]
+            head_dim_ranking: Ranking of Mamba head dimensions of shape [mamba_head_dim.max]
+        """
+        scores = self._activations
+        assert scores is not None, "No activations collected for importance estimation."
+
+        max_nheads: int = self.get_hparam("mamba_num_heads").max
+        max_headdim: int = self.get_hparam("mamba_head_dim").max
+        max_d_inner: int = self.get_hparam("d_inner").max
+        target_headdim: int = self.headdim
+        nheads_per_group: int = max_nheads // self.ngroups
+
+        # While there can be many ways of computing the ranking out of z, x, and dt,
+        # based on ablations in the paper, using `x` is the best way to compute the ranking.
+        x_indices = torch.arange(max_d_inner, 2 * max_d_inner)
+        scores_x = scores[x_indices]  # shape = [max_d_inner] i.e. [max_nheads * max_headdim]
+
+        # Get ranking of all head and target head dimensions (same for each head)
+        all_head_dim_importance = torch.linalg.vector_norm(  # shape = [max_headdim]
+            scores_x.view(max_nheads, max_headdim), ord=2, dim=0
+        )
+        all_head_dim_ranking = all_head_dim_importance.argsort(descending=True).cpu()
+        target_head_dim_ranking = all_head_dim_ranking[:target_headdim]
+
+        # Get ranking of all heads with target head dimensions
+        target_head_dim_indices_per_head = torch.cat(  # shape = [max_nheads * target_headdim]
+            [i * max_headdim + target_head_dim_ranking for i in range(max_nheads)]
+        )
+
+        # Get ranking of heads (sorted within their group)
+        groupwise_head_importance = torch.linalg.vector_norm(  # shape = [ngroups, nheads_per_group]
+            scores_x[target_head_dim_indices_per_head].view(
+                self.ngroups, nheads_per_group, target_headdim
+            ),
+            ord=2,
+            dim=2,
+        )
+        groupwise_head_ranking = groupwise_head_importance.argsort(dim=1, descending=True).cpu()
+        group_offsets = torch.arange(self.ngroups).unsqueeze(1) * nheads_per_group
+        all_head_ranking = (groupwise_head_ranking + group_offsets).flatten()
+
+        return all_head_ranking, all_head_dim_ranking
+
+    def _estimate_head_importance(self):
+        """Get the importance of Mamba heads for sort_parameters()."""
+        head_ranking, _ = self._estimate_head_and_head_dim_rankings()
+        print_rank_0("Overriding mamba_num_heads.importance to ranking for simplicity.")
+        # [HACK] Return ranking instead of importance but disable argsort
+        # so it skips further sorting and returns same ranking inside sort_parameters()
+        # NOTE: Trimming should also happen within each group. This is handled in MambaNumHeadsHp.
+        head_ranking.argsort = lambda *args, **kwargs: head_ranking
+        return head_ranking
+
+    def _estimate_head_dim_importance(self):
+        """Get the importance of Mamba head dimensions for sort_parameters()."""
+        _, head_dim_ranking = self._estimate_head_and_head_dim_rankings()
+        print_rank_0(
+            "Overriding mamba_head_dim.importance to correctly rank per group for simplicity."
+        )
+        # [HACK] Return ranking instead of importance but disable argsort
+        # so it skips further sorting and returns same ranking inside sort_parameters()
+        head_dim_ranking.argsort = lambda *args, **kwargs: head_dim_ranking
+        return head_dim_ranking
+
+    def _mamba_in_proj_forward_hook(self, module, input, output) -> None:
+        """Hook to collect activations for importance estimation.
+
+        Activations are computed as mean over seq_len and then squared and summed over batch_size.
+        If we take the square root of the sum, we get the L2 norm of the activations.
+        """
+        # Gather output [seq_len, batch_size, output_size] over all TP regions
+        # NOTE: This is not used at the moment since we restrict to TP=1
+        output = gather_from_tensor_model_parallel_region(output[0]).detach()
+
+        # Dont aggregate activations from non-max subnets (e.g. from profiling)
+        if output.shape[-1] != self.in_proj.get_hparam("output_size").max:
+            return
+
+        output = output.to(torch.float32)  # use full precision to avoid overflow
+        activations = output.abs().mean(dim=0)  # [batch_size, output_size]
+        activations = activations.pow(2).sum(dim=0)  # [output_size]
+        if self._activations is None:
+            self._activations = activations
+        else:
+            self._activations += activations
+
+    def export(self) -> torch.nn.Module:
+        """Export the dynamic module to a torch.nn.Module."""
+        self.hook_handle.remove()
+        self.in_proj.export()
+        self.out_proj.export()
+        self.conv1d.export()
+        if self.rmsnorm:
+            self.norm.export()
+        super().export()
+        return self
+
+
+class _DynamicMambaLayer(DynamicModule, MambaTransformerLayerMixin):
+    """A ``megatron.core.ssm.mamba_layer.MambaLayer`` layer with dynamic hyperparams.
+
+    Will be registered to DMRegistry if Mamba is available.
+    """
+
+    def _setup(self):
+        # Convert to dynamic module
+        self.mixer = DMRegistry.convert(self.mixer)
+        self.norm = DMRegistry.convert(self.norm)
+        self._setup_mixin()
+
+    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
+        """Set the hidden size hyperparameter for the layer."""
+        self.mixer.d_model = hidden_size
+        self.mixer.in_proj.input_size = hidden_size
+        self.mixer.out_proj.output_size = hidden_size
+        self.norm.num_features = hidden_size
+        self._register_temp_attribute("max_hidden_size", hidden_size.max)
+
+    def modify(
+        self,
+        *,
+        mamba_num_heads_divisor: int = 1,
+        mamba_head_dim_divisor: int = 1,
+        **kwargs,  # Unused hparams
+    ) -> None:
+        """Modify Mamba hyperparameters."""
+        # Modify MambaMixer hparams
+        for hp_name, divisor in [
+            ("mamba_num_heads", mamba_num_heads_divisor),
+            ("mamba_head_dim", mamba_head_dim_divisor),
+        ]:
+            hp = self.mixer.get_hparam(hp_name)
+            choices = {int(make_divisible(c, divisor)) for c in hp.choices}  # type: ignore[arg-type]
+            hp.choices = list(set(hp.choices) & choices | {hp.original})
+
+    def export(self):
+        """Export the dynamic module to a torch.nn.Module."""
+        self._export_mixin()
+        self.mixer.export()
+        self.norm.export()
+        super().export()
+        return self
+
+    def freeze(self):
+        """Freeze the hyperparameters."""
+        self.mixer.freeze()
+        super().freeze()
+
+
+if HAS_MAMBA:
+    DMRegistry.register({ExtendedRMSNorm: "megatron.core.ssm.mamba_mixer.ExtendedRMSNorm"})(
+        _DynamicExtendedRMSNorm
+    )
+
+    DMRegistry.register({MambaMixer: "megatron.core.ssm.mamba_mixer.MambaMixer"})(
+        _DynamicMambaMixer
+    )
+
+    DMRegistry.register({MambaLayer: "megatron.core.ssm.mamba_layer.MambaLayer"})(
+        _DynamicMambaLayer
+    )
+
+
 @DMRegistry.register(SUPPORTED_MODELS)
 class _DynamicMCoreLanguageModel(DynamicModule):
     """A ``megatron.core.models.gpt.GPTModel`` model with dynamic hyperparams."""
@@ -737,7 +1104,9 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         assert self.config.expert_model_parallel_size == 1, "Expert parallel is not supported."
         assert self.pre_process == is_pipeline_first_stage()
         assert self.post_process == is_pipeline_last_stage()
-        assert self.position_embedding_type == "rope", "Only rope position embedding is supported."
+        assert self.position_embedding_type in ["rope", "none"], (
+            f"Only rope position embedding is supported, got {self.position_embedding_type}."
+        )
 
         # Register num_layers hparam for depth pruning
         self._register_hparam("num_layers", TracedHp(list(range(1, self.config.num_layers + 1))))
@@ -789,6 +1158,10 @@ class _DynamicMCoreLanguageModel(DynamicModule):
                             self._emb_layernorm_forward_hook
                         )
                     )
+            elif HAS_MAMBA and isinstance(layer, MambaLayer):
+                self.hook_handles.append(
+                    layer.norm.register_forward_hook(self._emb_layernorm_forward_hook)
+                )
         hidden_size.register_importance(self._estimate_hidden_size_importance)  # type: ignore[union-attr]
 
     def _emb_layernorm_forward_hook(self, module, input, output) -> None:
@@ -833,6 +1206,8 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         num_heads_per_group_divisor: int = 1,
         num_query_groups_divisor: int = 1,
         ffn_hidden_size_divisor: int = 1,
+        mamba_num_heads_divisor: int = 1,
+        mamba_head_dim_divisor: int = 1,
     ):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 
@@ -841,6 +1216,8 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             num_heads_per_group_divisor: The divisor of the self-attention num_heads_per_group.
             num_query_groups_divisor: The divisor of the self-attention num_query_groups.
             ffn_hidden_size_divisor: The divisor of the mlp ffn_hidden_size.
+            mamba_num_heads_divisor: The divisor of the mamba num_heads.
+            mamba_head_dim_divisor: The divisor of the mamba head_dim.
         """
         hp = self.get_hparam("hidden_size")
         choices = {int(make_divisible(c, hidden_size_divisor)) for c in hp.choices}  # type: ignore[arg-type]
@@ -851,6 +1228,8 @@ class _DynamicMCoreLanguageModel(DynamicModule):
                 num_heads_per_group_divisor=num_heads_per_group_divisor,
                 num_query_groups_divisor=num_query_groups_divisor,
                 ffn_hidden_size_divisor=ffn_hidden_size_divisor,
+                mamba_num_heads_divisor=mamba_num_heads_divisor,
+                mamba_head_dim_divisor=mamba_head_dim_divisor,
             )
 
     def _export_drop_layers(self) -> None:
@@ -871,6 +1250,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             all_pp_layer_scores, layer_scores, group=get_pipeline_model_parallel_group()
         )
         layer_scores = {k: v for d in all_pp_layer_scores for k, v in d.items()}  # type: ignore[attr-defined]
+        print_rank_0(f"Layerwise scores for depth pruning: {layer_scores}")
         assert sorted(layer_scores.keys()) == list(range(1, num_layers_hp.max + 1))  # type: ignore[arg-type]
 
         # sort layers by scores and drop the lowest ones

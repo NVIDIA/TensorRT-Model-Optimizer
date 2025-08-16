@@ -51,9 +51,26 @@ RealQuantModuleRegistry = _DMRegistryCls("RealQuant")
 
 
 def compress_convert(
-    model, config: CompressConfig, use_real_quant_gemm: bool = True
+    model,
+    config: CompressConfig,
+    use_real_quant_gemm: bool = True,
+    skip_real_quantize_weight: bool = False,
 ) -> ConvertReturnType:
-    """Compress entry point."""
+    """Compress entry point.
+
+    This function converts the model to a real quantized model.
+
+    Args:
+        model: The model to compress.
+        config: The compression configuration.
+        use_real_quant_gemm: Whether to use real quantize GEMM implementation.
+        skip_real_quantize_weight: Whether to skip the real quantize step. Currently, it is
+            only set to True in the Megatron restore path to unify the restore behavior regardless
+            of whether the model is initialized on meta device or not.
+
+    Returns:
+        The compressed model.
+    """
     for _, module in model.named_modules():
         if is_quantized_linear(module) and type(module) not in RealQuantModuleRegistry:
             class_to_register = RealQuantLinear
@@ -90,7 +107,8 @@ def compress_convert(
                 f"Invalid compression configuration: {to_compress}, expected a boolean as value."
             )
     # If real quant quantizer is present, real quantize the weights.
-    pack_real_quantize_weight(model)
+    if not skip_real_quantize_weight:
+        pack_real_quantize_weight(model)
 
     def _has_qtensorwrapper(module):
         if hasattr(module, "weight") and isinstance(module.weight, QTensorWrapper):
@@ -118,12 +136,21 @@ def compress_convert(
 def compress_restore(
     model: ModelLikeModule, config: CompressConfig, metadata: MetadataDict
 ) -> nn.Module:
-    """Restore the model from the compressed state."""
+    """Restore the model from the compressed state.
+
+    Note:
+        When restoring Megatron distributed checkpoint, real_quantizer_state and q_tensor_state
+        have been removed from metadata and stored as a part of QuantModule.extra_state.
+        Restoring happends in set_extra_state when load_state_dict is called. We also skip real
+        quantize weight (skip_real_quantize_weight). All these steps are
+        delayed. For details, see plugins.megatron.quant_module_set_extra_state.
+    """
     # Compress with dummy weights
     model, _ = compress_convert(
         model,
         config,
         use_real_quant_gemm=metadata.get("use_real_quant_gemm", False),
+        skip_real_quantize_weight=("q_tensor_state" not in metadata),
     )
     # restore scale state in weight quantizer
     if "real_quantizer_state" in metadata:

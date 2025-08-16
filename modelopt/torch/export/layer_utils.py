@@ -85,18 +85,25 @@ with import_plugin("megatron", verbose=False):
 def get_experts_list(module: torch.nn.Module, model_type: str):
     """Returns list of grouped experts by linear name for given module."""
     experts_list = []
+
+    # Define linear layer names for different model types
     if "mixtralforcausallm" in model_type:
-        experts_list.extend(
-            [
-                [
-                    _get_mixtral_expert(module.experts, i, linear_name)
-                    for i in range(len(module.experts))
-                ]
-                for linear_name in ["w1", "w2", "w3"]
-            ]
-        )
+        linear_names = ["w1", "w2", "w3"]
+    elif any(
+        qwen_variant in model_type
+        for qwen_variant in ["qwenmoeforcausallm", "qwen2moeforcausallm", "qwen3moeforcausallm"]
+    ):
+        linear_names = ["gate_proj", "down_proj", "up_proj"]
     else:
         raise NotImplementedError(f" {model_type} not supported")
+
+    # Common logic for all supported model types
+    experts_list.extend(
+        [
+            [_get_expert_attr(module.experts, i, linear_name) for i in range(len(module.experts))]
+            for linear_name in linear_names
+        ]
+    )
 
     return experts_list
 
@@ -892,17 +899,13 @@ def build_mlp_config(
     return config
 
 
-def _get_mixtral_expert(experts: nn.Module, export_id: int, linear_name: str):
-    # Mixtral experts layout is:
-    # experts[0]:
-    #   w1
-    #   w2
-    #   w3
-    # experts[1]:
-    #   w1
-    #   w2
-    #   w3
-    # ...
+def _get_expert_attr(experts: nn.Module, export_id: int, linear_name: str):
+    # Generic expert attribute accessor.
+    # Works for most MoE models that store experts as a list/ModuleList where
+    # each expert has linear layers as direct attributes:
+    # experts[0].w1, experts[0].w2, experts[0].w3  (Mixtral)
+    # experts[0].gate_proj, experts[0].down_proj, experts[0].up_proj  (Qwen)
+    # experts[0].linear_fc1, experts[0].linear_fc2  (Llama MCore)
     return getattr(experts[export_id], linear_name)
 
 
@@ -1205,7 +1208,7 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
                 module.experts.local_experts,
                 ["linear_fc1", "linear_fc2"],
                 len(module.experts.local_experts),
-                _get_mixtral_expert,
+                _get_expert_attr,
             )
             # For Mcore model, experts.fc.weight needs to be flipped along axis = 1
             mid_point = experts.fc.weight.shape[1] // 2
@@ -1222,7 +1225,7 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
                 module.experts,
                 ["w1", "w2", "w3"],
                 len(module.experts),
-                _get_mixtral_expert,
+                _get_expert_attr,
             )
     elif decoder_type == "dbrx":
         experts.fc, experts.proj = build_stacked_experts(
@@ -1236,7 +1239,7 @@ def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:
             module.experts,
             ["gate_proj", "down_proj", "up_proj"],
             len(module.experts),
-            _get_mixtral_expert,
+            _get_expert_attr,
         )
     else:
         raise NotImplementedError(f"{decoder_type} not supported")
@@ -1698,7 +1701,7 @@ def update_experts_avg_prequant_scale(experts: nn.Module):
     """In NVFP4_AWQ and INT4_AWQ all the experts share prequant_scaling_factor. """
     experts_linear_names = get_experts_linear_names(experts)
     if "mixtral" in type(experts).__name__.lower():
-        get_func = _get_mixtral_expert
+        get_func = _get_expert_attr
         num_experts = len(experts.experts)
         experts = experts.experts
     elif "dbrx" in type(experts).__name__.lower():

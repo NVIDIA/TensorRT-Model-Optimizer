@@ -66,7 +66,7 @@ def run(args):
 
     print("TensorRT-LLM example outputs:")
 
-    llm = LLM(args.engine_dir, tokenizer=tokenizer)
+    llm = LLM(args.engine_dir, tokenizer=tokenizer, max_batch_size=len(input_texts))
     torch.cuda.cudart().cudaProfilerStart()
     outputs = llm.generate_text(input_texts, args.max_output_len)
     torch.cuda.cudart().cudaProfilerStop()

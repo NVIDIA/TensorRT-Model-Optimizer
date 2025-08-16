@@ -18,6 +18,7 @@
 import glob
 import os
 import platform
+from collections.abc import Sequence
 
 import onnxruntime as ort
 from onnxruntime.quantization.operators.qdq_base_operator import QDQOperatorBase
@@ -209,17 +210,38 @@ def update_trt_ep_support(
     return trt_plugins
 
 
-def create_inference_session(onnx_path_or_model: str | bytes, calibration_eps: list[str]):
+def create_inference_session(
+    onnx_path_or_model: str | bytes,
+    calibration_eps: list[str],
+    input_shapes_profile: Sequence[dict[str, str]] | None = None,
+):
     """Create an ORT InferenceSession."""
     logger.info("Creating ORT InferenceSession")
     sess_options = ort.SessionOptions()
     sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    if input_shapes_profile is not None:
+        # Input-shapes-profile is used by NvTensorRtRtx EP and also usable by TRT EP.
+        # Input-shapes-profile is passed in provider-options which require that length of
+        # provider-options equals length of providers.
+        assert len(input_shapes_profile) == len(calibration_eps), (
+            "Number of calibration EPs and number of input-shapes-profile don't match"
+        )
+        for i in range(len(input_shapes_profile)):
+            if len(input_shapes_profile[i]) > 0:
+                logger.debug(
+                    f"Found non-empty input-shapes-profile for calibration-EP: {calibration_eps[i]}"
+                )
+                for k, v in input_shapes_profile[i].items():
+                    logger.debug(
+                        f"Input-Shapes-Profile: EP: {calibration_eps[i]}, key: {k}, value: {v}"
+                    )
     providers = _prepare_ep_list(calibration_eps)
-    logger.debug(f"Created session with providers: {providers}")
+    logger.debug(f"Creating session with providers: {providers}")
     return ort.InferenceSession(
         onnx_path_or_model,
         sess_options=sess_options,
         providers=providers,
+        provider_options=None if input_shapes_profile is None else input_shapes_profile,
     )
 
 

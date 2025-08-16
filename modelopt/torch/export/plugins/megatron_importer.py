@@ -313,6 +313,34 @@ class GPTModelImporter:
 
         state_dict["weight"] = tensor.reshape(-1, hidden_size)
 
+        # Handle bias merging
+        bias = module.state_dict().get("bias", None)
+        if bias is not None:
+            q_bias = self._get_safetensor(
+                prefix + q_proj_name + ".bias", parallel_config=parallel_config
+            )
+            k_bias = self._get_safetensor(
+                prefix + k_proj_name + ".bias", parallel_config=parallel_config
+            )
+            v_bias = self._get_safetensor(
+                prefix + v_proj_name + ".bias", parallel_config=parallel_config
+            )
+
+            # Reshape separate biases to match the head structure
+            q_bias = q_bias.reshape(-1, head_size)
+            k_bias = k_bias.reshape(-1, head_size)
+            v_bias = v_bias.reshape(-1, head_size)
+
+            # Create target bias tensor with the same structure as the fused QKV
+            bias_tensor = bias.detach().clone().reshape([qkv_total_dim, head_size])
+
+            # Merge biases using the same slicing logic as weights
+            bias_tensor[q_slice] = q_bias.to(dtype=bias_tensor.dtype).to(device=bias_tensor.device)
+            bias_tensor[k_slice] = k_bias.to(dtype=bias_tensor.dtype).to(device=bias_tensor.device)
+            bias_tensor[v_slice] = v_bias.to(dtype=bias_tensor.dtype).to(device=bias_tensor.device)
+
+            state_dict["bias"] = bias_tensor.reshape(-1)
+
         module.load_state_dict(state_dict)
 
     def _unpack_name_remapping(
@@ -469,7 +497,6 @@ class GPTModelImporter:
         # Output layer
         if hasattr(model, "output_layer") and not model.share_embeddings_and_output_weights:
             self.rules["output_layer"](model.output_layer)
-
         # MTP
         if hasattr(model, "mtp"):
             # MTP is the last layer in DeepSeek V3/R1

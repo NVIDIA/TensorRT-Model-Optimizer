@@ -113,7 +113,9 @@ class Fp8PerTensorLinear(Function):
     """Linear layer with FP8 per tensor quantization."""
 
     @staticmethod
-    def forward(ctx, quant_module, input_tensor, weight, bias=None):
+    def forward(
+        ctx, quant_module, input_tensor, weight, bias=None, allreduce_dgrad=False, tp_group=None
+    ):
         """Forward method."""
         ctx.save_for_backward(
             input_tensor if weight.requires_grad else None,
@@ -122,6 +124,10 @@ class Fp8PerTensorLinear(Function):
             getattr(quant_module.weight_quantizer, "_scale", None),
         )
         ctx.block_sizes = getattr(quant_module.weight_quantizer, "_block_sizes", None)
+
+        ctx.allreduce_dgrad = allreduce_dgrad
+        ctx.tp_group = tp_group
+
         ret = fp8_per_tensor_gemm(quant_module, input_tensor, bias)
         return ret
 
@@ -147,7 +153,12 @@ class Fp8PerTensorLinear(Function):
         if compute_bias_grad is not None:
             # Sum all dimensions except the last one
             grad_bias = grad_outputs.sum(dim=list(range(grad_outputs.dim() - 1)))
-        return None, grad_input, grad_weight, grad_bias
+
+        if ctx.allreduce_dgrad:
+            # All-reduce. Note: here async and sync are effectively the same.
+            torch.distributed.all_reduce(grad_input, group=ctx.tp_group)
+
+        return None, grad_input, grad_weight, grad_bias, None, None
 
     @classmethod
     def apply(cls, *args, **kwargs):

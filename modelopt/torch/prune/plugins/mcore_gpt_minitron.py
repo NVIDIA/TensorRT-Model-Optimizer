@@ -15,8 +15,11 @@
 
 """Module implementing top-level ``mcore_gpt_minitron`` pruning handler for NVIDIA Megatron-Core / NeMo models.
 
-Minitron pruning algorithm uses activation magnitudes to estimate importance of neurons / attention heads in the model.
+Minitron pruning algorithm uses activation magnitudes to estimate importance of neurons / attention heads / mamba heads
+in the model.
 More details on Minitron pruning algorithm can be found here: https://arxiv.org/pdf/2407.14679
+
+Supports both GPT (attention-based) and Mamba (state-space) models, as well as hybrid models with both types of layers.
 
 Actual dynamic module implementations are at :mod:`modelopt.torch.nas.plugins.megatron`.
 """
@@ -27,6 +30,7 @@ from pydantic import create_model
 # isort: off
 # import nas plugin to check if it is enabled else raises an Exception
 from modelopt.torch.nas.plugins.megatron import *  # noqa: F403
+from modelopt.torch.nas.plugins.megatron import HAS_MAMBA
 # isort: on
 
 from modelopt.torch.nas.conversion import NASModeRegistry
@@ -46,6 +50,9 @@ SUPPORTED_HPARAMS = {
     "num_attention_heads",
     "num_query_groups",
     "hidden_size",
+    # TODO: enable mamba head pruning after debugging
+    # "mamba_num_heads",
+    # "mamba_head_dim",
     # Depth pruning
     "num_layers",
 }
@@ -83,6 +90,7 @@ def get_supported_model_config_map() -> dict[type, str]:
     return supported_model_config_map
 
 
+# TODO: Update mode name
 class MCoreGPTMinitronSearcher(BaseSearcher):
     """Searcher for Minitron pruning algorithm."""
 
@@ -130,6 +138,10 @@ class MCoreGPTMinitronSearcher(BaseSearcher):
         # Convert `num_attention_heads` to `num_heads_per_group`
         # Still keep `num_attention_heads` for updating model_cfg below
         if "num_attention_heads" in export_config and "num_query_groups" in export_config:
+            assert export_config["num_attention_heads"] % export_config["num_query_groups"] == 0, (
+                f"num_attention_heads ({export_config['num_attention_heads']}) must be divisible by"
+                f" num_query_groups ({export_config['num_query_groups']})!"
+            )
             export_config["num_heads_per_group"] = (
                 export_config["num_attention_heads"] // export_config["num_query_groups"]
             )
@@ -197,12 +209,20 @@ MCoreGPTMinitronConfig: type[ModeloptBaseConfig] = create_model(
                 "num_query_groups_divisor": 1,
                 "ffn_hidden_size_divisor": 64,
             },
-            "megatron.core.models.mamba.MambaModel": {
-                "hidden_size_divisor": 64,
-                "num_heads_per_group_divisor": 1,
-                "num_query_groups_divisor": 1,
-                "ffn_hidden_size_divisor": 64,
-            },
+            **(
+                {
+                    "megatron.core.models.mamba.MambaModel": {
+                        "hidden_size_divisor": 64,
+                        "num_heads_per_group_divisor": 1,
+                        "num_query_groups_divisor": 1,
+                        "ffn_hidden_size_divisor": 64,
+                        "mamba_num_heads_divisor": 4,
+                        "mamba_head_dim_divisor": 4,
+                    }
+                }
+                if HAS_MAMBA
+                else {}
+            ),
         },
         doc='Configuration for the ``"mcore_gpt_minitron"`` mode.',
     ),

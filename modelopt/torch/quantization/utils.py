@@ -15,10 +15,17 @@
 
 """Quantization utilities."""
 
+from collections import namedtuple
+from collections.abc import Generator
 from contextlib import ExitStack, contextmanager, nullcontext
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+from torch.distributed.fsdp import FSDPModule
+from torch.distributed.tensor import Replicate
+
+from modelopt.torch.utils import print_rank_0
 
 __all__ = [
     "EXPORT_MODE",
@@ -26,11 +33,11 @@ __all__ = [
     "export_torch_mode",
     "is_quantized",
     "is_quantized_column_parallel_linear",
-    "is_quantized_layer_with_weight",
     "is_quantized_linear",
     "is_quantized_row_parallel_linear",
     "reduce_amax",
     "replace_function",
+    "weight_attr_names",
 ]
 
 
@@ -173,16 +180,67 @@ def reduce_amax(input, axis=None, keepdims=True, squeeze_scalar=True):
     return output
 
 
+def weight_attr_names(module: nn.Module) -> Generator[str, None, None]:
+    """Get the weight param attribute names in a converted module, non-recursive.
+
+    We consider the following two cases for each weight param attribute:
+    - The standard weight attribute (e.g. nn.Linear).
+    - The custom `weight_attr_name`. (e.g. Llama4TextExperts has weight attributes `gate_up_proj` and `down_proj`)
+    """
+    from .nn import SequentialQuantizer, TensorQuantizer
+
+    # the standard weight and quantizer case
+    weight = getattr(module, "weight", None)
+    weight_quantizer = getattr(module, "weight_quantizer", None)
+    if isinstance(weight, nn.Parameter) and isinstance(
+        weight_quantizer, (TensorQuantizer, SequentialQuantizer)
+    ):
+        yield "weight"
+
+    # other weight and quantizer case
+    for name, _ in module.named_parameters(recurse=False):
+        weight = getattr(module, name, None)
+        weight_quantizer = getattr(module, f"{name}_weight_quantizer", None)
+        if isinstance(weight, nn.Parameter) and isinstance(
+            weight_quantizer, (TensorQuantizer, SequentialQuantizer)
+        ):
+            yield name
+
+
+"""The whole set of quantizer related attribute names for a given weight name."""
+QuantizerAttrNames = namedtuple(
+    "QuantizerAttrNames",
+    (
+        "weight_quantizer",
+        "input_quantizer",
+        "output_quantizer",
+        "weight_scale",
+        "weight_scale_2",
+        "input_scale",
+        "output_scale",
+    ),
+)
+
+
+def quantizer_attr_names(weight_name: str = "weight") -> QuantizerAttrNames:
+    """Get all the quantizer related attribute names for a given weight name."""
+    prefix = f"{weight_name}_" if weight_name != "weight" else ""
+    return QuantizerAttrNames(
+        weight_quantizer=f"{prefix}weight_quantizer",
+        input_quantizer=f"{prefix}input_quantizer",
+        output_quantizer=f"{prefix}output_quantizer",
+        weight_scale=f"{prefix}weight_scale",
+        weight_scale_2=f"{prefix}weight_scale_2",
+        input_scale=f"{prefix}input_scale",
+        output_scale=f"{prefix}output_scale",
+    )
+
+
 def is_quantized(module):
     """Check if a module is quantized."""
     from .nn import TensorQuantizer
 
     return any(isinstance(_module, TensorQuantizer) for _module in module.modules())
-
-
-def is_quantized_layer_with_weight(module):
-    """Check if a module is quantized with weights."""
-    return is_quantized(module) and getattr(module, "weight", None) is not None
 
 
 def is_quantized_linear(module):
@@ -211,6 +269,31 @@ def is_quantized_row_parallel_linear(module):
 def is_quantized_parallel_linear(module):
     """Check if a module is a quantized parallel linear module."""
     return is_quantized_column_parallel_linear(module) or is_quantized_row_parallel_linear(module)
+
+
+@contextmanager
+def calibrate_with_adapters(model, args):
+    """Disables LoRA adapters during calibration, then re-enables them afterward."""
+    is_lora = getattr(args, "lora", None)
+    if is_lora:
+        print_rank_0("Disabling LoRA adapters during calibration...")
+        model.disable_adapters()
+
+    yield
+
+    if is_lora:
+        print_rank_0("Enabling LoRA adapters after calibration...")
+        model.enable_adapters()
+
+
+def disable_lora_quantizers_in_config(config, layers):
+    """Turns off input, weight, and output quantizers for LoRA weights and LoRALinear layers in config."""
+    config["quant_cfg"]["*lora*"] = {"enable": False}
+    for layer in layers:
+        config["quant_cfg"][f"*{layer}.input_quantizer"] = {"enable": False}
+        config["quant_cfg"][f"*{layer}.weight_quantizer"] = {"enable": False}
+        config["quant_cfg"][f"*{layer}.output_quantizer"] = {"enable": False}
+    return config
 
 
 @contextmanager
@@ -256,7 +339,7 @@ def is_pow2(n):
     return (n != 0) and (n & (n - 1) == 0)
 
 
-def _get_fsdp2_mesh(module: torch.nn.Module):
+def _get_fsdp2_mesh(module: nn.Module):
     """Get the mesh info of the model."""
     try:
         from torch.distributed._composable_state import _get_module_state
@@ -271,13 +354,8 @@ def _get_fsdp2_mesh(module: torch.nn.Module):
         return fsdp_state._fsdp_param_group.post_forward_mesh_info.mesh
 
 
-def _get_enclosing_fsdp_module(module: torch.nn.Module, root_model: torch.nn.Module):
+def _get_enclosing_fsdp_module(module: nn.Module, root_model: nn.Module):
     """Get the enclosing FSDP module for a given module."""
-    try:
-        from torch.distributed.fsdp import FSDPModule
-    except ImportError:
-        return None
-
     if isinstance(module, FSDPModule):
         return module
 
@@ -300,14 +378,12 @@ def _get_enclosing_fsdp_module(module: torch.nn.Module, root_model: torch.nn.Mod
 
 
 @contextmanager
-def fsdp2_weight_access_and_writeback_context(module: torch.nn.Module, root_model: torch.nn.Module):
+def fsdp2_weight_access_and_writeback_context(module: nn.Module, root_model: nn.Module):
     """Context manager for FSDP2 weight access and writeback.
 
     Note this context will gather the weight across FSDP/HSDP shards. If TP is implemented with DTensor,
     the weight will be a local tensor of the TP DTensor under this context.
     """
-    from torch.distributed.tensor import Replicate
-
     assert isinstance(root_model, torch.distributed.fsdp.FSDPModule), "We only support FSDP2"
 
     assert not hasattr(module, "_hf_hook"), "We dont support FSDP2 with HF accelerate hooks"
@@ -331,7 +407,7 @@ def fsdp2_weight_access_and_writeback_context(module: torch.nn.Module, root_mode
         placements=[Replicate()] * fsdp_dim + list(original_placements[fsdp_dim:]),
         device_mesh=original_device_mesh,
     )
-    new_weight = torch.nn.Parameter(weight_collected.to_local())
+    new_weight = nn.Parameter(weight_collected.to_local())
     module._parameters["weight"] = new_weight
 
     yield

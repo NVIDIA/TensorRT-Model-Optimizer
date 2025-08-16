@@ -138,7 +138,7 @@ def main():
 
     # Quantize model
     quantized_model = quantize_model(model, config, data_loader)
-    use_autocast = args.quantize_mode == "mxfp8"
+    use_autocast = args.quantize_mode != "mxfp8"
 
     # Export to ONNX
     export_to_onnx(

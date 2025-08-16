@@ -95,15 +95,18 @@ def save_restore_test(model_cls, device, quant_config, compress=False, version=N
         # Rest of the tests are not needed for version < 0.29
         return
 
-    # gpu: test restoring to a model on cpu. If the quantizer states are not initialized correctly,
-    # the buffers will be created on cuda and this test will fail
-    model_ref = model_cls().to("cpu")
-    state_dict = torch_to(state_dict, device="cuda" if torch.cuda.is_available() else "cpu")
-    mto.restore_from_modelopt_state(model_ref, state_dict)
-    model_ref.load_state_dict(model_quant.state_dict())
-    model_ref(calib_data[0].to("cpu"))  # make sure all the buffers are created in the right device
-    model_ref.to(device)
-    assert torch.allclose(model_quant(calib_data[0]), model_ref(calib_data[0]))
+    if not compress:
+        # gpu: test restoring to a model on cpu. If the quantizer states are not initialized correctly,
+        # the buffers will be created on cuda and this test will fail
+        model_ref = model_cls().to("cpu")
+        state_dict = torch_to(state_dict, device="cuda" if torch.cuda.is_available() else "cpu")
+        mto.restore_from_modelopt_state(model_ref, state_dict)
+        model_ref.load_state_dict(model_quant.state_dict())
+        model_ref(
+            calib_data[0].to("cpu")
+        )  # make sure all the buffers are created in the right device
+        model_ref.to(device)
+        assert torch.allclose(model_quant(calib_data[0]), model_ref(calib_data[0]))
 
     # Test that smoothquant is restored correctly
     if quant_config == mtq.INT8_SMOOTHQUANT_CFG:

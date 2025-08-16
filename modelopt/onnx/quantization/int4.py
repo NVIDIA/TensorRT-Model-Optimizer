@@ -21,6 +21,7 @@ import math
 import os
 import tempfile
 import time
+from collections.abc import Sequence
 from typing import Any, cast
 
 import numpy
@@ -424,6 +425,7 @@ def _quantize_awq_clip(
     block_size: int,
     force_fp16: bool = False,
     nodes_to_exclude: list[str] = [],
+    input_shapes_profile: Sequence[dict[str, str]] | None = None,
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
@@ -453,7 +455,7 @@ def _quantize_awq_clip(
     logger.info(f"Saving the model took {time.time() - t} seconds")
 
     # Creating inference session and preparing inputs for calibration
-    session = create_inference_session(augmented_onnx_path, calibration_eps)
+    session = create_inference_session(augmented_onnx_path, calibration_eps, input_shapes_profile)
     inputs = []
     for inp_d in data_reader:
         inputs.append(inp_d)
@@ -907,6 +909,7 @@ def _quantize_awq_lite(
     enable_weight_clipping: bool = False,
     use_zero_point: bool = False,
     nodes_to_exclude: list[str] = [],
+    input_shapes_profile: Sequence[dict[str, str]] | None = None,
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
@@ -953,7 +956,7 @@ def _quantize_awq_lite(
     logger.info(f"Saving the model took {time.time() - t} seconds")
 
     # Creating inference session and preparing inputs for calibration
-    session = create_inference_session(augmented_onnx_path, calibration_eps)
+    session = create_inference_session(augmented_onnx_path, calibration_eps, input_shapes_profile)
     inputs = []
     for inp_d in data_reader:
         inputs.append(inp_d)
@@ -1218,6 +1221,7 @@ def quantize(
     block_size: int | None = None,
     nodes_to_exclude: list[str] | None = [r"/lm_head"],
     log_level: str = "INFO",
+    input_shapes_profile: Sequence[dict[str, str]] | None = None,
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Applies INT4 Weight-Only-Quantization (WoQ) to an ONNX model.
@@ -1250,6 +1254,11 @@ def quantize(
                 .. note::
 
                     By default, ``lm-head`` node is NOT quantized.
+        log_level: The logging level to use (default: logging.INFO)
+        input_shapes_profile:
+            The profile of shapes of inputs to the ONNX model - might be needed by some execution providers like
+            TensorrtExecutionProvider and NvTensorRTRTXExecutionProvider. Used in onnxruntime session creation.
+            Default value is None.
         kwargs: It denotes additional keyword arguments for int4 quantization. It includes:
 
                 - **awqlite_alpha_step** (float): Step size to find best Alpha in awq-lite.Range: [0, 1].
@@ -1260,7 +1269,6 @@ def quantize(
                                              Default: 0.5.
                 - **awqclip_bsz_col** (int): Batch size for processing the column dimension in awq-clip.
                                          Default: 1024.
-        log_level: The logging level to use (default: logging.INFO)
     **Returns**: A quantized ONNX model in ONNX ModelProto format.
     """
     configure_logging(level=log_level.upper())
@@ -1318,6 +1326,7 @@ def quantize(
             nodes_to_exclude=nodes_to_exclude,
             use_zero_point=use_zero_point,
             enable_weight_clipping=do_weight_clipping,
+            input_shapes_profile=input_shapes_profile,
             **kwargs,
         )
     elif calibration_method in ["awq_clip", "awq_clip_trt"]:
@@ -1328,6 +1337,7 @@ def quantize(
             calibration_eps,
             block_size,
             nodes_to_exclude=nodes_to_exclude,
+            input_shapes_profile=input_shapes_profile,
             **kwargs,
         )
     else:

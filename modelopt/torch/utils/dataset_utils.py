@@ -31,30 +31,53 @@ if TYPE_CHECKING:
 # Use dict to store the config for each dataset.
 # If we want to export more options to user like target languages, we need more standardized approach like dataclass.
 SUPPORTED_DATASET_CONFIG: dict[str, Any] = {
+    "open_code_reasoning": {
+        "config": {"path": "nvidia/OpenCodeReasoning", "name": "split_0", "split": ["split_0"]},
+        "preprocess": lambda sample: "\n".join([sample["input"], sample["output"]]),
+    },
+    "open_math_reasoning": {
+        "config": {
+            "path": "nvidia/OpenMathReasoning",
+            "split": ["cot", "tir", "genselect"],
+        },
+        "preprocess": lambda sample: "\n".join([sample["problem"], sample["generated_solution"]]),
+    },
+    "llama-nemotron-post-training-dataset": {
+        "config": {
+            "path": "nvidia/Llama-Nemotron-Post-Training-Dataset",
+            "name": "SFT",
+            "split": ["code", "math", "science", "chat", "safety"],
+        },
+        "preprocess": lambda sample: "\n".join(turn["content"] for turn in sample["input"])
+        + "\n"
+        + sample["output"],
+    },
     "magpie": {
-        "config": {"path": "Magpie-Align/Magpie-Pro-MT-300K-v0.1"},
-        "target": "conversations",
-        "preprocess": lambda sample: "\n".join(turn["value"] for turn in sample),
+        "config": {
+            "path": "Magpie-Align/Magpie-Pro-MT-300K-v0.1",
+            "split": ["train"],
+        },
+        "preprocess": lambda sample: "\n".join(turn["value"] for turn in sample["conversations"]),
     },
     "cnn_dailymail": {
-        "config": {"path": "cnn_dailymail", "name": "3.0.0"},
-        "target": "article",
+        "config": {"path": "cnn_dailymail", "name": "3.0.0", "split": ["train"]},
+        "preprocess": lambda sample: sample["article"],
     },
     "pile": {
-        "config": {"path": "monology/pile-uncopyrighted"},
-        "target": "text",
+        "config": {"path": "monology/pile-uncopyrighted", "name": "v1.0", "split": ["train"]},
+        "preprocess": lambda sample: sample["text"],
     },
     "pg19": {
-        "config": {"path": "pg19"},
-        "target": "text",
+        "config": {"path": "pg19", "name": "v1.0", "split": ["train"]},
+        "preprocess": lambda sample: sample["text"],
     },
     "wikipedia": {
-        "config": {"path": "wikipedia", "name": "20220301.en"},
-        "target": "text",
+        "config": {"path": "wikipedia", "name": "20220301.en", "split": ["train"]},
+        "preprocess": lambda sample: sample["text"],
     },
     "c4": {
-        "config": {"path": "c4", "name": "en"},
-        "target": "text",
+        "config": {"path": "c4", "name": "en", "split": ["train"]},
+        "preprocess": lambda sample: sample["text"],
     },
 }
 
@@ -77,36 +100,41 @@ def _get_dataset_samples(dataset_name: str, num_samples: int) -> list[str]:
         Samples: The list of samples.
     """
     # Load the dataset
-    if dataset_name in SUPPORTED_DATASET_CONFIG:
-        from datasets import load_dataset
-
-        dataset_config = SUPPORTED_DATASET_CONFIG[dataset_name]
-        dataset = load_dataset(
-            split="train",
-            streaming=True,
-            **dataset_config["config"],
-        )
-    else:
+    if dataset_name not in SUPPORTED_DATASET_CONFIG:
         raise NotImplementedError(
             f"dataset {dataset_name} is not supported. Please use one of the following:"
             f" {get_supported_datasets()}."
         )
 
-    # Access only the required samples
+    from datasets import load_dataset
+
+    dataset_config = SUPPORTED_DATASET_CONFIG[dataset_name]
+    # It's unfortunate that the load_dataset function does not support split a list while streaming.
+    # So we need to load the dataset for each split.
+    config = dataset_config["config"].copy()
+    splits = config.pop("split", [None])
+    dataset_splits = [
+        load_dataset(
+            streaming=True,
+            **config,
+            split=split,
+        )
+        for split in splits
+    ]
+
+    # Split the samples evenly across the splits
+    # For streaming datasets, there is no reliable way to get the number of samples in each split
+    # other than loading the entire dataset. So, we just use the same number of samples for each split.
+    num_samples_splits = [num_samples // len(dataset_splits) for _ in dataset_splits]
+    num_samples_splits[-1] += num_samples - sum(num_samples_splits)
     samples = []
-    target_key = dataset_config["target"]
-    for i, sample in enumerate(dataset):
-        if i >= num_samples:
-            break
+    for dataset, num_samples_split in zip(dataset_splits, num_samples_splits):
+        for i, sample in enumerate(dataset):
+            if i >= num_samples_split:
+                break
 
-        # Get raw value
-        value = sample[target_key]
-
-        # Apply preprocessing if defined
-        if "preprocess" in dataset_config:
-            value = dataset_config["preprocess"](value)
-
-        samples.append(value)
+            # Apply preprocess function to the sample
+            samples.append(dataset_config["preprocess"](sample))
 
     return samples
 
@@ -127,10 +155,10 @@ class _CustomDataset(torch.utils.data.Dataset):
 
 
 def get_dataset_dataloader(
-    dataset_name: str = "cnn_dailymail",
+    dataset_name: str | list[str] = "cnn_dailymail",
     tokenizer: "PreTrainedTokenizerBase | None" = None,
     batch_size: int = 1,
-    num_samples: int = 512,
+    num_samples: int | list[int] = 512,
     max_sample_length: int = 512,
     device: str | None = None,
     include_labels: bool = False,
@@ -158,12 +186,25 @@ def get_dataset_dataloader(
             "Tokenizer with the right padding_side may impact calibration accuracy. Recommend set to left"
         )
 
-    num_samples = math.ceil(num_samples / batch_size) * batch_size
+    if isinstance(num_samples, int):
+        num_samples = [num_samples]
 
-    dataset = _get_dataset_samples(dataset_name, num_samples=num_samples)
+    if isinstance(dataset_name, str):
+        dataset_name = [dataset_name]
+
+    num_samples = [math.ceil(num_sample / batch_size) * batch_size for num_sample in num_samples]
+
+    assert len(dataset_name) == len(num_samples), (
+        "dataset_name and num_samples must be the same length"
+    )
+
+    all_samples = []
+    for ds_name, num_sample in zip(dataset_name, num_samples):
+        samples = _get_dataset_samples(ds_name, num_sample)
+        all_samples.extend(samples)
 
     batch_encoded = tokenizer.batch_encode_plus(
-        dataset,
+        all_samples,
         return_tensors="pt",
         padding=True,
         truncation=True,
