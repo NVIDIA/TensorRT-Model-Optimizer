@@ -44,7 +44,7 @@ required_deps = [
     "pulp",
     "regex",
     "safetensors",
-    "torch>=2.5",
+    "torch>=2.6",
     "torchprofile>=0.0.4",
     "torchvision",
 ]
@@ -71,6 +71,7 @@ optional_deps = {
         "huggingface_hub>=0.24.0",
         "peft>=0.12.0",
         "transformers>=4.48,<5.0",  # Version match done in modelopt/torch/__init__.py as well
+        "deepspeed>=0.9.6 ; platform_system != 'Windows'",
     ],
     # linter tools
     "dev-lint": [

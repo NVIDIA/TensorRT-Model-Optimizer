@@ -29,6 +29,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Literal
@@ -42,6 +43,7 @@ from transformers.trainer_utils import get_last_checkpoint
 
 import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
+from modelopt.torch.speculative.utils import calibrate_frequent_vocab
 from modelopt.torch.utils import print_rank_0
 
 torch.manual_seed(0)
@@ -60,12 +62,20 @@ class DataArguments:
     )
     eval_data_path: str = field(default=None, metadata={"help": "Path to the evaluation data."})
     lazy_preprocess: bool = True
+    draft_vocab_cache_dir: str = field(
+        default="draft_vocab_cache",
+        metadata={"help": "Path to the d2t cache directory."},
+    )
+    calibrate_size: int = field(
+        default=None,
+        metadata={"help": "Size of the calibration data. If None, use entire training set."},
+    )
 
 
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
     cache_dir: str | None = field(default=None)
-    model_max_length: int = field(
+    training_seq_len: int = field(
         default=2048,
         metadata={
             "help": (
@@ -88,7 +98,9 @@ class MedusaArguments:
 class EagleArguments:
     eagle_num_layers: int | None = field(default=1)
     use_input_layernorm_in_first_layer: bool | None = field(default=True)
-    use_last_layernorm: bool | None = field(default=False)
+    use_last_layernorm: bool | None = field(default=True)
+    use_aux_hidden_state: bool | None = field(default=True)
+    draft_vocab_size: int | None = field(default=32000)
 
 
 def train():
@@ -127,7 +139,7 @@ def train():
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
-            model_max_length=training_args.model_max_length,
+            model_max_length=training_args.training_seq_len,
         )
         if tokenizer.chat_template is None:
             tokenizer.chat_template = (
@@ -149,8 +161,42 @@ def train():
                 "eagle_num_layers": eagle_args.eagle_num_layers,
                 "use_input_layernorm_in_first_layer": eagle_args.use_input_layernorm_in_first_layer,
                 "use_last_layernorm": eagle_args.use_last_layernorm,
+                "use_aux_hidden_state": eagle_args.use_aux_hidden_state,
+                "draft_vocab_size": eagle_args.draft_vocab_size,
             }
+
             mtsp.convert(model, [("eagle", config)])
+
+            if eagle_args.draft_vocab_size > 0 and (
+                not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
+            ):
+                model_name = os.path.basename(os.path.normpath(model_args.model_name_or_path))
+
+                vocab_cache_path = os.path.join(
+                    data_args.draft_vocab_cache_dir, model_name, "d2t.pt"
+                )
+                if os.path.exists(vocab_cache_path):
+                    vocab_cache = torch.load(vocab_cache_path)
+                    if len(vocab_cache) == eagle_args.draft_vocab_size:
+                        model.eagle_module.d2t = vocab_cache
+                        print_rank_0(f"Loaded draft vocab cache from {vocab_cache_path}.")
+                else:
+                    print_rank_0(
+                        "No matching draft vocab cache found, calibrating vocab using training set..."
+                    )
+                    with open(data_args.data_path) as f:
+                        calibrate_conversations = [json.loads(line)["conversations"] for line in f]
+                        if data_args.calibrate_size:
+                            calibrate_conversations = calibrate_conversations[
+                                : data_args.calibrate_size
+                            ]
+                        calibrate_conversations = [
+                            item for sublist in calibrate_conversations for item in sublist
+                        ]
+
+                    model.eagle_module.d2t = calibrate_frequent_vocab(
+                        tokenizer, calibrate_conversations, eagle_args.draft_vocab_size
+                    )
         else:
             raise Exception(f"{training_args.mode} is not supported!")
 

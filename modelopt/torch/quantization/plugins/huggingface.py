@@ -41,7 +41,7 @@ from ..nn import QuantInputBase, QuantModule, QuantModuleRegistry, TensorQuantiz
 from ..nn.modules.quant_linear import _QuantLinear
 from ..utils import replace_function
 from .attention import register_attention_for_kv_quant
-from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
+from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear, _QuantFunctionalMixin
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -69,6 +69,12 @@ class _QuantAttention(QuantModule):
         )
 
     def forward(self, *args, **kwargs):
+        """Forward method for KV cache quantization compatible with new_attention_interface in transformers >= 4.48.0.
+
+        The forward method is used to patch the attention interface with _quantized_attention.
+        Once output tensors are generated, it restores the original attention interface.
+        """
+
         def _is_eager_attention():
             if self.config._attn_implementation == "eager":
                 return True
@@ -80,6 +86,14 @@ class _QuantAttention(QuantModule):
         # Get the original transformers module before wrapped in any ModelOpt DynamicModule
         module: ModuleType = inspect.getmodule(self.get_attn_type(self))
 
+        # Preprocessing logic to patch attention interface
+        original_attention_interface = (
+            module.eager_attention_forward
+            if _is_eager_attention()
+            else module.ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+        )
+        patch_fn = partial(self._quantized_attention, original_attention_interface)
+
         if _is_eager_attention():
             if not hasattr(module, "eager_attention_forward"):
                 raise AssertionError(
@@ -87,26 +101,20 @@ class _QuantAttention(QuantModule):
                     "Please use a different attention implementation such as `sdpa` by setting "
                     "`model.config._attn_implementation = 'sdpa'` before quantization."
                 )
-            original_attention_interface = module.eager_attention_forward
-            module.eager_attention_forward = partial(  # type: ignore[attr-defined]
-                self._quantized_attention, original_attention_interface
-            )
+            module.eager_attention_forward = patch_fn  # type: ignore[attr-defined]
         else:
-            original_attention_interface = module.ALL_ATTENTION_FUNCTIONS[
-                self.config._attn_implementation
-            ]
-            module.ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation] = partial(
-                self._quantized_attention, original_attention_interface
-            )
+            module.ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation] = patch_fn
 
-        outputs = super().forward(*args, **kwargs)
-
-        if _is_eager_attention():
-            module.eager_attention_forward = original_attention_interface  # type: ignore[attr-defined]
-        else:
-            module.ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation] = (
-                original_attention_interface
-            )
+        try:
+            outputs = super().forward(*args, **kwargs)
+        finally:
+            # Cleanup logic to restore the original attention interface
+            if _is_eager_attention():
+                module.eager_attention_forward = original_attention_interface  # type: ignore[attr-defined]
+            else:
+                module.ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation] = (
+                    original_attention_interface
+                )
 
         return outputs
 
@@ -517,6 +525,82 @@ try:
         QuantModuleRegistry.register({Qwen3MoeSparseMoeBlock: "hf.Qwen3MoeSparseMoeBlock"})(
             _QuantMoeSparseMoe
         )
+except ImportError:
+    pass
+
+
+class _QuantGptOssExperts(_QuantFunctionalMixin):
+    """Quantized wrapper for `transformers.GptOssExperts`.
+
+    Quantizes `gate_up_proj` and `down_proj` weights via dynamic attributes inside `quantize_weight()`.
+    Activations into `gate_up_proj` are quantized by `gate_up_proj_input_quantizer`. For `down_proj`
+    activation quantiation, we intercept `torch.Tensor.__matmul__`/`torch.bmm` and quantize inputs
+    on every second call (since the first call computes `gate_up_proj` outputs and second call
+    computes `down_proj` outputs).
+    """
+
+    def _setup(self):
+        def _get_quantized_weight(quantizer, module, weight):
+            if module._enable_weight_quantization:
+                return quantizer(weight)
+            return weight
+
+        assert not hasattr(self, "kernel_layer_name"), (
+            "ModelOpt quantization does not support patched forward for kernel_hub"
+        )
+        self.gate_up_proj_input_quantizer = TensorQuantizer()
+        self.gate_up_proj_weight_quantizer = TensorQuantizer()
+        self.down_proj_input_quantizer = TensorQuantizer()
+        self.down_proj_weight_quantizer = TensorQuantizer()
+
+        self._register_temp_attribute("_enable_weight_quantization", False)
+        self._register_dynamic_attribute(
+            "gate_up_proj", partial(_get_quantized_weight, self.gate_up_proj_weight_quantizer)
+        )
+        self._register_dynamic_attribute(
+            "down_proj", partial(_get_quantized_weight, self.down_proj_weight_quantizer)
+        )
+
+        self._register_temp_attribute("_down_proj_mul", False)
+
+    @property
+    def functionals_to_replace(self):
+        def _quantized_bmm(batch1, batch2):
+            batch1 = self.down_proj_input_quantizer(batch1) if self._down_proj_mul else batch1
+            self._down_proj_mul = not self._down_proj_mul  # toggle the flag
+            return torch._bmm(batch1, batch2)
+
+        def _tensor_matmul(self_t, other):
+            self_t = self.down_proj_input_quantizer(self_t) if self._down_proj_mul else self_t
+            self._down_proj_mul = not self._down_proj_mul
+            return torch.matmul(self_t, other)
+
+        return [
+            (torch, "bmm", _quantized_bmm),
+            (torch.Tensor, "__matmul__", _tensor_matmul),
+        ]
+
+    @contextmanager
+    def quantize_weight(self):
+        """Context in which weight is quantized."""
+        self._enable_weight_quantization = True
+        yield
+        self._enable_weight_quantization = False
+
+    def forward(
+        self, hidden_states: torch.Tensor, router_indices=None, routing_weights=None
+    ) -> torch.Tensor:
+        """Forward method to add quantization."""
+        hidden_states = self.gate_up_proj_input_quantizer(hidden_states)
+        with self.quantize_weight():
+            return super().forward(hidden_states, router_indices, routing_weights)
+
+
+try:
+    from transformers.models.gpt_oss.modeling_gpt_oss import GptOssExperts
+
+    if GptOssExperts not in QuantModuleRegistry:
+        QuantModuleRegistry.register({GptOssExperts: "hf.GptOssExperts"})(_QuantGptOssExperts)
 except ImportError:
     pass
 

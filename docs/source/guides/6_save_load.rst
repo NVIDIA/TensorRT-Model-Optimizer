@@ -166,6 +166,13 @@ Here is an example of how to enable ModelOpt save/restore with the Huggingface A
     # Save the ModelOpt-modified model architecture and weights using Huggingface APIs
     model.save_pretrained(f"ModelOpt_{model_path}")
 
+By default, the modelopt state is saved in the same directory as the model weights.
+You can disable this by setting the ``save_modelopt_state`` to ``False`` in the ``save_pretrained`` API, as shown below:
+
+.. code-block:: python
+
+    model.save_pretrained(f"ModelOpt_{model_path}", save_modelopt_state=False)
+
 The model saved as above can be restored using the Huggingface ``from_pretrained`` API.
 Do not forget to call :meth:`mto.enable_huggingface_checkpointing() <modelopt.torch.opt.plugins.huggingface.enable_huggingface_checkpointing>`
 before loading the model. This needs to be done only once in the program.

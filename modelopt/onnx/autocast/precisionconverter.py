@@ -210,6 +210,8 @@ class PrecisionConverter:
         def _get_np_type(node, inp, opset=onnx.defs.onnx_opset_version()):
             if node.op == "Cast":
                 return helper.tensor_dtype_to_np_dtype(node.attrs["to"])
+            elif node.op == "DequantizeLinear":
+                return node.inputs[1].dtype  # scale type
             elif not inp.dtype or inp.dtype == onnx.TensorProto.UNDEFINED:
                 return None
             elif node.op not in self.custom_ops:
@@ -226,12 +228,16 @@ class PrecisionConverter:
             return None
 
         def _can_propagate_type(from_type, to_type):
-            from_type_onnx = helper.np_dtype_to_tensor_dtype(from_type)
-            to_type_onnx = helper.np_dtype_to_tensor_dtype(to_type)
-            return (
-                from_type_onnx in [*ONNX_TYPES, onnx.TensorProto.UNDEFINED]
-                and to_type_onnx in ONNX_TYPES
-            )
+            try:
+                from_type_onnx = helper.np_dtype_to_tensor_dtype(from_type)
+                to_type_onnx = helper.np_dtype_to_tensor_dtype(to_type)
+                return (
+                    from_type_onnx in [*ONNX_TYPES, onnx.TensorProto.UNDEFINED]
+                    and to_type_onnx in ONNX_TYPES
+                )
+            except Exception as e:
+                logger.warning(f"Failed to check if type can be propagated: {e}")
+                return False
 
         def _propagate_cast_type_through_nodes(node, np_type, iter=1):
             # Return if node is of cast type (from iter=2)

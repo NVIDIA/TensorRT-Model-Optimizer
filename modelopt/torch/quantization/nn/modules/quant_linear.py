@@ -139,6 +139,26 @@ class RealQuantLinear(QuantModule):
     list_of_scale_tensors = ["_scale", "double_scale", "_scale_zeros"]
     allow_real_quant_gemm = True
 
+    @property
+    def _should_run_real_quant_gemm(self):
+        return (
+            hasattr(self, "_use_real_quant_gemm")
+            and self._use_real_quant_gemm
+            and not (self.input_quantizer.is_enabled and self.input_quantizer._if_calib)
+            and self.allow_real_quant_gemm
+        )
+
+    def get_real_quant_gemm_impl(self, input, *args, **kwargs) -> bool:
+        """Get the real quant GEMM implmenetation base on input arguments."""
+        if not hasattr(self, "_real_quant_gemm_impl"):
+            self._real_quant_gemm_impl = backends.gemm_registry.find_match(
+                self, input, *args, **kwargs
+            )
+            if self._real_quant_gemm_impl is None:
+                warnings.warn(f"RealQuantLinear: No real-quant GEMM found: {self}.")
+
+        return self._real_quant_gemm_impl is not None
+
     def forward(self, input, *args, **kwargs):
         """RealQuant layer forward function."""
         # For torch.export, we use the default fake quant
@@ -146,27 +166,16 @@ class RealQuantLinear(QuantModule):
             return super().forward(input, *args, **kwargs)
 
         # Check if real-quant GEMM is available
-        if (
-            hasattr(self, "_use_real_quant_gemm")
-            and self._use_real_quant_gemm
-            and input.numel() > 1
-            # If we need to calibrate the input, we fallback to fake quant
-            and not (self.input_quantizer.is_enabled and self.input_quantizer._if_calib)
-            # Our forward might not work for every implementation, so we allow user to disable it
-            and self.allow_real_quant_gemm
-        ):
+        if self._should_run_real_quant_gemm and input.numel() > 1:
             # If the input is not quantized, we use the default GEMM.
-            real_quant_gemm = (
-                self._real_quant_gemm_cache
-                if hasattr(self, "_real_quant_gemm_cache")
-                else backends.gemm_registry.find_match(self, input, args, kwargs)
-            )
+            self.get_real_quant_gemm_impl(input, *args, **kwargs)
 
             # Note: We cache the real-quant GEMM function to avoid matching overhead.
             # This assumes that the function will not change after the first call.
-            if real_quant_gemm:
-                self._real_quant_gemm_cache = real_quant_gemm
-                output = real_quant_gemm(self, input, self.weight, self.bias, *args, **kwargs)
+            if self._real_quant_gemm_impl:
+                output = self._real_quant_gemm_impl(
+                    self, input, self.weight, self.bias, *args, **kwargs
+                )
                 return (
                     self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
                 )
@@ -210,12 +219,39 @@ class RealQuantLinear(QuantModule):
         # Function to dynamically override load_state_dict
         dynamically_update_state_methods(self)
 
-    def _apply(self, fn):
+    def _apply(self, fn, recurse=True):
         """Override the _apply method to ensure that the weight is real-quantized."""
         # Check if fn is a tensor_cast_fun and print warning if so
         if hasattr(fn, "__name__") and "tensor_cast" in fn.__name__.lower():
             warnings.warn("RealQuantLinear does not support tensor_cast_fun.")
             return self
+        elif "to_empty" in str(fn):
+            # Handle meta device materialization using to_empty(). to_empty() calls _apply()
+            # with a lambda function over torch.empty_like. The function's name is <lambda>;
+            # hence we can only detect to_empty keyword in the __repr__. We take care
+            # recursive _apply over all suubmodules (e.g. input and weight quantizers are
+            # submodules). Parameters and buffer are all taken care.
+            #
+            # Since the parameter is reassigned, the QTensorWrapper will be gone entirely.
+            # Hence we custom the behavior such that the QTensorWrapper is reapplied afterward.
+            if recurse:
+                for module in self.children():
+                    module._apply(fn, recurse=recurse)
+
+            for key, param in self._parameters.items():
+                if param is None:
+                    continue
+                with torch.no_grad():
+                    if "weight" in key and isinstance(param, QTensorWrapper):
+                        self._parameters[key] = QTensorWrapper(fn(param), metadata=param.metadata)
+                    else:
+                        self._parameters[key] = torch.nn.Parameter(fn(param), requires_grad=False)
+
+            for key, buf in self._buffers.items():
+                if buf is not None:
+                    self._buffers[key] = fn(buf)
+
+            return self
         else:
             # Process the function normally
-            return super()._apply(fn)
+            return super()._apply(fn, recurse=recurse)

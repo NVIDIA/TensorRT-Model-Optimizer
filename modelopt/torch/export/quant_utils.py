@@ -32,7 +32,11 @@ from modelopt.torch.quantization.qtensor import (
     NVFP4QTensor,
     QTensorWrapper,
 )
-from modelopt.torch.quantization.utils import is_quantized_linear
+from modelopt.torch.quantization.utils import (
+    QuantizerAttrNames,
+    quantizer_attr_names,
+    weight_attr_names,
+)
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .model_config import (
@@ -46,6 +50,7 @@ from .model_config import (
     QUANTIZATION_FP8_PC_PT,
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_INT8_SQ,
+    QUANTIZATION_MXFP4,
     QUANTIZATION_NONE,
     QUANTIZATION_NVFP4,
     QUANTIZATION_NVFP4_AWQ,
@@ -190,68 +195,82 @@ def get_scaling_factor(quantizer: TensorQuantizer) -> torch.Tensor:
     return scaling_factor
 
 
-def get_activation_scaling_factor(module: nn.Module) -> torch.Tensor:
+def get_activation_scaling_factor(
+    module: nn.Module, input_quantizer_name: str = "input_quantizer"
+) -> torch.Tensor:
     """Returns the activation scaling factor."""
     # If NVFP4, return activation scaling factor from NVFP4QTensor
+    input_quantizer = getattr(module, input_quantizer_name, None)
+    if input_quantizer is None:
+        return None
+
     if get_quantization_format(module) in [
         QUANTIZATION_NVFP4,
         QUANTIZATION_NVFP4_AWQ,
-    ] and hasattr(module, "input_quantizer"):
-        return NVFP4QTensor.get_activation_scaling_factor(module.input_quantizer)
-    return (
-        get_scaling_factor(module.input_quantizer) if hasattr(module, "input_quantizer") else None
-    )
+    ]:
+        return NVFP4QTensor.get_activation_scaling_factor(input_quantizer)
+    return get_scaling_factor(input_quantizer)
 
 
-def get_weight_scaling_factor(module: nn.Module) -> torch.Tensor:
+def get_weight_scaling_factor(module: nn.Module, weight_name: str = "weight") -> torch.Tensor:
     """Returns the weight scaling factor."""
     # module.weight_quantizer could be a TensorQuantizer (for algorithms except W4A8) or
     # a SequentialQuantizer (for W4A8). In the latter case, we need to get the scaling factor from the
     # first quantizer of the SequentialQuantizer instance.
-    if hasattr(module, "weight_quantizer") and isinstance(
-        module.weight_quantizer, SequentialQuantizer
-    ):
-        return get_scaling_factor(module.weight_quantizer[0])
 
+    weight: nn.Parameter = getattr(module, weight_name)
+    weight_quantizer: TensorQuantizer | SequentialQuantizer | None = getattr(
+        module, quantizer_attr_names(weight_name).weight_quantizer, None
+    )
+
+    if weight_quantizer is None:
+        return None
+
+    if isinstance(weight_quantizer, SequentialQuantizer):
+        return get_scaling_factor(weight_quantizer[0])
+
+    quantization_format = get_quantization_format(module)
     # If NVFP4, we need to return quantized per_block scaling factors
-    if get_quantization_format(module) in [
+    if quantization_format in [
         QUANTIZATION_NVFP4,
         QUANTIZATION_NVFP4_AWQ,
-    ] and hasattr(module, "weight_quantizer"):
+    ]:
         return NVFP4QTensor.get_weights_scaling_factor(
-            module.weight,
-            module.weight_quantizer.block_sizes[-1],
-            NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(module.weight_quantizer).to(
-                module.weight.device
+            weight,
+            weight_quantizer.block_sizes[-1],
+            NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(weight_quantizer).to(
+                weight.device
             ),
         )[0]
 
-    if get_quantization_format(module) == QUANTIZATION_W4A8_MXFP4_FP8:
-        return MXFP4QTensor.quantize(
-            module.weight, block_size=module.weight_quantizer.block_sizes[-1]
-        )[1].reshape(*module.weight.shape[:-1], -1)
-    return (
-        get_scaling_factor(module.weight_quantizer) if hasattr(module, "weight_quantizer") else None
-    )
+    if quantization_format in [QUANTIZATION_W4A8_MXFP4_FP8, QUANTIZATION_MXFP4]:
+        return MXFP4QTensor.quantize(weight, block_size=weight_quantizer.block_sizes[-1])[
+            1
+        ].reshape(*weight.shape[:-1], -1)
+    return get_scaling_factor(weight_quantizer)
 
 
-def get_weight_scaling_factor_2(module: nn.Module) -> torch.Tensor:
+def get_weight_scaling_factor_2(module: nn.Module, weight_name: str = "weight") -> torch.Tensor:
     """Returns the secondary weight scaling factor."""
+    weight_quantizer = getattr(module, quantizer_attr_names(weight_name).weight_quantizer, None)
+
+    if weight_quantizer is None:
+        return None
+
     if get_quantization_format(module) in [
         QUANTIZATION_NVFP4,
         QUANTIZATION_NVFP4_AWQ,
-    ] and hasattr(module, "weight_quantizer"):
-        return NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(module.weight_quantizer)
-    if (
-        not hasattr(module, "weight_quantizer")
-        or not isinstance(module.weight_quantizer, SequentialQuantizer)
-        or not module.weight_quantizer[-1].is_enabled
-    ):
+    ]:
+        return NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(weight_quantizer)
+
+    # SequentialQuantizer is required
+    if not isinstance(weight_quantizer, SequentialQuantizer) or not weight_quantizer[-1].is_enabled:
         return None
-    assert len(module.weight_quantizer) == 2, (
+
+    assert len(weight_quantizer) == 2, (
         "modelopt only supports 2 sequential quantization layers for now"
     )
-    return get_scaling_factor(module.weight_quantizer[-1])
+    return get_scaling_factor(weight_quantizer[-1])
 
 
 def get_prequant_scaling_factor(module: nn.Module) -> torch.Tensor:
@@ -343,12 +362,12 @@ def get_kv_cache_dtype(modules: list[nn.Module] | nn.Module) -> str | None:
         return QUANTIZATION_NONE
 
 
-def get_weight_block_size(module: nn.Module) -> int:
+def get_weight_block_size(module: nn.Module, weight_name: str = "weight") -> int:
     """Returns the weight block size."""
-    if not hasattr(module, "weight_quantizer"):
-        return 0
+    weight_quantizer = getattr(module, quantizer_attr_names(weight_name).weight_quantizer, None)
 
-    weight_quantizer = module.weight_quantizer
+    if weight_quantizer is None:
+        return 0
 
     if isinstance(weight_quantizer, SequentialQuantizer):
         weight_quantizer = weight_quantizer[0]
@@ -370,85 +389,88 @@ def get_quantization_format(module) -> str | None:
     The first non-None quantization string is returned.
     """
 
-    def _get_quantization_from_linear_layer(layer):
-        if not hasattr(layer, "weight_quantizer") or not layer.weight_quantizer.is_enabled:
+    def _get_quantization_from_layer(layer, quantizer_attr_names: QuantizerAttrNames):
+        weight_quantizer = getattr(layer, quantizer_attr_names.weight_quantizer, None)
+        input_quantizer = getattr(layer, quantizer_attr_names.input_quantizer, None)
+
+        if weight_quantizer is None or not weight_quantizer.is_enabled:
             return QUANTIZATION_NONE
 
-        w_quantizer = layer.weight_quantizer
-
         # Handle SequentialQuantizer
-        if isinstance(w_quantizer, SequentialQuantizer):
+        if isinstance(weight_quantizer, SequentialQuantizer):
             assert (
-                len(w_quantizer) == 2
-                and w_quantizer[0].num_bits == 4
-                and w_quantizer[1].num_bits == (4, 3)
+                len(weight_quantizer) == 2
+                and weight_quantizer[0].num_bits == 4
+                and weight_quantizer[1].num_bits == (4, 3)
             ), "Unsupported SequentialQuantizer configuration"
             assert (
-                w_quantizer[0].block_sizes
-                and len(w_quantizer[0].block_sizes) > 0
-                and w_quantizer[0].block_sizes[-1] > 0
+                weight_quantizer[0].block_sizes
+                and len(weight_quantizer[0].block_sizes) > 0
+                and weight_quantizer[0].block_sizes[-1] > 0
             ), "Invalid block_sizes for SequentialQuantizer"
 
             return QUANTIZATION_W4A8_AWQ
 
         # Handle individual num_bits cases
-        if w_quantizer.num_bits == 4:
-            assert len(w_quantizer.block_sizes) > 0 and w_quantizer.block_sizes[-1] > 0, (
+        if weight_quantizer.num_bits == 4:
+            assert len(weight_quantizer.block_sizes) > 0 and weight_quantizer.block_sizes[-1] > 0, (
                 "Invalid block_sizes for INT4 quantizer"
             )
             return QUANTIZATION_INT4_AWQ
 
-        if w_quantizer.num_bits == 8:
+        if weight_quantizer.num_bits == 8:
             return QUANTIZATION_INT8_SQ
 
-        if w_quantizer.num_bits == (4, 3):
-            if w_quantizer.block_sizes:
-                assert w_quantizer.block_sizes[-1] > 0, "Invalid block_sizes for FP8 quantizer"
-                if w_quantizer.fake_quant:
+        if weight_quantizer.num_bits == (4, 3):
+            if weight_quantizer.block_sizes:
+                assert weight_quantizer.block_sizes[-1] > 0, "Invalid block_sizes for FP8 quantizer"
+                if weight_quantizer.fake_quant:
                     return QUANTIZATION_FP8_PB_WO
                 else:
                     return QUANTIZATION_FP8_PB_REAL
-            if w_quantizer.axis == 0:
+            if weight_quantizer.axis == 0:
                 return QUANTIZATION_FP8_PC_PT
             return QUANTIZATION_FP8
 
-        if w_quantizer.num_bits == (2, 1):
-            if hasattr(layer, "input_quantizer") and hasattr(
-                layer.input_quantizer, "_pre_quant_scale"
-            ):
+        if weight_quantizer.num_bits == (2, 1):
+            # FP4 formats are all block quantization
+            block_sizes = getattr(weight_quantizer, "block_sizes")
+            scale_bits = block_sizes.get("scale_bits")
+
+            if input_quantizer is not None and hasattr(input_quantizer, "_pre_quant_scale"):
                 return QUANTIZATION_NVFP4_AWQ
             if getattr(layer, "fused_with_layernorm", False):
                 return QUANTIZATION_NVFP4_AWQ
-            block_sizes = getattr(layer.weight_quantizer, "block_sizes", None)
-            scale_bits = block_sizes.get("scale_bits", None) if block_sizes else None
+            assert input_quantizer is not None, (
+                f"input_quantizer is None for {quantizer_attr_names}"
+            )
             if (
-                layer.weight_quantizer.is_enabled
-                and block_sizes
-                and block_sizes.get("type", "static") == "dynamic"
-                and scale_bits
+                block_sizes.get("type", "static") == "dynamic"
                 and scale_bits == (8, 0)
-                and layer.input_quantizer.is_enabled
-                and layer.input_quantizer.num_bits == (4, 3)
-                and layer.input_quantizer.block_sizes is None
+                and input_quantizer.is_enabled
+                and input_quantizer.num_bits == (4, 3)
+                and input_quantizer.block_sizes is None
             ):
                 return QUANTIZATION_W4A8_MXFP4_FP8
-            return QUANTIZATION_NVFP4
+            if scale_bits == (4, 3):
+                return QUANTIZATION_NVFP4
+            elif scale_bits == (8, 0):
+                return QUANTIZATION_MXFP4
 
         # Raise error for unsupported num_bits
-        raise NotImplementedError(f"Unsupported quantizer with num_bits: {w_quantizer.num_bits}")
+        raise NotImplementedError(
+            f"Unsupported quantizer with num_bits: {weight_quantizer.num_bits}"
+        )
 
-    if is_quantized_linear(module):
-        return _get_quantization_from_linear_layer(module)
-
-    for _, layer in module.named_children():
-        if is_quantized_linear(layer):
-            quantization = _get_quantization_from_linear_layer(layer)
-        else:
-            quantization = get_quantization_format(layer)
-
-        # Try to see if other layers has quantization
+    for weight_name in weight_attr_names(module):
+        quantization = _get_quantization_from_layer(module, quantizer_attr_names(weight_name))
         if quantization != QUANTIZATION_NONE:
             return quantization
+
+    for _, layer in module.named_children():
+        format = get_quantization_format(layer)
+        if format != QUANTIZATION_NONE:
+            return format
 
     return QUANTIZATION_NONE
 
@@ -703,7 +725,7 @@ def to_quantized_weight(
             else weights_scaling_factor2,
         )[0]._quantized_data
 
-    if quantization == QUANTIZATION_W4A8_MXFP4_FP8:
+    if quantization in [QUANTIZATION_W4A8_MXFP4_FP8, QUANTIZATION_MXFP4]:
         return MXFP4QTensor.quantize(weight, block_size=block_size)[0]._quantized_data
 
     raise NotImplementedError(f"quantization format {quantization} not supported")
@@ -805,6 +827,24 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
             for q_key in RealQuantLinear.list_of_scale_tensors
         ):
             keys_to_delete.append(key)
+
+    # Check for tied weights and remove duplicates
+    seen_tensors = {}
+
+    # Remove any tied weights if found.
+    for key, value in post_state_dict.items():
+        if isinstance(value, torch.Tensor):
+            # Use tensor data pointer to identify tied weights
+            tensor_id = value.data_ptr()
+            if tensor_id in seen_tensors:
+                # This is a tied weight, mark for deletion and warn
+                keys_to_delete.append(key)
+                logger.warning(
+                    f"Found tied weight: '{key}' is tied to '{seen_tensors[tensor_id]}'. "
+                    f"Removing duplicate '{key}' from the exported state dict."
+                )
+            else:
+                seen_tensors[tensor_id] = key
 
     for key in keys_to_delete:
         del post_state_dict[key]
@@ -966,151 +1006,3 @@ def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[st
         quant_config["quantization"]["kv_cache_quant_algo"] = kv_cache_format
 
     return quant_config
-
-
-def quantize_llama4_experts_for_hf_export(module: nn.Module):
-    """Quantize the experts in the Llama4 model."""
-    from transformers.models.llama4.modeling_llama4 import Llama4TextExperts
-
-    assert isinstance(module, Llama4TextExperts), "Module is not a Llama4TextExperts"
-
-    assert module.gate_up_proj_weight_quantizer.is_enabled
-    assert module.down_proj_weight_quantizer.is_enabled
-    assert module.gate_up_proj_input_quantizer.is_enabled
-    assert module.down_proj_input_quantizer.is_enabled
-
-    # Handle uncalibrated input quantizers that have None amax values
-    input_quantizers = [
-        module.gate_up_proj_input_quantizer,
-        module.down_proj_input_quantizer,
-    ]
-
-    # Only handle amax for non-dynamic quantizers
-    non_dynamic_quantizers = [q for q in input_quantizers if not getattr(q, "_dynamic", False)]
-
-    if non_dynamic_quantizers:
-        # Find the maximum amax value from non-None quantizers
-        valid_amax_values = [
-            quantizer.amax for quantizer in non_dynamic_quantizers if quantizer.amax is not None
-        ]
-
-        device = module.gate_up_proj.device
-
-        # If all quantizers have None amax, set a default value
-        if not valid_amax_values:
-            default_amax = torch.tensor(1.0, dtype=torch.float32, device=device)
-            warn(
-                "All input quantizers have None amax values. Setting default amax to 1.0. "
-                "This typically occurs when experts are not activated during calibration. "
-                "Consider increasing your calibration dataset size to ensure all experts are exercised."
-            )
-            for quantizer in non_dynamic_quantizers:
-                if quantizer.amax is None:
-                    quantizer.amax = default_amax.clone()
-        else:
-            # Set None amax values to the maximum of existing values
-            max_amax = torch.max(torch.stack(valid_amax_values))
-            if max_amax.device != device:
-                max_amax = max_amax.to(device)
-            for quantizer in non_dynamic_quantizers:
-                if quantizer.amax is None:
-                    warn(
-                        f"Missing amax value for input quantizer. Setting it to {max_amax.item()} for export. "
-                        "This typically occurs when certain experts are not activated during calibration. "
-                        "Consider increasing your calibration dataset size to ensure all experts are exercised."
-                    )
-                    quantizer.amax = max_amax.clone()
-
-    for weight_name in ["gate_up_proj", "down_proj"]:
-        weight = getattr(module, weight_name)
-        weight_quantizer = getattr(module, f"{weight_name}_weight_quantizer")
-
-        if weight_quantizer.num_bits == (4, 3):
-            assert not weight_quantizer.block_sizes
-
-            weight_scale = weight_quantizer.amax.to(torch.float32) / weight_quantizer.maxbound
-
-            module.register_buffer(
-                f"{weight_name}_weight_scale",
-                weight_scale,
-            )
-
-            setattr(
-                module,
-                weight_name,
-                nn.Parameter(
-                    (weight / weight_scale.to(weight.dtype).to(weight.device)).to(
-                        torch.float8_e4m3fn
-                    ),
-                    requires_grad=False,
-                ),
-            )
-
-        elif weight_quantizer.num_bits == (2, 1):
-            # Maverick export can go OOM on the GPU. So just move to the CPU for weights compression.
-            weight = weight.to("cpu")
-            weight_scale_2 = NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(
-                weight_quantizer
-            ).to("cpu")
-
-            module.register_buffer(
-                f"{weight_name}_weight_scale_2",
-                weight_scale_2,
-            )
-
-            block_size = weight_quantizer.block_sizes[-1]
-
-            # For bmm, the weight shape is (num_experts, input_dim, output_dim), so let's first transpose
-            # the weight to (num_experts, output_dim, input_dim) before calculating scaling factor and quantization.
-            weight = weight.transpose(-2, -1)
-            weight_scale = NVFP4QTensor.get_weights_scaling_factor(
-                weight,
-                block_size=block_size,
-                weights_scaling_factor_2=weight_scale_2,
-            )[0]
-            quantized_weights = to_quantized_weight(
-                weight,
-                weight_scale,
-                quantization=QUANTIZATION_NVFP4,
-                weights_scaling_factor2=weight_scale_2,
-                block_size=block_size,
-            )
-            # After quantization, we transpose the weight and scales back to the original order.
-            quantized_weights = quantized_weights.transpose(-2, -1)
-            weight_scale = weight_scale.transpose(-2, -1)
-            module.register_buffer(
-                f"{weight_name}_weight_scale",
-                weight_scale,
-            )
-
-            setattr(
-                module,
-                weight_name,
-                nn.Parameter(quantized_weights, requires_grad=False),
-            )
-
-    for input_name in ["gate_up_proj", "down_proj"]:
-        input_quantizer = getattr(module, f"{input_name}_input_quantizer")
-
-        # Skip processing for dynamic quantization since it doesn't have fixed amax
-        if getattr(input_quantizer, "_dynamic", False):
-            continue
-
-        if input_quantizer.num_bits == (4, 3):
-            assert not input_quantizer.block_sizes
-
-            input_scale = input_quantizer.amax.to(torch.float32) / input_quantizer.maxbound
-            module.register_buffer(
-                f"{input_name}_input_scale",
-                input_scale,
-            )
-
-        elif input_quantizer.num_bits == (2, 1):
-            input_scale_2 = NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(
-                input_quantizer
-            )
-
-            module.register_buffer(
-                f"{input_name}_input_scale",
-                input_scale_2,
-            )

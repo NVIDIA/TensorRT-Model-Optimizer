@@ -35,7 +35,7 @@ class _QuantLoraLinear(QuantModule):
     def forward(self, x, *args, **kwargs):
         adapter_names = kwargs.pop("adapter_names", None)
         if self.disable_adapters or adapter_names is not None or self.merged:
-            return super().forward(x, args, kwargs)
+            return super().forward(x, *args, **kwargs)
 
         x = self.input_quantizer(x)
         weight = self.base_layer.weight

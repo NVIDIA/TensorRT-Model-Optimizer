@@ -34,6 +34,9 @@ def calibrate_frequent_vocab(tokenizer, text, target_vocab_size, output_file=Non
     counter = Counter(conversations)
     vocab = counter.most_common(target_vocab_size)
     mapping = torch.zeros(target_vocab_size, dtype=torch.int64)
+    assert len(vocab) == target_vocab_size, (
+        f"Not enough vocabs to calibrate ({len(vocab)}/{target_vocab_size}). Please increase data size."
+    )
     for i in range(target_vocab_size):
         idx = vocab[i][0]
         mapping[i] = idx - i
@@ -292,6 +295,8 @@ class AcceptanceRateValidation:
         Use rank 0 data as the golden set to broadcast to all ranks.
         Each rank will then compare to this data and through error if different.
         """
+        if not torch.distributed.is_initialized():
+            return data
         if data is None:
             return
         golden_set = copy.deepcopy(data)

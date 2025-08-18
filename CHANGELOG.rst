@@ -8,13 +8,15 @@ Model Optimizer Changelog (Linux)
 
 **Deprecations**
 
-- Deprecate ``torch<2.5`` support.
+- Deprecate ``torch<2.6`` support.
 
 **New Features**
 
 - (Experimental) Add quantization support for custom TensorRT op in ONNX models.
 - Add support for Minifinetuning (MFT; https://arxiv.org/abs/2506.15702) self-corrective distillation, which enables training on small datasets with severely mitigated catastrophic forgetting.
 - Add tree decoding support for Megatron Eagle models.
+- For most VLMs, we now explicitly disable quant on the vision part so we add them to the excluded_modules during HF export.
+- Add support for ``hidden_size`` and ``num_layers`` pruning for Megatron Core Mamba models in ``mcore_gpt_minitron`` mode.
 
 0.33 (2025-07-14)
 ^^^^^^^^^^^^^^^^^
@@ -36,6 +38,7 @@ Model Optimizer Changelog (Linux)
 - ModelOpt now supports quantization of tensor-parallel sharded Huggingface transformer models. This requires ``transformers>=4.52.0``.
 - Support quantization of FSDP2 wrapped models and add FSDP2 support in the ``llm_qat`` example.
 - Add NeMo 2 Simplified Flow examples for quantization aware training/distillation (QAT/QAD), speculative decoding, pruning & distillation.
+- Fix a Qwen3 MOE model export issue.
 
 0.31 (2025-06-04)
 ^^^^^^^^^^^^^^^^^

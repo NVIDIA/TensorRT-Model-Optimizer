@@ -501,8 +501,8 @@ class GPTModelExporter:
         return all_rules
 
     def _get_weight_scales(self, quantized_state: dict[str, Any], qformat: str):
-        weight_scale = quantized_state.get("weight_scale")
-        weight_scale_2 = quantized_state.get("weight_scale_2")
+        weight_scale = quantized_state.pop("weight_scale", None)
+        weight_scale_2 = quantized_state.pop("weight_scale_2", None)
 
         if weight_scale is not None:
             weight_scale = weight_scale.clone().detach()
@@ -539,6 +539,12 @@ class GPTModelExporter:
                 weight_scale_2,
                 block_size,
             )
+            self._state_dict[prefix + "weight_scale"] = weight_scale.detach().clone()
+
+        if weight_scale_2 is not None:
+            if len(weight_scale_2.shape) > 0:
+                raise ValueError("weight_scale_2 must be a scalar!")
+            self._state_dict[prefix + "weight_scale_2"] = weight_scale_2.detach().clone()
 
         for key, val in name_to_value.items():
             if key == "output_scale" and skip_output_scale:
@@ -588,6 +594,12 @@ class GPTModelExporter:
             )
             self._state_dict[gate_proj_prefix + "weight_scale"] = gate_proj_weight_scale
             self._state_dict[up_proj_prefix + "weight_scale"] = up_proj_weight_scale
+
+        if weight_scale_2 is not None:
+            if len(weight_scale_2.shape) > 0:
+                raise ValueError("weight_scale_2 must be a scalar!")
+            self._state_dict[gate_proj_prefix + "weight_scale_2"] = weight_scale_2.detach().clone()
+            self._state_dict[up_proj_prefix + "weight_scale_2"] = weight_scale_2.detach().clone()
 
         # weight and weight_scale have been pop out.
         for key, val in name_to_value.items():
@@ -678,7 +690,11 @@ class GPTModelExporter:
                 ]
             else:
                 # per-tensor scaling
-                proj_weight_scales = [weight_scale.detach().clone()] * 3
+                proj_weight_scales = [
+                    weight_scale.detach().clone(),
+                    weight_scale.detach().clone(),
+                    weight_scale.detach().clone(),
+                ]
 
             for weight, scale, key in zip(proj_weights, proj_weight_scales, proj_keys):
                 quantized_weight = to_quantized_weight(
@@ -691,6 +707,12 @@ class GPTModelExporter:
                 self._state_dict[key] = quantized_weight
                 self._state_dict[key + "_scale"] = scale
 
+        if weight_scale_2 is not None:
+            if len(weight_scale_2.shape) > 0:
+                raise ValueError("weight_scale_2 must be a scalar!")
+            for weight, scale, key in zip(proj_weights, proj_weight_scales, proj_keys):
+                self._state_dict[key + "_scale_2"] = weight_scale_2.detach().clone()
+
         # weight and weight_scale have been pop out.
         for key, val in name_to_value.items():
             q_proj_key = q_proj_prefix + key
@@ -699,6 +721,14 @@ class GPTModelExporter:
             if key == "output_scale":
                 self._state_dict[prefix + k_scale_name] = val.detach().clone()
                 self._state_dict[prefix + v_scale_name] = val.detach().clone()
+            elif key == "bias":
+                # Slice bias similar to weight
+                bias = val.detach().clone()
+                bias = bias.reshape([qkv_total_dim, head_size])
+                proj_biases = [bias[s].reshape(-1) for s in slices]
+                proj_bias_keys = [q_proj_prefix + key, k_proj_prefix + key, v_proj_prefix + key]
+                for bias_tensor, bias_key in zip(proj_biases, proj_bias_keys):
+                    self._state_dict[bias_key] = bias_tensor
             else:
                 self._state_dict[q_proj_key] = val.detach().clone()
                 self._state_dict[k_proj_key] = val.detach().clone()

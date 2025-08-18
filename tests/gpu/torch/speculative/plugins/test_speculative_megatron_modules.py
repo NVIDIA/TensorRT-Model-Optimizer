@@ -72,6 +72,9 @@ def _test_speculative_gpt_model(
     else:
         raise ValueError("Only algo={eagle, medusa} are supported!")
 
+    # Bfloat16
+    model = model.to(torch.bfloat16)
+
     # Prepare inputs for forward.
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
     attention_mask = torch.tril(torch.ones((1, 1, max_sequence_length, max_sequence_length))).cuda()
@@ -188,6 +191,9 @@ def _test_tree_decode(tree_paths, greedy_steps, rank, size):
     ).cuda()
 
     model = mtsp.convert(model, [("eagle", config)])
+
+    # Bfloat16
+    model = model.to(torch.bfloat16)
 
     # Prepare inputs for forward.
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()

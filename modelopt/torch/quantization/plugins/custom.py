@@ -31,6 +31,7 @@ from ..nn.modules.quant_linear import _QuantLinear
 from ..utils import multi_context, replace_function
 
 CUSTOM_MODEL_PLUGINS = set()
+CUSTOM_POST_CONVERSION_PLUGINS = set()
 
 
 # TODO: This is a temporary solution
@@ -38,6 +39,12 @@ CUSTOM_MODEL_PLUGINS = set()
 def register_custom_model_plugins_on_the_fly(model):
     """Registers custom modules as QUANT_MODULE on the fly."""
     for callback in CUSTOM_MODEL_PLUGINS:
+        callback(model)
+
+
+def register_custom_post_conversion_plugins(model):
+    """Registers custom modules as QUANT_MODULE after conversion."""
+    for callback in CUSTOM_POST_CONVERSION_PLUGINS:
         callback(model)
 
 
@@ -105,6 +112,10 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
         self.output_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_output)
         self.output_quantizer.disable()
 
+        # Memorize the original weight.dtype for modelopt_post_restore given that
+        # the dtype can change later.
+        self.original_weight_dtype = None if self.weight is None else self.weight.dtype
+
     def modelopt_post_restore(self, prefix: str = ""):
         """Post restore to correctly configure the TensorQuantizer states for MCore/distributed frameworks.
 
@@ -126,11 +137,6 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
         def _has_state(quantizer, name):
             # Handling for SequentialQuantizer
             quantizer = quantizer[0] if isinstance(quantizer, SequentialQuantizer) else quantizer
-
-            if self.is_version_less_than("0.29") and "dev" not in __version__:
-                # For backward compatibility, previously we used to save a boolean attribute "_has_amax"
-                # to indicate if the quantizer has amax.
-                return hasattr(quantizer, "_has" + name)
             return hasattr(quantizer, name)
 
         if self.weight is None:
@@ -147,19 +153,23 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
             if hasattr(self.input_quantizer, "_pre_quant_scale"):
                 delattr(self.input_quantizer, "_pre_quant_scale")
             pqs = torch.zeros(
-                (self.weight.shape[1]), device=self.weight.device, dtype=self.weight.dtype
+                (self.weight.shape[1]), device=self.weight.device, dtype=self.original_weight_dtype
             )
             self.input_quantizer.register_buffer("_pre_quant_scale", pqs)
         if _has_state(self.input_quantizer, "_amax"):
             self.input_quantizer.reset_amax()
             dummy_input = torch.ones(
-                (1, 1, self.weight.shape[1]), device=self.weight.device, dtype=self.weight.dtype
+                (1, 1, self.weight.shape[1]),
+                device=self.weight.device,
+                dtype=self.original_weight_dtype,
             )
             max_calibrate(self.input_quantizer, lambda iq: iq(dummy_input), distributed_sync=False)
         if _has_state(self.output_quantizer, "_amax"):
             self.output_quantizer.reset_amax()
             dummy_input = torch.ones(
-                (1, 1, self.weight.shape[0]), device=self.weight.device, dtype=self.weight.dtype
+                (1, 1, self.weight.shape[0]),
+                device=self.weight.device,
+                dtype=self.original_weight_dtype,
             )
             max_calibrate(self.output_quantizer, lambda oq: oq(dummy_input), distributed_sync=False)
         # If there are any other states, lets move them to the correct device

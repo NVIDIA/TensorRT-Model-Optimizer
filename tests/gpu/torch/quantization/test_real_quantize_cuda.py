@@ -18,10 +18,14 @@
 import fnmatch
 
 import pytest
+import torch
+from _test_utils.torch_dist.dist_utils import get_device_counts, spawn_multiprocess_job
 from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
 from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
 from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import save_restore_test
+from torch.distributed.fsdp import FSDPModule, fully_shard
+from torch.distributed.tensor import DTensor
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.plugins.accelerate import init_quantized_weights
@@ -202,3 +206,64 @@ def test_real_quantize_linear(quant_config, tmp_path):
             and not module.weight_quantizer.fake_quant
         ):
             assert isinstance(module.weight, QTensorWrapper)
+
+
+def _test_mtq_compress_fsdp_module(
+    rank, size, model_cls=SimpleLinear, quant_config=mtq.NVFP4_DEFAULT_CFG
+):
+    # Load model and shard it
+    model = model_cls(bias=False, dtype=torch.bfloat16, add_linear=True).cuda()
+
+    # Shard model
+    for n, m in model.named_modules():
+        if isinstance(m, torch.nn.Sequential):
+            fully_shard(m)
+    fully_shard(model)
+
+    # Create calib data
+    calib_data = [model.get_input().to(torch.bfloat16).cuda() for _ in range(8)]
+
+    # Forward loop
+    def forward_loop(model, run_backward=False):
+        for batch in calib_data:
+            output = model(batch)
+            if run_backward:
+                output.sum().backward()
+
+    # Calibrate model
+    mtq.quantize(model, quant_config, forward_loop)
+
+    # Compress model
+    mtq.compress(model)
+
+    # Verify that model is in sharded state after compression
+    for n, m in model.named_parameters():
+        assert isinstance(m, DTensor), f"Parameter {n} is not in sharded state after compression"
+
+    # Verify model unshard, module parameters must be torch.nn.Parameter or QTensorWrapper after unsharding
+    for n, m in model.named_modules():
+        if isinstance(m, FSDPModule):
+            m.unshard()
+
+    for n, m in model.named_parameters():
+        assert not isinstance(m, DTensor), (
+            f"Parameter {n} is not in unsharded state after unsharding"
+        )
+
+    # Verify model reshard, module parameters must be DTensors after reshard
+    for n, m in model.named_modules():
+        if isinstance(m, FSDPModule):
+            m.reshard()
+
+    for n, m in model.named_parameters():
+        assert isinstance(m, DTensor), (
+            f"Parameter {n} {m} is not in sharded state after calling reshard"
+        )
+
+    # Verify forward pass after compressing model
+    model(model.get_input().to(torch.bfloat16).cuda())
+
+
+@pytest.mark.parametrize("device_count", get_device_counts())
+def test_compress_fsdp_module(device_count):
+    spawn_multiprocess_job(size=device_count, job=_test_mtq_compress_fsdp_module, backend="nccl")
