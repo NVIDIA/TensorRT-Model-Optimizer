@@ -96,7 +96,7 @@ docker run --gpus all -it --shm-size 20g --rm docker.io/library/modelopt_example
 python -c "import modelopt; print(modelopt.__version__)"
 ```
 
-Alternatively, you can install it from [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/) without TRT-LLM etc.
+Alternatively, you can install it from [PyPI](https://pypi.org/project/nvidia-modelopt/) without TRT-LLM etc.
 
 ```bash
 pip install -U "nvidia-modelopt[all]"
@@ -105,7 +105,7 @@ pip install -U "nvidia-modelopt[all]"
 To install from source for local development, you can install it as follows:
 
 ```bash
-pip install -e ".[all]"
+pip install -e ".[dev]"
 ```
 
 When installing from source, please make sure to re-run the install command everytime you pull new changes in the repository so dependencies are also updated.

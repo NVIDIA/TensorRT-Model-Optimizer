@@ -1,42 +1,63 @@
-# TensorRT Model Optimizer OSS Contribution Rules
+# Contributing to TensorRT Model Optimizer
 
-This readme provides guidelines for writing and contributing code to the this repository. Make sure
-that all `dev` optional requirements are installed with ModelOpt.
+Thanks for your interest in contributing to TensorRT Model Optimizer (ModelOpt)!
 
-## Code linting
+## 🛠️ Setting up your environment
 
-- All code (Python and C++) is auto-checked to adhere to the coding standards upon commit (see below for more info).
-- Check out [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for detailed information about each tool.
-- If you would like to integrate the linting tools into your IDE, check out the
-  documentation for the respective IDE, e.g., docs for [auto-formatting](https://code.visualstudio.com/docs/python/editing#_formatting) and
-  [linting](https://code.visualstudio.com/docs/python/linting) in VSCode.
-- For VSCode, we also provide default workspace settings, see [here](./.vscode/settings.json) for detailed instructions.
+Ensure that TensorRT Model Optimizer (ModelOpt) is installed in editable mode and that all `dev` optional requirements are installed:
 
-## Pre-commit hooks
+```bash
+pip install -e ".[dev]"
+```
 
-Please enable pre-commit hooks as follows to automatically check / fix code quality before issues committing:
+If you are working on features that require dependencies like TensorRT-LLM or Megatron-Core, consider using a docker container to simplify the setup process.
+See [docker README](./README.md#installation--docker) for more details.
+
+## 🧹 Code linting and formatting
+
+- All code (Python, C++, Markdown, etc.) is automatically checked to adhere to the coding standards upon commit (see below for more information).
+- See [`.pre-commit-config.yaml`](.pre-commit-config.yaml) for details about each tool.
+- For VSCode or Cursor, we provide default workspace settings to integrate the linting tools into your IDE: see [workspace settings](./.vscode/settings.json).
+
+### Pre-commit hooks
+
+Enable pre-commit hooks to automatically check and fix code quality before committing:
 
 ```bash
 pre-commit install
 ```
 
-If you simply want to add some temporary commit that skips the checks, you can use the `-n` flag during commit:
+If you want to make a temporary commit that skips checks, use the `-n` flag when committing:
 
 ```bash
 git commit -m "temporary commit" -n
 ```
 
-If you want to run the pre-commit hooks without committing, you can use the following command:
+To run the pre-commit hooks without committing, use:
 
 ```bash
 pre-commit run --all-files
 ```
 
+## 📝 Writing tests
+
+We use [pytest](https://docs.pytest.org/) for all tests. The tests are organized into the following directories:
+
+- `tests/unit`: Fast cpu-based unit tests for the core ModelOpt library. They should not take more than a few seconds to run.
+- `tests/gpu`: Fast GPU-based unit tests for the core ModelOpt library. In most cases, they should not take more than a few seconds to run.
+- `tests/examples`: Integration tests for ModelOpt examples. They should not take more than a few minutes to run. Please refer to [example test README](./tests/examples/README.md) for more details.
+
+Please refer to [tox.ini](./tox.ini) for more details on how to run the tests and their dependencies.
+
+### Code Coverage
+
+For any new features / examples, make sure to they are covered by the tests and that the Codecov coverage check in your PR passes.
+
 ## Submitting your code
 
-- Create a fork of the repository.
-- Rebase (not merge) your code to the most recent commit of the main branch. We want to ensure linear history,
-  check [Merge vs Rebase](https://www.atlassian.com/git/tutorials/merging-vs-rebasing). Remember to test again after rebase.
+- If you are an external contributor, create a fork of the repository.
+- Rebase (not merge) your code to the most recent commit of the `main` branch. We want to ensure a linear history;
+  see [Merge vs Rebase](https://www.atlassian.com/git/tutorials/merging-vs-rebasing). Remember to test again locally after rebasing to catch any new issues before pushing to your PR.
 
 ```bash
 git pull
@@ -45,21 +66,23 @@ git push origin <branch> --force-with-lease
 ```
 
 - When pushing the rebased (or any) branch, use `git push --force-with-lease` instead of `git push --force`.
-- Submit a pull request and assign at least two reviewers.
-- Since there is no CI/CD process in place yet, the PR will be accepted and the corresponding issue closed only after
-  adequate testing has been completed, manually, by the developer and/or TensorRT engineer reviewing the code.
+- Submit a pull request and let auto-assigned reviewers (based on [CODEOWNERS](./.github/CODEOWNERS)) review your PR.
+- If any CI/CD checks fail, fix the issues and push again.
+- Once your PR is approved and all checks pass, one of the reviewers will merge the PR.
 
-## Signing your work
+## ✍️ Signing your work
 
 - We require that all contributors "sign-off" on their commits. This certifies that the contribution is your original
   work, or you have rights to submit it under the same license, or a compatible license.
 
-  - Any contribution which contains commits that are not Signed-Off will not be accepted.
+- You need to sign-off your commits using an GPG / SSH key which is different than the one used for authentication. See [GitHub docs](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) for more details.
 
-- To sign off on a commit you simply use the `--signoff` (or `-s`) option when committing your changes:
+- Any contribution which contains commits that are not Signed-Off will not be accepted.
+
+- To sign off on a commit you simply use the `--signoff --gpg-sign` (or `-s -S`) option when committing your changes:
 
   ```bash
-  git commit -s -m "Add cool feature."
+  git commit -s -S -m "Add cool feature."
   ```
 
   This will append the following to your commit message:
@@ -67,6 +90,8 @@ git push origin <branch> --force-with-lease
   ```
   Signed-off-by: Your Name <your@email.com>
   ```
+
+  To enable this for committing in VSCode, you can enable `git.alwaysSignOff` and `git.enableCommitSigning` in your VSCode settings.
 
 - Full text of the Developer Certificate of Origin (DCO):
 
