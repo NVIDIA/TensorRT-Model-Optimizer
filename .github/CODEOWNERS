@@ -1,10 +1,51 @@
 # Configuration files
-.github @kevalmorabia97 @RalphMao
-.gitlab @kevalmorabia97 @RalphMao
-.pre-commit-config.yaml @kevalmorabia97 @RalphMao
-CONTRIBUTING.md @kevalmorabia97 @RalphMao
-LICENSE @kevalmorabia97 @RalphMao
-pyproject.toml @kevalmorabia97 @RalphMao
-SECURITY.md @kevalmorabia97 @RalphMao
-setup.py @kevalmorabia97 @RalphMao
-tox.ini @kevalmorabia97 @RalphMao
+.github @kevalmorabia97 @RalphMao @ChenhanYu
+.gitlab @kevalmorabia97 @RalphMao @ChenhanYu
+.pre-commit-config.yaml @kevalmorabia97 @RalphMao @ChenhanYu
+CONTRIBUTING.md @kevalmorabia97 @RalphMao @ChenhanYu
+LICENSE @kevalmorabia97 @RalphMao @ChenhanYu
+pyproject.toml @kevalmorabia97 @RalphMao @ChenhanYu
+SECURITY.md @kevalmorabia97 @RalphMao @ChenhanYu
+setup.py @kevalmorabia97 @RalphMao @ChenhanYu
+tox.ini @kevalmorabia97 @RalphMao @ChenhanYu
+
+# Library
+modelopt/deploy @cjluo-nv @meenchen @sugunav14
+modelopt/onnx @ajrasane @gcunhase @i-riyad
+modelopt/onnx/autocast @ajrasane @galagam @i-riyad
+modelopt/torch @Edwardf0t1 @RalphMao @kevalmorabia97 @realAsma
+modelopt/torch/_deploy @ajrasane @cjluo-nv @i-riyad
+modelopt/torch/distill @AAnoosheh @kevalmorabia97 @realAsma
+modelopt/torch/export @cjluo-nv @meenchen @sugunav14
+modelopt/torch/nas @ChenhanYu @kevalmorabia97 @realAsma
+modelopt/torch/opt @ChenhanYu @kevalmorabia97 @realAsma
+modelopt/torch/prune @ChenhanYu @kevalmorabia97 @realAsma
+modelopt/torch/quantization @RalphMao @ajrasane @cjluo-nv @i-riyad @jingyu-ml @kaix-nv @meenchen @mxinO @realAsma @sychen52
+modelopt/torch/sparsity @RalphMao @kaix-nv @realAsma
+modelopt/torch/speculative @ChenhanYu @yeyu-nvidia
+modelopt/torch/trace @kevalmorabia97 @realAsma
+modelopt/torch/utils @ChenhanYu @RalphMao @cjluo-nv @kevalmorabia97 @realAsma
+
+# Examples
+/README.md @RalphMao @omrialmog @cjluo-nv @kevalmorabia97
+/docker @cjluo-nv @kevalmorabia97 @meenchen
+examples @RalphMao @cjluo-nv @kevalmorabia97
+examples/chained_optimizations @AAnoosheh @ChenhanYu @kevalmorabia97 @realAsma
+examples/cnn_qat @i-riyad @realAsma
+examples/deepseek @ChenhanYu @cjluo-nv @meenchen
+examples/diffusers @Edwardf0t1 @ajrasane @jingyu-ml
+examples/gpt-oss @cjluo-nv @meenchen @realAsma
+examples/llm_autodeploy @cjluo-nv @meenchen
+examples/llm_distill @AAnoosheh @kevalmorabia97 @kinjalpatel27 @realAsma
+examples/llm_eval @Edwardf0t1 @RalphMao @ajrasane @cjluo-nv @kinjalpatel27 @meenchen @realAsma
+examples/llm_ptq @Edwardf0t1 @RalphMao @ajrasane @cjluo-nv @kinjalpatel27 @meenchen @realAsma @sugunav14
+examples/llm_qat @Edwardf0t1 @RalphMao @kinjalpatel27 @mxinO @realAsma
+examples/llm_sparsity @RalphMao @kaix-nv @realAsma
+examples/model_hub @Edwardf0t1
+examples/nemo_run @AAnoosheh @ChenhanYu @jenchen13 @kevalmorabia97
+examples/onnx_ptq @ajrasane @cjluo-nv @gcunhase @i-riyad @meenchen
+examples/pruning @ChenhanYu @jenchen13 @kevalmorabia97 @realAsma
+examples/speculative_decoding @ChenhanYu @yeyu-nvidia
+examples/vlm_eval @ChenhanYu @Edwardf0t1 @ajrasane @cjluo-nv @meenchen @yueshen2016
+examples/vlm_ptq @ChenhanYu @Edwardf0t1 @ajrasane @cjluo-nv @meenchen @yueshen2016
+examples/windows @vishalpandya1990
