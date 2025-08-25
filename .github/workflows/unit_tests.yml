@@ -46,7 +46,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run unit tests
-        run: pip install tox && COV_ARGS="--cov" tox -e py312-torch28-unit
+        run: pip install tox && COV_ARGS="--cov" tox -e py312-torch28-tf_latest-unit
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
         with:
