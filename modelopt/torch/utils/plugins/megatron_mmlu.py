@@ -68,7 +68,7 @@ def megatron_mmlu(
     few_shots: int = 0,
     percentage: float = 0.05,
     enable_kv_cache: bool = False,
-) -> None:
+) -> float:
     """Evaluate the model on MMLU.
 
     Args:
@@ -148,3 +148,5 @@ def megatron_mmlu(
             ),
             flush=True,
         )
+
+    return sum(avg_correct) / len(avg_correct)

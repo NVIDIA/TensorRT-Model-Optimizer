@@ -14,11 +14,17 @@
 # limitations under the License.
 
 import pytest
-from _test_utils.torch_model.transformers_models import get_tiny_llama, tf_output_tester
+import torch
+from _test_utils.torch_model.transformers_models import (
+    get_tiny_gpt_oss,
+    get_tiny_llama,
+    tf_output_tester,
+)
+from packaging.version import Version
 
 pytest.importorskip("peft")
-
-from peft import LoraConfig, get_peft_model
+transformers = pytest.importorskip("transformers")
+from peft import LoraConfig, PeftModel, get_peft_model
 from peft.tuners.lora.layer import Linear as LoraLinear
 
 import modelopt.torch.quantization as mtq
@@ -50,3 +56,73 @@ def test_convert_loralinear():
     mtq.set_quantizer_attribute(model_test, "*", {"enable": False})
 
     tf_output_tester(model_ref, model_test)
+
+
+@pytest.mark.skipif(
+    Version(transformers.__version__) < Version("4.55"), reason="transformers < 4.55"
+)
+def test_peft_flow(tmp_path):
+    model_original = get_tiny_gpt_oss(num_hidden_layers=1)
+
+    model_full = get_tiny_gpt_oss(num_hidden_layers=1)
+    model_full.load_state_dict(model_original.state_dict())
+
+    model_base_lora = get_tiny_gpt_oss(num_hidden_layers=1)
+    model_base_lora.load_state_dict(model_original.state_dict())
+
+    peft_config = LoraConfig(
+        r=8,
+        lora_alpha=16,
+        target_modules="all-linear",
+        target_parameters=[
+            "0.mlp.experts.gate_up_proj",
+            "0.mlp.experts.down_proj",
+        ],
+    )
+
+    peft_model = get_peft_model(model_base_lora, peft_config)
+
+    input_ids = torch.randint(0, model_original.config.vocab_size, (1, 4))
+
+    def forward_loop(model):
+        return model(input_ids)
+
+    mtq.quantize(peft_model, mtq.INT8_DEFAULT_CFG, forward_loop)
+    mtq.quantize(model_full, mtq.INT8_DEFAULT_CFG, forward_loop)
+
+    outputs_peft = peft_model(input_ids).logits
+    outputs_full = model_full(input_ids).logits
+    assert torch.allclose(outputs_peft, outputs_full)
+
+    outputs_peft.sum().backward()
+    for name, param in peft_model.named_parameters():
+        if param.requires_grad:
+            assert param.grad is not None
+
+    from peft.tuners.lora.layer import Linear as LoraLinear
+
+    for name, module in peft_model.named_modules():
+        if not isinstance(module, LoraLinear):
+            continue
+        with torch.no_grad():
+            # Lora_B weights are initialized to 0, lets change it
+            module.lora_B["default"].weight.copy_(torch.randn_like(module.lora_B["default"].weight))
+            lora_total = (
+                module.scaling["default"] * module.lora_B["default"].weight
+            ) @ module.lora_A["default"].weight.data
+            module_full = model_full.get_submodule(name.replace("base_model.model.", ""))
+            module_full.weight.data += lora_total
+
+    outputs_peft = peft_model(input_ids).logits
+    outputs_full = model_full(input_ids).logits
+    assert torch.allclose(outputs_peft, outputs_full)
+
+    peft_model.save_pretrained(tmp_path / "peft_model")
+
+    peft_loaded = PeftModel.from_pretrained(model_original, tmp_path / "peft_model")
+    outputs_peft_loaded = peft_loaded(input_ids).logits
+    assert torch.allclose(outputs_peft_loaded, outputs_full)
+
+    model_after_peft_merge = peft_loaded.merge_and_unload()
+    outputs_after_peft_merge = model_after_peft_merge(input_ids).logits
+    assert torch.allclose(outputs_after_peft_merge, outputs_full)

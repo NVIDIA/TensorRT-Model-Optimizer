@@ -294,49 +294,49 @@ def quantize(
 
     if not nodes_to_quantize:
         logger.info("No node or node type is selected for quantization or model does not have them")
-        return onnx_model
-    logger.debug(f"Selected nodes to quantize: {nodes_to_quantize}")
+    else:
+        logger.debug(f"Selected nodes to quantize: {nodes_to_quantize}")
 
-    if passes and "concat_elimination" in passes:
-        group_qdq_tensors = get_concat_eliminated_tensors(onnx_model, nodes_to_quantize)
-        if group_qdq_tensors:
-            trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
-            logger.debug(f"Grouping QDQ tensors for concat elimination: {group_qdq_tensors}")
+        if passes and "concat_elimination" in passes:
+            group_qdq_tensors = get_concat_eliminated_tensors(onnx_model, nodes_to_quantize)
+            if group_qdq_tensors:
+                trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
+                logger.debug(f"Grouping QDQ tensors for concat elimination: {group_qdq_tensors}")
 
-    # Create a temp file for intermediate model
-    tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
-    os.close(tmp_onnx_file)
-    logger.debug(f"Created temporary file for intermediate model: {tmp_onnx_path}")
+        # Create a temp file for intermediate model
+        tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
+        os.close(tmp_onnx_file)
+        logger.debug(f"Created temporary file for intermediate model: {tmp_onnx_path}")
 
-    # Quantize in INT8 mode using ORT's Entropy or MinMax calibration method, with
-    # ActivationSymmetric as True. For MinMax, that's equivalent to max calibration.
-    logger.info(f"Starting INT8 quantization with '{calibration_method}' calibration")
-    quantize_static(
-        onnx_path,
-        tmp_onnx_path,
-        calibration_data_reader,
-        op_types_to_quantize=op_types_to_quantize,
-        nodes_to_quantize=nodes_to_quantize,
-        per_channel=True,
-        extra_options=trt_guided_options,
-        use_external_data_format=use_external_data_format,
-        calibrate_method=(
-            CalibrationMethod.Entropy
-            if calibration_method == "entropy"
-            # With ActivationSymmetric as True, MinMax calibration is equivalent to max calibration
-            else CalibrationMethod.MinMax
-        ),
-    )
-    intermediate_generated_files.append(tmp_onnx_path)
-    if use_external_data_format:
-        intermediate_generated_files.append(tmp_onnx_path + ".data")
+        # Quantize in INT8 mode using ORT's Entropy or MinMax calibration method, with
+        # ActivationSymmetric as True. For MinMax, that's equivalent to max calibration.
+        logger.info(f"Starting INT8 quantization with '{calibration_method}' calibration")
+        quantize_static(
+            onnx_path,
+            tmp_onnx_path,
+            calibration_data_reader,
+            op_types_to_quantize=op_types_to_quantize,
+            nodes_to_quantize=nodes_to_quantize,
+            per_channel=True,
+            extra_options=trt_guided_options,
+            use_external_data_format=use_external_data_format,
+            calibrate_method=(
+                CalibrationMethod.Entropy
+                if calibration_method == "entropy"
+                # With ActivationSymmetric as True, MinMax calibration is equivalent to max calibration
+                else CalibrationMethod.MinMax
+            ),
+        )
+        intermediate_generated_files.append(tmp_onnx_path)
+        if use_external_data_format:
+            intermediate_generated_files.append(tmp_onnx_path + ".data")
 
-    # Post-processing of the onnx model after ORT quantization
-    logger.info("Starting post-processing of quantized model")
-    onnx_model = onnx.load(tmp_onnx_path)
-    graph = gs.import_onnx(onnx_model)
-    remove_partial_input_qdq(graph, no_quantize_inputs)
-    onnx_model = gs.export_onnx(graph)
+        # Post-processing of the onnx model after ORT quantization
+        logger.info("Starting post-processing of quantized model")
+        onnx_model = onnx.load(tmp_onnx_path)
+        graph = gs.import_onnx(onnx_model)
+        remove_partial_input_qdq(graph, no_quantize_inputs)
+        onnx_model = gs.export_onnx(graph)
 
     if high_precision_dtype in ["fp16", "bf16"]:
         # We need to convert float to float16/bfloat16 so as to speed up layers like LayerNorm or GroupNorm.
@@ -368,7 +368,8 @@ def quantize(
             logger.info("Inserting Cast nodes to enable FP8+FP16 MHA")
             onnx_model = insert_fp8_mha_casts(onnx_model)
 
-    onnx_model = int8_to_fp8(onnx_model)
+    if nodes_to_quantize:
+        onnx_model = int8_to_fp8(onnx_model)
+        logger.info(f"FP8 quantization completed in {time.time() - t_start:.2f} seconds")
 
-    logger.info(f"FP8 quantization completed in {time.time() - t_start:.2f} seconds")
     return onnx_model

@@ -20,15 +20,18 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-import tensorrt_llm
 import torch
-from packaging.version import Version
 from tensorrt_llm import SamplingParams
 from tensorrt_llm.bindings.executor import DecodingConfig
-from tensorrt_llm.llmapi import CudaGraphConfig
-from tensorrt_llm.llmapi import KvCacheConfig as TRT_KvCacheConfig
-from tensorrt_llm.llmapi.llm import LLM as TRT_LLM
-from tensorrt_llm.llmapi.tokenizer import TokenizerBase, TransformersTokenizer
+
+try:
+    from tensorrt_llm.llmapi import CudaGraphConfig
+    from tensorrt_llm.llmapi import KvCacheConfig as TRT_KvCacheConfig
+    from tensorrt_llm.llmapi.llm import _TorchLLM, _TrtLLM
+    from tensorrt_llm.llmapi.tokenizer import TokenizerBase, TransformersTokenizer
+except ImportError:
+    print("Please upgrade tensorrt-llm to 1.0.0rc or later")
+    raise
 
 
 def _sanitize_temperature_and_top_p(temperature, top_p):
@@ -46,7 +49,7 @@ def _sanitize_temperature_and_top_p(temperature, top_p):
     return kwargs
 
 
-class LLM(TRT_LLM):
+class LLM:
     """A wrapper over the ``tensorrt_llm.llmapi.llm.LLM`` for LLM profiling and validation."""
 
     def _build_trt_llm_from_config(
@@ -82,7 +85,8 @@ class LLM(TRT_LLM):
         if type(tokenizer).__name__ in ["CustomSentencePieceTokenizer"]:
             tokenizer = TransformersTokenizer(tokenizer)
 
-        super().__init__(
+        self.llm = _TrtLLM(
+            backend=None,
             model=engine_dir,
             tokenizer=tokenizer,
             kv_cache_config=trt_kv_cache_config,
@@ -113,7 +117,7 @@ class LLM(TRT_LLM):
                 enable_padding=True,
             )
 
-        super().__init__(
+        self.llm = _TorchLLM(
             backend="pytorch",
             model=checkpoint_dir,
             tensor_parallel_size=tp,
@@ -148,12 +152,11 @@ class LLM(TRT_LLM):
             max_batch_size: Max batch size for the LLM backend. If 0, it will be set to the max batch size
                 in the engine config.
         """
-        assert Version(tensorrt_llm.__version__) >= Version("0.17.0")
-
         with open(Path(checkpoint_dir) / "config.json") as config_file:
             config = json.load(config_file)
 
             if "build_config" in config:
+                self._is_torch = False
                 self._build_trt_llm_from_config(
                     config,
                     checkpoint_dir,
@@ -163,11 +166,11 @@ class LLM(TRT_LLM):
                     max_batch_size,
                 )
 
-                self._is_torch = False
-                self._max_seq_len = self.args.build_config.max_seq_len
-                self._max_beam_width = self.args.build_config.max_beam_width
-                self._gather_context_logits = self.args.build_config.gather_context_logits
+                self._max_seq_len = self.llm.args.build_config.max_seq_len
+                self._max_beam_width = self.llm.args.build_config.max_beam_width
+                self._gather_context_logits = self.llm.args.build_config.gather_context_logits
             else:
+                self._is_torch = True
                 assert medusa_choices is None, (
                     "medusa_choices is not supported with the torch llmapi"
                 )
@@ -175,7 +178,6 @@ class LLM(TRT_LLM):
                 self._build_torch_llm_from_config(
                     checkpoint_dir, tokenizer, tp, trust_remote_code, max_batch_size
                 )
-                self._is_torch = True
                 self._max_seq_len = config["max_position_embeddings"]
                 self._max_beam_width = 1
                 self._gather_context_logits = False
@@ -219,7 +221,7 @@ class LLM(TRT_LLM):
             **kwargs,
         )
 
-        return self.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
+        return self.llm.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
 
     def generate_tokens(
         self,
@@ -318,6 +320,6 @@ class LLM(TRT_LLM):
 
         sampling_config = SamplingParams(max_tokens=1, use_beam_search=True, best_of=1, **kwargs)
 
-        outputs = self.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
+        outputs = self.llm.generate(prompts, sampling_params=sampling_config, use_tqdm=False)
 
         return [output.context_logits for output in outputs]

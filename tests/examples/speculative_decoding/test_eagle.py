@@ -18,15 +18,14 @@ from _test_utils.examples.run_command import run_example_command
 
 
 # fmt: off
-def test_llama_eagle(tiny_llama_path, num_gpus, daring_anteater_path, tmp_path):
+def test_llama_eagle(tiny_llama_path, num_gpus, tiny_daring_anteater_path, tmp_path):
     run_example_command(
         [
             "./launch.sh",
             "--model", tiny_llama_path,
-            "--data", daring_anteater_path,
-            "--num_epochs", "0.001",
+            "--data", tiny_daring_anteater_path,
+            "--num_epochs", "1",
             "--lr", "1e-5",
-            "--save_steps", "50",
             "--do_eval", "False",
             "--num_gpu", str(num_gpus),
             "--mode", "eagle",

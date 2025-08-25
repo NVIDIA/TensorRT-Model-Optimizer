@@ -14,7 +14,6 @@
 # limitations under the License.
 
 
-import pytest
 import torch
 from _test_utils.import_helper import skip_if_no_megatron
 
@@ -83,7 +82,7 @@ def _test_mamba_search_space(rank, size):
     )
     mamba_num_heads = model.decoder.layers[0].mixer.nheads
 
-    model = mtn.convert(model, "mcore_gpt_minitron")
+    model = mtn.convert(model, "mcore_minitron")
 
     assert isinstance(model, _DynamicMCoreLanguageModel)
     if is_pipeline_first_stage():
@@ -183,34 +182,16 @@ def _test_mamba_parameter_sorting(rank, size):
     # 2 mamba hps per layer + 1 for hidden_size (num_layers is not sorted!)
     assert len(sortable_per_pp) == 2 * num_layers // size + 1
 
-    # Export since sorting force reassigns SelfAttention weights which we dont want to re-sort!
-    # TODO: ideally we shouldn't need this
-    search_space.export()
-
     # sanity check if the model functionality is preserved after sorting
     y2 = run_mcore_inference(model, prompt_tokens)
 
-    # # check if the inference results after sorting is the same
-    if rank == 0:
-        for i, (t1, t2) in enumerate(zip(flatten_tree(y1)[0], flatten_tree(y2)[0])):
-            if not torch.allclose(t1, t2, rtol=1e-5, atol=1e-2):
-                print(f"Mismatch at index {i}")
-                print(f"{t1=}")
-                print(f"{t2=}")
-                diff = (t1 - t2).abs()
-                print(f"{diff=}")
-                print(f"{diff.max()=}")
-                print(f"{diff.min()=}")
-                print(f"{diff.mean()=}")
-                print(f"{diff.std()=}")
-                print(f"{diff.median()=}")
-                print(f"{diff.quantile(0.25)=}")
-                print(f"{diff.quantile(0.75)=}")
-            else:
-                print(f"Match at index {i}")
+    # check if the inference results after sorting is the same
+    assert all(
+        torch.allclose(t1, t2, rtol=1e-5, atol=1e-3)
+        for t1, t2 in zip(flatten_tree(y1)[0], flatten_tree(y2)[0])
+    )
 
 
-@pytest.mark.skip("Need to fix")
 def test_mamba_parameter_sorting(need_2_gpus):
     set_seed(SEED)
     spawn_multiprocess_job(

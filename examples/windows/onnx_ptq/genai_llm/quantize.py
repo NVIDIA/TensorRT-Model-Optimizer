@@ -92,7 +92,7 @@ def make_model_input(
     attention_mask_arg,
     add_past_kv_inputs,
     device,
-    use_fp16,
+    use_fp32,
     use_buffer_share,
     add_position_ids,
 ):
@@ -116,7 +116,7 @@ def make_model_input(
 
     if add_past_kv_inputs:
         # print(f"\n--Quantize-Script-- adding past KV cache value\n")
-        torch_dtype = torch.float16 if use_fp16 else torch.float32
+        torch_dtype = torch.float32 if use_fp32 else torch.float16
         batch_size, sequence_length = input_ids.shape
         max_sequence_length = config.max_position_embeddings
         num_heads, head_size = (
@@ -159,7 +159,7 @@ def get_initial_inputs(
     tokenizer,
     prompt,
     device,
-    use_fp16,
+    use_fp32,
     use_buffer_share,
     add_past_kv_inputs,
     add_position_ids,
@@ -173,7 +173,7 @@ def get_initial_inputs(
         tokenizer: Tokenizer to encode and decode text.
         prompt: List of prompts to be supplied for inference.
         device: Device used to run the inference.
-        use_fp16: Flag to select the float16 dtype in torch.
+        use_fp32: Flag to select the float32 dtype in torch.
         use_buffer_share: True when --use_gqa is passed during the onnx export process
         add_past_kv_inputs: True when we want to also pass past_key_values input to model
         add_position_ids: True when we want to also pass position_ids input to model
@@ -191,7 +191,7 @@ def get_initial_inputs(
         encodings_dict["attention_mask"],
         add_past_kv_inputs,
         device,
-        use_fp16,
+        use_fp32,
         use_buffer_share,
         add_position_ids,
     )
@@ -205,7 +205,7 @@ def get_calib_inputs(
     batch_size,
     block_size,
     device,
-    use_fp16,
+    use_fp32,
     use_buffer_share,
     add_past_kv_inputs,
     max_calib_rows_to_load,
@@ -289,7 +289,7 @@ def get_calib_inputs(
             attention_mask,
             add_past_kv_inputs,
             device,
-            use_fp16,
+            use_fp32,
             use_buffer_share,
             add_position_ids,
         )
@@ -365,7 +365,7 @@ def main(args):
         f"\n--Quantize-Script-- algo={args.algo}, dataset={args.dataset}, calib_size={args.calib_size}, "
         f"batch_size={args.batch_size}, block_size={args.block_size}, add-position-ids={args.add_position_ids}, "
         f"past-kv={args.add_past_kv_inputs}, rcalib={args.use_random_calib}, device={args.device}, "
-        f"use_zero_point={args.use_zero_point}\n"
+        f"use_zero_point={args.use_zero_point}, use_fp32={args.use_fp32}\n"
     )
 
     print(
@@ -378,6 +378,21 @@ def main(args):
         f"calibration_eps={args.calibration_eps}\n"
     )
 
+    if os.path.isabs(args.output_path):
+        output_dir_path = os.path.dirname(args.output_path)
+    else:
+        output_dir_path = os.path.dirname(os.path.join(os.getcwd(), args.output_path))
+
+    print(
+        f"\n\n--Quantize-Script-- input onnx path = {args.onnx_path},"
+        f"\n    given output path = {args.output_path}"
+        f"\n    absolute output directory path = {output_dir_path}\n\n"
+    )
+
+    if not os.path.exists(output_dir_path):
+        os.makedirs(output_dir_path)
+        os.chmod(output_dir_path, 0o777)
+
     calib_inputs = get_calib_inputs(
         args.dataset,
         args.model_name,
@@ -386,7 +401,7 @@ def main(args):
         args.batch_size,
         512,
         device,
-        args.use_fp16,
+        args.use_fp32,
         args.use_buffer_share,
         args.add_past_kv_inputs,
         128,
@@ -486,10 +501,10 @@ if __name__ == "__main__":
         help="Batch size for calibration samples",
     )
     parser.add_argument(
-        "--use_fp16",
-        type=bool,
-        default=True,
-        help="True when KV cache inputs/outputs are in float16.",
+        "--use_fp32",
+        default=False,
+        action="store_true",
+        help="True when KV cache inputs/outputs are in float32.",
     )
     parser.add_argument(
         "--awqlite_alpha_step",
@@ -499,15 +514,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--awqlite_run_per_subgraph",
-        type=bool,
         default=False,
+        action="store_true",
         help="If true, then AWQ scale search will iterate over each subgraphs with quantizable matmuls",
     )
     parser.add_argument(
-        "--awqlite_fuse_nodes",
-        type=bool,
+        "--awqlite_disable_fuse_nodes",
+        dest="awqlite_fuse_nodes",
         default=True,
-        help="If true, then input scaling part will be fused in the parent node as and when possible",
+        action="store_false",
+        help="If fuse_nodes is true, then input scaling part will be fused in the parent node as and when possible",
     )
     parser.add_argument(
         "--awqclip_alpha_step",
@@ -535,32 +551,34 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--use_zero_point",
-        type=bool,
         default=False,
+        action="store_true",
         help="True when we want to perform zero-point based quantization",
     )
     parser.add_argument(
-        "--add_past_kv_inputs",
-        type=bool,
+        "--no_past_kv_inputs",
+        dest="add_past_kv_inputs",
         default=True,
+        action="store_false",
         help="Add past KV cache values in inputs",
     )
     parser.add_argument(
         "--use_buffer_share",
-        type=bool,
         default=False,
+        action="store_true",
         help="True when --use_gqa was passed during export.",
     )
     parser.add_argument(
-        "--add_position_ids",
-        type=bool,
+        "--no_position_ids",
+        dest="add_position_ids",
+        action="store_false",
         default=True,
         help="True when we want to also pass position_ids input to model",
     )
     parser.add_argument(
         "--use_random_calib",
-        type=bool,
         default=False,
+        action="store_true",
         help="True when we want to use a random calibration data",
     )
 

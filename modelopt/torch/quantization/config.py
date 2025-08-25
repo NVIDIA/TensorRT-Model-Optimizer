@@ -545,7 +545,7 @@ NVFP4_SVDQUANT_DEFAULT_CFG = {
     "algorithm": {"method": "svdquant", "lowrank": 32},
 }
 
-NVFP4_FP8_CFG = {
+W4A8_NVFP4_FP8_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {
             "num_bits": (2, 1),
@@ -563,6 +563,54 @@ NVFP4_FP8_CFG = {
     "algorithm": "max",
 }
 
+MXFP4_MLP_WEIGHT_ONLY_CFG = {
+    "quant_cfg": {
+        "*mlp*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 32, "type": "dynamic", "scale_bits": (8, 0)},
+            "enable": True,
+            "pass_through_bwd": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": None,
+}
+
+NVFP4_MLP_WEIGHT_ONLY_CFG = {
+    "quant_cfg": {
+        "*mlp*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {
+                -1: 32,
+                "type": "dynamic",
+                "scale_bits": (4, 3),
+            },  # Note: block_size is 32 here
+            "enable": True,
+            "pass_through_bwd": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": "max",
+}
+
+NVFP4_MLP_ONLY_CFG = {
+    "quant_cfg": {
+        "*mlp*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "enable": True,
+            "pass_through_bwd": True,
+        },
+        "*mlp*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "enable": True,
+            "pass_through_bwd": True,
+        },
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": "max",
+}
 
 choices: set[str] = {
     "FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG",
@@ -585,10 +633,13 @@ choices: set[str] = {
     "NVFP4_FP8_MHA_CONFIG",
     "NVFP4_KV_CFG",
     "NVFP4_KV_ROTATE_CFG",
-    "NVFP4_FP8_CFG",
+    "W4A8_NVFP4_FP8_CFG",
     "NVFP4_SVDQUANT_DEFAULT_CFG",
     "W4A8_AWQ_BETA_CFG",
     "W4A8_MXFP4_FP8_CFG",
+    "NVFP4_MLP_WEIGHT_ONLY_CFG",
+    "MXFP4_MLP_WEIGHT_ONLY_CFG",
+    "NVFP4_MLP_ONLY_CFG",
 }
 
 BiasType = Literal["static", "dynamic"]
@@ -872,6 +923,23 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
 
         This can be used for ratation based PTQ methods, e.g. QuaRot or SpinQuant.
         See https://arxiv.org/abs/2404.00456 for example.""",
+    )
+
+    pass_through_bwd: bool = ModeloptField(
+        default=False,
+        title="If set to true, fake quantization will be a pass through for gradient computation.",
+        description="""
+        Gradient computation where fake quantization is pass through is called
+        'Straight-Through Estimator (STE)'. STE does not require saving of the input tensor for
+        performing backward pass and hence consumes less memory.
+
+        If set to False, we will use STE with zeroed outlier gradients. This setting could
+        yeild better QAT accuracy depending on the quantization format. However, this setting
+        requires saving of the input tensor for computing gradients which uses more memory.
+
+        For dynamic quantization formats like MXFP4, STE with zeroed outlier gradients
+        is not needed since fake quantization with dynamic amax results in minimal/no clipping.
+        """,
     )
 
 

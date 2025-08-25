@@ -46,9 +46,10 @@ class MXFP4QTensor(BaseQuantizedTensor):
         def cast_fp4(x):
             sign = torch.sign(x)
             sign_bit = (2 - sign) // 2
+            # TODO: Optimize this, currently its on cpu and is slower
             ord_ = torch.sum(
-                (x.abs().unsqueeze(-1) - MXFP4QTensor.E2M1_bounds.to(x.device)) > 0, dim=-1
-            )
+                (x.abs().unsqueeze(-1).cpu() - MXFP4QTensor.E2M1_bounds) > 0, dim=-1
+            ).to(x.device)
             fp4_val = (sign_bit * 0b1000 + ord_).to(torch.uint8)
             return fp4_val
 
@@ -68,7 +69,8 @@ class MXFP4QTensor(BaseQuantizedTensor):
         original_dtype = input.dtype
         input = input.view(-1, block_size)
         # get scales
-        input_amax = input.abs().max(dim=-1, keepdim=True).values
+        # Casting scales to float yields better match with fakequant kernel (needs further investigation)
+        input_amax = input.float().abs().max(dim=-1, keepdim=True).values
         descale = input_amax / cls.E2M1_max
         min_value = torch.tensor(-127.0, device=descale.device)
         e8m0_scale = torch.ceil(torch.maximum(torch.log2(descale), min_value))

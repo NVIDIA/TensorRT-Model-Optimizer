@@ -107,9 +107,11 @@ def get_daring_anteater(
             dataset = datasets.load_dataset("nvidia/Daring-Anteater", split="train")
             # Shuffle and subsample the dataset
             eval_size = 2000 if eval_size == 0 else eval_size
-            train_size = len(dataset) - eval_size if train_size == 0 else train_size - eval_size
-            if train_size + eval_size < len(dataset):
-                dataset = dataset.shuffle(seed=42).select(range(train_size + eval_size))
+            train_size = len(dataset) - eval_size if train_size == 0 else train_size
+            assert train_size + eval_size <= len(dataset) and train_size > 0 and eval_size > 0, (
+                "not enough data for train-eval split"
+            )
+            dataset = dataset.shuffle(seed=42).select(range(train_size + eval_size))
             dataset = dataset.map(process_and_tokenize, remove_columns=list(dataset.features))
             dataset = dataset.train_test_split(test_size=eval_size, shuffle=True, seed=42)
         get_daring_anteater.cached_dataset = dataset  # type: ignore[attr-defined]

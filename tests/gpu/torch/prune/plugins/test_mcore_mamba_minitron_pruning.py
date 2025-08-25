@@ -53,13 +53,13 @@ def _test_mcore_mamba_pruning(rank, size):
         mamba_num_groups=mamba_num_groups,
     )
 
-    mamba_num_heads = torch.tensor(0, device=torch.cuda.current_device())
-    if rank == 0:
-        assert isinstance(model.decoder.layers[0], MambaLayer)
-        mamba_num_heads += model.decoder.layers[0].mixer.nheads
-    torch.distributed.broadcast(mamba_num_heads, 0, async_op=True)
-    mamba_num_heads = mamba_num_heads.item()
-    assert mamba_num_heads > 0, "No MambaLayer found in the model rank 0!"
+    mamba_layer = None
+    for layer in model.decoder.layers:
+        if isinstance(layer, MambaLayer):
+            mamba_layer = layer
+            break
+    assert mamba_layer is not None, f"No MambaLayer found in the model PP rank {rank}!"
+    mamba_num_heads = mamba_layer.mixer.nheads
 
     def forward_loop(m):
         for _ in range(5):
@@ -70,42 +70,50 @@ def _test_mcore_mamba_pruning(rank, size):
     pruned_num_attention_heads = num_attention_heads // 2
     pruned_num_query_groups = num_query_groups // 2
     pruned_hidden_size = hidden_size // 2
-    pruned_num_layers = num_layers // 2
 
     # Mamba-specific pruning parameters
-    # pruned_mamba_num_heads = mamba_num_heads // 2
-    # pruned_mamba_head_dim = mamba_head_dim // 2
+    pruned_mamba_num_heads = mamba_num_heads // 2
+    pruned_mamba_head_dim = mamba_head_dim // 2
 
     # Base export config with GPT/Attention parameters
-    # TODO: enable mamba head pruning after debugging
     export_config = {
         "ffn_hidden_size": pruned_ffn_hidden_size,
         "num_attention_heads": pruned_num_attention_heads,
         "num_query_groups": pruned_num_query_groups,
         "hidden_size": pruned_hidden_size,
-        # "mamba_num_heads": pruned_mamba_num_heads,
-        # "mamba_head_dim": pruned_mamba_head_dim,
-        "num_layers": pruned_num_layers,
+        "mamba_num_heads": pruned_mamba_num_heads,
+        "mamba_head_dim": pruned_mamba_head_dim,
     }
-    model, _ = mtp.prune(
+    mtp.prune(
         model,
-        mode="mcore_gpt_minitron",
+        mode="mcore_minitron",
         constraints={"export_config": export_config},
         dummy_input=None,  # Not used
         config={"forward_loop": forward_loop},
     )
 
-    # Assert forward pass works on the pruned model
-    run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
+    # Assert weights are pruned correctly
+    mixer = mamba_layer.mixer
+    bc = 2 * mixer.ngroups * mixer.d_state
+    assert mixer.nheads == pruned_mamba_num_heads
+    assert mixer.headdim == pruned_mamba_head_dim
+    assert mixer.in_proj.input_size == pruned_hidden_size
+    assert mixer.d_inner == pruned_mamba_num_heads * pruned_mamba_head_dim
+    assert mixer.in_proj.output_size == 2 * mixer.d_inner + bc + pruned_mamba_num_heads
+    assert mixer.out_proj.input_size == mixer.d_inner
+    assert mixer.out_proj.output_size == pruned_hidden_size
+    assert mixer.conv1d.in_channels == mixer.conv1d.out_channels == mixer.d_inner + bc
 
     # Assert model.config is updated for correct save/restoring
     assert model.config.ffn_hidden_size == pruned_ffn_hidden_size
     assert model.config.num_attention_heads == pruned_num_attention_heads
     assert model.config.num_query_groups == pruned_num_query_groups
     assert model.config.hidden_size == pruned_hidden_size
-    assert model.config.num_layers == pruned_num_layers
-    # assert model.config.mamba_num_heads == pruned_mamba_num_heads
-    # assert model.config.mamba_head_dim == pruned_mamba_head_dim
+    assert model.config.mamba_num_heads == pruned_mamba_num_heads
+    assert model.config.mamba_head_dim == pruned_mamba_head_dim
+
+    # Assert forward pass works on the pruned model
+    run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
 
 
 def test_mcore_mamba_pruning():

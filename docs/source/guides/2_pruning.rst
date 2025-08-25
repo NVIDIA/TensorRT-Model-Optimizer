@@ -17,9 +17,10 @@ attention heads of the model. More details on these pruning modes is as follows:
 
 #.  ``fastnas``: A pruning method recommended for Computer Vision models. Given a pretrained model,
     FastNAS finds the subnet which maximizes the score function while meeting the given constraints.
-#.  ``mcore_gpt_minitron``: A pruning method developed by NVIDIA Research for pruning GPT-style models (e.g. Llama 3)
-    in NVIDIA NeMo or Megatron-LM framework that are using Pipeline Parallelism. It uses the activation
-    magnitudes to prune the mlp, attention heads, GQA query groups, embedding hidden size and number of layers of the model.
+#.  ``mcore_minitron``: A pruning method developed by NVIDIA Research for pruning GPT, Mamba and Hybrid
+    Transformer Mamba models in NVIDIA NeMo or Megatron-LM framework. It uses the activation magnitudes to prune
+    the mlp, transformer attention heads, GQA query groups, mamba heads and head dimension, embedding hidden size
+    and number of layers of the model.
     Checkout more details of the algorithm in the `paper <https://arxiv.org/abs/2408.11796>`_.
 #.  ``gradnas``: A light-weight pruning method recommended for language models like Hugging Face BERT and GPT-J.
     It uses the gradient information to prune the model's linear layers and attention heads to meet the given constraints.

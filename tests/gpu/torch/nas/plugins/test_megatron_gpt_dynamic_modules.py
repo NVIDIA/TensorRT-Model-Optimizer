@@ -83,7 +83,7 @@ def _test_gpt_search_space(
         normalization=normalization,
     )
 
-    model = mtn.convert(model, "mcore_gpt_minitron")
+    model = mtn.convert(model, "mcore_minitron")
 
     assert isinstance(model, _DynamicMCoreLanguageModel)
     for m in model.modules():
@@ -204,7 +204,7 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
     # sanity check if the model functionality is preserved after sorting
     y2 = run_mcore_inference(model, prompt_tokens)
 
-    # # check if the inference results after sorting is the same
+    # check if the inference results after sorting is the same
     assert all(
         torch.allclose(t1, t2, rtol=1e-5, atol=1e-3)
         for t1, t2 in zip(flatten_tree(y1)[0], flatten_tree(y2)[0])
@@ -240,7 +240,7 @@ def test_megatron_self_attention_head_sorting(distributed_setup_size_1):
         activation_func="squared_relu",
     )
 
-    model = mtn.convert(model, "mcore_gpt_minitron")
+    model = mtn.convert(model, "mcore_minitron")
 
     self_attn = model.decoder.layers[0].self_attention
     assert isinstance(self_attn, _DynamicSelfAttention)

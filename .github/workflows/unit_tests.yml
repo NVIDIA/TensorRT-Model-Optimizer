@@ -64,7 +64,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run unit tests (without coverage)
-        run: pip install tox && tox -e py312-torch28-unit
+        run: pip install tox && tox -e py312-torch28-tf_latest-unit
   multi-py:
     if: github.event_name == 'pull_request'
     needs: [linux]
@@ -79,7 +79,7 @@ jobs:
         with:
           python-version: "3.${{ matrix.py }}"
       - name: Run unit tests
-        run: pip install tox && tox -e py3${{ matrix.py }}-torch28-unit
+        run: pip install tox && tox -e py3${{ matrix.py }}-torch28-tf_latest-unit
   multi-torch:
     if: github.event_name == 'pull_request'
     needs: [linux]
@@ -94,7 +94,22 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run unit tests
-        run: pip install tox && tox -e py312-torch${{ matrix.torch }}-unit
+        run: pip install tox && tox -e py312-torch${{ matrix.torch }}-tf_latest-unit
+  multi-transformers:
+    if: github.event_name == 'pull_request'
+    needs: [linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        tf: [min]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run unit tests
+        run: pip install tox && tox -e py312-torch28-tf_${{ matrix.tf }}-unit
   partial-install:
     if: github.event_name == 'pull_request'
     needs: [linux]

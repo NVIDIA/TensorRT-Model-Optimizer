@@ -23,6 +23,7 @@ from modelopt.onnx.quantization.quant_utils import (
     get_amax,
     pack_float32_to_4bit_cpp_based,
     pack_float32_to_4bit_optimized,
+    pack_weights_to_int4,  # Add this import
 )
 
 
@@ -245,3 +246,77 @@ def test_compute_e8m0(amax, weight_shape, axis, expected_e8m0):
     e8m0 = compute_e8m0(amax, weight_shape, axis, block_size)
     assert np.array_equal(e8m0, expected_e8m0)
     assert e8m0.dtype == np.float64
+
+
+@pytest.mark.parametrize(
+    ("input_weight", "expected_weight", "expected_shape", "description"),
+    [
+        # Basic 2D case
+        (
+            np.array([[3, 7, -5, 2], [1, -8, 0, 4]], dtype=np.float32),
+            np.array([[115, 43, 129, 64]], dtype=np.uint8),
+            (1, 4),
+            "Basic 2D case",
+        ),
+        # Multi-dimensional case
+        (
+            np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]], dtype=np.float32),
+            np.array([[[33, 67], [101, 119]]], dtype=np.uint8),
+            (1, 2, 2),
+            "3D case",
+        ),
+        # Edge values (INT4 range: -8 to 7)
+        (
+            np.array([[-8, 7], [-8, 7]], dtype=np.float32),
+            np.array([[120, 120]], dtype=np.uint8),
+            (1, 2),
+            "Edge values",
+        ),
+        # Out of range values
+        (
+            np.array([[-10, 15], [9, -20]], dtype=np.float32),
+            np.array([[120, 135]], dtype=np.uint8),
+            (1, 2),
+            "Out of range values",
+        ),
+        # Rounding
+        (
+            np.array([[2.7, 3.2], [5.6, 1.4]], dtype=np.float32),
+            np.array([[51, 22]], dtype=np.uint8),
+            (1, 2),
+            "Rounding",
+        ),
+    ],
+)
+def test_pack_weights_to_int4_valid_cases(
+    input_weight, expected_weight, expected_shape, description
+):
+    """Test pack_weights_to_int4 with valid inputs."""
+    result = pack_weights_to_int4(input_weight)
+
+    assert np.array_equal(result, expected_weight), f"Weight mismatch for {description}"
+
+    # Check output shape
+    assert result.shape == expected_shape, f"Shape mismatch for {description}"
+
+    # Check output dtype
+    assert result.dtype == np.uint8, f"Expected uint8 dtype for {description}"
+
+    # Verify that the first dimension is halved
+    assert result.shape[0] == input_weight.shape[0] // 2, (
+        f"First dimension not halved for {description}"
+    )
+
+
+def test_pack_weights_to_int4_assertion_error():
+    """Test that assertion errors are raised for invalid inputs."""
+    # Test odd first dimension
+    with pytest.raises(AssertionError, match="weight_shape\\[0\\] must be divisible by 2"):
+        odd_weight = np.array([[1, 2, 3]], dtype=np.float32)  # Shape: (1, 3) - first dim is odd
+        pack_weights_to_int4(odd_weight)
+
+    with pytest.raises(AssertionError, match="weight_shape\\[0\\] must be divisible by 2"):
+        odd_weight = np.array(
+            [[[1, 2]], [[3, 4]], [[5, 6]]], dtype=np.float32
+        )  # Shape: (3, 1, 2) - first dim is odd
+        pack_weights_to_int4(odd_weight)

@@ -33,7 +33,12 @@ from packaging.version import Version
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 from modelopt.onnx.autocast.convert import convert_to_f16
-from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq, qdq_to_dq, quantize_weights_to_mxfp8
+from modelopt.onnx.quantization.qdq_utils import (
+    fp4qdq_to_2dq,
+    qdq_to_dq,
+    quantize_weights_to_int4,
+    quantize_weights_to_mxfp8,
+)
 from modelopt.onnx.utils import (
     get_input_names,
     get_input_shapes,
@@ -282,6 +287,20 @@ def split_args_kwargs(args_tuple):
     return pos_args, kw_args
 
 
+def is_int4_quantized(model: nn.Module) -> bool:
+    """Check if the model is quantized in INT4 mode.
+    This method does not check if the model has been quantized in mixed precision format."""
+    for _, module in model.named_modules():
+        if (
+            hasattr(module, "input_quantizer")
+            and hasattr(module, "weight_quantizer")
+            and module.weight_quantizer._num_bits == 4
+            and module.input_quantizer._disabled
+        ):
+            return True
+    return False
+
+
 def is_fp4_quantized(model: nn.Module) -> bool:
     """Check if the model is quantized in NVFP4 mode."""
     for _, module in model.named_modules():
@@ -430,6 +449,11 @@ def get_onnx_bytes_and_metadata(
     # Load the onnx graph for optimizaiton
     onnx_graph = onnx.load(onnx_save_path, load_external_data=True)
 
+    try:
+        onnx_graph = onnx.shape_inference.infer_shapes(onnx_graph)
+    except Exception as e:
+        print(f"Shape inference failed: {e}")
+
     # Optimize the onnx graph
     onnx_opt_graph = optimize(model.__class__.__name__, onnx_graph)
 
@@ -445,7 +469,9 @@ def get_onnx_bytes_and_metadata(
 
     # Convert dummy TRT_FP4QDQ nodes to 2DQ format if the model is quantized in FP4 mode
     # Or convert weights to MXFP8 format if the model is quantized in MXFP8 mode
-    if is_fp4_quantized(model):
+    if is_int4_quantized(model):
+        onnx_opt_graph = quantize_weights_to_int4(onnx_opt_graph)
+    elif is_fp4_quantized(model):
         onnx_opt_graph = fp4qdq_to_2dq(onnx_opt_graph)
     elif is_mxfp8_quantized(model):
         onnx_opt_graph = quantize_weights_to_mxfp8(onnx_opt_graph)
@@ -456,7 +482,10 @@ def get_onnx_bytes_and_metadata(
     if weights_dtype == "float16":
         if not use_autocast:
             onnx_opt_graph = convert_float_to_float16(
-                onnx_opt_graph, keep_io_types=False, disable_shape_infer=True
+                onnx_opt_graph,
+                keep_io_types=False,
+                disable_shape_infer=True,
+                check_fp16_ready=False,
             )
         else:
             onnx_opt_graph = convert_to_f16(onnx_opt_graph, keep_io_types=False)

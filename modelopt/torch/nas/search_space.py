@@ -154,10 +154,13 @@ class SearchSpace(DynamicSpace):
                 continue
             # compute order from importance and enforce it
             # NOTE: use .argsort() instead of torch.argsort() so hp can overwrite the behavior
-            order = importance.argsort(descending=True)
+            order = importance if hp._importance_is_order else importance.argsort(descending=True)
             hp.enforce_order(order)
             if verbose:
-                print(f"Sorted {name} for rank {rank()} with {importance=}")
+                print(
+                    f"Sorted {name} for rank {rank()} with "
+                    f"{'order' if hp._importance_is_order else 'importance'}={importance}"
+                )
 
         # now that we have enforced an order we can force reassign all parameters/buffers!
         for _, mod in self.named_dynamic_modules():

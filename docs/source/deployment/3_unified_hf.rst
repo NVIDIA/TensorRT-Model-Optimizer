@@ -54,9 +54,10 @@ TensorRT-LLM
 ~~~~~~~~~~~~
 
 Models:
-  * Llama 4, 3.1, 3.3 (FP8, NVFP4)
-  * Qwen 3 (FP8, NVFP4)
-  * Deepseek R1 (NVFP4)
+  * Llama 4, 3.x (FP8, NVFP4)
+  * Qwen 3, 2.5 (FP8, NVFP4)
+  * Qwen 3 MoE (FP8, NVFP4)
+  * Deepseek R1/V3 (NVFP4)
   * Mixtral 8x7B (FP8, NVFP4)
   * Medusa (FP8)
   * Eagle (FP8)
@@ -67,21 +68,24 @@ vLLM
 ~~~~
 
 Models:
-  * Llama 3.1, 3.3 (FP8, NVFP4)
+  * Llama 4, 3.x (FP8, NVFP4)
+  * Qwen 3, 2.5 (FP8, NVFP4)
+  * Qwen 3 MoE (FP8, NVFP4)
   * Mixtral 8x7B (FP8)
-  * Deepseek R1 (NVFP4)
+  * Deepseek R1/V3 (NVFP4)
 
-Requirements: vLLM v0.9.1 or later
+Requirements: vLLM v0.10.1 or later
 
 SGLang
 ~~~~~~
 
 Models:
-  * Llama 3.1, 3.3 (FP8, NVFP4)
-  * Deepseek R1 (NVFP4)
-  * Llama 4 (FP8)
+  * Llama 4, 3.x (FP8, NVFP4)
+  * Qwen 3, 2.5 (FP8, NVFP4)
+  * Qwen 3 MoE (FP8, NVFP4)
+  * Deepseek R1/V3 (NVFP4)
 
-Requirements: SGLang v0.4.7 or later
+Requirements: SGLang v0.4.10 or later
 
 Note: While other models and quantization formats may work, they have not been thoroughly tested and validated.
 

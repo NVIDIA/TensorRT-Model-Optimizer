@@ -104,6 +104,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       USE_FSDP2="${1#*=}"
       ;;
+    --max_seq_length*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      MAX_SEQ_LENGTH="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
@@ -122,6 +126,7 @@ DEFAULT_SAVE_STEPS=$((192 / GPU_COUNT))
 MODEL=${MODEL:-"meta-llama/Llama-2-7b-hf"}
 OUTPUT_DIR=${OUTPUT_DIR:-"llama2-finetune"}
 DATASET=${DATASET:-"Daring-Anteater"}
+MAX_SEQ_LENGTH=${MAX_SEQ_LENGTH:-4096}
 TRAIN_SIZE=${TRAIN_SIZE:-0}
 EVAL_SIZE=${EVAL_SIZE:-0}
 NUM_EPOCHS=${NUM_EPOCHS:-1}
@@ -160,7 +165,7 @@ if [[ "${USE_FSDP2,,}" == "true" ]]; then
 fi
 
 DISTILLATION_ARGS=""
-if [[ "${DISTILL}" == "True" ]]; then
+if [[ "${DISTILL,,}" == "true" ]]; then
   DISTILLATION_ARGS="--distill $DISTILL --teacher_model $TEACHER_MODEL"
   # Distillation does not work with memory efficient loading
   FSDP_ARGS="$FSDP_ARGS --fsdp_cpu_ram_efficient_loading False"
@@ -177,7 +182,7 @@ fi
 CMD="accelerate launch --config-file accelerate_config/$CONFIG_FILE $FSDP_ARGS \
     main.py \
     --model_name_or_path $MODEL \
-    --model_max_length 4096 \
+    --model_max_length $MAX_SEQ_LENGTH \
     --dataloader_drop_last True \
     --do_train $DO_TRAIN \
     --do_eval True \
@@ -210,3 +215,4 @@ CMD="accelerate launch --config-file accelerate_config/$CONFIG_FILE $FSDP_ARGS \
 start_time=$(date +%s)
 sh -c "$CMD"
 echo "Total time taken: $(( $(date +%s) - $start_time )) seconds"
+python convert_sharded_ckpt.py --hf_model_path $MODEL --sharded_ckpt_path $OUTPUT_DIR --output_path $OUTPUT_DIR

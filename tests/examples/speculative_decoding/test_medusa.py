@@ -44,7 +44,7 @@ def _run_hf_ptq(model_path, output_dir, qformat, export_fmt):
     )
 
 
-def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, daring_anteater_path, tmp_path):
+def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, tiny_daring_anteater_path, tmp_path):
     medusa_path = tmp_path / "medusa-tinyllama"
 
     # Test Medusa
@@ -52,10 +52,9 @@ def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, daring_anteater_path, t
         [
             "./launch.sh",
             "--model", tiny_llama_path,
-            "--data", daring_anteater_path,
-            "--num_epochs", "0.001",
+            "--data", tiny_daring_anteater_path,
+            "--num_epochs", "1",
             "--lr", "1e-5",
-            "--save_steps", "50",
             "--do_eval", "False",
             "--num_gpu", str(num_gpus),
             "--mode", "medusa",
@@ -75,9 +74,10 @@ def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, daring_anteater_path, t
         [
             "./launch.sh",
             "--model", medusa_path,
-            "--num_epochs", "0.001",
+            "--num_epochs", "1",
+            "--train_size", "128",
+            "--eval_size", "64",
             "--lr", "1e-5",
-            "--save_steps", "5",
             "--output_dir", tmp_path / "medusa-tinyllama-qat-finetune",
             "--quant_cfg", "FP8_DEFAULT_CFG",
             "--calib_size", "64",

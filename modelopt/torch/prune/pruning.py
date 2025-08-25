@@ -55,10 +55,10 @@ def prune(
                 required for gradient-based pruning & search. The mode's config
                 is described in :class:`GradNASConfig<modelopt.torch.prune.config.GradNASConfig>`.
                 This mode is recommended to prune Hugging Face language models like BERT and GPT-J.
-            *   :class:`"mcore_gpt_minitron"<modelopt.torch.prune.plugins.mcore_gpt_minitron.MCoreGPTMinitronModeDescriptor>`: The ``model``
+            *   :class:`"mcore_minitron"<modelopt.torch.prune.plugins.mcore_minitron.MCoreMinitronModeDescriptor>`: The ``model``
                 will be converted into a search space and set up to automatically perform operations
                 required for Minitron-style pruning & search. The mode's config
-                is described in :class:`MCoreGPTMinitronConfig<modelopt.torch.prune.config.MCoreGPTMinitronConfig>`.
+                is described in :class:`MCoreMinitronConfig<modelopt.torch.prune.config.MCoreMinitronConfig>`.
                 This mode is required to prune NVIDIA Megatron-Core / NeMo GPT-type models.
 
             If the mode argument is specified as a dictionary, the keys should indicate the mode and
@@ -79,7 +79,7 @@ def prune(
                     constraints = {"params": "60%"}
 
                     # Specify export_config with pruned hyperparameters
-                    # This is supported and required if the model is converted via ``mcore_gpt_minitron`` mode.
+                    # This is supported and required if the model is converted via ``mcore_minitron`` mode.
                     constraints = {
                         "export_config": {
                             "ffn_hidden_size": 128,

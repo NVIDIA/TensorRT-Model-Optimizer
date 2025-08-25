@@ -107,6 +107,9 @@ warn_return_any = false
 module = ["internal.*", "tests.*"]
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+module = ["examples.*"]
+disable_error_code = ["attr-defined"]
 
 [tool.pytest.ini_options]
 # Default additional options

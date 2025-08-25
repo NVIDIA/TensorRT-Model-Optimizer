@@ -4,19 +4,28 @@ Model Optimizer Changelog (Linux)
 0.35 (2025-08-xx)
 ^^^^^^^^^^^^^^^^^
 
-**Backward Breaking Changes**
-
 **Deprecations**
 
 - Deprecate ``torch<2.6`` support.
 
+**Bug Fixes**
+
+- Fix attention head ranking logic for pruning Megatron Core GPT models.
+
 **New Features**
 
+- ModelOpt now supports PTQ and QAT for GPT-OSS models. See ``examples/gpt_oss`` for end-to-end PTQ/QAT example.
+- Add support for QAT with HuggingFace + DeepSpeed. See ``examples/gpt_oss`` for an example.
+- Add support for QAT with LoRA. The LoRA adapters can be folded into the base model after QAT and deployed just like a regular PTQ model. See ``examples/gpt_oss`` for an example.
+- ModelOpt provides convenient trainers such as :class:`QATTrainer`, :class:`QADTrainer`, :class:`KDTrainer`, :class:`QATSFTTrainer` which inherits from Huggingface trainers.
+  ModelOpt trainers can be used as drop in replacement of the correspoding Huggingface trainer. See usage examples in ``examples/gpt_oss``, ``examples/llm_qat`` or ``examples/llm_distill``.
 - (Experimental) Add quantization support for custom TensorRT op in ONNX models.
 - Add support for Minifinetuning (MFT; https://arxiv.org/abs/2506.15702) self-corrective distillation, which enables training on small datasets with severely mitigated catastrophic forgetting.
 - Add tree decoding support for Megatron Eagle models.
 - For most VLMs, we now explicitly disable quant on the vision part so we add them to the excluded_modules during HF export.
-- Add support for ``hidden_size`` and ``num_layers`` pruning for Megatron Core Mamba models in ``mcore_gpt_minitron`` mode.
+- Add support for ``mamba_num_heads``, ``mamba_head_dim``, ``hidden_size`` and ``num_layers`` pruning for Megatron Core Mamba or Hybrid Transformer Mamba models in ``mcore_minitron`` (previously ``mcore_gpt_minitron``) mode.
+- Add example for QAT/QAD training with `LLaMA Factory <https://github.com/hiyouga/LLaMA-Factory/tree/main>`_. See ``examples/llm_qat/llama_factory`` for more details.
+- Upgrade TensorRT-LLM dependency to 1.0.0rc6.
 
 0.33 (2025-07-14)
 ^^^^^^^^^^^^^^^^^
@@ -24,8 +33,6 @@ Model Optimizer Changelog (Linux)
 **Backward Breaking Changes**
 
 - PyTorch dependencies for ``modelopt.torch`` features are no longer optional and ``pip install nvidia-modelopt`` is now same as ``pip install nvidia-modelopt[torch]``.
-
-**Deprecations**
 
 **New Features**
 

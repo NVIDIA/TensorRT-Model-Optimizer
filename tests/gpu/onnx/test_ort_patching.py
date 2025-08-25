@@ -58,7 +58,6 @@ from modelopt.onnx.quantization.ort_patching import (
     _quantize_static,
     _select_tensors_to_calibrate,
     load_model_with_shape_infer,
-    save_and_reload_model_with_shape_infer,
 )
 
 
@@ -124,7 +123,7 @@ class TestModelLoading:
         model_path = tmp_path / "test_model.onnx"
         onnx.save(simple_onnx_model, str(model_path))
 
-        with patch("modelopt.onnx.quantization.ort_patching.SymbolicShapeInference") as mock_ssi:
+        with patch("modelopt.onnx.quantization.ort_patching.onnx_utils") as mock_ssi:
             mock_ssi.infer_shapes.return_value = simple_onnx_model
             with patch("modelopt.onnx.quantization.ort_patching.add_infer_metadata") as mock_aim:
                 result = load_model_with_shape_infer(model_path)
@@ -132,16 +131,6 @@ class TestModelLoading:
                 mock_ssi.infer_shapes.assert_called_once()
                 mock_aim.assert_called_once_with(simple_onnx_model)
                 assert result == simple_onnx_model
-
-    def test_save_and_reload_model_with_shape_infer(self, simple_onnx_model):
-        """Test saving and reloading model with shape inference."""
-        with patch("modelopt.onnx.quantization.ort_patching.SymbolicShapeInference") as mock_ssi:
-            mock_ssi.infer_shapes.return_value = simple_onnx_model
-
-            result = save_and_reload_model_with_shape_infer(simple_onnx_model)
-
-            mock_ssi.infer_shapes.assert_called_once_with(simple_onnx_model)
-            assert result == simple_onnx_model
 
 
 class TestHistogramCollection:

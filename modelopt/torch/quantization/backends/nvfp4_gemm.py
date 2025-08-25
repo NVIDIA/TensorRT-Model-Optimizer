@@ -29,6 +29,8 @@ from modelopt.torch.quantization.qtensor import NVFP4QTensor, QTensorWrapper
 
 def _to_nvfp4(inputs, amax=None):
     """Convert inputs to nvfp4."""
+    import tensorrt_llm  # noqa: F401
+
     vec_size = 16
     if amax is None:
         amax = inputs.abs().amax()
@@ -39,6 +41,8 @@ def _to_nvfp4(inputs, amax=None):
 
 def nvfp4_gemm(quant_module, input_tensor, bias=None):
     """GEMM function for fp4 quantization."""
+    import tensorrt_llm._torch.auto_deploy.custom_ops.quant  # noqa: F401
+
     weight = quant_module.weight
     if isinstance(weight, QTensorWrapper):  # weight is already compressed.
         weight = weight.get_qtensor()
@@ -61,7 +65,7 @@ def nvfp4_gemm(quant_module, input_tensor, bias=None):
     if input_amax is None:
         input_amax = input_tensor.abs().amax()
     input_global_scale = 448.0 * 6.0 / input_amax.float()
-    output = torch.ops.quant.fp4_linear(
+    output = torch.ops.auto_deploy.torch_quant_fp4_linear(
         input_tensor,
         weight_fp4,
         bias=bias,

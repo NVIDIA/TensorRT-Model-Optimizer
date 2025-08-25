@@ -79,23 +79,19 @@ from onnxruntime.quantization.registry import QDQRegistry, QLinearOpsRegistry
 from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 from tqdm import tqdm
 
+import modelopt.onnx.utils as onnx_utils
 from modelopt.onnx.logging_config import logger
 
 
 def load_model_with_shape_infer(model_path: Path) -> onnx.ModelProto:
     """Load model while performing symbolic shape infer and ONNX shape inference."""
-    model = onnx.load(str(model_path))
+    model = onnx.load(str(model_path), load_external_data=True)
     try:
-        model = SymbolicShapeInference.infer_shapes(model)
+        model = onnx_utils.infer_shapes(model)
         add_infer_metadata(model)
     except Exception as e:
         logger.info(f"Failed to infer shapes for model {model_path}: {e}")
     return model
-
-
-def save_and_reload_model_with_shape_infer(model: onnx.ModelProto) -> onnx.ModelProto:
-    """Save the original model and load model with shape inferred."""
-    return SymbolicShapeInference.infer_shapes(model)
 
 
 def _collect_value(histogram_collector, name_to_arr):
@@ -1602,7 +1598,7 @@ def _quantize_static(
         op_types_to_quantize = list(set(q_linear_ops + qdq_ops))
 
     model = (
-        save_and_reload_model_with_shape_infer(model_input)
+        onnx_utils.infer_shapes(model_input)
         if isinstance(model_input, onnx.ModelProto)
         else load_model_with_shape_infer(Path(model_input))
     )

@@ -52,6 +52,9 @@ from modelopt.torch.quantization.plugins.transformers_trainer import (
 )
 from modelopt.torch.utils import print_rank_0
 
+# Enable automatic save/load of modelopt state huggingface checkpointing
+mto.enable_huggingface_checkpointing()
+
 CUSTOM_QUANT_CFG = {
     "INT4_WEIGHT_INT8_ACTIVATIONS": {
         "quant_cfg": {
@@ -168,10 +171,6 @@ def train():
     model_args, training_args, data_args, quant_args = parser.parse_args_into_dataclasses()
     print_rank_0(f"arguments: {model_args}, {training_args}, {data_args}, {quant_args}")
 
-    # Enable automatic save/load of modelopt state huggingface checkpointing
-    # modelopt state will be saved automatically to "modelopt_state.pt"
-    mto.enable_huggingface_checkpointing()
-
     # Detecting last checkpoint.
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir) and training_args.do_train:
@@ -224,7 +223,7 @@ def train():
         training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
 
     if quant_args.quant_cfg is not None:
-        quant_cfg = (
+        quant_args.quant_cfg = (
             CUSTOM_QUANT_CFG[quant_args.quant_cfg]
             if quant_args.quant_cfg in CUSTOM_QUANT_CFG
             else getattr(mtq, quant_args.quant_cfg)
@@ -255,7 +254,6 @@ def train():
         processing_class=tokenizer,
         args=training_args,
         quant_args=quant_args,
-        quant_cfg=quant_cfg if quant_args.quant_cfg is not None else None,
         **distill_kwargs,
         **data_module,
     )
@@ -279,10 +277,8 @@ def train():
     if training_args.do_train or quant_args.quant_cfg is not None:
         print_rank_0("Saving the model...")
         trainer.save_state()
-        if training_args.distill:
-            trainer.save_model(training_args.output_dir, export_student=True)
-        else:
-            trainer.save_model(training_args.output_dir)
+        kwargs = {"export_student": True} if training_args.distill else {}
+        trainer.save_model(training_args.output_dir, **kwargs)
 
 
 if __name__ == "__main__":

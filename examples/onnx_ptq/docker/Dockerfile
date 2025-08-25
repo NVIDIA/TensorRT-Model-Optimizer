@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/tensorrt:25.06-py3
+FROM nvcr.io/nvidia/tensorrt:25.08-py3
 
 ARG CMAKE_VERSION=3.28.0
 
@@ -12,14 +12,10 @@ RUN python -m pip install --upgrade pip \
 
 WORKDIR /workspace
 
-RUN pip install tensorrt==10.12.0.36 && \
+RUN pip install tensorrt==10.13.2.6 && \
     export TRT_PATH=$(python -c "import tensorrt; import os; print(os.path.dirname(tensorrt.__file__))") && \
-    export LD_LIBRARY_PATH="$TRT_PATH/lib:${LD_LIBRARY_PATH}" && \
+    export LD_LIBRARY_PATH="$TRT_PATH/lib:/usr/include:${LD_LIBRARY_PATH}" && \
     export PATH="$TRT_PATH/bin:${PATH}"
-
-# Update PATH variables for local TensorRT installation
-ENV LD_LIBRARY_PATH="/workspace/TensorRT/lib:${LD_LIBRARY_PATH}" \
-    PATH="/workspace/TensorRT/bin:${PATH}"
 
 # Copy application code and install requirements
 COPY modelopt modelopt/modelopt

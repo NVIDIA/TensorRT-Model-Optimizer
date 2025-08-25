@@ -23,13 +23,12 @@ import torch.distributed
 import transformers
 from accelerate import PartialState
 from accelerate.logging import get_logger
-from torch.distributed.fsdp import FullStateDictConfig, FullyShardedDataParallel, StateDictType
 from transformers import AutoTokenizer
-from transformers.modeling_outputs import CausalLMOutputWithPast
 from trl import SFTTrainer
 
 import modelopt.torch.distill as mtd
 import modelopt.torch.opt as mto
+from modelopt.torch.distill.plugins.huggingface import KDTrainer, LMLogitsLoss
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
@@ -70,32 +69,8 @@ def llama_text_format_func(sample):
     return texts
 
 
-def save_model(trainer: transformers.Trainer):
-    """Dumps model and ModelOpt states to disk."""
-    model = trainer.accelerator.unwrap_model(trainer.model)
-    save_cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-    with FullyShardedDataParallel.state_dict_type(model, StateDictType.FULL_STATE_DICT, save_cfg):
-        cpu_state_dict = trainer.model.state_dict()
-        if trainer.args.should_save:
-            output_dir = trainer.args.output_dir
-            trainer._save(output_dir, state_dict=cpu_state_dict)
-            # ModelOpt state
-            logger.info(f"Saving modelopt state to {output_dir}")
-            torch.save(mto.modelopt_state(model), f"{output_dir}/modelopt_state.pt")
-
-
-class KDSFTTrainer(SFTTrainer):
-    def compute_loss(self, model, inputs, *args, **kwargs):
-        if not model.training:
-            _compute_loss_func = self.compute_loss_func
-            self.compute_loss_func = None
-
-        loss = super().compute_loss(model, inputs, *args, **kwargs)
-
-        if not model.training:
-            self.compute_loss_func = _compute_loss_func
-
-        return loss
+class KDSFTTrainer(SFTTrainer, KDTrainer):
+    pass
 
 
 def _teacher_factory(model_name_or_path):
@@ -105,14 +80,13 @@ def _teacher_factory(model_name_or_path):
     )
 
 
-class LMLogitsLoss(mtd.LogitsDistillationLoss):
-    def forward(self, out_student: CausalLMOutputWithPast, out_teacher: CausalLMOutputWithPast):
-        return super().forward(out_student.logits, out_teacher.logits)
-
-
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, TrainingArguments))
     model_args, training_args = parser.parse_args_into_dataclasses()
+
+    # Enable automatic save/load of modelopt state huggingface checkpointing
+    # modelopt state will be saved automatically to "modelopt_state.pth"
+    mto.enable_huggingface_checkpointing()
 
     # Set total batch size across all ranks to equal 64
     total_batch_size = 64
@@ -147,12 +121,12 @@ def train():
         logger.info("Model loaded.")
     else:
         logger.info("Loading student model...")
-        student_model = transformers.AutoModelForCausalLM.from_pretrained(
+        model = transformers.AutoModelForCausalLM.from_pretrained(
             model_args.student_name_or_path,
             device_map=PartialState().process_index,
         )
         logger.info("Student loaded.")
-
+        # Load checkpoint
         logger.info("Loading teacher model and converting to Distillation model...")
         kd_config = {
             "teacher_model": (
@@ -163,7 +137,7 @@ def train():
             "criterion": LMLogitsLoss(),
             "expose_minimal_state_dict": False,  # FSDP forces us to disable this
         }
-        model = mtd.convert(student_model, mode=[("kd_loss", kd_config)])
+        model = mtd.convert(model, mode=[("kd_loss", kd_config)])
         logger.info("Models converted.")
 
     # Fix problematic settings that logger.info excessive warnings
@@ -182,25 +156,11 @@ def train():
         formatting_func=llama_text_format_func,
         processing_class=tokenizer,
     )
-    if isinstance(trainer, KDSFTTrainer):
-        # Use our distillation aggregate loss
-        trainer.compute_loss_func = lambda *a, **kw: model.compute_kd_loss()
 
     # Do training
     if training_args.do_train:
-        # Load checkpoint
-        checkpoint = training_args.resume_from_checkpoint
-        if checkpoint and not model_args.single_model:
-            # ModelOpt state
-            modelopt_state_path = os.path.join(os.path.dirname(checkpoint), "modelopt_state.pt")
-            if not os.path.isfile(modelopt_state_path):
-                raise FileNotFoundError("`modelopt_state.pt` not found with checkpoint.")
-            logger.info(f"Loading modelopt state from {modelopt_state_path}")
-            modelopt_state = torch.load(modelopt_state_path, weights_only=False)
-            mto.restore_from_modelopt_state(model, modelopt_state)
-
         logger.info("Beginning training...")
-        trainer.train(resume_from_checkpoint=checkpoint)
+        trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
         logger.info("Training done.")
 
     # Do evaluation
@@ -212,7 +172,9 @@ def train():
 
     # Save checkpoint
     logger.info("Saving checkpoint...")
-    save_model(trainer)
+    trainer.save_state()
+    kwargs = {"export_student": True} if not model_args.single_model else {}
+    trainer.save_model(trainer.args.output_dir, **kwargs)
     logger.info("Checkpoing saved.")
 
 

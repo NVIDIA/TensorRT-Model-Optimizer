@@ -61,7 +61,11 @@ class Hparam:
         self._choices = sorted(set(choices) | {self.original})
         self._active = self.original
         self._is_configurable = True  # in case we want to manually overwritte configurability.
+        # Additional attributes for hacking megatron dynamic modules to simplify implementation.
         self._strict_len = True  # whether the importance must be of length equal to max choice
+        self._importance_is_order = (
+            False  # whether the importance is overwritten to be active slice order
+        )
 
         # Callback to compute hparam importance
         self._importance_estimators: list[Hparam.ImportanceEstimator] | None = [
@@ -204,9 +208,15 @@ class Hparam:
                 assert not self._strict_len or len(imp) == self.max, (
                     "Length of importance must be equal to max choice!"
                 )
-                imp = imp / (imp.max() + 1e-9)  # normalize importance
                 imps_all.append(imp)
 
+        if self._importance_is_order:
+            assert len(imps_all) == 1, (
+                "Only one importance estimator is supported when importance is an order"
+            )
+            return imps_all[0]
+
+        imps_all = [imp / (imp.max() + 1e-9) for imp in imps_all]  # normalize importance
         return sum(imps_all) if imps_all else None
 
     @torch.no_grad()

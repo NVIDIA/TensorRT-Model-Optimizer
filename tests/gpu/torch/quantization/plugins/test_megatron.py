@@ -49,6 +49,7 @@ import modelopt
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.nn import QuantModuleRegistry
+from modelopt.torch.utils.plugins import megatron_prefill
 
 SEED = 1234
 
@@ -169,7 +170,7 @@ def _test_sharded_state_dict(
     ).cuda()
 
     def forward_fn(model):
-        return run_mcore_inference(model, prompt_tokens)
+        return megatron_prefill(model, prompt_tokens)
 
     model_ref = mtq.quantize(model_ref, config, forward_fn)
     if compress:
@@ -235,12 +236,14 @@ mixed_block_size_config["quant_cfg"].update(
 )
 @pytest.mark.parametrize("compress", [False, True])
 @pytest.mark.parametrize("meta_device", [False, True])
-def test_homogeneous_sharded_state_dict(need_2_gpus, tmp_path, config, compress, meta_device):
+def test_homogeneous_sharded_state_dict(tmp_path, config, compress, meta_device):
     if compress and config is mtq.W4A8_AWQ_BETA_CFG:
         pytest.skip("W4A8_AWQ_BETA_CFG is not supported for compress")
 
+    size = torch.cuda.device_count()
+
     spawn_multiprocess_job(
-        size=2,
+        size=size,
         job=partial(_test_sharded_state_dict, tmp_path, config, 256, None, compress, meta_device),
         backend="nccl",
     )
@@ -342,7 +345,7 @@ def _test_fp8_real_quantize_helper(rank, size):
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     def forward_fn(model):
-        return run_mcore_inference(model, prompt_tokens)
+        return megatron_prefill(model, prompt_tokens)
 
     forward_fn(model)
 
@@ -352,7 +355,8 @@ def _test_fp8_real_quantize_helper(rank, size):
     mtq.compress(real_quant_model)
     real_quant_mem = get_model_size(real_quant_model)
 
-    assert real_quant_mem < cur_mem / 2, "Memory after real quantization is not reduced."
+    # Since not all parameters are quantized, the size won't be lower than half.
+    assert real_quant_mem < (cur_mem / 2) * 1.1, "Memory after real quantization is not reduced."
 
     # check forward works after real quantization
     forward_fn(real_quant_model)
@@ -360,5 +364,6 @@ def _test_fp8_real_quantize_helper(rank, size):
     assert real_quant_mem < cur_mem
 
 
-def test_fp8_real_quantize(need_2_gpus):
-    spawn_multiprocess_job(size=2, job=_test_fp8_real_quantize_helper, backend="nccl")
+def test_fp8_real_quantize():
+    size = torch.cuda.device_count()
+    spawn_multiprocess_job(size=size, job=_test_fp8_real_quantize_helper, backend="nccl")

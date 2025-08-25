@@ -39,15 +39,15 @@ import onnx
 import onnx_graphsurgeon as gs
 import torch
 from diffusers.models.transformers import FluxTransformer2DModel, SD3Transformer2DModel
+from diffusers.models.transformers.transformer_ltx import LTXVideoTransformer3DModel
 from diffusers.models.unets import UNet2DConditionModel
 from torch.onnx import export as onnx_export
 
-from modelopt.onnx.autocast.convert import convert_to_f16
 from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
 from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
 from modelopt.torch.utils import torch_to
 
-from .fp8_onnx_graphsurgeon import cast_resize_io, convert_fp16_io, convert_zp_fp8
+from .fp8_onnx_graphsurgeon import convert_zp_fp8
 
 MODEL_ID_TO_DYNAMIC_AXES = {
     "sdxl-1.0": {
@@ -89,6 +89,13 @@ MODEL_ID_TO_DYNAMIC_AXES = {
         "timestep": {0: "batch_size"},
         "img_ids": {0: "latent_dim"},
         "latent": {0: "batch_size"},
+    },
+    "ltx-video-dev": {
+        "hidden_states": {0: "batch_size", 1: "latent_dim"},
+        "encoder_hidden_states": {0: "batch_size"},
+        "timestep": {0: "batch_size"},
+        "encoder_attention_mask": {0: "batch_size"},
+        "video_coords": {0: "batch_size", 2: "latent_dim"},
     },
 }
 
@@ -233,14 +240,44 @@ def _gen_dummy_inp_and_dyn_shapes_flux(backbone, min_bs=1, opt_bs=1):
     if cfg.guidance_embeds:  # flux-dev
         dummy_input["guidance"] = torch.full((1,), 3.5, dtype=torch.float32)
 
-    dummy_input["pooled_projections"] = torch.randn(min_bs, cfg.pooled_projection_dim, dtype=dtype)
-    dummy_input["timestep"] = torch.ones(1, dtype=dtype)
-    dummy_input["img_ids"] = torch.randn(img_dim, 3, dtype=torch.float32)
-    dummy_input["txt_ids"] = torch.randn(text_maxlen, 3, dtype=torch.float32)
-    if cfg.guidance_embeds:  # flux-dev
-        dummy_input["guidance"] = torch.full((1,), 3.5, dtype=torch.float32)
-    dummy_input["return_dict"] = False
+    return dummy_input, dynamic_shapes
 
+
+def _gen_dummy_inp_and_dyn_shapes_ltx(backbone, min_bs=2, opt_bs=2):
+    assert isinstance(backbone, LTXVideoTransformer3DModel)
+    cfg = backbone.config
+    dtype = backbone.dtype
+    video_dim = 2240
+    dynamic_shapes = {
+        "hidden_states": {
+            "min": [min_bs, 720, cfg.in_channels],
+            "opt": [opt_bs, video_dim, cfg.in_channels],
+        },
+        "encoder_hidden_states": {
+            "min": [min_bs, 256, cfg.cross_attention_dim],
+            "opt": [opt_bs, 256, cfg.cross_attention_dim],
+        },
+        "timestep": {"min": [min_bs, 1], "opt": [opt_bs, 1]},
+        "encoder_attention_mask": {
+            "min": [min_bs, 256],
+            "opt": [opt_bs, 256],
+        },
+        "video_coords": {
+            "min": [min_bs, 3, 720],
+            "opt": [opt_bs, 3, video_dim],
+        },
+    }
+    dummy_input = {
+        "hidden_states": torch.randn(*dynamic_shapes["hidden_states"]["min"], dtype=dtype),
+        "encoder_hidden_states": torch.randn(
+            *dynamic_shapes["encoder_hidden_states"]["min"], dtype=dtype
+        ),
+        "timestep": torch.ones(*dynamic_shapes["timestep"]["min"], dtype=dtype),
+        "encoder_attention_mask": torch.randn(
+            *dynamic_shapes["encoder_attention_mask"]["min"], dtype=dtype
+        ),
+        "video_coords": torch.randn(*dynamic_shapes["video_coords"]["min"], dtype=dtype),
+    }
     return dummy_input, dynamic_shapes
 
 
@@ -283,6 +320,10 @@ def generate_dummy_inputs_and_dynamic_axes_and_shapes(model_id, backbone):
     elif model_id in ["flux-dev", "flux-schnell"]:
         dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_flux(
             backbone, min_bs=1, opt_bs=1
+        )
+    elif model_id == "ltx-video-dev":
+        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_ltx(
+            backbone, min_bs=2, opt_bs=2
         )
     else:
         raise NotImplementedError(f"Unsupported model_id: {model_id}")
@@ -359,7 +400,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         model_name, backbone
     )
 
-    if model_name in {"sdxl-1.0", "sdxl-turbo"}:
+    if model_name in ["sdxl-1.0", "sdxl-turbo"]:
         input_names = ["sample", "timestep", "encoder_hidden_states", "text_embeds", "time_ids"]
         output_names = ["latent"]
     elif model_name == "sd3-medium":
@@ -376,6 +417,15 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         ]
         if model_name == "flux-dev":
             input_names.append("guidance")
+        output_names = ["latent"]
+    elif model_name in ["ltx-video-dev"]:
+        input_names = [
+            "hidden_states",
+            "encoder_hidden_states",
+            "timestep",
+            "encoder_attention_mask",
+            "video_coords",
+        ]
         output_names = ["latent"]
     else:
         raise NotImplementedError(f"Unsupported model_id: {model_name}")
@@ -400,16 +450,12 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         if not model_name.startswith("flux"):
             graph = gs.import_onnx(onnx_model)
             graph.cleanup().toposort()
-            convert_fp16_io(graph)
             onnx_model = gs.export_onnx(graph)
             onnx_model = convert_zp_fp8(onnx_model)
-            onnx_model = convert_to_f16(onnx_model, keep_io_types=True)
             graph = gs.import_onnx(onnx_model)
-            cast_resize_io(graph)
             onnx_model = gs.export_onnx(graph.cleanup())
         else:
             flux_convert_rope_weight_type(onnx_model)
-
     if precision == "fp4":
         onnx_model = fp4qdq_to_2dq(onnx_model)
     save_onnx(onnx_model, q_output)

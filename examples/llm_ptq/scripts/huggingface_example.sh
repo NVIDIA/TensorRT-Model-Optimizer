@@ -45,9 +45,9 @@ if [ "$EXPORT_FORMAT" = "hf" ]; then
     IFS=","
     for qformat in $QFORMAT; do
         case $qformat in
-        fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq | w4a8_mxfp4_fp8) ;;
+        fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq | w4a8_nvfp4_fp8 | w4a8_mxfp4_fp8) ;;
         *)
-            echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq, w4a8_mxfp4_fp8]" >&2
+            echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq, w4a8_nvfp4_fp8, w4a8_mxfp4_fp8]" >&2
             exit 1
             ;;
         esac
@@ -74,9 +74,9 @@ esac
 IFS=","
 for qformat in $QFORMAT; do
     case $qformat in
-    fp8 | fp8_pc_pt | fp8_pb_wo | int8_sq | int4_awq | w4a8_awq | fp16 | bf16 | nvfp4 | nvfp4_awq | w4a8_mxfp4_fp8) ;;
+    fp8 | fp8_pc_pt | fp8_pb_wo | int8_sq | int4_awq | w4a8_awq | fp16 | bf16 | nvfp4 | nvfp4_awq | w4a8_nvfp4_fp8 | w4a8_mxfp4_fp8) ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, fp8_pc_pt, fp8_pb_wo, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq, w4a8_mxfp4_fp8]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, fp8_pc_pt, fp8_pb_wo, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq, w4a8_nvfp4_fp8, w4a8_mxfp4_fp8]" >&2
         exit 1
         ;;
     esac
@@ -404,7 +404,7 @@ if [[ $TASKS =~ "benchmark" ]]; then
 
     # Prepare datasets for TRT-LLM benchmark
     if [ -z "$TRT_LLM_CODE_PATH" ]; then
-        TRT_LLM_CODE_PATH=/workspace/tensorrt-llm
+        TRT_LLM_CODE_PATH=/workspace/tensorrt_llm
         echo "Setting default TRT_LLM_CODE_PATH to $TRT_LLM_CODE_PATH."
     fi
 

@@ -68,8 +68,8 @@ optional_deps = {
         "datasets>=3.0.0",
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
-        "peft>=0.12.0",
-        "transformers>=4.48,<5.0",  # Version match done in modelopt/torch/__init__.py as well
+        "peft>=0.17.0",
+        "transformers>=4.48,<5.0",  # Should match modelopt/torch/__init__.py and tox.ini
         "deepspeed>=0.9.6 ; platform_system != 'Windows'",
     ],
     # linter tools

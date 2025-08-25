@@ -15,12 +15,17 @@
 
 """Support quantization for peft LoRA linear layers."""
 
+from contextlib import contextmanager
+
 import torch.nn.functional as F
 from peft.tuners.lora.layer import Linear as LoraLinear
+from peft.tuners.lora.layer import ParamWrapper
 
+from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.quantization.qtensor.base_qtensor import QTensorWrapper
 
 from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
+from .huggingface import _TransposedQuantization
 
 __all__ = []
 
@@ -32,6 +37,9 @@ class _QuantLoraLinear(QuantModule):
         self.weight_quantizer = TensorQuantizer()
         self.output_quantizer = TensorQuantizer()
 
+    def _is_compressed_weight(self, weight):
+        return isinstance(weight, QTensorWrapper)
+
     def forward(self, x, *args, **kwargs):
         adapter_names = kwargs.pop("adapter_names", None)
         if self.disable_adapters or adapter_names is not None or self.merged:
@@ -39,8 +47,8 @@ class _QuantLoraLinear(QuantModule):
 
         x = self.input_quantizer(x)
         weight = self.base_layer.weight
-        is_compressed = isinstance(weight, QTensorWrapper)
-        if not is_compressed:
+
+        if not self._is_compressed_weight(weight):
             for active_adapter in self.active_adapters:
                 if active_adapter not in self.lora_A.keys():  # noqa: SIM118
                     continue
@@ -49,12 +57,15 @@ class _QuantLoraLinear(QuantModule):
                 scaling = self.scaling[active_adapter]
 
                 if not self.use_dora[active_adapter]:
-                    weight = weight + scaling * lora_b.weight @ lora_a.weight
+                    weight = weight + ((scaling * lora_b.weight) @ lora_a.weight).to(
+                        weight.device, weight.dtype
+                    )
                 else:
                     raise NotImplementedError("dora not implemented")
             weight = self.weight_quantizer(weight)
             output = F.linear(x, weight, self.base_layer.bias)
         else:
+            # TODO: Move this to RealQuantLoraLinear
             # For compressed weights, compute base output and LoRA outputs separately
             base_output = self.base_layer(x)
 
@@ -86,3 +97,52 @@ class _QuantLoraLinear(QuantModule):
 
         output = self.output_quantizer(output)
         return output
+
+    def merge(self, *args, **kwargs):
+        assert not self._is_compressed_weight(self.base_layer.weight), (
+            "We dont support merging for QLoRA yet!"
+        )
+        super().merge(*args, **kwargs)
+        base_layer = self.get_base_layer()
+        base_layer.input_quantizer = self.input_quantizer
+        base_layer.weight_quantizer = self.weight_quantizer
+        base_layer.output_quantizer = self.output_quantizer
+
+
+@QuantModuleRegistry.register({ParamWrapper: "ParamWrapper"})
+class _QuantParamWrapper(QuantModule):
+    def _setup(self):
+        pass
+
+    @contextmanager
+    def _activate_lora(self, active_adapters: list[str]):
+        base_layer = self.get_base_layer()
+        if not isinstance(base_layer, DynamicModule) or not hasattr(
+            base_layer, self.parameter_name + "_weight_quantizer"
+        ):
+            with super()._activate_lora(active_adapters):
+                yield
+            return
+
+        delta_weight = None
+        for active_adapter in active_adapters:
+            if active_adapter not in self.lora_A:
+                continue
+            delta_weight = (
+                self.get_delta_weight(active_adapter)
+                if delta_weight is None
+                else delta_weight + self.get_delta_weight(active_adapter)
+            )
+
+        quantizer = getattr(base_layer, self.parameter_name + "_weight_quantizer")
+        with base_layer.reset_dynamic_attributes():
+            base_param = getattr(base_layer, self.parameter_name)
+            quantized_val = _TransposedQuantization.apply(
+                base_param if delta_weight is None else base_param + delta_weight, quantizer
+            )
+            delattr(base_layer, self.parameter_name)
+            setattr(base_layer, self.parameter_name, quantized_val)
+            try:
+                yield
+            finally:
+                setattr(base_layer, self.parameter_name, base_param)

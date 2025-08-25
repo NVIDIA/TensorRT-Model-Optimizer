@@ -172,6 +172,23 @@ def quantize(
     return scaled_weight.reshape(scaled_weight.shape[0], -1)
 
 
+def pack_weights_to_int4(
+    weight: np.ndarray,
+) -> np.ndarray:
+    """Converts ONNX model weights from high precision to INT4 precision."""
+    weight_shape_int8 = weight.shape
+    assert weight_shape_int8[0] % 2 == 0, "weight_shape[0] must be divisible by 2"
+    weight_shape_int4 = (weight_shape_int8[0] // 2, *weight_shape_int8[1:])
+    weight = weight.flatten().round()
+    weights_int8_np = np.clip(weight, -8, 7).astype(np.int8)
+    weights_int4_np = np.zeros(weights_int8_np.shape[0] // 2, dtype=np.int8)
+    weights_int4_np = (((weights_int8_np[1::2]) << 4) | (weights_int8_np[::2] & 0xF)).astype(
+        np.uint8
+    )
+    weights_int4_np = weights_int4_np.reshape(weight_shape_int4)
+    return weights_int4_np
+
+
 def get_amax(weight: np.ndarray, quant_axis: int, block_size: int) -> np.ndarray:
     """Returns the amax of the weight tensor along the specified axis for a given block size.
 

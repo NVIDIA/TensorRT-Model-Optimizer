@@ -137,17 +137,18 @@ trtexec --onnx=/path/to/identity_neural_network.quant.onnx \
     --staticPlugins=/path/to/libidentity_conv_iplugin_v2_io_ext.so
 ```
 
-## Torch quantization to ONNX example for MXFP8 and NVFP4 precision
+## Torch quantization to ONNX example
 
-This example demonstrates how to quantize a [timm](https://github.com/huggingface/pytorch-image-models) vision model using either MXFP8 or NVFP4 precision formats, and then export it to ONNX. The script leverages the ModelOpt toolkit for both quantization and ONNX export.
+This example demonstrates how to quantize a [timm](https://github.com/huggingface/pytorch-image-models) vision model and then export it to ONNX. The script leverages the ModelOpt toolkit for both quantization and ONNX export.
 
 > *Note: Users may experience performance issues with MXFP8 and NVFP4, which will be fixed in the upcoming release.*
 > *Opset 20 is used to export the NVFP4 and MXFP8 ONNX models.*
+> *BF16 models are not currently supported.*
 
 ### What it does
 
 - Loads a pretrained timm torch model (default: ViT-Base).
-- Quantizes the torch model to MXFP8 or NVFP4 using ModelOpt.
+- Quantizes the torch model to MXFP8, NVFP4 or INT4 precision using ModelOpt.
 - Exports the quantized model to ONNX.
 - Postprocesses the ONNX model to be compatible with TensorRT.
 - Saves the final ONNX model.
@@ -157,7 +158,7 @@ This example demonstrates how to quantize a [timm](https://github.com/huggingfac
 ```bash
 python torch_quant_to_onnx.py \
     --timm_model_name=<timm model name> \
-    --quantize_mode=<mxfp8|nvfp4> \
+    --quantize_mode=<mxfp8|nvfp4|int4_awq> \
     --onnx_save_path=<path to save the exported ONNX model>
 ```
 
@@ -172,7 +173,7 @@ python evaluate.py \
     --onnx_path=<path to the exported ONNX model> \
     --imagenet_path=<path to the ImageNet dataset> \
     --quantize_mode=stronglyTyped \
-    --model_name=vit_base_patch16_224
+    --model_name=<timm model name>
 ```
 
 ## Per node calibration of ONNX models

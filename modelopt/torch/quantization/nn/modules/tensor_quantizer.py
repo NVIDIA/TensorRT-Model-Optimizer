@@ -49,7 +49,7 @@ from ...qtensor import (
     NVFP4QTensor,
     QTensorWrapper,
 )
-from ...tensor_quant import dynamic_block_quant, fake_tensor_quant, scaled_e4m3, static_block_quant
+from ...tensor_quant import dynamic_block_quant, fake_tensor_quant, scaled_e4m3
 from ...utils import is_torch_export_mode
 from ..functional import normalized_hadamard_transform
 
@@ -83,6 +83,25 @@ class TensorQuantizer(nn.Module):
         amax: None or an array like object such as list, tuple, numpy array, scalar
             which can be used to construct amax tensor.
     """
+
+    _skip_properties_for_save_restore = {
+        "_calibrator",
+        "_bias_calibrator",
+        "_original_shape",
+        "_block_reshape_size",
+        "_padding",
+        # Extra flags added by huggingface
+        "_is_hf_initialized",
+        # Extra flags added by deepspeed
+        "ds_external_parameters",
+        "all_parameters",
+        "_external_params",
+        "_original_parameters",
+        "post_bwd_fn",
+        "ds_grads_remaining",
+        "ds_id",
+        "pre_bwd_fn",
+    }
 
     def __init__(
         self,
@@ -141,6 +160,9 @@ class TensorQuantizer(nn.Module):
                 attribute, (f"_{attribute}", lambda v: v)
             )
             setattr(self, _tq_attribute_name, _setter(val))
+
+        if self.is_mx_format:
+            self._pass_through_bwd = True
 
     def dequantize(self, inputs: BaseQuantizedTensor | QTensorWrapper):
         """De-quantize a real quantized tensor to a given dtype."""
@@ -633,69 +655,36 @@ class TensorQuantizer(nn.Module):
             amax = self._get_amax(inputs)
             self._validate_amax(amax)
 
-        if self.block_sizes is not None:
+        if self.block_sizes is not None and self.block_sizes.get("type", "static") == "dynamic":
             # Block quantization, including dynamic and static block quantization
             block_size = self.block_sizes.get(-1, None) or self.block_sizes.get(
                 inputs.dim() - 1, None
             )
+            assert block_size is not None, "block size for dynamic quantization not found."
 
-            if self.block_sizes.get("type", "static") == "dynamic":
-                # Dynamic block quantization, e.g., NVFP4, MXFP8
-                # Double quantization is supported
-                assert block_size is not None, "block size for dynamic quantization not found."
-
-                outputs = dynamic_block_quant(
-                    inputs,
-                    block_size,
-                    amax,
-                    self._get_bias(inputs),
-                    self._num_bits,
-                    self.block_sizes.get("scale_bits", None),
-                    getattr(self, "_trt_high_precision_dtype", None),
-                    getattr(self, "_onnx_quantizer_type", None),
-                )
-            else:
-                # Static block quantization,
-                # Double quantization is not supported
-                assert amax is not None, "amax is required for static quantization."
-                if isinstance(self._num_bits, tuple):
-                    # Float-point static quantization, e.g., FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG
-                    E, M = self._num_bits  # noqa: N806
-                    # assert all the block sizes are valid numbers
-                    assert all(isinstance(v, int) and v > 0 for v in self.block_sizes.values()), (
-                        "Invalid block sizes for static block quantization."
-                    )
-
-                    outputs = scaled_e4m3(
-                        inputs,
-                        amax,
-                        self.bias_value,
-                        E,
-                        M,
-                        self._trt_high_precision_dtype,
-                    )
-                else:
-                    # Integer static quantization, e.g., INT4_BLOCKWISE
-                    outputs = static_block_quant(
-                        inputs,
-                        amax,
-                        self._get_bias(inputs),
-                        self._num_bits,
-                        self._unsigned,
-                        self._narrow_range,
-                    )
-
+            outputs = dynamic_block_quant(
+                inputs,
+                block_size,
+                amax,
+                self._get_bias(inputs),
+                self._num_bits,
+                self.block_sizes.get("scale_bits", None),
+                getattr(self, "_trt_high_precision_dtype", None),
+                getattr(self, "_onnx_quantizer_type", None),
+                self._pass_through_bwd,
+            )
         elif isinstance(self._num_bits, tuple):
             # Float-point quantization, e.g., FP8
             E, M = self._num_bits  # noqa: N806
 
             outputs = scaled_e4m3(
                 inputs,
-                self._get_amax(inputs),
+                amax,
                 self._get_bias(inputs),
                 E,
                 M,
                 self._trt_high_precision_dtype,
+                self._pass_through_bwd,
             )
 
         else:
@@ -708,6 +697,7 @@ class TensorQuantizer(nn.Module):
                 self._unsigned,
                 self._narrow_range,
                 self._trt_high_precision_dtype,
+                self._pass_through_bwd,
             )
         return outputs
 
@@ -1073,20 +1063,11 @@ class TensorQuantizer(nn.Module):
 
         super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
-    def _get_skip_properties_for_modelopt_state(self):
-        return {
-            "_calibrator",
-            "_bias_calibrator",
-            "_original_shape",
-            "_block_reshape_size",
-            "_padding",
-        }
-
     def _get_properties_for_modelopt_state(self):
         return (
             self.__dict__.keys()
             - nn.Module().__dict__.keys()
-            - self._get_skip_properties_for_modelopt_state()
+            - self._skip_properties_for_save_restore
         )
 
     def _get_pytorch_state_metadata(self):
@@ -1143,8 +1124,7 @@ class TensorQuantizer(nn.Module):
         For restoring the quantizer fully including the parameters and buffers, use `properties_only=False`.
         """
         # Set all properties except the skip properties; this is done for backward compatibility
-
-        for key in modelopt_state.keys() - self._get_skip_properties_for_modelopt_state():
+        for key in modelopt_state.keys() - self._skip_properties_for_save_restore:
             setattr(self, key, modelopt_state[key])
 
         # Set the calibrator properties

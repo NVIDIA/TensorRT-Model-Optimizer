@@ -529,6 +529,18 @@ except ImportError:
     pass
 
 
+# TODO: Use autograd wrapped matmul instead of this for memory efficiency
+class _TransposedQuantization(torch.autograd.Function):
+    # Note: TransposedQuantization uses STE with no clipping
+    @staticmethod
+    def forward(ctx, inputs, quantizer):
+        return quantizer(inputs.transpose(-1, -2).contiguous()).transpose(-1, -2)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output, None
+
+
 class _QuantGptOssExperts(_QuantFunctionalMixin):
     """Quantized wrapper for `transformers.GptOssExperts`.
 
@@ -539,12 +551,25 @@ class _QuantGptOssExperts(_QuantFunctionalMixin):
     computes `down_proj` outputs).
     """
 
-    def _setup(self):
-        def _get_quantized_weight(quantizer, module, weight):
-            if module._enable_weight_quantization:
-                return quantizer(weight)
-            return weight
+    @staticmethod
+    def _get_quantized_weight(quantizer, module, weight):
+        # MoE weight is accessed for each expert in one forward pass. so lets cache it
+        if module._enable_weight_quantization:
+            if hasattr(quantizer, "_cached_quant_val"):
+                return getattr(quantizer, "_cached_quant_val")
+            quantizer._cached_quant_val = _TransposedQuantization.apply(weight, quantizer)
+            return quantizer._cached_quant_val
+        return weight
 
+    def _setup_for_weight_quantization(self):
+        self._register_dynamic_attribute(
+            "gate_up_proj", partial(self._get_quantized_weight, self.gate_up_proj_weight_quantizer)
+        )
+        self._register_dynamic_attribute(
+            "down_proj", partial(self._get_quantized_weight, self.down_proj_weight_quantizer)
+        )
+
+    def _setup(self):
         assert not hasattr(self, "kernel_layer_name"), (
             "ModelOpt quantization does not support patched forward for kernel_hub"
         )
@@ -554,14 +579,8 @@ class _QuantGptOssExperts(_QuantFunctionalMixin):
         self.down_proj_weight_quantizer = TensorQuantizer()
 
         self._register_temp_attribute("_enable_weight_quantization", False)
-        self._register_dynamic_attribute(
-            "gate_up_proj", partial(_get_quantized_weight, self.gate_up_proj_weight_quantizer)
-        )
-        self._register_dynamic_attribute(
-            "down_proj", partial(_get_quantized_weight, self.down_proj_weight_quantizer)
-        )
-
         self._register_temp_attribute("_down_proj_mul", False)
+        self._setup_for_weight_quantization()
 
     @property
     def functionals_to_replace(self):
@@ -582,9 +601,14 @@ class _QuantGptOssExperts(_QuantFunctionalMixin):
 
     @contextmanager
     def quantize_weight(self):
-        """Context in which weight is quantized."""
+        """Context in which MoE weight is quantized."""
         self._enable_weight_quantization = True
-        yield
+        try:
+            yield
+        finally:
+            for module in self.modules():
+                if isinstance(module, TensorQuantizer) and hasattr(module, "_cached_quant_val"):
+                    delattr(module, "_cached_quant_val")
         self._enable_weight_quantization = False
 
     def forward(
@@ -632,7 +656,14 @@ def register_falcon_linears_on_the_fly(model):
 
 def _is_supported_hf_model(model):
     """Check if the model a valid model for transformers quantization specific support."""
-    return isinstance(model, transformers.PreTrainedModel)
+    supported_models = [transformers.PreTrainedModel]
+    try:
+        from peft import PeftModel
+
+        supported_models.append(PeftModel)
+    except ImportError:
+        pass
+    return isinstance(model, tuple(supported_models))
 
 
 @contextmanager

@@ -321,8 +321,11 @@ class EagleModule(nn.Module):
                 use_cache=use_cache,
                 position_embeddings=position_embeddings,
             )
-
-            hidden_states = layer_outputs
+            # For HF>= 4.54.0, the layer_outputs is a tensor, for older, it is a tuple.
+            if isinstance(layer_outputs, tuple):
+                hidden_states = layer_outputs[0]
+            else:
+                hidden_states = layer_outputs
 
         pre_norm_h = hidden_states
 
@@ -337,7 +340,11 @@ class HFEagleModel(EagleModel):
 
     def _set_default_aux_hidden_state_layers(self):
         num_layers = self.config.num_hidden_layers
-        self.eagle_aux_hidden_state_layer_ids = [1, num_layers // 2 - 1, num_layers - 4]
+        default_layer_ids = [1, num_layers // 2 - 1, num_layers - 4]
+        # Remove negative and duplicate when base model is small
+        default_layer_ids = [max(0, i) for i in default_layer_ids]
+        default_layer_ids = list(set(default_layer_ids))
+        self.eagle_aux_hidden_state_layer_ids = default_layer_ids
 
     def _collect_aux_hidden_states_forward_hook(self, module, input, output) -> None:
         """Collect auxiliary hidden states from base model intermediate layers, save them in attribute."""

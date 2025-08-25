@@ -20,9 +20,9 @@ import uuid
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from tensorrt_llm._torch.auto_deploy.shim import AutoDeployConfig
+from tensorrt_llm._torch.auto_deploy import LLM, AutoDeployConfig
 from tensorrt_llm.builder import BuildConfig
-from tensorrt_llm.llmapi.llm import LLM, RequestOutput
+from tensorrt_llm.llmapi.llm import RequestOutput
 from tensorrt_llm.sampling_params import SamplingParams
 from tensorrt_llm.serve.openai_protocol import (
     CompletionRequest,
@@ -50,20 +50,17 @@ def build_runner_from_config(args) -> LLM:
 
     # setup AD config
     ad_config = AutoDeployConfig(
-        use_cuda_graph=args.compile_backend == "torch-opt",
-        torch_compile_enabled=args.compile_backend == "torch-opt",
-        model_kwargs=model_kwargs,
-        attn_backend="TritonWithFlattenedInputs",
-        mla_backend="MultiHeadLatentAttention",
-        skip_loading_weights=False,
-    )
-    llm = LLM(
         model=args.ckpt_path,
-        backend="autodeploy",
-        build_config=build_config,
-        pytorch_backend_config=ad_config,
-        tensor_parallel_size=args.world_size,
+        compile_backend=args.compile_backend,
+        device=args.device,
+        world_size=args.world_size,
+        max_batch_size=args.max_batch_size,
+        max_seq_len=args.max_seq_len,
+        max_num_tokens=args.max_num_tokens,
+        model_kwargs=model_kwargs,
+        attn_backend="triton",
     )
+    llm = LLM(**ad_config.to_dict())
 
     return llm
 

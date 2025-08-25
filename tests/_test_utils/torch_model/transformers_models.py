@@ -18,25 +18,33 @@ from pathlib import Path
 
 import pytest
 import torch
+from packaging.version import Version
 
-pytest.importorskip("transformers")
+transformers = pytest.importorskip("transformers")
 from transformers import (
     AutoTokenizer,
     BertConfig,
     BertForQuestionAnswering,
     LlamaConfig,
     LlamaForCausalLM,
-    Qwen3Config,
-    Qwen3ForCausalLM,
     T5Config,
     T5ForConditionalGeneration,
     T5Tokenizer,
 )
 
+if Version(transformers.__version__) >= Version("4.51"):
+    from transformers import Qwen3Config, Qwen3ForCausalLM
+
+if Version(transformers.__version__) >= Version("4.55"):
+    from transformers import GptOssConfig, GptOssForCausalLM
+
 import modelopt.torch.opt as mto
 
 
-def get_tiny_qwen3(**config_kwargs) -> Qwen3ForCausalLM:
+def get_tiny_qwen3(**config_kwargs) -> "Qwen3ForCausalLM":
+    if Version(transformers.__version__) < Version("4.51"):
+        pytest.skip("Qwen3ForCausalLM is not supported in transformers < 4.51")
+
     kwargs = {
         "hidden_size": 32,
         "intermediate_size": 32,
@@ -84,6 +92,26 @@ def get_tiny_t5(**config_kwargs) -> T5ForConditionalGeneration:
     t5_model = T5ForConditionalGeneration(T5Config(**kwargs))
 
     return t5_model
+
+
+def get_tiny_gpt_oss(**config_kwargs) -> "GptOssForCausalLM":
+    if Version(transformers.__version__) < Version("4.55"):
+        pytest.skip("GptOssForCausalLM is not supported in transformers < 4.55")
+
+    kwargs = {
+        "num_hidden_layers": 4,
+        "num_local_experts": 8,
+        "vocab_size": 32,
+        "hidden_size": 32,
+        "intermediate_size": 32,
+        "head_dim": 16,
+        "num_attention_heads": 2,
+        "num_key_value_heads": 1,
+    }
+    kwargs.update(**config_kwargs)
+    tiny_gpt_oss = GptOssForCausalLM(GptOssConfig(**kwargs))
+
+    return tiny_gpt_oss
 
 
 def create_tiny_llama_dir(

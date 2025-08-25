@@ -17,8 +17,8 @@
 
 from modelopt.torch.utils import import_plugin
 
-with import_plugin("mcore_gpt_minitron"):
-    from .mcore_gpt_minitron import *
+with import_plugin("mcore_minitron"):
+    from .mcore_minitron import *
 
 with import_plugin("transformers"):
     from .transformers import *

@@ -105,9 +105,9 @@ def _test_mcore_gpt_pruning(
     if pruned_num_layers_div != 1:
         export_config["num_layers"] = pruned_num_layers
 
-    model, _ = mtp.prune(
+    mtp.prune(
         model,
-        mode="mcore_gpt_minitron",
+        mode="mcore_minitron",
         constraints={"export_config": export_config},
         dummy_input=None,  # Not used
         config={"forward_loop": forward_loop},
@@ -129,15 +129,15 @@ def _test_mcore_gpt_pruning(
             pruned_num_heads_per_group * pruned_num_query_groups * model.config.kv_channels,
         )
 
-    # Assert forward pass works on the pruned model
-    run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
-
     # Assert model.config is updated for correct save/restoring
     assert model.config.ffn_hidden_size == pruned_ffn
     assert model.config.num_attention_heads == pruned_num_attention_heads
     assert model.config.num_query_groups == pruned_num_query_groups
     assert model.config.hidden_size == pruned_hidden_size
     assert model.config.num_layers == pruned_num_layers
+
+    # Assert forward pass works on the pruned model
+    run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
 
 
 @pytest.mark.parametrize(

@@ -15,6 +15,7 @@
 
 import os
 import sys
+import warnings
 from typing import Any
 
 import torch
@@ -190,24 +191,33 @@ def get_model(
         else:
             architecture = hf_config.architectures[0]
 
-            assert hasattr(transformers, architecture), (
-                f"Architecture {architecture} not found in transformers: {transformers.__version__}"
-            )
-            auto_model_module = getattr(transformers, architecture)
+            if not hasattr(transformers, architecture):
+                warnings.warn(
+                    f"Architecture {architecture} not found in transformers: {transformers.__version__}. "
+                    "Falling back to AutoModelForCausalLM."
+                )
+                assert trust_remote_code, (
+                    "Please set trust_remote_code to True if you want to use this architecture"
+                )
+
+                auto_model_module = AutoModelForCausalLM
+                from_config = auto_model_module.from_config
+            else:
+                auto_model_module = getattr(transformers, architecture)
+                from_config = auto_model_module._from_config
 
             with init_empty_weights():
                 # When computing the device_map, assuming half precision by default,
                 # unless specified by the hf_config.
                 torch_dtype = getattr(hf_config, "torch_dtype", torch.float16)
                 model_kwargs2 = model_kwargs.copy()
+                if auto_model_module != AutoModelForCausalLM:
+                    model_kwargs2.pop("trust_remote_code", None)
                 model_kwargs2["torch_dtype"] = torch_dtype
                 # DeciLMForCausalLM does not support max_memory argument
                 if "architectures" in hf_config and "DeciLMForCausalLM" in hf_config.architectures:
                     model_kwargs2.pop("max_memory", None)
-                model = auto_model_module._from_config(
-                    hf_config,
-                    **model_kwargs2,
-                )
+                model = from_config(hf_config, **model_kwargs2)
 
             max_memory = get_max_memory()
             inferred_device_map = infer_auto_device_map(model, max_memory=max_memory)

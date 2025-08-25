@@ -221,50 +221,50 @@ def quantize(
 
     if not nodes_to_quantize:
         logger.info("No node or node type is selected for quantization or model does not have them")
-        return onnx_model
-    logger.debug(f"Selected {len(nodes_to_quantize)} nodes to quantize: {nodes_to_quantize}")
+    else:
+        logger.debug(f"Selected {len(nodes_to_quantize)} nodes to quantize: {nodes_to_quantize}")
 
-    if passes and "concat_elimination" in passes:
-        group_qdq_tensors = get_concat_eliminated_tensors(onnx_model, nodes_to_quantize)
-        if group_qdq_tensors:
-            trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
-            logger.debug(f"Found {len(group_qdq_tensors)} tensor groups for concat elimination")
+        if passes and "concat_elimination" in passes:
+            group_qdq_tensors = get_concat_eliminated_tensors(onnx_model, nodes_to_quantize)
+            if group_qdq_tensors:
+                trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
+                logger.debug(f"Found {len(group_qdq_tensors)} tensor groups for concat elimination")
 
-    # Create a temp file for intermediate model
-    tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
-    os.close(tmp_onnx_file)
+        # Create a temp file for intermediate model
+        tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
+        os.close(tmp_onnx_file)
 
-    # Use ORT api to quantize the onnx model
-    quantize_static(
-        onnx_path,
-        tmp_onnx_path,
-        calibration_data_reader,
-        op_types_to_quantize=op_types_to_quantize,
-        nodes_to_quantize=nodes_to_quantize,
-        per_channel=True,
-        extra_options=trt_guided_options,
-        use_external_data_format=use_external_data_format,
-        calibrate_method=(
-            CalibrationMethod.Entropy
-            if calibration_method == "entropy"
-            # With ActivationSymmetric as True, MinMax calibration is equivalent to max calibration
-            else CalibrationMethod.MinMax
-        ),
-    )
+        # Use ORT api to quantize the onnx model
+        quantize_static(
+            onnx_path,
+            tmp_onnx_path,
+            calibration_data_reader,
+            op_types_to_quantize=op_types_to_quantize,
+            nodes_to_quantize=nodes_to_quantize,
+            per_channel=True,
+            extra_options=trt_guided_options,
+            use_external_data_format=use_external_data_format,
+            calibrate_method=(
+                CalibrationMethod.Entropy
+                if calibration_method == "entropy"
+                # With ActivationSymmetric as True, MinMax calibration is equivalent to max calibration
+                else CalibrationMethod.MinMax
+            ),
+        )
 
-    intermediate_generated_files.append(tmp_onnx_path)
-    if use_external_data_format:
-        intermediate_generated_files.append(tmp_onnx_path + ".data")
+        intermediate_generated_files.append(tmp_onnx_path)
+        if use_external_data_format:
+            intermediate_generated_files.append(tmp_onnx_path + ".data")
 
-    # Post-processing of the onnx model after ORT quantization
-    logger.info("Starting post-processing of quantized model")
-    onnx_model = onnx.load(tmp_onnx_path)
-    graph = gs.import_onnx(onnx_model)
-    remove_partial_input_qdq(graph, no_quantize_inputs)
-    onnx_model = gs.export_onnx(graph)
+        # Post-processing of the onnx model after ORT quantization
+        logger.info("Starting post-processing of quantized model")
+        onnx_model = onnx.load(tmp_onnx_path)
+        graph = gs.import_onnx(onnx_model)
+        remove_partial_input_qdq(graph, no_quantize_inputs)
+        onnx_model = gs.export_onnx(graph)
 
-    if calibration_cache_path:
-        replace_scale_values(onnx_model.graph, act_scales_dict)
+        if calibration_cache_path:
+            replace_scale_values(onnx_model.graph, act_scales_dict)
 
     if high_precision_dtype in ["fp16", "bf16"]:
         # We need to convert float to float16 so as to speed up layers like LayerNorm or GroupNorm.
@@ -277,5 +277,7 @@ def quantize(
             trt_plugins=trt_extra_plugin_lib_paths,
         )
 
-    logger.info(f"Quantization completed successfully in {time.time() - t_start} seconds")
+    if nodes_to_quantize:
+        logger.info(f"Quantization completed successfully in {time.time() - t_start} seconds")
+
     return onnx_model

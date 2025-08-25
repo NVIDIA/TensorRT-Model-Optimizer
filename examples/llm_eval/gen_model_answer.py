@@ -269,14 +269,14 @@ def get_model_answers(
                 # some models may error out when generating long outputs
                 try:
                     if not engine_dir:
-                        output_ids = model.generate(
+                        output_ids = model.generate(  # type: ignore[attr-defined]
                             torch.as_tensor(input_ids).cuda(),
                             do_sample=do_sample,
                             temperature=temperature,
                             max_new_tokens=max_new_token,
                             top_p=top_p,
                         )
-                        if model.config.is_encoder_decoder:
+                        if model.config.is_encoder_decoder:  # type: ignore[attr-defined]
                             output_ids = output_ids[0]
                         else:
                             output_ids = output_ids[0][len(input_ids[0]) :]

@@ -937,10 +937,7 @@ def svdquant(
             module.weight_quantizer.svdquant_lora_b @ module.weight_quantizer.svdquant_lora_a
         )
         module.weight_quantizer.reset_amax()
-        max_calibrate(
-            module,
-            lambda module: module.weight_quantizer(module.weight),
-        )
+        module.input_quantizer.reset_amax()
 
     create_and_replace_svdquant_linear_on_the_fly(model=model)
     awq(model, forward_loop, "awq_lite", **kwargs)
@@ -949,3 +946,4 @@ def svdquant(
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:
             with enable_weight_access_and_writeback(module, model):
                 postprocess(module, name)
+    max_calibrate(model, forward_loop)

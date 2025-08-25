@@ -21,9 +21,9 @@ from typing import Any
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import torch
 from onnx import numpy_helper
 from onnx.reference.custom_element_types import float8e4m3fn
-from onnx.reference.ops.op_cast import Cast_19 as Cast
 
 from modelopt.onnx import utils
 from modelopt.onnx.logging_config import logger
@@ -38,9 +38,11 @@ from modelopt.onnx.quantization.quant_utils import (
     get_amax,
     get_weights_scaling_factor,
     get_weights_scaling_factor_2,
+    pack_weights_to_int4,
     quantize,
 )
 from modelopt.onnx.utils import get_attribute, has_attribute
+from modelopt.torch.quantization.qtensor import NVFP4QTensor
 
 QUANTIZE_NODE_NAME = "QuantizeLinear"
 DEQUANTIZE_NODE_NAME = "DequantizeLinear"
@@ -52,6 +54,13 @@ onnx_dtype_map = {
     "Half": onnx.TensorProto.FLOAT16,
     "INT8": onnx.TensorProto.INT8,
     "UINT8": onnx.TensorProto.UINT8,
+}
+
+np_dtype_map = {
+    "Float": np.float32,
+    "Half": np.float16,
+    "INT8": np.int8,
+    "UINT8": np.uint8,
 }
 
 
@@ -592,14 +601,29 @@ def _convert_weight(
     return scaled
 
 
-def _create_fp8_tensor(scaled: np.ndarray, weight_name: str) -> onnx.TensorProto:
-    """Create a FLOAT8E4M3FN tensor directly from numpy array.
+def _cast_fp8(array: np.ndarray) -> np.ndarray:
+    """Cast a numpy array to FLOAT8E4M3FN using PyTorch."""
+    array_f32_t = torch.from_numpy(array)
+    if torch.cuda.is_available():
+        array_f32_t = array_f32_t.cuda()
+    array_f8_t = array_f32_t.clamp(min=-448, max=448).to(torch.float8_e4m3fn).view(torch.uint8)
+    array_f8 = array_f8_t.cpu().numpy().astype((np.uint8, [("e4m3fn", "u1")]))
+    return array_f8
 
-    This function uses ONNX's reference implementation but it is not efficient.
-    TODO: Use a more efficient implementation.
-    """
-    # Use ONNX's reference implementation for correct float8e4m3fn conversion
-    fp8_data = Cast.eval(scaled, to=onnx.TensorProto.FLOAT8E4M3FN)
+
+def _cast_fp4(array: np.ndarray) -> np.ndarray:
+    """Cast a numpy array to FLOAT4E2M1 using PyTorch."""
+    array_f32_t = torch.from_numpy(array)
+    if torch.cuda.is_available():
+        array_f32_t = array_f32_t.cuda()
+    array_f4_t = NVFP4QTensor._cast_fp4(array_f32_t)
+    array_f4 = array_f4_t.cpu().numpy().astype((np.uint8, [("float4e2m1", "u1")]))
+    return array_f4
+
+
+def _create_fp8_tensor(scaled: np.ndarray, weight_name: str) -> onnx.TensorProto:
+    """Create a FLOAT8E4M3FN tensor directly from numpy array."""
+    fp8_data = _cast_fp8(scaled)
     return onnx.numpy_helper.from_array(fp8_data, weight_name)
 
 
@@ -828,6 +852,182 @@ def remove_input_dq_and_output_q(
     return onnx_model
 
 
+def _cast_initializer_to_dtype(
+    node: onnx.NodeProto, dtype: str, initializer_map: dict[str, onnx.TensorProto]
+):
+    for id, input_name in enumerate(node.input):
+        if input_name in initializer_map:
+            input_id = id
+    input_name = node.input[input_id]
+    input = numpy_helper.to_array(initializer_map[input_name])
+    input = input.astype(np_dtype_map[dtype])
+    input_onnx = onnx.numpy_helper.from_array(input, input_name)
+    input_onnx.data_type = onnx_dtype_map[dtype]
+    initializer_map[input_name].CopyFrom(input_onnx)
+
+
+def quantize_weights_to_int4(
+    onnx_model: onnx.ModelProto,
+) -> onnx.ModelProto:
+    """Converts ONNX model weights from higher precision to INT4 precision with graph optimization.
+
+    This function performs a comprehensive transformation of quantized weights in an ONNX model:
+    1. Identifies DequantizeLinear nodes that represent quantized weights
+    2. Extracts and processes weights and their corresponding scales
+    3. Simplifies the graph by removing unnecessary Reshape/Transpose operations
+    4. Converts weights to INT4 precision while maintaining numerical accuracy
+    5. Updates Cast operations to use float16 instead of float32
+
+    The transformation optimizes the typical pattern:
+    DequantizeLinear -> Reshape -> Transpose -> MatMul/Gemm
+    Into the simplified pattern:
+    DequantizeLinear -> MatMul/Gemm
+
+    Args:
+        onnx_model (onnx.ModelProto): Input ONNX model containing quantized weights.
+
+    Returns:
+        onnx.ModelProto: Weights converted to INT4 precision
+    """
+    graph = onnx_model.graph
+    initializer_map = {initializer.name: initializer for initializer in graph.initializer}
+    value_info_map = {value_info.name: value_info for value_info in graph.value_info}
+    weight_dq_nodes = [node for node in graph.node if node.op_type == "DequantizeLinear"]
+    tensor_producer_map = get_tensor_producer_nodes(graph)
+
+    nodes_to_remove = []
+    for node in weight_dq_nodes:
+        weight_name = node.input[0]
+        scale_name = node.input[1]
+        logger.debug(f"Processing INT4 conversion for weight {weight_name}")
+        weight = numpy_helper.to_array(initializer_map[weight_name])
+        if scale_name in initializer_map:
+            scale = numpy_helper.to_array(initializer_map[scale_name])
+        else:
+            scale_constant_node = tensor_producer_map[scale_name]
+            for attr in scale_constant_node.attribute:
+                if attr.name == "value":
+                    tensor = attr.t
+                    scale = numpy_helper.to_array(tensor)
+
+        weight = weight / scale
+        block_size = weight.shape[-1]
+
+        ## Convert DequantizeLinear -> Reshape -> Transpose -> MatMul/Gemm to DequantizeLinear -> Matmul/Gemm
+        dq_child_nodes = [n for n in graph.node if node.output[0] in n.input]
+        reshape_node = dq_child_nodes[0]
+        nodes_to_remove.append(reshape_node.name)
+        assert reshape_node.op_type == "Reshape", f"Expected Reshape node for {node.name}"
+        reshape_node_output = reshape_node.output[0]
+
+        # Get the shape of the output of the reshape node
+        reshape_output_value_info = value_info_map.get(reshape_node_output)
+        if reshape_output_value_info is not None:
+            weight_shape = [
+                dim.dim_value for dim in reshape_output_value_info.type.tensor_type.shape.dim
+            ]
+        else:
+            raise ValueError(f"Unable to determine shape of weight tensor {weight_name}")
+
+        # Reshape weights and scales
+        weight = weight.reshape(weight_shape)
+        assert weight_shape[-1] % block_size == 0, (
+            f"Block size {block_size} is not divisible by {weight_shape[-1]}"
+        )
+        scale_shape = [*weight_shape[:-1], weight_shape[-1] // block_size]
+        scale = scale.reshape(scale_shape)
+        reshape_child_nodes = [n for n in graph.node if reshape_node.output[0] in n.input]
+        # reshape_node.input = []
+        assert len(reshape_child_nodes) == 1, f"Expected exactly one transpose node for {node.name}"
+
+        # Transpose weights and scales if present
+        if reshape_child_nodes[0].op_type == "Transpose":
+            transpose_node = reshape_child_nodes[0]
+            nodes_to_remove.append(transpose_node.name)
+            assert transpose_node.op_type == "Transpose", f"Expected Transpose node for {node.name}"
+            perm = None
+            for attr in transpose_node.attribute:
+                if attr.name == "perm":
+                    perm = [x for x in attr.ints]  # noqa: C416
+            assert perm is not None, f"Permutation not found for {node.name}"
+            weight = weight.transpose(perm)
+            scale = scale.transpose(perm)
+            transpose_child_nodes = [n for n in graph.node if transpose_node.output[0] in n.input]
+            # transpose_node.input = []
+            assert len(transpose_child_nodes) == 1, (
+                f"Expected exactly one matmul node for {node.name}"
+            )
+            matmul_node = transpose_child_nodes[0]
+        else:
+            matmul_node = reshape_child_nodes[0]
+        assert matmul_node.op_type in ["MatMul", "Gemm"], (
+            f"Expected MatMul or Gemm node for {node.name}"
+        )
+        matmul_node.input[1] = node.output[0]
+
+        if scale_name not in initializer_map:
+            # Remove scale producer if it's a Constant node
+            scale_name = node.input[1]
+            scale_producer = tensor_producer_map[scale_name]
+            if scale_producer.op_type == "Constant":
+                graph.node.remove(scale_producer)
+
+            # Create a new scale tensor
+            scale_name = scale_name.replace("Constant_output_0", "scale")
+            scale_tensor = onnx.numpy_helper.from_array(scale, scale_name)
+            graph.initializer.append(scale_tensor)
+            node.input[1] = scale_name
+        else:
+            scale_tensor = onnx.numpy_helper.from_array(scale, scale_name)
+            initializer_map[scale_name].CopyFrom(scale_tensor)
+
+        # Convert weights to INT4 precision
+        weight_shape = weight.shape
+        weights_int4_np = pack_weights_to_int4(weight)
+        weights_int4_onnx = onnx.numpy_helper.from_array(weights_int4_np, weight_name)
+        weights_int4_onnx.data_type = onnx.TensorProto.INT4
+        weights_int4_onnx.dims[0] = weight_shape[0]
+        initializer_map[weight_name].CopyFrom(weights_int4_onnx)
+        logger.debug(f"Converted {weight_name} to INT4 precision")
+
+    # Remove transpose and reshape nodes
+    new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
+    graph.node.clear()
+    graph.node.extend(new_nodes)
+
+    def is_fp32_cast(node: onnx.NodeProto) -> bool:
+        return any(
+            attr.name == "to" and attr.i == onnx.TensorProto.FLOAT for attr in node.attribute
+        )
+
+    # Change all Cast nodes that cast to float32 (TensorProto.FLOAT) to cast to float16 (TensorProto.FLOAT16)
+    for node in graph.node:
+        if node.op_type == "Cast":
+            # Skip Cast nodes that are part of normalization layers and outputs
+            if ("norm/Cast" in node.name and is_fp32_cast(node)) or node.name == "/Cast":
+                continue
+            for attr in node.attribute:
+                if attr.name == "to" and attr.i == onnx.TensorProto.FLOAT:
+                    attr.i = onnx.TensorProto.FLOAT16
+
+    # Cast bias to float16
+    for node in graph.node:
+        if node.op_type == "Add" and "proj/Add" in node.name:
+            _cast_initializer_to_dtype(node, "Half", initializer_map)
+
+    # Cast pre quant scales of o_proj and down_proj to float16
+    for node in graph.node:
+        if node.op_type == "Mul" and (
+            any(
+                x in node.name
+                for x in ("o_proj/input_quantizer/Mul", "down_proj/input_quantizer/Mul")
+            )
+        ):
+            _cast_initializer_to_dtype(node, "Half", initializer_map)
+
+    return onnx_model
+
+
 def quantize_weights_to_mxfp8(
     onnx_model: onnx.ModelProto,
 ) -> onnx.ModelProto:
@@ -845,8 +1045,8 @@ def quantize_weights_to_mxfp8(
     """
     logger.info("Converting weights to MXFP8 precision")
     graph = onnx_model.graph
-    initializers = {initializer.name: initializer for initializer in graph.initializer}
-    tensor_producers = get_tensor_producer_nodes(graph)
+    initializer_map = {initializer.name: initializer for initializer in graph.initializer}
+    tensor_producer_map = get_tensor_producer_nodes(graph)
     e8_m0_bias = 127
     weight_dq_nodes = [
         node
@@ -861,7 +1061,7 @@ def quantize_weights_to_mxfp8(
         # Get weights and node attributes
         weight_name = node.input[0]
         logger.debug(f"Processing MXFP8 conversion for weight {weight_name}")
-        weight = numpy_helper.to_array(initializers[weight_name])
+        weight = numpy_helper.to_array(initializer_map[weight_name])
         if has_attribute(node, "axis"):
             quant_axis = int(get_attribute(node, "axis"))
         else:
@@ -885,7 +1085,7 @@ def quantize_weights_to_mxfp8(
 
         # Remove scale producer if it's a Constant node
         scale_name = node.input[1]
-        scale_producer = tensor_producers[scale_name]
+        scale_producer = tensor_producer_map[scale_name]
         if scale_producer.op_type == "Constant":
             graph.node.remove(scale_producer)
 
@@ -899,12 +1099,23 @@ def quantize_weights_to_mxfp8(
         # Expand block array so that it can be broadcasted with weight
         se8m0_fp32 = np.repeat(se8m0_fp32, block_size, axis=quant_axis)
         scaled_weight = weight / np.exp2(se8m0_fp32 - e8_m0_bias)
-        # TODO: replace with an efficient kernel
-        weights_e4m3 = onnx.numpy_helper.from_array(
-            Cast.eval(scaled_weight, to=onnx.TensorProto.FLOAT8E4M3FN), weight_name
-        )
-        initializers[weight_name].CopyFrom(weights_e4m3)
+        weights_e4m3 = onnx.numpy_helper.from_array(_cast_fp8(scaled_weight), weight_name)
+        initializer_map[weight_name].CopyFrom(weights_e4m3)
         logger.debug(f"Converted {weight_name} to MXFP8")
+
+    # set output type of DQ to FP16
+    for node in graph.node:
+        if node.op_type in ["TRT_MXFP8DequantizeLinear"]:
+            for attr in node.attribute:
+                if attr.name == "output_dtype":
+                    attr.i = onnx_dtype_map["Half"]
+
+    # set Cast to FP16
+    for node in graph.node:
+        if node.op_type == "Cast":
+            for attr in node.attribute:
+                if attr.name == "to" and attr.i == onnx.TensorProto.FLOAT:
+                    attr.i = onnx_dtype_map["Half"]
 
     # Currently only tanh approximation is supported for Gelu
     for node in gelu_nodes:
@@ -1105,8 +1316,8 @@ def fp4qdq_to_2dq(onnx_model: onnx.ModelProto, verbose: bool = False) -> onnx.Mo
         w_f32 = quantize(w32, block_size, sw_f32_per_block, sw_f32_per_tensor)
 
         # Real quantize the tensors
-        w_f4 = Cast.eval(w_f32, to=onnx.TensorProto.FLOAT4E2M1)
-        sw_f8_per_block = Cast.eval(sw_f32_per_block, to=onnx.TensorProto.FLOAT8E4M3FN)
+        w_f4 = _cast_fp4(w_f32)
+        sw_f8_per_block = _cast_fp8(sw_f32_per_block)
 
         replace_fp4qdq_with_2dq(
             graph,

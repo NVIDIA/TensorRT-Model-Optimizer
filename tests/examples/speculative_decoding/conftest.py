@@ -20,11 +20,17 @@ from _test_utils.examples.run_command import MODELOPT_ROOT, run_example_command
 
 
 @pytest.fixture(scope="session", autouse=True)
-def daring_anteater_path():
+def tiny_daring_anteater_path(tmp_path_factory):
     dataset_path = MODELOPT_ROOT / "examples/speculative_decoding/Daring-Anteater"
     if not os.path.exists(dataset_path):
         run_example_command(
             ["git", "clone", "https://huggingface.co/datasets/nvidia/Daring-Anteater"],
             "speculative_decoding",
         )
-    return dataset_path / "train.jsonl"
+    output_path = tmp_path_factory.mktemp("daring_anteater") / "train.jsonl"
+    with open(dataset_path / "train.jsonl") as src, open(output_path, "w") as dst:
+        for i, line in enumerate(src):
+            if i >= 128:
+                break
+            dst.write(line)
+    return output_path

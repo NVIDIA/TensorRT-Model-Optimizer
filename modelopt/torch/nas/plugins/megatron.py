@@ -15,6 +15,7 @@
 
 """Plugin to add NAS/Pruning support for megatron-core GPT model."""
 
+import types
 from collections.abc import Callable, Sequence
 from typing import Any
 from warnings import warn
@@ -219,7 +220,7 @@ class _DynamicMLP(DynamicModule):
         """Hook to collect activations for importance estimation.
 
         Activations are computed as mean over seq_len and then squared and summed over batch_size.
-        If we take the square root of the sum, we get the L2 norm of the activations.
+        Later we take the square root of the sum to get the L2 norm.
         """
         # Gather input [seq_len, batch_size, ffn_hidden_size] over all TP regions
         # NOTE: This is not used at the moment since we restrict to TP=1
@@ -240,7 +241,8 @@ class _DynamicMLP(DynamicModule):
     def _estimate_importance(self) -> TracedHp.Importance:
         """Return the activation magnitude-based importance of the ffn_hidden_size."""
         assert self._activations is not None, "No activations collected for importance estimation."
-        return self._activations
+        # Convert squared sum to L2 norm
+        return self._activations.pow(0.5)
 
     def export(self) -> torch.nn.Module:
         """Export the dynamic module to a torch.nn.Module."""
@@ -556,7 +558,7 @@ class _DynamicSelfAttention(DynamicModule):
         """Hook to collect activations for importance estimation.
 
         Activations are computed as mean over seq_len and then squared and summed over batch_size.
-        If we take the square root of the sum, we get the L2 norm of the activations.
+        Later we take the square root of the sum to get the L2 norm.
         """
         # Gather input [seq_len, batch_size, query_projection_size] over all TP regions
         # NOTE: This is not used at the moment since we restrict to TP=1
@@ -582,8 +584,10 @@ class _DynamicSelfAttention(DynamicModule):
     def _estimate_all_head_importance(self) -> TracedHp.Importance:
         """Return the importance for num_attention_heads (num_heads_per_group * num_query_groups)."""
         assert self._activations is not None, "No activations collected for importance estimation."
+        # Convert squared sum to L2 norm
+        scores = self._activations.pow(0.5)
         attn_head_importance = torch.linalg.vector_norm(
-            self._activations.view(
+            scores.view(
                 self.get_hparam("num_heads_per_group").max
                 * self.get_hparam("num_query_groups").max,
                 self.config.kv_channels,
@@ -596,8 +600,10 @@ class _DynamicSelfAttention(DynamicModule):
     def _estimate_query_group_importance(self) -> TracedHp.Importance:
         """Return the importance of the ``num_query_groups`` hparam."""
         assert self._activations is not None, "No activations collected for importance estimation."
+        # Convert squared sum to L2 norm
+        scores = self._activations.pow(0.5)
         group_importance = torch.linalg.vector_norm(
-            self._activations.view(
+            scores.view(
                 self.get_hparam("num_heads_per_group").max,
                 self.get_hparam("num_query_groups").max,
                 self.config.kv_channels,
@@ -856,6 +862,56 @@ class _DynamicExtendedRMSNorm(DynamicModule):
         return get_sliced_tensor(mod, value, "hidden_size")
 
 
+class _MambaContextParallelProxy:
+    """A proxy for the MambaContextParallel class.
+
+    This is used to return dynamic values for specific attributes of the MambaContextParallel class.
+    """
+
+    def __init__(self, mixer, cp):
+        """Initialize the proxy."""
+        object.__setattr__(self, "_mixer", mixer)
+        object.__setattr__(self, "_cp", cp)
+
+    def __getattribute__(self, name):
+        """Return the dynamic value for the given attribute."""
+        mixer = object.__getattribute__(self, "_mixer")
+        if name in ("d_inner_local_tp", "d_inner_local_tpcp"):
+            return mixer.d_inner
+        if name in ("nheads_local_tp", "nheads_local_tpcp"):
+            return mixer.nheads
+        if name == "conv1d_cp1":
+            return mixer.conv1d
+        if name == "dt_bias_cp1":
+            return mixer.dt_bias
+        if name == "A_log_cp1":
+            return mixer.A_log
+        if name == "D_cp1":
+            return mixer.D
+        # Delegate to the underlying cp object for everything else, but
+        # rebind bound methods so that `self` inside them is this proxy.
+        cp = object.__getattribute__(self, "_cp")
+        attr = getattr(cp, name)
+        # Avoid meddling with dunder/special attributes
+        if isinstance(name, str) and name.startswith("__"):
+            return attr
+        # Rebind methods originally bound to the underlying cp instance
+        if (
+            callable(attr)
+            and hasattr(attr, "__self__")
+            and getattr(attr, "__self__", None) is cp
+            and hasattr(attr, "__func__")
+        ):
+            return types.MethodType(attr.__func__, self)
+        return attr
+
+    def __setattr__(self, name, value):
+        if name in ("_mixer", "_cp"):
+            object.__setattr__(self, name, value)
+        else:
+            setattr(object.__getattribute__(self, "_cp"), name, value)
+
+
 class _DynamicMambaMixer(DynamicModule):
     """A ``megatron.core.ssm.mamba_mixer.MambaMixer`` layer with dynamic hyperparams.
 
@@ -879,11 +935,11 @@ class _DynamicMambaMixer(DynamicModule):
         self._register_hparam("mamba_num_heads", mamba_num_heads)
         self._register_hparam("mamba_head_dim", mamba_head_dim)
         self._register_hparam("bc", bc)
-        self._register_dynamic_attribute("d_inner_local", lambda mod, val: self.d_inner)
+        self._register_dynamic_attribute("d_inner_local_tp", lambda mod, val: self.d_inner)
 
         # Register dynamic attributes
         self._register_dynamic_attribute("nheads", lambda mod, val: self.mamba_num_heads)
-        self._register_dynamic_attribute("nheads_local", lambda mod, val: self.nheads)
+        self._register_dynamic_attribute("nheads_local_tp", lambda mod, val: self.nheads)
         self._register_dynamic_attribute("headdim", lambda mod, val: self.mamba_head_dim)
 
         # Convert to dynamic modules
@@ -912,16 +968,42 @@ class _DynamicMambaMixer(DynamicModule):
         self._register_dynamic_attribute("D", self._get_dt_bias_A_log_D)
         assert not self.D_has_hdim, "D_has_hdim is not supported yet"
 
+        self.cp = _MambaContextParallelProxy(self, self.cp)
+
         # Register importance estimator for mamba heads
         self._register_temp_attribute("_activations", None)
         self.hook_handle = self.in_proj.register_forward_hook(self._mamba_in_proj_forward_hook)
+        mamba_num_heads._importance_is_order = True
         mamba_num_heads.register_importance(self._estimate_head_importance)
+        mamba_head_dim._importance_is_order = True
         mamba_head_dim.register_importance(self._estimate_head_dim_importance)
 
     @staticmethod
     def _get_dt_bias_A_log_D(mod: "_DynamicMambaMixer", data: torch.Tensor) -> torch.Tensor:  # noqa: N802
         """Return the sliced data based on mamba_num_heads's active_slice."""
         return get_sliced_tensor(mod, data, "mamba_num_heads")
+
+    def _mamba_in_proj_forward_hook(self, module, input, output) -> None:
+        """Hook to collect activations for importance estimation.
+
+        Activations are computed as mean over seq_len and then squared and summed over batch_size.
+        Later we take the square root of the sum to get the L2 norm.
+        """
+        # Gather output [seq_len, batch_size, output_size] over all TP regions
+        # NOTE: This is not used at the moment since we restrict to TP=1
+        output = gather_from_tensor_model_parallel_region(output[0]).detach()
+
+        # Dont aggregate activations from non-max subnets (e.g. from profiling)
+        if output.shape[-1] != self.in_proj.get_hparam("output_size").max:
+            return
+
+        output = output.to(torch.float32)  # use full precision to avoid overflow
+        activations = output.abs().mean(dim=0)  # [batch_size, output_size]
+        activations = activations.pow(2).sum(dim=0)  # [output_size]
+        if self._activations is None:
+            self._activations = activations
+        else:
+            self._activations += activations
 
     def _estimate_head_and_head_dim_rankings(self):
         """Get the rankings of Mamba heads and head dimensions.
@@ -930,7 +1012,8 @@ class _DynamicMambaMixer(DynamicModule):
             head_ranking: Ranking of Mamba heads of shape [mamba_num_heads.max]
             head_dim_ranking: Ranking of Mamba head dimensions of shape [mamba_head_dim.max]
         """
-        scores = self._activations
+        # Convert squared sum to L2 norm
+        scores = self._activations.pow(0.5)
         assert scores is not None, "No activations collected for importance estimation."
 
         max_nheads: int = self.get_hparam("mamba_num_heads").max
@@ -973,45 +1056,15 @@ class _DynamicMambaMixer(DynamicModule):
     def _estimate_head_importance(self):
         """Get the importance of Mamba heads for sort_parameters()."""
         head_ranking, _ = self._estimate_head_and_head_dim_rankings()
-        print_rank_0("Overriding mamba_num_heads.importance to ranking for simplicity.")
-        # [HACK] Return ranking instead of importance but disable argsort
-        # so it skips further sorting and returns same ranking inside sort_parameters()
+        # [HACK] Return ranking instead of importance for sort_parameters()
         # NOTE: Trimming should also happen within each group. This is handled in MambaNumHeadsHp.
-        head_ranking.argsort = lambda *args, **kwargs: head_ranking
         return head_ranking
 
     def _estimate_head_dim_importance(self):
         """Get the importance of Mamba head dimensions for sort_parameters()."""
         _, head_dim_ranking = self._estimate_head_and_head_dim_rankings()
-        print_rank_0(
-            "Overriding mamba_head_dim.importance to correctly rank per group for simplicity."
-        )
-        # [HACK] Return ranking instead of importance but disable argsort
-        # so it skips further sorting and returns same ranking inside sort_parameters()
-        head_dim_ranking.argsort = lambda *args, **kwargs: head_dim_ranking
+        # [HACK] Return ranking instead of importance for sort_parameters()
         return head_dim_ranking
-
-    def _mamba_in_proj_forward_hook(self, module, input, output) -> None:
-        """Hook to collect activations for importance estimation.
-
-        Activations are computed as mean over seq_len and then squared and summed over batch_size.
-        If we take the square root of the sum, we get the L2 norm of the activations.
-        """
-        # Gather output [seq_len, batch_size, output_size] over all TP regions
-        # NOTE: This is not used at the moment since we restrict to TP=1
-        output = gather_from_tensor_model_parallel_region(output[0]).detach()
-
-        # Dont aggregate activations from non-max subnets (e.g. from profiling)
-        if output.shape[-1] != self.in_proj.get_hparam("output_size").max:
-            return
-
-        output = output.to(torch.float32)  # use full precision to avoid overflow
-        activations = output.abs().mean(dim=0)  # [batch_size, output_size]
-        activations = activations.pow(2).sum(dim=0)  # [output_size]
-        if self._activations is None:
-            self._activations = activations
-        else:
-            self._activations += activations
 
     def export(self) -> torch.nn.Module:
         """Export the dynamic module to a torch.nn.Module."""
@@ -1167,7 +1220,8 @@ class _DynamicMCoreLanguageModel(DynamicModule):
     def _emb_layernorm_forward_hook(self, module, input, output) -> None:
         """Hook to collect activations for importance estimation.
 
-        Activations are computed as mean over seq_len and then L2 norm over batch_size.
+        Activations are computed as mean over seq_len and then squared and summed over batch_size.
+        Later we take the square root of the sum to get the L2 norm.
         """
         # Gather output [seq_len, batch_size, hidden_size] over all TP regions
         # NOTE: This is not used at the moment since we restrict to TP=1
@@ -1188,10 +1242,8 @@ class _DynamicMCoreLanguageModel(DynamicModule):
     def _estimate_hidden_size_importance(self) -> TracedHp.Importance:
         """Return the activation magnitude-based importance of the hidden_size."""
         assert self._activations, "No activations collected for importance estimation."
-        aggregated_activations = [
-            act.pow(0.5)  # L2 norm over global batch size per hook
-            for act in self._activations.values()
-        ]
+        # Convert squared sum to L2 norm over global batch size per hook
+        aggregated_activations = [act.pow(0.5) for act in self._activations.values()]
         activations = torch.stack(aggregated_activations).sum(dim=0)  # [hidden_size]
 
         # Reduce over all PP ranks

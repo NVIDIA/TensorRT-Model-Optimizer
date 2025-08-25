@@ -28,7 +28,6 @@ class DiffuserModel(NamedTuple):
     path: str
     format_type: str
     quant_algo: str
-    quant_level: str
     collect_method: str
 
     def _run_cmd(self, script: str, *args: str) -> None:
@@ -61,8 +60,6 @@ class DiffuserModel(NamedTuple):
             self.format_type,
             "--collect-method",
             self.collect_method,
-            "--quant-level",
-            self.quant_level,
             "--quant-algo",
             self.quant_algo,
         ]
@@ -74,9 +71,9 @@ class DiffuserModel(NamedTuple):
             "--trt-high-precision-dtype",
             self.dtype,
             "--quantized-torch-ckpt-save-path",
-            str(tmp_path / f"{self.name}_{self.format_type}_{self.quant_level}.pt"),
+            str(tmp_path / f"{self.name}_{self.format_type}.pt"),
             "--onnx-dir",
-            str(tmp_path / f"{self.name}_{self.format_type}_{self.quant_level}_onnx"),
+            str(tmp_path / f"{self.name}_{self.format_type}_onnx"),
         )
 
     def restore(self, tmp_path: Path) -> None:
@@ -86,16 +83,16 @@ class DiffuserModel(NamedTuple):
             "--trt-high-precision-dtype",
             self.dtype,
             "--restore-from",
-            str(tmp_path / f"{self.name}_{self.format_type}_{self.quant_level}.pt"),
+            str(tmp_path / f"{self.name}_{self.format_type}.pt"),
             "--onnx-dir",
-            str(tmp_path / f"{self.name}_{self.format_type}_{self.quant_level}_onnx"),
+            str(tmp_path / f"{self.name}_{self.format_type}_onnx"),
         )
 
     def inference(self, tmp_path: Path) -> None:
         self._run_cmd(
             "diffusion_trt.py",
             "--onnx-load-path",
-            str(tmp_path / f"{self.name}_{self.format_type}_{self.quant_level}_onnx/model.onnx"),
+            str(tmp_path / f"{self.name}_{self.format_type}_onnx/model.onnx"),
             "--dq-only",
         )
 
@@ -109,7 +106,6 @@ class DiffuserModel(NamedTuple):
             dtype="BFloat16",
             format_type="int8",
             quant_algo="smoothquant",
-            quant_level="3.0",
             collect_method="min-mean",
         ),
         DiffuserModel(
@@ -118,7 +114,6 @@ class DiffuserModel(NamedTuple):
             dtype="Half",
             format_type="int8",
             quant_algo="smoothquant",
-            quant_level="3.0",
             collect_method="min-mean",
         ),
         pytest.param(
@@ -128,7 +123,6 @@ class DiffuserModel(NamedTuple):
                 dtype="Half",
                 format_type="fp8",
                 quant_algo="max",
-                quant_level="3.0",
                 collect_method="default",
             ),
             marks=minimum_sm(89),
@@ -139,7 +133,6 @@ class DiffuserModel(NamedTuple):
             dtype="Half",
             format_type="int8",
             quant_algo="smoothquant",
-            quant_level="3.0",
             collect_method="min-mean",
         ),
     ],

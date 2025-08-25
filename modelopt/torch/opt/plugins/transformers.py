@@ -21,13 +21,20 @@ from contextlib import contextmanager
 
 import torch
 import transformers
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, Trainer, TrainerCallback
 from transformers import modeling_utils as tf_modeling_utils
 
-from ..conversion import ModeloptStateManager
-from .huggingface import _new_save_pretrained, _patch_model_init_for_modelopt, register_for_patching
+from modelopt.torch.utils import report_memory
 
-__all__ = []
+from ..conversion import ModeloptStateManager
+from .huggingface import (
+    _new_save_pretrained,
+    _patch_model_init_for_modelopt,
+    enable_huggingface_checkpointing,
+    register_for_patching,
+)
+
+__all__ = ["ModelOptHFTrainer"]
 
 
 @contextmanager
@@ -93,6 +100,17 @@ def _save_pretrained_with_checks(self, save_directory, *args, **kwargs):
     return _new_save_pretrained(self, save_directory, *args, **kwargs)
 
 
+# [Fix for huggingface bug] deepspeed zero3 training backend only loads params into the model from
+# state_dict, but not buffers. So lets explicitly load the buffers into the model from state_dict.
+def _load_params_and_buffers_into_zero3_model(model_to_load, state_dict):
+    buffer_names = [name for name, _ in model_to_load.named_buffers()]
+    buffer_state_dict = {k: v for k, v in state_dict.items() if k in buffer_names}
+    model_to_load.load_state_dict(buffer_state_dict, strict=False)
+    return tf_modeling_utils._modelopt_cache["_load_state_dict_into_zero3_model"](
+        model_to_load, state_dict
+    )
+
+
 pretrained_model_patch_methods = [
     ("from_pretrained", classmethod(_new_from_pretrained)),
     # We need to patch _from_config of PreTrainedModel; from_config is a private method in _BaseAutoModelClass and
@@ -102,3 +120,41 @@ pretrained_model_patch_methods = [
 ]
 
 register_for_patching("transformers", PreTrainedModel, pretrained_model_patch_methods)
+register_for_patching(
+    "transformers",
+    tf_modeling_utils,
+    [("_load_state_dict_into_zero3_model", _load_params_and_buffers_into_zero3_model)],
+)
+
+
+def _report_memory(msg):
+    if not torch.cuda.is_available():
+        return
+    if torch.distributed.is_initialized() and torch.distributed.get_rank() == 0:
+        report_memory(msg + ":", device=torch.cuda.current_device())
+    else:
+        for device in range(torch.cuda.device_count()):
+            report_memory(f"{msg}, device={device}:", device=device)
+
+
+class _MemoryReportCallback(TrainerCallback):
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step == 1:
+            _report_memory("Memory usage at training step 1")
+
+    def on_evaluate(self, args, state, control, **kwargs):
+        if state.global_step <= 1:
+            _report_memory("Memory usage at evaluation")
+
+
+class ModelOptHFTrainer(Trainer):
+    """A drop-in replacement of HuggingFace's Trainer for ModelOpt.
+
+    This class adds extra utilities for ModelOpt checkpointing and memory reporting.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """Initialize."""
+        enable_huggingface_checkpointing()
+        super().__init__(*args, **kwargs)
+        self.add_callback(_MemoryReportCallback())

@@ -20,11 +20,11 @@ from mpi4py import MPI
 # Pre import tensorrt_llm
 try:
     import tensorrt_llm
-except Exception as e:
+except ImportError:
     print(
         "tensorrt_llm package is not installed. Please build or install tensorrt_llm package"
         " properly before calling the llm deployment API."
     )
-    raise (e)
+    raise
 
 from .generate import *

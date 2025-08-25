@@ -12,13 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Any
 
-import torch
 from calib.plugin_calib import PercentileCalibrator
-from utils import filter_func
-
-from modelopt.torch.quantization.config import NVFP4_FP8_MHA_CONFIG  # noqa: F401
 
 FP8_DEFAULT_CONFIG = {
     "quant_cfg": {
@@ -30,6 +25,16 @@ FP8_DEFAULT_CONFIG = {
             "num_bits": (4, 3),
             "axis": None,
         },
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
+INT8_DEFAULT_CONFIG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": 8, "axis": 0},
+        "*input_quantizer": {"num_bits": 8, "axis": 0},
+        "*output_quantizer": {"enable": False},
         "default": {"enable": False},
     },
     "algorithm": "max",
@@ -60,15 +65,15 @@ NVFP4_DEFAULT_CONFIG = {
     "algorithm": "max",
 }
 
-NVFP4_FP8_MHA_FLUX_CONFIG = {
+NVFP4_FP8_MHA_CONFIG = {
     "quant_cfg": {
-        "*transformer_blocks*weight_quantizer": {
+        "**weight_quantizer": {
             "num_bits": (2, 1),
             "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
             "axis": None,
             "enable": True,
         },
-        "*transformer_blocks*input_quantizer": {
+        "**input_quantizer": {
             "num_bits": (2, 1),
             "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
             "axis": None,
@@ -93,99 +98,6 @@ NVFP4_FP8_MHA_FLUX_CONFIG = {
 }
 
 
-def get_int8_config(
-    model,
-    quant_level=3,
-    percentile=1.0,
-    num_inference_steps=20,
-    collect_method="global_min",
-):
-    quant_config: dict[str, dict[str, Any]] = {
-        "quant_cfg": {
-            "*output_quantizer": {"enable": False},
-            "default": {"enable": False},
-        }
-    }
-    for name, module in model.named_modules():
-        w_name = f"{name}*weight_quantizer"
-        i_name = f"{name}*input_quantizer"
-
-        if w_name in quant_config["quant_cfg"] or i_name in quant_config["quant_cfg"]:
-            continue
-        if filter_func(name):
-            continue
-        if isinstance(module, torch.nn.Linear):
-            if (
-                (quant_level >= 2 and "ff.net" in name)
-                or (quant_level >= 2.5 and ("to_q" in name or "to_k" in name or "to_v" in name))
-                or quant_level == 3
-            ):
-                quant_config["quant_cfg"][w_name] = {
-                    "num_bits": 8,
-                    "axis": 0,
-                }
-                quant_config["quant_cfg"][i_name] = {
-                    "num_bits": 8,
-                    "axis": -1,
-                }
-        elif isinstance(module, torch.nn.Conv2d):
-            quant_config["quant_cfg"][w_name] = {
-                "num_bits": 8,
-                "axis": 0,
-            }
-            quant_config["quant_cfg"][i_name] = {
-                "num_bits": 8,
-                "axis": None,
-                "calibrator": (
-                    PercentileCalibrator,
-                    (),
-                    {
-                        "num_bits": 8,
-                        "axis": None,
-                        "percentile": percentile,
-                        "total_step": num_inference_steps,
-                        "collect_method": collect_method,
-                    },
-                ),
-            }
-    return quant_config
-
-
-def get_fp4_config(model, fp4_linear_only=False):
-    """fp4 for linear, optionally fp8 for conv"""
-
-    quant_config = {
-        "quant_cfg": {},
-        "algorithm": "max",
-    }
-    for name, module in model.named_modules():
-        w_name = f"{name}*weight_quantizer"
-        i_name = f"{name}*input_quantizer"
-
-        if w_name in quant_config["quant_cfg"] or i_name in quant_config["quant_cfg"]:
-            continue
-        if isinstance(module, torch.nn.Linear):
-            quant_config["quant_cfg"][w_name] = {  # type: ignore[index]
-                "num_bits": (2, 1),
-                "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
-                "axis": None,
-            }
-            quant_config["quant_cfg"][i_name] = {  # type: ignore[index]
-                "num_bits": (2, 1),
-                "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
-                "axis": None,
-            }
-        elif isinstance(module, torch.nn.Conv2d):
-            if fp4_linear_only:
-                quant_config["quant_cfg"][w_name] = {"enable": False}  # type: ignore[index]
-                quant_config["quant_cfg"][i_name] = {"enable": False}  # type: ignore[index]
-            else:
-                # fp8 for conv
-                quant_config["quant_cfg"][w_name] = {"num_bits": (4, 3), "axis": None}  # type: ignore[index]
-                quant_config["quant_cfg"][i_name] = {"num_bits": (4, 3), "axis": None}  # type: ignore[index]
-    return quant_config
-
-
 def set_quant_config_attr(quant_config, trt_high_precision_dtype, quant_algo, **kwargs):
     algo_cfg = {"method": quant_algo}
 
@@ -198,3 +110,23 @@ def set_quant_config_attr(quant_config, trt_high_precision_dtype, quant_algo, **
     for p in quant_config["quant_cfg"].values():
         if "num_bits" in p and "trt_high_precision_dtype" not in p:
             p["trt_high_precision_dtype"] = trt_high_precision_dtype
+
+
+def reset_set_int8_config(quant_config, percentile, n_steps, collect_method):
+    for key in quant_config["quant_cfg"]:
+        if "weight" not in key:
+            quant_config["quant_cfg"][key] = {
+                "num_bits": 8,
+                "axis": None,
+                "calibrator": (
+                    PercentileCalibrator,
+                    (),
+                    {
+                        "num_bits": 8,
+                        "axis": None,
+                        "percentile": percentile,
+                        "total_step": n_steps,
+                        "collect_method": collect_method,
+                    },
+                ),
+            }

@@ -18,7 +18,7 @@ Latest Model Optimizer (``nvidia-modelopt``) currently has the following system 
 +-------------------------+-----------------------------+
 | PyTorch                 |  >=2.6                      |
 +-------------------------+-----------------------------+
-| TensorRT-LLM (Optional) |  0.20                       |
+| TensorRT-LLM (Optional) |  1.0.0rc6                   |
 +-------------------------+-----------------------------+
 | ONNX Runtime (Optional) |  1.22                       |
 +-------------------------+-----------------------------+
@@ -32,7 +32,9 @@ Environment setup
 
     **Using ModelOpt's docker image**
 
-    Easiest way to get started with using Model Optimizer and additional dependencies (e.g. TensorRT-LLM deployment) is to start from our docker image.
+    To use Model Optimizer with full dependencies (e.g. TensorRT/TensorRT-LLM deployment), we recommend using our provided docker image
+    which is based on the `TensorRT-LLM <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tensorrt-llm/containers/release/tags>`_
+    docker image with additional example-specific dependencies installed.
 
     After installing the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_,
     please run the following commands to build the Model Optimizer docker container which has all the necessary

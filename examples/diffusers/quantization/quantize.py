@@ -14,322 +14,898 @@
 # limitations under the License.
 
 import argparse
+import logging
+import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import torch
 from config import (
     FP8_DEFAULT_CONFIG,
+    INT8_DEFAULT_CONFIG,
     NVFP4_DEFAULT_CONFIG,
-    NVFP4_FP8_MHA_FLUX_CONFIG,
-    get_int8_config,
+    NVFP4_FP8_MHA_CONFIG,
+    reset_set_int8_config,
     set_quant_config_attr,
 )
-from diffusers import DiffusionPipeline, FluxPipeline, StableDiffusion3Pipeline
+from diffusers import (
+    DiffusionPipeline,
+    FluxPipeline,
+    LTXConditionPipeline,
+    LTXLatentUpsamplePipeline,
+    StableDiffusion3Pipeline,
+)
 from onnx_utils.export import generate_fp8_scales, modelopt_export_sd
-from utils import check_lora, filter_func, fp8_mha_disable, load_calib_prompts, quantize_lvl
+from tqdm import tqdm
+from utils import (
+    check_conv_and_mha,
+    check_lora,
+    filter_func_default,
+    filter_func_ltx_video,
+    load_calib_prompts,
+)
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 
-MODEL_ID: dict[str, str] = {
-    "sdxl-1.0": "stabilityai/stable-diffusion-xl-base-1.0",
-    "sdxl-turbo": "stabilityai/sdxl-turbo",
-    "sd3-medium": "stabilityai/stable-diffusion-3-medium-diffusers",
-    "flux-dev": "black-forest-labs/FLUX.1-dev",
-    "flux-schnell": "black-forest-labs/FLUX.1-schnell",
+
+class ModelType(str, Enum):
+    """Supported model types."""
+
+    SDXL_BASE = "sdxl-1.0"
+    SDXL_TURBO = "sdxl-turbo"
+    SD3_MEDIUM = "sd3-medium"
+    FLUX_DEV = "flux-dev"
+    FLUX_SCHNELL = "flux-schnell"
+    LTX_VIDEO_DEV = "ltx-video-dev"
+
+
+class DataType(str, Enum):
+    """Supported data types for model loading."""
+
+    HALF = "Half"
+    BFLOAT16 = "BFloat16"
+    FLOAT = "Float"
+
+
+class QuantFormat(str, Enum):
+    """Supported quantization formats."""
+
+    INT8 = "int8"
+    FP8 = "fp8"
+    FP4 = "fp4"
+
+
+class QuantAlgo(str, Enum):
+    """Supported quantization algorithms."""
+
+    MAX = "max"
+    SVDQUANT = "svdquant"
+    SMOOTHQUANT = "smoothquant"
+
+
+class CollectMethod(str, Enum):
+    """Calibration collection methods."""
+
+    GLOBAL_MIN = "global_min"
+    MIN_MAX = "min-max"
+    MIN_MEAN = "min-mean"
+    MEAN_MAX = "mean-max"
+    DEFAULT = "default"
+
+
+def get_model_filter_func(model_type: ModelType) -> Callable[[str], bool]:
+    """
+    Get the appropriate filter function for a given model type.
+
+    Args:
+        model_type: The model type enum
+
+    Returns:
+        A filter function appropriate for the model type
+    """
+    filter_func_map = {
+        ModelType.FLUX_DEV: filter_func_default,
+        ModelType.FLUX_SCHNELL: filter_func_default,
+        ModelType.SDXL_BASE: filter_func_default,
+        ModelType.SDXL_TURBO: filter_func_default,
+        ModelType.SD3_MEDIUM: filter_func_default,
+        ModelType.LTX_VIDEO_DEV: filter_func_ltx_video,
+    }
+
+    return filter_func_map.get(model_type, filter_func_default)
+
+
+# Model registry with HuggingFace model IDs
+MODEL_REGISTRY: dict[ModelType, str] = {
+    ModelType.SDXL_BASE: "stabilityai/stable-diffusion-xl-base-1.0",
+    ModelType.SDXL_TURBO: "stabilityai/sdxl-turbo",
+    ModelType.SD3_MEDIUM: "stabilityai/stable-diffusion-3-medium-diffusers",
+    ModelType.FLUX_DEV: "black-forest-labs/FLUX.1-dev",
+    ModelType.FLUX_SCHNELL: "black-forest-labs/FLUX.1-schnell",
+    ModelType.LTX_VIDEO_DEV: "Lightricks/LTX-Video-0.9.7-dev",
 }
 
-# Additional model-specific arguments for calibration
-ADDITIONAL_ARGS: dict[str, dict[str, Any]] = {
-    "flux-dev": {
+# Model-specific default arguments for calibration
+MODEL_DEFAULTS: dict[ModelType, dict[str, Any]] = {
+    ModelType.FLUX_DEV: {
         "height": 1024,
         "width": 1024,
         "guidance_scale": 3.5,
         "max_sequence_length": 512,
     },
-    "flux-schnell": {
+    ModelType.FLUX_SCHNELL: {
         "height": 1024,
         "width": 1024,
         "guidance_scale": 3.5,
         "max_sequence_length": 512,
     },
+    ModelType.LTX_VIDEO_DEV: {
+        "height": 512,
+        "width": 704,
+        "num_frames": 121,
+        "negative_prompt": "worst quality, inconsistent motion, blurry, jittery, distorted",
+    },
 }
 
 
-def create_pipeline(
-    model_name: str,
-    model_dtype: str,
-    override_model_path: str | None = None,
-) -> DiffusionPipeline:
-    """Create and return an appropriate pipeline based on the model_name provided."""
-    # Convert string to torch.dtype
-    if model_dtype == "Half":
-        torch_dtype = torch.float16
-    elif model_dtype == "BFloat16":
-        torch_dtype = torch.bfloat16
-    elif model_dtype == "Float":
-        torch_dtype = torch.float32
-    else:
-        raise ValueError(f"Unknown model dtype {model_dtype}.")
+@dataclass
+class QuantizationConfig:
+    """Configuration for model quantization."""
 
-    model_path = override_model_path if override_model_path else MODEL_ID[model_name]
+    format: QuantFormat = QuantFormat.INT8
+    algo: QuantAlgo = QuantAlgo.MAX
+    percentile: float = 1.0
+    collect_method: CollectMethod = CollectMethod.DEFAULT
+    alpha: float = 1.0  # SmoothQuant alpha
+    lowrank: int = 32  # SVDQuant lowrank
+    quantize_mha: bool = False
 
-    if model_name == "sd3-medium":
-        return StableDiffusion3Pipeline.from_pretrained(model_path, torch_dtype=torch_dtype)
-    elif model_name in ["flux-dev", "flux-schnell"]:
-        return FluxPipeline.from_pretrained(model_path, torch_dtype=torch_dtype)
-    else:
-        # Example for stable-diffusion-based models
-        return DiffusionPipeline.from_pretrained(
-            model_path,
-            torch_dtype=torch_dtype,
-            use_safetensors=True,
-        )
+    def validate(self) -> None:
+        """Validate configuration consistency."""
+        if self.format == QuantFormat.FP8 and self.collect_method != CollectMethod.DEFAULT:
+            raise NotImplementedError("Only 'default' collect method is implemented for FP8.")
+        if self.quantize_mha and self.format == QuantFormat.INT8:
+            raise ValueError("MHA quantization is only supported for FP8, not INT8.")
 
 
-def do_calibrate(
-    pipe: DiffusionPipeline,
-    calibration_prompts: list[str],
-    model_id: str,
-    calib_size: int,
-    n_steps: int,
-) -> None:
-    """
-    Run calibration steps on the pipeline using the given prompts.
-    """
-    for i, prompts in enumerate(calibration_prompts):
-        if i >= calib_size:
-            break
-        common_args = {
-            "prompt": prompts,
-            "num_inference_steps": n_steps,
+@dataclass
+class CalibrationConfig:
+    """Configuration for calibration process."""
+
+    batch_size: int = 2
+    calib_size: int = 128
+    n_steps: int = 30
+    prompts_dataset: str = "Gustavosta/Stable-Diffusion-Prompts"
+
+    def validate(self) -> None:
+        """Validate calibration configuration."""
+        if self.batch_size <= 0:
+            raise ValueError("Batch size must be positive.")
+        if self.calib_size <= 0:
+            raise ValueError("Calibration size must be positive.")
+        if self.n_steps <= 0:
+            raise ValueError("Number of steps must be positive.")
+
+    @property
+    def num_batches(self) -> int:
+        """Calculate number of calibration batches."""
+        return self.calib_size // self.batch_size
+
+
+@dataclass
+class ModelConfig:
+    """Configuration for model loading and inference."""
+
+    model_type: ModelType = ModelType.FLUX_DEV
+    model_dtype: DataType = DataType.HALF
+    trt_high_precision_dtype: DataType = DataType.HALF
+    override_model_path: Path | None = None
+    cpu_offloading: bool = False
+    ltx_skip_upsampler: bool = False  # Skip upsampler for LTX-Video (faster calibration)
+
+    @property
+    def torch_dtype(self) -> torch.dtype:
+        """Convert DataType enum to torch.dtype."""
+        dtype_map = {
+            DataType.HALF: torch.float16,
+            DataType.BFLOAT16: torch.bfloat16,
+            DataType.FLOAT: torch.float32,
         }
-        extra_args = ADDITIONAL_ARGS.get(model_id, {})
-        # If needed, add negative_prompt or other custom logic here
-        pipe(**common_args, **extra_args).images
+        return dtype_map[self.model_dtype]
+
+    @property
+    def model_path(self) -> str:
+        """Get the model path (override or default)."""
+        if self.override_model_path:
+            return str(self.override_model_path)
+        return MODEL_REGISTRY[self.model_type]
+
+    @property
+    def uses_transformer(self) -> bool:
+        """Check if model uses transformer backbone (vs UNet)."""
+        return self.model_type in [
+            ModelType.SD3_MEDIUM,
+            ModelType.FLUX_DEV,
+            ModelType.FLUX_SCHNELL,
+            ModelType.LTX_VIDEO_DEV,
+        ]
 
 
-def parse_args() -> argparse.Namespace:
+@dataclass
+class ExportConfig:
+    """Configuration for model export."""
+
+    quantized_torch_ckpt_path: Path | None = None
+    onnx_dir: Path | None = None
+    restore_from: Path | None = None
+
+    def validate(self) -> None:
+        """Validate export configuration."""
+        if self.restore_from and not self.restore_from.exists():
+            raise FileNotFoundError(f"Restore checkpoint not found: {self.restore_from}")
+
+        if self.quantized_torch_ckpt_path:
+            parent_dir = self.quantized_torch_ckpt_path.parent
+            if not parent_dir.exists():
+                parent_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.onnx_dir and not self.onnx_dir.exists():
+            self.onnx_dir.mkdir(parents=True, exist_ok=True)
+
+
+def setup_logging(verbose: bool = False) -> logging.Logger:
     """
-    Parse command-line arguments.
+    Set up logging configuration.
+
+    Args:
+        verbose: Enable verbose logging
+
+    Returns:
+        Configured logger instance
     """
-    parser = argparse.ArgumentParser(description="Quantization and Calibration Script")
+    log_level = logging.DEBUG if verbose else logging.INFO
 
-    # Model hyperparameters
-    parser.add_argument(
-        "--quantized-torch-ckpt-save-path",
-        default=None,
-        help="File path for the quantized Torch checkpoint (should end with .pt).",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="flux-dev",
-        choices=["sdxl-1.0", "sdxl-turbo", "sd3-medium", "flux-dev", "flux-schnell"],
-        help="Which model to load and quantize.",
-    )
-    parser.add_argument(
-        "--cpu-offloading",
-        action="store_true",
-        help="CPU offloading calibration during inference for GPUs with limited VRAM.",
-    )
-    parser.add_argument(
-        "--override-model-path",
-        type=str,
-        default=None,
-        help="Path to the model if not using default paths in MODEL_ID mapping.",
-    )
-    parser.add_argument(
-        "--restore-from",
-        type=str,
-        default=None,
-        help="Path to a previously quantized checkpoint to restore from.",
-    )
-    parser.add_argument(
-        "--n-steps",
-        type=int,
-        default=30,
-        help="Number of denoising steps.",
-    )
-    parser.add_argument(
-        "--model-dtype",
-        type=str,
-        default="Half",
-        choices=["Half", "BFloat16", "Float"],
-        help="Precision used to load the model.",
-    )
-    parser.add_argument(
-        "--trt-high-precision-dtype",
-        type=str,
-        default="Half",
-        choices=["Half", "BFloat16", "Float"],
-        help="Precision used in TensorRT high-precision layers.",
-    )
-    parser.add_argument(
-        "--quant-algo",
-        type=str,
-        default="max",
-        choices=["max", "svdquant", "smoothquant"],
-        help="Quantization algo",
+    # Create custom formatter
+    formatter = logging.Formatter(
+        fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
     )
 
-    # Calibration and quantization parameters
-    parser.add_argument(
-        "--format",
-        type=str,
-        default="int8",
-        choices=["int8", "fp8", "fp4"],
-        help="Quantization format.",
-    )
-    parser.add_argument(
-        "--percentile",
-        type=float,
-        default=1.0,
-        help="Percentile used for calibration (relevant in some calibrators).",
-    )
-    parser.add_argument(
-        "--collect-method",
-        type=str,
-        default="default",
-        choices=["global_min", "min-max", "min-mean", "mean-max", "default"],
-        help="How to collect amax values during calibration.",
-    )
-    parser.add_argument("--batch-size", type=int, default=2, help="Batch size for calibration.")
-    parser.add_argument("--calib-size", type=int, default=128, help="Number of calibration steps.")
-    parser.add_argument(
-        "--alpha", type=float, default=1.0, help="SmoothQuant alpha hyperparameter."
-    )
-    parser.add_argument("--lowrank", type=int, default=32, help="SVDQuant lowrank hyperparameter.")
-    parser.add_argument(
-        "--quant-level",
-        type=float,
-        default=3.0,
-        choices=[1.0, 2.0, 2.5, 3.0, 4.0],
-        help="Quantization level, 1: CNN, 2: CNN+FFN, 2.5: CNN+FFN+QKV, 3: CNN+FC, 4: CNN+FC+fMHA",
-    )
-    parser.add_argument(
-        "--onnx-dir",
-        type=str,
-        default=None,
-        help="Directory to export ONNX models. If None, no export is done.",
-    )
+    # Set up console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
 
-    return parser.parse_args()
+    # Configure root logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(log_level)
+    logger.addHandler(console_handler)
+
+    # Optionally reduce noise from other libraries
+    logging.getLogger("diffusers").setLevel(logging.WARNING)
+    logging.getLogger("transformers").setLevel(logging.WARNING)
+
+    return logger
 
 
-def main() -> None:
-    """
-    Main entrypoint for quantizing and calibrating the pipeline, then optionally exporting.
-    """
-    args = parse_args()
+class PipelineManager:
+    """Manages diffusion pipeline creation and configuration."""
 
-    if args.quant_level == 4.0 and args.format == "int8":
-        raise ValueError("Level 4 quantization is only supported for fp8, not int8.")
+    def __init__(self, config: ModelConfig, logger: logging.Logger):
+        """
+        Initialize pipeline manager.
 
-    # Create pipeline
-    pipe = create_pipeline(args.model, args.model_dtype, args.override_model_path)
-    pipe.to("cuda") if not args.cpu_offloading else pipe.enable_model_cpu_offload()
+        Args:
+            config: Model configuration
+            logger: Logger instance
+        """
+        self.config = config
+        self.logger = logger
+        self.pipe: DiffusionPipeline | None = None
+        self.pipe_upsample: LTXLatentUpsamplePipeline | None = None  # For LTX-Video upsampling
 
-    # Choose correct backbone (unet or transformer) for the loaded pipeline
-    backbone = (
-        pipe.transformer if args.model in ["sd3-medium", "flux-dev", "flux-schnell"] else pipe.unet
-    )
+    def create_pipeline(self) -> DiffusionPipeline:
+        """
+        Create and return an appropriate pipeline based on configuration.
 
-    # Adjust calibration steps to be number of batches
-    args.calib_size = args.calib_size // args.batch_size
+        Returns:
+            Configured diffusion pipeline
 
-    # If restore_from is not specified, run calibration and quantize
-    if not args.restore_from:
-        calibration_prompts = load_calib_prompts(
-            args.batch_size,
-            "./calib/calib_prompts.txt",
+        Raises:
+            ValueError: If model type is unsupported
+        """
+        self.logger.info(f"Creating pipeline for {self.config.model_type.value}")
+        self.logger.info(f"Model path: {self.config.model_path}")
+        self.logger.info(f"Data type: {self.config.model_dtype.value}")
+
+        try:
+            if self.config.model_type == ModelType.SD3_MEDIUM:
+                self.pipe = StableDiffusion3Pipeline.from_pretrained(
+                    self.config.model_path, torch_dtype=self.config.torch_dtype
+                )
+            elif self.config.model_type in [ModelType.FLUX_DEV, ModelType.FLUX_SCHNELL]:
+                self.pipe = FluxPipeline.from_pretrained(
+                    self.config.model_path, torch_dtype=self.config.torch_dtype
+                )
+            elif self.config.model_type == ModelType.LTX_VIDEO_DEV:
+                self.pipe = LTXConditionPipeline.from_pretrained(
+                    self.config.model_path, torch_dtype=self.config.torch_dtype
+                )
+                # Optionally load the upsampler pipeline for LTX-Video
+                if not self.config.ltx_skip_upsampler:
+                    self.logger.info("Loading LTX-Video upsampler pipeline...")
+                    self.pipe_upsample = LTXLatentUpsamplePipeline.from_pretrained(
+                        "Lightricks/ltxv-spatial-upscaler-0.9.7",
+                        vae=self.pipe.vae,
+                        torch_dtype=self.config.torch_dtype,
+                    )
+                    self.pipe_upsample.set_progress_bar_config(disable=True)
+                else:
+                    self.logger.info("Skipping upsampler pipeline for faster calibration")
+            else:
+                # SDXL models
+                self.pipe = DiffusionPipeline.from_pretrained(
+                    self.config.model_path,
+                    torch_dtype=self.config.torch_dtype,
+                    use_safetensors=True,
+                )
+            self.pipe.set_progress_bar_config(disable=True)
+
+            self.logger.info("Pipeline created successfully")
+            return self.pipe
+
+        except Exception as e:
+            self.logger.error(f"Failed to create pipeline: {e}")
+            raise
+
+    def setup_device(self) -> None:
+        """Configure pipeline device placement."""
+        if not self.pipe:
+            raise RuntimeError("Pipeline not created. Call create_pipeline() first.")
+
+        if self.config.cpu_offloading:
+            self.logger.info("Enabling CPU offloading for memory efficiency")
+            self.pipe.enable_model_cpu_offload()
+            if self.pipe_upsample:
+                self.pipe_upsample.enable_model_cpu_offload()
+        else:
+            self.logger.info("Moving pipeline to CUDA")
+            self.pipe.to("cuda")
+            if self.pipe_upsample:
+                self.logger.info("Moving upsampler pipeline to CUDA")
+                self.pipe_upsample.to("cuda")
+        # Enable VAE tiling for LTX-Video to save memory
+        if self.config.model_type == ModelType.LTX_VIDEO_DEV:
+            if hasattr(self.pipe, "vae") and hasattr(self.pipe.vae, "enable_tiling"):
+                self.logger.info("Enabling VAE tiling for LTX-Video")
+                self.pipe.vae.enable_tiling()
+
+    def get_backbone(self) -> torch.nn.Module:
+        """
+        Get the backbone model (transformer or UNet).
+
+        Returns:
+            Backbone model module
+        """
+        if not self.pipe:
+            raise RuntimeError("Pipeline not created. Call create_pipeline() first.")
+
+        if self.config.uses_transformer:
+            return self.pipe.transformer
+        return self.pipe.unet
+
+
+class Calibrator:
+    """Handles model calibration for quantization."""
+
+    def __init__(
+        self,
+        pipeline_manager: PipelineManager,
+        config: CalibrationConfig,
+        model_type: ModelType,
+        logger: logging.Logger,
+    ):
+        """
+        Initialize calibrator.
+
+        Args:
+            pipeline_manager: Pipeline manager with main and upsampler pipelines
+            config: Calibration configuration
+            model_type: Type of model being calibrated
+            logger: Logger instance
+        """
+        self.pipeline_manager = pipeline_manager
+        self.pipe = pipeline_manager.pipe
+        self.pipe_upsample = pipeline_manager.pipe_upsample
+        self.config = config
+        self.model_type = model_type
+        self.logger = logger
+
+    def load_prompts(self) -> list[str]:
+        """
+        Load calibration prompts from file.
+
+        Returns:
+            List of calibration prompts
+        """
+        self.logger.info(f"Loading calibration prompts from {self.config.prompts_dataset}")
+        return load_calib_prompts(self.config.batch_size, self.config.prompts_dataset)
+
+    def run_calibration(self, prompts: list[str]) -> None:
+        """
+        Run calibration steps on the pipeline.
+
+        Args:
+            prompts: List of calibration prompts
+        """
+        self.logger.info(f"Starting calibration with {self.config.num_batches} batches")
+        extra_args = MODEL_DEFAULTS.get(self.model_type, {})
+
+        with tqdm(total=self.config.num_batches, desc="Calibration", unit="batch") as pbar:
+            for i, prompt_batch in enumerate(prompts):
+                if i >= self.config.num_batches:
+                    break
+
+                if self.model_type == ModelType.LTX_VIDEO_DEV:
+                    # Special handling for LTX-Video
+                    self._run_ltx_video_calibration(prompt_batch, extra_args)  # type: ignore[arg-type]
+                else:
+                    common_args = {
+                        "prompt": prompt_batch,
+                        "num_inference_steps": self.config.n_steps,
+                    }
+                    self.pipe(**common_args, **extra_args).images  # type: ignore[misc]
+                pbar.update(1)
+                self.logger.debug(f"Completed calibration batch {i + 1}/{self.config.num_batches}")
+        self.logger.info("Calibration completed successfully")
+
+    def _run_ltx_video_calibration(
+        self, prompt_batch: list[str], extra_args: dict[str, Any]
+    ) -> None:
+        """
+        Run calibration for LTX-Video model using the full multi-stage pipeline.
+
+        Args:
+            prompt_batch: Batch of prompts
+            extra_args: Model-specific arguments
+        """
+        # Extract specific args for LTX-Video
+        expected_height = extra_args.get("height", 512)
+        expected_width = extra_args.get("width", 704)
+        num_frames = extra_args.get("num_frames", 121)
+        negative_prompt = extra_args.get(
+            "negative_prompt", "worst quality, inconsistent motion, blurry, jittery, distorted"
         )
 
-        # Build quant_config based on format
-        if args.format == "int8":
-            if args.collect_method == "default":
-                raise ValueError(
-                    "You must specify an explicit --collect-method (e.g., 'global_min') for int8."
-                )
-            if args.quant_algo != "smoothquant":
-                raise ValueError(
-                    "INT8 quantization only works well when combined with SmoothQuant;"
-                    "otherwise, it will produce very poor quality results."
-                )
-            quant_config = get_int8_config(
-                backbone,
-                args.quant_level,
-                args.percentile,
-                args.n_steps,
-                collect_method=args.collect_method,
-            )
-        elif args.format == "fp8":
-            if args.collect_method != "default":
-                raise NotImplementedError("Only 'default' collect method is implemented for fp8.")
-            quant_config = FP8_DEFAULT_CONFIG
-        elif args.format == "fp4":
-            quant_config = (
-                NVFP4_FP8_MHA_FLUX_CONFIG if args.model.startswith("flux") else NVFP4_DEFAULT_CONFIG
-            )
-        else:
-            raise NotImplementedError(f"Unknown format {args.format}.")
+        def round_to_nearest_resolution_acceptable_by_vae(height, width):
+            height = height - (height % self.pipe.vae_spatial_compression_ratio)  # type: ignore[union-attr]
+            width = width - (width % self.pipe.vae_spatial_compression_ratio)  # type: ignore[union-attr]
+            return height, width
 
-        # Adjust the quant config
+        downscale_factor = 2 / 3
+        # Part 1: Generate video at smaller resolution
+        downscaled_height, downscaled_width = (
+            int(expected_height * downscale_factor),
+            int(expected_width * downscale_factor),
+        )
+        downscaled_height, downscaled_width = round_to_nearest_resolution_acceptable_by_vae(
+            downscaled_height, downscaled_width
+        )
+
+        # Generate initial latents at lower resolution
+        latents = self.pipe(  # type: ignore[misc]
+            conditions=None,
+            prompt=prompt_batch,
+            negative_prompt=negative_prompt,
+            width=downscaled_width,
+            height=downscaled_height,
+            num_frames=num_frames,
+            num_inference_steps=self.config.n_steps,
+            output_type="latent",
+        ).frames
+
+        # Part 2: Upscale generated video using latent upsampler (if available)
+        if self.pipe_upsample is not None:
+            _ = self.pipe_upsample(latents=latents, output_type="latent").frames
+
+            # Part 3: Denoise the upscaled video with few steps to improve texture
+            # However, in this example code, we will omit the upscale step since its optional.
+
+
+class Quantizer:
+    """Handles model quantization operations."""
+
+    def __init__(
+        self, config: QuantizationConfig, model_config: ModelConfig, logger: logging.Logger
+    ):
+        """
+        Initialize quantizer.
+
+        Args:
+            config: Quantization configuration
+            model_config: Model configuration
+            logger: Logger instance
+        """
+        self.config = config
+        self.model_config = model_config
+        self.logger = logger
+
+    def get_quant_config(self, n_steps: int) -> Any:
+        """
+        Build quantization configuration based on format.
+
+        Args:
+            n_steps: Number of denoising steps
+
+        Returns:
+            Quantization configuration object
+        """
+        self.logger.info(f"Building quantization config for {self.config.format.value}")
+
+        if self.config.format == QuantFormat.INT8:
+            quant_config = INT8_DEFAULT_CONFIG
+            if self.config.collect_method != CollectMethod.DEFAULT:
+                reset_set_int8_config(
+                    quant_config,
+                    self.config.percentile,
+                    n_steps,
+                    collect_method=self.config.collect_method.value,
+                )
+        elif self.config.format == QuantFormat.FP8:
+            quant_config = FP8_DEFAULT_CONFIG
+        elif self.config.format == QuantFormat.FP4:
+            if self.model_config.model_type.value.startswith("flux"):
+                quant_config = NVFP4_FP8_MHA_CONFIG
+            else:
+                quant_config = NVFP4_DEFAULT_CONFIG
+        else:
+            raise NotImplementedError(f"Unknown format {self.config.format}")
         set_quant_config_attr(
             quant_config,
-            args.trt_high_precision_dtype,
-            args.quant_algo,
-            alpha=args.alpha,
-            lowrank=args.lowrank,
+            self.model_config.trt_high_precision_dtype.value,
+            self.config.algo.value,
+            alpha=self.config.alpha,
+            lowrank=self.config.lowrank,
         )
 
-        def forward_loop(mod):
-            # Switch the pipeline's backbone, run calibration
-            if args.model not in ["sd3-medium", "flux-dev", "flux-schnell"]:
-                pipe.unet = mod
-            else:
-                pipe.transformer = mod
-            do_calibrate(
-                pipe=pipe,
-                calibration_prompts=calibration_prompts,
-                model_id=args.model,
-                calib_size=args.calib_size,
-                n_steps=args.n_steps,
-            )
+        return quant_config
 
-        # Fuse LoRA layers, then quantize
+    def quantize_model(
+        self,
+        backbone: torch.nn.Module,
+        quant_config: Any,
+        forward_loop: callable,  # type: ignore[valid-type]
+    ) -> None:
+        """
+        Apply quantization to the model.
+
+        Args:
+            backbone: Model backbone to quantize
+            quant_config: Quantization configuration
+            forward_loop: Forward pass function for calibration
+        """
+        self.logger.info("Checking for LoRA layers...")
         check_lora(backbone)
+
+        self.logger.info("Starting model quantization...")
         mtq.quantize(backbone, quant_config, forward_loop)
+        # Get model-specific filter function
+        model_filter_func = get_model_filter_func(self.model_config.model_type)
+        self.logger.info(f"Using filter function for {self.model_config.model_type.value}")
 
-        # Save the quantized checkpoint if path is provided
-        if args.quantized_torch_ckpt_save_path:
-            mto.save(backbone, args.quantized_torch_ckpt_save_path)
-    else:
-        # Restore the previously quantized model
-        mto.restore(backbone, args.restore_from)
+        self.logger.info("Disabling specific quantizers...")
+        mtq.disable_quantizer(backbone, model_filter_func)
 
-    # Additional quantization adjustments by level
-    quantize_lvl(args.model, backbone, args.quant_level)
+        self.logger.info("Quantization completed successfully")
 
-    # Disable some quantizers
-    mtq.disable_quantizer(backbone, filter_func)
 
-    # Optional ONNX export
-    if args.onnx_dir:
-        if args.format == "fp8" and args.model != "flux-dev":
+class ExportManager:
+    """Handles model export operations."""
+
+    def __init__(self, config: ExportConfig, logger: logging.Logger):
+        """
+        Initialize export manager.
+
+        Args:
+            config: Export configuration
+            logger: Logger instance
+        """
+        self.config = config
+        self.logger = logger
+
+    def _has_conv_layers(self, model: torch.nn.Module) -> bool:
+        """
+        Check if the model contains any convolutional layers.
+
+        Args:
+            model: Model to check
+
+        Returns:
+            True if model contains Conv layers, False otherwise
+        """
+        for module in model.modules():
+            if isinstance(module, (torch.nn.Conv1d, torch.nn.Conv2d, torch.nn.Conv3d)) and (
+                module.input_quantizer.is_enabled or module.weight_quantizer.is_enabled
+            ):
+                return True
+        return False
+
+    def save_checkpoint(self, backbone: torch.nn.Module) -> None:
+        """
+        Save quantized model checkpoint.
+
+        Args:
+            backbone: Model backbone to save
+        """
+        if not self.config.quantized_torch_ckpt_path:
+            return
+
+        self.logger.info(f"Saving quantized checkpoint to {self.config.quantized_torch_ckpt_path}")
+        mto.save(backbone, str(self.config.quantized_torch_ckpt_path))
+        self.logger.info("Checkpoint saved successfully")
+
+    def export_onnx(
+        self,
+        pipe: DiffusionPipeline,
+        backbone: torch.nn.Module,
+        model_type: ModelType,
+        quant_format: QuantFormat,
+        quantize_mha: bool,
+    ) -> None:
+        """
+        Export model to ONNX format.
+
+        Args:
+            pipe: Diffusion pipeline
+            backbone: Model backbone
+            model_type: Type of model
+            quant_format: Quantization format
+        """
+        if not self.config.onnx_dir:
+            return
+
+        self.logger.info(f"Starting ONNX export to {self.config.onnx_dir}")
+        check_conv_and_mha(backbone, quant_format == QuantFormat.FP4, quantize_mha)
+
+        if quant_format == QuantFormat.FP8 and self._has_conv_layers(backbone):
+            self.logger.info(
+                "Detected quantizing conv layers in backbone. Generating FP8 scales..."
+            )
             generate_fp8_scales(backbone)
-
+        self.logger.info("Preparing models for export...")
         pipe.to("cpu")
         torch.cuda.empty_cache()
         backbone.to("cuda")
-        if args.quant_level == 4.0:
-            fp8_mha_disable(backbone, quantized_mha_output=False)
-
+        # Export to ONNX
         backbone.eval()
         with torch.no_grad():
-            modelopt_export_sd(backbone, args.onnx_dir, args.model, args.format)
+            self.logger.info("Exporting to ONNX...")
+            modelopt_export_sd(
+                backbone, str(self.config.onnx_dir), model_type.value, quant_format.value
+            )
 
-    print("Done!\n")
+        self.logger.info("ONNX export completed successfully")
+
+    def restore_checkpoint(self, backbone: torch.nn.Module) -> None:
+        """
+        Restore a previously quantized model.
+
+        Args:
+            backbone: Model backbone to restore into
+        """
+        if not self.config.restore_from:
+            return
+
+        self.logger.info(f"Restoring model from {self.config.restore_from}")
+        mto.restore(backbone, str(self.config.restore_from))
+        self.logger.info("Model restored successfully")
+
+
+def create_argument_parser() -> argparse.ArgumentParser:
+    """
+    Create and configure argument parser.
+
+    Returns:
+        Configured argument parser
+    """
+    parser = argparse.ArgumentParser(
+        description="Enhanced Diffusion Model Quantization Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+            Examples:
+            # Basic INT8 quantization with SmoothQuant
+            %(prog)s --model flux-dev --format int8 --quant-algo smoothquant --collect-method global_min
+
+            # FP8 quantization with ONNX export
+            %(prog)s --model sd3-medium --format fp8 --onnx-dir ./onnx_models/
+
+            # Quantize LTX-Video model with full multi-stage pipeline
+            %(prog)s --model ltx-video-dev --format fp8 --batch-size 1 --calib-size 32
+
+            # Faster LTX-Video quantization (skip upsampler)
+            %(prog)s --model ltx-video-dev --format fp8 --batch-size 1 --calib-size 32 --ltx-skip-upsampler
+
+            # Restore and export a previously quantized model
+            %(prog)s --model flux-schnell --restore-from checkpoint.pt --onnx-dir ./exports/
+        """,
+    )
+    model_group = parser.add_argument_group("Model Configuration")
+    model_group.add_argument(
+        "--model",
+        type=str,
+        default="flux-dev",
+        choices=[m.value for m in ModelType],
+        help="Model to load and quantize",
+    )
+    model_group.add_argument(
+        "--model-dtype",
+        type=str,
+        default="Half",
+        choices=[d.value for d in DataType],
+        help="Precision for loading the model",
+    )
+    model_group.add_argument(
+        "--override-model-path", type=str, help="Custom path to model (overrides default)"
+    )
+    model_group.add_argument(
+        "--cpu-offloading", action="store_true", help="Enable CPU offloading for limited VRAM"
+    )
+    model_group.add_argument(
+        "--ltx-skip-upsampler",
+        action="store_true",
+        help="Skip upsampler pipeline for LTX-Video (faster calibration, only quantizes main transformer)",
+    )
+    quant_group = parser.add_argument_group("Quantization Configuration")
+    quant_group.add_argument(
+        "--format",
+        type=str,
+        default="int8",
+        choices=[f.value for f in QuantFormat],
+        help="Quantization format",
+    )
+    quant_group.add_argument(
+        "--quant-algo",
+        type=str,
+        default="max",
+        choices=[a.value for a in QuantAlgo],
+        help="Quantization algorithm",
+    )
+    quant_group.add_argument(
+        "--percentile",
+        type=float,
+        default=1.0,
+        help="Percentile for calibration, works for INT8, not including smoothquant",
+    )
+    quant_group.add_argument(
+        "--collect-method",
+        type=str,
+        default="default",
+        choices=[c.value for c in CollectMethod],
+        help="Calibration collection method, works for INT8, not including smoothquant",
+    )
+    quant_group.add_argument("--alpha", type=float, default=1.0, help="SmoothQuant alpha parameter")
+    quant_group.add_argument("--lowrank", type=int, default=32, help="SVDQuant lowrank parameter")
+    quant_group.add_argument(
+        "--quantize-mha", action="store_true", help="Quantizing MHA into FP8 if its True"
+    )
+
+    calib_group = parser.add_argument_group("Calibration Configuration")
+    calib_group.add_argument("--batch-size", type=int, default=2, help="Batch size for calibration")
+    calib_group.add_argument(
+        "--calib-size", type=int, default=128, help="Total number of calibration samples"
+    )
+    calib_group.add_argument("--n-steps", type=int, default=30, help="Number of denoising steps")
+
+    export_group = parser.add_argument_group("Export Configuration")
+    export_group.add_argument(
+        "--quantized-torch-ckpt-save-path",
+        type=str,
+        help="Path to save quantized PyTorch checkpoint",
+    )
+    export_group.add_argument("--onnx-dir", type=str, help="Directory for ONNX export")
+    export_group.add_argument(
+        "--restore-from", type=str, help="Path to restore from previous checkpoint"
+    )
+    export_group.add_argument(
+        "--trt-high-precision-dtype",
+        type=str,
+        default="Half",
+        choices=[d.value for d in DataType],
+        help="Precision for TensorRT high-precision layers",
+    )
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+
+    return parser
+
+
+def main() -> None:
+    parser = create_argument_parser()
+    args = parser.parse_args()
+
+    logger = setup_logging(args.verbose)
+    logger.info("Starting Enhanced Diffusion Model Quantization")
+
+    try:
+        model_config = ModelConfig(
+            model_type=ModelType(args.model),
+            model_dtype=DataType(args.model_dtype),
+            trt_high_precision_dtype=DataType(args.trt_high_precision_dtype),
+            override_model_path=Path(args.override_model_path)
+            if args.override_model_path
+            else None,
+            cpu_offloading=args.cpu_offloading,
+            ltx_skip_upsampler=args.ltx_skip_upsampler,
+        )
+
+        quant_config = QuantizationConfig(
+            format=QuantFormat(args.format),
+            algo=QuantAlgo(args.quant_algo),
+            percentile=args.percentile,
+            collect_method=CollectMethod(args.collect_method),
+            alpha=args.alpha,
+            lowrank=args.lowrank,
+            quantize_mha=args.quantize_mha,
+        )
+
+        calib_config = CalibrationConfig(
+            batch_size=args.batch_size, calib_size=args.calib_size, n_steps=args.n_steps
+        )
+
+        export_config = ExportConfig(
+            quantized_torch_ckpt_path=Path(args.quantized_torch_ckpt_save_path)
+            if args.quantized_torch_ckpt_save_path
+            else None,
+            onnx_dir=Path(args.onnx_dir) if args.onnx_dir else None,
+            restore_from=Path(args.restore_from) if args.restore_from else None,
+        )
+
+        logger.info("Validating configurations...")
+        quant_config.validate()
+        export_config.validate()
+        if not export_config.restore_from:
+            calib_config.validate()
+
+        pipeline_manager = PipelineManager(model_config, logger)
+        pipe = pipeline_manager.create_pipeline()
+        pipeline_manager.setup_device()
+
+        backbone = pipeline_manager.get_backbone()
+        export_manager = ExportManager(export_config, logger)
+
+        if export_config.restore_from:
+            export_manager.restore_checkpoint(backbone)
+        else:
+            logger.info("Initializing calibration...")
+            calibrator = Calibrator(pipeline_manager, calib_config, model_config.model_type, logger)
+            prompts = calibrator.load_prompts()
+
+            quantizer = Quantizer(quant_config, model_config, logger)
+            backbone_quant_config = quantizer.get_quant_config(calib_config.n_steps)
+
+            def forward_loop(mod):
+                if model_config.uses_transformer:
+                    pipe.transformer = mod
+                else:
+                    pipe.unet = mod
+                calibrator.run_calibration(prompts)
+
+            quantizer.quantize_model(backbone, backbone_quant_config, forward_loop)
+
+        export_manager.save_checkpoint(backbone)
+        export_manager.export_onnx(
+            pipe,
+            backbone,
+            model_config.model_type,
+            quant_config.format,
+            quantize_mha=QuantizationConfig.quantize_mha,
+        )
+        logger.info("Quantization process completed successfully!")
+
+    except Exception as e:
+        logger.error(f"Quantization failed: {e}", exc_info=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -36,6 +36,12 @@ The script will:
 
 mp.set_start_method("spawn", force=True)  # Needed for data loader with multiple workers
 
+QUANT_CONFIG_DICT = {
+    "mxfp8": mtq.MXFP8_DEFAULT_CFG,
+    "nvfp4": mtq.NVFP4_DEFAULT_CFG,
+    "int4_awq": mtq.INT4_AWQ_CFG,
+}
+
 
 def filter_func(name):
     """Filter function to exclude certain layers from quantization."""
@@ -97,9 +103,9 @@ def main():
     )
     parser.add_argument(
         "--quantize_mode",
-        choices=["mxfp8", "nvfp4"],
+        choices=["mxfp8", "nvfp4", "int4_awq"],
         default="mxfp8",
-        help="Type of quantization to apply (mxfp8 or nvfp4)",
+        help="Type of quantization to apply (mxfp8, nvfp4, int4_awq)",
     )
     parser.add_argument(
         "--onnx_save_path",
@@ -124,21 +130,21 @@ def main():
     model = timm.create_model(args.timm_model_name, pretrained=True, num_classes=1000).to(device)
 
     # Select quantization config
-    if args.quantize_mode == "mxfp8":
-        config = mtq.MXFP8_DEFAULT_CFG
-        data_loader = None  # MXFP8 doesn't need calibration data
-    else:  # nvfp4
-        config = mtq.NVFP4_DEFAULT_CFG
-        data_loader = load_calibration_data(
+    config = QUANT_CONFIG_DICT[args.quantize_mode]
+    data_loader = (
+        None
+        if args.quantize_mode == "mxfp8"
+        else load_calibration_data(
             args.timm_model_name,
             args.calibration_data_size,
             input_shape[0],  # batch size
             device,
         )
+    )
 
     # Quantize model
     quantized_model = quantize_model(model, config, data_loader)
-    use_autocast = args.quantize_mode != "mxfp8"
+    use_autocast = args.quantize_mode not in ["mxfp8", "int4_awq"]
 
     # Export to ONNX
     export_to_onnx(

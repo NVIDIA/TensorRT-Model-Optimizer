@@ -38,6 +38,98 @@ def get_current_memory_info():
     return info
 
 
+def megatron_prefill(
+    model: MegatronModule,
+    input_ids: torch.LongTensor,
+    pixel_values: torch.FloatTensor | None = None,
+    image_grid_thw: torch.LongTensor | None = None,
+    image_sizes: torch.LongTensor | None = None,
+) -> torch.Tensor:
+    """A simple prefill function for Megatron Core V(LM) models."""
+    if not isinstance(model, MegatronModule):
+        raise ValueError("megatron_prefill only supports Megatron Core models.")
+
+    model.eval()
+
+    # Create a static inference context if KV-cache is enabled.
+    max_batch_size = input_ids.shape[0]
+    seq_length = input_ids.shape[-1]
+
+    def _dummy_loss_func(output_tensor, non_loss_data=True):
+        """Need a dummy loss function."""
+        return output_tensor
+
+    def _forward_step_func(data, model):
+        """Forward step function."""
+        batch_size = data["tokens"].shape[0]
+        seq_len = data["tokens"].shape[-1]
+        device = data["tokens"].device
+
+        # ModelOpt transoformer_spec by default use arbitrary attention mask type; hence we need to
+        # compute the attention_mask for prefilling. Alternatively, if "causal" attention mask type
+        # is used, the attention_mask is not needed. During generation, the attn_mask_type is overridden
+        # to "no_mask" by SelfAttention.forward() if inference_context is provided.
+        attention_mask = (
+            torch.triu(torch.ones((batch_size, seq_len, seq_len), device=device), diagonal=1)
+            .bool()
+            .view(batch_size, 1, seq_len, seq_len)
+        )
+
+        # NOTE: we don't support traditional positional embedding. Only RoPE or YaRN are supported.
+        position_ids = None
+
+        output_tensor = model(
+            data["tokens"],
+            position_ids,
+            attention_mask,
+            runtime_gather_output=True,
+        )
+        return output_tensor, _dummy_loss_func
+
+    if model.config.sequence_parallel:
+        tp = model.config.tensor_model_parallel_size
+        num_pad_tokens = (tp - input_ids.shape[-1] % tp) % tp
+    else:
+        num_pad_tokens = 0
+
+    if num_pad_tokens > 0:
+        padding_shape = (input_ids.shape[0], num_pad_tokens)
+        padded_tokens = torch.full(padding_shape, 0, dtype=input_ids.dtype, device=input_ids.device)
+        tokens = torch.cat((input_ids, padded_tokens), dim=-1)
+    else:
+        tokens = input_ids
+
+    list_of_logits = get_forward_backward_func()(
+        forward_step_func=_forward_step_func,
+        data_iterator=[{"tokens": tokens}],
+        model=model,
+        num_microbatches=1,
+        seq_length=tokens.shape[-1],
+        micro_batch_size=max_batch_size,
+        decoder_seq_length=tokens.shape[-1],
+        forward_only=True,
+        collect_non_loss_data=True,
+    )
+
+    if mpu.is_pipeline_last_stage():
+        logits = list_of_logits[0][:, :seq_length, :].detach()
+    else:
+        logits = None
+
+    if model.config.bf16:
+        logits_dtype = torch.bfloat16
+    elif model.config.fp16:
+        logits_dtype = torch.float16
+    else:
+        logits_dtype = torch.float32
+
+    logits = broadcast_from_last_pipeline_stage(
+        [max_batch_size, seq_length, model.vocab_size], logits_dtype, logits
+    )
+
+    return logits
+
+
 def megatron_generate(
     model: MegatronModule,
     input_ids: torch.LongTensor,

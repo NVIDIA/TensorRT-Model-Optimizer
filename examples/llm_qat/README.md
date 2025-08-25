@@ -70,6 +70,14 @@ trainer.save_model()
 
 > **_NOTE:_** ModelOpt provides accelerated quantization kernels using Triton that significantly speed up NVFP4 format QAT. For details, see the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/_installation_for_Linux.html#accelerated-quantization-with-triton-kernels).
 
+A simple QAT training example can be found in [simple_qat_train.py](simple_qat_train.py). It can train the model using a single GPU on [Daring-Anteater](https://huggingface.co/datasets/nvidia/Daring-Anteater) dataset. To run:
+
+```
+python simple_qat_train.py --model meta-llama/Llama-3.2-3B
+```
+
+To train larger models with distributed training, please refer to [End-to-end QAT Example](#end-to-end-qat-example).
+
 #### End-to-end QAT Example
 
 This folder contains end-to-end runnable fine-tuning/QAT pipeline where Llama3-8B from huggingface is trained on

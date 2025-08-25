@@ -48,6 +48,7 @@ from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_config import TransformerConfig
 
+from modelopt.torch.export.unified_export_megatron import import_mcore_gpt_from_hf
 from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
     restore_sharded_modelopt_state,
     save_sharded_modelopt_state,
@@ -203,6 +204,50 @@ def get_mcore_gpt_model(
     )
     if bf16:
         model = model.to(torch.bfloat16)
+
+    return model
+
+
+def get_mcore_qwen3_600m(
+    tensor_model_parallel_size: int = 1,
+    pipeline_model_parallel_size: int = 1,
+) -> GPTModel:
+    config = TransformerConfig(
+        tensor_model_parallel_size=tensor_model_parallel_size,
+        pipeline_model_parallel_size=pipeline_model_parallel_size,
+        sequence_parallel=False,
+        num_layers=28,
+        hidden_size=1024,
+        num_attention_heads=16,
+        num_query_groups=8,
+        kv_channels=128,
+        ffn_hidden_size=3072,
+        activation_func=F.silu,
+        normalization="RMSNorm",
+        qk_layernorm=True,
+        gated_linear_unit=True,
+        add_bias_linear=False,
+        use_cpu_initialization=False,
+        pipeline_dtype=torch.bfloat16,
+        bf16=True,
+    )
+
+    transformer_layer_spec = get_gpt_modelopt_spec(config, remap_te_layernorm=True)
+
+    model = GPTModel(
+        config=config,
+        transformer_layer_spec=transformer_layer_spec,
+        vocab_size=151936,
+        max_sequence_length=2048,
+        pre_process=is_pipeline_first_stage(),
+        post_process=is_pipeline_last_stage(),
+        share_embeddings_and_output_weights=True,
+        position_embedding_type="rope",
+    )
+
+    model = model.to(torch.bfloat16)
+
+    import_mcore_gpt_from_hf(model, pretrained_model_path="Qwen/Qwen3-0.6B")
 
     return model
 

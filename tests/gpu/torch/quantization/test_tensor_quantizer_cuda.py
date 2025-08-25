@@ -29,7 +29,6 @@ from modelopt.torch.quantization import tensor_quant
 from modelopt.torch.quantization.config import QuantizerAttributeConfig
 from modelopt.torch.quantization.extensions import get_cuda_ext_mx
 from modelopt.torch.quantization.nn.modules import tensor_quantizer
-from modelopt.torch.quantization.tensor_quant import fake_tensor_quant, static_block_quant
 
 
 class TestTensorQuantizerCuda(TensorQuantizerTester):
@@ -112,37 +111,3 @@ class TestTensorQuantizerfp4:
         output_contiguous = quantizer(contiguous_tensor)
         output_non_contiguous = quantizer(non_contiguous_tensor)
         assert torch.equal(output_contiguous, output_non_contiguous)
-
-
-@pytest.mark.skipif(get_cuda_ext_mx() is None, reason="cuda_ext_mx is not available")
-class TestTensorQuantizerBlockQuant:
-    def test_block_quant_static(self):
-        block_size = 16
-        inputs = torch.randn(1, 2, 32).cuda()
-
-        outputs = static_block_quant(
-            inputs,
-            torch.tensor([1.0]).cuda(),
-            None,
-            4,
-            False,
-            True,
-            "Float",
-            block_size,
-        )
-
-        original_shape = inputs.shape
-        ref_outputs = fake_tensor_quant(
-            inputs.reshape(-1, block_size),
-            torch.tensor([1.0]).cuda(),
-            None,
-            4,
-            False,
-            True,
-            "Float",
-        )
-        ref_outputs = ref_outputs.reshape(original_shape)
-
-        assert outputs is not None
-        assert outputs.shape == original_shape
-        assert torch.allclose(outputs, ref_outputs)

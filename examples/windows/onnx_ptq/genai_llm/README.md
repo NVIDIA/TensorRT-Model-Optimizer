@@ -46,15 +46,16 @@ The table below lists key command-line arguments of the ONNX PTQ example script.
 | `--algo` | awq_lite (default), awq_clip, rtn, rtn_dq | Select the quantization algorithm. |
 | `--onnx_path` | input .onnx file path | Path to the input ONNX model. |
 | `--output_path` | output .onnx file path | Path to save the quantized ONNX model. |
-| `--use_zero_point` | True, False (default) | Enable zero-point based quantization. |
+| `--use_zero_point` | Default: zero-point is disabled | Use this option to enable zero-point based quantization. |
 | `--block-size` | 32, 64, 128 (default) | Block size for AWQ. |
 | `--awqlite_alpha_step` | 0.1 (default) | Step-size for AWQ scale search, user-defined |
-| `--awqlite_run_per_subgraph` | True, False (default) | If True, runs AWQ scale search at the subgraph level |
-| `--awqlite_fuse_nodes` | True (default), False | If True, fuses input scales in parent nodes. |
+| `--awqlite_run_per_subgraph` | Default: run_per_subgraph is disabled | Use this option to run AWQ scale search at the subgraph level |
+| `--awqlite_disable_fuse_nodes` | Default: fuse_nodes enabled | Use this option to disable fusion of input scales in parent nodes. |
 | `--awqclip_alpha_step` | 0.05 (default) | Step-size for AWQ weight clipping, user-defined |
 | `--awqclip_alpha_min` | 0.5 (default) | Minimum AWQ weight-clipping threshold, user-defined |
 | `--awqclip_bsz_col` | 1024 (default) | Chunk size in columns during weight clipping, user-defined |
 | `--calibration_eps` | dml, cuda, cpu, NvTensorRtRtx (default: [dml,cpu]) | List of execution-providers to use for session run during calibration |
+| `--no_position_ids` | Default: position_ids input enabled | Use this option to disable position_ids input in calibration data|
 
 Run the following command to view all available parameters in the script:
 
@@ -70,6 +71,10 @@ Note:
    - The 'rtn' option does INT4 RTN quantization with Q->DQ nodes for weights.
    - The 'rtn_dq' option does INT4 RTN quantization with only DQ nodes for weights.
 1. RTN algorithm doesn't use calibration-data.
+1. If needed for the input base model, use `--no_position_ids` command-line option to disable
+   generating position_ids calibration input. The GenAI built LLM models produced with DML EP has
+   position_ids input but ones produced with CUDA EP, NvTensorRtRtx EP don't have position_ids input.
+   Use `--help` or command-line options table above to inspect default values.
 
 Please refer to `quantize.py` for further details on command-line parameters.
 
@@ -123,4 +128,4 @@ Please refer to [support matrix](https://nvidia.github.io/TensorRT-Model-Optimiz
 
 1. **Error - Invalid Position-IDs input to the ONNX model**
 
-   The ONNX models produced using ONNX GenerativeAI (GenAI) have different IO bindings for models produced using different execution-providers (EPs). For instance, model built with DML EP has position-ids input in the ONNX model but models builts using CUDA EP or NvTensorRtRtx EP don't have position-ids inputs. So, set `add_position_ids` command-line argument to `true` or `false` depending on the base model, or set that value (hard-code) in the quantize script if required.
+   The ONNX models produced using ONNX GenerativeAI (GenAI) have different IO bindings for models produced using different execution-providers (EPs). For instance, model built with DML EP has position-ids input in the ONNX model but models builts using CUDA EP or NvTensorRtRtx EP don't have position-ids inputs. So, if base model requires, use `no_position_ids` command-line argument for disabling position_ids calibration input or set "add_position_ids" variable to `False` value (hard-code) in the quantize script if required.

@@ -16,15 +16,14 @@
 """ModelOpt plugin to train HuggingFace models with knowledge distillation."""
 
 import torch
-from torch.distributed.fsdp import FullStateDictConfig, FullyShardedDataParallel, StateDictType
-from transformers import Trainer
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 import modelopt.torch.distill as mtd
 import modelopt.torch.opt as mto
+from modelopt.torch.opt.plugins import ModelOptHFTrainer
 
 
-class KDTrainer(Trainer):
+class KDTrainer(ModelOptHFTrainer):
     """Distillation trainer for HuggingFace models."""
 
     def compute_loss(self, model, inputs, *args, **kwargs):
@@ -46,43 +45,51 @@ class KDTrainer(Trainer):
 
         return loss
 
-    def save_model(self, output_dir: str, export_student: bool = False, *args, **kwargs):
+    def save_model(
+        self,
+        output_dir: str | None = None,
+        _internal_call: bool = False,
+        export_student: bool = False,
+        *args,
+        **kwargs,
+    ):
         """Dumps model and ModelOpt states to disk.
 
         Args:
             output_dir: The directory to save the model and ModelOpt states.
             export_student: Whether to export the student model.
+
         """
+        if output_dir is None:
+            output_dir = self.args.output_dir
         model = self.accelerator.unwrap_model(self.model)
-        save_cfg = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
-        with FullyShardedDataParallel.state_dict_type(
-            model, StateDictType.FULL_STATE_DICT, save_cfg
-        ):
-            cpu_state_dict = self.model.state_dict()
-            if self.args.should_save:
+        if not _internal_call and self.is_fsdp_enabled:
+            state_dict = self.accelerator.get_state_dict(self.model)
+            modelopt_state = mto.modelopt_state(model)
+            if export_student:
+                model = model.export()
+                # remove teacher model from state dict since FSDP forces
+                # expose_minimal_state_dict to be False
+                state_dict = {k: v for k, v in state_dict.items() if "_teacher_model" not in k}
+
+            if self.accelerator.is_main_process:
+                model.save_pretrained(
+                    output_dir,
+                    is_main_process=self.accelerator.is_main_process,
+                    save_function=self.accelerator.save,
+                    state_dict=state_dict,
+                )
+                self.processing_class.save_pretrained(output_dir)
                 if export_student:
-                    student_model = self.model.export()
-                    # remove teacher model from state dict since FSDP forces
-                    # expose_minimal_state_dict to be False
-                    cpu_state_dict = {
-                        k: v for k, v in cpu_state_dict.items() if "_teacher_model" not in k
-                    }
-                    student_model.save_pretrained(
-                        output_dir,
-                        state_dict=cpu_state_dict,
-                        safe_serialization=self.args.save_safetensors,
-                    )
-                    self.processing_class.save_pretrained(output_dir)
-                else:
-                    self._save(output_dir, state_dict=cpu_state_dict)
-                # ModelOpt state
-                modelopt_state = mto.modelopt_state(model)
-                modelopt_state["modelopt_state_dict"] = [
-                    state
-                    for state in modelopt_state["modelopt_state_dict"]
-                    if "kd_loss" not in state and "export_student" not in state
-                ]
+                    modelopt_state["modelopt_state_dict"] = [
+                        state
+                        for state in modelopt_state["modelopt_state_dict"]
+                        if "kd_loss" not in state and "export_student" not in state
+                    ]
                 torch.save(modelopt_state, f"{output_dir}/modelopt_state.pth")
+        else:
+            model = model.export() if export_student else model
+            super().save_model(output_dir, _internal_call, *args, **kwargs)
 
     def train(self, *args, **kwargs):
         """Train the model."""

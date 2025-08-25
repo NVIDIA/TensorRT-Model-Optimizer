@@ -28,33 +28,30 @@ python quantize.py \
   --model {flux-dev|sdxl-1.0|sdxl-turbo|sd3-medium} \
   --format int8 --batch-size 2 \
   --calib-size 32 --collect-method min-mean \
-  --percentile 1.0 --alpha 0.8 \
-  --quant-level 3.0 --n-steps 20 \
+  --percentile 1.0 --alpha 0.8 --n-steps 20 \
   --model-dtype {Half/BFloat16} --trt-high-precision-dtype {Half|BFloat16} \
   --quantized-torch-ckpt-save-path ./{MODEL_NAME}.pt --onnx-dir {ONNX_DIR}
 ```
 
-### FLUX-Dev|SDXL|SDXL-Turbo FP8/FP4
+### FLUX-Dev|SDXL|SDXL-Turbo|LTX-Video FP8/FP4
 
 *In our example code, FP4 is only supported for Flux. However, you can modify our script to enable FP4 format support for your own model.*
 
 ```sh
 python quantize.py \
-  --model {flux-dev|sdxl-1.0|sdxl-turbo} --model-dtype {Half|BFloat16} --trt-high-precision-dtype {Half|BFloat16} \
-  --format {fp8|fp4} --batch-size 2 --calib-size {128|256} --quant-level {3.0|4.0} \
+  --model {flux-dev|sdxl-1.0|sdxl-turbo|ltx-video-dev} --model-dtype {Half|BFloat16} --trt-high-precision-dtype {Half|BFloat16} \
+  --format {fp8|fp4} --batch-size 2 --calib-size {128|256} --quantize-mha \
   --n-steps 20 --quantized-torch-ckpt-save-path ./{MODEL_NAME}.pt --collect-method default \
   --onnx-dir {ONNX_DIR}
 ```
 
-We recommend using a device with a minimum of 48GB of combined CPU and GPU memory for exporting ONNX models. Quant-level 4.0 requires additional memory.
+We recommend using a device with a minimum of 48GB of combined CPU and GPU memory for exporting ONNX models. If not, please use CPU for onnx export.
 
 #### Important Parameters
 
 - `percentile`: Control quantization scaling factors (amax) collecting range, meaning that we will collect the chosen amax in the range of `(n_steps * percentile)` steps. Recommendation: 1.0
 
 - `alpha`: A parameter in SmoothQuant, used for linear layers only. Recommendation: 0.8 for SDXL
-
-- `quant-level`: Which layers to be quantized, 1: `CNNs`, 2: `CNN + FFN`, 2.5: `CNN + FFN + QKV`, 3: `CNN + Almost all Linear (Including FFN, QKV, Proj and others)`, 4: `CNN + Almost all Linear + fMHA`. Recommendation: 2, 2.5 and 3, 4 is only for FP8, depending on the requirements for image quality & speedup. **You might notice a slight difference between FP8 quant level 3.0 and 4.0, as we are currently working to enhance the performance of FP8 fMHA.**
 
 - `calib-size`: For SDXL INT8, we recommend 32 or 64, for SDXL FP8, 128 is recommended.
 
@@ -138,7 +135,6 @@ python quantize.py \
   --format fp8 \
   --batch-size {1|2} \
   --calib-size 128 \
-  --quant-level 3.0 \
   --n-steps 20 \
   --quantized-torch-ckpt-save-path ./{MODEL}_fp8.pt \
   --collect-method default \

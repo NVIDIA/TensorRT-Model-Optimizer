@@ -134,7 +134,7 @@ def export_int8(
     trt_high_precision_dtype: str | None,
 ):
     """Export quantized model to INT8 ONNX."""
-    assert num_bits == 8, "Only INT8 ONNX export is supported for now."
+    assert num_bits == 8, "Number of bits must be 8 for INT8 ONNX export."
     output_shape = sym_help._get_tensor_sizes(inputs)
     maxbound = (1 << (num_bits - 1 + int(unsigned))) - 1
 
@@ -181,6 +181,30 @@ def export_int8(
         inputs = g.op("Cast", inputs, to_i=onnx_dtype_map[input_type])
 
     return out
+
+
+def export_int4(
+    g: torch.onnx._internal.jit_utils.GraphContext,
+    inputs: torch.Value,
+    amax: torch.Tensor,
+    num_bits: int,
+    trt_high_precision_dtype: str | None,
+    block_size: int,
+    axis: int,
+):
+    """Export quantized model to INT4 ONNX."""
+    assert num_bits == 4, "Number of bits must be 4 for INT4 ONNX export."
+    scale_inv = amax / 7.0
+    scale_inv_op = g.op("Constant", value_t=scale_inv)
+    otype = inputs.type().scalarType()
+    output_shape = sym_help._get_tensor_sizes(inputs)
+    if trt_high_precision_dtype is None:
+        trt_high_precision_dtype = otype
+    return g.op(
+        "trt::DequantizeLinear", inputs, scale_inv_op, axis_i=axis, block_size_i=block_size
+    ).setType(
+        inputs.type().with_dtype(torch_dtype_map[trt_high_precision_dtype]).with_sizes(output_shape)
+    )
 
 
 def _fp8_quantize(

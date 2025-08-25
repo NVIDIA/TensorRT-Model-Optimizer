@@ -74,7 +74,8 @@ For enterprise users, the 8-bit quantization with Stable Diffusion is also avail
 
 ## Installation / Docker
 
-To use Model Optimizer with full dependencies (e.g. TensorRT-LLM deployment), we recommend using the provided docker image.
+To use Model Optimizer with full dependencies (e.g. TensorRT/TensorRT-LLM deployment), we recommend using our provided docker image
+which is based on the [TensorRT-LLM](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tensorrt-llm/containers/release/tags) docker image with additional example-specific dependencies installed.
 
 After installing the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
 please run the following commands to build the Model Optimizer docker container which has all the necessary
@@ -96,7 +97,7 @@ docker run --gpus all -it --shm-size 20g --rm docker.io/library/modelopt_example
 python -c "import modelopt; print(modelopt.__version__)"
 ```
 
-Alternatively, you can install it from [PyPI](https://pypi.org/project/nvidia-modelopt/) without TRT-LLM etc.
+Alternatively, you can install it from [NVIDIA PyPI](https://pypi.org/project/nvidia-modelopt/) without TRT-LLM etc.
 
 ```bash
 pip install -U "nvidia-modelopt[all]"
@@ -105,7 +106,7 @@ pip install -U "nvidia-modelopt[all]"
 To install from source for local development, you can install it as follows:
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[all]"
 ```
 
 When installing from source, please make sure to re-run the install command everytime you pull new changes in the repository so dependencies are also updated.
@@ -128,7 +129,7 @@ Quantization is an effective model optimization technique for large models. Quan
 
 ### Pruning \[[examples](./examples/README.md#pruning)\] \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_pruning.html)\]
 
-Pruning is a technique to reduce the model size and accelerate the inference by removing unnecessary weights. Model Optimizer provides Python APIs to prune Linear and Conv layers, and Transformer attention heads, MLP, embedding hidden size and number of layers (depth).
+Pruning is a technique to reduce the model size and accelerate the inference by removing unnecessary weights. Model Optimizer provides Python APIs to prune primitives such as Linear and Conv layers, and complex modules such as Transformer or Mamba heads, MLP, embedding hidden size and number of layers (depth).
 
 ### Distillation \[[examples](./examples/README.md#distillation)\] \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/4_distillation.html)\]
 
