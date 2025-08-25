@@ -18,7 +18,7 @@
 ## Before your PR is "*Ready for review*"
 <!-- If you haven't finished some of the above items you can still open `Draft` PR. -->
 
-- **Make sure you read and follow [Contributor guidelines](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/CONTRIBUTING.md)**
+- **Make sure you read and follow [Contributor guidelines](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/CONTRIBUTING.md)** and your commits are signed.
 - **Is this change backward compatible?**: Yes/No <!--- If No, explain why. -->
 - **Did you write any new necessary tests?**: Yes/No
 - **Did you add or update any necessary documentation?**: Yes/No

@@ -75,23 +75,39 @@ git push origin <branch> --force-with-lease
 - We require that all contributors "sign-off" on their commits. This certifies that the contribution is your original
   work, or you have rights to submit it under the same license, or a compatible license.
 
-- You need to sign-off your commits using an GPG / SSH key which is different than the one used for authentication. See [GitHub docs](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) for more details.
+- You need to cryptographically sign-off your commits as well using an SSH/GPG key which is different than the one used for authentication. See [GitHub docs](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits) for more details. Note that setting up the SSH key is much simpler than the GPG key hence recommended to use SSH signing key following the steps below (requires `git>=2.34`).
 
-- Any contribution which contains commits that are not Signed-Off will not be accepted.
+  - Generate a new SSH key as per steps [in this doc](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#generating-a-new-ssh-key). For example:
 
-- To sign off on a commit you simply use the `--signoff --gpg-sign` (or `-s -S`) option when committing your changes:
+    ```bash
+    ssh-keygen -t ed25519 -f "${HOME}/.ssh/id_ed25519_git_signing" -P ""
+    ```
+
+  - Upload the public key (`cat "${HOME}/.ssh/id_ed25519_git_signing.pub"`) as a new SSH key in your [GitHub settings](https://github.com/settings/ssh/new) with an appropriate title and select key type as `Signing Key`.
+
+  - Configure your local `git` to use the new SSH key for signing commits:
+
+    ```bash
+    git config --global user.signingkey "${HOME}/.ssh/id_ed25519_git_signing.pub"
+    git config --global gpg.format ssh
+    git config --global commit.gpgsign true
+    ```
+
+- **Any contribution which contains commits that are not Signed-Off will not be accepted**.
+
+- Once you have set up your SSH/GPG key, to sign off on a commit you simply use the `--signoff --gpg-sign` (or `-s -S`) option when committing your changes:
 
   ```bash
   git commit -s -S -m "Add cool feature."
   ```
+
+  > *TIP: To enable this for committing in VSCode, you can enable `git.alwaysSignOff` and `git.enableCommitSigning` in your VSCode settings (`Ctrl/Cmd + ,`).*
 
   This will append the following to your commit message:
 
   ```
   Signed-off-by: Your Name <your@email.com>
   ```
-
-  To enable this for committing in VSCode, you can enable `git.alwaysSignOff` and `git.enableCommitSigning` in your VSCode settings.
 
 - Full text of the Developer Certificate of Origin (DCO):
 
