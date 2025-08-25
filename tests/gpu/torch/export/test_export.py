@@ -57,6 +57,7 @@ from modelopt.torch.quantization.config import (
     FP8_DEFAULT_CFG,
     INT4_AWQ_CFG,
     INT8_SMOOTHQUANT_CFG,
+    INT8_WEIGHT_ONLY_CFG,
     NVFP4_AWQ_LITE_CFG,
     NVFP4_DEFAULT_CFG,
     W4A8_AWQ_BETA_CFG,
@@ -323,6 +324,7 @@ def test_adjust_attn_amax_values(
     ("config", "expected_block_size"),
     [
         (FP8_DEFAULT_CFG, 0),
+        (INT8_WEIGHT_ONLY_CFG, 0),
         (INT8_SMOOTHQUANT_CFG, 0),
         (NVFP4_DEFAULT_CFG, 16),
         (NVFP4_AWQ_LITE_CFG, 16),
