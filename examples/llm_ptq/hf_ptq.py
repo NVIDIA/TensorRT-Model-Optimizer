@@ -58,6 +58,7 @@ RAND_SEED = 1234
 QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
     "int8": mtq.INT8_DEFAULT_CFG,
     "int8_sq": mtq.INT8_SMOOTHQUANT_CFG,
+    "int8_wo": mtq.INT8_WEIGHT_ONLY_CFG,
     "fp8": mtq.FP8_DEFAULT_CFG,
     "int4_awq": mtq.INT4_AWQ_CFG,
     "w4a8_awq": mtq.W4A8_AWQ_BETA_CFG,
@@ -87,7 +88,16 @@ def auto_quantize(
     if args.export_fmt == "hf":
         assert all(
             qformat
-            in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq", "w4a8_awq", "fp8_pb_wo", "w4a8_mxfp4_fp8"]
+            in [
+                "fp8",
+                "int8_wo",
+                "int4_awq",
+                "nvfp4",
+                "nvfp4_awq",
+                "w4a8_awq",
+                "fp8_pb_wo",
+                "w4a8_mxfp4_fp8",
+            ]
             for qformat in qformat_list
         ), (
             "One or more quantization formats provided are not supported for unified checkpoint export"
@@ -215,6 +225,8 @@ def main(args):
             assert (
                 args.qformat
                 in [
+                    "int8",
+                    "int8_wo",
                     "int4_awq",
                     "fp8",
                     "nvfp4",
