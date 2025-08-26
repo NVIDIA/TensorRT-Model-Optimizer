@@ -15,12 +15,15 @@
 
 import json
 import os
+import platform
 from pathlib import Path
 
 import pytest
 from _test_utils.import_helper import skip_if_no_megatron
 
-# Skip the test if megatron is not available
+if platform.system() == "Windows":
+    pytest.skip("Skipping on Windows", allow_module_level=True)
+
 skip_if_no_megatron()
 datasets = pytest.importorskip("datasets")
 _ = pytest.importorskip("transformers")
@@ -52,7 +55,7 @@ def download_and_prepare_minipile_dataset(output_dir: Path) -> Path:
     return jsonl_file
 
 
-def test_megatron_preprocess_data_with_minipile_dataset(tmp_path):
+def test_megatron_preprocess_data_with_minipile_dataset(skip_on_windows, tmp_path):
     """Test megatron_preprocess_data function with nanotron/minipile_100_samples dataset.
 
     This test:
