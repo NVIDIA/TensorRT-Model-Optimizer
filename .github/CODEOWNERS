@@ -1,51 +1,53 @@
+# GitHub Teams defined at https://github.com/orgs/NVIDIA/teams/modelopt-devs/teams
+
 # Configuration files
-.github @kevalmorabia97 @RalphMao @ChenhanYu
-.gitlab @kevalmorabia97 @RalphMao @ChenhanYu
-.pre-commit-config.yaml @kevalmorabia97 @RalphMao @ChenhanYu
-CONTRIBUTING.md @kevalmorabia97 @RalphMao @ChenhanYu
-LICENSE @kevalmorabia97 @RalphMao @ChenhanYu
-pyproject.toml @kevalmorabia97 @RalphMao @ChenhanYu
-SECURITY.md @kevalmorabia97 @RalphMao @ChenhanYu
-setup.py @kevalmorabia97 @RalphMao @ChenhanYu
-tox.ini @kevalmorabia97 @RalphMao @ChenhanYu
+.github @NVIDIA/modelopt-setup-codeowners
+.gitlab @NVIDIA/modelopt-setup-codeowners
+.pre-commit-config.yaml @NVIDIA/modelopt-setup-codeowners
+CONTRIBUTING.md @NVIDIA/modelopt-setup-codeowners
+LICENSE @NVIDIA/modelopt-setup-codeowners
+pyproject.toml @NVIDIA/modelopt-setup-codeowners
+SECURITY.md @NVIDIA/modelopt-setup-codeowners
+setup.py @NVIDIA/modelopt-setup-codeowners
+tox.ini @NVIDIA/modelopt-setup-codeowners
 
 # Library
-modelopt/deploy @cjluo-nv @meenchen @sugunav14
-modelopt/onnx @ajrasane @gcunhase @i-riyad
-modelopt/onnx/autocast @ajrasane @galagam @i-riyad
-modelopt/torch @Edwardf0t1 @RalphMao @kevalmorabia97 @realAsma
-modelopt/torch/_deploy @ajrasane @cjluo-nv @i-riyad
-modelopt/torch/distill @AAnoosheh @kevalmorabia97 @realAsma
-modelopt/torch/export @cjluo-nv @meenchen @sugunav14
-modelopt/torch/nas @ChenhanYu @kevalmorabia97 @realAsma
-modelopt/torch/opt @ChenhanYu @kevalmorabia97 @realAsma
-modelopt/torch/prune @ChenhanYu @kevalmorabia97 @realAsma
-modelopt/torch/quantization @RalphMao @ajrasane @cjluo-nv @i-riyad @jingyu-ml @kaix-nv @meenchen @mxinO @realAsma @sychen52
-modelopt/torch/sparsity @RalphMao @kaix-nv @realAsma
-modelopt/torch/speculative @ChenhanYu @yeyu-nvidia
-modelopt/torch/trace @kevalmorabia97 @realAsma
-modelopt/torch/utils @ChenhanYu @RalphMao @cjluo-nv @kevalmorabia97 @realAsma
+modelopt/deploy @NVIDIA/modelopt-deploy-codeowners
+modelopt/onnx @NVIDIA/modelopt-onnx-codeowners
+modelopt/onnx/autocast @NVIDIA/modelopt-onnx-autocast-codeowners
+modelopt/torch @NVIDIA/modelopt-torch-codeowners
+modelopt/torch/_deploy @NVIDIA/modelopt-torch-deploy-codeowners
+modelopt/torch/distill @NVIDIA/modelopt-torch-distill-codeowners
+modelopt/torch/export @NVIDIA/modelopt-torch-export-codeowners
+modelopt/torch/nas @NVIDIA/modelopt-torch-nas-prune-codeowners
+modelopt/torch/opt @NVIDIA/modelopt-torch-opt-codeowners
+modelopt/torch/prune @NVIDIA/modelopt-torch-nas-prune-codeowners
+modelopt/torch/quantization @NVIDIA/modelopt-torch-quantization-codeowners
+modelopt/torch/sparsity @NVIDIA/modelopt-torch-sparsity-codeowners
+modelopt/torch/speculative @NVIDIA/modelopt-torch-speculative-codeowners
+modelopt/torch/trace @NVIDIA/modelopt-torch-nas-prune-codeowners
+modelopt/torch/utils @NVIDIA/modelopt-torch-utils-codeowners
 
 # Examples
-/README.md @RalphMao @omrialmog @cjluo-nv @kevalmorabia97
-/docker @cjluo-nv @kevalmorabia97 @meenchen
-examples @RalphMao @cjluo-nv @kevalmorabia97
-examples/chained_optimizations @AAnoosheh @ChenhanYu @kevalmorabia97 @realAsma
-examples/cnn_qat @i-riyad @realAsma
-examples/deepseek @ChenhanYu @cjluo-nv @meenchen
-examples/diffusers @Edwardf0t1 @ajrasane @jingyu-ml
-examples/gpt-oss @cjluo-nv @meenchen @realAsma
-examples/llm_autodeploy @cjluo-nv @meenchen
-examples/llm_distill @AAnoosheh @kevalmorabia97 @kinjalpatel27 @realAsma
-examples/llm_eval @Edwardf0t1 @RalphMao @ajrasane @cjluo-nv @kinjalpatel27 @meenchen @realAsma
-examples/llm_ptq @Edwardf0t1 @RalphMao @ajrasane @cjluo-nv @kinjalpatel27 @meenchen @realAsma @sugunav14
-examples/llm_qat @Edwardf0t1 @RalphMao @kinjalpatel27 @mxinO @realAsma
-examples/llm_sparsity @RalphMao @kaix-nv @realAsma
-examples/model_hub @Edwardf0t1
-examples/nemo_run @AAnoosheh @ChenhanYu @jenchen13 @kevalmorabia97
-examples/onnx_ptq @ajrasane @cjluo-nv @gcunhase @i-riyad @meenchen
-examples/pruning @ChenhanYu @jenchen13 @kevalmorabia97 @realAsma
-examples/speculative_decoding @ChenhanYu @yeyu-nvidia
-examples/vlm_eval @ChenhanYu @Edwardf0t1 @ajrasane @cjluo-nv @meenchen @yueshen2016
-examples/vlm_ptq @ChenhanYu @Edwardf0t1 @ajrasane @cjluo-nv @meenchen @yueshen2016
-examples/windows @vishalpandya1990
+/docker @NVIDIA/modelopt-docker-codeowners
+/README.md @NVIDIA/modelopt-examples-codeowners
+examples @NVIDIA/modelopt-examples-codeowners
+examples/chained_optimizations @NVIDIA/modelopt-torch-nas-prune-codeowners
+examples/cnn_qat @NVIDIA/modelopt-examples-cnn_qat-codeowners
+examples/deepseek @NVIDIA/modelopt-deploy-codeowners
+examples/diffusers @NVIDIA/modelopt-examples-diffusers-codeowners
+examples/gpt-oss @NVIDIA/modelopt-examples-gpt-oss-codeowners
+examples/llm_autodeploy @NVIDIA/modelopt-deploy-codeowners
+examples/llm_distill @NVIDIA/modelopt-torch-distill-codeowners
+examples/llm_eval @NVIDIA/modelopt-examples-llm_ptq-codeowners
+examples/llm_ptq @NVIDIA/modelopt-examples-llm_ptq-codeowners
+examples/llm_qat @NVIDIA/modelopt-examples-llm_qat-codeowners
+examples/llm_sparsity @NVIDIA/modelopt-torch-sparsity-codeowners
+examples/model_hub @NVIDIA/modelopt-examples-model_hub-codeowners
+examples/nemo_run @NVIDIA/modelopt-examples-nemo_run-codeowners
+examples/onnx_ptq @NVIDIA/modelopt-onnx-codeowners
+examples/pruning @NVIDIA/modelopt-torch-nas-prune-codeowners
+examples/speculative_decoding @NVIDIA/modelopt-torch-speculative-codeowners
+examples/vlm_eval @NVIDIA/modelopt-examples-vlm-codeowners
+examples/vlm_ptq @NVIDIA/modelopt-examples-vlm-codeowners
+examples/windows @NVIDIA/modelopt-windows-codeowners
