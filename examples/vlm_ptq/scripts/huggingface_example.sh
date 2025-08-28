@@ -30,10 +30,10 @@ for i in $(env | grep ^PMI_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMIX_ | cut -d"=" -f 1); do unset -v $i; done
 
 case $MODEL_TYPE in
-    llava|phi|vila|mllama)
+    llava|phi|vila|mllama|qwen)
         ;;
     *)
-        echo "Unsupported type argument: Expected one of: [llava, phi, vila, mllama]" >&2
+        echo "Unsupported type argument: Expected one of: [llava, phi, vila, mllama, qwen]" >&2
         exit 1
 esac
 
@@ -91,7 +91,7 @@ fi
 
 BUILD_MAX_OUTPUT_LEN=512
 
-if [ "$MODEL_TYPE" = "llava" ] || [ "$MODEL_TYPE" = "vila" ]; then
+if [ "$MODEL_TYPE" = "llava" ] || [ "$MODEL_TYPE" = "vila" ] || [ "$MODEL_TYPE" = "qwen" ]; then
     BUILD_MAX_BATCH_SIZE=20
 else
     BUILD_MAX_BATCH_SIZE=4
@@ -145,6 +145,10 @@ case "${MODEL_TYPE}" in
         VISUAL_FEATURE=576
         VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
         ;;
+    "qwen")
+        VISUAL_FEATURE=1280
+        VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
+        ;;
     "mllama")
         PTQ_ARGS+=" --kv_cache_qformat none "
         VLM_ARGS=" --max_encoder_input_len=6404 --skip_run"
@@ -180,6 +184,10 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
+    fi
+
+    if [ "${MODEL_TYPE}" = "qwen" ]; then
+        cp ${MODEL_PATH}/preprocessor_config.json ${SAVE_PATH}
     fi
 
     if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
