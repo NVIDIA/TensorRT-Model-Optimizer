@@ -1,0 +1,7 @@
+torch
+torchvision
+torchaudio
+nvidia-modelopt[all]
+transformers
+ipywidgets
+jupyterlab
