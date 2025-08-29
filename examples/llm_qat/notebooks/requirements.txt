@@ -1,7 +1,6 @@
+ipywidgets
+nvidia-modelopt[all]
 torch
 torchvision
-torchaudio
-nvidia-modelopt[all]
 transformers
-ipywidgets
-jupyterlab
+trl
