@@ -45,6 +45,7 @@ from modelopt.onnx.utils import (
     get_node_names,
     get_output_names,
     get_output_shapes,
+    remove_node_training_mode,
 )
 from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
 from modelopt.torch.utils import flatten_tree, standardize_named_model_args
@@ -569,25 +570,3 @@ def get_onnx_bytes(*args, **kwargs) -> bytes:
     onnx_bytes = get_onnx_bytes_and_metadata(*args, **kwargs)[0]
     onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
     return onnx_bytes_obj.get_onnx_model_file_bytes()
-
-
-def remove_node_training_mode(onnx_model: ModelProto, node_op_type: str) -> ModelProto:
-    """Remove training_mode attribute from selected node type.
-
-    Args:
-        onnx_model: The onnx model.
-        node_op_type: The node type to remove training_mode attribute from.
-
-    Returns:
-        The onnx model with the training_mode attribute removed.
-    """
-    for node in onnx_model.graph.node:
-        if node.op_type == node_op_type:
-            for attribute in node.attribute:
-                if attribute.name == "training_mode":
-                    if attribute.i == 1:
-                        node.output.remove(node.output[1])
-                        node.output.remove(node.output[1])
-                    attribute.i = 0
-
-    return onnx_model
