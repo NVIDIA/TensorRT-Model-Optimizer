@@ -22,8 +22,10 @@ import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import torch
+from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+from megatron.core.utils import get_tensor_model_parallel_group_if_none
 
 from modelopt.torch.opt.plugins.megatron import (
     _MegatronMLP,
@@ -421,6 +423,17 @@ class _RealQuantMegatronParallelLinear(RealQuantLinear):
         ):
             allreduce_dgrad = kwargs.get("allreduce_dgrad", False)
             tp_group = kwargs.get("tp_group")
+            sequence_parallel = kwargs.get("sequence_parallel", False)
+
+            tp_group = get_tensor_model_parallel_group_if_none(tp_group)
+
+            if sequence_parallel:
+                input = gather_from_sequence_parallel_region(
+                    input, tensor_parallel_output_grad=True, group=tp_group
+                )
+            else:
+                input = input
+
             return RealQuantLinear.forward(
                 self,
                 input,

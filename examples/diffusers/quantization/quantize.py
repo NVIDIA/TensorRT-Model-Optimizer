@@ -306,6 +306,37 @@ class PipelineManager:
         self.pipe: DiffusionPipeline | None = None
         self.pipe_upsample: LTXLatentUpsamplePipeline | None = None  # For LTX-Video upsampling
 
+    @staticmethod
+    def create_pipeline_from(
+        model_type: ModelType, torch_dtype: torch.dtype = torch.bfloat16
+    ) -> DiffusionPipeline:
+        """
+        Create and return an appropriate pipeline based on configuration.
+
+        Returns:
+            Configured diffusion pipeline
+
+        Raises:
+            ValueError: If model type is unsupported
+        """
+        try:
+            model_id = MODEL_REGISTRY[model_type]
+            if model_type == ModelType.SD3_MEDIUM:
+                pipe = StableDiffusion3Pipeline.from_pretrained(model_id, torch_dtype=torch_dtype)
+            elif model_type in [ModelType.FLUX_DEV, ModelType.FLUX_SCHNELL]:
+                pipe = FluxPipeline.from_pretrained(model_id, torch_dtype=torch_dtype)
+            else:
+                # SDXL models
+                pipe = DiffusionPipeline.from_pretrained(
+                    model_id,
+                    torch_dtype=torch_dtype,
+                    use_safetensors=True,
+                )
+            pipe.set_progress_bar_config(disable=True)
+            return pipe
+        except Exception as e:
+            raise e
+
     def create_pipeline(self) -> DiffusionPipeline:
         """
         Create and return an appropriate pipeline based on configuration.

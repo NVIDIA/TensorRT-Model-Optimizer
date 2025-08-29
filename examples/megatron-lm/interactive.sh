@@ -1,4 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +15,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Eagle Optimization Method."""
+if [ -n "${USER_FSW}" ]; then
+    echo "USER_FSW is set to ${USER_FSW}"
+else
+    USER_FSW=/tmp
+fi
 
-from .conversion import *
-from .default_config import *
-from .eagle_model import *
+docker run --gpus all --init -it --rm --network host --ipc=host \
+    --user $(id -u):$(id -g) \
+    -v $PWD:/workspace/nmm-sandbox \
+    -v ${USER_FSW}:/workspace/scratch \
+    -v /home/chenhany/projects/nmm-sandbox/modelopt:/workspace/TensorRT-Model-Optimizer \
+    nvidia-modelopt-megatron:latest bash

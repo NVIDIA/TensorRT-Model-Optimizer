@@ -58,14 +58,11 @@ def configure_logging(level=logging.INFO, log_file=None):
                 file=sys.stderr,
             )
             print("[modelopt][onnx] - INFO - Falling back to console logging.", file=sys.stderr)
-            console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setFormatter(formatter)
-            logger.addHandler(console_handler)
-    else:
-        # If no log_file is specified, log to stdout
-        console_handler = logging.StreamHandler(sys.stdout)
-        console_handler.setFormatter(formatter)
-        logger.addHandler(console_handler)
+
+    # Setup handler to print log in stdout
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
     # Prevent log messages from propagating to the root logger
     logger.propagate = False

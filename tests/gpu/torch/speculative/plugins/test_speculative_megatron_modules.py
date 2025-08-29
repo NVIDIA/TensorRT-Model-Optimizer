@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections import deque
+from copy import deepcopy
 from functools import partial
 
 import pytest
@@ -26,6 +27,7 @@ from _test_utils.torch_dist.plugins.megatron_common import get_mcore_gpt_model
 from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
 
 import modelopt.torch.speculative as mtsp
+from modelopt.torch.speculative.eagle.default_config import default_eagle_config
 from modelopt.torch.speculative.plugins.megatron_eagle import _DynamicEagleGPTModel, right_padding
 from modelopt.torch.speculative.plugins.megatron_medusa import _DynamicMedusaGPTModel
 from modelopt.torch.speculative.utils import Tree, get_default_attention_mask_and_position_ids
@@ -63,7 +65,10 @@ def _test_speculative_gpt_model(
         # Type checking
         assert isinstance(model, _DynamicMedusaGPTModel)
     elif algo == "eagle":
-        config = {"eagle_num_layers": 1}
+        config = {"eagle_architecture_config": deepcopy(default_eagle_config)}
+        config["eagle_architecture_config"]["hidden_size"] = model.config.hidden_size
+        config["eagle_architecture_config"]["vocab_size"] = model.vocab_size
+        config["eagle_architecture_config"]["draft_vocab_size"] = model.vocab_size
 
         model = mtsp.convert(model, [("eagle", config)])
 
@@ -176,8 +181,6 @@ def _test_tree_decode(tree_paths, greedy_steps, rank, size):
     vocab_size = 64
     batch_size = 1
 
-    config = {"eagle_num_layers": 1}
-
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=size,
         pipeline_model_parallel_size=1,
@@ -189,6 +192,11 @@ def _test_tree_decode(tree_paths, greedy_steps, rank, size):
         activation_func=activation_func,
         normalization=normalization,
     ).cuda()
+
+    config = {"eagle_architecture_config": deepcopy(default_eagle_config)}
+    config["eagle_architecture_config"]["hidden_size"] = model.config.hidden_size
+    config["eagle_architecture_config"]["vocab_size"] = model.vocab_size
+    config["eagle_architecture_config"]["draft_vocab_size"] = model.vocab_size
 
     model = mtsp.convert(model, [("eagle", config)])
 

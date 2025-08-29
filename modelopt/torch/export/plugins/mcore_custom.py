@@ -17,6 +17,7 @@
 """Custom Megatron mapping and safetensors utility."""
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -162,6 +163,30 @@ class UnpackNameRemapping(CustomModuleMapping):
         )
 
 
+class PackNameRemappingGPT(CustomModuleMapping):
+    """A custom module mapping that packs module after name remapping."""
+
+    def __init__(self, target_name_or_prefix: str = "", func_kwargs: dict[str, Any] = {}):
+        """Create a custom module mapping that packs and renames module."""
+        super().__init__(
+            func_name="pack_name_remapping_gpt_oss",
+            target_name_or_prefix=target_name_or_prefix,
+            func_kwargs=func_kwargs,
+        )
+
+
+class UnpackNameRemappingGPT(CustomModuleMapping):
+    """A custom module mapping that unpacks module after name remapping."""
+
+    def __init__(self, target_name_or_prefix: str = "", func_kwargs: dict[str, Any] = {}):
+        """Create a custom module mapping that unpacks module after name remapping."""
+        super().__init__(
+            func_name="unpack_name_remapping_gpt_oss",
+            target_name_or_prefix=target_name_or_prefix,
+            func_kwargs=func_kwargs,
+        )
+
+
 def save_safetensors(state_dict, save_directory: str | os.PathLike):
     """Save safetensors with pipeline model parallel support."""
     pp_rank = get_pipeline_model_parallel_rank()
@@ -279,9 +304,10 @@ def _get_safetensor_slices(
             tensor_slice = f.get_slice(key)
             assert tensor_slice is not None
             shape = tensor_slice.get_shape()
-            assert len(shape) in (1, 2, 3), f"Shape {shape} is not supported!"
+            assert len(shape) in (1, 2, 3, 4), f"Shape {shape} is not supported!"
             # 1 for bias case
-            # 3 for packed MoE case
+            # 3 for packed MoE case (Llama4)
+            # 4 for packed MoE case with mxfp4 dtype (gpt-oss)
 
             # MCore tensor parallel model sharding
             sharding_dim = parallel_config.sharding_dim
@@ -292,9 +318,11 @@ def _get_safetensor_slices(
                 tp_size = get_expert_tensor_parallel_world_size()
                 if tp_size > 1:
                     raise ValueError("Packed MoE import only supports ETP=1.")
-                if len(shape) != 3:
+                if len(shape) not in (2, 3, 4):
                     raise ValueError(
-                        "Packed MoE import only supports 3D tensor in shape [num_experts, in_dim, out_dim]."
+                        "For LLama4, Packed MoE import only supports 3D tensor in shape [num_experts, in_dim, out_dim]."
+                        "For gpt-oss, Packed MoE import only supports 2D tensor of MOE bias, "
+                        "3D tensor of MOE scales, 4D tensor of MOE blocks"
                     )
                 if sharding_dim != 0:
                     raise ValueError("Packed MoE import only supports sharding_dim=0.")
@@ -308,7 +336,12 @@ def _get_safetensor_slices(
                             key, shape, sharding_dim, ep_size
                         )
                     )
-                tensor = tensor_slice[rank_offset : rank_offset + per_rank_size, :, :]
+                if len(shape) == 2:
+                    tensor = tensor_slice[rank_offset : rank_offset + per_rank_size, :]
+                elif len(shape) == 3:
+                    tensor = tensor_slice[rank_offset : rank_offset + per_rank_size, :, :]
+                elif len(shape) == 4:
+                    tensor = tensor_slice[rank_offset : rank_offset + per_rank_size, :, :, :]
             else:
                 if parallel_group == "TP":
                     tp_rank = get_tensor_model_parallel_rank()
@@ -334,6 +367,7 @@ def _get_safetensor_slices(
                         tensor = tensor_slice[rank_offset : rank_offset + per_rank_size, :]
                 elif len(shape) == 3:
                     # For packed ETP case, Llama4 uses 3D tensor for local experts
+                    # For gpt-oss case, gpt-oss uses 3D tensor for scales of local experts
                     if sharding_dim == 1:
                         tensor = tensor_slice[:, rank_offset : rank_offset + per_rank_size, :]
                     elif sharding_dim == 2:
@@ -345,6 +379,12 @@ def _get_safetensor_slices(
                 elif len(shape) == 1:
                     # For bias case
                     tensor = tensor_slice[rank_offset : rank_offset + per_rank_size]
+                elif len(shape) == 4:
+                    # For packed ETP case, gpt-oss uses 4D tensor for local experts
+                    if sharding_dim == 1:
+                        tensor = tensor_slice[:, rank_offset : rank_offset + per_rank_size, :, :]
+                    elif sharding_dim == 2:
+                        tensor = tensor_slice[:, :, rank_offset : rank_offset + per_rank_size, :]
                 else:
                     raise ValueError(f"Unsupported shape: {shape}")
     return tensor
@@ -417,3 +457,74 @@ def get_safetensor(
                     tensor = padded_tensor
 
     return tensor.contiguous()
+
+
+def dequantize_mxfp4_to_bf16(
+    blocks: torch.Tensor,
+    scales: torch.Tensor,
+    *,
+    dtype: torch.dtype = torch.bfloat16,
+    rows_per_chunk: int = 32768 * 1024,
+) -> torch.Tensor:
+    """Dequantize MXFP4 blocks and scales to BF16 format.
+
+    Args:
+        blocks: The quantized blocks tensor (U8 dtype)
+        scales: The scales tensor (U8 dtype)
+        dtype: Target dtype for dequantization (default: torch.bfloat16)
+        rows_per_chunk: Number of rows to process per chunk
+
+    Returns:
+        Dequantized tensor in the specified dtype
+    """
+    assert blocks.shape[:-1] == scales.shape, f"{blocks.shape=} does not match {scales.shape=}"
+
+    # Convert scales from U8 to int32 and subtract 127 (bias)
+    scales = scales.to(torch.int32) - 127
+
+    fp4_values = [
+        +0.0,
+        +0.5,
+        +1.0,
+        +1.5,
+        +2.0,
+        +3.0,
+        +4.0,
+        +6.0,
+        -0.0,
+        -0.5,
+        -1.0,
+        -1.5,
+        -2.0,
+        -3.0,
+        -4.0,
+        -6.0,
+    ]
+    lut = torch.tensor(fp4_values, dtype=dtype, device=blocks.device)
+
+    *prefix_shape, g, b = blocks.shape
+    rows_total = math.prod(prefix_shape) * g
+
+    blocks = blocks.reshape(rows_total, b)
+    scales = scales.reshape(rows_total, 1)
+
+    out = torch.empty(rows_total, b * 2, dtype=dtype, device=blocks.device)
+
+    for r0 in range(0, rows_total, rows_per_chunk):
+        r1 = min(r0 + rows_per_chunk, rows_total)
+
+        blk = blocks[r0:r1]
+        exp = scales[r0:r1]
+
+        # nibble indices -> int64
+        idx_lo = (blk & 0x0F).to(torch.long)
+        idx_hi = (blk >> 4).to(torch.long)
+
+        sub = out[r0:r1]
+        sub[:, 0::2] = lut[idx_lo]
+        sub[:, 1::2] = lut[idx_hi]
+
+        torch.ldexp(sub, exp, out=sub)
+        del idx_lo, idx_hi, blk, exp
+
+    return out.reshape(*prefix_shape, g, b * 2).view(*prefix_shape, g * b * 2)

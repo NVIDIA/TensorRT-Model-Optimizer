@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Eagle Optimization Method."""
+HF_MODEL_CKPT=/workspace/scratch/moonshotai/Kimi-K2-Instruct
 
-from .conversion import *
-from .default_config import *
-from .eagle_model import *
+MLM_EXTRA_ARGS=" \
+    --decoder-first-pipeline-num-layers 3 \
+    --decoder-last-pipeline-num-layers 2 \
+    --init-model-with-meta-device \
+    --use-cpu-initialization \
+
+"
+
+# Layer distribution over PP: 3, [4] * 14, 2.
+PP=16

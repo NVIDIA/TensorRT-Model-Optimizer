@@ -18,7 +18,6 @@
 Some of the logics in this file are empirical and needs constant update if exceptions occur.
 """
 
-from contextlib import contextmanager
 from warnings import warn
 
 import torch
@@ -995,67 +994,165 @@ def get_expert_linear_names(module: nn.Module) -> list[str]:
         return ["linear_fc1", "linear_fc2"]
     elif module_match_name_list(module, ["DBRXMoeSparseMoeBlock"]):
         return ["w1_linear", "w2_linear", "v1_linear"]
+    elif module_match_name_list(module, ["GptOssMoE"]):
+        # GPT-OSS MoE modules use gate_up_proj and down_proj
+        return ["gate_up_proj", "down_proj"]
     else:
         # assuing w1, w2, w3 by default
         return ["w1", "w2", "w3"]
 
 
-def set_amax_for_uncalibrated_experts(experts: nn.Module, set_amax_value: float | None = None):
-    """Set amax of uncalibrated experts to a given value or the max of existing amax value from other experts.
+def set_expert_quantizer_amax(
+    modules: nn.Module | list[nn.Module],
+    quantizer_attrs: str | list[str] | None = None,
+    fallback_value: float = 0.5,
+    device: torch.device | None = None,
+) -> list[nn.Module]:
+    """Set amax values for expert quantizers using smart fallback logic.
+
+    Uses smart fallback logic:
+
+    1. Use max from existing quantizers in current batch (best - direct from calibration)
+    2. If no existing values found, then:
+       - For weight quantizers: calculate from weight statistics
+       - For input quantizers: use max from other experts, fallback if none found
+    3. Use fallback value as last resort
+
+    This ensures we always have semantically appropriate amax values for export.
 
     Args:
-        experts: a list of experts
-        set_amax_value: set amax value to the given value.
-                        If None, set amax value to the max of existing amax value from other experts.
+        modules: Single module or list of modules containing quantizers
+        quantizer_attrs: Specific quantizer attributes to handle.
+            If None, defaults to ["input_quantizer"] for backward compatibility.
+        fallback_value: Final fallback value when other methods fail (default: 0.5)
+        device: Target device for tensors (auto-detected if None)
 
     Returns:
-        uncalibrated_experts: a list of uncalibrated experts
+        uncalibrated_modules: a list of uncalibrated experts
     """
-    uncalibrated_experts = []
-    # get the max amax value from all experts
-    if set_amax_value is None:
-        amax_values = [
-            module.input_quantizer.amax
-            for module in experts
-            if (
-                hasattr(module, "input_quantizer")
-                and module.input_quantizer is not None
-                and module.input_quantizer.is_enabled
-            )
-            and module.input_quantizer.amax is not None
-        ]
-        if len(amax_values) == 0:
-            return uncalibrated_experts
-        set_amax_value = torch.max(torch.stack(amax_values))
+    import warnings
 
-    for module in experts:
-        if (
-            hasattr(module, "input_quantizer")
-            and module.input_quantizer is not None
-            and module.input_quantizer.is_enabled
-        ) and module.input_quantizer.amax is None:
-            warn(
-                f"Missing amax value for {module} input_quantizer. Setting it to {set_amax_value} for export. "
-                f"This typically occurs in MoE models when certain experts are not activated during calibration. "
-                f"Consider increasing your calibration dataset size to ensure all experts are exercised."
-            )
-            # Use float32 dtype explicitly to ensure we create a floating point tensor
-            module.input_quantizer.amax = torch.tensor(
-                set_amax_value, dtype=torch.float32, device=module.weight.device
-            )
-            uncalibrated_experts.append(module)
+    # Normalize inputs
+    if not isinstance(modules, list):
+        modules = [modules]
 
+    if quantizer_attrs is None:
+        quantizer_attrs = ["input_quantizer"]
+    elif isinstance(quantizer_attrs, str):
+        quantizer_attrs = [quantizer_attrs]
 
-@contextmanager
-def set_amax_for_uncalibrated_experts_context(
-    experts: nn.Module, set_amax_value: float | None = None
-):
-    """Set amax for uncalibrated experts in a context manager."""
-    uncalibrated_experts = set_amax_for_uncalibrated_experts(experts, set_amax_value)
-    yield
-    if uncalibrated_experts:
-        for module in uncalibrated_experts:
-            delattr(module.input_quantizer, "_amax")
+    uncalibrated_modules = []
+
+    # Determine target device if not provided
+    if device is None:
+        first_module = next(iter(modules))
+        if hasattr(first_module, "weight"):
+            target_device = first_module.weight.device
+        else:
+            target_device = torch.device("cpu")
+    else:
+        target_device = device
+
+    # Collect all valid quantizers
+    all_quantizers = []
+
+    for module in modules:
+        for attr_name in quantizer_attrs:
+            if hasattr(module, attr_name):
+                quantizer = getattr(module, attr_name)
+                if (
+                    quantizer is not None
+                    and hasattr(quantizer, "is_enabled")
+                    and quantizer.is_enabled
+                ):
+                    all_quantizers.append((module, attr_name, quantizer))
+
+    target_amax = None
+
+    # Collect ANY existing amax values from current batch (most direct source)
+    valid_amax_values = []
+    for _, attr_name, quantizer in all_quantizers:
+        existing_amax = getattr(quantizer, "amax", None)
+        if existing_amax is not None:
+            # Convert to tensor and add to collection
+            if isinstance(existing_amax, torch.Tensor):
+                valid_amax_values.append(existing_amax.to(target_device))
+            else:
+                valid_amax_values.append(
+                    torch.tensor(existing_amax, dtype=torch.float32, device=target_device)
+                )
+
+    # Use existing values from current batch if any found
+    if len(valid_amax_values) > 0:
+        target_amax = torch.max(torch.stack(valid_amax_values))
+
+    # If no existing values in current batch, apply type-specific fallback logic
+    elif target_amax is None:
+        has_input_quantizers = any("input_quantizer" in attr for _, attr, _ in all_quantizers)
+        has_weight_quantizers = any("weight_quantizer" in attr for _, attr, _ in all_quantizers)
+
+        if has_weight_quantizers and not has_input_quantizers:
+            # For weight quantizers: calculate from weight statistics
+            weight_amax_values = []
+            for module, _, _ in all_quantizers:
+                # Try to find a weight tensor in the module
+                weight_tensor = None
+                for weight_attr in ["weight", "gate_up_proj", "down_proj"]:
+                    if hasattr(module, weight_attr):
+                        weight_tensor = getattr(module, weight_attr)
+                        break
+
+                if weight_tensor is not None:
+                    weight_amax_values.append(torch.max(torch.abs(weight_tensor)))
+
+            if weight_amax_values:
+                target_amax = torch.max(torch.stack(weight_amax_values)).item()
+        elif has_input_quantizers:
+            # For input quantizers: ideally search other experts for existing input amax values
+            # TODO: Implement broader expert search - currently function only has access to current batch
+            # For now, this will fall through to fallback value
+            pass
+
+    # Final fallback
+    if target_amax is None:
+        target_amax = fallback_value
+        has_input_quantizers = any("input_quantizer" in attr for _, attr, _ in all_quantizers)
+
+    # Apply target amax to quantizers that need it
+    for module, attr_name, quantizer in all_quantizers:
+        # Check if quantizer needs amax (use property for consistency)
+        needs_amax = getattr(quantizer, "amax", None) is None
+
+        # Skip dynamic quantizers for input quantizers
+        if "input_quantizer" in attr_name and getattr(quantizer, "_dynamic", False):
+            needs_amax = False
+
+        if needs_amax:
+            # Create tensor with appropriate value (using function-wide target_device)
+            if isinstance(target_amax, torch.Tensor):
+                amax_tensor = target_amax.clone().to(dtype=torch.float32, device=target_device)
+            else:
+                amax_tensor = torch.tensor(target_amax, dtype=torch.float32, device=target_device)
+
+            # Set amax value using property for proper validation and tensor handling
+            quantizer.amax = amax_tensor
+
+            uncalibrated_modules.append(module)
+            amax_val = amax_tensor.item() if isinstance(amax_tensor, torch.Tensor) else amax_tensor
+
+            if len(valid_amax_values) > 0:
+                warnings.warn(
+                    f"Missing amax value for {attr_name} in {type(module).__name__}. "
+                    f"Setting it to {amax_val:.6f} (max from existing quantizers in current batch). "
+                    f"This typically occurs when certain experts are not activated during calibration."
+                )
+            elif amax_val != fallback_value and "input_quantizer" not in attr_name:
+                warnings.warn(
+                    f"Missing amax value for {attr_name} in {type(module).__name__}. "
+                    f"Setting it to {amax_val:.6f} (computed from weights)."
+                )
+
+    return uncalibrated_modules
 
 
 def build_stacked_experts(
@@ -1084,15 +1181,19 @@ def build_stacked_experts(
         resmooth_only=True,
     )
 
-    # Set amax to 0 for uncalibrated experts
-    with set_amax_for_uncalibrated_experts_context(
-        [
-            expert_getter(experts, i, module_name)
-            for module_name in linear_names
-            for i in range(num_experts)
-        ],
-        0,  # set amax to 0 for uncalibrated experts as we will calculate max across all experts later
-    ):
+    # Set amax to 0 for uncalibrated experts (calculate max across all experts later)
+    expert_modules = [
+        expert_getter(experts, i, module_name)
+        for module_name in linear_names
+        for i in range(num_experts)
+    ]
+    uncalibrated_experts = set_expert_quantizer_amax(
+        modules=expert_modules,
+        quantizer_attrs=["input_quantizer"],
+        fallback_value=0,
+    )
+
+    try:
         # Pre-fuse W1 and W3
         if len(linear_names) == 3:
             for i in range(num_experts):
@@ -1150,10 +1251,17 @@ def build_stacked_experts(
                     experts_weight_3.weights_scaling_factor_2,
                 )
 
-    # Explicitly move weight to CPU to reduce GPU memory requirement.
-    experts_weight_1.weight = experts_weight_1.weight.cpu()
-    experts_weight_2.weight = experts_weight_2.weight.cpu()
-    return experts_weight_1, experts_weight_2
+        # Explicitly move weight to CPU to reduce GPU memory requirement.
+        experts_weight_1.weight = experts_weight_1.weight.cpu()
+        experts_weight_2.weight = experts_weight_2.weight.cpu()
+        return experts_weight_1, experts_weight_2
+
+    finally:
+        # Cleanup: restore original amax values (same logic as old context manager)
+        if uncalibrated_experts:
+            for module in uncalibrated_experts:
+                if hasattr(module.input_quantizer, "_amax"):
+                    delattr(module.input_quantizer, "_amax")
 
 
 def build_moe_config(module: nn.Module, decoder_type) -> MOEConfig:

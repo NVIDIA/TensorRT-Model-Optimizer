@@ -20,8 +20,14 @@ from _test_utils.examples.run_command import run_torch_onnx_command
 
 # TODO: Add accuracy evaluation after we upgrade TRT version to 10.12
 @pytest.mark.parametrize(
-    ("quantize_mode", "onnx_save_path"),
-    [("nvfp4", "vit_base_patch16_224.nvfp4.onnx"), ("mxfp8", "vit_base_patch16_224.mxfp8.onnx")],
+    ("quantize_mode", "onnx_save_path", "calib_size"),
+    [
+        ("nvfp4", "vit_base_patch16_224.nvfp4.onnx", "1"),
+        ("mxfp8", "vit_base_patch16_224.mxfp8.onnx", "1"),
+        ("int4_awq", "vit_base_patch16_224.int4_awq.onnx", "1"),
+    ],
 )
-def test_torch_onnx(quantize_mode, onnx_save_path):
-    run_torch_onnx_command(quantize_mode=quantize_mode, onnx_save_path=onnx_save_path)
+def test_torch_onnx(quantize_mode, onnx_save_path, calib_size):
+    run_torch_onnx_command(
+        quantize_mode=quantize_mode, onnx_save_path=onnx_save_path, calib_size=calib_size
+    )

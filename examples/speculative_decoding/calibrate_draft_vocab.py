@@ -27,7 +27,13 @@ def main():
     parser = argparse.ArgumentParser(description="Calibrate draft vocab and save to .pt file")
     parser.add_argument("--model", type=str, required=True, help="Model name or path for tokenizer")
     parser.add_argument("--data", type=str, required=True, help="Path to training data (jsonl)")
-    parser.add_argument("--draft_vocab_size", type=int, required=True, help="Draft vocab size")
+    parser.add_argument(
+        "--eagle_config",
+        type=str,
+        required=True,
+        default="eagle_config.json",
+        help="Path to eagle_config.json",
+    )
     parser.add_argument(
         "--calibrate_size",
         type=int,
@@ -39,6 +45,12 @@ def main():
     )
     args = parser.parse_args()
 
+    with open(args.eagle_config) as f:
+        eagle_config = json.load(f)
+    if "draft_vocab_size" not in eagle_config:
+        print("No draft vocab size specified in eagle_config.json, no need to calibrate for d2t.")
+        return
+
     print("Calibrating vocab...")
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     with open(args.data) as f:
@@ -47,7 +59,7 @@ def main():
             conversations = conversations[: args.calibrate_size]
         conversations = [item for sublist in conversations for item in sublist]
 
-    d2t = calibrate_frequent_vocab(tokenizer, conversations, args.draft_vocab_size)
+    d2t = calibrate_frequent_vocab(tokenizer, conversations, eagle_config["draft_vocab_size"])
     model_name = os.path.basename(os.path.normpath(args.model))
     vocab_path = os.path.join(args.save_dir, model_name, "d2t.pt")
     os.makedirs(os.path.dirname(vocab_path), exist_ok=True)

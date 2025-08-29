@@ -1,4 +1,6 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#!/bin/bash
+
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +15,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Eagle Optimization Method."""
-
-from .conversion import *
-from .default_config import *
-from .eagle_model import *
+HF_MODEL_CKPT=/workspace/scratch/meta-llama/Llama-3.2-1B-Instruct
+TP=1
+ETP=1
+EP=1
+PP=1

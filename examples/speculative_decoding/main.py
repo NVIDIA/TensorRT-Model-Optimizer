@@ -36,14 +36,15 @@ from typing import Literal
 
 import torch
 import transformers
+from ar_validate import validate_ar
+from datasets import load_dataset
 from eagle_utils import make_eagle_supervised_data_module
 from medusa_utils import make_medusa_supervised_data_module
-from transformers import Trainer
+from transformers import Trainer, TrainerCallback
 from transformers.trainer_utils import get_last_checkpoint
 
 import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
-from modelopt.torch.speculative.utils import calibrate_frequent_vocab
 from modelopt.torch.utils import print_rank_0
 
 torch.manual_seed(0)
@@ -66,10 +67,6 @@ class DataArguments:
         default="draft_vocab_cache",
         metadata={"help": "Path to the d2t cache directory."},
     )
-    calibrate_size: int = field(
-        default=None,
-        metadata={"help": "Size of the calibration data. If None, use entire training set."},
-    )
 
 
 @dataclass
@@ -85,7 +82,8 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     dataloader_drop_last: bool = field(default=True)
     bf16: bool = field(default=True)
-    mode: Literal["eagle", "medusa"] = "medusa"
+    mode: Literal["eagle1", "eagle3", "medusa"] = "eagle3"
+    ar_validate_steps: int = field(default=1000, metadata={"help": "Steps between AR validation."})
 
 
 @dataclass
@@ -96,11 +94,7 @@ class MedusaArguments:
 
 @dataclass
 class EagleArguments:
-    eagle_num_layers: int | None = field(default=1)
-    use_input_layernorm_in_first_layer: bool | None = field(default=True)
-    use_last_layernorm: bool | None = field(default=True)
-    use_aux_hidden_state: bool | None = field(default=True)
-    draft_vocab_size: int | None = field(default=32000)
+    eagle_config: str = field(default=None, metadata={"help": "Path to eagle_config.json"})
 
 
 def train():
@@ -156,57 +150,78 @@ def train():
                 "medusa_num_layers": medusa_args.medusa_num_layers,
             }
             mtsp.convert(model, [("medusa", config)])
-        elif training_args.mode == "eagle":
+        elif training_args.mode in ["eagle1", "eagle3"]:
+            from modelopt.torch.speculative.config import EAGLE1_DEFAULT_CFG, EAGLE3_DEFAULT_CFG
+
+            # Load default config
             config = {
-                "eagle_num_layers": eagle_args.eagle_num_layers,
-                "use_input_layernorm_in_first_layer": eagle_args.use_input_layernorm_in_first_layer,
-                "use_last_layernorm": eagle_args.use_last_layernorm,
-                "use_aux_hidden_state": eagle_args.use_aux_hidden_state,
-                "draft_vocab_size": eagle_args.draft_vocab_size,
-            }
+                "eagle1": EAGLE1_DEFAULT_CFG,
+                "eagle3": EAGLE3_DEFAULT_CFG,
+            }[training_args.mode]["config"]
+
+            # overwrite config with custom config
+            if eagle_args.eagle_config:
+                with open(eagle_args.eagle_config) as f:
+                    custom_config = json.load(f)
+                config["eagle_architecture_config"].update(custom_config)
+
+            # Hidden size and vocab size must match base model
+            config["eagle_architecture_config"].update(
+                {
+                    "hidden_size": model.config.hidden_size,
+                    "vocab_size": model.config.vocab_size,
+                    "draft_vocab_size": custom_config["draft_vocab_size"]
+                    if eagle_args.eagle_config and "draft_vocab_size" in custom_config
+                    else model.config.vocab_size,
+                }
+            )
 
             mtsp.convert(model, [("eagle", config)])
 
-            if eagle_args.draft_vocab_size > 0 and (
-                not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0
-            ):
-                model_name = os.path.basename(os.path.normpath(model_args.model_name_or_path))
-
-                vocab_cache_path = os.path.join(
-                    data_args.draft_vocab_cache_dir, model_name, "d2t.pt"
-                )
-                if os.path.exists(vocab_cache_path):
+            # read draft vocab cache
+            if model.eagle_config.draft_vocab_size < model.eagle_config.vocab_size:
+                try:
+                    model_name = os.path.basename(os.path.normpath(model_args.model_name_or_path))
+                    vocab_cache_path = os.path.join(
+                        data_args.draft_vocab_cache_dir, model_name, "d2t.pt"
+                    )
                     vocab_cache = torch.load(vocab_cache_path)
-                    if len(vocab_cache) == eagle_args.draft_vocab_size:
-                        model.eagle_module.d2t = vocab_cache
-                        print_rank_0(f"Loaded draft vocab cache from {vocab_cache_path}.")
-                else:
-                    print_rank_0(
-                        "No matching draft vocab cache found, calibrating vocab using training set..."
-                    )
-                    with open(data_args.data_path) as f:
-                        calibrate_conversations = [json.loads(line)["conversations"] for line in f]
-                        if data_args.calibrate_size:
-                            calibrate_conversations = calibrate_conversations[
-                                : data_args.calibrate_size
-                            ]
-                        calibrate_conversations = [
-                            item for sublist in calibrate_conversations for item in sublist
-                        ]
-
-                    model.eagle_module.d2t = calibrate_frequent_vocab(
-                        tokenizer, calibrate_conversations, eagle_args.draft_vocab_size
-                    )
+                    model.eagle_module.d2t = vocab_cache
+                    print_rank_0(f"Loaded draft vocab cache from {vocab_cache_path}.")
+                except Exception as e:
+                    raise e
         else:
             raise Exception(f"{training_args.mode} is not supported!")
 
     print_rank_0("Loading dataset...")
     if training_args.mode == "medusa":
         data_module = make_medusa_supervised_data_module(tokenizer, data_args)
-    elif training_args.mode == "eagle":
+    elif training_args.mode in ["eagle1", "eagle3"]:
         data_module = make_eagle_supervised_data_module(tokenizer, data_args)
 
-    trainer = Trainer(model=model, processing_class=tokenizer, args=training_args, **data_module)
+    class ARValidationCallback(TrainerCallback):
+        def __init__(self, ar_validate_steps: int = 500):
+            self.ar_validate_steps = ar_validate_steps
+
+        def on_step_end(self, args, state, control, **kwargs):
+            if state.global_step % self.ar_validate_steps == 0 and state.global_step > 0:
+                print_rank_0("Running AR validation...")
+                ars = validate_ar(
+                    model=kwargs["model"],
+                    tokenizer=kwargs["processing_class"],
+                    ds=load_dataset("HuggingFaceH4/mt_bench_prompts")["train"],
+                    device=kwargs["model"].device,
+                )
+                print_rank_0(f"Step {state.global_step} AR: {sum(ars) / len(ars):.4f}")
+            return control
+
+    trainer = Trainer(
+        model=model,
+        processing_class=tokenizer,
+        args=training_args,
+        callbacks=[ARValidationCallback(training_args.ar_validate_steps)],
+        **data_module,
+    )
     trainer._move_model_to_device(model, trainer.args.device)
 
     # Manually enable this to return loss in eval

@@ -21,6 +21,7 @@ from collections import deque
 
 import megatron.core
 import torch
+import torch.nn.functional as F
 from megatron.core import InferenceParams, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
@@ -31,6 +32,8 @@ from megatron.core.models.gpt import GPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.parallel_state import (
     get_data_parallel_rank,
+    get_expert_tensor_parallel_world_size,
+    get_pipeline_model_parallel_world_size,
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
@@ -40,17 +43,16 @@ from megatron.core.tensor_parallel.mappings import (
     scatter_to_sequence_parallel_region,
 )
 from megatron.core.transformer.attention import SelfAttention
-from megatron.core.transformer.enums import AttnMaskType
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_block import TransformerBlock
+from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import TransformerLayer
 from megatron.core.transformer.utils import sharded_state_dict_default
 from megatron.core.utils import make_tp_sharded_tensor_for_checkpoint
 from packaging.version import Version
 
-from ...opt.plugins.megatron_model_config import Llama31Config8B
-from ..eagle.conversion import EagleDMRegistry
+from ..eagle.conversion import EagleDMRegistry, OfflineEagleDMRegistry
 from ..eagle.eagle_model import EagleModel
 from ..utils import (
     AcceptanceRateValidation,
@@ -64,6 +66,76 @@ try:
     from megatron.core.post_training.modelopt.layers import Linear
 except ImportError:
     warnings.warn("Fail to import megatron.core.post_training! EAGLE feature will be disable!")
+
+
+def dict_to_config(
+    architecture_config,
+    use_cpu_initialization=None,
+    fp16=False,
+    bf16=True,
+    sequence_parallel=False,
+):
+    """Helper function to convert a dictionary to TransformerConfig."""
+    config = TransformerConfig(
+        normalization="RMSNorm",
+        activation_func=F.silu,
+        gated_linear_unit=True,
+        hidden_dropout=0.0,
+        attention_softmax_in_fp32=False,
+        tensor_model_parallel_size=get_tensor_model_parallel_world_size(),
+        pipeline_model_parallel_size=get_pipeline_model_parallel_world_size(),
+        expert_tensor_parallel_size=get_expert_tensor_parallel_world_size(),
+        sequence_parallel=sequence_parallel,
+        use_cpu_initialization=use_cpu_initialization,
+        fp16=fp16,
+        bf16=bf16,
+        params_dtype=getattr(torch, architecture_config["torch_dtype"]),
+        pipeline_dtype=None,
+        num_layers=architecture_config.get("num_hidden_layers"),
+        hidden_size=architecture_config.get("hidden_size"),
+        ffn_hidden_size=architecture_config.get("intermediate_size"),
+        num_attention_heads=architecture_config.get("num_attention_heads"),
+        kv_channels=architecture_config.get(
+            "head_dim",
+            architecture_config.get("hidden_size")
+            // architecture_config.get("num_attention_heads"),
+        ),
+        num_query_groups=architecture_config.get("num_key_value_heads"),
+        init_method_std=architecture_config.get("initializer_range"),
+        layernorm_epsilon=architecture_config.get("rms_norm_eps"),
+        add_bias_linear=architecture_config.get("mlp_bias"),
+        attention_dropout=architecture_config.get("attention_dropout"),
+    )
+
+    config.transformer_layer_spec = None
+    config.seq_length = 8192
+    config.gradient_accumulation_fusion = False
+    config.vocab_size = architecture_config.get("vocab_size")
+    config.max_sequence_length = architecture_config.get("max_position_embeddings")
+    config.position_embedding_type = architecture_config.get("position_embedding_type")
+    config.rotary_percent = 1.0
+    config.rotary_base = architecture_config.get("rope_theta")
+    config.rope_scaling = "rope_scaling" in architecture_config
+    config.rope_scaling_factor = (
+        architecture_config.get("rope_scaling").get("factor")
+        if "rope_scaling" in architecture_config
+        else None
+    )
+
+    config.draft_vocab_size = architecture_config.get("draft_vocab_size")
+    config.use_input_layernorm_in_first_layer = architecture_config.get(
+        "use_input_layernorm_in_first_layer"
+    )
+    config.use_last_layernorm = architecture_config.get("use_last_layernorm")
+    config.use_aux_hidden_state = architecture_config.get("use_aux_hidden_state")
+    config.eagle_aux_hidden_state_layer_ids = architecture_config.get(
+        "eagle_aux_hidden_state_layer_ids"
+    )
+    config.use_mtp_layernorm = architecture_config.get("use_mtp_layernorm")
+    config.parallel_draft_step = architecture_config.get("parallel_draft_step")
+    config.has_lm_head = architecture_config.get("has_lm_head")
+
+    return config
 
 
 def mcore_version_higher_than(target_version: str):
@@ -382,12 +454,7 @@ class EagleModule(MegatronModule):
         self,
         config,
         rotary_pos_emb: torch.nn.Module,
-        num_layers: int,
-        use_last_layernorm: bool,
-        use_input_layernorm_in_first_layer: bool = True,
-        use_mtp_layernorm: bool = False,
         bias: bool = False,
-        num_aux_hidden_states: int = 0,
     ):
         """Constructor.
 
@@ -398,31 +465,24 @@ class EagleModule(MegatronModule):
 
         Args:
             config: MCore transformer config
-            num_layers: number of Eagle layers
-            rotary_pos_emb: If None, use the default Llama-3.1 rope (GPT-NeoX).
+            rotary_pos_emb: nn.Module.
         """
         # Override transformer_config before superclass initialization
-        self._num_eagle_layers = num_layers
-        self._use_input_layernorm_in_first_layer = use_input_layernorm_in_first_layer
-        self._use_mtp_layernorm = use_mtp_layernorm
-        self._num_aux_hidden_states = num_aux_hidden_states
-        eagle_config = self._get_eagle_transformer_config(config)
-        super().__init__(config=eagle_config)
+        config.pipeline_model_parallel_size = 1
+        config.virtual_pipeline_model_parallel_size = None
+        config.num_layers_in_first_pipeline_stage = None
+        config.num_layers_in_last_pipeline_stage = None
+        super().__init__(config=config)
 
-        eagle_transformer_layer_spec = self._get_eagle_transformer_layer_spec(eagle_config)
+        eagle_transformer_layer_spec = self._get_eagle_transformer_layer_spec(config)
 
+        self._num_aux_hidden_states = len(self.config.eagle_aux_hidden_state_layer_ids)
         if self._num_aux_hidden_states > 0:
-            self.enorm = TENorm(
-                eagle_config, eagle_config.hidden_size, eagle_config.layernorm_epsilon
-            )
+            self.enorm = TENorm(config, config.hidden_size, config.layernorm_epsilon)
             self._embeddings = None
-        elif self._use_mtp_layernorm:
-            self.enorm = TENorm(
-                eagle_config, eagle_config.hidden_size, eagle_config.layernorm_epsilon
-            )
-            self.hnorm = TENorm(
-                eagle_config, eagle_config.hidden_size, eagle_config.layernorm_epsilon
-            )
+        elif self.config.use_mtp_layernorm:
+            self.enorm = TENorm(config, config.hidden_size, config.layernorm_epsilon)
+            self.hnorm = TENorm(config, config.hidden_size, config.layernorm_epsilon)
 
         device = "cpu" if config.use_cpu_initialization else torch.cuda.current_device()
 
@@ -436,9 +496,9 @@ class EagleModule(MegatronModule):
         # parallel is used and does not allow gathering the outputs.
         with torch.device(device):
             self.fc = Linear(
-                eagle_config.hidden_size * fc_input_size_multiplier,
-                eagle_config.hidden_size,
-                config=eagle_config,
+                config.hidden_size * fc_input_size_multiplier,
+                config.hidden_size,
+                config=config,
                 init_method=(lambda w: None),  # not used
                 bias=bias,
             )
@@ -448,9 +508,9 @@ class EagleModule(MegatronModule):
         # Eagle does not use the final_layernorm in decoder.
         with torch.device(device):
             self.decoder = EagleTransformerBlock(
-                config=eagle_config,
+                config=config,
                 spec=eagle_transformer_layer_spec,
-                post_layer_norm=use_last_layernorm,
+                post_layer_norm=config.use_last_layernorm,
                 pre_process=True,
                 post_process=True,
             )
@@ -479,21 +539,28 @@ class EagleModule(MegatronModule):
                 tp_comm_buffer_name="qkv",
             )
 
-        # Sanity check
-        if self.decoder.layers[0].self_attention.attention_type == AttnMaskType.arbitrary:
-            raise ValueError("EAGLE-3 must use arbitrary attention mask.")
+        if self.config.draft_vocab_size != self.config.vocab_size:
+            # Need an extra lm_head for eagle module since vocab size is reduced.
+            assert self.config.draft_vocab_size <= self.config.vocab_size, (
+                "EAGLE module's vocab size should be <= base model vocab size!"
+            )
 
-    def _get_eagle_transformer_config(self, base_model_config):
-        eagle_config = copy.deepcopy(base_model_config)
-        eagle_config.num_layers = self._num_eagle_layers
-        # Unset the PP config.
-        eagle_config.pipeline_model_parallel_size = 1
-        eagle_config.virtual_pipeline_model_parallel_size = None
-        eagle_config.num_layers_in_first_pipeline_stage = None
-        eagle_config.num_layers_in_last_pipeline_stage = None
-        return eagle_config
+            self.register_buffer(
+                "d2t", torch.zeros(self.config.draft_vocab_size, dtype=torch.int64)
+            )
+        if self.config.draft_vocab_size != self.config.vocab_size or self.config.has_lm_head:
+            self.eagle_output_layer = tensor_parallel.ColumnParallelLinear(
+                self.config.hidden_size,
+                self.config.draft_vocab_size,
+                config=self.config,
+                init_method=self.config.init_method,
+                bias=False,
+                skip_bias_add=False,
+                gather_output=False,
+                skip_weight_param_allocation=False,
+            )
 
-    def _get_eagle_transformer_layer_spec(self, eagle_config):
+    def _get_eagle_transformer_layer_spec(self, config):
         """Get the TransformerLayer implementation spec.
 
         IMPORTANT: EagleModule must use arbitrary_attention_mask since we need to
@@ -501,7 +568,7 @@ class EagleModule(MegatronModule):
                    causal mask will result in leaking.
         """
         transformer_layer_spec = get_gpt_modelopt_spec(
-            eagle_config,
+            config,
             remap_te_layernorm=True,
             use_arbitrary_attention_mask=True,
         )
@@ -515,7 +582,7 @@ class EagleModule(MegatronModule):
         # Force TransformerLayer in case RealQuantTransformerLayer was used.
         eagle_transformer_layer_spec.module = TransformerLayer
 
-        if not self._use_input_layernorm_in_first_layer:
+        if not self.config.use_input_layernorm_in_first_layer:
             eagle_transformer_layer_spec.submodules.input_layernorm = IdentityOp
         return eagle_transformer_layer_spec
 
@@ -556,7 +623,7 @@ class EagleModule(MegatronModule):
         if self.config.sequence_parallel:
             rotary_seq_len *= self.config.tensor_model_parallel_size
 
-        if self._use_mtp_layernorm:
+        if self.config.use_mtp_layernorm:
             embeddings = self.enorm(embeddings)
             hidden_states = self.hnorm(hidden_states)
 
@@ -598,90 +665,30 @@ class EagleModule(MegatronModule):
         return hidden_states, next_hidden_states_input
 
 
-class EagleLlama3Module(EagleModule):
-    """EagleLlama3Module definition.
-
-    EagleLlama3Module is the default subclass which uses Llama3 architecture
-    and rotary position embedding.
-    """
-
-    def __init__(
-        self,
-        config,
-        num_layers: int,
-        use_last_layernorm: bool,
-        use_input_layernorm_in_first_layer: bool = True,
-        use_mtp_layernorm: bool = False,
-        bias: bool = False,
-        num_aux_hidden_states: int = 0,
-        ffn_hidden_size: int | None = 0,
-    ):
-        """Constructor."""
-        eagle_config = Llama31Config8B(
-            # Getting ModelParallelConfig from the base model
-            tensor_model_parallel_size=config.tensor_model_parallel_size,
-            sequence_parallel=config.sequence_parallel,
-            expert_tensor_parallel_size=config.expert_tensor_parallel_size,
-            use_cpu_initialization=config.use_cpu_initialization,
-            fp16=config.fp16,
-            bf16=config.bf16,
-            params_dtype=config.params_dtype,
-            # Override hidden_size and ffn_hidden_size from the base model
-            hidden_size=config.hidden_size,
-            ffn_hidden_size=config.ffn_hidden_size,
-        )
-
-        # If base model is using MHA/GQA, then use the same config to simply KV-cache impl.
-        if config.kv_channels is not None:
-            eagle_config.kv_channels = config.kv_channels
-        if config.num_attention_heads > 0:
-            eagle_config.num_attention_heads = config.num_attention_heads
-        else:
-            eagle_config.num_attention_heads = eagle_config.hidden_size // eagle_config.kv_channels
-        if config.num_query_groups is not None:
-            eagle_config.num_query_groups = config.num_query_groups
-
-        # Override ffn_hidden_size if provided to widen the transformer.
-        if ffn_hidden_size > 0:
-            eagle_config.ffn_hidden_size = ffn_hidden_size
-
-        rotary_pos_emb = RotaryEmbedding(
-            kv_channels=eagle_config.kv_channels,
-            rotary_percent=1.0,
-            rotary_interleaved=False,
-            seq_len_interpolation_factor=None,
-            rotary_base=500000.0,
-            rope_scaling=True,
-            rope_scaling_factor=8.0,
-            use_cpu_initialization=eagle_config.use_cpu_initialization,
-        )
-
-        super().__init__(
-            eagle_config,
-            rotary_pos_emb,
-            num_layers,
-            use_last_layernorm,
-            use_input_layernorm_in_first_layer=use_input_layernorm_in_first_layer,
-            use_mtp_layernorm=use_mtp_layernorm,
-            bias=bias,
-            num_aux_hidden_states=num_aux_hidden_states,
-        )
-
-
 @EagleDMRegistry.register({GPTModel: "megatron.core.models.gpt.GPTModel"})
 class _DynamicEagleGPTModel(EagleModel):
     """A ``megatron.core.models.gpt.GPTModel`` model with dynamic hyperparams."""
 
     def _set_default_aux_hidden_state_layers(self):
-        num_layers = self.config.num_layers
-        self.eagle_aux_hidden_state_layer_ids = [1, num_layers // 2 - 1, num_layers - 4]
+        if hasattr(self.config, "original_num_layers"):
+            num_layers = self.config.original_num_layers
+        else:
+            num_layers = self.config.num_layers
+        self.eagle_config.eagle_aux_hidden_state_layer_ids = [
+            1,
+            max(0, num_layers // 2 - 1),
+            max(0, num_layers - 4),
+        ]
+        self.eagle_config.eagle_aux_hidden_state_layer_ids = list(
+            set(self.eagle_config.eagle_aux_hidden_state_layer_ids)
+        )
 
     def _transformer_layer_forward_hook(self, module, input, output) -> None:
         if not isinstance(module, TransformerLayer):
             raise ValueError(
                 "_transformer_layer_forward_hook can only be registered to TransformerLayer"
             )
-        if module.layer_number - 1 not in self.eagle_aux_hidden_state_layer_ids:
+        if module.layer_number - 1 not in self.eagle_config.eagle_aux_hidden_state_layer_ids:
             return
         hidden_states = (
             output.clone().detach()
@@ -697,20 +704,14 @@ class _DynamicEagleGPTModel(EagleModel):
 
     def modify(
         self,
-        eagle_num_layers=0,
-        use_input_layernorm_in_first_layer=True,
-        use_last_layernorm=True,
-        eagle_hidden_state_distillation=False,
-        use_aux_hidden_state=False,
-        eagle_aux_hidden_state_layer_ids=[],
-        eagle_disable_moe=False,
-        draft_vocab_size=0,
-        use_mtp_layernorm=False,
-        parallel_draft_step=1,
-        eagle_self_logit_distillation=True,
-        eagle_freeze_base_model=True,
-        eagle_report_acc=True,
-        ffn_hidden_size=0,
+        eagle_offline,
+        eagle_hidden_state_distillation,
+        eagle_self_logit_distillation,
+        eagle_freeze_base_model,
+        eagle_report_acc,
+        eagle_reuse_base_decoder,
+        eagle_loss_decay_factor,
+        eagle_architecture_config,
     ):
         if self.config.pipeline_model_parallel_size > 1:
             warnings.warn(
@@ -724,25 +725,46 @@ class _DynamicEagleGPTModel(EagleModel):
             self.config.hetereogenous_dist_checkpoint = True
 
         super().modify(
-            eagle_num_layers=eagle_num_layers,
-            use_input_layernorm_in_first_layer=use_input_layernorm_in_first_layer,
-            use_last_layernorm=use_last_layernorm,
+            eagle_offline=eagle_offline,
             eagle_hidden_state_distillation=eagle_hidden_state_distillation,
-            use_aux_hidden_state=use_aux_hidden_state,
-            eagle_aux_hidden_state_layer_ids=eagle_aux_hidden_state_layer_ids,
-            eagle_disable_moe=eagle_disable_moe,
-            draft_vocab_size=draft_vocab_size,
-            use_mtp_layernorm=use_mtp_layernorm,
-            parallel_draft_step=parallel_draft_step,
+            eagle_self_logit_distillation=eagle_self_logit_distillation,
+            eagle_freeze_base_model=eagle_freeze_base_model,
+            eagle_report_acc=eagle_report_acc,
+            eagle_reuse_base_decoder=eagle_reuse_base_decoder,
+            eagle_loss_decay_factor=eagle_loss_decay_factor,
+            eagle_architecture_config=eagle_architecture_config,
         )
-        self.eagle_report_acc = eagle_report_acc
-        self.eagle_self_logit_distillation = eagle_self_logit_distillation
-        self.eagle_freeze_base_model = eagle_freeze_base_model
+
+        self.eagle_config = dict_to_config(
+            eagle_architecture_config,
+            self.config.use_cpu_initialization,
+            self.config.fp16,
+            self.config.bf16,
+            self.config.sequence_parallel,
+        )
+
+        if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+            assert eagle_self_logit_distillation, (
+                "Only logit distillation is supported when draft_vocab_size != vocab_size!"
+            )
+
+        # Use default aux_hidden_state layers if use_aux_hidden_state is True
+        # but no layer id is given
+        if (
+            self.eagle_config.use_aux_hidden_state
+            and len(self.eagle_config.eagle_aux_hidden_state_layer_ids) == 0
+        ):
+            self._set_default_aux_hidden_state_layers()
+
+        if len(self.eagle_config.eagle_aux_hidden_state_layer_ids) > 0:
+            assert not self.eagle_hidden_state_distillation, (
+                "EAGLE-3 does not support hidden state distillation!"
+            )
 
         # EAGLE-3 auxiluary hidden_states (only work for TP+EP, does not work for PP)
         self._aux_hidden_states = []
 
-        if self.position_embedding_type not in ["rope", "yarn"]:
+        if self.eagle_config.position_embedding_type not in ["rope", "yarn"]:
             raise ValueError("For EAGLE, only RoPE or YaRN embedding are supported")
 
         if not self.pre_process and self.post_process:
@@ -754,7 +776,7 @@ class _DynamicEagleGPTModel(EagleModel):
             )
 
         # Register TransformerLayer forward hook to extract aux hidden_states.
-        if len(self.eagle_aux_hidden_state_layer_ids) > 0:
+        if len(self.eagle_config.eagle_aux_hidden_state_layer_ids) > 0:
             for layer in self.decoder.layers:
                 layer.register_forward_hook(self._transformer_layer_forward_hook)
 
@@ -766,54 +788,43 @@ class _DynamicEagleGPTModel(EagleModel):
         # Only the last PP stage has the additional projection and decoder layer.
         # This is to simplify the export.
         if self.post_process:
-            if self.eagle_disable_moe:
-                self.eagle_module = EagleLlama3Module(
-                    self.config,
-                    self.eagle_num_layers,
-                    self.use_last_layernorm,
-                    use_input_layernorm_in_first_layer=use_input_layernorm_in_first_layer,
-                    use_mtp_layernorm=self.use_mtp_layernorm,
-                    num_aux_hidden_states=len(self.eagle_aux_hidden_state_layer_ids),
+            if self.eagle_reuse_base_decoder:
+                eagle_config = copy.deepcopy(self.config)
+                # Overwrite values from the eagle config
+                eagle_config.num_layers = self.eagle_config.num_layers
+                eagle_config.use_last_layernorm = self.eagle_config.use_last_layernorm
+                eagle_config.use_input_layernorm_in_first_layer = (
+                    self.eagle_config.use_input_layernorm_in_first_layer
+                )
+                eagle_config.eagle_aux_hidden_state_layer_ids = (
+                    self.eagle_config.eagle_aux_hidden_state_layer_ids
+                )
+                eagle_config.use_mtp_layernorm = self.eagle_config.use_mtp_layernorm
+                self.eagle_module = EagleModule(
+                    eagle_config,
+                    self.rotary_pos_emb,
                     bias=False,
-                    ffn_hidden_size=ffn_hidden_size,
                 )
             else:
+                rotary_pos_emb = RotaryEmbedding(
+                    kv_channels=self.eagle_config.kv_channels,
+                    rotary_percent=self.eagle_config.rotary_percent,
+                    rotary_interleaved=False,
+                    seq_len_interpolation_factor=None,
+                    rotary_base=self.eagle_config.rotary_base,
+                    rope_scaling=self.eagle_config.rope_scaling,
+                    rope_scaling_factor=self.eagle_config.rope_scaling_factor,
+                    use_cpu_initialization=self.eagle_config.use_cpu_initialization,
+                )
+
                 self.eagle_module = EagleModule(
-                    self.config,
-                    self.rotary_pos_emb,
-                    self.eagle_num_layers,
-                    self.use_last_layernorm,
-                    use_input_layernorm_in_first_layer=use_input_layernorm_in_first_layer,
-                    use_mtp_layernorm=self.use_mtp_layernorm,
-                    num_aux_hidden_states=len(self.eagle_aux_hidden_state_layer_ids),
+                    self.eagle_config,
+                    rotary_pos_emb,
                     bias=False,
                 )
 
             # Eagle loss functions
             self.kld = logits_kld_loss
-
-            if self.draft_vocab_size > 0:
-                # Need an extra lm_head for eagle module since vocab size is reduced.
-                assert self.draft_vocab_size <= self.vocab_size, (
-                    "EAGLE module's vocab size should be <= base model vocab size!"
-                )
-                assert eagle_self_logit_distillation, (
-                    "Only logit distillation is supported when draft_vocab_size > 0!"
-                )
-
-                self.eagle_module.register_buffer(
-                    "d2t", torch.zeros(self.draft_vocab_size, dtype=torch.int64)
-                )
-                self.eagle_module.eagle_output_layer = tensor_parallel.ColumnParallelLinear(
-                    self.config.hidden_size,
-                    self.draft_vocab_size,
-                    config=self.output_layer.config,
-                    init_method=self.config.init_method,
-                    bias=False,
-                    skip_bias_add=False,
-                    gather_output=False,
-                    skip_weight_param_allocation=False,
-                )
 
     def _get_eagle_input_hidden_states(self, hidden_states: torch.Tensor, apply_fc: bool = True):
         """When _aux_hidden_states is not empty, then this is EAGLE-3.
@@ -860,7 +871,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs = {}
 
-        if self.parallel_draft_step > 1:
+        if self.eagle_config.parallel_draft_step > 1:
             eagle_inputs["input_ids"] = padded_input_ids
             eagle_inputs["position_ids"] = position_ids
             if rotary_pos_emb is not None:
@@ -875,7 +886,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 gathered_hidden_states = hidden_states
             eagle_inputs["hidden_states"] = gathered_hidden_states
 
-            for i in range(self.parallel_draft_step - 1):
+            for i in range(self.eagle_config.parallel_draft_step - 1):
                 eagle_inputs["input_ids"] = torch.cat(
                     (
                         eagle_inputs["input_ids"],
@@ -915,7 +926,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 )
 
             eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
-                attn_mask, self.parallel_draft_step
+                attn_mask, self.eagle_config.parallel_draft_step
             )
         elif features is None:
             eagle_inputs["input_ids"] = padded_input_ids
@@ -1049,7 +1060,7 @@ class _DynamicEagleGPTModel(EagleModel):
         """
         # Compute lm loss (classification loss) or KLDivergence
         if self.eagle_self_logit_distillation:
-            mapping = self.eagle_module.d2t if self.draft_vocab_size > 0 else None
+            mapping = self.eagle_module.d2t if hasattr(self.eagle_module, "d2t") else None
             token_loss = self.kld(eagle_logits[:-1, :, :], logits[1:, :, :], mapping)
         else:
             token_loss = self.compute_language_model_loss(labels[:, 1:], eagle_logits[:-1, :, :])
@@ -1142,7 +1153,7 @@ class _DynamicEagleGPTModel(EagleModel):
             **(extra_block_kwargs or {}),
         )
 
-        if self.draft_vocab_size > 0:
+        if hasattr(self.eagle_module, "eagle_output_layer"):
             eagle_logits, _ = self.eagle_module.eagle_output_layer(eagle_hidden_states)
         else:
             eagle_logits, _ = self.output_layer(eagle_hidden_states, weight=output_weight)
@@ -1160,7 +1171,6 @@ class _DynamicEagleGPTModel(EagleModel):
         packed_seq_params: PackedSeqParams = None,
         extra_block_kwargs: dict | None = None,
         return_eagle_inputs: bool = False,
-        loss_decay_factor: float = 0.9,
         **kwargs,
     ) -> torch.Tensor:
         if input_ids is not None and (position_ids is None or attention_mask is None):
@@ -1194,12 +1204,18 @@ class _DynamicEagleGPTModel(EagleModel):
             eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
                 hidden_states, apply_fc=False
             )
+
+            if self.config.sequence_parallel:
+                eagle_module_input_hidden_states = gather_from_sequence_parallel_region(
+                    eagle_module_input_hidden_states
+                )
+                hidden_states = gather_from_sequence_parallel_region(hidden_states)
+            logits_sbh = gather_from_tensor_model_parallel_region(logits_sbh)
             # In case of VLM, there will be other fields for pixels.
             return {
-                "input_ids": input_ids,
-                "decoder_input": decoder_input_for_eagle,
-                "hidden_states": eagle_module_input_hidden_states,
-                "logits": logits_sbh,
+                "input_ids": input_ids.squeeze(0).cpu(),
+                "aux_hidden_states": eagle_module_input_hidden_states.squeeze(1).cpu(),
+                "hidden_states": hidden_states.squeeze(1).cpu(),
             }
         else:
             eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
@@ -1234,8 +1250,8 @@ class _DynamicEagleGPTModel(EagleModel):
         loss = self.compute_language_model_loss(labels, logits_sbh)
         loss = 0.0 * loss
 
-        if self.parallel_draft_step > 1:
-            for i in range(self.parallel_draft_step):
+        if self.eagle_config.parallel_draft_step > 1:
+            for i in range(self.eagle_config.parallel_draft_step):
                 eagle_logits = eagle_logits_0[i * labels.shape[1] : (i + 1) * labels.shape[1]]
                 loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
                 loss_ = loss_[:, i:]
@@ -1243,7 +1259,7 @@ class _DynamicEagleGPTModel(EagleModel):
             return loss
 
         loss_0 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_0)
-        loss[:, 1:] += loss_decay_factor * loss_0
+        loss[:, 1:] += self.eagle_loss_decay_factor * loss_0
 
         if self.eagle_report_acc and not self.training:
             acc = []
@@ -1252,7 +1268,7 @@ class _DynamicEagleGPTModel(EagleModel):
                     eagle_logits_0[:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.draft_vocab_size > 0:
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                     eagle_top1 += self.eagle_module.d2t[eagle_top1]
                 top1_p = torch.eq(labels[:, 1:], eagle_top1).sum() / eagle_top1.numel()
                 acc.append(top1_p)
@@ -1284,7 +1300,7 @@ class _DynamicEagleGPTModel(EagleModel):
         loss_1 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_1)
         # [b, s - 2]
         loss_1 = loss_1[:, 1:]
-        loss[:, 2:] += loss_decay_factor**2 * loss_1
+        loss[:, 2:] += self.eagle_loss_decay_factor**2 * loss_1
 
         if self.eagle_report_acc and not self.training:
             acc = []
@@ -1293,7 +1309,7 @@ class _DynamicEagleGPTModel(EagleModel):
                     eagle_logits_1[1:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.draft_vocab_size > 0:
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                     eagle_top1 += self.eagle_module.d2t[eagle_top1]
                 top1_p = torch.eq(labels[:, 2:], eagle_top1).sum() / eagle_top1.numel()
                 acc.append(top1_p)
@@ -1326,7 +1342,7 @@ class _DynamicEagleGPTModel(EagleModel):
         loss_2 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_2)
         # [b, s - 3]
         loss_2 = loss_2[:, 2:]
-        loss[:, 3:] += loss_decay_factor**3 * loss_2
+        loss[:, 3:] += self.eagle_loss_decay_factor**3 * loss_2
 
         if self.eagle_report_acc and not self.training:
             acc = []
@@ -1335,7 +1351,7 @@ class _DynamicEagleGPTModel(EagleModel):
                     eagle_logits_2[2:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.draft_vocab_size > 0:
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                     eagle_top1 += self.eagle_module.d2t[eagle_top1]
                 top1_p = torch.eq(labels[:, 3:], eagle_top1).sum() / eagle_top1.numel()
                 acc.append(top1_p)
@@ -1368,7 +1384,7 @@ class _DynamicEagleGPTModel(EagleModel):
         loss_3 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_3)
         # [b, s - 4]
         loss_3 = loss_3[:, 3:]
-        loss[:, 4:] += loss_decay_factor**4 * loss_3
+        loss[:, 4:] += self.eagle_loss_decay_factor**4 * loss_3
 
         if self.eagle_report_acc and not self.training:
             acc = []
@@ -1377,7 +1393,7 @@ class _DynamicEagleGPTModel(EagleModel):
                     eagle_logits_3[3:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.draft_vocab_size > 0:
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                     eagle_top1 += self.eagle_module.d2t[eagle_top1]
                 top1_p = torch.eq(labels[:, 4:], eagle_top1).sum() / eagle_top1.numel()
                 acc.append(top1_p)
@@ -1608,7 +1624,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
         # EAGLE-3
         # Only the first iteration input_hidden_states are from aux_hidden_state layers
-        hidden_states = self._get_eagle_input_hidden_states(hidden_states)
+        hidden_states = self._get_eagle_input_hidden_states(hidden_states, apply_fc=True)
         # Remove the padding
         if self.config.sequence_parallel:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
@@ -1616,8 +1632,8 @@ class _DynamicEagleGPTModel(EagleModel):
 
         draft_tokens = []
         for _ in range(steps):
-            if self.parallel_draft_step > 1:
-                for i in range(self.parallel_draft_step - 1):
+            if self.eagle_config.parallel_draft_step > 1:
+                for i in range(self.eagle_config.parallel_draft_step - 1):
                     eagle_ids = torch.cat(
                         (eagle_ids, getattr(self, f"mask_token_{i}").view((1, 1))), dim=-1
                     )
@@ -1655,10 +1671,10 @@ class _DynamicEagleGPTModel(EagleModel):
                 )
             eagle_next_hidden_states_input = eagle_next_hidden_states_input[:seq_len, :, :]
 
-            if self.parallel_draft_step > 1:
+            if self.eagle_config.parallel_draft_step > 1:
                 draft_token = (
                     gather_from_tensor_model_parallel_region(eagle_logits)[
-                        -self.parallel_draft_step :, :, :
+                        -self.eagle_config.parallel_draft_step :, :, :
                     ]
                     .argmax(dim=-1)
                     .transpose(0, 1)
@@ -1669,10 +1685,10 @@ class _DynamicEagleGPTModel(EagleModel):
                     .argmax(dim=-1)
                     .transpose(0, 1)
                 )
-            if self.draft_vocab_size > 0:
+            if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                 draft_token += self.eagle_module.d2t[draft_token]
 
-            if self.parallel_draft_step > 1:
+            if self.eagle_config.parallel_draft_step > 1:
                 return base_token, draft_token
 
             draft_tokens.append(draft_token)
@@ -1685,6 +1701,408 @@ class _DynamicEagleGPTModel(EagleModel):
         draft_tokens = torch.cat(draft_tokens, dim=-1)
 
         return base_token, draft_tokens
+
+
+@OfflineEagleDMRegistry.register({GPTModel: "megatron.core.models.gpt.GPTModel"})
+class _DetachedEagleGPTModel(_DynamicEagleGPTModel):
+    """A wrapper for detached Eagle module."""
+
+    def modify(
+        self,
+        eagle_offline,
+        eagle_hidden_state_distillation,
+        eagle_self_logit_distillation,
+        eagle_freeze_base_model,
+        eagle_report_acc,
+        eagle_reuse_base_decoder,
+        eagle_loss_decay_factor,
+        eagle_architecture_config,
+    ):
+        super(_DynamicEagleGPTModel, self).modify(
+            eagle_offline=eagle_offline,
+            eagle_hidden_state_distillation=eagle_hidden_state_distillation,
+            eagle_self_logit_distillation=eagle_self_logit_distillation,
+            eagle_freeze_base_model=eagle_freeze_base_model,
+            eagle_report_acc=eagle_report_acc,
+            eagle_reuse_base_decoder=eagle_reuse_base_decoder,
+            eagle_loss_decay_factor=eagle_loss_decay_factor,
+            eagle_architecture_config=eagle_architecture_config,
+        )
+
+        # Freeze all parameters
+        if self.eagle_freeze_base_model:
+            for name, param in self.named_parameters():
+                param.requires_grad = False
+
+        self.eagle_config = dict_to_config(
+            eagle_architecture_config,
+            self.config.use_cpu_initialization,
+            self.config.fp16,
+            self.config.bf16,
+        )
+
+        assert not eagle_reuse_base_decoder, (
+            "_DetachedEagleGPTModel does not have a base model so eagle_reuse_base_decoder must be False!"
+        )
+
+        if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+            assert eagle_self_logit_distillation, (
+                "Only logit distillation is supported when draft_vocab_size != vocab_size!"
+            )
+
+        # Use default aux_hidden_state layers if use_aux_hidden_state is True
+        # but no layer id is given
+        # layer ids are not used in detached eagle, but we need to set this to have correct fc_input_size_multiplier
+        if (
+            self.eagle_config.use_aux_hidden_state
+            and len(self.eagle_config.eagle_aux_hidden_state_layer_ids) == 0
+        ):
+            self._set_default_aux_hidden_state_layers()
+
+        # Only the last PP stage has the additional projection and decoder layer.
+        # This is to simplify the export.
+        if self.post_process:
+            rotary_pos_emb = RotaryEmbedding(
+                kv_channels=self.eagle_config.kv_channels,
+                rotary_percent=self.eagle_config.rotary_percent,
+                rotary_interleaved=False,
+                seq_len_interpolation_factor=None,
+                rotary_base=self.eagle_config.rotary_base,
+                rope_scaling=self.eagle_config.rope_scaling,
+                rope_scaling_factor=self.eagle_config.rope_scaling_factor,
+                use_cpu_initialization=self.eagle_config.use_cpu_initialization,
+            )
+
+            self.eagle_module = EagleModule(
+                self.eagle_config,
+                rotary_pos_emb,
+                bias=False,
+            )
+
+            # Eagle loss functions
+            self.kld = logits_kld_loss
+
+    def _get_eagle_input_hidden_states(self, hidden_states: torch.Tensor, apply_fc: bool = True):
+        if apply_fc:
+            # [s / TP, b, 3h] -> [s / TP, b, h]
+            return self.eagle_module.fc(hidden_states)[0]
+        else:
+            return hidden_states
+
+    def _get_detached_eagle_module_inputs(
+        self,
+        input_ids: torch.Tensor,
+        hidden_states: torch.Tensor,
+        attention_mask: torch.Tensor,
+        position_ids: torch.Tensor,
+        features: torch.Tensor | None = None,
+    ):
+        """Getting EAGLE module inputs."""
+        b = hidden_states.shape[1]
+        h = hidden_states.shape[2]
+
+        # [b, 1]
+        id_padding = torch.zeros((b, 1), dtype=input_ids.dtype, device=input_ids.device)
+        padded_input_ids = torch.cat((input_ids[:, 1:], id_padding), dim=-1)
+
+        rotary_pos_emb = self.eagle_module.rotary_pos_emb(padded_input_ids.shape[-1])
+
+        attn_mask = attention_mask.clone().detach()
+        attn_mask[:, :, :-1, :-1] = attention_mask[:, :, 1:, 1:]
+        attn_mask[:, :, -1, :] = True
+        attn_mask[:, :, :, -1] = True
+
+        eagle_inputs = {}
+
+        assert self.eagle_config.parallel_draft_step == 1, (
+            "Detached Eagle module does not support parallel draft yet!"
+        )
+        if features is None:
+            eagle_inputs["input_ids"] = padded_input_ids
+            eagle_inputs["hidden_states"] = hidden_states
+            eagle_inputs["attention_mask"] = attn_mask
+            eagle_inputs["position_ids"] = position_ids
+            eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
+        elif features.shape[0] == hidden_states.shape[0]:
+            eagle_inputs["input_ids"] = torch.cat(
+                (padded_input_ids, padded_input_ids),
+                dim=-1,
+            )
+            eagle_inputs["hidden_states"] = torch.cat(
+                (
+                    hidden_states,
+                    torch.zeros((1, b, h), dtype=hidden_states.dtype, device=hidden_states.device),
+                    features[:-1, :, :],
+                ),
+                dim=0,
+            )
+            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, 2)
+            eagle_inputs["position_ids"] = torch.cat((position_ids, position_ids), dim=-1)
+
+            if rotary_pos_emb is not None:
+                eagle_inputs["rotary_pos_emb"] = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=0)
+            else:
+                # [TODO] (yeyu): there will be problem here with MLA
+                eagle_inputs["rotary_pos_emb"] = None
+        elif features.shape[0] == hidden_states.shape[0] * 2:
+            eagle_inputs["input_ids"] = torch.cat(
+                (padded_input_ids, padded_input_ids, padded_input_ids),
+                dim=-1,
+            )
+            eagle_inputs["hidden_states"] = torch.cat(
+                (
+                    hidden_states,
+                    torch.zeros((1, b, h), dtype=hidden_states.dtype, device=hidden_states.device),
+                    features[:-1, :, :],
+                ),
+                dim=0,
+            )
+
+            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, 3)
+            eagle_inputs["position_ids"] = torch.cat(
+                (position_ids, position_ids, position_ids), dim=-1
+            )
+
+            if rotary_pos_emb is not None:
+                eagle_inputs["rotary_pos_emb"] = torch.cat(
+                    (rotary_pos_emb, rotary_pos_emb, rotary_pos_emb),
+                    dim=0,
+                )
+            else:
+                # [TODO] (yeyu): there will be problem here with MLA
+                eagle_inputs["rotary_pos_emb"] = None
+        else:
+            eagle_inputs["input_ids"] = torch.cat(
+                (padded_input_ids, padded_input_ids, padded_input_ids, padded_input_ids),
+                dim=-1,
+            )
+            eagle_inputs["hidden_states"] = torch.cat(
+                (
+                    hidden_states,
+                    torch.zeros((1, b, h), dtype=hidden_states.dtype, device=hidden_states.device),
+                    features[:-1, :, :],
+                ),
+                dim=0,
+            )
+
+            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, 4)
+            eagle_inputs["position_ids"] = torch.cat(
+                (position_ids, position_ids, position_ids, position_ids), dim=-1
+            )
+
+            if rotary_pos_emb is not None:
+                eagle_inputs["rotary_pos_emb"] = torch.cat(
+                    (rotary_pos_emb, rotary_pos_emb, rotary_pos_emb, rotary_pos_emb),
+                    dim=0,
+                )
+            else:
+                # [TODO] (yeyu): there will be problem here with MLA
+                eagle_inputs["rotary_pos_emb"] = None
+
+        eagle_inputs["embedding"] = self.embedding(
+            input_ids=eagle_inputs["input_ids"],
+            position_ids=eagle_inputs["position_ids"],
+        )
+
+        return eagle_inputs
+
+    def forward(
+        self,
+        input_ids: torch.Tensor = None,
+        position_ids: torch.Tensor = None,
+        attention_mask: torch.Tensor = None,
+        decoder_input: torch.Tensor = None,
+        labels: torch.Tensor = None,
+        inference_params: InferenceParams = None,
+        packed_seq_params: PackedSeqParams = None,
+        extra_block_kwargs: dict | None = None,
+        return_eagle_inputs: bool = False,  # Not used in Detached Eagle
+        **kwargs,
+    ) -> torch.Tensor:
+        assert "aux_hidden_states" in kwargs, (
+            "aux_hidden_states is required as input to _DetachedEagleGPTModel"
+        )
+        assert "hidden_states" in kwargs, (
+            "hidden_states is required as input to _DetachedEagleGPTModel"
+        )
+        aux_hidden_states = kwargs.get("aux_hidden_states")
+        hidden_states = kwargs.get("hidden_states")
+
+        # Note: labels is 1 token shorter than logits in detached mode
+
+        if position_ids is None or attention_mask is None:
+            attention_mask, position_ids = get_default_attention_mask_and_position_ids(input_ids)
+
+        eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(aux_hidden_states)
+        output_weight = None
+        if self.share_embeddings_and_output_weights:
+            output_weight = self.shared_embedding_or_output_weight()
+        logits_sbh, _ = self.output_layer(hidden_states, weight=output_weight)
+
+        eagle_inputs_0 = self._get_detached_eagle_module_inputs(
+            input_ids=input_ids,
+            hidden_states=eagle_module_input_hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+        )
+
+        _, eagle_logits_0, eagle_hidden_states_0_pre_norm = self._eagle_forward(
+            eagle_inputs_0,
+            None,
+            inference_params=inference_params,
+            packed_seq_params=packed_seq_params,
+            **(extra_block_kwargs or {}),
+        )
+
+        loss = torch.zeros(input_ids.shape).to(input_ids.device)
+
+        loss_0 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_0)
+        loss[:, 1:] += self.eagle_loss_decay_factor * loss_0
+
+        if self.eagle_report_acc and not self.training:
+            acc = []
+            with torch.no_grad():
+                gathered_logits = gather_from_tensor_model_parallel_region(
+                    eagle_logits_0[:-2, :, :]
+                )
+                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                top1_p = torch.eq(labels[:, 1:], eagle_top1).sum() / eagle_top1.numel()
+                acc.append(top1_p)
+
+            if get_tensor_model_parallel_rank() == 0:
+                print(
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 1st Top-1: {acc}",
+                    flush=True,
+                )
+
+        # Second round of EAGLE loss
+        eagle_inputs_1 = self._get_detached_eagle_module_inputs(
+            input_ids=input_ids,
+            hidden_states=eagle_module_input_hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            features=eagle_hidden_states_0_pre_norm,
+        )
+
+        _, eagle_logits_2x, eagle_hidden_states_2x_pre_norm = self._eagle_forward(
+            eagle_inputs_1,
+            None,
+            inference_params=inference_params,
+            packed_seq_params=packed_seq_params,
+            **(extra_block_kwargs or {}),
+        )
+        eagle_logits_1 = eagle_logits_2x[logits_sbh.shape[0] :, :, :]
+
+        loss_1 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_1)
+        # [b, s - 2]
+        loss_1 = loss_1[:, 1:]
+        loss[:, 2:] += self.eagle_loss_decay_factor**2 * loss_1
+
+        if self.eagle_report_acc and not self.training:
+            acc = []
+            with torch.no_grad():
+                gathered_logits = gather_from_tensor_model_parallel_region(
+                    eagle_logits_1[1:-2, :, :]
+                )
+                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                top1_p = torch.eq(labels[:, 2:], eagle_top1).sum() / eagle_top1.numel()
+                acc.append(top1_p)
+
+            if get_tensor_model_parallel_rank() == 0:
+                print(
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 2nd Top-1: {acc}",
+                    flush=True,
+                )
+
+        # Third EAGLE loss
+        eagle_inputs_2 = self._get_detached_eagle_module_inputs(
+            input_ids=input_ids,
+            hidden_states=eagle_module_input_hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            features=eagle_hidden_states_2x_pre_norm,
+        )
+
+        _, eagle_logits_3x, eagle_hidden_states_3x_pre_norm = self._eagle_forward(
+            eagle_inputs_2,
+            None,
+            inference_params=inference_params,
+            packed_seq_params=packed_seq_params,
+            **(extra_block_kwargs or {}),
+        )
+
+        eagle_logits_2 = eagle_logits_3x[-logits_sbh.shape[0] :, :, :]
+
+        loss_2 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_2)
+        # [b, s - 3]
+        loss_2 = loss_2[:, 2:]
+        loss[:, 3:] += self.eagle_loss_decay_factor**3 * loss_2
+
+        if self.eagle_report_acc and not self.training:
+            acc = []
+            with torch.no_grad():
+                gathered_logits = gather_from_tensor_model_parallel_region(
+                    eagle_logits_2[2:-2, :, :]
+                )
+                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                top1_p = torch.eq(labels[:, 3:], eagle_top1).sum() / eagle_top1.numel()
+                acc.append(top1_p)
+
+            if get_tensor_model_parallel_rank() == 0:
+                print(
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 3rd Top-1: {acc}",
+                    flush=True,
+                )
+
+        # Forth EAGLE loss
+        eagle_inputs_3 = self._get_detached_eagle_module_inputs(
+            input_ids=input_ids,
+            hidden_states=eagle_module_input_hidden_states,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            features=eagle_hidden_states_3x_pre_norm,
+        )
+
+        _, eagle_logits_4x, eagle_hidden_states_4x_pre_norm = self._eagle_forward(
+            eagle_inputs_3,
+            None,
+            inference_params=inference_params,
+            packed_seq_params=packed_seq_params,
+            **(extra_block_kwargs or {}),
+        )
+
+        eagle_logits_3 = eagle_logits_4x[-logits_sbh.shape[0] :, :, :]
+
+        loss_3 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_3)
+        # [b, s - 4]
+        loss_3 = loss_3[:, 3:]
+        loss[:, 4:] += self.eagle_loss_decay_factor**4 * loss_3
+
+        if self.eagle_report_acc and not self.training:
+            acc = []
+            with torch.no_grad():
+                gathered_logits = gather_from_tensor_model_parallel_region(
+                    eagle_logits_3[3:-2, :, :]
+                )
+                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                top1_p = torch.eq(labels[:, 4:], eagle_top1).sum() / eagle_top1.numel()
+                acc.append(top1_p)
+
+            if get_tensor_model_parallel_rank() == 0:
+                print(
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 4th Top-1: {acc}",
+                    flush=True,
+                )
+
+        return loss
 
 
 class MegatronARValidation(AcceptanceRateValidation):

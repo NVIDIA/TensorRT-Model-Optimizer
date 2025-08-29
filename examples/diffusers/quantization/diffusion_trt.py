@@ -22,7 +22,7 @@ from onnx_utils.export import (
     remove_nesting,
     update_dynamic_axes,
 )
-from quantize import create_pipeline
+from quantize import ModelType, PipelineManager
 
 import modelopt.torch.opt as mto
 from modelopt.torch._deploy._runtime import RuntimeRegistry
@@ -30,6 +30,20 @@ from modelopt.torch._deploy._runtime.tensorrt.constants import SHA_256_HASH_LENG
 from modelopt.torch._deploy._runtime.tensorrt.tensorrt_utils import prepend_hash_to_bytes
 from modelopt.torch._deploy.device_model import DeviceModel
 from modelopt.torch._deploy.utils import get_onnx_bytes_and_metadata
+
+MODEL_ID = {
+    "sdxl-1.0": ModelType.SDXL_BASE,
+    "sdxl-turbo": ModelType.SDXL_TURBO,
+    "sd3-medium": ModelType.SD3_MEDIUM,
+    "flux-dev": ModelType.FLUX_DEV,
+    "flux-schnell": ModelType.FLUX_SCHNELL,
+}
+
+dtype_map = {
+    "Half": torch.float16,
+    "BFloat16": torch.bfloat16,
+    "Float": torch.float32,
+}
 
 
 def generate_image(pipe, prompt, image_name):
@@ -91,7 +105,7 @@ def main():
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
 
-    pipe = create_pipeline(args.model, args.model_dtype, args.override_model_path)
+    pipe = PipelineManager.create_pipeline_from(MODEL_ID[args.model], dtype_map[args.model_dtype])
 
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None

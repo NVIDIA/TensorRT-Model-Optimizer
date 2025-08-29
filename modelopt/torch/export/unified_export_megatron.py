@@ -174,8 +174,8 @@ class GPTModelExporter:
             pretrained model hosted inside a model repo on huggingface.co; or
             a *directory* containing model weights saved using
             [`~PreTrainedModel.save_pretrained`], e.g., `./my_model_directory/`.
-        export_extra_modules: If True, export extra modules like medusa_heads,
-            eagle_module, or mtp. Otherwise, only export the base model.
+        export_extra_modules: If True, export extra modules like medusa_heads or
+            eagle_module. Otherwise, only export the base model.
         dtype: The weights data type to export the unquantized layers.
     """
 
@@ -216,6 +216,10 @@ class GPTModelExporter:
         self.dtype = dtype
         self.trust_remote_code = trust_remote_code
         self.arch = self._hf_config.architectures[0]
+        # TODO: May modify this later according to what quantization exported ckpt is, currently only support BF16.
+        if self.arch == "GptOssForCausalLM":
+            if hasattr(self._hf_config, "quantization_config"):
+                del self._hf_config.quantization_config
         self.all_rules = self._populate_rule_book()
         self.rules = self.all_rules[self.arch]
 
@@ -232,7 +236,7 @@ class GPTModelExporter:
                 self.rules = self.all_rules["MedusaLlamaForCausalLM"]
 
             if mode == "eagle" and export_extra_modules:
-                is_eagle3 = mode_cfg["config"]["use_aux_hidden_state"]
+                is_eagle3 = mode_cfg["config"]["eagle_architecture_config"]["use_aux_hidden_state"]
 
                 architectures = "LlamaForCausalLMEagle3" if is_eagle3 else "LlamaForCausalLMEagle"
 
@@ -246,12 +250,18 @@ class GPTModelExporter:
 
                     eagle_config = {
                         "use_input_layernorm_in_first_layer": mode_cfg["config"][
-                            "use_input_layernorm_in_first_layer"
+                            "eagle_architecture_config"
+                        ]["use_input_layernorm_in_first_layer"],
+                        "use_last_layernorm": mode_cfg["config"]["eagle_architecture_config"][
+                            "use_last_layernorm"
                         ],
-                        "use_last_layernorm": mode_cfg["config"]["use_last_layernorm"],
-                        "use_mtp_layernorm": mode_cfg["config"]["use_mtp_layernorm"],
-                        "use_aux_hidden_state": mode_cfg["config"]["use_aux_hidden_state"],
-                        "eagle_aux_hidden_state_layer_ids": model.eagle_aux_hidden_state_layer_ids,
+                        "use_mtp_layernorm": mode_cfg["config"]["eagle_architecture_config"][
+                            "use_mtp_layernorm"
+                        ],
+                        "use_aux_hidden_state": mode_cfg["config"]["eagle_architecture_config"][
+                            "use_aux_hidden_state"
+                        ],
+                        "eagle_aux_hidden_state_layer_ids": model.eagle_config.eagle_aux_hidden_state_layer_ids,
                     }
 
                     eagle_config_update = {
@@ -263,7 +273,9 @@ class GPTModelExporter:
                         "max_position_embeddings": self._hf_text_config.max_position_embeddings,
                         "num_attention_heads": model.eagle_module.config.num_attention_heads,
                         "num_key_value_heads": model.eagle_module.config.num_query_groups,
-                        "num_hidden_layers": mode_cfg["config"]["eagle_num_layers"],
+                        "num_hidden_layers": mode_cfg["config"]["eagle_architecture_config"][
+                            "num_hidden_layers"
+                        ],
                         "vocab_size": self._hf_text_config.vocab_size,
                         # Unset any special token ids given that the tokenizer can change here.
                         "bos_token_id": None,
@@ -272,34 +284,12 @@ class GPTModelExporter:
                         "sep_token_id": None,
                         # The following attributes are EAGLE specific
                         "eagle_config": eagle_config,
+                        "draft_vocab_size": mode_cfg["config"]["eagle_architecture_config"][
+                            "draft_vocab_size"
+                        ],
                     }
 
-                    # [TODO] (yeyu): there is also target_hidden_size
-                    if mode_cfg["config"]["draft_vocab_size"] > 0:
-                        eagle_config_update["draft_vocab_size"] = mode_cfg["config"][
-                            "draft_vocab_size"
-                        ]
-                    else:
-                        eagle_config_update["draft_vocab_size"] = None
-
                     self._hf_extra_config.update(eagle_config_update)
-
-            if mode == "mtp" and export_extra_modules:
-                mtp_config = {
-                    "hidden_size": self._hf_config.hidden_size,
-                    "head_dim": self._hf_config.head_dim,
-                    "intermediate_size": self._hf_config.intermediate_size,
-                    "max_position_embeddings": self._hf_config.max_position_embeddings,
-                    "num_attention_heads": self._hf_config.num_attention_heads,
-                    "num_hidden_layers": mode_cfg["config"]["mtp_num_layers"],
-                    "num_mtp_module": mode_cfg["config"]["mtp_num_module"],
-                    "num_key_value_heads": self._hf_config.num_key_value_heads,
-                    "rms_norm_eps": self._hf_config.rms_norm_eps,
-                    "rope_theta": self._hf_config.rope_theta,
-                    "use_input_layernorm_in_first_layer": True,
-                    "use_last_layernorm": False,
-                }
-                self._hf_config.mtp = mtp_config
 
     def save_pretrained(
         self,
@@ -313,6 +303,13 @@ class GPTModelExporter:
         """
         pp_rank = get_pipeline_model_parallel_rank()
         pp_size = get_pipeline_model_parallel_world_size()
+
+        # We use the 1st PP rank to handle VLM because vision_models
+        # and vision_proj only exist in the first stage.
+        is_first_stage_main_rank = pp_rank == 0
+        # We use the last PP rank to write the config because
+        # medusa_heads and eagle_module only exist in the last stage.
+        is_last_stage_main_rank = pp_rank == pp_size - 1
 
         # Main export process
         state_dict = self.extra_state_dict if self.export_extra_modules else self.state_dict
@@ -330,12 +327,10 @@ class GPTModelExporter:
         elif quantization_format == QUANTIZATION_NVFP4:
             quantization = "NVFP4"
 
-        # TODO (chenhany): need to handle Medusa and EAGLE meatadata
-        if torch.distributed.get_rank() == torch.distributed.get_world_size() - 1:
+        # We use the last PP rank and the 1st EP rank to write the config because
+        # medusa_heads and eagle_module only exist in the last stage.
+        if is_last_stage_main_rank:
             if self.export_extra_modules and self._hf_extra_config is not None:
-                # os.makedirs(save_directory, exist_ok=True)
-                # with open(save_directory + "/config.json", 'w') as file:
-                #    json.dump(self._hf_extra_config, file, indent=4)
                 self._hf_extra_config.save_pretrained(save_directory)
             else:
                 self._hf_config.save_pretrained(save_directory)
@@ -365,7 +360,7 @@ class GPTModelExporter:
                 except (OSError, ValueError, ImportError):
                     pass
 
-        if torch.distributed.get_rank() == torch.distributed.get_world_size() - 1:
+        if is_last_stage_main_rank:
             hf_quant_config = {
                 "producer": {
                     "name": "modelopt",
@@ -381,7 +376,7 @@ class GPTModelExporter:
                 json.dump(hf_quant_config, f, indent=4)
 
         if (
-            torch.distributed.get_rank() == 0
+            is_first_stage_main_rank
             and self.is_multimodal
             and pretrained_model_name_or_path is not None
         ):
@@ -453,10 +448,11 @@ class GPTModelExporter:
         torch.distributed.barrier()
 
         if self.export_extra_modules:
-            if pp_rank == pp_size - 1:
+            if is_last_stage_main_rank:
                 save_file(
                     state_dict, save_directory + "/model.safetensors", metadata={"format": "pt"}
                 )
+            torch.distributed.barrier()
             return
 
         save_safetensors(state_dict, save_directory)
@@ -473,7 +469,6 @@ class GPTModelExporter:
         if len(self._state_dict) == 0:
             self._get_medusa_heads_state_dict()
             self._get_eagle_module_state_dict()
-            self._get_mtp_state_dict()
         return self._state_dict
 
     def _populate_rule_book(self):
@@ -485,6 +480,7 @@ class GPTModelExporter:
                 "qkv_slicing": self._qkv_slicing,
                 "gated_mlp_slicing": self._gated_mlp_slicing,
                 "pack_name_remapping": self._pack_name_remapping,
+                "pack_name_remapping_gpt_oss": self._pack_name_remapping_gpt_oss,
             }
             func = method_map[mapping.func_name]
             prefix = mapping.target_name_or_prefix
@@ -799,6 +795,120 @@ class GPTModelExporter:
         if merged_input_scale is not None:
             self._state_dict[prefix + "_input_scale"] = merged_input_scale
 
+    def _pack_name_remapping_gpt_oss(self, module, prefix, layer_type=None):
+        """Pack name remapping into one tensor."""
+        weight_list = []
+        weight_scale_list = []
+        weight_scale_2_list = []
+        input_scale_list = []
+        bias_list = []
+
+        for expert in module:
+            assert layer_type is not None, "layer_type is required for pack_name_remapping"
+            name_to_value, qformat, block_size = get_quantized_state(
+                getattr(expert, layer_type), self.dtype
+            )
+            weight = name_to_value.pop("weight")
+            bias = name_to_value.pop("bias", None)
+            weight_scale, weight_scale_2 = self._get_weight_scales(name_to_value, qformat)
+            input_scale = (
+                name_to_value.pop("input_scale") if "input_scale" in name_to_value else None
+            )
+
+            weight_list.append(weight)
+            weight_scale_list.append(weight_scale)
+            weight_scale_2_list.append(weight_scale_2)
+            input_scale_list.append(input_scale)
+            bias_list.append(bias)
+
+        merged_weight = torch.stack(weight_list, dim=0)
+
+        # Transpose the last two dimensions to match HuggingFace format (except for GptOssForCausalLM)
+        # NeMo format: [num_experts, out_features, in_features]
+        # HF format: [num_experts, in_features, out_features]
+
+        # TODO: Need to decide if we want to transpose the weight or not.
+        merged_weight = merged_weight.transpose(-2, -1).contiguous()
+
+        # Apply interleaving for GptOssForCausalLM linear_fc1 to match HF format
+        if layer_type == "linear_fc1":
+            # Megatron has de-interleaved format, need to interleave for HF
+            # Pattern: first half -> even indices, second half -> odd indices
+            num_experts, in_features, out_features = merged_weight.shape
+            half_out = out_features // 2
+
+            # Create interleaved tensor
+            interleaved_weight = torch.zeros_like(merged_weight)
+            interleaved_weight[:, :, ::2] = merged_weight[
+                :, :, :half_out
+            ]  # First half -> even indices
+            interleaved_weight[:, :, 1::2] = merged_weight[
+                :, :, half_out:
+            ]  # Second half -> odd indices
+            merged_weight = interleaved_weight
+
+        # Handle bias tensors
+        merged_bias = None
+        if bias_list[0] is not None:
+            merged_bias = torch.stack(bias_list, dim=0)
+
+            # Apply interleaving for GptOssForCausalLM linear_fc1 bias to match HF format
+            if layer_type == "linear_fc1":
+                num_experts, bias_len = merged_bias.shape
+                half_bias_len = bias_len // 2
+
+                # Create interleaved bias tensor
+                interleaved_bias = torch.zeros_like(merged_bias)
+                interleaved_bias[:, ::2] = merged_bias[
+                    :, :half_bias_len
+                ]  # First half -> even indices
+                interleaved_bias[:, 1::2] = merged_bias[
+                    :, half_bias_len:
+                ]  # Second half -> odd indices
+                merged_bias = interleaved_bias
+
+        if weight_scale_2_list[0] is None:
+            merged_weight_scale_2 = None
+            if weight_scale_list[0] is not None:
+                merged_weight_scale = torch.max(torch.stack(weight_scale_list, dim=0), dim=0)[0]
+            else:
+                merged_weight_scale = None
+        else:
+            # NVFP4
+            merged_weight_scale_2 = torch.max(torch.stack(weight_scale_2_list, dim=0), dim=0)[0]
+            merged_weight_scale = torch.stack(weight_scale_list, dim=0)
+            # Transpose the scaling factors to match the transposed weights
+            # TODO: Need to decide if we want to transpose the weight or not.
+            merged_weight_scale = merged_weight_scale.transpose(-2, -1).contiguous()
+
+        if input_scale_list[0] is not None:
+            merged_input_scale = torch.max(torch.stack(input_scale_list, dim=0), dim=0)[0]
+        else:
+            merged_input_scale = None
+
+        # Save the merged weights
+        if merged_weight_scale is None:
+            # TODO: May need to modify the key name later.
+            self._state_dict[prefix] = merged_weight
+        else:
+            self._state_dict[prefix] = to_quantized_weight(
+                merged_weight,
+                merged_weight_scale,
+                qformat,
+                merged_weight_scale_2,
+                block_size,
+            )
+            self._state_dict[prefix + "_weight_scale"] = merged_weight_scale
+            if merged_weight_scale_2 is not None:
+                self._state_dict[prefix + "_weight_scale_2"] = merged_weight_scale_2
+        if merged_input_scale is not None:
+            self._state_dict[prefix + "_input_scale"] = merged_input_scale
+
+        # Save bias tensors if they exist
+        if merged_bias is not None:
+            # TODO: May need to modify the key name later.
+            self._state_dict[prefix + "_bias"] = merged_bias
+
     def _get_medusa_heads_state_dict(self):
         medusa_heads = getattr(self.model, "medusa_heads", None)
         if medusa_heads is None:
@@ -819,23 +929,24 @@ class GPTModelExporter:
         #    self.rules["word_embeddings"](self.model.embedding.word_embeddings)
 
         self.rules["fc"](eagle_module.fc)
-        if self.model.use_aux_hidden_state:
+        if self.model.eagle_config.use_aux_hidden_state:
             self.rules["enorm"](eagle_module.enorm)
-        elif self.model.use_mtp_layernorm:
+        elif self.model.eagle_config.use_mtp_layernorm:
             self.rules["enorm"](eagle_module.enorm)
             self.rules["hnorm"](eagle_module.hnorm)
 
-        if self.model.use_last_layernorm:
+        if self.model.eagle_config.use_last_layernorm:
             self.rules["final_layernorm"](eagle_module.decoder.final_layernorm)
 
-        if self.model.draft_vocab_size > 0:
+        if hasattr(self.model.eagle_module, "eagle_output_layer"):
             self.rules["output_layer"](eagle_module.eagle_output_layer)
+        if hasattr(self.model.eagle_module, "dt2"):
             self.rules["d2t"](eagle_module.d2t)
 
         for layer in eagle_module.decoder.layers:
             layer_id = layer.layer_number - 1
 
-            if layer_id > 0 or self.model.use_input_layernorm_in_first_layer:
+            if layer_id > 0 or self.model.eagle_config.use_input_layernorm_in_first_layer:
                 self.rules["input_layernorm"](layer.input_layernorm, layer_id)
 
             if "MLASelfAttention" in str(type(layer.self_attention)):
@@ -888,72 +999,6 @@ class GPTModelExporter:
             else:
                 self.rules["linear_fc1"](layer.mlp.linear_fc1, layer_id)
                 self.rules["linear_fc2"](layer.mlp.linear_fc2, layer_id)
-
-    def _get_mtp_state_dict(self):
-        mtp = getattr(self.model, "mtp", None)
-        if mtp is None:
-            return
-
-        for module_id, module in enumerate(mtp):
-            self.rules["mtp.fc"](module.fc, module_id)
-            self.rules["mtp.enorm"](module.enorm, module_id)
-            self.rules["mtp.hnorm"](module.hnorm, module_id)
-            for layer in module.decoder.layers:
-                layer_id = layer.layer_number - 1
-                self.rules["mtp.input_layernorm"](layer.input_layernorm, module_id, layer_id)
-
-                if "MLASelfAttention" in str(type(layer.self_attention)):
-                    if hasattr(layer.self_attention, "linear_q_proj"):
-                        self.rules["mtp.linear_q_proj"](
-                            layer.self_attention.linear_q_proj, module_id, layer_id
-                        )
-                    else:
-                        self.rules["mtp.linear_q_down_proj"](
-                            layer.self_attention.linear_q_down_proj, module_id, layer_id
-                        )
-                        self.rules["mtp.linear_q_layernorm"](
-                            layer.self_attention.q_layernorm, module_id, layer_id
-                        )
-                        self.rules["mtp.linear_q_up_proj"](
-                            layer.self_attention.linear_q_up_proj, module_id, layer_id
-                        )
-
-                    self.rules["mtp.linear_kv_down_proj"](
-                        layer.self_attention.linear_kv_down_proj, module_id, layer_id
-                    )
-                    self.rules["mtp.linear_kv_layernorm"](
-                        layer.self_attention.kv_layernorm, module_id, layer_id
-                    )
-                    self.rules["mtp.linear_kv_up_proj"](
-                        layer.self_attention.linear_kv_up_proj, module_id, layer_id
-                    )
-                else:
-                    self.rules["mtp.linear_qkv"](
-                        layer.self_attention.linear_qkv, module_id, layer_id
-                    )
-
-                self.rules["mtp.linear_proj"](layer.self_attention.linear_proj, module_id, layer_id)
-                self.rules["mtp.pre_mlp_layernorm"](layer.pre_mlp_layernorm, module_id, layer_id)
-
-                if "MoE" in str(type(layer.mlp)):
-                    self.rules["mtp.router"](layer.mlp.router, module_id, layer_id)
-                    if hasattr(layer.mlp, "shared_experts"):
-                        self.rules["mtp.shared_experts.linear_fc1"](
-                            layer.mlp.shared_experts.linear_fc1, module_id, layer_id
-                        )
-                        self.rules["mtp.shared_experts.linear_fc2"](
-                            layer.mlp.shared_experts.linear_fc2, module_id, layer_id
-                        )
-                    for expert_id, expert in enumerate(layer.mlp.experts.local_experts):
-                        self.rules["mtp.local_experts.linear_fc1"](
-                            expert.linear_fc1, module_id, layer_id, expert_id
-                        )
-                        self.rules["mtp.local_experts.linear_fc2"](
-                            expert.linear_fc2, module_id, layer_id, expert_id
-                        )
-                else:
-                    self.rules["mtp.linear_fc1"](layer.mlp.linear_fc1, module_id, layer_id)
-                    self.rules["mtp.linear_fc2"](layer.mlp.linear_fc2, module_id, layer_id)
 
     def _get_state_dict(self):
         model = self.model
@@ -1029,6 +1074,10 @@ class GPTModelExporter:
                             self.rules["k_layernorm"](layer.self_attention.k_layernorm, layer_id)
                         self.rules["linear_qkv"](layer.self_attention.linear_qkv, layer_id)
                         self.rules["linear_proj"](layer.self_attention.linear_proj, layer_id)
+                        if hasattr(layer.self_attention.core_attention, "softmax_offset"):
+                            self.rules["softmax_offset"](
+                                layer.self_attention.core_attention.softmax_offset, layer_id
+                            )
 
                 if not isinstance(layer.pre_mlp_layernorm, IdentityOp):
                     self.rules["pre_mlp_layernorm"](layer.pre_mlp_layernorm, layer_id)
@@ -1084,8 +1133,8 @@ def export_mcore_gpt_to_hf(
             pretrained model hosted inside a model repo on huggingface.co; or
             a *directory* containing model weights saved using
             [`~PreTrainedModel.save_pretrained`], e.g., `./my_model_directory/`.
-        export_extra_modules: If True, export extra modules like medusa_heads,
-            eagle_module, or mtp. Otherwise, only export the base model.
+        export_extra_modules: If True, export extra modules like medusa_heads or
+            eagle_module. Otherwise, only export the base model.
         dtype: The weights data type to export the unquantized layers.
         export_dir: The target export path.
     """

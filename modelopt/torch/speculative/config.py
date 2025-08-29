@@ -15,57 +15,37 @@
 
 """Configurations for speculative decoding modes."""
 
+from copy import deepcopy
+
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
+
+from .eagle.default_config import default_eagle_config
+
+eagle3_default_config = deepcopy(default_eagle_config)
+eagle_mtp_default_config = deepcopy(default_eagle_config)
+
+eagle3_default_config.update({"use_aux_hidden_state": True, "use_last_layernorm": True})
+eagle_mtp_default_config.update({"use_last_layernorm": True, "use_mtp_layernorm": True})
 
 EAGLE1_DEFAULT_CFG = {
     "algorithm": "eagle",
     "config": {
-        "eagle_num_layers": 1,
-        "eagle_hidden_state_distillation": False,
-        "eagle_disable_moe": True,
-        "use_input_layernorm_in_first_layer": False,
-        "use_last_layernorm": False,
-        "use_mtp_layernorm": False,
+        "eagle_architecture_config": deepcopy(default_eagle_config),
     },
 }
 
 EAGLE3_DEFAULT_CFG = {
     "algorithm": "eagle",
     "config": {
-        "eagle_num_layers": 1,
-        "eagle_hidden_state_distillation": False,
-        "eagle_disable_moe": True,
-        "use_aux_hidden_state": True,
-        "eagle_aux_hidden_state_layer_ids": [],
-        "use_input_layernorm_in_first_layer": True,
-        "use_last_layernorm": True,
-        "use_mtp_layernorm": False,
+        "eagle_architecture_config": eagle3_default_config,
     },
 }
 
 EAGLE_MTP_DEFAULT_CFG = {
     "algorithm": "eagle",
     "config": {
-        "eagle_num_layers": 1,
-        "eagle_hidden_state_distillation": False,
-        "eagle_disable_moe": False,
-        "use_aux_hidden_state": False,
-        "eagle_aux_hidden_state_layer_ids": [],
-        "use_input_layernorm_in_first_layer": True,
-        "use_last_layernorm": True,
-        "use_mtp_layernorm": True,
-    },
-}
-
-MTP_DEFAULT_CFG = {
-    "algorithm": "eagle",
-    "config": {
-        "eagle_num_layers": 1,
-        "eagle_hidden_state_distillation": False,
-        "eagle_disable_moe": False,
-        "use_input_layernorm_in_first_layer": True,
-        "use_last_layernorm": False,
-        "use_mtp_layernorm": True,
+        "eagle_reuse_base_decoder": True,
+        "eagle_architecture_config": eagle_mtp_default_config,
     },
 }
 
@@ -87,81 +67,34 @@ class MedusaConfig(ModeloptBaseConfig):
 class EagleConfig(ModeloptBaseConfig):
     """Eagle config."""
 
-    eagle_num_layers: int = ModeloptField(
-        default=1,
-        description=("The number of decoder used in the eagle model."),
-    )
-
-    use_input_layernorm_in_first_layer: bool = ModeloptField(
-        default=True, description=("Whether to use input_layernorm in the first decoder layer.")
-    )
-
-    use_last_layernorm: bool = ModeloptField(
-        default=False, description=("Whether to use a final layernorm before lm_head.")
+    eagle_offline: bool = ModeloptField(
+        default=False, description=("Whether to use detached Eagle.")
     )
 
     eagle_hidden_state_distillation: bool = ModeloptField(
         default=False, description=("Whether to use feature hidden states distillation.")
     )
 
-    use_aux_hidden_state: bool = ModeloptField(
-        default=False, description=("Whether to use aux hidden state (EAGLE-3).")
+    eagle_self_logit_distillation: bool = ModeloptField(
+        default=True, description=("Whether to use logit distillation.")
     )
 
-    eagle_aux_hidden_state_layer_ids: list = ModeloptField(
-        default=[],
-        description=("The list of aux hidden state layers used in EAGLE-3."),
+    eagle_freeze_base_model: bool = ModeloptField(
+        default=True, description=("Whether to freeze base model during eagle module training.")
     )
 
-    eagle_disable_moe: bool = ModeloptField(
-        default=False, description=("Whether to disable MoE in eagle module.")
+    eagle_report_acc: bool = ModeloptField(
+        default=True, description=("Whether to report eval accuracy.")
     )
 
-    draft_vocab_size: int = ModeloptField(
-        default=0,
-        description=("The vocab size of the eagle module. 0 means the same as base model."),
+    eagle_reuse_base_decoder: bool = ModeloptField(
+        default=False, description=("Whether to reuse base model decoder in eagle module.")
     )
 
-    use_mtp_layernorm: bool = ModeloptField(
-        default=False,
-        description=(
-            "Whether to use norms before input_hidden_states and embedding in eagle module."
-        ),
+    eagle_loss_decay_factor: float = ModeloptField(
+        default=0.9, description=("The decay factor for multiple eagle_loss.")
     )
 
-    ffn_hidden_size: int = ModeloptField(
-        default=0,
-        description=(
-            "ffn_hidden_size of the eagle module. Using base model's ffn_hidden_size is set to 0."
-        ),
-    )
-
-    parallel_draft_step: int = ModeloptField(
-        default=1,
-        description=(
-            "The number of tokens generated in parallel draft. If set to 1, draft is not in parallel mode."
-        ),
-    )
-
-
-class MTPConfig(ModeloptBaseConfig):
-    """MTP config."""
-
-    mtp_num_layers: int = ModeloptField(
-        default=1,
-        description=("The number of decoder used in the mtp model."),
-    )
-
-    mtp_num_module: int = ModeloptField(
-        default=1,
-        description=("The number of mtp used in the model."),
-    )
-
-    mtp_freeze_list: list = ModeloptField(
-        default=[],
-        description=("The list of mtp module to freeze."),
-    )
-
-    use_last_layernorm: bool = ModeloptField(
-        default=False, description=("Whether to use a final layernorm before lm_head.")
+    eagle_architecture_config: dict = ModeloptField(
+        default={}, description=("The config for eagle module architecture.")
     )

@@ -24,6 +24,7 @@ from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 from ..config import EagleConfig
 
 EagleDMRegistry = _DMRegistryCls(prefix="Eagle")  # global instance for the registry
+OfflineEagleDMRegistry = _DMRegistryCls(prefix="DetachedEagle")  # global instance for the registry
 
 
 def convert_to_eagle_model(model: nn.Module, config: EagleConfig) -> ConvertReturnType:
@@ -31,26 +32,25 @@ def convert_to_eagle_model(model: nn.Module, config: EagleConfig) -> ConvertRetu
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
+    registry = OfflineEagleDMRegistry if config.eagle_offline else EagleDMRegistry
+
     original_cls = type(model)
-    if original_cls not in EagleDMRegistry:
-        for cls in EagleDMRegistry._registry:
+    if original_cls not in registry:
+        for cls in registry._registry:
             if issubclass(original_cls, cls):
-                EagleDMRegistry.register({original_cls: "base_model_class"})(EagleDMRegistry[cls])
+                registry.register({original_cls: "base_model_class"})(registry[cls])
                 break
 
-    eagle_model = EagleDMRegistry.convert(model)
+    eagle_model = registry.convert(model)
     eagle_model.modify(
-        eagle_num_layers=config.eagle_num_layers,
-        use_input_layernorm_in_first_layer=config.use_input_layernorm_in_first_layer,
-        use_last_layernorm=config.use_last_layernorm,
+        eagle_offline=config.eagle_offline,
         eagle_hidden_state_distillation=config.eagle_hidden_state_distillation,
-        use_aux_hidden_state=config.use_aux_hidden_state,
-        eagle_aux_hidden_state_layer_ids=config.eagle_aux_hidden_state_layer_ids,
-        eagle_disable_moe=config.eagle_disable_moe,
-        draft_vocab_size=config.draft_vocab_size,
-        use_mtp_layernorm=config.use_mtp_layernorm,
-        ffn_hidden_size=config.ffn_hidden_size,
-        parallel_draft_step=config.parallel_draft_step,
+        eagle_self_logit_distillation=config.eagle_self_logit_distillation,
+        eagle_freeze_base_model=config.eagle_freeze_base_model,
+        eagle_report_acc=config.eagle_report_acc,
+        eagle_reuse_base_decoder=config.eagle_reuse_base_decoder,
+        eagle_loss_decay_factor=config.eagle_loss_decay_factor,
+        eagle_architecture_config=config.eagle_architecture_config,
     )
 
     # no metadata, all specifed via config.

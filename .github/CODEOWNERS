@@ -43,8 +43,9 @@ examples/llm_eval @NVIDIA/modelopt-examples-llm_ptq-codeowners
 examples/llm_ptq @NVIDIA/modelopt-examples-llm_ptq-codeowners
 examples/llm_qat @NVIDIA/modelopt-examples-llm_qat-codeowners
 examples/llm_sparsity @NVIDIA/modelopt-torch-sparsity-codeowners
+examples/megatron-lm @NVIDIA/modelopt-examples-megatron-codeowners
 examples/model_hub @NVIDIA/modelopt-examples-model_hub-codeowners
-examples/nemo_run @NVIDIA/modelopt-examples-nemo_run-codeowners
+examples/nemo_run @NVIDIA/modelopt-examples-megatron-codeowners
 examples/onnx_ptq @NVIDIA/modelopt-onnx-codeowners
 examples/pruning @NVIDIA/modelopt-torch-nas-prune-codeowners
 examples/speculative_decoding @NVIDIA/modelopt-torch-speculative-codeowners
