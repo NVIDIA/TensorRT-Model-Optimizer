@@ -25,7 +25,6 @@ from typing import Any
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-from onnx import TensorProto, ValueInfoProto, numpy_helper
 from onnx.helper import get_attribute_value
 from onnx_graphsurgeon import Constant, Node, Variable
 
@@ -289,7 +288,7 @@ def _convert_types_to_np(types: dict[str, int] | list[int] | int) -> Any:
 
 def get_tensor_by_name(
     onnx_model: onnx.ModelProto, tensor_name: str
-) -> ValueInfoProto | TensorProto | None:
+) -> onnx.ValueInfoProto | onnx.TensorProto | None:
     """This function returns a tensor from its name.
 
     This function searches for a tensor in the model's:
@@ -438,7 +437,7 @@ def randomize_weights_onnx_bytes(onnx_bytes: bytes, seed: int = 0) -> bytes:
                     numpy_array = np.random.normal(float(avg), float(var), size=init.dims).astype(
                         dtype
                     )
-                    tensor = numpy_helper.from_array(numpy_array, init.name)
+                    tensor = onnx.numpy_helper.from_array(numpy_array, init.name)
                     model.graph.initializer[idx].CopyFrom(tensor)
 
     buffer = io.BytesIO()
@@ -751,3 +750,46 @@ def onnx_type_str_to_enum(dtype: str) -> int:
     dtype = dtype.split("tensor(")[-1].split(")")[0]
     dtype = "FLOAT" if dtype == "float32" else dtype.upper()
     return getattr(onnx.TensorProto, dtype)
+
+
+def remove_node_training_mode(onnx_model: onnx.ModelProto, node_op_type: str) -> onnx.ModelProto:
+    """Remove `training_mode` attribute and extra training outputs from nodes of a given op type.
+
+    Args:
+        onnx_model: The onnx model.
+        node_op_type: The node type to remove training_mode attribute from.
+
+    Returns:
+        The onnx model with the training_mode attribute removed.
+    """
+    removed_output_names = set()
+
+    for node in onnx_model.graph.node:
+        if node.op_type != node_op_type:
+            continue
+
+        # Drop the 'training_mode' attribute if present
+        for idx, attr in enumerate(list(node.attribute)):
+            if attr.name == "training_mode":
+                del node.attribute[idx]
+                break
+
+        # If node has extra training outputs, keep only the first
+        if len(node.output) > 1:
+            removed_output_names.update(node.output[1:])
+            node.output[:] = node.output[:1]
+
+    if removed_output_names:
+        # Clean up corresponding value_info entries
+        keep = [vi for vi in onnx_model.graph.value_info if vi.name not in removed_output_names]
+        del onnx_model.graph.value_info[:]
+        onnx_model.graph.value_info.extend(keep)
+
+        # Also clean up graph.output entries
+        keep_outputs = [
+            out for out in onnx_model.graph.output if out.name not in removed_output_names
+        ]
+        del onnx_model.graph.output[:]
+        onnx_model.graph.output.extend(keep_outputs)
+
+    return onnx_model

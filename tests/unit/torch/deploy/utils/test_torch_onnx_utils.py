@@ -24,13 +24,21 @@ import torch
 import torch.nn as nn
 from _test_utils.torch_model.deploy_models import BaseDeployModel, get_deploy_models
 from _test_utils.torch_model.vision_models import get_tiny_resnet_and_input
-from onnx.helper import make_graph, make_model, make_node, make_tensor_value_info
+from onnx.helper import (
+    make_graph,
+    make_model,
+    make_node,
+    make_opsetid,
+    make_tensor,
+    make_tensor_value_info,
+)
 
 from modelopt.onnx.utils import (
     get_batch_size_from_bytes,
     get_input_names_from_bytes,
     get_output_names_from_bytes,
     randomize_weights_onnx_bytes,
+    remove_node_training_mode,
     remove_weights_data,
     validate_batch_size,
 )
@@ -255,3 +263,80 @@ def test_reproducible_random_weights():
     onnx_bytes_1 = randomize_weights_onnx_bytes(onnx_bytes_wo_weights)
     onnx_bytes_2 = randomize_weights_onnx_bytes(onnx_bytes_wo_weights)
     assert onnx_bytes_1 == onnx_bytes_2
+
+
+def _make_bn_initializer(name: str, shape, value=1.0):
+    """Helper to create an initializer tensor for BatchNorm."""
+    data = np.full(shape, value, dtype=np.float32)
+    return make_tensor(name, onnx.TensorProto.FLOAT, shape, data.flatten())
+
+
+def _make_batchnorm_model(bn_node, extra_value_infos=None):
+    """Helper to create an ONNX model with a BatchNormalization node."""
+    initializers = [
+        _make_bn_initializer("scale", [3], 1.0),
+        _make_bn_initializer("bias", [3], 0.0),
+        _make_bn_initializer("mean", [3], 0.0),
+        _make_bn_initializer("var", [3], 1.0),
+    ]
+
+    graph_def = make_graph(
+        [bn_node],
+        "test_graph",
+        [make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 3, 224, 224])],
+        [make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 3, 224, 224])],
+        initializer=initializers,
+        value_info=extra_value_infos or [],
+    )
+
+    return make_model(graph_def, opset_imports=[make_opsetid("", 14)])
+
+
+def test_remove_node_training_mode_attribute():
+    """Test removal of training_mode attribute from BatchNormalization nodes."""
+    bn_node = make_node(
+        "BatchNormalization",
+        inputs=["input", "scale", "bias", "mean", "var"],
+        outputs=["output"],
+        name="bn1",
+        training_mode=1,  # This attribute should be removed
+    )
+
+    model = _make_batchnorm_model(bn_node)
+    result_model = remove_node_training_mode(model, "BatchNormalization")
+
+    bn_node_result = result_model.graph.node[0]
+    assert bn_node_result.op_type == "BatchNormalization"
+
+    # Check that training_mode attribute is not present
+    attr_names = [attr.name for attr in bn_node_result.attribute]
+    assert "training_mode" not in attr_names
+
+
+def test_remove_node_extra_training_outputs():
+    """Test removal of extra training outputs from BatchNormalization nodes."""
+    bn_node = make_node(
+        "BatchNormalization",
+        inputs=["input", "scale", "bias", "mean", "var"],
+        outputs=["output", "saved_mean", "saved_inv_std"],  # Extra training outputs
+        name="bn1",
+        training_mode=1,
+    )
+
+    value_infos = [
+        make_tensor_value_info("saved_mean", onnx.TensorProto.FLOAT, [3]),
+        make_tensor_value_info("saved_inv_std", onnx.TensorProto.FLOAT, [3]),
+    ]
+
+    model = _make_batchnorm_model(bn_node, extra_value_infos=value_infos)
+    result_model = remove_node_training_mode(model, "BatchNormalization")
+
+    # Verify only first output remains
+    bn_node_result = result_model.graph.node[0]
+    assert len(bn_node_result.output) == 1
+    assert bn_node_result.output[0] == "output"
+
+    # Verify value_info entries for removed outputs are cleaned up
+    value_info_names = [vi.name for vi in result_model.graph.value_info]
+    assert "saved_mean" not in value_info_names
+    assert "saved_inv_std" not in value_info_names
