@@ -26,6 +26,7 @@ Model Optimizer Changelog (Linux)
 - Add support for ``mamba_num_heads``, ``mamba_head_dim``, ``hidden_size`` and ``num_layers`` pruning for Megatron Core Mamba or Hybrid Transformer Mamba models in ``mcore_minitron`` (previously ``mcore_gpt_minitron``) mode.
 - Add example for QAT/QAD training with `LLaMA Factory <https://github.com/hiyouga/LLaMA-Factory/tree/main>`_. See ``examples/llm_qat/llama_factory`` for more details.
 - Upgrade TensorRT-LLM dependency to 1.0.0rc6.
+- Add unified HuggingFace model export support for quantized NVFP4 GPT-OSS models.
 
 0.33 (2025-07-14)
 ^^^^^^^^^^^^^^^^^

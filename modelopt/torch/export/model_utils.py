@@ -49,6 +49,7 @@ MODEL_NAME_TO_TYPE = {
     "Nemotron": "gpt",
     "Deepseek": "deepseek",
     "Whisper": "whisper",
+    "gptoss": "gptoss",
 }
 
 __doc__ = f"""Utility functions for model type detection and classification.

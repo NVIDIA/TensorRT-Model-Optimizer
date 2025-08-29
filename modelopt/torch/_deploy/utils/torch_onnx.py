@@ -334,8 +334,7 @@ def get_onnx_bytes_and_metadata(
     dynamo_export: bool = False,
     onnx_opset: int = DEFAULT_ONNX_OPSET,
     dq_only: bool = False,
-    weights_dtype: str = "float32",
-    use_autocast: bool = False,
+    weights_dtype: str = "fp32",
 ) -> tuple[bytes, ModelMetadata]:
     """Get onnx model in bytes from input pytorch model together with the input/output of model.
 
@@ -353,7 +352,6 @@ def get_onnx_bytes_and_metadata(
         onnx_opset: The onnx opset version to use for exporting the model.
         dq_only: If True, the exported onnx model is converted to a dq_only model.
         weights_dtype: The dtype of the weights in the onnx model.
-        use_autocast: If True, the model is exported using torch.autocast().
 
     Returns:
         bytes: Onnx model in bytes.
@@ -365,8 +363,8 @@ def get_onnx_bytes_and_metadata(
     if not isinstance(model, nn.Module):
         raise ValueError("Only PyTorch model compilation is supported.")
 
-    assert weights_dtype in ["float32", "float16"], (
-        "weights_dtype must be one of float32, or float16"
+    assert weights_dtype in ["fp32", "fp16", "bf16"], (
+        "weights_dtype must be one of fp32, fp16, or bf16"
     )
 
     # unwrap DDP and DP models
@@ -394,9 +392,10 @@ def get_onnx_bytes_and_metadata(
     # during inference.
     input_none_names = list(set(tree_spec_input.names) - set(input_names))
 
-    # Get output once (we export in inference mode - so also using inference mode here!)
-    autocast = torch.autocast("cuda") if use_autocast else nullcontext()
+    use_torch_autocast = not (is_fp4_quantized(model) or is_mxfp8_quantized(model))
+    autocast = torch.autocast("cuda") if use_torch_autocast else nullcontext()
 
+    # Get output once (we export in inference mode - so also using inference mode here!)
     with torch.inference_mode(), autocast:
         output = model(*named_args.values())
 
@@ -408,7 +407,7 @@ def get_onnx_bytes_and_metadata(
 
     if onnx_load_path != "":
         onnx_model = OnnxBytes(onnx_load_path)
-        onnx_model_graph = onnx.load(os.path.join(onnx_load_path))
+        onnx_model_graph = onnx.load(onnx_load_path)
         model_metadata = create_model_metadata(
             tree_spec_input, tree_spec_output, input_none_names, onnx_model_graph, model
         )
@@ -479,8 +478,14 @@ def get_onnx_bytes_and_metadata(
     if dq_only:
         onnx_opt_graph = qdq_to_dq(onnx_opt_graph)
 
-    if weights_dtype == "float16":
-        if not use_autocast:
+    try:
+        # TODO: Single-precision torch model assumed
+        param_dtype = next(model.parameters()).dtype
+    except StopIteration:
+        param_dtype = torch.float32
+    if weights_dtype in ["fp16", "bf16"] and param_dtype == torch.float32:
+        if is_mxfp8_quantized(model):
+            assert weights_dtype == "fp16", "BF16 + MXFP8 mixed precision is not supported yet"
             onnx_opt_graph = convert_float_to_float16(
                 onnx_opt_graph,
                 keep_io_types=False,
@@ -488,7 +493,9 @@ def get_onnx_bytes_and_metadata(
                 check_fp16_ready=False,
             )
         else:
-            onnx_opt_graph = convert_to_f16(onnx_opt_graph, keep_io_types=False)
+            onnx_opt_graph = convert_to_f16(
+                onnx_opt_graph, low_precision_type=weights_dtype, keep_io_types=False
+            )
 
     # If the onnx model contains external data store the external tensors in one file and save the onnx model
     if has_external_data(onnx_save_path):

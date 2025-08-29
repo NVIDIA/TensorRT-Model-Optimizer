@@ -13,8 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
+
 import pytest
 import torch
+from _test_utils.torch_misc import set_seed
 from _test_utils.torch_quantization.models import OneLayerLinear, SimpleLinear
 from _test_utils.torch_quantization.quantize_common import compute_backward_grad
 
@@ -23,14 +26,18 @@ from modelopt.torch.quantization.backends.fp8_per_tensor_gemm import Fp8PerTenso
 from modelopt.torch.quantization.backends.nvfp4_gemm import Nvfp4Linear
 from modelopt.torch.quantization.backends.utils import fp4_compatible, fp8_compatible
 
+set_seed()
+
 
 @pytest.mark.parametrize(
-    ("model", "config", "gemm_forward"),
+    ("model", "config", "gemm_forward", "atol", "rtol"),
     [
         pytest.param(
             OneLayerLinear(in_features=64, out_features=32),
             mtq.NVFP4_DEFAULT_CFG,
             Nvfp4Linear.apply,
+            0.5,
+            0.1,
             marks=[
                 pytest.mark.skipif(not fp4_compatible(), reason="FP4 is not supported on this GPU"),
             ],
@@ -39,13 +46,15 @@ from modelopt.torch.quantization.backends.utils import fp4_compatible, fp8_compa
             SimpleLinear(),
             mtq.FP8_DEFAULT_CFG,
             Fp8PerTensorLinear.apply,
+            0.05,
+            0.1,
             marks=[
                 pytest.mark.skipif(not fp8_compatible(), reason="FP8 is not supported on this GPU"),
             ],
         ),
     ],
 )
-def test_gemm(model, config, gemm_forward):
+def test_gemm(model, config, gemm_forward, atol, rtol):
     model = model.to(torch.float16).cuda()
     calib_data = [model.get_input().to(torch.float16).cuda() for _ in range(8)]
 
@@ -64,9 +73,9 @@ def test_gemm(model, config, gemm_forward):
     # Test without bias
     result_no_bias = gemm_forward(module, input_tensor, module.weight)
     diff = (result_no_bias - expected).abs()
-    assert torch.allclose(result_no_bias, expected, atol=0.5, rtol=0.1), (
+    assert torch.allclose(result_no_bias, expected, atol=atol, rtol=rtol), (
         f"Test without bias failed: {diff.amax()}\n"
-        f"{result_no_bias[diff > 0.1]} != {expected[diff > 0.1]}"
+        f"{result_no_bias[diff > atol]} != {expected[diff > atol]}"
     )
 
     # Generate a random bias for testing
@@ -76,17 +85,17 @@ def test_gemm(model, config, gemm_forward):
     # Test 1: Bias as keyword argument (kwargs)
     result_with_bias_kwargs = gemm_forward(module, input_tensor, module.weight, bias=bias)
     diff = (result_with_bias_kwargs - expected_with_bias).abs()
-    assert torch.allclose(result_with_bias_kwargs, expected_with_bias, atol=0.5, rtol=0.1), (
+    assert torch.allclose(result_with_bias_kwargs, expected_with_bias, atol=atol, rtol=rtol), (
         f"Bias as kwargs failed: {diff.amax()}\n"
-        f"{result_with_bias_kwargs[diff > 0.1]} != {expected_with_bias[diff > 0.1]}"
+        f"{result_with_bias_kwargs[diff > atol]} != {expected_with_bias[diff > atol]}"
     )
 
     # Test 2: Bias as positional argument (args)
     result_with_bias_args = gemm_forward(module, input_tensor, module.weight, bias)
     diff = (result_with_bias_args - expected_with_bias).abs()
-    assert torch.allclose(result_with_bias_args, expected_with_bias, atol=0.5, rtol=0.1), (
+    assert torch.allclose(result_with_bias_args, expected_with_bias, atol=atol, rtol=rtol), (
         f"Bias as args failed: {diff.amax()}\n"
-        f"{result_with_bias_args[diff > 0.1]} != {expected_with_bias[diff > 0.1]}"
+        f"{result_with_bias_args[diff > atol]} != {expected_with_bias[diff > atol]}"
     )
 
     # Verify both methods produce the same result
@@ -96,11 +105,13 @@ def test_gemm(model, config, gemm_forward):
 
 
 @pytest.mark.parametrize(
-    ("model", "config"),
+    ("model", "config", "atol_bias", "atol_input"),
     [
         pytest.param(
             SimpleLinear(),
             mtq.NVFP4_DEFAULT_CFG,
+            0.5,
+            0.2,
             marks=[
                 pytest.mark.skipif(not fp4_compatible(), reason="FP4 is not supported on this GPU"),
             ],
@@ -108,19 +119,23 @@ def test_gemm(model, config, gemm_forward):
         pytest.param(
             SimpleLinear(),
             mtq.FP8_DEFAULT_CFG,
+            0.02,
+            0.02,
             marks=[
                 pytest.mark.skipif(not fp8_compatible(), reason="FP8 is not supported on this GPU"),
             ],
         ),
     ],
 )
-def test_compressed_backward_to_input(model, config):
+def test_compressed_backward_to_input(model, config, atol_bias, atol_input):
     model = model.to(torch.float16).cuda()
     input_tensor = model.get_input().to(torch.float16).cuda()
     input_tensor.requires_grad = True
+
     _, bias_grads = compute_backward_grad(model, input_tensor, config=config, quantize=True)
     input_grad = input_tensor.grad
     input_tensor.grad = None
+
     weight_grads_quantized, bias_grads_quantized = compute_backward_grad(
         model, input_tensor, config=config, compress=True
     )
@@ -130,12 +145,116 @@ def test_compressed_backward_to_input(model, config):
 
     for bias_grad, bias_grad_quantized in zip(bias_grads, bias_grads_quantized):
         diff = (bias_grad - bias_grad_quantized).abs()
-        assert torch.allclose(bias_grad, bias_grad_quantized, atol=0.5), (
-            f"bias grad mismatch: {bias_grad[diff > 0.5]} != {bias_grad_quantized[diff > 0.5]}"
+        assert torch.allclose(bias_grad, bias_grad_quantized, atol=atol_bias), (
+            f"bias grad mismatch: {bias_grad[diff > atol_bias]} != {bias_grad_quantized[diff > atol_bias]}"
         )
 
     diff = (input_grad - input_grad_quantized).abs()
-    assert torch.allclose(input_grad, input_grad_quantized, atol=0.2), (
+    assert torch.allclose(input_grad, input_grad_quantized, atol=atol_input), (
         f"input grad mismatch: {diff.amax()}\n"
-        f"{input_grad[diff > 0.2]} != {input_grad_quantized[diff > 0.2]}"
+        f"{input_grad[diff > atol_input]} != {input_grad_quantized[diff > atol_input]}"
     )
+
+
+@pytest.mark.parametrize(
+    ("model", "config", "gemm_forward", "atol", "rtol"),
+    [
+        pytest.param(
+            OneLayerLinear(in_features=64, out_features=32),
+            mtq.NVFP4_DEFAULT_CFG,
+            Nvfp4Linear.apply,
+            0.3,
+            0.1,
+            marks=[
+                pytest.mark.skipif(not fp4_compatible(), reason="FP4 is not supported on this GPU"),
+            ],
+        ),
+        pytest.param(
+            OneLayerLinear(in_features=64, out_features=32),
+            mtq.FP8_DEFAULT_CFG,
+            Fp8PerTensorLinear.apply,
+            0.1,
+            0.1,
+            marks=[
+                pytest.mark.skipif(not fp8_compatible(), reason="FP8 is not supported on this GPU"),
+            ],
+        ),
+    ],
+)
+def test_dynamic_gemm(model, config, gemm_forward, atol, rtol):
+    model_fp16 = model.to(torch.float16).cuda()
+    calib_data = [model.get_input().to(torch.float16).cuda() for _ in range(8)]
+
+    model_dynamic_quant = copy.deepcopy(model_fp16)
+    mtq.quantize(model_dynamic_quant, config)
+
+    model_dynamic_quant_compressed = copy.deepcopy(model_dynamic_quant)
+    mtq.compress(model_dynamic_quant_compressed)
+
+    def forward_loop(model, run_backward=False):
+        for batch in calib_data:
+            output = model(batch)
+            if run_backward:
+                output.sum().backward()
+
+    model_calib_quant = copy.deepcopy(model_fp16)
+    mtq.quantize(model_calib_quant, config, forward_loop)
+
+    model_calib_quant_compressed = copy.deepcopy(model_calib_quant)
+    mtq.compress(model_calib_quant_compressed)
+
+    result_fp16 = [model_fp16(input_tensor) for input_tensor in calib_data]
+
+    result_dynamic_quant = [model_dynamic_quant(input_tensor) for input_tensor in calib_data]
+
+    module = model_dynamic_quant.net[0]
+    result_dynamic_quant_gemm = [
+        gemm_forward(module, input_tensor, module.weight, bias=module.bias)
+        for input_tensor in calib_data
+    ]
+    result_dynamic_quant_compressed = [
+        model_dynamic_quant_compressed(input_tensor) for input_tensor in calib_data
+    ]
+
+    result_calib_quant = [model_calib_quant(input_tensor) for input_tensor in calib_data]
+
+    module = model_calib_quant.net[0]
+    result_calib_quant_gemm = [
+        gemm_forward(module, input_tensor, module.weight, bias=module.bias)
+        for input_tensor in calib_data
+    ]
+
+    result_calib_quant_compressed = [
+        model_calib_quant_compressed(input_tensor) for input_tensor in calib_data
+    ]
+
+    for (
+        output_fp16,
+        output_dynamic_quant,
+        output_dynamic_quant_gemm,
+        output_dynamic_quant_compressed,
+        output_calib_quant,
+        output_calib_quant_gemm,
+        output_calib_quant_compressed,
+    ) in zip(
+        result_fp16,
+        result_dynamic_quant,
+        result_dynamic_quant_gemm,
+        result_dynamic_quant_compressed,
+        result_calib_quant,
+        result_calib_quant_gemm,
+        result_calib_quant_compressed,
+    ):
+        assert torch.allclose(output_fp16, output_dynamic_quant_gemm, atol=atol, rtol=rtol)
+        assert torch.allclose(output_fp16, output_calib_quant_gemm, atol=atol, rtol=rtol)
+
+        # The way the compression of the weights and inputs might be different.
+        # E.g. we may use torch.compile in the gemms.=
+        assert torch.allclose(output_dynamic_quant_gemm, output_dynamic_quant, atol=0.05, rtol=0.1)
+        assert torch.allclose(output_calib_quant_gemm, output_calib_quant, atol=0.05, rtol=0.1)
+        assert torch.allclose(
+            output_dynamic_quant_gemm, output_dynamic_quant_compressed, atol=0.05, rtol=0.1
+        )
+        assert torch.allclose(
+            output_calib_quant_gemm, output_calib_quant_compressed, atol=0.05, rtol=0.1
+        )

@@ -26,7 +26,12 @@ from tqdm import tqdm
 from modelopt.torch.utils import import_plugin
 
 from .mcore_common import all_mcore_hf_import_mapping
-from .mcore_custom import CustomModuleMapping, ParallelConfig, get_safetensor
+from .mcore_custom import (
+    CustomModuleMapping,
+    ParallelConfig,
+    dequantize_mxfp4_to_bf16,
+    get_safetensor,
+)
 
 with import_plugin("transformers", verbose=False):
     import transformers
@@ -34,7 +39,7 @@ with import_plugin("transformers", verbose=False):
 has_mcore = False
 with import_plugin("megatron"):
     from megatron.core.parallel_state import (
-        get_expert_model_parallel_world_size,
+        get_expert_tensor_parallel_world_size,
         get_tensor_model_parallel_world_size,
     )
     from megatron.core.ssm.mamba_layer import MambaLayer
@@ -108,6 +113,7 @@ class GPTModelImporter:
                 "qkv_merging": self._qkv_merging,
                 "gated_mlp_merging": self._gated_mlp_merging,
                 "unpack_name_remapping": self._unpack_name_remapping,
+                "unpack_name_remapping_gpt_oss": self._unpack_name_remapping_gpt_oss,
             }
             func = method_map[mapping.func_name]
             prefix = mapping.target_name_or_prefix
@@ -136,7 +142,8 @@ class GPTModelImporter:
         parallel_config: ParallelConfig | None = None,
     ):
         if isinstance(module, torch.Tensor):
-            module.data.copy_(self._get_safetensor(prefix))
+            tensor = self._get_safetensor(prefix, parallel_config=parallel_config)
+            module.data.copy_(tensor)
             return
 
         weight = module.state_dict().get("weight", None)
@@ -174,7 +181,18 @@ class GPTModelImporter:
                 state_dict[key] = val
             else:
                 source_key = mapping.get(key, key)
-                tensor = self._get_safetensor(prefix + source_key, parallel_config=parallel_config)
+                # For bias tensors in ROW_TP layers, don't use parallel config to avoid sharding
+                # since bias should always be replicated, not sharded
+                if (
+                    key == "bias"
+                    and parallel_config is not None
+                    and parallel_config.sharding_dim == 1
+                ):
+                    tensor = self._get_safetensor(prefix + source_key, parallel_config=None)
+                else:
+                    tensor = self._get_safetensor(
+                        prefix + source_key, parallel_config=parallel_config
+                    )
                 state_dict[key] = tensor.to(dtype=self.dtype).to(device=val.device)
 
         module.load_state_dict(state_dict)
@@ -373,6 +391,72 @@ class GPTModelImporter:
 
             linear_module.load_state_dict(state_dict)
 
+    def _unpack_name_remapping_gpt_oss(
+        self,
+        module,
+        prefix,
+        layer_type: str,
+        parallel_config: ParallelConfig | None = None,
+    ):
+        tensor_blocks = self._get_safetensor(prefix + "_blocks", parallel_config=parallel_config)
+        tensor_bias = self._get_safetensor(prefix + "_bias", parallel_config=parallel_config)
+        tensor_scales = self._get_safetensor(prefix + "_scales", parallel_config=parallel_config)
+        tensor = dequantize_mxfp4_to_bf16(tensor_blocks, tensor_scales, dtype=self.dtype)
+
+        for idx, sub_module in enumerate(module.children()):
+            state_dict = {}
+            linear_module = getattr(sub_module, layer_type)
+            weight = linear_module.state_dict().get("weight", None)
+            sub_tensor = tensor[idx]
+            if weight is None:
+                raise ValueError(f"{linear_module!s} does not contain weight!")
+                # TODO (yueshen): Handle weight_scale case
+            else:
+                if layer_type == "linear_fc1":
+                    # HF checkpoint has interleaved weights, need to de-interleave
+                    # Pattern: [0,2,4,...,5758] -> [0,1,2,...,2879] and [1,3,5,...,5759] -> [2880,2881,...,5759]
+                    height, width = sub_tensor.shape
+                    half_height = height // 2
+
+                    # Create de-interleaved tensor
+                    deinterleaved_tensor = torch.zeros_like(sub_tensor)
+                    deinterleaved_tensor[:half_height] = sub_tensor[
+                        ::2
+                    ]  # Even indices -> first half
+                    deinterleaved_tensor[half_height:] = sub_tensor[
+                        1::2
+                    ]  # Odd indices -> second half
+                    sub_tensor = deinterleaved_tensor
+
+                state_dict["weight"] = sub_tensor.to(dtype=self.dtype).to(device=weight.device)
+
+            for key, val in linear_module.state_dict().items():
+                if key in {"weight", "weight_quantizer._scale"}:
+                    continue
+                elif "extra_state" in key:
+                    state_dict[key] = val
+                elif "bias" in key:
+                    sub_tensor_bias = tensor_bias[idx]
+
+                    if layer_type == "linear_fc1":
+                        # HF checkpoint has interleaved bias, need to de-interleave
+                        bias_len = sub_tensor_bias.shape[0]
+                        half_bias_len = bias_len // 2
+
+                        # Create de-interleaved bias tensor
+                        deinterleaved_bias = torch.zeros_like(sub_tensor_bias)
+                        deinterleaved_bias[:half_bias_len] = sub_tensor_bias[
+                            ::2
+                        ]  # Even indices -> first half
+                        deinterleaved_bias[half_bias_len:] = sub_tensor_bias[
+                            1::2
+                        ]  # Odd indices -> second half
+                        sub_tensor_bias = deinterleaved_bias
+
+                    state_dict["bias"] = sub_tensor_bias.to(dtype=self.dtype).to(device=val.device)
+
+            linear_module.load_state_dict(state_dict)
+
     def _import_state_dict(self):
         model = self.model
 
@@ -428,6 +512,10 @@ class GPTModelImporter:
                             self.rules["k_layernorm"](attention.k_layernorm, layer_id)
                         self.rules["linear_qkv"](attention.linear_qkv, layer_id)
                         self.rules["linear_proj"](attention.linear_proj, layer_id)
+                        if hasattr(attention.core_attention, "softmax_offset"):
+                            self.rules["softmax_offset"](
+                                attention.core_attention.softmax_offset, layer_id
+                            )
 
                 if not isinstance(layer.pre_mlp_layernorm, IdentityOp):
                     self.rules["pre_mlp_layernorm"](layer.pre_mlp_layernorm, layer_id)
@@ -458,20 +546,23 @@ class GPTModelImporter:
                                 self.rules["local_experts.linear_fc1"](fc1, layer_id, expert_id)
                                 self.rules["local_experts.linear_fc2"](fc2, layer_id, expert_id)
                         # We only support either EP or ETP for now
-                        elif get_expert_model_parallel_world_size() > 1:
+                        elif get_expert_tensor_parallel_world_size() > 1:
+                            # ETP supports for packed MoE
+                            # ETP is not supported for gpt-oss model
+                            if self.arch in ["GptOssForCausalLM"]:
+                                raise ValueError("ETP is not supported for gpt-oss model")
+                            self.rules["local_experts.linear_fc1_etp"](
+                                layer.mlp.experts.local_experts, layer_id
+                            )
+                            self.rules["local_experts.linear_fc2_etp"](
+                                layer.mlp.experts.local_experts, layer_id
+                            )
+                        else:
                             # EP supports for packed MoE
                             self.rules["local_experts.linear_fc1_ep"](
                                 layer.mlp.experts.local_experts, layer_id
                             )
                             self.rules["local_experts.linear_fc2_ep"](
-                                layer.mlp.experts.local_experts, layer_id
-                            )
-                        else:
-                            # ETP supports for packed MoE
-                            self.rules["local_experts.linear_fc1_etp"](
-                                layer.mlp.experts.local_experts, layer_id
-                            )
-                            self.rules["local_experts.linear_fc2_etp"](
                                 layer.mlp.experts.local_experts, layer_id
                             )
                     else:

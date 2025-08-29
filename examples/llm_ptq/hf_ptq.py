@@ -67,6 +67,7 @@ QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
     "fp8_pc_pt": mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
     "w4a8_nvfp4_fp8": mtq.W4A8_NVFP4_FP8_CFG,
     "w4a8_mxfp4_fp8": mtq.W4A8_MXFP4_FP8_CFG,
+    "nvfp4_mlp_only": mtq.NVFP4_MLP_ONLY_CFG,
 }
 
 KV_QUANT_CFG_CHOICES = {
@@ -88,7 +89,16 @@ def auto_quantize(
     if args.export_fmt == "hf":
         assert all(
             qformat
-            in ["fp8", "int4_awq", "nvfp4", "nvfp4_awq", "w4a8_awq", "fp8_pb_wo", "w4a8_mxfp4_fp8"]
+            in [
+                "fp8",
+                "int4_awq",
+                "nvfp4",
+                "nvfp4_awq",
+                "w4a8_awq",
+                "fp8_pb_wo",
+                "w4a8_mxfp4_fp8",
+                "nvfp4_mlp_only",
+            ]
             for qformat in qformat_list
         ), (
             "One or more quantization formats provided are not supported for unified checkpoint export"
@@ -223,6 +233,7 @@ def main(args):
                     "w4a8_awq",
                     "fp8_pb_wo",
                     "w4a8_mxfp4_fp8",
+                    "nvfp4_mlp_only",
                 ]
                 or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES
             ), f"Quantization format {args.qformat} not supported for HF export path"
@@ -288,6 +299,7 @@ def main(args):
             args.dataset = ["cnn_dailymail"]
             warnings.warn("No dataset specified. Defaulting to cnn_dailymail.")
         tokenizer = get_tokenizer(args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code)
+
         default_padding_side = tokenizer.padding_side
         # Left padding usually provides better calibration result.
         tokenizer.padding_side = "left"
@@ -386,6 +398,9 @@ def main(args):
             assert processor is not None and isinstance(processor, MllamaImageProcessor), (
                 "The MllamaImageProcessor must be set."
             )
+            assert len(args.calib_size) == 1, (
+                "mllama only supports one dataset for calibration, can extend this in the future"
+            )
             calib_dataloader = get_vlm_dataset_dataloader(
                 dataset_name=args.dataset[0] if args.dataset else "scienceqa",
                 processor=processor,
@@ -396,11 +411,14 @@ def main(args):
             assert processor is not None and isinstance(processor, WhisperProcessor), (
                 "The AutoProcessor must be set."
             )
+            assert len(args.calib_size) == 1, (
+                "whisper only supports one dataset for calibration, can extend this in the future"
+            )
             calib_dataloader, first_text = get_speech_dataset_dataloader(
                 dataset_name=args.dataset[0] if args.dataset else "peoples_speech",
                 processor=processor,
                 batch_size=args.batch_size,
-                num_samples=args.calib_size,
+                num_samples=args.calib_size[0],
                 device=device,
                 dtype=model.dtype,
             )
@@ -466,6 +484,8 @@ def main(args):
                 )
                 print(f"Error details: {e}")
                 raise
+            if model_type == "gptoss" and args.qformat == "nvfp4_mlp_only":
+                print("Applying nvfp4 quantization (MoE only) for gpt-oss")
 
             # quantize the model
             model = quantize_model(model, quant_cfg, args, calib_dataloader, calibration_only)
@@ -532,6 +552,18 @@ def main(args):
             model_type = f"unknown:{type(model).__name__}"
 
         export_path = args.export_path
+
+        if hasattr(model, "language_model"):
+            # Save original model config and the preprocessor config to the export path for VLMs.
+            from transformers import AutoConfig, AutoProcessor
+
+            AutoConfig.from_pretrained(
+                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+            ).save_pretrained(export_path)
+
+            AutoProcessor.from_pretrained(
+                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+            ).save_pretrained(export_path)
 
         if model_type == "mllama":
             full_model_config = model.config
@@ -608,7 +640,8 @@ if __name__ == "__main__":
         "--calib_size",
         help=(
             "Number of samples for calibration. If a comma separated list of values is provided, "
-            "each value will be used as the calibration size for the corresponding dataset."
+            "each value will be used as the calibration size for the corresponding dataset. "
+            "This argument will be parsed and converted as a list of ints."
         ),
         type=str,
         default="512",

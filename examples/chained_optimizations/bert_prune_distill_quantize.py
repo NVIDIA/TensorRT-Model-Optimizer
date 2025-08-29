@@ -1107,6 +1107,7 @@ def main(input_args: list[str] | None = None) -> None:
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
+        force=True,
     )
     logger.info(accelerator.state, main_process_only=False)
     if accelerator.is_local_main_process:

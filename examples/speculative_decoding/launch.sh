@@ -62,13 +62,9 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       MEDUSA_NUM_LAYERS="${1#*=}"
       ;;
-    --eagle_num_layers*)
+    --eagle_config*)
       if [[ "$1" != *=* ]]; then shift; fi
-      EAGLE_NUM_LAYERS="${1#*=}"
-      ;;
-    --draft_vocab_size*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      DRAFT_VOCAB_SIZE="${1#*=}"
+      EAGLE_CONFIG="${1#*=}"
       ;;
     --fsdp_transformer_layer_cls_to_wrap*)
       if [[ "$1" != *=* ]]; then shift; fi
@@ -106,8 +102,6 @@ LR=${LR:-"1e-4"}
 TRAIN_BS=${TRAIN_BS:-4}
 MEDUSA_NUM_HEADS=${MEDUSA_NUM_HEADS:-1}
 MEDUSA_NUM_LAYERS=${MEDUSA_NUM_LAYERS:-1}
-EAGLE_NUM_LAYERS=${EAGLE_NUM_LAYERS:-1}
-DRAFT_VOCAB_SIZE=${DRAFT_VOCAB_SIZE:-0}
 REDRAFTER_TOKENS=${REDRAFTER_TOKENS:-1}
 REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
@@ -117,18 +111,20 @@ TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-2048}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
-elif [[ "$MODE" == "eagle" ]]; then
-  SPECULATIVE_ARGS="--eagle_num_layers $EAGLE_NUM_LAYERS --draft_vocab_size $DRAFT_VOCAB_SIZE"
+elif [[ "$MODE" == "eagle1" || "$MODE" == "eagle3" ]]; then
+  if [[ -n "$EAGLE_CONFIG" ]]; then
+    SPECULATIVE_ARGS="--eagle_config $EAGLE_CONFIG"
+  else
+    SPECULATIVE_ARGS=""
+  fi
 else
-  echo "Only medusa and eagle supported for now!"
+  echo "Only medusa, eagle1, eagle3 supported for now!"
   exit 1
 fi
 
 if [[ "$NUM_GPU" == 1 ]]; then
-  FSDP_ARGS=""
   MULTI_GPU=""
 else
-  FSDP_ARGS="--fsdp 'full_shard auto_wrap' --fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
   MULTI_GPU="--multi_gpu"
 fi
 
@@ -151,10 +147,9 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --weight_decay 0.0 \
     --warmup_steps 100 \
     --lr_scheduler_type linear \
-    --logging_steps 1 \
+    --logging_steps 100 \
     --tf32 True \
     --data_path $DATA \
-    $FSDP_ARGS \
     $SPECULATIVE_ARGS
 "
 

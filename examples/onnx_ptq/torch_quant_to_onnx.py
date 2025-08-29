@@ -144,7 +144,6 @@ def main():
 
     # Quantize model
     quantized_model = quantize_model(model, config, data_loader)
-    use_autocast = args.quantize_mode not in ["mxfp8", "int4_awq"]
 
     # Export to ONNX
     export_to_onnx(
@@ -152,8 +151,7 @@ def main():
         input_shape,
         args.onnx_save_path,
         device,
-        weights_dtype="float16",
-        use_autocast=use_autocast,
+        weights_dtype="fp16",
     )
 
     print(f"Quantized ONNX model is saved to {args.onnx_save_path}")

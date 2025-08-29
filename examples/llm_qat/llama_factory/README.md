@@ -92,3 +92,17 @@ modelopt:
 
 > **_NOTE:_** `compress: true` enables weight compression and will by default use [ddp.yaml](../accelerate_config/ddp.yaml).
 > **_NOTE:_** When training without [cli](#training-using-cli), avoid using deepspeed option in the YAML configuration file.
+
+## Deployment
+
+The final QAT/QAD model after training is similar in architecture to that of PTQ model. It simply has updated weights as compared to the PTQ model. It can be deployed to TensorRT-LLM (TRTLLM) or to TensorRT just like a regular **ModelOpt** PTQ model if the quantization format is supported for deployment.
+
+To run QAT/QAD model with TRTLLM, run:
+
+```sh
+cd ../../llm_ptq
+
+./scripts/huggingface_example.sh --model <path-to-QAT/QAD-model> --quant nvfp4
+```
+
+See more details on deployment of quantized model [here](../../llm_ptq/README.md).

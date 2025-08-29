@@ -46,10 +46,9 @@ class MXFP4QTensor(BaseQuantizedTensor):
         def cast_fp4(x):
             sign = torch.sign(x)
             sign_bit = (2 - sign) // 2
-            # TODO: Optimize this, currently its on cpu and is slower
             ord_ = torch.sum(
-                (x.abs().unsqueeze(-1).cpu() - MXFP4QTensor.E2M1_bounds) > 0, dim=-1
-            ).to(x.device)
+                (x.abs().unsqueeze(-1) - MXFP4QTensor.E2M1_bounds.to(x.device)) > 0, dim=-1
+            )
             fp4_val = (sign_bit * 0b1000 + ord_).to(torch.uint8)
             return fp4_val
 

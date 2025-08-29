@@ -87,9 +87,31 @@ def run_llm_autodeploy_command(
             server_handler.terminate()
 
 
-def run_torch_onnx_command(*, quantize_mode: str, onnx_save_path: str, **kwargs):
-    kwargs.update({"quantize_mode": quantize_mode, "onnx_save_path": onnx_save_path})
+def run_torch_onnx_command(*, quantize_mode: str, onnx_save_path: str, calib_size: str, **kwargs):
+    kwargs.update(
+        {
+            "quantize_mode": quantize_mode,
+            "onnx_save_path": onnx_save_path,
+            "calibration_data_size": calib_size,
+        }
+    )
     cmd_parts = _extend_cmd_parts(["python", "torch_quant_to_onnx.py"], **kwargs)
+    run_example_command(cmd_parts, "onnx_ptq")
+
+
+def run_llm_export_command(
+    *, torch_dir: str, dtype: str, lm_head: str, output_dir: str, calib_size: str, **kwargs
+):
+    kwargs.update(
+        {
+            "torch_dir": torch_dir,
+            "dtype": dtype,
+            "lm_head": lm_head,
+            "output_dir": output_dir,
+            "calib_size": calib_size,
+        }
+    )
+    cmd_parts = _extend_cmd_parts(["python", "llm_export.py"], **kwargs)
     run_example_command(cmd_parts, "onnx_ptq")
 
 
