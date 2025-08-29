@@ -29,6 +29,7 @@ import torch.nn as nn
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
+from modelopt.torch.quantization.qtensor import NVFP4QTensor
 from modelopt.torch.quantization.utils import quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
@@ -38,7 +39,7 @@ from .layer_utils import (
     is_layernorm,
     is_moe,
     is_quantlinear,
-    set_amax_for_uncalibrated_experts,
+    set_expert_quantizer_amax,
 )
 from .model_config import (
     KV_CACHE_FP8,
@@ -60,6 +61,7 @@ from .quant_utils import (
     get_weight_block_size,
     get_weight_scaling_factor,
     get_weight_scaling_factor_2,
+    maybe_transpose_expert_weight_dimensions,
     postprocess_state_dict,
     preprocess_linear_fusion,
     to_quantized_weight,
@@ -290,64 +292,44 @@ def _export_quantized_weight(
     weight_scale: torch.Tensor | None = getattr(sub_module, quantizer_attrs.weight_scale, None)
     weight_scale_2: torch.Tensor | None = getattr(sub_module, quantizer_attrs.weight_scale_2, None)
 
-    quantized_weight = to_quantized_weight(
-        weight.to(dtype),
-        weight_scale,
-        quantization_format,
-        weight_scale_2,
-        block_size,
-    )
+    # Transpose weight for bmm-style expert quantization (llama4, gpt-oss)
+    if quantization_format in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ]:
+        # Transpose weight from (num_experts, input_dim, output_dim) to (num_experts, output_dim, input_dim)
+        # for NVFP4 quantization functions that expect input_dim as the last dimension for block quantization
+        is_bmm_expert_weight = weight.dim() == 3 and any(
+            expert_type in type(sub_module).__name__
+            for expert_type in ["Llama4TextExperts", "GptOssExperts"]
+        )
+        weight, _ = maybe_transpose_expert_weight_dimensions(
+            weight, is_bmm_expert_weight=is_bmm_expert_weight
+        )
+        weight_scale = NVFP4QTensor.get_weights_scaling_factor(
+            weight,
+            block_size=block_size,
+            weights_scaling_factor_2=weight_scale_2,
+        )[0]
+
+        quantized_weight = to_quantized_weight(
+            weight.to(dtype),
+            weight_scale,
+            quantization_format,
+            weight_scale_2,
+            block_size,
+        )
+
+        quantized_weight, weight_scale = maybe_transpose_expert_weight_dimensions(
+            quantized_weight, weight_scale, is_bmm_expert_weight=is_bmm_expert_weight
+        )
+    else:
+        quantized_weight = to_quantized_weight(
+            weight.to(dtype),
+            weight_scale,
+            quantization_format,
+            weight_scale_2,
+            block_size,
+        )
+
     setattr(sub_module, weight_name, nn.Parameter(quantized_weight, requires_grad=False))
-
-
-def _handle_llama4_experts_amax(module: nn.Module):
-    """Handle the amax values for the experts in the Llama4 model."""
-    # Handle uncalibrated input quantizers that have None amax values
-    input_quantizers = [
-        module.gate_up_proj_input_quantizer,
-        module.down_proj_input_quantizer,
-    ]
-
-    # Only handle enabled input quantizers
-    enabled_input_quantizers = [q for q in input_quantizers if q.is_enabled]
-
-    # Only handle amax for non-dynamic quantizers
-    non_dynamic_quantizers = [
-        q for q in enabled_input_quantizers if not getattr(q, "_dynamic", False)
-    ]
-
-    if non_dynamic_quantizers:
-        # Find the maximum amax value from non-None quantizers
-        valid_amax_values = [
-            quantizer.amax for quantizer in non_dynamic_quantizers if quantizer.amax is not None
-        ]
-
-        device = module.gate_up_proj.device
-
-        # If all quantizers have None amax, set a default value
-        if not valid_amax_values:
-            default_amax = torch.tensor(1.0, dtype=torch.float32, device=device)
-            warnings.warn(
-                "All input quantizers have None amax values. Setting default amax to 1.0. "
-                "This typically occurs when experts are not activated during calibration. "
-                "Consider increasing your calibration dataset size to ensure all experts are exercised."
-            )
-            for quantizer in non_dynamic_quantizers:
-                if quantizer.amax is None:
-                    quantizer.amax = default_amax.clone()
-        else:
-            # Set None amax values to the maximum of existing values
-            max_amax = torch.max(torch.stack(valid_amax_values))
-            if max_amax.device != device:
-                max_amax = max_amax.to(device)
-            for quantizer in non_dynamic_quantizers:
-                if quantizer.amax is None:
-                    warnings.warn(
-                        f"Missing amax value for input quantizer. Setting it to {max_amax.item()} for export. "
-                        "This typically occurs when certain experts are not activated during calibration. "
-                        "Consider increasing your calibration dataset size to ensure all experts are exercised."
-                    )
-                    quantizer.amax = max_amax.clone()
 
 
 def _export_hf_checkpoint(
@@ -392,12 +374,28 @@ def _export_hf_checkpoint(
                     if hasattr(experts_mlp, linear_name):
                         linear_modulelist = getattr(experts_mlp, linear_name)
                         if hasattr(linear_modulelist, "__iter__"):
-                            set_amax_for_uncalibrated_experts(list(linear_modulelist))
+                            set_expert_quantizer_amax(
+                                modules=list(linear_modulelist),
+                                quantizer_attrs=["input_quantizer"],
+                            )
+                elif "QuantGptOssExperts" in type(sub_module.experts).__name__:
+                    # Handle GPT-OSS experts specifically
+                    # GPT-OSS experts use gate_up_proj and down_proj
+                    gpt_oss_linear_names = ["gate_up_proj", "down_proj"]
+                    for linear_name in gpt_oss_linear_names:
+                        if hasattr(sub_module.experts, linear_name):
+                            linear_module = getattr(sub_module.experts, linear_name)
+                            if hasattr(linear_module, "input_quantizer"):
+                                set_expert_quantizer_amax(
+                                    modules=[linear_module],
+                                    quantizer_attrs=["input_quantizer"],
+                                )
                 elif isinstance(sub_module.experts, collections.abc.Iterable):
                     # For other MoE models (like Mixtral) with iterable experts
                     try:
-                        set_amax_for_uncalibrated_experts(
-                            [getattr(expert, linear_name) for expert in sub_module.experts]
+                        set_expert_quantizer_amax(
+                            modules=[getattr(expert, linear_name) for expert in sub_module.experts],
+                            quantizer_attrs=["input_quantizer"],
                         )
                     except AttributeError as e:
                         # Provide more helpful debugging information
@@ -460,8 +458,22 @@ def _export_hf_checkpoint(
             has_quantized_layers = True
             if is_quantlinear(sub_module):
                 _export_quantized_weight(sub_module, dtype)
-            elif "Llama4TextExperts" in type(sub_module).__name__:
-                _handle_llama4_experts_amax(sub_module)
+            elif (
+                "Llama4TextExperts" in type(sub_module).__name__
+                or "GptOssExperts" in type(sub_module).__name__
+            ):
+                # TODO: consolidate uncalibrated experts handling logic
+                # Handle weight quantizers amax values using smart fallback logic
+                set_expert_quantizer_amax(
+                    modules=sub_module,
+                    quantizer_attrs=["gate_up_proj_weight_quantizer", "down_proj_weight_quantizer"],
+                )
+                # Handle input quantizers amax values using smart fallback logic
+                set_expert_quantizer_amax(
+                    modules=sub_module,
+                    quantizer_attrs=["gate_up_proj_input_quantizer", "down_proj_input_quantizer"],
+                )
+                # Export the quantized weights
                 for weight_name in ["gate_up_proj", "down_proj"]:
                     _export_quantized_weight(sub_module, dtype, weight_name)
 

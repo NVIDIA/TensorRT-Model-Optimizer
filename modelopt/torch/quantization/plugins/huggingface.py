@@ -324,6 +324,27 @@ if transformers.modeling_utils.Conv1D not in QuantModuleRegistry:
             return dyn_cls.convert(module)
 
 
+class _TransposedQuantization(torch.autograd.Function):
+    """Applies transposed quantization.
+
+    This is useful for weight quantization of some MoEs such as gpt-oss or Llama4 which has expert weights
+    of shape (num_experts, in_dim, out_dim). Per-channel/Per-block quantization from ModelOpt
+    assumes that `in_dim` is -1 dim. Hence for quantizing such MoE weights, lets use transposed quantization.
+    """
+
+    # Note: TransposedQuantization uses STE with no clipping
+    @staticmethod
+    def forward(ctx, inputs, quantizer):
+        return quantizer(inputs.transpose(-1, -2).contiguous()).transpose(-1, -2)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output, None
+
+
+_transposed_quantize = _TransposedQuantization.apply
+
+
 class _QuantMoeSparseMoe(QuantModule):
     def _setup(self):
         pass
@@ -351,12 +372,12 @@ class _QuantLlama4TextExperts(QuantModule):
         hidden_states = hidden_states.view(self.num_experts, -1, self.hidden_size)
         gate_up = torch.bmm(
             self.gate_up_proj_input_quantizer(hidden_states),
-            self.gate_up_proj_weight_quantizer(self.gate_up_proj),
+            _transposed_quantize(self.gate_up_proj, self.gate_up_proj_weight_quantizer),
         )
         gate, up = gate_up.chunk(2, dim=-1)  # not supported for DTensors
         next_states = torch.bmm(
             self.down_proj_input_quantizer(up * self.act_fn(gate)),
-            self.down_proj_weight_quantizer(self.down_proj),
+            _transposed_quantize(self.down_proj, self.down_proj_weight_quantizer),
         )
         next_states = next_states.view(-1, self.hidden_size)
         return next_states
@@ -528,17 +549,15 @@ try:
 except ImportError:
     pass
 
+try:
+    from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeSparseMoeBlock
 
-# TODO: Use autograd wrapped matmul instead of this for memory efficiency
-class _TransposedQuantization(torch.autograd.Function):
-    # Note: TransposedQuantization uses STE with no clipping
-    @staticmethod
-    def forward(ctx, inputs, quantizer):
-        return quantizer(inputs.transpose(-1, -2).contiguous()).transpose(-1, -2)
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        return grad_output, None
+    if Qwen2MoeSparseMoeBlock not in QuantModuleRegistry:
+        QuantModuleRegistry.register({Qwen2MoeSparseMoeBlock: "hf.Qwen2MoeSparseMoeBlock"})(
+            _QuantMoeSparseMoe
+        )
+except ImportError:
+    pass
 
 
 class _QuantGptOssExperts(_QuantFunctionalMixin):
@@ -557,7 +576,7 @@ class _QuantGptOssExperts(_QuantFunctionalMixin):
         if module._enable_weight_quantization:
             if hasattr(quantizer, "_cached_quant_val"):
                 return getattr(quantizer, "_cached_quant_val")
-            quantizer._cached_quant_val = _TransposedQuantization.apply(weight, quantizer)
+            quantizer._cached_quant_val = _transposed_quantize(weight, quantizer)
             return quantizer._cached_quant_val
         return weight
 

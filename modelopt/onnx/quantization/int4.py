@@ -63,6 +63,16 @@ except Exception as e:
     cupy_warning_msg = f"Using slower INT4 ONNX quantization using numpy: {e}"
 
 
+# By Default, Gather nodes will not be quantized to INT4. If caller supplies some specific axis
+# value (0 / 1 / -1) for kwqrgs "gather_quantize_axis" then Gather nodes will be inspected for
+# INT4 quantization.
+DEFAULT_GATHER_QUANTIZE_AXIS = None
+
+# Using block-size of 128 is seen to degrade accuracy with some models like DeepSeek-7B.
+# So, setting the default to 32. User can change it using kwargs "gather_block_size" as needed
+# for further tuning or experiments.
+DEFAULT_GATHER_BLOCK_SIZE = 32
+
 NUM_BITS = 4
 INT4_SCALE = 7.0
 INT4_MIN = -(2 ** (NUM_BITS - 1))  # -8
@@ -79,36 +89,56 @@ def _next_block_size_multiple(x: float, block_size: int) -> float:
     return math.ceil(x / block_size) * block_size
 
 
-def _pad(w: np.ndarray, block_size: int) -> np.ndarray:
-    """Pads `w` to next largest multiple of block_size, on axis 0."""
-    if w.shape[0] % block_size == 0:
+def _pad(w: np.ndarray, block_size: int, quantize_axis: int = 0) -> np.ndarray:
+    """Pads `w` to next largest multiple of block_size, on quantize_axis."""
+    assert quantize_axis <= len(w.shape), (
+        f"incorrect quantize-axis {quantize_axis}, w-shape={w.shape}"
+    )
+
+    if w.shape[quantize_axis] % block_size == 0:
         return w
 
-    pad_width = _next_block_size_multiple(w.shape[0], block_size) - w.shape[0]
+    pad_width = (
+        _next_block_size_multiple(w.shape[quantize_axis], block_size) - w.shape[quantize_axis]
+    )
     pads = [(0, 0) for _ in range(len(w.shape))]
-    pads[0] = (0, pad_width)
+    pads[quantize_axis] = (0, pad_width)
     return np.pad(w, pads, mode="constant", constant_values=0)
 
 
-def _depad(w: np.ndarray, orig_shape: tuple) -> np.ndarray:
-    """Depad axis 0 to original shape."""
+def _depad(w: np.ndarray, orig_shape: tuple, quantize_axis: int = 0) -> np.ndarray:
+    """Depad quantize_axis to original shape."""
     if w.shape == orig_shape:
         return w
-    return w[0 : orig_shape[0], ...]
+    ans = None
+    if quantize_axis == 0:
+        ans = w[0 : orig_shape[0], ...]
+    elif quantize_axis == 1:
+        ans = w[..., 0 : orig_shape[1]]
+    else:
+        raise ValueError("Incorrect Quantize-axis: it must be 0 or 1 for a 2D array")
+    return ans
 
 
-def find_scales(w: np.ndarray, block_size: int, alpha: float = 1.0, use_zero_point: bool = False):
+def find_scales(
+    w: np.ndarray,
+    block_size: int,
+    quantize_axis: int = 0,
+    alpha: float = 1.0,
+    use_zero_point: bool = False,
+):
     """Find scale factors for `w` via `s = max(w.block(block_size)) / 7`."""
-    w = _pad(w, block_size)
-    w = w.T
+    w = _pad(w, block_size, quantize_axis)
+    if quantize_axis == 0:
+        w = w.T
     s_last_dim = w.shape[-1] // block_size
     s_shape = list(w.shape)
     s_shape[-1] = s_last_dim
+    z = None
     if not use_zero_point:
         w_amax = np.abs(w.reshape(-1, block_size)).max(axis=-1)
         s = (w_amax * alpha) / INT4_SCALE
-        s = s.reshape(s_shape).T
-        z = None
+        s = s.reshape(s_shape)
     else:
         max_val = w.reshape(-1, block_size).max(axis=-1)
         min_val = w.reshape(-1, block_size).min(axis=-1)
@@ -122,42 +152,125 @@ def find_scales(w: np.ndarray, block_size: int, alpha: float = 1.0, use_zero_poi
         temp = temp.clip(min=min_int, max=max_int)
         z = temp
         assert s.shape == z.shape, "s and z shape mismatch"
-        s = s.reshape(s_shape).T
-        z = z.reshape(s_shape).T
+        s = s.reshape(s_shape)
+        z = z.reshape(s_shape)
+    assert z is None or use_zero_point is True, "zero-point value and use-zero-point not in sync"
+    if quantize_axis == 0:
+        s = s.T
+        if z is not None:
+            z = z.T
     return s, z
 
 
-def rtn(w: np.ndarray, s: np.ndarray, block_size: int, zp: np.ndarray = None) -> np.ndarray:
+def rtn(
+    w: np.ndarray, s: np.ndarray, block_size: int, quantize_axis: int = 0, zp: np.ndarray = None
+) -> np.ndarray:
     """Quantizes `w` with scale factors `s` via Round-to-Nearest.
 
     Ties are broken by rounding to the nearest even number.
     """
-    w_padded = _pad(w, block_size)
-    num_blocks = w_padded.shape[0] // s.shape[0]
+    w_padded = _pad(w, block_size, quantize_axis)
+    num_blocks = w_padded.shape[quantize_axis] // s.shape[quantize_axis]
     if zp is None:
         w_padded = (
-            np.rint(w_padded / s.repeat(num_blocks, axis=0))
+            np.rint(w_padded / s.repeat(num_blocks, axis=quantize_axis))
             .clip(INT4_MIN, INT4_MAX)
             .astype(np.int8)
         )
     else:
         w_padded = (
-            (np.rint(w_padded / s.repeat(num_blocks, axis=0)) + zp.repeat(num_blocks, axis=0))
+            (
+                np.rint(w_padded / s.repeat(num_blocks, axis=quantize_axis))
+                + zp.repeat(num_blocks, axis=quantize_axis)
+            )
             .clip(UINT4_MIN, UINT4_MAX)
             .astype(np.int8)
         )
-    return _depad(w_padded, w.shape)
+    return _depad(w_padded, w.shape, quantize_axis)
 
 
-def dq_tensor(w: np.ndarray, s: np.ndarray, block_size: int, zp: np.ndarray = None) -> np.ndarray:
+def dq_tensor(
+    w: np.ndarray, s: np.ndarray, block_size: int, quantize_axis: int = 0, zp: np.ndarray = None
+) -> np.ndarray:
     """Dequantizes `w` with scale factors `s`."""
-    w_padded = _pad(w, block_size)
-    num_blocks = w_padded.shape[0] // s.shape[0]
+    w_padded = _pad(w, block_size, quantize_axis)
+    num_blocks = w_padded.shape[quantize_axis] // s.shape[quantize_axis]
     if zp is None:
-        w_padded = w_padded * s.repeat(num_blocks, axis=0)
+        w_padded = w_padded * s.repeat(num_blocks, axis=quantize_axis)
     else:
-        w_padded = (w_padded - zp.repeat(num_blocks, axis=0)) * s.repeat(num_blocks, axis=0)
-    return _depad(w_padded, w.shape)
+        w_padded = (w_padded - zp.repeat(num_blocks, axis=quantize_axis)) * s.repeat(
+            num_blocks, axis=quantize_axis
+        )
+    return _depad(w_padded, w.shape, quantize_axis)
+
+
+def _quantize_gather_nodes(
+    graph: onnx.GraphProto,
+    nodes_to_exclude: list[str],
+    gather_quantize_axis: int,
+    block_size: int,
+    use_zero_point: bool,
+    dq_only: bool,
+):
+    """Return scale, zero-point, and weights for quantizable gather nodes using INT4 RTN."""
+    t = time.time()
+    weights_map = {}
+    scales_map = {}
+    zero_point_map = {}
+    for node in graph.nodes:
+        if node.op == "Gather" and node.name not in nodes_to_exclude:
+            for in_tensor in node.inputs:
+                if not isinstance(in_tensor, gs.Constant):
+                    continue
+                if len(in_tensor.values.shape) == 1:
+                    # 1D blocked quantization not supported.
+                    continue
+                name = in_tensor.name
+                w = in_tensor.values
+                s, zp = find_scales(
+                    np.asarray(w),
+                    block_size,
+                    quantize_axis=gather_quantize_axis,
+                    use_zero_point=use_zero_point,
+                )
+                s = s.astype(w.dtype)
+                scales_map[name] = s
+                weight_dtype = numpy.int8
+                if zp is not None:
+                    assert use_zero_point is True, (
+                        "Found zero-point tensor but zero-point is disabled"
+                    )
+                    weight_dtype = numpy.uint8
+                    zp = zp.astype(weight_dtype)
+                    zero_point_map[name] = zp
+                if dq_only:
+                    qw = rtn(
+                        np.asarray(w),
+                        s,
+                        block_size,
+                        quantize_axis=gather_quantize_axis,
+                        zp=zp if zp is None else zp.astype(w.dtype),
+                    )
+                    weights_map[name] = qw.astype(weight_dtype)
+                else:
+                    weights_map[name] = in_tensor
+    if has_cupy:
+        for name in scales_map:
+            scales_map[name] = np.asnumpy(scales_map[name])
+        for name in zero_point_map:
+            zero_point_map[name] = np.asnumpy(zero_point_map[name])
+        if dq_only:
+            for name in weights_map:
+                weights_map[name] = np.asnumpy(weights_map[name])
+
+    num_gather_nodes_quantized = len(weights_map)
+    if num_gather_nodes_quantized > 0:
+        logger.info(
+            f"Quantizing {num_gather_nodes_quantized} Gather nodes took {time.time() - t} seconds"
+        )
+    else:
+        logger.info("Found 0 Gather nodes to quantize")
+    return weights_map, scales_map, zero_point_map
 
 
 def quantize_rtn(
@@ -165,6 +278,7 @@ def quantize_rtn(
     block_size: int,
     dq_only: bool = False,
     nodes_to_exclude: list[str] = [],
+    **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the RTN (Round-to-Nearest) algorithm.
 
@@ -218,6 +332,20 @@ def quantize_rtn(
     # Import the update graph
     graph = gs.import_onnx(onnx_model)
 
+    gather_block_size = kwargs.get("gather_block_size", DEFAULT_GATHER_BLOCK_SIZE)
+    gather_quantize_axis = kwargs.get("gather_quantize_axis", DEFAULT_GATHER_QUANTIZE_AXIS)
+    gather_w_map = None
+    gather_s_map = None
+    if gather_quantize_axis is not None:
+        gather_w_map, gather_s_map, _ = _quantize_gather_nodes(
+            graph,
+            nodes_to_exclude,
+            gather_quantize_axis,
+            gather_block_size,
+            use_zero_point=False,
+            dq_only=dq_only,
+        )
+
     if dq_only:
         # Calculate actual quantized weights.
         logger.info("Computing quantized weights for DQ-only mode")
@@ -231,20 +359,32 @@ def quantize_rtn(
             gemm_weights_quantized[name] = numpy.asarray(qw)
 
         qdq.insert_dq_nodes(graph, scales, quantized_weights=gemm_weights_quantized)
+        if gather_w_map is not None:
+            assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
+            qdq.insert_dq_nodes(graph, gather_s_map, quantized_weights=gather_w_map)
     else:
         if has_cupy:
             for name in scales:
                 scales[name] = np.asnumpy(scales[name])
         qdq.insert_qdq_nodes(graph, scales, weight_map=gemm_tensors)
+        if gather_w_map is not None:
+            assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
+            qdq.insert_qdq_nodes(graph, gather_s_map, weight_map=gather_w_map)
 
     logger.info(f"RTN quantization completed in {time.time() - t_start:.2f} seconds")
     return gs.export_onnx(graph)
 
 
-def quant_tensor(w: np.ndarray, block_size: int, alpha: float = 1.0, use_zero_point: bool = False):
+def quant_tensor(
+    w: np.ndarray,
+    block_size: int,
+    quantize_axis: int = 0,
+    alpha: float = 1.0,
+    use_zero_point: bool = False,
+):
     """Quantize a tensor using alpha etc. and return the quantized tensor."""
-    scale, zp = find_scales(w, block_size, alpha, use_zero_point)
-    wq = rtn(w, scale, block_size, zp)
+    scale, zp = find_scales(w, block_size, quantize_axis, alpha, use_zero_point)
+    wq = rtn(w, scale, block_size, quantize_axis, zp)
     return wq, scale, zp
 
 
@@ -324,7 +464,7 @@ def _clip_search(
         # Compute loss for each alpha value
         for alpha in awq_clip.loss:
             # Perform QDQ on the whole original weight tensor
-            qw, scales, _ = quant_tensor(w_copy, block_size, alpha)
+            qw, scales, _ = quant_tensor(w_copy, block_size, alpha=alpha)
             cur_w = dq_tensor(qw, scales, block_size)
 
             # Reshape before getting the batch of size co_bsz to multiply with input
@@ -509,7 +649,7 @@ def _quantize_awq_clip(
         w = np.asarray(w)
 
         alpha = alphas.get(weight_tensor.name, 1)
-        qw, scale, _ = quant_tensor(w, block_size, alpha)
+        qw, scale, _ = quant_tensor(w, block_size, alpha=alpha)
         if has_cupy:
             qw = np.asnumpy(qw)
             scale = np.asnumpy(scale)
@@ -527,12 +667,33 @@ def _quantize_awq_clip(
 
     logger.info(f"Quantizing actual weights took {time.time() - t} seconds")
 
-    t = time.time()
     graph_gs = gs.import_onnx(onnx_model)
+
+    gather_block_size = kwargs.get("gather_block_size", DEFAULT_GATHER_BLOCK_SIZE)
+    gather_quantize_axis = kwargs.get("gather_quantize_axis", DEFAULT_GATHER_QUANTIZE_AXIS)
+    gather_w_map = None
+    gather_s_map = None
+    if gather_quantize_axis is not None:
+        gather_w_map, gather_s_map, _ = _quantize_gather_nodes(
+            graph,
+            nodes_to_exclude,
+            gather_quantize_axis,
+            gather_block_size,
+            use_zero_point=False,
+            dq_only=True,
+        )
+
+    t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
     qdq.insert_dq_nodes(
         graph_gs, scales, quantized_weights=gemm_weights_quantized, attributes=dq_node_attributes
     )
+    if gather_w_map is not None:
+        assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
+        gather_dq_node_attributes = {"axis": gather_quantize_axis, "block_size": gather_block_size}
+        qdq.insert_dq_nodes(
+            graph_gs, scales, quantized_weights=gather_w_map, attributes=gather_dq_node_attributes
+        )
     logger.info(f"Inserting DQ nodes took {time.time() - t} seconds")
 
     logger.info("Exporting the quantized graph")
@@ -685,7 +846,7 @@ def run_awq_scale_search_per_node(
             w_scaled = w * awq_scale[:, np.newaxis]
 
             qw, scale, zp = quant_tensor(w_scaled, block_size, use_zero_point=use_zero_point)
-            dqw = dq_tensor(qw, scale, block_size, zp)
+            dqw = dq_tensor(qw, scale, block_size, zp=zp)
             out_curr = x_scaled.__matmul__(dqw)
             loss = np.mean(np.power((out_actual - out_curr), 2))
             del out_curr
@@ -850,7 +1011,7 @@ def run_awq_scale_search_per_subgraph(
                 x_scaled = x * 1.0 / awq_scale
                 w_scaled = w * awq_scale[:, np.newaxis]
                 qw, scale, zp = quant_tensor(w_scaled, block_size, use_zero_point=use_zero_point)
-                dqw = dq_tensor(qw, scale, block_size, zp)
+                dqw = dq_tensor(qw, scale, block_size, zp=zp)
                 out_curr = x_scaled.__matmul__(dqw)
                 loss += np.mean(np.power((out_act - out_curr), 2))
                 del out_curr, out_act
@@ -1076,7 +1237,9 @@ def _quantize_awq_lite(
         assert enable_weight_clipping or (alpha == 1), (
             "clip range enabled without enabling weight-clipping param"
         )
-        qw, scale, zp = quant_tensor(w_scaled, block_size, alpha, use_zero_point=use_zero_point)
+        qw, scale, zp = quant_tensor(
+            w_scaled, block_size, alpha=alpha, use_zero_point=use_zero_point
+        )
         assert use_zero_point is True or zp is None, "zp is not according to use-zero-point setting"
         if do_transpose:
             qw = qw.T
@@ -1179,8 +1342,25 @@ def _quantize_awq_lite(
     logger.info(
         "Inserting DQ nodes and input_pre_quant_scale node using quantized weights and scales"
     )
-    t = time.time()
+
     graph_gs = gs.import_onnx(onnx_model)
+
+    gather_block_size = kwargs.get("gather_block_size", DEFAULT_GATHER_BLOCK_SIZE)
+    gather_quantize_axis = kwargs.get("gather_quantize_axis", DEFAULT_GATHER_QUANTIZE_AXIS)
+    gather_w_map = None
+    gather_s_map = None
+    gather_zp_map = None
+    if gather_quantize_axis is not None:
+        gather_w_map, gather_s_map, gather_zp_map = _quantize_gather_nodes(
+            graph_gs,
+            nodes_to_exclude,
+            gather_quantize_axis,
+            gather_block_size,
+            use_zero_point=use_zero_point,
+            dq_only=True,
+        )
+
+    t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
     qdq.insert_dq_nodes(
         graph_gs,
@@ -1189,6 +1369,19 @@ def _quantize_awq_lite(
         attributes=dq_node_attributes,
         zero_points=zero_points if use_zero_point else None,
     )
+    if gather_w_map is not None:
+        assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
+        assert not use_zero_point or gather_zp_map, (
+            "zero-point setting and zero-point map not in sync for quantizable gather nodes"
+        )
+        gather_dq_node_attributes = {"axis": gather_quantize_axis, "block_size": gather_block_size}
+        qdq.insert_dq_nodes(
+            graph_gs,
+            gather_s_map,
+            quantized_weights=gather_w_map,
+            attributes=gather_dq_node_attributes,
+            zero_points=gather_zp_map if use_zero_point else None,
+        )
     if pre_quant_scale:
         qdq.insert_pre_quant_scale_nodes(graph_gs, input_tensors, pre_quant_scale)
 
@@ -1269,6 +1462,10 @@ def quantize(
                                              Default: 0.5.
                 - **awqclip_bsz_col** (int): Batch size for processing the column dimension in awq-clip.
                                          Default: 1024.
+                - **gather_quantize_axis** (int): Quantization axis for Gather nodes.
+                                              Default: None (Gather nodes not quantized).
+                - **gather_block_size** (int): Block-size for Gather nodes quantization.
+                                              Default: 32.
     **Returns**: A quantized ONNX model in ONNX ModelProto format.
     """
     configure_logging(level=log_level.upper())
@@ -1309,6 +1506,7 @@ def quantize(
             block_size,
             dq_only="dq" in calibration_method,
             nodes_to_exclude=nodes_to_exclude,
+            **kwargs,
         )
     elif calibration_method in ["awq_lite", "awq_full"]:
         do_weight_clipping = False

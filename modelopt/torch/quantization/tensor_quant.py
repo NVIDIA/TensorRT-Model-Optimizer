@@ -317,14 +317,19 @@ def _fake_quant_backward_function(ctx, grad_outputs, num_args=1):
 
 def _save_for_backward_if_needed(ctx, pass_through_bwd, inputs, amax):
     if not pass_through_bwd and amax is not None:
-        ctx.save_for_backward(inputs, torch.tensor(amax).to(inputs.device, inputs.dtype))
+        amax = (
+            amax
+            if isinstance(amax, torch.Tensor)
+            else torch.tensor(amax, device=inputs.device, dtype=inputs.dtype)
+        )
+        ctx.save_for_backward(inputs, amax)
 
 
 class FakeTensorQuantFunction(Function):
     """Fake version of TensorQuantFunction use CUDA extension."""
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "t", "t", "i", "b", "b", "s", "b")
+    @symbolic_helper.parse_args("v", "t", "t", "i", "b", "b", "s", "b", "i", "i")
     def symbolic(
         g,
         inputs,
@@ -335,9 +340,16 @@ class FakeTensorQuantFunction(Function):
         narrow_range=True,
         trt_high_precision_dtype=None,
         pass_through_bwd=False,
+        block_size=None,
+        axis=None,
     ):
         """ONNX symbolic function."""
-        from .export_onnx import export_int8
+        from .export_onnx import export_int4, export_int8
+
+        if num_bits == 4:
+            return export_int4(
+                g, inputs, amax, num_bits, trt_high_precision_dtype, block_size, axis
+            )
 
         return export_int8(
             g, inputs, amax, num_bits, unsigned, narrow_range, trt_high_precision_dtype
@@ -354,6 +366,8 @@ class FakeTensorQuantFunction(Function):
         narrow_range=True,
         trt_high_precision_dtype=None,
         pass_through_bwd=False,
+        block_size=None,
+        axis=None,
     ):
         """Forward method."""
         if bias is not None:
@@ -391,7 +405,7 @@ class FakeTensorQuantFunction(Function):
     @staticmethod
     def backward(ctx, grad_outputs):
         """Implements straight through estimation with clipping."""
-        return _fake_quant_backward_function(ctx, grad_outputs, num_args=8)
+        return _fake_quant_backward_function(ctx, grad_outputs, num_args=10)
 
 
 class ScaledE4M3Function(Function):

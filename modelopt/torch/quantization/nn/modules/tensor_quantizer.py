@@ -630,7 +630,7 @@ class TensorQuantizer(nn.Module):
             outputs, _weights_scaling_factor, _weights_scaling_factor_2 = NVFP4QTensor.quantize(
                 inputs,
                 self._block_sizes[-1],
-                weights_scaling_factor_2=self.amax.float() / 448.0 / 6.0
+                weights_scaling_factor_2=self.amax.float() / (448.0 * 6.0)
                 if self.amax is not None
                 else None,
                 try_tensorrt=True,
@@ -698,6 +698,8 @@ class TensorQuantizer(nn.Module):
                 self._narrow_range,
                 self._trt_high_precision_dtype,
                 self._pass_through_bwd,
+                self.block_sizes.get(-1) if self.block_sizes else None,
+                self.axis[0] if isinstance(self.axis, tuple) else self.axis,
             )
         return outputs
 

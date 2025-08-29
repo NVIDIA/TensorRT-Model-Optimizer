@@ -16,34 +16,46 @@
 """This script is used to export a LLM model to ONNX and perform quantization."""
 
 import argparse
+import json
 import os
 import shutil
+import tempfile
 import time
+from contextlib import contextmanager
 
 import onnx
 import onnx_graphsurgeon as gs
 import torch
 from packaging.version import Version
-from transformers import AutoTokenizer
+from transformers import AutoConfig, AutoTokenizer
 
-from modelopt.onnx.llm_export.utils.export_utils import (
+import modelopt
+from modelopt.onnx.llm_export_utils.export_utils import (
     ModelLoader,
     WrapperModelForCausalLM,
     llm_to_onnx,
 )
+from modelopt.onnx.llm_export_utils.quantization_utils import quantize
+from modelopt.onnx.llm_export_utils.surgeon_utils import fold_fp8_qdq_to_dq
+from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq, quantize_weights_to_int4
+from modelopt.torch.export import export_hf_checkpoint
+from modelopt.torch.quantization.utils import is_quantized_linear
 
 
 def llm_arguments():
     """Parse the arguments for the llm export script."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--torch_dir", type=str, help="The folder of HF PyTorch model ckpt", required=False
+        "--torch_dir",
+        type=str,
+        help="The folder of HF PyTorch model ckpt or HuggingFace model name/path (e.g., 'Qwen/Qwen2.5-0.5B-Instruct')",
+        required=False,
     )
     parser.add_argument(
         "--dtype",
         type=str,
         default="fp16",
-        choices=["fp16", "fp8", "nvfp4"],
+        choices=["fp16", "fp8", "int4_awq", "nvfp4"],
         help="The precision of onnx export",
     )
 
@@ -82,24 +94,50 @@ def llm_arguments():
         help="The path of config.json, in case it is not with the PyTorch or ONNX file",
         default=None,
     )
+    parser.add_argument(
+        "--calib_size", type=int, help="The size of calibration dataset", default=512
+    )
+    parser.add_argument(
+        "--trust_remote_code",
+        action="store_true",
+        default=False,
+        help="Trust remote code when loading model from HuggingFace Hub",
+    )
     return parser
 
 
 def get_config_path(args):
-    """Look for config.json. It is recommended to keep a copy per ONNX path.
-
-    Args:
-        args: argparse.Namespace
-
-    Returns:
-        str: The path of config.json
+    """
+    Get config.json file path from the arguments.
+    The default priority is: config_path > torch_dir/config.json > onnx_path/../config.json
     """
     if args.config_path and os.path.exists(args.config_path):
         return args.config_path
     if args.torch_dir:
-        torch_config = os.path.join(args.torch_dir, "config.json")
-        if os.path.exists(torch_config):
-            return torch_config
+        # Check if torch_dir is a local directory
+        if os.path.isdir(args.torch_dir):
+            torch_config = os.path.join(args.torch_dir, "config.json")
+            if os.path.exists(torch_config):
+                return torch_config
+        else:
+            # For HuggingFace model names, download config temporarily
+            try:
+                # Download config from HuggingFace
+                config = AutoConfig.from_pretrained(
+                    args.torch_dir, trust_remote_code=args.trust_remote_code
+                )
+
+                # Save to temporary file
+                temp_config_path = os.path.join(
+                    tempfile.gettempdir(), f"config_{args.torch_dir.replace('/', '_')}.json"
+                )
+                with open(temp_config_path, "w") as f:
+                    json.dump(config.to_dict(), f, indent=2)
+
+                return temp_config_path
+            except Exception as e:
+                print(f"Warning: Could not download config for {args.torch_dir}: {e}")
+
     if args.onnx_path:
         onnx_config = os.path.join(os.path.dirname(args.onnx_path), "config.json")
         if os.path.exists(onnx_config):
@@ -119,6 +157,7 @@ def export_raw_llm(
     wrapper_cls=WrapperModelForCausalLM,
     extra_inputs={},
     extra_dyn_axes={},
+    calib_size=512,
 ):
     """Export raw llm model to ONNX and perform quantization.
 
@@ -132,6 +171,7 @@ def export_raw_llm(
         wrapper_cls: class, Used for wrapping the model
         extra_inputs: dict, Used for extra inputs
         extra_dyn_axes: dict, Used for extra dynamic axes
+        calib_size: int, Used for quantization calibration size
     """
     os.makedirs(output_dir, exist_ok=True)
 
@@ -143,17 +183,23 @@ def export_raw_llm(
         )
         shutil.copy(config_path, os.path.join(output_dir, "config.json"))
 
-    # Need to quantize model to fp8, int4 or nvfp4
-    if dtype in ["fp8", "nvfp4"]:
-        # Avoid import modelopt when no quantization is needed
-        from modelopt.onnx.llm_export.utils.quantization_utils import quantize
-        from modelopt.torch.export import export_hf_checkpoint
-        from modelopt.torch.quantization.utils import is_quantized_linear
+    # Need to quantize model to fp8, int4_awq or nvfp4
+    if dtype in ["fp8", "int4_awq", "nvfp4"]:
+        tokenizer = AutoTokenizer.from_pretrained(
+            torch_dir, trust_remote_code=args.trust_remote_code
+        )
+        # Only check for local modelopt_state if torch_dir is a local directory
+        if os.path.isdir(torch_dir):
+            modelopt_state = os.path.join(torch_dir, "modelopt_state.pth")
+            model_needs_quantization = not os.path.exists(modelopt_state)
+        else:
+            # For HuggingFace model names, always quantize as we can't have local state files
+            model_needs_quantization = True
 
-        tokenizer = AutoTokenizer.from_pretrained(torch_dir, trust_remote_code=True)
-        modelopt_state = os.path.join(torch_dir, "modelopt_state.pth")
-        if not os.path.exists(modelopt_state):
-            model = quantize(model, tokenizer, dtype, lm_head_precision, dataset_dir)
+        if model_needs_quantization:
+            model = quantize(
+                model, tokenizer, dtype, lm_head_precision, dataset_dir, calib_size=calib_size
+            )
 
             if dtype == "nvfp4":
                 # This is required for nvfp4 ONNX export
@@ -164,7 +210,7 @@ def export_raw_llm(
                         module.input_quantizer._onnx_quantizer_type = "dynamic"
                         module.weight_quantizer._onnx_quantizer_type = "static"
 
-            if dtype in {"fp8", "nvfp4"}:
+            if dtype in {"fp8", "int4_awq", "nvfp4"}:
                 print(f"Exporting {dtype} ONNX model from quantized PyTorch model...")
                 llm_to_onnx(
                     wrapper_cls(
@@ -205,14 +251,13 @@ def surgeon_llm(
     """
 
     t0 = time.time()
+    onnx.shape_inference.infer_shapes_path(raw_onnx_path)
     graph = gs.import_onnx(onnx.load(raw_onnx_path))
     t1 = time.time()
     print(f"Importing ONNX graph takes {t1 - t0}s.")
     graph.fold_constants().cleanup().toposort()
 
     if dtype == "fp8" or lm_head_precision == "fp8":
-        from modelopt.onnx.llm_export.utils.surgeon_utils import fold_fp8_qdq_to_dq
-
         graph = fold_fp8_qdq_to_dq(graph)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -220,13 +265,20 @@ def surgeon_llm(
 
     onnx_model = gs.export_onnx(graph)
 
-    if dtype == "nvfp4":
-        t4 = time.time()
-        from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq
+    @contextmanager
+    def time_operation(operation_name):
+        start_time = time.time()
+        yield
+        end_time = time.time()
+        print(f"{operation_name} takes {end_time - start_time}s.")
 
-        onnx_model = fp4qdq_to_2dq(onnx_model, verbose=True)
-        t5 = time.time()
-        print(f"nvfp4 qdq to 2 dqs inserted in {t5 - t4}.")
+    if dtype == "nvfp4":
+        with time_operation("quantizing weights to nvfp4"):
+            onnx_model = fp4qdq_to_2dq(onnx_model, verbose=True)
+
+    elif dtype == "int4_awq":
+        with time_operation("quantizing weights to int4"):
+            onnx_model = quantize_weights_to_int4(onnx_model)
 
     output_onnx_name = f"{output_dir}/model.onnx"
     print(
@@ -253,12 +305,16 @@ def surgeon_llm(
     )
 
     if os.path.exists(config_path):
-        if config_path.endswith("config.json"):
+        if os.path.isfile(config_path) and config_path.endswith("config.json"):
+            # config_path is already a config.json file
             shutil.copy(config_path, os.path.join(output_dir, "config.json"))
-        else:
+        elif os.path.isdir(config_path):
+            # config_path is a directory containing config.json
             shutil.copy(
                 os.path.join(config_path, "config.json"), os.path.join(output_dir, "config.json")
             )
+        else:
+            print(f"Warning: Unexpected config_path format: {config_path}")
 
     t3 = time.time()
     print(f"Surgeon LLM completed in {t3 - t2}s.")
@@ -273,8 +329,6 @@ def check_dtype_support(args):
 
     def get_modelopt_version():
         try:
-            import modelopt
-
             return Version(modelopt.__version__)
         except Exception as e:
             print(f"Modelopt version cannot be parsed. Reason: {e!s}")
@@ -324,6 +378,7 @@ def main(args):
             wrapper_cls=WrapperModelForCausalLM,
             extra_inputs=extra_inputs,
             extra_dyn_axes=extra_dyn_axes,
+            calib_size=args.calib_size,
         )
 
     # Providing the config path to config.json results in a hf validation error for internvl_chat.

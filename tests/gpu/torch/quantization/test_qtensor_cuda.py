@@ -17,10 +17,14 @@
 
 import pytest
 import torch
+from _test_utils.torch_misc import set_seed
 
+from modelopt.torch.quantization.backends.utils import fp4_compatible
 from modelopt.torch.quantization.config import QuantizerAttributeConfig
 from modelopt.torch.quantization.nn import TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
+
+set_seed()
 
 
 class TestQTensor:
@@ -89,7 +93,7 @@ class TestQTensor:
         quantizer = TensorQuantizer(quant_cfg).to(device)
 
         # Mock amax
-        mock_amax = torch.rand(1, device=device)
+        mock_amax = torch.tensor(1.1, device=device)
         quantizer.amax = mock_amax
 
         x = torch.rand(32, 32).to(device).to(dtype=input_dtype)
@@ -399,6 +403,11 @@ class TestQTensor:
             torch.tensor([[0.25, 0.75, 1.25], [1.75, 2.5, 3.5]], dtype=torch.float32),
             torch.tensor([[0.1, 2.5, 1.0, 4.8], [1.5, 1.25, 3.25, 5.0]], dtype=torch.float32),
             torch.tensor([[0, 0.75, 1.25], [1.75, 2.5, 5.5]], dtype=torch.float32),
+            torch.tensor([[-0.25, -0.75, -1.25], [-1.75, -2.5, -3.5]], dtype=torch.float32),
+            torch.tensor(
+                [[-0.1, -2.5, -1.0, -4.8], [-1.5, -1.25, -3.25, -5.0]], dtype=torch.float32
+            ),
+            torch.tensor([[0, -0.75, -1.25], [-1.75, -2.5, -5.5]], dtype=torch.float32),
         ],
     )
     def test_cast_fp4_equivalence(self, test_input, device):
@@ -434,25 +443,28 @@ class TestQTensor:
 
     @pytest.mark.parametrize(
         "input_shape",
-        [(16, 32)],
+        [(1600, 1600)],
     )
     def test_cast_fp4_impl_gpu_mem(self, input_shape):
         def _get_gpu_mem_used():
             device = torch.device("cuda:0")
             free, total = torch.cuda.mem_get_info(device)
-            mem_used = (total - free) / 1024**2
+            mem_used = total - free
             return mem_used
 
+        # Do a warmup
+        test_input = torch.rand((8, 8), dtype=torch.float32).to("cuda")
+        NVFP4QTensor._cast_fp4(test_input)
+
+        test_input = torch.rand((input_shape), dtype=torch.float32).to("cuda")
         torch.cuda.empty_cache()
         # Define input and thresholds
-        test_input = torch.rand((input_shape), dtype=torch.float32).to("cuda")
-        # Size of input tensor in MB
-        input_size = (test_input.element_size() * test_input.numel()) / (1024**2)
+        input_size = test_input.element_size() * test_input.numel()
         before_quantize = _get_gpu_mem_used()
         NVFP4QTensor._cast_fp4(test_input)
         after_quantize = _get_gpu_mem_used()
 
-        assert after_quantize - before_quantize < input_size * 10
+        assert (after_quantize - before_quantize) < input_size * 2.1
 
     @pytest.mark.parametrize(
         ("num_bits", "block_sizes", "axis", "input_shape", "expected_output_shape"),
@@ -489,3 +501,71 @@ class TestQTensor:
         q_x = quantizer(x)
 
         assert q_x._quantized_data.shape == expected_output_shape
+
+    @pytest.mark.parametrize("shape", [(128, 64), (64, 128, 32)])
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
+    def test_nvfp4_qdq_correctness(self, shape, input_dtype):
+        """Test NVFP4 quantization and dequantization with fast option."""
+        block_sizes = {-1: 16, "type": "dynamic", "scale_bits": (4, 3)}
+
+        # Create test tensor
+        test_tensor = torch.randn(shape, dtype=input_dtype, device="cuda")
+
+        # Quantize tensor
+        qtensor, scale, double_scale = NVFP4QTensor.quantize(
+            test_tensor, block_sizes[-1], try_tensorrt=False
+        )
+
+        # Dequantize using standard approach
+        dequant_standard = qtensor.dequantize(
+            dtype=input_dtype,
+            fast=False,
+            scale=scale,
+            double_scale=double_scale,
+            block_sizes=block_sizes,
+        )
+
+        # Check that standard dequantization is close to original
+        assert torch.allclose(dequant_standard, test_tensor, atol=0.5, rtol=0.1), (
+            f"Standard dequantization differs from original: "
+            f"max diff = {(dequant_standard - test_tensor).abs().max()}"
+        )
+
+    @pytest.mark.skipif(not fp4_compatible(), reason="FP4 is not supported on this GPU")
+    @pytest.mark.parametrize("shape", [(128, 64), (64, 128, 32)])
+    @pytest.mark.parametrize("input_dtype", [torch.float32, torch.float16, torch.bfloat16])
+    def test_nvfp4_dequantize_fast(self, shape, input_dtype):
+        """Test NVFP4 quantization and dequantization with fast option."""
+        block_sizes = {-1: 16, "type": "dynamic", "scale_bits": (4, 3)}
+
+        # Create test tensor
+        test_tensor = torch.randn(shape, dtype=input_dtype, device="cuda")
+
+        # Quantize tensor
+        qtensor, scale, double_scale = NVFP4QTensor.quantize(
+            test_tensor, block_sizes[-1], try_tensorrt=False
+        )
+
+        # Dequantize using standard approach
+        dequant_standard = qtensor.dequantize(
+            dtype=input_dtype,
+            fast=False,
+            scale=scale,
+            double_scale=double_scale,
+            block_sizes=block_sizes,
+        )
+
+        # Dequantize using fast approach
+        dequant_fast = qtensor.dequantize(
+            dtype=input_dtype,
+            fast=True,
+            scale=scale,
+            double_scale=double_scale,
+            block_sizes=block_sizes,
+        )
+
+        # Check that fast and standard dequantization produce the same results
+        assert torch.allclose(dequant_fast, dequant_standard, atol=1e-6, rtol=1e-5), (
+            f"Fast and standard dequantization differ: "
+            f"max diff = {(dequant_fast - dequant_standard).abs().max()}"
+        )

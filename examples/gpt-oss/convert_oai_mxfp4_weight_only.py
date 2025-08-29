@@ -23,10 +23,7 @@ from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, Mxfp4Config
 from utils import get_original_huggingface_quant_method
 
-import modelopt.torch.opt as mto
 from modelopt.torch.quantization.qtensor import MXFP4QTensor
-
-mto.enable_huggingface_checkpointing()
 
 
 def _to_oai_mxfp4_weight_only(model, block_size=32):
@@ -36,15 +33,20 @@ def _to_oai_mxfp4_weight_only(model, block_size=32):
         # Only convert experts weights, skip bias and other modules
         if "experts" in name and "bias" not in name:
             param = param.transpose(-1, -2).contiguous()
-            quantized, scales = MXFP4QTensor.quantize(param, block_size=block_size)
+            quantized_tensors = []
+            scales_tensors = []
+            for expert in param:
+                quantized, scales = MXFP4QTensor.quantize(expert, block_size=block_size)
+                quantized_tensors.append(quantized._quantized_data)
+                scales_tensors.append(scales)
+            quantized = torch.stack(quantized_tensors)
+            scales = torch.stack(scales_tensors)
 
-            shape = quantized._quantized_data.shape
+            shape = quantized.shape
             # Add converted weights and scales to state_dict
             new_state_dict.update(
                 {
-                    f"{name}_blocks": quantized._quantized_data.view(
-                        shape[0], shape[1], -1, block_size // 2
-                    ).cpu(),
+                    f"{name}_blocks": quantized.view(shape[0], shape[1], -1, block_size // 2).cpu(),
                     f"{name}_scales": scales.view(shape[0], shape[1], -1).cpu(),
                 }
             )
@@ -134,6 +136,8 @@ if __name__ == "__main__":
     if args.lora_path:
         model = PeftModel.from_pretrained(model, args.lora_path)
         model = model.merge_and_unload()  # Merge LoRA-QAT adapter weights to base model
+        torch.cuda.empty_cache()
+        gc.collect()
 
     # Load tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)

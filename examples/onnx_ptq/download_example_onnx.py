@@ -23,9 +23,7 @@ import torch
 from modelopt.torch._deploy.utils import get_onnx_bytes
 
 
-def export_to_onnx(
-    model, input_shape, onnx_save_path, device, weights_dtype="float32", use_autocast=False
-):
+def export_to_onnx(model, input_shape, onnx_save_path, device, weights_dtype="fp32"):
     """Export the torch model to ONNX format."""
     # Create input tensor with same precision as model's first parameter
     input_dtype = model.parameters().__next__().dtype
@@ -35,7 +33,6 @@ def export_to_onnx(
         model=model,
         dummy_input=(input_tensor,),
         weights_dtype=weights_dtype,
-        use_autocast=use_autocast,
     )
 
     # Write ONNX model to disk
@@ -81,7 +78,7 @@ if __name__ == "__main__":
         input_shape = (args.batch_size,) + data_config["input_size"]
 
         vit_save_path = args.onnx_save_path or "vit_base_patch16_224.onnx"
-        weights_dtype = "float16" if args.fp16 else "float32"
+        weights_dtype = "fp16" if args.fp16 else "fp32"
         export_to_onnx(
             model,
             input_shape,

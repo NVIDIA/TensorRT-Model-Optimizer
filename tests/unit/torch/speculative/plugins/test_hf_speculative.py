@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+from copy import deepcopy
 
 import pytest
 import torch
@@ -25,6 +26,7 @@ from _test_utils.torch_model.transformers_models import (
 from transformers import AutoModelForCausalLM, LlamaForCausalLM
 
 import modelopt.torch.speculative as mtsp
+from modelopt.torch.speculative.config import EAGLE1_DEFAULT_CFG, EAGLE3_DEFAULT_CFG
 
 
 def test_medusa_model_convert_save_and_restore(tmp_path):
@@ -46,13 +48,18 @@ def test_medusa_model_convert_save_and_restore(tmp_path):
     tf_modelopt_state_and_output_tester(model_ref, model_test)
 
 
-def test_eagle_model_convert_save_and_restore(tmp_path):
+@pytest.mark.parametrize("eagle_config", [EAGLE1_DEFAULT_CFG, EAGLE3_DEFAULT_CFG])
+def test_eagle_model_convert_save_and_restore(tmp_path, eagle_config):
     model_ref = get_tiny_llama(num_hidden_layers=8)
 
-    config = {
-        "eagle_num_layers": 1,
-        "use_aux_hidden_state": True,
-    }
+    config = deepcopy(eagle_config["config"])
+    config["eagle_architecture_config"].update(
+        {
+            "draft_vocab_size": model_ref.config.vocab_size,
+            "hidden_size": model_ref.config.hidden_size,
+        }
+    )
+
     mtsp.convert(model_ref, mode=[("eagle", config)])
     assert isinstance(model_ref, mtsp.plugins.HFEagleModel)
 
@@ -69,10 +76,11 @@ def test_eagle_model_convert_save_and_restore(tmp_path):
 def test_eagle_model_prepare_eagle_inputs(dtype):
     dummy_model = get_tiny_llama(num_hidden_layers=4)
 
-    config = {
-        "eagle_num_layers": 1,
-        "use_aux_hidden_state": True,
-    }
+    config = EAGLE3_DEFAULT_CFG["config"]
+    config["eagle_architecture_config"].update({
+        "draft_vocab_size": dummy_model.config.vocab_size,
+        "hidden_size": dummy_model.config.hidden_size,
+    })
     mtsp.convert(dummy_model, mode=[("eagle", config)])
 
     eagle_input_ids_0 = torch.tensor([[10, 20, 30, 40]], dtype=torch.long)

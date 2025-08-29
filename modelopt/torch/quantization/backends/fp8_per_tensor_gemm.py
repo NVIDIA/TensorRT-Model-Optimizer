@@ -24,6 +24,7 @@ from modelopt.torch.quantization.backends.gemm_registry import gemm_registry
 from modelopt.torch.quantization.config import FP8_DEFAULT_CFG
 from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import FP8QTensor, QTensorWrapper
+from modelopt.torch.quantization.utils import reduce_amax
 
 from .utils import fp8_compatible
 
@@ -31,44 +32,67 @@ FP8_MIN = torch.finfo(torch.float8_e4m3fn).min
 FP8_MAX = torch.finfo(torch.float8_e4m3fn).max
 
 
-def _to_fp8(x, scale):
-    return (x / scale).clamp(FP8_MIN, FP8_MAX).to(torch.float8_e4m3fn)
-
-
 def fp8_per_tensor_gemm(quant_module, input, bias=None):
     """GEMM function for fp8 per tensor quantization."""
-    weight_amax = quant_module.weight_quantizer.amax
-    if weight_amax is None:
-        weight_amax = quant_module.weight.abs().amax()
+
+    @torch.compile(dynamic=True)
+    def _to_fp8(x, scale):
+        return (x / scale).clamp(FP8_MIN, FP8_MAX).to(torch.float8_e4m3fn)
+
+    @torch.compile(dynamic=True)
+    def _fp8_gemm_impl(input, weight_fp8, scale_a, scale_b, bias=None):
+        input_shape = input.shape
+        input_fp8 = _to_fp8(input, scale_a).reshape(-1, input_shape[-1])
+        weight_fp8_t = weight_fp8.reshape(-1, weight_fp8.shape[-1]).t()
+        output = torch._scaled_mm(
+            input_fp8,
+            weight_fp8_t,
+            scale_a=scale_a,
+            scale_b=scale_b,
+            bias=bias,
+            out_dtype=input.dtype,
+            use_fast_accum=True,
+        )
+        return output.reshape(*input_shape[:-1], output.shape[-1])
+
+    cached_scale_a = hasattr(quant_module, "_scale_a")
     input_amax = quant_module.input_quantizer.amax
     if input_amax is None:
-        input_amax = input.abs().amax()
+        cached_scale_a = False
+        input_amax = reduce_amax(input)
+        assert input_amax != 0
+
+    if not cached_scale_a:
+        quant_module._scale_a = (input_amax.float() / 448.0).to(device=input.device)
+
+    cached_scale_b = (
+        hasattr(quant_module, "_scale_b") and quant_module.weight.dtype == torch.float8_e4m3fn
+    )
+    weight_amax = quant_module.weight_quantizer.amax
+    if weight_amax is None:
+        cached_scale_b = False
+        weight_amax = reduce_amax(quant_module.weight)
+        assert weight_amax != 0
+
+    if not cached_scale_b:
+        quant_module._scale_b = (weight_amax.float() / 448.0).to(device=quant_module.weight.device)
+
     if quant_module.weight.dtype != torch.float8_e4m3fn:
-        weight_fp8 = _to_fp8(quant_module.weight, weight_amax / 448.0)
+        weight_fp8 = _to_fp8(quant_module.weight, quant_module._scale_b)
     else:
-        weight_fp8 = quant_module.weight
-    # If input_amax is 0, it means the input is all zeros. So we set it to a small value to avoid division by zero.
-    if input_amax == 0:
-        input_amax = torch.tensor(1e-5, device=input_amax.device, dtype=input_amax.dtype)
-    weight_fp8_t = weight_fp8.reshape(-1, weight_fp8.shape[-1]).t()
-    input_fp8 = _to_fp8(input, input_amax / 448.0)
+        weight_fp8 = quant_module.weight.data
 
-    scale_a = (input_amax / 448.0).to(device=input_fp8.device, dtype=torch.float32)
-    scale_b = (weight_amax / 448.0).to(device=input_fp8.device, dtype=torch.float32)
-
-    ouptut = torch._scaled_mm(
-        input_fp8.reshape(-1, input_fp8.shape[-1]),
-        weight_fp8_t,
-        scale_a=scale_a,
-        scale_b=scale_b,
+    output = _fp8_gemm_impl(
+        input,
+        weight_fp8,
+        scale_a=quant_module._scale_a,
+        scale_b=quant_module._scale_b,
         bias=bias if input.dtype != torch.float32 else None,
-        out_dtype=input.dtype,
-        use_fast_accum=False,
     )
     # _scaled_mm does not support bias for float32 input, so we add it manually
     if input.dtype == torch.float32 and bias is not None:
-        ouptut += bias
-    return ouptut.reshape(*input.shape[:-1], ouptut.shape[-1])
+        output += bias
+    return output.reshape(*input.shape[:-1], output.shape[-1])
 
 
 def _fp8_availability_check(module, input, args, kwargs):
@@ -114,7 +138,13 @@ class Fp8PerTensorLinear(Function):
 
     @staticmethod
     def forward(
-        ctx, quant_module, input_tensor, weight, bias=None, allreduce_dgrad=False, tp_group=None
+        ctx,
+        quant_module,
+        input_tensor,
+        weight,
+        bias=None,
+        allreduce_dgrad=False,
+        tp_group=None,
     ):
         """Forward method."""
         ctx.save_for_backward(

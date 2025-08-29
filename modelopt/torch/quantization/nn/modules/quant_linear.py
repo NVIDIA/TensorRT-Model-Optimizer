@@ -173,9 +173,10 @@ class RealQuantLinear(QuantModule):
             # Note: We cache the real-quant GEMM function to avoid matching overhead.
             # This assumes that the function will not change after the first call.
             if self._real_quant_gemm_impl:
-                output = self._real_quant_gemm_impl(
-                    self, input, self.weight, self.bias, *args, **kwargs
-                )
+                with torch.cuda.nvtx.range("RealQuantLinear gemm"):
+                    output = self._real_quant_gemm_impl(
+                        self, input, self.weight, self.bias, *args, **kwargs
+                    )
                 return (
                     self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
                 )

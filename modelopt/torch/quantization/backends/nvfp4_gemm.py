@@ -34,7 +34,7 @@ def _to_nvfp4(inputs, amax=None):
     vec_size = 16
     if amax is None:
         amax = inputs.abs().amax()
-    global_scale = 448.0 * 6.0 / (amax.float())
+    global_scale = 448.0 * 6.0 / amax.float()
     fp4, scale = torch.ops.trtllm.fp4_quantize(inputs, global_scale, vec_size, False)
     return fp4, scale, global_scale
 
@@ -65,13 +65,14 @@ def nvfp4_gemm(quant_module, input_tensor, bias=None):
     if input_amax is None:
         input_amax = input_tensor.abs().amax()
     input_global_scale = 448.0 * 6.0 / input_amax.float()
+    alpha = 1.0 / (weight_global_scale * input_global_scale)
     output = torch.ops.auto_deploy.torch_quant_fp4_linear(
         input_tensor,
         weight_fp4,
         bias=bias,
         input_scale=input_global_scale,
         weight_scale=weight_scale,
-        alpha=1.0 / weight_global_scale / input_global_scale,
+        alpha=alpha,
     )
     return output
 

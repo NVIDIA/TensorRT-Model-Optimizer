@@ -55,6 +55,7 @@ from modelopt.onnx.quantization.graph_utils import (
     find_nodes_from_mha_to_exclude,
     print_stat,
     remove_redundant_cast_nodes,
+    validate_op_types_spelling,
 )
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
@@ -420,6 +421,9 @@ def quantize(
 
     nodes_to_quantize = nodes_to_quantize or []
     nodes_to_exclude = nodes_to_exclude or []
+
+    # Check op types spelling in 'op_types_to_exclude' and '_to_quantize'
+    validate_op_types_spelling(onnx_path, op_types_to_quantize, op_types_to_exclude)
 
     # (1) If disable_mha_qdq is set, don't add Q/DQ layers to MatMuls in MHA pattern.
     # (2) else when quantize_mode == "int8", if seq_len > 512, don't add Q/DQ layers to

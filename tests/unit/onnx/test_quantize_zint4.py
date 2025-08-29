@@ -45,6 +45,26 @@ def _matmul_model(w: np.ndarray, in_shape: Sequence[int], out_shape: Sequence[in
     return onnx_path
 
 
+def _gather_model(rows, cols, tmp_path):
+    data_const = np.arange(rows * cols, dtype=np.float16).reshape(rows, cols)
+    data_node = gs.Constant("data", values=data_const)
+
+    indices_var = gs.Variable("indices", dtype=np.int64, shape=())
+
+    gather_out = gs.Variable("output", dtype=np.float16, shape=(cols,))
+    gather_node = gs.Node(
+        op="Gather", inputs=[data_node, indices_var], outputs=[gather_out], attrs={"axis": 0}
+    )
+
+    graph = gs.Graph(nodes=[gather_node], inputs=[indices_var], outputs=[gather_out])
+
+    onnx_model = gs.export_onnx(graph)
+    onnx_path = os.path.join(tmp_path, "gather_base_model.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    return onnx_path
+
+
 def test_int4_rtn(tmp_path):
     # Test scale factor computation.
     # Use moq.quantize once to check that path doesnt have any bugs
@@ -151,3 +171,57 @@ def test_shape_awq(tmp_path):
         block_size=8,
         use_external_data_format=False,
     )  # Ensure it passes.
+
+
+def test_int4_gather(tmp_path):
+    gather_rows = 8
+    gather_cols = 16
+    gather_block_size = 8
+
+    m = _gather_model(gather_rows, gather_cols, tmp_path=tmp_path)
+
+    m1 = quantize_int4(
+        m, calibration_method="rtn_dq", gather_block_size=gather_block_size, gather_quantize_axis=1
+    )
+    m2 = quantize_int4(
+        m, calibration_method="rtn_dq", gather_block_size=gather_block_size, gather_quantize_axis=0
+    )
+
+    def is_gather_quantized(model):
+        g = gs.import_onnx(model)
+        for node in g.nodes:
+            if node.op != "Gather":
+                continue
+            for inp in node.inputs:
+                if inp.name != "indices":
+                    # print(f"inp={inp}, p={inp.inputs[0].op}")
+                    assert inp.inputs[0].op == "DequantizeLinear", (
+                        f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                    )
+        return True
+
+    assert is_gather_quantized(m1), "Failure in rtn_dq quantization of Gather node, quant-axis: 1"
+    assert is_gather_quantized(m2), "Failure in rtn_dq quantization of Gather node, quant-axis: 0"
+
+    def is_quant_scale_with_right_shape(model, quant_axis, block_size):
+        assert quant_axis in [0, 1], "Incorrect quant-axis"  # used for 0/1 indexing below
+        orig_shape = [gather_rows, gather_cols]
+        graph = gs.import_onnx(model)
+        for node in graph.nodes:
+            if node.op == "DequantizeLinear":
+                for inp in node.inputs:
+                    if inp.name == "x_scale":
+                        print(f"\nname={inp.name}, shape={inp.shape}\n")
+                        c1 = (orig_shape[quant_axis] // block_size) == inp.shape[quant_axis]
+                        c2 = orig_shape[1 - quant_axis] == inp.shape[1 - quant_axis]
+                        assert c1 and c2, "Incorrect scale shape in DQ node for Gather"
+        return True
+
+    assert is_quant_scale_with_right_shape(m1, 1, gather_block_size), (
+        "DQ Scale Error in rtn_dq quantization, axis 1"
+    )
+    assert is_quant_scale_with_right_shape(m2, 0, gather_block_size), (
+        "DQ Scale Error in rtn_dq quantization, axis 0"
+    )
+
+    # Ensure above tests pass.

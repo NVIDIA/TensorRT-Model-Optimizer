@@ -28,9 +28,8 @@ def test_llama_eagle(tiny_llama_path, num_gpus, tiny_daring_anteater_path, tmp_p
             "--lr", "1e-5",
             "--do_eval", "False",
             "--num_gpu", str(num_gpus),
-            "--mode", "eagle",
+            "--mode", "eagle3",
             "--output_dir", tmp_path / "eagle-tinyllama",
-            "--eagle_num_layers", "1",
         ],
         "speculative_decoding",
     )

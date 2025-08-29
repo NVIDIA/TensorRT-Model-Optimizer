@@ -25,7 +25,7 @@ from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.quantization.qtensor.base_qtensor import QTensorWrapper
 
 from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
-from .huggingface import _TransposedQuantization
+from .huggingface import _transposed_quantize
 
 __all__ = []
 
@@ -137,7 +137,7 @@ class _QuantParamWrapper(QuantModule):
         quantizer = getattr(base_layer, self.parameter_name + "_weight_quantizer")
         with base_layer.reset_dynamic_attributes():
             base_param = getattr(base_layer, self.parameter_name)
-            quantized_val = _TransposedQuantization.apply(
+            quantized_val = _transposed_quantize(
                 base_param if delta_weight is None else base_param + delta_weight, quantizer
             )
             delattr(base_layer, self.parameter_name)

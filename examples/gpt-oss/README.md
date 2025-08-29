@@ -49,6 +49,8 @@ model = mtq.quantize(model, config, forward_loop)
 train(model, train_loader, optimizer, scheduler, ...)
 ```
 
+For an end to end example showcasing the above workflow, checkout [qat-finetune-transformers.ipynb](/examples/gpt-oss/qat-finetune-transformers.ipynb).
+
 If you are training Huggingface models with trainer classes from Huggingface such as [SFTTrainer](https://huggingface.co/docs/trl/en/sft_trainer) performing QAT is even easier - simply replace the trainer with its equivalent, `QATSFTTrainer` from ModelOpt and specify additional quantization arguments to it. `QATSFTTrainer` will perform the necessary quantization steps in the backend and train the model just like the original `SFTTrainer`.
 
 A real end-to-end example for this is in `sft.py` in this folder. To perform QAT with full parameter SFT on GPT-OSS 20B model, run:

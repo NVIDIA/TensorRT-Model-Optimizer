@@ -88,6 +88,38 @@ def get_scaling_factor_from_weight(weight, group_size) -> torch.tensor:
     return weights_scaling_factor
 
 
+def maybe_transpose_expert_weight_dimensions(
+    weight: torch.Tensor,
+    weight_scale: torch.Tensor | None = None,
+    is_bmm_expert_weight: bool = True,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """Transpose the last two dimensions of expert weights.
+
+    This function transposes expert weights between the two layouts:
+    - (num_experts, input_dim, output_dim) ↔ (num_experts, output_dim, input_dim)
+
+    Since transpose(-2, -1) is self-inverse, this function can be used for both
+    forward and backward transformations. This is needed for quantization functions
+    that expect the last dimension to be the input dimension for block quantization.
+    Specifically used for bmm-style expert weights in models like llama4 and gpt-oss.
+
+    Args:
+        weight: The weight tensor to transpose. Expected shape for experts: (num_experts, dim1, dim2)
+        weight_scale: Optional weight scaling factor tensor to transpose alongside weight
+        is_bmm_expert_weight: Whether this is an expert weight (3D tensor) that needs transposition
+
+    Returns:
+        Tuple of (transposed_weight, transposed_weight_scale)
+    """
+    if not is_bmm_expert_weight or weight.dim() != 3:
+        return weight, weight_scale
+
+    transposed_weight = weight.transpose(-2, -1)
+    transposed_weight_scale = weight_scale.transpose(-2, -1) if weight_scale is not None else None
+
+    return transposed_weight, transposed_weight_scale
+
+
 def resmooth_and_get_scale(
     merged_weights: torch.Tensor,
     pre_quant_scales: list[torch.Tensor],
@@ -571,6 +603,11 @@ def process_layer_quant_config(layer_config_dict):
 
         # Get layer name for constructing quantized_layers dictionary under per_layer_config
         prefix = ".".join(k.rsplit(".", 1)[:-1])
+        awq_key = prefix + ".awq_block_size"
+
+        # Get the corresponding AWQ block size
+        block_size_value = layer_config_dict.get(awq_key, 0)
+
         if v == "fp8":
             layer_config = {"quant_algo": "FP8"}
         elif v == "fp8_pc_pt":
@@ -578,14 +615,14 @@ def process_layer_quant_config(layer_config_dict):
         elif v == "int4_awq":
             layer_config = {
                 "quant_algo": "W4A16_AWQ",
-                "group_size": layer_config_dict[prefix + ".awq_block_size"],
+                "group_size": block_size_value,
                 "has_zero_point": False,
                 "pre_quant_scale": True,
             }
         elif v == "w4a8_awq":
             layer_config = {
                 "quant_algo": "W4A8_AWQ",
-                "group_size": layer_config_dict[prefix + ".awq_block_size"],
+                "group_size": block_size_value,
                 "has_zero_point": False,
                 "pre_quant_scale": True,
             }
@@ -594,12 +631,12 @@ def process_layer_quant_config(layer_config_dict):
         elif v == "nvfp4":
             layer_config = {
                 "quant_algo": "NVFP4",
-                "group_size": layer_config_dict[prefix + ".awq_block_size"],
+                "group_size": block_size_value,
             }
         elif v == "nvfp4_awq":
             layer_config = {
                 "quant_algo": "NVFP4_AWQ",
-                "group_size": layer_config_dict[prefix + ".awq_block_size"],
+                "group_size": block_size_value,
                 "has_zero_point": False,
                 "pre_quant_scale": True,
             }
@@ -613,7 +650,7 @@ def process_layer_quant_config(layer_config_dict):
         elif v == "w4a8_mxfp4_fp8":
             layer_config = {
                 "quant_algo": "W4A8_MXFP4_FP8",
-                "group_size": layer_config_dict[prefix + ".awq_block_size"],
+                "group_size": block_size_value,
             }
         else:
             layer_config = {"quant_algo": v}
@@ -996,9 +1033,33 @@ def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[st
 
     kv_cache_format = QUANTIZATION_NONE
     for name, module in dict(named_modules).items():
-        if hasattr(module, "input_quantizer") or hasattr(module, "weight_quantizer"):
+        # Check for standard quantizers or any quantizers from weight attributes
+        has_quantizers = (
+            hasattr(module, "input_quantizer")
+            or hasattr(module, "weight_quantizer")
+            or any(
+                hasattr(module, quantizer_attr_names(weight_name).weight_quantizer)
+                or hasattr(module, quantizer_attr_names(weight_name).input_quantizer)
+                for weight_name in weight_attr_names(module)
+            )
+        )
+        if has_quantizers:
             quantization_format = get_quantization_format(module)
-            block_size = get_weight_block_size(module)
+
+            # For MoE expert modules, we need to extract block size from the correct weight quantizer
+            # Try to get block size from each weight attribute (e.g., gate_up_proj, down_proj)
+            block_size = 0
+            weight_names = list(weight_attr_names(module))
+
+            for weight_name in weight_names:
+                weight_block_size = get_weight_block_size(module, weight_name)
+                if weight_block_size > 0:
+                    block_size = weight_block_size
+                    break
+
+            # Fallback to default weight quantizer if no specific weight quantizer found
+            if block_size == 0:
+                block_size = get_weight_block_size(module)
 
             # Construct per layer config dictionary
             layer_config_dict[name + ".quantization"] = quantization_format

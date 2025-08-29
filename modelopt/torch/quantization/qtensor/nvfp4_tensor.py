@@ -15,12 +15,11 @@
 
 """Implements NVFP4 quantization for efficient tensor storage and computation."""
 
-import numpy as np
 import torch
 
 from ..backends.utils import fp4_compatible
 from ..qtensor.base_qtensor import BaseQuantizedTensor
-from ..utils import reduce_block_padding
+from ..utils import reduce_amax, reduce_block_amax, reduce_block_padding
 
 # Define conversion tables
 e2m1_bounds = torch.tensor([0.25, 0.75, 1.25, 1.75, 2.5, 3.5, 5])
@@ -37,6 +36,7 @@ class NVFP4QTensor(BaseQuantizedTensor):
     """
 
     e2m1_values_on_device = {}
+    e2m1_bounds_on_device = {}
 
     @classmethod
     def get_e2m1_values(cls, device):
@@ -46,11 +46,18 @@ class NVFP4QTensor(BaseQuantizedTensor):
         return cls.e2m1_values_on_device[device]
 
     @classmethod
+    def get_e2m1_bounds(cls, device):
+        """Returns the e2m1 values on the device."""
+        if device not in cls.e2m1_bounds_on_device:
+            cls.e2m1_bounds_on_device[device] = e2m1_bounds.to(device)
+        return cls.e2m1_bounds_on_device[device]
+
+    @classmethod
     def get_weights_scaling_factor_2_from_quantizer(cls, weight_quantizer):
         """Returns per tensor weight scaling factor from the weight_quantizer amax."""
         # Assert that weight_quantizer has attribute amax
         assert hasattr(weight_quantizer, "_amax"), "Weight quantizer does not have attribute amax"
-        return weight_quantizer._amax.float() / 6.0 / 448.0
+        return weight_quantizer._amax.float() / (6.0 * 448.0)
 
     @classmethod
     def get_weights_scaling_factor(
@@ -65,31 +72,27 @@ class NVFP4QTensor(BaseQuantizedTensor):
             weights_scaling_factor_2 = cls.get_weights_scaling_factor_2(input)
 
         # Get per_block amax
-        [n, k] = input.shape[-2:]
         assert block_size != 0, "Block size is zero. Cannot return per_block amax for given input."
 
-        assert k % block_size == 0, (
+        assert input.shape[-1] % block_size == 0, (
             "Weight shape is not divisible for block size for block quantiation."
         )
 
-        input = input.reshape((*tuple(input.shape[:-2]), n, k // block_size, block_size))
         # Get per block amax
-        per_block_amax = input.abs().amax(dim=-1).float()
+        per_block_amax = reduce_block_amax(input, block_sizes={-1: block_size}).float()
         # Get per-block-scale
-        per_block_scale = per_block_amax / 6.0
-        # Quantize per_block_scale to FP8
-        q_per_block_scale = per_block_scale / weights_scaling_factor_2
+        per_block_scale = per_block_amax / (6.0 * weights_scaling_factor_2)
         # Set all zero values in scale to 1.0
-        q_per_block_scale[per_block_scale == 0] = 1.0
+        per_block_scale[per_block_scale == 0] = 1.0
         # Convert to torch.float8_e4m3fn
         if not keep_high_precision:
-            q_per_block_scale = q_per_block_scale.to(torch.float8_e4m3fn)
-        return q_per_block_scale, weights_scaling_factor_2
+            per_block_scale = per_block_scale.to(torch.float8_e4m3fn)
+        return per_block_scale, weights_scaling_factor_2
 
     @classmethod
     def get_weights_scaling_factor_2(cls, input: torch.Tensor):
         """Returns per tensor weight scaling factor."""
-        return input.abs().amax().float() / 6.0 / 448.0
+        return reduce_amax(input).float() / (6.0 * 448.0)
 
     @classmethod
     def get_activation_scaling_factor(cls, quantizer):
@@ -103,8 +106,7 @@ class NVFP4QTensor(BaseQuantizedTensor):
         if amax is None:
             return None
 
-        activation_scaling_factor = amax.float() / (quantizer.maxbound)
-        activation_scaling_factor = activation_scaling_factor / 448.0
+        activation_scaling_factor = amax.float() / (quantizer.maxbound * 448.0)
 
         assert torch.all(activation_scaling_factor > 0), (
             f" activation scaling factor {activation_scaling_factor} not positive."
@@ -112,26 +114,28 @@ class NVFP4QTensor(BaseQuantizedTensor):
 
         return activation_scaling_factor
 
-    @staticmethod
-    def _cast_fp4(weight: torch.Tensor):
+    @classmethod
+    def _cast_fp4(cls, weight: torch.Tensor):
         """Converts tensor to uint4."""
-        # Get device
         device = weight.device
 
-        # Define mask to perform rounding
-        mask = torch.tensor([0, 1, 0, 1, 0, 1, 0], dtype=torch.uint8).to(device)
-        mask_shape = list(weight.shape)
-        mask = mask.expand([*mask_shape, 7])
-
+        # Extract sign and compute absolute values in one pass
         sign_bit = (weight < 0).to(torch.uint8)
-
         weight_abs = weight.abs_()
-        # Calculate the ordinal value based on the bounds
-        ord = torch.searchsorted(e2m1_bounds.to(device), weight_abs, out_int32=True).to(torch.uint8)
-        # All values equal to e2m1_bounds at odd indices are rounded up and even indices are rounded down
-        round = torch.any((weight_abs.unsqueeze(-1) == e2m1_bounds.to(device)) * mask, dim=-1)
-        fp4_val = (sign_bit * 0b1000 + ord + round).to(torch.uint8)
-        return fp4_val
+
+        # Get bounds and compute ordinal values
+        e2m1_bounds = cls.get_e2m1_bounds(device)
+        ord = torch.searchsorted(e2m1_bounds, weight_abs, out_int32=True).to(torch.uint8)
+
+        # Efficiently check for rounding at odd-indexed bounds [0.75, 1.75, 2.5]
+        # Only need to check bounds at indices 1, 3, 5
+        odd_bounds = e2m1_bounds[[1, 3, 5]]  # [0.75, 1.75, 2.5]
+        equals_odd_bounds = torch.any(weight_abs.unsqueeze(-1) == odd_bounds, dim=-1).to(
+            torch.uint8
+        )
+
+        # Combine sign, ordinal, and rounding adjustment
+        return (sign_bit << 3) + ord + equals_odd_bounds
 
     @classmethod
     def quantize(
@@ -171,6 +175,8 @@ class NVFP4QTensor(BaseQuantizedTensor):
             and weights_scaling_factor is None
             and try_tensorrt
             and block_size == 16
+            and input.is_cuda
+            and input.dtype in [torch.half, torch.bfloat16]
         ):
             try:
                 import tensorrt_llm  # noqa: F401
@@ -200,6 +206,7 @@ class NVFP4QTensor(BaseQuantizedTensor):
             )
 
         # Reshape the weight and scale factors
+        original_shape = input.shape
         input = input.view((*tuple(input.shape[:-1]), -1, block_size))
 
         # Scale weights
@@ -208,7 +215,7 @@ class NVFP4QTensor(BaseQuantizedTensor):
         )
 
         # Reshape weights to original
-        scaled_weight = scaled_weight.view((*tuple(scaled_weight.shape[:-2]), -1))
+        scaled_weight = scaled_weight.view(original_shape)
 
         if keep_high_precision:
             return scaled_weight
@@ -222,17 +229,16 @@ class NVFP4QTensor(BaseQuantizedTensor):
             weights_scaling_factor_2,
         )
 
-    def dequantize(self, dtype: torch.dtype = None, **kwarg):
+    def dequantize(self, dtype: torch.dtype = None, fast=False, **kwarg):
         """Dequantze NVFP4 packed tensor to a target dtype."""
         if dtype is None:
             dtype = self.metadata["dtype"]
 
         def _unpack_tensor(input: torch.Tensor):
             # Initalize storage for unpacked tensor
-            unpacked = torch.empty(
-                [input.shape[0], input.shape[1] * 2], dtype=dtype, device=input.device
-            )
-            unpacked_shape = unpacked.shape
+            unpacked_shape = list(input.shape)
+            unpacked_shape[-1] = unpacked_shape[-1] * 2
+            unpacked = torch.empty(unpacked_shape, dtype=dtype, device=input.device)
 
             unpacked[..., 1::2] = input >> 4
             unpacked[..., 0::2] = input & 0x0F
@@ -257,26 +263,33 @@ class NVFP4QTensor(BaseQuantizedTensor):
                 raise ImportError(
                     "This tensor is quantized by trtllm, but tensorrt_llm cannot be imported."
                 ) from e
-        q_per_block_scale = (
-            kwarg["scale"].to(torch.float32)
-            if kwarg["scale"].dtype == torch.float8_e4m3fn
-            else kwarg["scale"]
-        )
-        block_sizes = kwarg["block_sizes"][-1]
-        per_block_quant_scale = kwarg["double_scale"]
 
-        # Dequantize scales
-        per_block_scale = q_per_block_scale * per_block_quant_scale
+        if fast:
+            from ..triton.fp4_kernel import fp4_dequantize
 
-        # Unpack and unscale weights
-        deq_data = _unpack_tensor(self._quantized_data)
+            return fp4_dequantize(
+                self._quantized_data,
+                kwarg["scale"],
+                kwarg["double_scale"],
+                block_size=kwarg["block_sizes"][-1],
+                dtype=dtype,
+            ).reshape(self.metadata["shape"])
+        else:
+            q_per_block_scale = (
+                kwarg["scale"].to(torch.float32)
+                if kwarg["scale"].dtype == torch.float8_e4m3fn
+                else kwarg["scale"]
+            )
+            block_size = kwarg["block_sizes"][-1]
+            per_block_quant_scale = kwarg["double_scale"]
 
-        deq_data = deq_data.view(
-            deq_data.shape[0], deq_data.shape[1] // block_sizes, -1
-        ) * per_block_scale.unsqueeze(-1)
+            # Dequantize scales
+            per_block_scale = q_per_block_scale * per_block_quant_scale
 
-        return (
-            deq_data.view(-1)[: np.prod(self.metadata["shape"])]
-            .reshape(self.metadata["shape"])
-            .to(dtype)
-        )
+            # Unpack and unscale weights
+            deq_data = _unpack_tensor(self._quantized_data)
+
+            deq_data = deq_data.view(
+                (*tuple(deq_data.shape[:-1]), -1, block_size)
+            ) * per_block_scale.unsqueeze(-1)
+            return deq_data.reshape(self.metadata["shape"]).to(dtype)

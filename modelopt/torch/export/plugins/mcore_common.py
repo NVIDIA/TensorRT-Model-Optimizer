@@ -18,6 +18,7 @@
 from typing import Any
 
 from .mcore_deepseek import deepseek_causal_lm_export, deepseek_causal_lm_import
+from .mcore_gptoss import gptoss_causal_lm_export, gptoss_causal_lm_import
 from .mcore_llama import (
     eagle3_llama_causal_lm_export,
     eagle_llama_causal_lm_export,
@@ -50,6 +51,7 @@ all_mcore_hf_export_mapping: dict[str, Any] = {
     "Qwen3ForCausalLM": qwen3_causal_lm_export,
     "Qwen3MoeForCausalLM": qwen3_causal_lm_export,
     "Qwen2ForCausalLM": qwen25_causal_lm_export,
+    "GptOssForCausalLM": gptoss_causal_lm_export,
 }
 
 all_mcore_hf_import_mapping: dict[str, Any] = {
@@ -61,4 +63,5 @@ all_mcore_hf_import_mapping: dict[str, Any] = {
     "Qwen3ForCausalLM": qwen3_causal_lm_import,
     "Qwen3MoeForCausalLM": qwen3_causal_lm_import,
     "Qwen2ForCausalLM": qwen25_causal_lm_import,
+    "GptOssForCausalLM": gptoss_causal_lm_import,
 }

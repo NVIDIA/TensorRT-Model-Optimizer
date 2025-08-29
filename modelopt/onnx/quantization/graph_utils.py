@@ -912,6 +912,36 @@ def find_nodes_from_mha_to_exclude(
     return [*set(nodes_to_exclude)]  # type: ignore[arg-type]
 
 
+def validate_op_types_spelling(onnx_path, op_types_to_quantize, op_types_to_exclude) -> None:
+    """Validate spelling in op types."""
+
+    def find_item_ignore_case(target, arr):
+        target_lower = target.lower()
+        for item in arr:
+            if item.lower() == target_lower:
+                return item
+        return None
+
+    model = onnx.load(onnx_path, load_external_data=True)
+    op_types = {node.op_type for node in model.graph.node}
+    for op_type in op_types:
+        if op_types_to_quantize:
+            op_to_quant = find_item_ignore_case(op_type, op_types_to_quantize)
+            if op_type not in op_types_to_quantize and op_to_quant is not None:
+                logger.warning(
+                    f"Model contains '{op_type}' ops, but you're requesting '{op_to_quant}' "
+                    f"to be quantized, which is not a match. Please ensure that the lower/uppercasing is correct."
+                )
+        if op_types_to_exclude:
+            op_to_exclude = find_item_ignore_case(op_type, op_types_to_exclude)
+            if op_type not in op_types_to_exclude and op_to_exclude is not None:
+                logger.warning(
+                    f"Model contains '{op_type}' ops, but you're requesting '{op_to_exclude}' "
+                    f"to be excluded from quantization, which is not a match. "
+                    f"Please ensure that the lower/uppercasing is correct."
+                )
+
+
 def cast_custom_ops(onnx_model: onnx.ModelProto, ops_to_cast: dict) -> onnx.ModelProto:
     """Adds cast_to_fp16 nodes to the inputs and cast_to_fp32 to the outputs of a layer in the requested indices."""
     logger.info("Casting custom ops in the requested inputs and outputs")

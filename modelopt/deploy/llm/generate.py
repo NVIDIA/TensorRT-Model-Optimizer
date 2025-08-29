@@ -16,6 +16,7 @@
 """A wrapper over the TensorRT-LLM high level API runner."""
 
 import json
+import warnings
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -178,7 +179,26 @@ class LLM:
                 self._build_torch_llm_from_config(
                     checkpoint_dir, tokenizer, tp, trust_remote_code, max_batch_size
                 )
-                self._max_seq_len = config["max_position_embeddings"]
+
+                def _find_max_position_embeddings(cfg: dict) -> int | None:
+                    if "max_position_embeddings" in cfg:
+                        return cfg["max_position_embeddings"]
+                    for v in cfg.values():
+                        if isinstance(v, dict):
+                            res = _find_max_position_embeddings(v)
+                            if res is not None:
+                                return res
+                    return None
+
+                # Some VLMs may have a sub-config for max_position_embeddings, so we need to find it.
+                self._max_seq_len = _find_max_position_embeddings(config)
+                if self._max_seq_len is None:
+                    warnings.warn(
+                        "max_position_embeddings not found in config.json, using default value 8192"
+                    )
+                    self._max_seq_len = 8192
+                else:
+                    print(f"max_position_embeddings: {self._max_seq_len}")
                 self._max_beam_width = 1
                 self._gather_context_logits = False
 

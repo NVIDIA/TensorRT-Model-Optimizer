@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import json
+from copy import deepcopy
 from functools import partial
 
 import pytest
@@ -28,6 +29,7 @@ skip_if_no_megatron(apex_or_te_required=True)
 
 import modelopt.torch.speculative as mtsp
 from modelopt.torch.export import export_mcore_gpt_to_hf, import_mcore_gpt_from_hf
+from modelopt.torch.speculative.eagle.default_config import default_eagle_config
 from modelopt.torch.speculative.plugins.megatron_eagle import _DynamicEagleGPTModel
 from modelopt.torch.speculative.plugins.megatron_medusa import _DynamicMedusaGPTModel
 
@@ -69,7 +71,7 @@ def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
         model = mtsp.convert(model, [("medusa", config)])
         assert isinstance(model, _DynamicMedusaGPTModel)
     elif algo == "eagle":
-        config = {"eagle_num_layers": 1}
+        config = {"eagle_architecture_config": deepcopy(default_eagle_config)}
         model = mtsp.convert(model, [("eagle", config)])
         assert isinstance(model, _DynamicEagleGPTModel)
 
