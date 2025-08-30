@@ -553,9 +553,11 @@ def main(args):
 
         export_path = args.export_path
 
-        if hasattr(model, "language_model"):
+        if hasattr(full_model, "language_model"):
             # Save original model config and the preprocessor config to the export path for VLMs.
             from transformers import AutoConfig, AutoProcessor
+
+            print(f"Saving original model and processor configs to {export_path}")
 
             AutoConfig.from_pretrained(
                 args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code

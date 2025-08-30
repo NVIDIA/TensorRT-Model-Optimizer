@@ -95,7 +95,7 @@ Deployment with Selected Inference Frameworks
 
 .. tab:: TensorRT-LLM
 
-    Follow the `TensorRT-LLM installation instructions. <https://nvidia.github.io/TensorRT-LLM/installation/linux.html>`_
+    Follow the `TensorRT-LLM installation instructions. <https://nvidia.github.io/TensorRT-LLM/quick-start-guide.html#installation>`_
 
     Currently we support fp8 and nvfp4 quantized models for TensorRT-LLM deployment, you need v0.17.0 or later version of TensorRT-LLM.
 

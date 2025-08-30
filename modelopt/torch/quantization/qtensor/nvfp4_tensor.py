@@ -19,6 +19,7 @@ import torch
 
 from ..backends.utils import fp4_compatible
 from ..qtensor.base_qtensor import BaseQuantizedTensor
+from ..triton.fp4_kernel import fp4_dequantize
 from ..utils import reduce_amax, reduce_block_amax, reduce_block_padding
 
 # Define conversion tables
@@ -265,8 +266,6 @@ class NVFP4QTensor(BaseQuantizedTensor):
                 ) from e
 
         if fast:
-            from ..triton.fp4_kernel import fp4_dequantize
-
             return fp4_dequantize(
                 self._quantized_data,
                 kwarg["scale"],

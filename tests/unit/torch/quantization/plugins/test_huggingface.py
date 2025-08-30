@@ -42,9 +42,9 @@ class HFModel(nn.Module):
         super().__init__()
         self.net = nn.Sequential(
             # initialization is (out_features, in_features) instead of (in_features, out_features)
-            transformers.modeling_utils.Conv1D(5, 3),
+            transformers.pytorch_utils.Conv1D(5, 3),
             nn.ReLU(),
-            transformers.modeling_utils.Conv1D(5, 5),
+            transformers.pytorch_utils.Conv1D(5, 5),
         )
 
     def forward(self, x):
@@ -66,7 +66,7 @@ class PytorchModel(nn.Module):
 
 def test_convert_conv1d():
     set_seed()
-    assert transformers.modeling_utils.Conv1D in QuantModuleRegistry
+    assert transformers.pytorch_utils.Conv1D in QuantModuleRegistry
 
     model_ref = HFModel()
     model_test = HFModel()
@@ -74,7 +74,7 @@ def test_convert_conv1d():
 
     mtq.replace_quant_module(model_test)
     for name, module in model_test.named_modules():
-        if isinstance(module, transformers.modeling_utils.Conv1D):
+        if isinstance(module, transformers.pytorch_utils.Conv1D):
             assert hasattr(module, "input_quantizer")
             assert hasattr(module, "weight_quantizer")
             assert hasattr(module, "output_quantizer")

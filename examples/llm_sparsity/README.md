@@ -2,7 +2,35 @@
 
 In this tutorial, we demonstrate how to use Nvidia TensorRT Model Optimizer to perform Post-Training Sparsification (PTS) and Sparsity Aware Training (SAT) on a HuggingFace [Llama2-7B](https://huggingface.co/meta-llama/Llama-2-7b-hf) model.
 
-To learn more about the sparsity feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/5_sparsity.html).
+To learn more about the sparsity feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/6_sparsity.html).
+
+## Getting Started
+
+### Post-Training Sparsification (PTS) for PyTorch models
+
+`mts.sparsify()` requires the model, the appropriate sparsity configuration, and a forward loop as inputs. Here is a quick example of sparsifying a model to 2:4 sparsity pattern with SparseGPT method using `mts.sparsify()`.
+
+```python
+import modelopt.torch.sparsity as mts
+
+# Setup the model
+model = get_model()
+
+# Setup the data loaders. An example usage:
+data_loader = get_train_dataloader(num_samples=calib_size)
+
+# Define the sparsity configuration
+sparsity_config = {"data_loader": data_loader, "collect_func": lambda x: x}
+
+# Sparsify the model and perform calibration (PTS)
+model = mts.sparsify(model, mode="sparsegpt", config=sparsity_config)
+```
+
+> [!Note]
+> `data_loader` is only required in case of data-driven sparsity, e.g., SparseGPT for calibration. `sparse_magnitude` does not require `data_loader` as it is purely based on the weights of the model.
+
+> [!Note]
+> `data_loader` and `collect_func` can be substituted with a `forward_loop` that iterates the model through the calibration dataset.
 
 ## Post-Training Sparsification (PTS) for HuggingFace Models
 

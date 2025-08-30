@@ -46,7 +46,7 @@ ModelOpt-Windows can be installed either as a standalone toolkit or through Micr
 To install ModelOpt-Windows as a standalone toolkit on CUDA 12.x systems, run the following commands:
 
 ```bash
-pip install nvidia-modelopt[onnx] --extra-index-url https://pypi.nvidia.com
+pip install nvidia-modelopt[onnx]
 ```
 
 ### Installation with Olive
@@ -68,6 +68,59 @@ For more details, please refer to the [detailed installation instructions](https
 Quantization is an effective model optimization technique for large models. Quantization with ModelOpt-Windows can compress model size by 2x-4x, speeding up inference while preserving model quality. ModelOpt-Window enables highly performant quantization formats including INT4, FP8, INT8, etc. and supports advanced algorithms such as AWQ and SmoothQuant\* focusing on post-training quantization (PTQ) for ONNX and PyTorch\* models with DirectML, CUDA and TensorRT\* inference backends.
 
 For more details, please refer to the [detailed quantization guide](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/windows_guides/_ONNX_PTQ_guide.html).
+
+## Getting Started
+
+The ONNX quantization API requires a model, calibration data, along with quantization settings like algorithm, calibration-EPs etc. Here’s an example snippet to apply INT4 AWQ quantization:
+
+```python
+from modelopt.onnx.quantization.int4 import quantize as quantize_int4
+# import other packages as needed
+calib_inputs = get_calib_inputs(dataset, model_name, cache_dir, calib_size, batch_size,...)
+quantized_onnx_model = quantize_int4(
+    onnx_path,
+    calibration_method="awq_lite",
+    calibration_data_reader=None if use_random_calib else calib_inputs,
+    calibration_eps=["dml", "cpu"]
+)
+onnx.save_model(
+    quantized_onnx_model,
+    output_path,
+    save_as_external_data=True,
+    location=os.path.basename(output_path) + "_data",
+    size_threshold=0,
+)
+```
+
+Check `modelopt.onnx.quantization.quantize_int4` for details about INT4 quantization API.
+
+Refer to our [Support Matrix](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/0_support_matrix.html#support-matrix) for details about supported features and models.
+
+To learn more about ONNX PTQ, refer to our [docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/windows_guides/_ONNX_PTQ_guide.html#onnx-ptq-guide-windows).
+
+### Deployment
+
+The quantized onnx model can be deployed using frameworks like onnxruntime. Ensure that model’s opset is 19+ for FP8 quantization, and it is 21+ for INT4 quantization. This is needed due to different opset requirements of ONNX’s [Q](https://onnx.ai/onnx/operators/onnx__QuantizeLinear.html)/[DQ](https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html) nodes for INT4, FP8 data-types support. Refer to [Apply Post Training Quantization (PTQ)](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/windows_guides/_ONNX_PTQ_guide.html#apply-onnx-ptq) for details.
+
+```python
+# write steps (say, upgrade_opset() method) to upgrade or patch opset of the model, if needed
+# the opset-upgrade, if needed, can be done on either base ONNX model or on the quantized model
+# finally, save the quantized model
+
+quantized_onnx_model = upgrade_opset(quantized_onnx_model)
+onnx.save_model(
+    quantized_onnx_model,
+    output_path,
+    save_as_external_data=True,
+    location=os.path.basename(output_path) + "_data",
+    size_threshold=0,
+)
+```
+
+For detailed instructions about deployment of quantized models with DirectML backend (ORT-DML), see the [DirectML](https://nvidia.github.io/TensorRT-Model-Optimizer/deployment/2_directml.html#directml-deployment).
+
+> [!Note]
+> The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at HuggingFace [NVIDIA collections](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus-67373fe7c006ebc1df310613).
 
 ## Examples
 
