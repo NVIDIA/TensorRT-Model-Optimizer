@@ -1,0 +1,6 @@
+ipywidgets
+nvidia-modelopt[all]
+torch
+torchvision
+transformers
+trl
