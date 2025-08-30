@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import torch.nn as nn
 from config import (
     FP8_DEFAULT_CONFIG,
     INT8_DEFAULT_CONFIG,
@@ -563,7 +564,7 @@ class Quantizer:
         self.model_config = model_config
         self.logger = logger
 
-    def get_quant_config(self, n_steps: int) -> Any:
+    def get_quant_config(self, n_steps: int, backbone: nn.Module) -> Any:
         """
         Build quantization configuration based on format.
 
@@ -576,13 +577,17 @@ class Quantizer:
         self.logger.info(f"Building quantization config for {self.config.format.value}")
 
         if self.config.format == QuantFormat.INT8:
-            quant_config = INT8_DEFAULT_CONFIG
+            if self.config.algo == QuantAlgo.SMOOTHQUANT:
+                quant_config = mtq.INT8_SMOOTHQUANT_CFG
+            else:
+                quant_config = INT8_DEFAULT_CONFIG
             if self.config.collect_method != CollectMethod.DEFAULT:
                 reset_set_int8_config(
                     quant_config,
                     self.config.percentile,
                     n_steps,
                     collect_method=self.config.collect_method.value,
+                    backbone=backbone,
                 )
         elif self.config.format == QuantFormat.FP8:
             quant_config = FP8_DEFAULT_CONFIG
@@ -913,7 +918,7 @@ def main() -> None:
             prompts = calibrator.load_prompts()
 
             quantizer = Quantizer(quant_config, model_config, logger)
-            backbone_quant_config = quantizer.get_quant_config(calib_config.n_steps)
+            backbone_quant_config = quantizer.get_quant_config(calib_config.n_steps, backbone)
 
             def forward_loop(mod):
                 if model_config.uses_transformer:

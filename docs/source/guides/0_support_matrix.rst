@@ -41,7 +41,7 @@ Feature Support Matrix
           - PyTorch, ONNX
           - TensorRT, TensorRT-LLM
         * - W4A8 (INT4 Weights, FP8 Activations)
-          - * Block-wise INT8 Weights, Per-Tensor FP8 Activations
+          - * Block-wise INT4 Weights, Per-Tensor FP8 Activations
             * Uses AWQ Algorithm
             * GPUs: Ada and Later
           - PyTorch*, ONNX*
@@ -65,7 +65,7 @@ Feature Support Matrix
           - PyTorch*, ONNX
           - ORT-DirectML, TensorRT*, TensorRT-LLM*
         * - W4A8 (INT4 Weights, FP8 Activations)
-          - * Block-wise INT8 Weights, Per-Tensor FP8 Activations
+          - * Block-wise INT4 Weights, Per-Tensor FP8 Activations
             * Uses AWQ Algorithm
             * GPUs: Ada and Later
           - PyTorch*

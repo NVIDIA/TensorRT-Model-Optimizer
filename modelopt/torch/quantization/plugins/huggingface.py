@@ -309,10 +309,10 @@ def convert_hf_parallel_linears_on_the_fly(model):
             HFRowParallelLinear.convert(module)
 
 
-if transformers.modeling_utils.Conv1D not in QuantModuleRegistry:
-    # transformers.modeling_utils.Conv1D used in HF-GPT2 is not a real Conv1D
+if transformers.pytorch_utils.Conv1D not in QuantModuleRegistry:
+    # transformers.pytorch_utils.Conv1D used in HF-GPT2 is not a real Conv1D
     # It is actually a Linear layer where weight is transposed and torch.addmm is used
-    @QuantModuleRegistry.register({transformers.modeling_utils.Conv1D: "Conv1D"})
+    @QuantModuleRegistry.register({transformers.pytorch_utils.Conv1D: "Conv1D"})
     class _QuantConv1D(_QuantLinear):
         @classmethod
         @torch.no_grad()

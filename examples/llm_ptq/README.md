@@ -1,41 +1,261 @@
 # Post-training quantization (PTQ)
 
-## What's This Example Folder About?
+Quantization is an effective model optimization technique that compresses your models. Quantization with Model Optimizer can compress model size by 2x-4x, speeding up inference while preserving model quality.
 
-This folder demonstrates how the Model Optimizer does PTQ quantization on an LLM and deploys the quantized LLM with TensorRT-LLM.
-To learn more about the quantization feature, please refer to the [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html).
-Users can also choose to export the quantized models in a unified format that is deployable on vLLM and SGLang, in addition to TensorRT-LLM. For details please refer to its [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/deployment/3_unified_hf.html).
+Model Optimizer enables highly performant quantization formats including NVFP4, FP8, INT8, INT4 and supports advanced algorithms such as SmoothQuant, AWQ, SVDQuant, and Double Quantization with easy-to-use Python APIs.
 
-This document introduces:
+This section focuses on Post-training quantization, a technique that reduces model precision after training to improve inference efficiency without requiring retraining.
 
-- The scripts to quantize, convert and evaluate LLMs,
-- The Python code and APIs to quantize and deploy the models.
+<div align="center">
 
-If you are interested in quantization-aware training (QAT) for LLMs, please refer to the [QAT README](../llm_qat/README.md).
+| **Section** | **Description** | **Link** | **Docs** |
+| :------------: | :------------: | :------------: | :------------: |
+| Pre-Requisites | Required & optional packages to use this technique | \[[Link](#pre-requisites)\] | |
+| Getting Started | Learn how to optimize your models using PTQ to reduce precision and improve inference efficiency | \[[Link](#getting-started)\] | \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html)\] |
+| Support Matrix | View the support matrix to see quantization compatibility and feature availability across different models | \[[Link](#support-matrix)\] | |
+| AutoQuantize | Automatically chooses layers/precisions for mixed precision quantization to enhanced inference performance and accuracy tradeoffs | \[[Link](#autoquantize)\] | \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_pytorch_quantization.html#optimal-partial-quantization-using-auto-quantize)\] |
+| Real Quant | Real Quant compresses model weights in a low-precision format to reduce memory requirements of quantization. | \[[Link](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_compress_quantized_models.html)\] | |
+| Framework Scripts | Example scripts demonstrating quantization techniques for optimizing Hugging Face / NeMo / Megatron-LM models | \[[Link](#framework-scripts)\] | |
+| Evaluate Accuracy | Evaluate your model's accuracy! | \[[Link](#evaluate-accuracy)\] | |
+| Exporting Checkpoints | Export to Hugging Face Unified Checkpoint and deploy on TRT-LLM/vLLM/SGLang | \[[Link](#exporting-checkpoints)\] | \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/deployment/3_unified_hf.html)\] |
+| Pre-Quantized Checkpoints | Ready to deploy Hugging Face pre-quantized checkpoints | \[[Link](#pre-quantized-checkpoints)\] | |
+| Resources | Extra links to relevant resources | \[[Link](#resources)\] | |
 
-## Model Quantization and TRT LLM Conversion
+</div>
 
-### All-in-one Scripts for Quantization and Building
+## Pre-Requisites
 
-There are many quantization schemes supported in the example scripts:
-
-1. The [FP8 format](https://developer.nvidia.com/blog/nvidia-arm-and-intel-publish-fp8-specification-for-standardization-as-an-interchange-format-for-ai/) is available on the Hopper and Ada GPUs with [CUDA compute capability](https://developer.nvidia.com/cuda-gpus) greater than or equal to 8.9.
-
-1. The [INT8 SmoothQuant](https://arxiv.org/abs/2211.10438), developed by MIT HAN Lab and NVIDIA, is designed to reduce both the GPU memory footprint and inference latency of LLM inference.
-
-1. The [INT4 AWQ](https://arxiv.org/abs/2306.00978) is an INT4 weight only quantization and calibration method. INT4 AWQ is particularly effective for low batch inference where inference latency is dominated by weight loading time rather than the computation time itself. For low batch inference, INT4 AWQ could give lower latency than FP8/INT8 and lower accuracy degradation than INT8.
-
-1. The W4A8 AWQ is an extension of the INT4 AWQ quantization that it also uses FP8 for activation for more speed up and acceleration.
-
-1. The [NVFP4](https://blogs.nvidia.com/blog/generative-ai-studio-ces-geforce-rtx-50-series/) is one of the new FP4 formats supported by NVIDIA Blackwell GPU and demonstrates good accuracy compared with other 4-bit alternatives. NVFP4 can be applied to both model weights as well as activations, providing the potential for both a significant increase in math throughput and reductions in memory footprint and memory bandwidth usage compared to the FP8 data format on Blackwell.
-
-The following scripts provide an all-in-one and step-by-step model quantization example for Llama-3, NeMo Nemotron, and Megatron-LM models. The quantization format and the number of GPUs will be supplied as inputs to these scripts. By default, we build the engine for the fp8 format and 1 GPU.
+For Hugging Face models, install Model Optimizer with `hf` dependencies using `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/) and install the requirements for the example:
 
 ```bash
-cd <this example folder>
+pip install nvidia-modelopt[hf]
+pip install -r requirements.txt
 ```
 
-#### For the Hugging Face models:
+If you want to deploy the quantized model on TRT-LLM, you will also need to install the TRT-LLM dependencies as per the [TRT-LLM documentation](https://nvidia.github.io/TensorRT-LLM/quick-start-guide.html#installation). Alternatively you can use the ModelOpt docker image built from the [ModelOpt docker build step](../../docker/README.md) which has all the dependencies including TRT-LLM installed.
+
+For NeMo models, use the NeMo container `nvcr.io/nvidia/nemo:25.04` or later which has all the dependencies including TRT-LLM installed.
+
+## Getting Started
+
+### 1. Quantize (Post Training Quantization)
+
+With the simple API below, you can very easily use Model Optimizer to quantize your model. Model Optimizer achieves this by converting the percision of your model to the desired percision, and then using a small datset (typically 128-512 samples) to [calibrate](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_basic_quantization.html) the quantization scaling factors. The accuracy of PTQ is typically robust across different choices of calibration data, by default Model Optimizer uses [`cnn_dailymail`](https://huggingface.co/datasets/cnn_dailymail). Users can try other datasets by easily modifying the `calib_set`.
+
+```python
+import modelopt.torch.quantization as mtq
+
+# Setup the model
+model = AutoModelForCausalLM.from_pretrained("...")
+
+# Simplified example set up a calibration data loader with the desired calib_size
+calib_set = get_dataloader(num_samples=calib_size)
+
+# Prepare the calibration set and define a forward loop
+def forward_loop(model):
+    for batch in calib_set:
+        model(batch)
+
+# PTQ with in-place replacement to quantized modules
+model = mtq.quantize(model, mtq.INT8_SMOOTHQUANT_CFG, forward_loop)
+```
+
+### 2. Export Quantized Model
+
+Once your model is quantized, you can now export that model to a checkpoint for easy deployment. \
+We provide two APIs to export the quantized model:
+
+- Unified Hugging Face checkpoints, which can be deployed on TensorRT-LLM (Pytorch and C++ backends), [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang).
+- (Legacy) TensorRT-LLM checkpoints, a format that works with TensorRT-LLM C++ backend only.
+
+#### Unified Hugging Face Checkpoints
+
+```python
+from modelopt.torch.export import export_hf_checkpoint
+
+with torch.inference_mode():
+    export_hf_checkpoint(
+        model,  # The quantized model.
+        export_dir,  # The directory where the exported files will be stored.
+    )
+```
+
+#### (Legacy) TensorRT-LLM Checkpoints
+
+The user can specify the inference time TP and PP size and the export API will organize the weights to fit the target GPUs.
+
+```python
+from modelopt.torch.export import export_tensorrt_llm_checkpoint
+
+with torch.inference_mode():
+    export_tensorrt_llm_checkpoint(
+        model,  # The quantized model.
+        decoder_type,  # The type of the model, e.g gpt, gptj, or llama.
+        dtype,  # The exported weights data type.
+        export_dir,  # The directory where the exported files will be stored.
+        inference_tensor_parallel,  # The number of GPUs used in the inference time tensor parallel.
+        inference_pipeline_parallel,  # The number of GPUs used in the inference time pipeline parallel.
+        use_nfs_workspace,  # If exporting in a multi-node setup, please specify a shared directory like NFS for cross-node communication.
+    )
+```
+
+After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build command to build the engines from the exported checkpoints. Please check the [ TensorRT-LLM Build API](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/workflow.md#build-apis) documentation for reference.
+
+Please reference our [framework scripts](#framework-scripts) and our [docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html) for more details.
+
+## Support Matrix
+
+### Supported Models
+
+| Model | fp8 | int8_sq | int4_awq | w4a8_awq<sup>1</sup> | nvfp4<sup>5</sup> |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| GPTJ | ✅ | ✅ | ✅ | ✅ | - |
+| LLAMA 2 | ✅ | ✅ | ✅ | ✅ | - |
+| LLAMA 3, 3.1, 3.3 | ✅ | ❌ | ✅ | ✅<sup>3</sup> | ✅ |
+| LLAMA 4 <sup>6</sup> | ✅ | ❌ | ❌ | ❌ | ✅ |
+| LLAMA 2 (Nemo) | ✅ | ✅ | ✅ | ✅ | - |
+| CodeLlama | ✅ | ✅ | ✅ | ❌ | - |
+| Mistral | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Mixtral 8x7B, 8x22B | ✅ | ❌ | ✅<sup>2</sup> | ❌ | ✅ |
+| Snowflake Arctic<sup>2</sup> | ✅ | ❌ | ✅ | ❌ | - |
+| Falcon 40B, 180B | ✅ | ✅ | ✅ | ✅ | - |
+| Falcon 7B | ✅ | ✅ | ❌ | ❌ | - |
+| MPT 7B, 30B | ✅ | ✅ | ✅ | ✅ | - |
+| Baichuan 1, 2 | ✅ | ✅ | ✅ | ✅ | - |
+| ChatGLM2, 3 6B | ❌ | ❌ | ✅ | ❌ | - |
+| Bloom | ✅ | ✅ | ✅ | ✅ | - |
+| Phi-1,2,3,4 | ✅ | ✅ | ✅ | ✅<sup>3</sup> | - |
+| Phi-3.5 MOE | ✅ | ❌ | ❌ | ❌ | - |
+| Llama-Nemotron Super | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Llama-Nemotron Ultra | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Nemotron 8B | ✅ | ❌ | ✅ | ❌ | - |
+| Gemma 2B, 7B | ✅ | ❌ | ✅ | ✅ | - |
+| Gemma 3 1B | ✅<sup>2</sup> | ❌ | ✅ | ❌ | - |
+| RecurrentGemma 2B | ✅ | ✅ | ✅ | ❌ | - |
+| StarCoder 2 | ✅ | ✅ | ✅ | ❌ | - |
+| QWen 2, 2.5 <sup>4</sup> | ✅ | ✅ | ✅ | ✅ | ✅ |
+| QWen MOE | ✅ | - | - | - | ✅ |
+| QWen3 MOE <sup>6</sup> | ✅ | - | - | - | ✅ |
+| QwQ | ✅ | - | - | - | ✅ |
+| DBRX | ✅ | ❌ | ❌ | ❌ | - |
+| InternLM2 | ✅ | ❌ | ✅ | ✅<sup>3</sup> | - |
+| Exaone | ✅ | ✅ | ✅ | ✅ | - |
+| Minitron | ✅ | ✅ | ✅ | ✅<sup>2</sup> | ✅ |
+| T5 | ✅ | ✅ | ✅ | ✅ | - |
+| Whisper | ✅ | ❌ | ❌ | ❌ | - |
+
+> *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty.* \
+> *<sup>2.</sup>For some models, there is only support for exporting quantized checkpoints.* \
+> *<sup>3.</sup>W4A8_AWQ is only available on some models but not all* \
+> *<sup>4.</sup>For some models, KV cache quantization may result in a higher accuracy penalty.* \
+> *<sup>5.</sup>A selective set of the popular models are internally tested. The actual model support list may be longer. NVFP4 inference requires Blackwell GPUs and TensorRT-LLM v0.17 or later* \
+> *<sup>6.</sup>Some models currently support export to HF format only.*
+
+> *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](./hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*
+
+> You can also create your own custom config using [this](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_pytorch_quantization.html#custom-calibration-algorithm) guide.
+
+## AutoQuantize
+
+[AutoQuantize (`mtq.auto_quantize`)](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) is a PTQ algorithm which quantizes a model by searching for the best quantization format per-layer while meeting performance constraints specified by the user. `AutoQuantize` streamlines the trade-off of model accuracy and performance.
+
+Currently `AutoQuantize` supports only `auto_quantize_bits` as the performance constraint (for both weight-only
+quantization and weight & activation quantization). `auto_quantize_bits` constraint specifies the effective number of bits for the quantized model.
+
+You may specify an `auto_quantize_bits` constraint such as 4.8 for mixed precision quantization using `NVFP4_DEFAULT_CFG` & `FP8_DEFAULT_CFG`.
+`AutoQuantize` will automatically quantize highly sensitive layers in `FP8_DEFAULT_CFG` while keeping less sensitive layers in `NVFP4_DEFAULT_CFG` (and even skip quantization for any extremely sensitive layers) so that
+the the final mixed precision quantized model has an effective quantized bits of 4.8. This model would give a better accuracy than the model quantized with vanilla `NVFP4_DEFAULT_CFG` configuration since the more aggressive `NVFP4_DEFAULT_CFG` quantization was not applied for the highly sensitive layers.
+
+Here is an example usage for `AutoQuantize` algorithm (Please see [auto_quantize](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) API for more details):
+
+```python
+
+    import modelopt.torch.quantization as mtq
+
+    # Define the model & calibration dataloader
+    model = ...
+    calib_dataloader = ...
+
+    # Define forward_step function.
+    # forward_step should take the model and data as input and return the output
+    def forward_step(model, data):
+        output =  model(data)
+        return output
+
+    # Define loss function which takes the model output and data as input and returns the loss
+    def loss_func(output, data):
+        loss = ...
+        return loss
+
+
+    # Perform AutoQuantize
+    model, search_state_dict = mtq.auto_quantize(
+        model,
+        constraints = {"auto_quantize_bits": 4.8},
+        # supported quantization formats are listed in `modelopt.torch.quantization.config.choices`
+        quantization_formats = ["NVFP4_DEFAULT_CFG", "FP8_DEFAULT_CFG"]
+        data_loader = calib_dataloader,
+        forward_step=forward_step,
+        loss_func=loss_func,
+        ...
+        )
+```
+
+### AutoQuantize for Hugging Face models
+
+`AutoQuantize` can be performed for Huggingface LLM models like [Llama-3](https://huggingface.co/meta-llama) as shown below:
+
+[Script](./scripts/huggingface_example.sh)
+
+```bash
+export HF_PATH=<the downloaded LLaMA checkpoint from the Hugging Face hub, or simply the model card>
+# --auto_quantize_bits specifies the constraint for `AutoQuantize`
+# --quant specifies the formats to be searched for `AutoQuantize`
+# NOTE: auto_quantize_bits cannot be lower than the number of bits for the smallest quantization format in --quant
+scripts/huggingface_example.sh --type llama --model $HF_PATH --quant w4a8_awq,fp8 --auto_quantize_bits 4.8 --tp [1|2|4|8]  --calib_batch_size 4
+```
+
+The above example perform `AutoQuantize` where the less quantization accuracy sensitive layers are quantized with `w4a8_awq` (specified by `--quant w4a8_awq`) and the more sensitive layers
+are kept un-quantized such that the effective bits is 4.8 (specified by `--auto_quantize_bits 4.8`).
+
+The example scripts above also have an additional flag `--tasks`, where the actual tasks run in the script can be customized. The allowed tasks are `build,mmlu,benchmark,lm_eval,livecodebench` specified in the script [parser](./scripts/parser.sh). The tasks combo can be specified with a comma-separated task list. Some tasks like mmlu can take a long time to run. To run lm_eval tasks, please also specify the `--lm_eval_tasks` flag with comma separated lm_eval tasks [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks).
+
+> *If GPU out-of-memory error is reported running the scripts, please try editing the scripts and reducing the max batch size to save GPU memory.*
+
+> *NOTE: AutoQuantize requires backpropagation of the model. Models without backpropagation support (e.g., Llama-4) will not work with AutoQuantize.*
+
+### AutoQuantize for NeMo models
+
+The usage is similar for NeMo models to perform `AutoQuantize`. Please refer to the [NeMo Example Script](#nemo-example-script) section for the full setup instructions.
+
+[Script](./scripts/nemo_example.sh)
+
+```bash
+# --auto_quantize_bits specifies the constraint for `AutoQuantize`
+# --quant specifies the formats to be searched for `AutoQuantize`. Multiple formats can be searched over by passing them as comma separated values
+scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant fp8,int4_awq --auto_quantize_bits 6.4 --tp [1|2|4|8]
+```
+
+## Real Quant
+
+When working with large language models, memory constraints can be a significant challenge. ModelOpt provides a workflow for initializing HF models with compressed weights across multiple GPUs to dramatically reduce memory usage. Check `--low_memory_mode` option in hf_ptq.py for more details.
+
+```python
+import modelopt.torch.quantization as mtq
+from modelopt.torch.quantization.plugins import init_quantized_weights
+from transformers import AutoModelForCausalLM, AutoConfig
+
+# Step 1: Initialize the model with compressed weights
+with init_quantized_weights(mtq.NVFP4_DEFAULT_CFG):
+    model = AutoModelForCausalLM.from_pretrained(ckpt_path)
+
+# Step 2: Calibrate the model
+mtq.calibrate(model, algorithm="max", forward_loop=calibrate_loop)
+```
+
+## Framework Scripts
+
+### Hugging Face Example [Script](./scripts/huggingface_example.sh)
 
 For LLM models like [Llama-3](https://huggingface.co/meta-llama):
 
@@ -70,198 +290,21 @@ python hf_ptq.py --pyt_ckpt_path=<llama4 model path> --export_path=<quantized hf
 
 The quantized checkpoint can be deployed following the TensorRT-LLM instructions. Note since we only quantize the language model in Llama 4, the exported config has `Llama4ForCausalLM`, but TensorRT-LLM expects `Llama4ForConditionalGeneration` which is from the original Llama 4. Therefore our script will copy over the original config files to the exported checkpoint folder.
 
-#### For NeMo models like [nemotron](https://huggingface.co/nvidia/nemotron-3-8b-base-4k):
+#### Deepseek R1
 
-NeMo PTQ requires the NeMo package installed. It's recommended to start from the NeMo containers like `nvcr.io/nvidia/nemo:24.07` or latest `nvcr.io/nvidia/nemo:dev` directly.
+[PTQ for DeepSeek](../deepseek/README.md) shows how to quantize the DeepSeek model with FP4 and export to TensorRT-LLM.
 
-```bash
-# Inside the NeMo container:
-# Download the nemotron model from the Hugging Face.
-export GPT_MODEL_FILE=Nemotron-3-8B-Base-4k.nemo
+### NeMo Example [Script](./scripts/nemo_example.sh)
 
-# Reinstall latest modelopt and build the extensions if not already done.
-pip install -U "nvidia-modelopt"
-python -c "import modelopt.torch.quantization.extensions as ext; ext.precompile()"
+Please refer to the [NeMo PTQ documentation](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/quantization/quantization.html) for more details.
 
-scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant [fp8|nvfp4|int8_sq|int4_awq] --tp [1|2|4|8]
-```
-
-> *If the TensorRT-LLM version in the NeMo container is older than the supported version, please continue building TRT-LLM engine with the `docker.io/library/modelopt_examples:latest` container built in the ModelOpt docker build step. Additionally you would also need to `pip install megatron-core "nemo-toolkit[all]"` to install required NeMo dependencies*
-
-#### For Megatron-LM models:
+### Megatron-LM Example Script
 
 Megatron-LM framework PTQ and TensorRT-LLM deployment examples are maintained in the Megatron-LM GitHub repo. Please refer to the examples [here](https://github.com/NVIDIA/Megatron-LM/tree/main/examples/export).
 
-> *If GPU out-of-memory error is reported running the scripts, please try editing the scripts and reducing the max batch size of the TensorRT-LLM engine to save GPU memory.*
+## Evaluate Accuracy
 
-The example scripts above also have an additional flag `--tasks`, where the actual tasks run in the script can be customized. The allowed tasks are `build,mmlu,benchmark,lm_eval,livecodebench` specified in the script [parser](./scripts/parser.sh). The tasks combo can be specified with a comma-separated task list. Some tasks like mmlu can take a long time to run. To run lm_eval tasks, please also specify the `--lm_eval_tasks` flag with comma separated lm_eval tasks [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks).
-
-Please refer to the `Technical Details` section below about the stage executed inside the script and the outputs per stage.
-
-### Model Support List
-
-Model | fp8 | int8_sq | int4_awq | w4a8_awq<sup>1</sup> | nvfp4<sup>5</sup> |
---- | --- | --- | --- | --- | ---
-GPTJ | Yes | Yes | Yes | Yes | -
-LLAMA 2 | Yes | Yes | Yes | Yes | -
-LLAMA 3, 3.1, 3.3 | Yes | No | Yes | Yes<sup>3</sup> | Yes
-LLAMA 4 <sup>6</sup> | Yes | No | No | No | Yes
-LLAMA 2 (Nemo) | Yes | Yes | Yes | Yes | -
-CodeLlama | Yes | Yes | Yes | No | -
-Mistral | Yes | Yes | Yes | No | Yes
-Mixtral 8x7B, 8x22B | Yes | No | Yes<sup>2</sup> | No | Yes
-Snowflake Arctic<sup>2</sup> | Yes | No | Yes | No | -
-Falcon 40B, 180B | Yes | Yes | Yes | Yes | -
-Falcon 7B | Yes | Yes | No | No | -
-MPT 7B, 30B | Yes | Yes | Yes | Yes | -
-Baichuan 1, 2 | Yes | Yes | Yes | Yes | -
-ChatGLM2, 3 6B | No | No | Yes | No | -
-Bloom | Yes | Yes | Yes | Yes | -
-Phi-1,2,3,4 | Yes | Yes | Yes | Yes<sup>3</sup> |
-Phi-3.5 MOE | Yes | No | No | No | -
-Llama-Nemotron Super | Yes | No | No | No | Yes
-Llama-Nemotron Ultra | Yes | No | No | No | No
-Nemotron 8B | Yes | No | Yes | No | -
-Gemma 2B, 7B | Yes | No | Yes | Yes | -
-Gemma 2 9B, 27B | Yes<sup>2</sup> | No | Yes | No | -
-Gemma 3 1B | Yes<sup>2</sup> | No | Yes | No | -
-RecurrentGemma 2B | Yes | Yes | Yes | No | -
-StarCoder 2 | Yes | Yes | Yes | No | -
-QWen 2, 2.5 <sup>4</sup> | Yes | Yes | Yes | Yes | Yes
-QWen MOE | Yes | - | - | - | Yes
-QWen3 MOE <sup>6</sup> | Yes | - | - | - | Yes
-QwQ | Yes | - | - | - | Yes
-DBRX | Yes | No | No | No | -
-InternLM2 | Yes | No | Yes | Yes<sup>3</sup> | -
-Exaone | Yes | Yes | Yes | Yes | -
-Minitron | Yes | Yes | Yes | Yes<sup>2</sup> | Yes
-T5 | Yes | Yes | Yes | Yes | -
-Whisper | Yes | No | No | No | -
-
-> *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty.*
-
-> *<sup>2.</sup>For some models, there is only support for exporting quantized checkpoints.*
-
-> *<sup>3.</sup>W4A8_AWQ is only available on some models but not all*
-
-> *<sup>4.</sup>For some models, KV cache quantization may result in a higher accuracy penalty.*
-
-> *<sup>5.</sup>A selective set of the popular models are internally tested. The actual model support list may be longer. NVFP4 inference requires Blackwell GPUs and TensorRT-LLM v0.17 or later*
-
-> *<sup>6.</sup>Some models currently support export to HF format only.*
-
-> *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](./hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*
-
-### Deploy FP8 quantized model using vLLM and SGLang
-
-Besides TensorRT-LLM, the Model Optimizer also supports deploying the FP8 quantized Hugging Face LLM using [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang). Model Optimizer supports exporting a unified checkpoint<sup>1</sup> that is compatible for deployment with vLLM and SGLang. The unified checkpoint format design reflects two key characteristics: 1. The layer structures and tensor names remain aligned with the original Hugging Face checkpoint, and 2. The same checkpoint can be deployed across multiple inference frameworks without modification. A unified checkpoint can be exported using the following command:
-
-```bash
-# Quantize and export
-python hf_ptq.py --pyt_ckpt_path <huggingface_model_card> --qformat fp8 --export_fmt hf --export_path <quantized_ckpt_path> --trust_remote_code
-```
-
-Alternatively, the wrapper script `huggingface_example.sh` also supports quantize and export:
-
-```bash
-scripts/huggingface_example.sh --model <huggingface_model_card> --quant fp8 --export_fmt hf
-```
-
-Then start the inference instance using vLLM in python, for example:
-
-```python
-from vllm import LLM
-
-llm_fp8 = LLM(model="<the exported model path>", quantization="modelopt")
-print(llm_fp8.generate(["What's the age of the earth? "]))
-```
-
-For SGLang:
-
-```python
-import sglang as sgl
-
-llm_fp8 = sgl.Engine(model_path="<the exported model path>", quantization="modelopt")
-print(llm_fp8.generate(["What's the age of the earth? "]))
-```
-
-> *<sup>1. Unified checkpoint export currently does not support sparsity. Speculative decoding is only supported in unified checkpoint export. The exported unified checkpoint then needs a TensorRT-LLM checkpoint converter (e.g., [this](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/eagle/convert_checkpoint.py)) to convert and build the TensorRT engine(s) for deployment. Alternatively, call TensorRT-LLM LLM-API to deploy the unified checkpoints e.g., check examples [here](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/pytorch#trt-llm-with-pytorch). </sup>*
-
-### Model Support List
-
-Model | FP8
---- | ---
-LLAMA 2 | Yes
-LLAMA 3, 3.1 | Yes
-QWen2 | Yes
-Mixtral 8x7B | Yes
-CodeLlama | Yes
-
-### Optimal Partial Quantization using auto_quantize
-
-[auto_quantize](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) is a PTQ algorithm from ModelOpt which quantizes a model by searching for the best quantization format per-layer while meeting the performance constraint specified by the user. This way, `auto_quantize` enables to trade-off model accuracy for performance.
-
-Currently `auto_quantize` supports only `auto_quantize_bits` as the performance constraint (for both weight-only quantization and
-weight & activation quantization). See
-[auto_quantize documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/generated/modelopt.torch.quantization.model_quant.html#modelopt.torch.quantization.model_quant.auto_quantize) for more details.
-
-#### auto_quantize for Hugging Face models
-
-`auto_quantize` can be performed for Huggingface LLM models like [Llama-3](https://huggingface.co/meta-llama) as shown below:
-
-```bash
-export HF_PATH=<the downloaded LLaMA checkpoint from the Hugging Face hub, or simply the model card>
-# --auto_quantize_bits specifies the constraint for `auto_quantize`
-# --quant specifies the formats to be searched for `auto_quantize`
-# NOTE: auto_quantize_bits cannot be lower than the number of bits for the smallest quantization format in --quant
-scripts/huggingface_example.sh --type llama --model $HF_PATH --quant w4a8_awq,fp8 --auto_quantize_bits 4.8 --tp [1|2|4|8]  --calib_batch_size 4
-```
-
-The above example perform `auto_quantize` where the less quantization sensitive layers are quantized with `w4a8_awq` (specified by `--quant w4a8_awq`) and the more sensitive layers
-are kept un-quantized such that the effective bits is 4.8 (specified by `--auto_quantize_bits 4.8`).
-
-> \*Note: AutoQuantize requires backpropagation of the model. Models without backpropagation support (e.g., Llama-4) will not work with AutoQuantize.
-
-#### Auto_quantize for NeMo models
-
-The usage is similar for NeMo models to perform `auto_quantize`. Please refer to the earlier section on [NeMo models](#for-nemo-models-like-nemotron) for the full setup instructions.
-
-```bash
-# --auto_quantize_bits specifies the constraint for `auto_quantize`
-# --quant specifies the formats to be searched for `auto_quantize`. Multiple formats can be searched over by passing them as comma separated values
-scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant fp8,int4_awq --auto_quantize_bits 6.4 --tp [1|2|4|8]
-```
-
-## Technical Details
-
-### Quantization
-
-[`hf_ptq.py`](./hf_ptq.py) and [`nemo_ptq.py`](nemo_ptq.py) will use the Model Optimizer to calibrate the PyTorch models, and generate a [TensorRT-LLM checkpoint](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/checkpoint.md), saved as a json (for the model structure) and safetensors files (for the model weights) that TensorRT-LLM could parse.
-
-Quantization requires running the model in original precision (fp16/bf16). Below is our recommended number of GPUs based on our testing for as an example:
-
-| Minimum number of GPUs | 24GB (4090, A5000, L40) | 48GB (A6000, L40s) | 80GB (A100, H100) |
-|------------------------|-------------------------|--------------------|-------------------|
-| Llama2 7B | 1 | 1 | 1 |
-| Llama2 13B | 2 | 1 | 1 |
-| Llama2 70B | 8 | 4 | 2 |
-| Falcon 180B | Not supported | Not supported | 8 |
-
-### Post-training Sparsification
-
-Before quantizing the model, [`hf_ptq.py`](./hf_ptq.py) offers users the option to sparsify the weights of their models using a 2:4 pattern. This reduces the memory footprint during inference and can lead to performance improvements. The following is an example command to enable weight sparsity:
-
-```bash
-scripts/huggingface_example.sh --model $HF_PATH --quant [fp16|fp8|int8_sq] --tp [1|2|4|8] --sparsity sparsegpt
-```
-
-> *The accuracy loss due to post-training sparsification depends on the model and the downstream tasks. To best preserve accuracy, [sparsegpt](https://arxiv.org/abs/2301.00774) is recommended. However, users should be aware that there could still be a noticeable drop in accuracy. Read more about Post-training Sparsification and Sparsity Aware Training (SAT) in the [Sparsity README](../llm_sparsity/README.md).*
-
-### TensorRT-LLM Engine Build
-
-The script [`modelopt_to_tensorrt_llm.py`](modelopt_to_tensorrt_llm.py) constructs the TensorRT-LLM network and builds the TensorRT-LLM engine for deployment using the quantization outputs model config files from the previous step. The generated engine(s) will be saved as .engine file(s), ready for deployment.
-
-### TensorRT-LLM Engine Validation
+### TensorRT-LLM Validation
 
 A list of accuracy validation benchmarks are provided in the [llm_eval](../llm_eval/README.md) directory. Right now MMLU, and MTbench are supported in this example by specifying the `--tasks` flag running the scripts mentioned above. For MTBench, the task only runs the answer generation stage. Please follow [fastchat](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to get the evaluation judge score.
 
@@ -269,36 +312,18 @@ The [`benchmark_suite.py`](benchmarks/benchmark_suite.py) script is used as a fa
 
 This example also covers the [lm_evaluation_harness](https://github.com/EleutherAI/lm-evaluation-harness), MMLU and the human eval accuracy benchmarks, whose details can be found [here](../llm_eval/README.md). The supported lm_eval evaluation tasks are listed [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks)
 
-## APIs
+## Exporting Checkpoints
 
-### PTQ (Post Training Quantization)
+Model Optimizer supports provide two paths to export the quantized model:
 
-PTQ can be achieved with simple calibration on a small set of training or evaluation data (typically 128-512 samples) after converting a regular PyTorch model to a quantized model. The accuracy of PTQ is typically robust across different choices of calibration data, so we use [`cnn_dailymail`](https://huggingface.co/datasets/abisee/cnn_dailymail) by default. Users can try other datasets by easily modifying the `get_calib_dataloader` in [example_utils.py](./example_utils.py).
+- Unified Hugging Face checkpoints, which can be deployed on TensorRT-LLM (Pytorch and C++ backends), [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang).
+- (Legacy) TensorRT-LLM checkpoints, a format that works with TensorRT-LLM C++ backend only.
 
-```python
-import modelopt.torch.quantization as mtq
+The unified checkpoint<sup>1</sup> format design reflects two key characteristics: 1. The layer structures and tensor names remain aligned with the original Hugging Face checkpoint, and 2. The same checkpoint can be deployed across multiple inference frameworks without modification. A unified checkpoint can be exported using the following commands:
 
-model = AutoModelForCausalLM.from_pretrained("...")
+> *<sup>1.</sup>Unified checkpoint export currently does not support sparsity. Speculative decoding is only supported in unified checkpoint export. For legacy deployment, exported unified checkpoint then needs a TensorRT-LLM checkpoint converter (e.g., [this](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/eagle/convert_checkpoint.py)) to convert and build the TensorRT engine(s) for deployment. Alternatively, call TensorRT-LLM LLM-API to deploy the unified checkpoints e.g., check examples [here](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/pytorch#trt-llm-with-pytorch).*
 
-# Select the quantization config, for example, INT8 Smooth Quant
-config = mtq.INT8_SMOOTHQUANT_CFG
-
-
-# Prepare the calibration set and define a forward loop
-def forward_loop(model):
-    for data in calib_set:
-        model(data)
-
-
-# PTQ with in-place replacement to quantized modules
-model = mtq.quantize(model, config, forward_loop)
-```
-
-### Export Quantized Model
-
-We provide two APIs to export the quantized model. One is to export unified Hugging Face checkpoints, which can be deployed on TensorRT-LLM Pytorch or C++ backends, vLLM and SGLang.
-
-The export API is
+### API
 
 ```python
 from modelopt.torch.export import export_hf_checkpoint
@@ -310,9 +335,77 @@ with torch.inference_mode():
     )
 ```
 
-The second one is to export TensorRT-LLM checkpoints, which is a legacy format that works with TensorRT-LLM C++ backend only. The user can specify the inference time TP and PP size and the export API will organize the weights to fit the target GPUs.
+### Quantize and Export
 
-The export API is
+```bash
+python hf_ptq.py --pyt_ckpt_path <huggingface_model_card> --qformat fp8 --export_fmt hf --export_path <quantized_ckpt_path> --trust_remote_code
+```
+
+### Hugging Face framework [Script](./scripts/huggingface_example.sh)
+
+Alternatively, the framework script `huggingface_example.sh` also supports quantize and export:
+
+```bash
+scripts/huggingface_example.sh --model <huggingface_model_card> --quant fp8 --export_fmt hf
+```
+
+### Deployment
+
+______________________________________________________________________
+
+#### TRT-LLM
+
+```python
+from tensorrt_llm import LLM
+
+llm_fp8 = LLM(model="<the exported model path>")
+print(llm_fp8.generate(["What's the age of the earth? "]))
+```
+
+#### vLLM
+
+```python
+from vllm import LLM
+
+llm_fp8 = LLM(model="<the exported model path>", quantization="modelopt")
+print(llm_fp8.generate(["What's the age of the earth? "]))
+```
+
+#### SGLang
+
+```python
+import sglang as sgl
+
+llm_fp8 = sgl.Engine(model_path="<the exported model path>", quantization="modelopt")
+print(llm_fp8.generate(["What's the age of the earth? "]))
+```
+
+### Unified HF Checkpoint Deployment Model Support Matrix
+
+| Model | Quant format | TRT-LLM | vLLM | SGLang |
+| :---: | :---: | :---: | :---: | :---: |
+| LLAMA 3.x | FP8 | ✅ | ✅ | ✅ |
+| LLAMA 3.x | FP4 | ✅ | ✅ | ✅ |
+| LLAMA 4 | FP8 | ✅ | - | ✅ |
+| LLAMA 4 | FP4 | ✅ | - | - |
+| DS-R1 | FP8 | ✅ | ✅ | ✅ |
+| DS-R1 | FP4 | ✅ | ✅ | ✅ |
+| DS-V3 | FP8 | ✅ | ✅ | ✅ |
+| DS-V3 | FP4 | ✅ | ✅ | ✅ |
+| QWen3 | FP8 | ✅ | ✅ | ✅ |
+| QWen3 | FP4 | ✅ | ✅ | - |
+| QWen3 MoE | FP8 | ✅ | ✅ | ✅ |
+| QWen3 MoE | FP4 | ✅ | - | - |
+| QWen2.5 | FP8 | ✅ | ✅ | ✅ |
+| QWen2.5 | FP4 | ✅ | ✅ | - |
+| QwQ-32B | FP8 | ✅ | ✅ | ✅ |
+| QwQ-32B | FP4 | ✅ | ✅ | - |
+| Mixtral 8x7B | FP8 | ✅ | ✅ | ✅ |
+| Mixtral 8x7B | FP4 | ✅ | - | - |
+
+### (Legacy) TensorRT-LLM Checkpoints
+
+The user can specify the inference time TP and PP size and the export API will organize the weights to fit the target GPUs.
 
 ```python
 from modelopt.torch.export import export_tensorrt_llm_checkpoint
@@ -333,4 +426,31 @@ with torch.inference_mode():
 
 After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build command to build the engines from the exported checkpoints. Please check the [ TensorRT-LLM Build API](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/workflow.md#build-apis) documentation for reference.
 
-In this example, we use [modelopt_to_tensorrt_llm.py](./modelopt_to_tensorrt_llm.py) script as the easy-to-use wrapper over the TensorRT-LLM build API to generate the engines.
+## Pre-Quantized Checkpoints
+
+- Ready-to-deploy checkpoints \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4)\]
+- Deployable on [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang)
+- More models coming soon!
+
+## Resources
+
+- 📅 [Roadmap](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/146)
+- 📖 [Documentation](https://nvidia.github.io/TensorRT-Model-Optimizer)
+- 🎯 [Benchmarks](../benchmark.md)
+- 💡 [Release Notes](https://nvidia.github.io/TensorRT-Model-Optimizer/reference/0_changelog.html)
+- 🐛 [File a bug](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/new?template=1_bug_report.md)
+- ✨ [File a Feature Request](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues/new?template=2_feature_request.md)
+
+### Technical Resources
+
+There are many quantization schemes supported in the example scripts:
+
+1. The [FP8 format](https://developer.nvidia.com/blog/nvidia-arm-and-intel-publish-fp8-specification-for-standardization-as-an-interchange-format-for-ai/) is available on the Hopper and Ada GPUs with [CUDA compute capability](https://developer.nvidia.com/cuda-gpus) greater than or equal to 8.9.
+
+1. The [INT8 SmoothQuant](https://arxiv.org/abs/2211.10438), developed by MIT HAN Lab and NVIDIA, is designed to reduce both the GPU memory footprint and inference latency of LLM inference.
+
+1. The [INT4 AWQ](https://arxiv.org/abs/2306.00978) is an INT4 weight only quantization and calibration method. INT4 AWQ is particularly effective for low batch inference where inference latency is dominated by weight loading time rather than the computation time itself. For low batch inference, INT4 AWQ could give lower latency than FP8/INT8 and lower accuracy degradation than INT8.
+
+1. The W4A8 AWQ is an extension of the INT4 AWQ quantization that it also uses FP8 for activation for more speed up and acceleration.
+
+1. The [NVFP4](https://blogs.nvidia.com/blog/generative-ai-studio-ces-geforce-rtx-50-series/) is one of the new FP4 formats supported by NVIDIA Blackwell GPU and demonstrates good accuracy compared with other 4-bit alternatives. NVFP4 can be applied to both model weights as well as activations, providing the potential for both a significant increase in math throughput and reductions in memory footprint and memory bandwidth usage compared to the FP8 data format on Blackwell.
