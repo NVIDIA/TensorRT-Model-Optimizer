@@ -272,7 +272,33 @@ def _make_bn_initializer(name: str, shape, value=1.0):
 
 
 def _make_batchnorm_model(bn_node, extra_value_infos=None):
-    """Helper to create an ONNX model with a BatchNormalization node."""
+    """Helper to create an ONNX model with a BatchNormalization node.
+
+    The created model has the following schematic structure:
+
+        graph name: "test_graph"
+          inputs:
+            - input: FLOAT [1, 3, 224, 224]
+          initializers:
+            - scale: FLOAT [3]
+            - bias:  FLOAT [3]
+            - mean:  FLOAT [3]
+            - var:   FLOAT [3]
+          nodes:
+            - BatchNormalization (name comes from `bn_node`), with:
+                inputs  = ["input", "scale", "bias", "mean", "var"]
+                outputs = as provided by `bn_node` (e.g., ["output"], or
+                          ["output", "running_mean", "running_var", "saved_mean"])
+          outputs:
+            - output: FLOAT [1, 3, 224, 224]
+
+    If `extra_value_infos` is provided (e.g., value_info for non-training outputs
+    like "running_mean"/"running_var" and/or training-only outputs like
+    "saved_mean"/"saved_inv_std"), they are attached to the graph's value_info.
+    Some tests subsequently invoke utilities (e.g., remove_node_training_mode)
+    that prune training-only outputs and their value_info entries, while keeping
+    regular outputs such as "running_mean" and "running_var" intact.
+    """
     initializers = [
         _make_bn_initializer("scale", [3], 1.0),
         _make_bn_initializer("bias", [3], 0.0),
@@ -318,7 +344,13 @@ def test_remove_node_extra_training_outputs():
     bn_node = make_node(
         "BatchNormalization",
         inputs=["input", "scale", "bias", "mean", "var"],
-        outputs=["output", "saved_mean", "saved_inv_std"],  # Extra training outputs
+        outputs=[
+            "output",
+            "running_mean",
+            "running_var",
+            "saved_mean",
+            "saved_inv_std",
+        ],  # Extra training outputs
         name="bn1",
         training_mode=1,
     )
