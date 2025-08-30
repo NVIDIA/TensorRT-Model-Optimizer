@@ -139,10 +139,12 @@ on the API usage.
 Currently ``auto_quantize`` supports only ``effective_bits`` as the performance constraint (for both weight-only
 quantization and weight & activation quantization). ``effective_bits`` constraint specifies the effective number of bits for the quantized model.
 
-You may specify a ``effective_bits`` constraint such as 8.8 for partial quantization with :attr:`FP8_DEFAULT_CFG`.
-``auto_quantize`` will skip quantizing the most quantization sensitive layers so that the final partially quantized model's
-effective bits is 8.8. This model will have a better accuracy than the model quantized with default configuration since quantization was
-skipped for some layers which are highly sensitive to quantization.
+You may specify a ``effective_bits`` constraint such as 4.8 for mixed precision quantization using  :attr:`NVFP4_DEFAULT_CFG` & :attr:`FP8_DEFAULT_CFG`.
+``AutoQuantize`` will automatically quantize highly sensitive layers in :attr:`FP8_DEFAULT_CFG` while keeping less sensitive layers in :attr:`NVFP4_DEFAULT_CFG`
+(and even skip quantization for any extremely sensitive layers) so that
+the the final mixed precision quantized model has an effective quantized bits of 4.8.
+This model would give a better accuracy than the model quantized with vanilla :attr:`NVFP4_DEFAULT_CFG` since
+the more aggressive :attr:`NVFP4_DEFAULT_CFG` quantization was not applied for the highly sensitive layers.
 
 Here is how to perform ``auto_quantize``:
 

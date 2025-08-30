@@ -4,8 +4,8 @@ Pruning
 
 .. tip::
 
-    Checkout `ResNet20 on CIFAR-10 Notebook <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/examples/pruning/cifar_resnet.ipynb>`_ and
-    `Llama 3.1 NeMo Minitron Pruning <https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama/pruning-distillation>`_
+    Checkout `Llama 3.1 NeMo Minitron Pruning <https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama/pruning-distillation>`_ and
+    `ResNet20 on CIFAR-10 Notebook <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/examples/pruning/cifar_resnet.ipynb>`_
     for an end-to-end example of pruning.
 
 ModelOpt provides three main pruning methods (aka ``mode``) - Minitron, FastNAS and GradNAS - via a unified API
@@ -15,43 +15,25 @@ from your provided base model with little to no accuracy degradation (depending 
 These pruning methods support pruning the convolutional and linear layers, and
 attention heads of the model. More details on these pruning modes is as follows:
 
-#.  ``fastnas``: A pruning method recommended for Computer Vision models. Given a pretrained model,
-    FastNAS finds the subnet which maximizes the score function while meeting the given constraints.
 #.  ``mcore_minitron``: A pruning method developed by NVIDIA Research for pruning GPT, Mamba and Hybrid
     Transformer Mamba models in NVIDIA NeMo or Megatron-LM framework. It uses the activation magnitudes to prune
-    the mlp, transformer attention heads, GQA query groups, mamba heads and head dimension, embedding hidden size
-    and number of layers of the model.
+    the embedding hidden size, mlp ffn hidden size, transformer attention heads, GQA query groups,
+    mamba heads and head dimension, and number of layers of the model.
     Checkout more details of the algorithm in the `paper <https://arxiv.org/abs/2408.11796>`_.
+#.  ``fastnas``: A pruning method recommended for Computer Vision models. Given a pretrained model,
+    FastNAS finds the subnet which maximizes the score function while meeting the given constraints.
 #.  ``gradnas``: A light-weight pruning method recommended for language models like Hugging Face BERT and GPT-J.
     It uses the gradient information to prune the model's linear layers and attention heads to meet the given constraints.
 
 Follow the steps described below to obtain the optimal model satisfying your
 requirements using :mod:`mtp<modelopt.torch.prune>`:
 
-#.  **Training**: Simply train your model using existing training pipeline or load a pre-trained
-    checkpoint for your model.
 #.  **Pruning**: Prune the model using our provided :meth:`mtp.prune <modelopt.torch.prune.pruning.prune>`
     API and get an optimal subnet describing the pruned network architecture.
-#.  **Fine-tuning**: fine-tune the resulting subnet to recover the accuracy.
+#.  **Fine-tuning**: Fine-tune the resulting subnet to recover the accuracy.
 
 *To find out more about the concepts behind NAS and pruning, please refer to*
 :ref:`NAS concepts <nas-concepts>`.
-
-
-Training
-========
-
-To perform pruning, you can either use a model obtained by converting a pre-trained
-checkpoint model or train the model from scratch.
-
-.. tab:: Use a pre-trained checkpoint
-
-    Simply initialize your model and load the checkpoint before you start using ModelOpt.
-
-.. tab:: Train the model
-
-    You can simply use your existing training pipeline to train the model without
-    further modifications.
 
 
 .. _pruning_search:
@@ -59,8 +41,8 @@ checkpoint model or train the model from scratch.
 Pruning and subnet search
 =========================
 
-The next step in pruning is to perform a search over potential subnet architectures, i.e., prune the
-network, to find the best subnet satisfying your deployment constraints.
+The first step in pruning is to perform a search over potential subnet architectures for your pretrained model,
+i.e., prune the network, to find the best subnet satisfying your deployment constraints.
 
 
 Prerequisites
@@ -79,6 +61,7 @@ Prerequisites
 #. Please see the API reference of :meth:`mtp.prune() <modelopt.torch.prune.pruning.prune>` for more details.
 
 Below we show an example using :class:`"fastnas" <modelopt.torch.prune.fastnas.FastNASModeDescriptor>`.
+For Minitron pruning, please refer to the `example snippet <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/pruning#getting-started>`_ in the pruning readme.
 
 Perform pruning
 ---------------
@@ -147,10 +130,11 @@ possible network configurations and an optimal configuration is then searched fo
     Currently, the API does not support pruning pytorch Fully Sharded Data Parallel (FSDP) models
     so you would need to run pruning on a CPU and then finetune using FSDP. Note that GradNAS is
     much much faster than FastNAS (hence feasible on CPU as well) and is recommended for
-    language models like BERT, GPT-J 6B, and other LLMs.
+    language models like BERT and GPT-J 6B.
 
-Storing the prune results
--------------------------
+
+Storing the pruned model
+------------------------
 
 To store the pruned model for future use you can use
 :meth:`mto.save() <modelopt.torch.opt.conversion.save>`:

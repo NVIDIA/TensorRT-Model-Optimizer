@@ -5,7 +5,7 @@ The provided bash scripts show an example to deploy and run the [quantized LLama
 Before running the bash scripts, please make sure you have setup the environment properly:
 
 - Make sure you are authenticated with a Hugging Face account to interact with the Hub, e.g., use `huggingface-cli login` to save the access token on your machine.
-- Install TensorRT-LLM properly by following instructions [here](https://nvidia.github.io/TensorRT-LLM/installation/linux.html).
+- Install TensorRT-LLM properly by following instructions [here](https://nvidia.github.io/TensorRT-LLM/quick-start-guide.html#installation).
 - Install vLLM properly by following instructions [here](https://docs.vllm.ai/en/latest/getting_started/installation.html#install-released-versions).
 - Install SGLang properly by following instructions [here](https://docs.sglang.ai/start/install.html)
 

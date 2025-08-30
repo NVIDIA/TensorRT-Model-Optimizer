@@ -66,7 +66,7 @@ model.to(device)
 
 See the full script [torchvision_qat.py](./torchvision_qat.py) for all boilerplate (argument parsing, DDP setup, logging, etc.).
 
-> **_NOTE:_** The example above uses [mto.save](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/6_save_load.html#saving-modelopt-models) and [mto.restore](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/6_save_load.html#restoring-modelopt-models) for saving and restoring ModelOpt modified models. These functions handle the model weights as well as the quantizer states. Please see [saving & restoring](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/6_save_load.html) to learn more.
+> **_NOTE:_** The example above uses [mto.save](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_save_load.html#saving-modelopt-models) and [mto.restore](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_save_load.html#restoring-modelopt-models) for saving and restoring ModelOpt modified models. These functions handle the model weights as well as the quantizer states. Please see [saving & restoring](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_save_load.html) to learn more.
 
 #### End-to-end QAT Example
 

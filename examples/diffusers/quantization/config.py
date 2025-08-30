@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import torch.nn as nn
 from calib.plugin_calib import PercentileCalibrator
 
 FP8_DEFAULT_CONFIG = {
@@ -112,10 +113,43 @@ def set_quant_config_attr(quant_config, trt_high_precision_dtype, quant_algo, **
             p["trt_high_precision_dtype"] = trt_high_precision_dtype
 
 
-def reset_set_int8_config(quant_config, percentile, n_steps, collect_method):
-    for key in quant_config["quant_cfg"]:
-        if "weight" not in key:
-            quant_config["quant_cfg"][key] = {
+def reset_set_int8_config(quant_config, percentile, n_steps, collect_method, backbone):
+    """
+    Configure INT8 quantization with different settings for Conv2d and Linear layers.
+
+    Args:
+        quant_config: The quantization configuration dictionary
+        percentile: Percentile value for calibration
+        n_steps: Number of calibration steps
+        collect_method: Method for collecting calibration statistics
+        backbone: The model backbone to analyze layer types
+    """
+
+    # Build a mapping of layer names to their types
+    layer_type_map = {}
+    for name, module in backbone.named_modules():
+        if isinstance(module, (nn.Linear, nn.Conv2d)):
+            layer_type_map[name] = type(module)
+
+    quant_config["quant_cfg"] = {}
+    for layer_name, layer_type in layer_type_map.items():
+        wq_name = f"*{layer_name}*weight_quantizer*"
+        aq_name = f"*{layer_name}*input_quantizer*"
+        if layer_type is nn.Linear:
+            quant_config["quant_cfg"][wq_name] = {
+                "num_bits": 8,
+                "axis": 0,
+            }
+            quant_config["quant_cfg"][aq_name] = {
+                "num_bits": 8,
+                "axis": -1,
+            }
+        else:
+            quant_config["quant_cfg"][wq_name] = {
+                "num_bits": 8,
+                "axis": 0,
+            }
+            quant_config["quant_cfg"][aq_name] = {
                 "num_bits": 8,
                 "axis": None,
                 "calibrator": (
