@@ -306,11 +306,20 @@ def _make_batchnorm_model(bn_node, extra_value_infos=None):
         _make_bn_initializer("var", [3], 1.0),
     ]
 
+    graph_outputs = []
+    for output_name, shape in [
+        ("output", [1, 3, 224, 224]),
+        ("running_mean", [3]),
+        ("running_var", [3]),
+    ]:
+        if output_name in bn_node.output:
+            graph_outputs.append(make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, shape))
+
     graph_def = make_graph(
         [bn_node],
         "test_graph",
         [make_tensor_value_info("input", onnx.TensorProto.FLOAT, [1, 3, 224, 224])],
-        [make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 3, 224, 224])],
+        graph_outputs,
         initializer=initializers,
         value_info=extra_value_infos or [],
     )
@@ -350,11 +359,12 @@ def test_remove_node_extra_training_outputs():
             "running_var",
             "saved_mean",
             "saved_inv_std",
-        ],  # Extra training outputs
+        ],
         name="bn1",
         training_mode=1,
     )
 
+    # Extra training outputs are attached to the graph's value_info
     value_infos = [
         make_tensor_value_info("saved_mean", onnx.TensorProto.FLOAT, [3]),
         make_tensor_value_info("saved_inv_std", onnx.TensorProto.FLOAT, [3]),
@@ -363,10 +373,13 @@ def test_remove_node_extra_training_outputs():
     model = _make_batchnorm_model(bn_node, extra_value_infos=value_infos)
     result_model = remove_node_training_mode(model, "BatchNormalization")
 
-    # Verify only first output remains
+    # Verify only the non-training outputs remain
     bn_node_result = result_model.graph.node[0]
-    assert len(bn_node_result.output) == 1
+    print(bn_node_result.output)
+    assert len(bn_node_result.output) == 3
     assert bn_node_result.output[0] == "output"
+    assert bn_node_result.output[2] == "running_var"
+    assert bn_node_result.output[1] == "running_mean"
 
     # Verify value_info entries for removed outputs are cleaned up
     value_info_names = [vi.name for vi in result_model.graph.value_info]

@@ -755,6 +755,8 @@ def onnx_type_str_to_enum(dtype: str) -> int:
 def remove_node_training_mode(onnx_model: onnx.ModelProto, node_op_type: str) -> onnx.ModelProto:
     """Remove `training_mode` attribute and extra training outputs from nodes of a given op type.
 
+    This also removes the unused outputs from the training_mode nodes.
+
     Args:
         onnx_model: The onnx model.
         node_op_type: The node type to remove training_mode attribute from.
@@ -763,33 +765,38 @@ def remove_node_training_mode(onnx_model: onnx.ModelProto, node_op_type: str) ->
         The onnx model with the training_mode attribute removed.
     """
     removed_output_names = set()
+    all_inputs = {inp for n in onnx_model.graph.node for inp in n.input}
+    graph_outputs = {o.name for o in onnx_model.graph.output}
+    keep = all_inputs | graph_outputs
 
     for node in onnx_model.graph.node:
         if node.op_type != node_op_type:
             continue
 
+        is_training_mode = False
         # Drop the 'training_mode' attribute if present
         for idx, attr in enumerate(list(node.attribute)):
             if attr.name == "training_mode":
                 del node.attribute[idx]
+                if attr.i == 1:
+                    is_training_mode = True
                 break
 
-        # If node has extra training outputs, keep only the first
-        if len(node.output) > 1:
-            removed_output_names.update(node.output[1:])
-            node.output[:] = node.output[:1]
+        # If the node has extra outputs, remove them all including the training outputs
+        if is_training_mode:
+            to_remove = []
+            for name in node.output:
+                if name not in keep:
+                    removed_output_names.add(name)
+                    to_remove.append(name)
+
+            for name in to_remove:
+                node.output.remove(name)
 
     if removed_output_names:
         # Clean up corresponding value_info entries
         keep = [vi for vi in onnx_model.graph.value_info if vi.name not in removed_output_names]
         del onnx_model.graph.value_info[:]
         onnx_model.graph.value_info.extend(keep)
-
-        # Also clean up graph.output entries
-        keep_outputs = [
-            out for out in onnx_model.graph.output if out.name not in removed_output_names
-        ]
-        del onnx_model.graph.output[:]
-        onnx_model.graph.output.extend(keep_outputs)
 
     return onnx_model
