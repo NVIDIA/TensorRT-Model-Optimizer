@@ -98,7 +98,7 @@ def setup_parser_with_modelopt_args():
         type=str,
         help=(
             "Quantization format. If `--auto_quantize_bits` is specified, this argument specifies the "
-            "comma-seperated list of quantization quantization formats that will be searched by `auto_quantize`"
+            "comma-separated list of quantization quantization formats that will be searched by `auto_quantize`"
         ),
     )
     parser.add_argument(

@@ -278,7 +278,7 @@ try:
     quantize_op = torch.ops.tensorrt.quantize_op
     dynamic_block_quantize_op = torch.ops.tensorrt.dynamic_block_quantize_op
 except (AttributeError, RuntimeError) as e:
-    # torch.library is an experiemental feature, the function signatures may change overtime.
+    # torch.library is an experimental feature, the function signatures may change overtime.
     warnings.warn(
         "Unable to register operators with torch.library. Exporting quantized models with"
         f" torch.export will not be supported.\n{e}"
@@ -620,8 +620,8 @@ class TensorQuantFunction(Function):
     ):
         """Forward method.
 
-        Follow tensorflow convention, max value is passed in and used to decide scale, instead of inputing scale
-        directly. Though inputing scale directly may be more natural to use.
+        Follow tensorflow convention, max value is passed in and used to decide scale, instead of inputting scale
+        directly. Though inputting scale directly may be more natural to use.
 
         Args:
             ctx: A Context object to store tensors for backward.

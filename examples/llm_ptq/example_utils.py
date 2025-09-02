@@ -231,7 +231,7 @@ def get_model(
 
                 print(
                     "Model does not fit to the GPU mem. "
-                    f"We apply the following memmory limit for calibration: \n{max_memory}\n"
+                    f"We apply the following memory limit for calibration: \n{max_memory}\n"
                     "If you hit GPU OOM issue, please adjust `gpu_mem_percentage` or "
                     "reduce the calibration `batch_size` manually."
                 )

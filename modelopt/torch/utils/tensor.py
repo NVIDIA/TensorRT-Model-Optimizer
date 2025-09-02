@@ -66,7 +66,7 @@ def to_empty_if_meta_device(module: torch.nn.Module, *, device: torch.device, re
 
     Officially, torch suggests to_empty() for meta device materialization. Under the hood,
     torch.empty_like() is applied to all parameters or buffers (see _apply). This may
-    accidently overwrite buffers with precomputed values during construction. Given the
+    accidentally overwrite buffers with precomputed values during construction. Given the
     goal is to only materialize those tensors on meta device, this function checks the
     device first and only move the tensor to the destination if it is not on meta device.
 

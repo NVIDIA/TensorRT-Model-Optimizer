@@ -279,7 +279,7 @@ trtexec --onnx=/path/to/identity_neural_network.quant.onnx \
 
 ## Pre-Quantized Checkpoints
 
-- Ready-to-deploy checkpoints that can be exorted to ONNX format (if supported as per the [Support Matrix](#onnx-export-supported-llm-models)) \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4)\]
+- Ready-to-deploy checkpoints that can be exported to ONNX format (if supported as per the [Support Matrix](#onnx-export-supported-llm-models)) \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4)\]
 
 ## Resources
 

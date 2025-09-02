@@ -283,7 +283,7 @@ class DataCollatorForSupervisedDataset:
         return {
             "input_ids": input_ids,
             "labels": labels,
-            "attention_mask": input_ids.ne(self.tokenizer.pad_token_id),  # type: ignore[attr-defined]
+            "attention_mask": input_ids.ne(self.tokenizer.pad_token_id),
         }
 
 

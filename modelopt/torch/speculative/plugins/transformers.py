@@ -436,7 +436,7 @@ class HFEagleModel(EagleModel):
         for param in self.lm_head.parameters():
             param.requires_grad = False
 
-        # EAGLE-3 auxiluary hidden_states
+        # EAGLE-3 auxiliary hidden_states
         if self.eagle_config.use_aux_hidden_state:
             self._aux_hidden_states = []
             for layer_idx, layer in enumerate(self.model.layers):

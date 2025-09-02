@@ -25,13 +25,11 @@ from modelopt.torch._deploy._runtime.tensorrt.layerwise_profiling import (
     ("layerwise_result", "onnx_node_names", "expected_output"),
     [
         (
-            # fmt: off
             {
                 "Slice_39": 0.01,
                 "PWN(Clip_589 + (Unnamed Layer* 16) [Shuffle], PWN(PWN(PWN(Add_586 + (Unnamed Layer* 11) [Shuffle] + \
 Add_43, Clip_46), Mul_47), Div_49))": 0.02,
             },
-            # fmt: on
             ["Slice_39", "Conv_41", "Clip_589", "Add_586", "Add_43", "Clip_46", "Mul_47", "Div_49"],
             {"Slice_39": 0.01, "Clip_589 + Add_586 + Add_43 + Clip_46 + Mul_47 + Div_49": 0.02},
         ),
@@ -46,12 +44,10 @@ Add_43, Clip_46), Mul_47), Div_49))": 0.02,
             {"Reshape_625 + Transpose_626": 0.01},
         ),
         (
-            # fmt: off
             {
                 "Conv_41 + PWN(Clip_589 + (Unnamed Layer* 16) [Shuffle], PWN(PWN(PWN(Add_586 + (Unnamed Layer* 11) \
 [Shuffle] + Add_43, PWN(Clip_46)), Mul_47), Div_49))": 0.01
             },
-            # fmt: on
             ["Conv_41", "Clip_589", "Add_586", "Add_43", "Clip_46", "Mul_47", "Div_49"],
             {"Conv_41 + Clip_589 + Add_586 + Add_43 + Clip_46 + Mul_47 + Div_49": 0.01},
         ),
@@ -117,10 +113,8 @@ Add_43, Clip_46), Mul_47), Div_49))": 0.02,
         ),
         (
             {
-                # fmt: off
                 "PWN(Clip_589 + (Unnamed Layer* 16) [Shuffle], PWN(PWN(PWN(Add_586 + (Unnamed Layer* 11) [Shuffle] + \
 Add_43, Clip_46), Mul_47), Div_49))": 0.02,
-                # fmt: on
                 "3-layer MLP: Conv_68 + Relu_69 -> Conv_72": 0.01,
                 "{ForeignNode[Reshape_8 + Transpose_9...(Unnamed Layer* 1096) [Shuffle]]}": 0.02,
                 "Concat_636 copy": 0.01,
@@ -128,10 +122,8 @@ Add_43, Clip_46), Mul_47), Div_49))": 0.02,
             },
             [],
             {
-                # fmt: off
                 "Clip_589 + (Unnamed Layer* 16) [Shuffle] + Add_586 + (Unnamed Layer* 11) [Shuffle] + Add_43 + \
 Clip_46 + Mul_47 + Div_49": 0.02,
-                # fmt: on
                 "Conv_68 + Relu_69 + Conv_72": 0.01,
                 "{ForeignNode[Reshape_8 + Transpose_9...(Unnamed Layer* 1096) [Shuffle]]}": 0.02,
                 "Concat_636 copy": 0.01,
@@ -156,19 +148,15 @@ def test_map_trt_layers_to_onnx(layerwise_result, onnx_node_names, expected_outp
         (
             {
                 "Slice_39": 0.01,
-                # fmt: off
                 "Reformatting CopyNode for Input Tensor 0 to Conv_41 + PWN(Clip_589 + (Unnamed Layer* 16) [Shuffle], \
 PWN(PWN(PWN(Add_586 + (Unnamed Layer* 11) [Shuffle] + Add_43, PWN(Clip_46)), Mul_47), Div_49))": 0.01,
                 "Conv_41 + PWN(Clip_589 + (Unnamed Layer* 16) [Shuffle], PWN(PWN(PWN(Add_586 + (Unnamed Layer* 11) \
 [Shuffle] + Add_43, PWN(Clip_46)), Mul_47), Div_49))": 0.02,
-                # fmt: on
             },
             {
                 "Slice_39": 0.01,
-                # fmt: off
                 "Conv_41 + PWN(Clip_589 + (Unnamed Layer* 16) [Shuffle], PWN(PWN(PWN(Add_586 + (Unnamed Layer* 11) \
 [Shuffle] + Add_43, PWN(Clip_46)), Mul_47), Div_49))": 0.03,
-                # fmt: on
             },
         ),
         (

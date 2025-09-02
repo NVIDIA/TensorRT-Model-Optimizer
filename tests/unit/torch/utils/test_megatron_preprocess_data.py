@@ -122,8 +122,7 @@ def test_megatron_preprocess_data_with_custom_parameters(tmp_path):
     ]
 
     with open(input_jsonl, "w", encoding="utf-8") as f:
-        for item in test_data:
-            f.write(json.dumps(item) + "\n")
+        f.writelines(json.dumps(item) + "\n" for item in test_data)
 
     output_prefix = tmp_path / "custom_test_output"
 

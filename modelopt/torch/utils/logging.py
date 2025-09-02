@@ -68,7 +68,7 @@ def _disable_tqdm():
             if len(args) >= index_disable:
                 # if arg "disable" is passed as a positional arg,
                 # overwrite pos args with disable = False
-                args = args[: index_disable - 1] + (True,) + args[index_disable:]
+                args = (*args[: index_disable - 1], True, *args[index_disable:])
             else:
                 kwargs["disable"] = True
 

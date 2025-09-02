@@ -218,7 +218,7 @@ def load_deepseek_model(model_config: str, model_path: str, batch_size: int):
     with torch.device("cuda"):
         model = deekseep_model.Transformer(model_args)
 
-    # monkey path the model defition for qunatization
+    # monkey path the model definition for quantization
     monkey_patch_deepseek_model()
 
     # load model
@@ -328,7 +328,7 @@ def save_amax_and_quant_config(model, output_path: str, enable_fp8_kvcache: bool
 
         if exclude_modules:
             quant_config["quantization"]["exclude_modules"] = sorted(exclude_modules)
-            # add the last layer to the exlcude module as the mtp is not loaded in the quantized model
+            # add the last layer to the exclude module as the mtp is not loaded in the quantized model
             quant_config["quantization"]["exclude_modules"].append(f"layers.{len(model.layers)}*")
         if quantized_layers:
             quant_config["quantization"]["quantized_layers"] = quantized_layers

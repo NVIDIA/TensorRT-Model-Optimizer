@@ -312,7 +312,7 @@ def smoothquant(model: nn.Module, forward_loop: ForwardLoop | None = None, alpha
     See :class:`SmoothQuantCalibConfig <modelopt.torch.quantization.config.SmoothQuantCalibConfig>` for
     details on the remaining arguments.
     """
-    # distributed synchornization
+    # distributed synchronization
     # max_calibrate performs amax sync for data parallel
 
     # Column parallel:

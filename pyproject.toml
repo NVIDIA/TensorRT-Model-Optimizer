@@ -49,7 +49,7 @@ extend-ignore = [
     "D105", "D417",
     "N812",
     "PLR0402", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLR0911",
-    "PT011", "PT018",
+    "PT011", "PT018", "PT028", "PT030",
     "RUF002", "RUF012",
     "SIM102", "SIM108", "SIM115",
     "UP032", "UP038",
@@ -59,7 +59,6 @@ extend-ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]
 "examples/*" = ["D"]
-"internal/*" = ["D"]
 "tests/*" = ["B017", "D", "E402", "PT012"]
 "*/_[a-zA-Z]*" = ["D"]           # Private packages (_abc/*.py) or modules (_xyz.py)
 "*.ipynb" = ["D", "E501"]        # Ignore missing docstrings or line length for Jupyter notebooks
@@ -104,7 +103,7 @@ warn_return_any = false
 
 
 [[tool.mypy.overrides]]
-module = ["internal.*", "tests.*"]
+module = ["tests.*"]
 ignore_errors = true
 
 [[tool.mypy.overrides]]
@@ -153,7 +152,7 @@ exclude_lines = [
 
 
 [tool.bandit]
-exclude_dirs = ["examples/", "internal/", "tests/"]
+exclude_dirs = ["examples/", "tests/"]
 # Do not change `skips`. It should be consistent with NVIDIA's Wheel-CI-CD bandit.yml config.
 # Use of `# nosec BXXX` requires special approval
 skips = [

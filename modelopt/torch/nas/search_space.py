@@ -104,7 +104,7 @@ class SearchSpace(DynamicSpace):
 
                 .. note::
 
-                    Later matches take precedence over earlier ones when a dict with wilcards is
+                    Later matches take precedence over earlier ones when a dict with wildcards is
                     provided.
 
         Returns:
@@ -182,7 +182,7 @@ class SearchSpace(DynamicSpace):
         for name, hp in self.named_hparams():
             if not any(name.endswith(s) for s in skipped_hparams):
                 choices_to_print = (
-                    hp.choices[:4] + ["..."] + hp.choices[-4:]
+                    [*hp.choices[:4], "...", *hp.choices[-4:]]
                     if len(hp.choices) > 8
                     else hp.choices
                 )

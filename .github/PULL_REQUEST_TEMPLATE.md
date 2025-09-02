@@ -14,7 +14,6 @@
 ## Testing
 <!-- Mention how have you tested your change if applicable. -->
 
-
 ## Before your PR is "*Ready for review*"
 <!-- If you haven't finished some of the above items you can still open `Draft` PR. -->
 
@@ -23,7 +22,6 @@
 - **Did you write any new necessary tests?**: Yes/No
 - **Did you add or update any necessary documentation?**: Yes/No
 - **Did you update [Changelog](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/CHANGELOG.rst)?**: Yes/No <!--- Only for new features, API changes, critical bug fixes or bw breaking changes. -->
-
 
 ## Additional Information
 <!-- E.g. related issue. -->

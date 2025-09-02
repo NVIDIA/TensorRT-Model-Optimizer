@@ -99,7 +99,7 @@ class TRTLLM(TemplateAPI):
         output_texts: list[str] = self.llm.generate_text(
             prompts=messages,
             max_new_tokens=max_new_tokens,
-            **llm_kwargs,  # type: ignore[arg-type]
+            **llm_kwargs,
         )
 
         # Manually filter out keyword if not supported by llm.

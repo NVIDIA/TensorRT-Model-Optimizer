@@ -123,7 +123,7 @@ Visit our [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer
 Model Optimizer is now open source! We welcome any feedback, feature requests and PRs.
 Please read our [Contributing](./CONTRIBUTING.md) guidelines for details on how to contribute to this project.
 
-### Top Contributers
+### Top Contributors
 
 [![Contributors](https://contrib.rocks/image?repo=NVIDIA/TensorRT-Model-Optimizer)](https://github.com/NVIDIA/TensorRT-Model-Optimizer/graphs/contributors)
 

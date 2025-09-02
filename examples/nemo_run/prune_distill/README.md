@@ -8,7 +8,7 @@ This directory contains the NeMo 2.0 Pruning + Knowledge Distillation flow imple
 
 ### Prerequisites
 
-# Install NeMo 2.0 and related dependencies
+#### Install NeMo 2.0 and related dependencies
 
 To run the example, launch a [NeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo) with version 25.04.01 or higher using Docker/Slurm. Mount your cloned `modelopt` repository to the container by adding this mount flag to your Docker/Slurm command: `-v <modelopt-path>:/workspace/modelopt -v <modelopt-path>/modelopt:/usr/local/lib/python3.12/dist-packages/modelopt`.
 

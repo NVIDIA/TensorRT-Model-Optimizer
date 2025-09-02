@@ -91,7 +91,7 @@ MODEL_NAME=$(basename $HF_MODEL_DIR | sed 's/[^0-9a-zA-Z\-]/_/g' | tr 'A-Z' 'a-z
 if [[ "$MODEL_NAME" == *"vila"* ]] && [[ -z "$ENGINE_DIR" ]]; then
     # Install required dependency for VILA
     pip install -r requirements-vila.txt
-    # Clone oringinal VILA repo
+    # Clone original VILA repo
     if [ ! -d "$(dirname "$HF_MODEL_DIR")/VILA" ]; then
         echo "VILA repository is needed until it is added to HF model zoo. Cloning the repository parallel to $HF_MODEL_DIR..."
         git clone https://github.com/Efficient-Large-Model/VILA.git "$(dirname "$HF_MODEL_DIR")/VILA" && \

@@ -74,7 +74,7 @@ def run_llm_autodeploy_command(
             cmd_parts, "llm_autodeploy", stdout=None, stderr=None
         )
 
-        # Wait for the server to start. We might need to buil
+        # Wait for the server to start. We might need to build
         time.sleep(100)
 
         # Test the deployment

@@ -141,7 +141,7 @@ def compress_restore(
     Note:
         When restoring Megatron distributed checkpoint, real_quantizer_state and q_tensor_state
         have been removed from metadata and stored as a part of QuantModule.extra_state.
-        Restoring happends in set_extra_state when load_state_dict is called. We also skip real
+        Restoring happens in set_extra_state when load_state_dict is called. We also skip real
         quantize weight (skip_real_quantize_weight). All these steps are
         delayed. For details, see plugins.megatron.quant_module_set_extra_state.
     """

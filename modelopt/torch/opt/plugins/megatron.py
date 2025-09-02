@@ -35,7 +35,7 @@ def _modelopt_get_extra_state(self):
 
     If there is no extra_state, None is returned. Otherwise, the dictionary
     is serialized (via pickle) into a byte tensor following
-    TransformerEngine's apporach. In this case, the extra_state,
+    TransformerEngine's approach. In this case, the extra_state,
     """
     try:
         extra_state = super().get_extra_state()  # type: ignore[misc]
@@ -50,7 +50,7 @@ def _modelopt_get_extra_state(self):
     for callback in self.modelopt_get_extra_state_callbacks:
         extra_state.update(callback(self))
 
-    # If no extra_state involed, return None instead of an empty dict.
+    # If no extra_state involved, return None instead of an empty dict.
     if len(extra_state) == 0:
         return None
 
@@ -76,7 +76,7 @@ def _modelopt_set_extra_state(self, state: Any):
         # Default format: byte tensor with pickled data
         #
         # TODO: possible deserialization improvement
-        # https://github.com/NVIDIA/TensorRT-LLM/blob/main/tensorrt_llm/executor/serialization.py
+        # https://github.com/NVIDIA/TensorRT-LLM/commits/main/tensorrt_llm/serialization.py
         extra_state = pickle.loads(state.detach().cpu().numpy().tobytes())  # nosec
     else:
         raise RuntimeError("Unsupported extra_state format.")

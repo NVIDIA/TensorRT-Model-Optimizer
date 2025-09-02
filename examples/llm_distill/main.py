@@ -168,14 +168,14 @@ def train():
         logger.info("Evaluating...")
         eval_results = trainer.evaluate()
         logger.info(eval_results)
-        logger.info("Evalutation complete.")
+        logger.info("Evaluation complete.")
 
     # Save checkpoint
     logger.info("Saving checkpoint...")
     trainer.save_state()
     kwargs = {"export_student": True} if not model_args.single_model else {}
     trainer.save_model(trainer.args.output_dir, **kwargs)
-    logger.info("Checkpoing saved.")
+    logger.info("Checkpoint saved.")
 
 
 if __name__ == "__main__":

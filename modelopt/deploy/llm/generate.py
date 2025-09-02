@@ -38,7 +38,7 @@ except ImportError:
 def _sanitize_temperature_and_top_p(temperature, top_p):
     assert temperature >= 0.0, "Temperature must be greater than 0.0."
 
-    # TRT LLM acccepts temperature values only greater than 0.0
+    # TRT LLM accepts temperature values only greater than 0.0
     temperature = max(temperature, 0.001)
 
     kwargs = {"temperature": temperature}

@@ -1171,7 +1171,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         else:
             hidden_size = None
         hidden_size = dist.broadcast(hidden_size, src=0)
-        self._register_hparam("hidden_size", hidden_size)  # type: ignore[arg-type]
+        self._register_hparam("hidden_size", hidden_size)
 
         for i in range(len(self.decoder.layers)):
             self.decoder.layers[i] = DMRegistry.convert(self.decoder.layers[i])
@@ -1215,7 +1215,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
                 self.hook_handles.append(
                     layer.norm.register_forward_hook(self._emb_layernorm_forward_hook)
                 )
-        hidden_size.register_importance(self._estimate_hidden_size_importance)  # type: ignore[union-attr]
+        hidden_size.register_importance(self._estimate_hidden_size_importance)
 
     def _emb_layernorm_forward_hook(self, module, input, output) -> None:
         """Hook to collect activations for importance estimation.
@@ -1381,7 +1381,7 @@ def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[i
     layers_remaining_per_pp = [i.item() for i in layers_remaining_per_pp]
     new_num_layers = sum(layers_remaining_per_pp)
 
-    # reindex kept layers, exlude sharded state dict for dropped layers
+    # reindex kept layers, exclude sharded state dict for dropped layers
     layer_offset = sum(layers_remaining_per_pp[: get_pipeline_model_parallel_rank()])
     layer_number = layer_offset + 1
     dropped_layers = []

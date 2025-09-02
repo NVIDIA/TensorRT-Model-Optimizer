@@ -304,7 +304,7 @@ def quantize(
         simplify:
             Simplify the given model before quantization.
         calibrate_per_node:
-            Calibrate the model node by node instead of calibrating the entire model. This allowes calibration with
+            Calibrate the model node by node instead of calibrating the entire model. This allows calibration with
             a lower system memory with the cost of longer calibration time.
         input_shapes_profile:
             This is a sequence of shapes-profile for each EP in calibration_eps. Some EPs like NvTensorRtRtx use these

@@ -934,7 +934,7 @@ class QuantizerAttributeConfig(ModeloptBaseConfig):
         performing backward pass and hence consumes less memory.
 
         If set to False, we will use STE with zeroed outlier gradients. This setting could
-        yeild better QAT accuracy depending on the quantization format. However, this setting
+        yield better QAT accuracy depending on the quantization format. However, this setting
         requires saving of the input tensor for computing gradients which uses more memory.
 
         For dynamic quantization formats like MXFP4, STE with zeroed outlier gradients

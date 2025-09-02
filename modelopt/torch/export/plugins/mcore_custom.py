@@ -430,7 +430,7 @@ def get_safetensor(
                 pretrained_model_path, key, parallel_config
             )
             if weight_scale_inv is None:
-                raise ValueError(f"Fail to dequantize [{key}]! weight_sacle_inv not found!")
+                raise ValueError(f"Fail to dequantize [{key}]! weight_scale_inv not found!")
             else:
                 # [TODO]: may need padding here
                 out_dim, in_dim = tensor.shape

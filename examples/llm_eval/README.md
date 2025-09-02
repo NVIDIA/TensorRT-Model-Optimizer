@@ -51,7 +51,7 @@ python lm_eval_hf.py --model hf \
     --batch_size 4
 ```
 
-> **_NOTE:_** `MXFP8_DEFAULT_CFG` is one the [OCP Microscaling Formats (MX Formats)](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) family which defines a set of block-wise dynamic quantization formats. The specifications can be found in the [offical documentation](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf). Currently we support all MX formats for simulated quantization, including `MXFP8 (E5M2, E4M3), MXFP6 (E3M2, E2M3), MXFP4, MXINT8`. However, only `MXFP8 (E4M3)` is in our example configurations, users can create their own configurations for other MX formats by simply modifying the `num_bits` field in the `MXFP8_DEFAULT_CFG`.
+> **_NOTE:_** `MXFP8_DEFAULT_CFG` is one the [OCP Microscaling Formats (MX Formats)](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf) family which defines a set of block-wise dynamic quantization formats. The specifications can be found in the [official documentation](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf). Currently we support all MX formats for simulated quantization, including `MXFP8 (E5M2, E4M3), MXFP6 (E3M2, E2M3), MXFP4, MXINT8`. However, only `MXFP8 (E4M3)` is in our example configurations, users can create their own configurations for other MX formats by simply modifying the `num_bits` field in the `MXFP8_DEFAULT_CFG`.
 
 > **_NOTE:_** ModelOpt's triton kernels give faster NVFP4 simulated quantization. For details, please see the [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/_installation_for_Linux.html#accelerated-quantization-with-triton-kernels).
 
@@ -191,7 +191,7 @@ Similarly, we support running simple evals against a local running OpenAI API co
 bash run_simple_eval.sh <custom defined model name> <comma separated eval names> <max output tokens> <local model server port>
 ```
 
-# Customize quantization method for evaluation
+## Customize quantization method for evaluation
 
 An example of customized quantization config is shown in `quantization_utils.py`. It allows users to test accuracy of a custom method without the need of modifying the whole deployment framework, e.g., TensorRT-LLM, vLLM, SGLang, etc. Users can disable quantization of specific layers to debug the cause of accuracy drop, or explore a promising new quantization method.
 
