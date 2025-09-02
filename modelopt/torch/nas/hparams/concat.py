@@ -121,7 +121,7 @@ class ConcatTracedHp(TracedHp):
             active += hp.active
         return active
 
-    @active.setter
+    @active.setter  # type: ignore[override]
     def active(self, val: int | None):
         """Set the active value with a sanity check for choices and dynamic hparams."""
         val = self.original if val is None else val
@@ -173,7 +173,7 @@ class ConcatTracedHp(TracedHp):
         # Let's split imp_total
         imps_split = torch.tensor_split(imp_total, self._hp_start_idx[1:-1])
 
-        # Added splitted imps
+        # Added split imps
         imps = [imp + imp_cat.to(imp) for imp, imp_cat in zip(imps_split, imps_cat)]  # type: ignore[union-attr]
 
         # We need to aggregate between split importances when the come from the same hparam!
@@ -214,7 +214,7 @@ class ConcatTracedHp(TracedHp):
             return super()._enforce_order(order)
 
         # we have to group the order by the hparams to enforce order on each group separately with
-        # the correct offset substracted
+        # the correct offset subtracted
         orders_split = self._split_order(order)
 
         # ensure that orders are consistent if they come from the same hparam
@@ -248,7 +248,7 @@ class ConcatTracedHp(TracedHp):
 
         # construct input hparams
         # NOTE: input syms are hidden and corresponding registered symbol should be last dependency!
-        # --> if that's not the case we cannnot retrieve the hps needed.
+        # --> if that's not the case we cannot retrieve the hps needed.
         assert all(isinstance(s, ConcatSymbol.Input) for s in sym.input_syms)
         assert all(s._dependencies[-1]._parent == s for s in sym.input_syms)
         self._inputs = [get_hp(s._dependencies[-1]) for s in sym.input_syms]

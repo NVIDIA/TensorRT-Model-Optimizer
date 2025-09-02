@@ -75,7 +75,7 @@ class NVFP4QTensor(BaseQuantizedTensor):
         assert block_size != 0, "Block size is zero. Cannot return per_block amax for given input."
 
         assert input.shape[-1] % block_size == 0, (
-            "Weight shape is not divisible for block size for block quantiation."
+            "Weight shape is not divisible for block size for block quantization."
         )
 
         # Get per block amax
@@ -235,7 +235,7 @@ class NVFP4QTensor(BaseQuantizedTensor):
             dtype = self.metadata["dtype"]
 
         def _unpack_tensor(input: torch.Tensor):
-            # Initalize storage for unpacked tensor
+            # Initialize storage for unpacked tensor
             unpacked_shape = list(input.shape)
             unpacked_shape[-1] = unpacked_shape[-1] * 2
             unpacked = torch.empty(unpacked_shape, dtype=dtype, device=input.device)

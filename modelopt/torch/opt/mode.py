@@ -150,7 +150,7 @@ class ModeDescriptor(ABC):
                     return None instead
                 2.  The config dict that can be used to call the restore entrypoint to instantly *restore*
                     the modified model.
-                3.  The metatdata that can be used to call the restore entrypoint to instantly
+                3.  The metadata that can be used to call the restore entrypoint to instantly
                     *restore* the modified model from the provided initial state, see below's
                     description for the restore entrypoint to get more info about ``metadata``.
 

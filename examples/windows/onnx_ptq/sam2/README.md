@@ -35,8 +35,8 @@ Some useful parameters:
 
 | **Argument** | **Description** |
 |---------------------------|--------------------------------------------------------------------------------------------------------------|
-| `--onnx_path     ` | Input .onnx file path |
-| `--output_path ` | Output .onnx file path. |
+| `--onnx_path` | Input .onnx file path |
+| `--output_path` | Output .onnx file path. |
 | `--calib_method` | Calibration method for quantization (`max` or `entropy`). Default is `max`. |
 | `--quant_mode` | Quantization mode to be used (`int8` or `fp8`). Default is `int8`. |
 | `--calib_size` | Number of input calibration samples. Default is `32`. |

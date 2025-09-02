@@ -61,7 +61,9 @@ def test_unified_hf_export_and_check_safetensors(
     :param expected_suffix: the directory suffix where the .safetensors is expected.
     """
     if expected_suffix.startswith("t5_tiny"):
-        tiny_model_dir = create_tiny_t5_dir(tmp_path, with_tokenizer=True, num_hidden_layers=1)
+        tiny_model_dir = create_tiny_t5_dir(
+            tmp_path, with_tokenizer=True, num_hidden_layers=1, use_cache=False
+        )
     else:
         tiny_model_dir = create_tiny_llama_dir(tmp_path, with_tokenizer=True, num_hidden_layers=1)
 

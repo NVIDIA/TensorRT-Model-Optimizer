@@ -349,7 +349,7 @@ class SymMap:
         """We check the registry whether the given module has been registered and return it.
 
         If there is no match, we check for approximate matches. Specifically, we check whether a
-        module inherits from a registered module _without_ overwritting the forward method. If this
+        module inherits from a registered module _without_ overwriting the forward method. If this
         is the case we return the approximate match.
         """
         # check exact match first

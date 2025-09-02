@@ -66,21 +66,21 @@ def get_input_info(dummy_dict, info: str | None = None, batch_size: int = 1):
             if isinstance(value, dict):
                 collect_leaf_keys(value)
             else:
-                value = (value[0] * batch_size,) + value[1:]
+                value = (value[0] * batch_size, *value[1:])
                 if info == "profile_shapes":
-                    return_val.append((key, value))  # type: ignore[attr-defined]
+                    return_val.append((key, value))
                 elif info == "profile_shapes_dict":
                     return_val[key] = value  # type: ignore[index]
                 elif info == "dummy_input":
                     return_val[key] = torch.ones(value).half().cuda()  # type: ignore[index]
                 elif info == "input_names":
-                    return_val.append(key)  # type: ignore[attr-defined]
+                    return_val.append(key)
 
     collect_leaf_keys(dummy_dict)
     return return_val
 
 
-def complie2trt(cls, onnx_path: Path, engine_path: Path, batch_size: int = 1):
+def compile2trt(cls, onnx_path: Path, engine_path: Path, batch_size: int = 1):
     subdirs = [f for f in onnx_path.iterdir() if f.is_dir()]
     for subdir in subdirs:
         if subdir.name not in ONNX_CONFIG[cls]:
@@ -94,7 +94,7 @@ def complie2trt(cls, onnx_path: Path, engine_path: Path, batch_size: int = 1):
                 ONNX_CONFIG[cls][subdir.name]["dummy_input"], "profile_shapes", batch_size
             )
             for input_name, input_shape in profile_shapes:
-                min_input_shape = (2,) + input_shape[1:]
+                min_input_shape = (2, *input_shape[1:])
                 build_profile.add(input_name, min_input_shape, input_shape, input_shape)
             block_network = network_from_onnx_path(
                 str(model_path), flags=[trt.OnnxParserFlag.NATIVE_INSTANCENORM], strongly_typed=True
@@ -178,7 +178,7 @@ def export_onnx(backbone, onnx_path: Path):
                     opset_version=17,
                 )
             else:
-                print(f"{_onnx_file!s} alread exists!")
+                print(f"{_onnx_file!s} already exists!")
 
 
 def warm_up(backbone, batch_size: int = 1):
@@ -206,7 +206,7 @@ def compile(pipe, model_id: str, onnx_path: Path, engine_path: Path, batch_size:
 
     replace_new_forward(backbone)
     export_onnx(backbone, onnx_path)
-    complie2trt(backbone.__class__, onnx_path, engine_path, batch_size)
+    compile2trt(backbone.__class__, onnx_path, engine_path, batch_size)
     load_engines(backbone, engine_path, batch_size)
     free_memory(model_id, backbone)
     warm_up(backbone, batch_size)

@@ -152,7 +152,7 @@ def shuffle(seq: MutableSequence[Any]):
 
 @contextmanager
 def _deterministic_seed():
-    """Sets a deterministic seed whitin the context.
+    """Sets a deterministic seed within the context.
 
     Resets the random state to prior upon exit.
     """

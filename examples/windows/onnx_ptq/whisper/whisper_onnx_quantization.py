@@ -40,7 +40,7 @@ def get_ep_for_decoder_calib_data_preparation(calibration_eps: list[str]):
     elif "cpu" in calibration_eps:
         provider = "CPUExecutionProvider"
     else:
-        raise ValueError("unknonwn ep")
+        raise ValueError("unknown ep")
 
     return provider
 
@@ -202,7 +202,7 @@ def get_calib_data_for_decoder_with_past(
 
         assert decoder_outputs.past_key_values is not None, "missing past-KV values"
         assert len(decoder_outputs.past_key_values) == model.config.num_hidden_layers, (
-            "different amout of KV-data"
+            "different amount of KV-data"
         )
         assert len(decoder_outputs.past_key_values[0]) == 4, "different per-layer KV-data length"
 

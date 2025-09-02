@@ -26,8 +26,8 @@ def _quantize_model(model, quant_config, calib_dataloader=None):
 
     Example usage:
     from modelopt.torch.utils.dataset_utils import create_forward_loop
-    model = ...  # Initilaize the model
-    tokenizer = ...  # Initilaize the tokenizer
+    model = ...  # Initialize the model
+    tokenizer = ...  # Initialize the tokenizer
     quant_cfg = ...  # Setup quantization configuration
     forward_loop = create_forward_loop(model=model, dataset_name="cnn_dailymail", tokenizer=tokenizer)
     mtq.quantize(model, quant_cfg, forward_loop=forward_loop)

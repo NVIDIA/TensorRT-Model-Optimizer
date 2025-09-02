@@ -200,12 +200,12 @@ def megatron_preprocess_data(
                 total_sample_count += fc + 1
             partition_size = math.ceil(total_sample_count / partitions)
 
-        # create .jsonl parition files
+        # create .jsonl partition files
         for idx in range(partitions):
             in_ss_out_name = _get_file_name(input_path, output_prefix, idx)
             in_ss_out_names.append(in_ss_out_name)
 
-        # check to see if paritions were already created
+        # check to see if partitions were already created
         partitions_present = _check_files_exist(in_ss_out_names, "partition", partitions)
 
         if not partitions_present:
@@ -276,7 +276,7 @@ def megatron_preprocess_data(
         )
 
         for name in in_ss_out_names:
-            parition_output_prefix = name["output_prefix"]
-            full_partition_output_prefix = "{}_{}_{}".format(parition_output_prefix, key, level)
+            partition_output_prefix = name["output_prefix"]
+            full_partition_output_prefix = "{}_{}_{}".format(partition_output_prefix, key, level)
             builders[key].add_index(full_partition_output_prefix)
         builders[key].finalize(output_idx_files[key])

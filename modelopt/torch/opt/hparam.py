@@ -60,7 +60,7 @@ class Hparam:
         self._original = max(choices) if original is None else original
         self._choices = sorted(set(choices) | {self.original})
         self._active = self.original
-        self._is_configurable = True  # in case we want to manually overwritte configurability.
+        self._is_configurable = True  # in case we want to manually overwrite configurability.
         # Additional attributes for hacking megatron dynamic modules to simplify implementation.
         self._strict_len = True  # whether the importance must be of length equal to max choice
         self._importance_is_order = (

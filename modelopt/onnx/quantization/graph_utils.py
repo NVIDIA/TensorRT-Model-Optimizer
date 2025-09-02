@@ -1325,7 +1325,7 @@ def get_concat_eliminated_tensors(
     t3: {t1,t2,t3,t4},
     t4: {t1,t2,t3,t4},
     }
-    This format is convinient for calibrator to assign the same scaling factor.
+    This format is convenient for calibrator to assign the same scaling factor.
 
     Returns:
         {current tensor name: set of tensors that should share the same scaling factor}

@@ -341,7 +341,7 @@ class MLPConfig:
 class ExpertConfig:
     """The Expert config."""
 
-    # Aligning the naming convesion with TRT-LLM
+    # Aligning the naming conversion with TRT-LLM
     fc: LinearConfig = None  # stacked experts for concatenated w3 and w1
     proj: LinearConfig = None  # stacked experts for w2
 
@@ -569,7 +569,7 @@ class ModelConfig:
     num_medusa_heads: int = 0
     num_medusa_layers: int = 0
 
-    # To differentiate encoder and decoder of Encoder-Deocder model
+    # To differentiate encoder and decoder of Encoder-Decoder model
     enc_dec: str = ""
 
     # For decoder of Encoder-Decoder model that needs encoder information

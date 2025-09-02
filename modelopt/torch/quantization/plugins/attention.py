@@ -185,7 +185,7 @@ def register_attention_for_kv_quant(attention_cls: type) -> bool:
         # self.k_bmm_quantizer(key_states.transpose(-1, -2))
         # after transpose, the quantization will be per-token, i.e.,
         # self.k_bmm_quantizer(key_states.transpose(-1, -2).transpose(-1, -2)).transpose(-1, -2)
-        # removing the additional tranpose is doable but not trivial
+        # removing the additional transpose is doable but not trivial
         patch(bmm_nodes[0], quantizer_names=(None, "v_bmm_quantizer"))
         patch(bmm_nodes[1], quantizer_names=("q_bmm_quantizer", "k_bmm_quantizer"), transpose=True)
         print("Patching 2 BMM/Matmul operators with quantizers")

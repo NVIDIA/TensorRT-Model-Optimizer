@@ -6,12 +6,12 @@ Learn more in the [ModelOpt QAT guide](https://nvidia.github.io/TensorRT-Model-O
 
 > **_NOTE:_** This example uses a TorchVision ResNet-50 on an ImageNet-style dataset, but you can extend the same steps to any CNN and computer-vision dataset.
 
-### System Requirements
+## System Requirements
 
 - GPU: ≥1 CUDA-capable NVIDIA GPU
 - Memory & Performance: Varies by model, batch size, and image resolution
 
-### QAT Workflow
+## QAT Workflow
 
 1. Load and evaluate your full-precision (FP32/FP16) model on the target task.
 
@@ -23,7 +23,7 @@ model = mtq.quantize(model, mtq.INT8_DEFAULT_CFG, calibrate_fn)
 
 then re-evaluate to establish a quantized baseline.
 
-3. Fine-tune the quantized model with a small learning rate to recover accuracy.
+1. Fine-tune the quantized model with a small learning rate to recover accuracy.
 
 > **_NOTES:_**
 >
@@ -68,7 +68,7 @@ See the full script [torchvision_qat.py](./torchvision_qat.py) for all boilerpla
 
 > **_NOTE:_** The example above uses [mto.save](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_save_load.html#saving-modelopt-models) and [mto.restore](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_save_load.html#restoring-modelopt-models) for saving and restoring ModelOpt modified models. These functions handle the model weights as well as the quantizer states. Please see [saving & restoring](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_save_load.html) to learn more.
 
-#### End-to-end QAT Example
+### End-to-end QAT Example
 
 This folder contains an end-to-end runnable QAT pipeline for a ResNet50 model on an ImageNet-style dataset using the [torchvision_qat.py](./torchvision_qat.py) script.
 
@@ -128,7 +128,7 @@ You can then modify the `quant_cfg` in `torchvision_qat.py` accordingly.
 > - QAT can sometimes require more memory than full-precision fine-tuning due to the storage of quantization parameters and potentially different optimizer states.
 > - Like any other model training, the QAT model accuracy can be further improved by optimizing the training hyper-parameters such as learning rate, training duration, weight decay, and choice of optimizer and scheduler.
 
-#### Example Results
+## Example Results
 
 | Model Stage | Accuracy (Top-1) |
 |-----------------|------------------|
@@ -141,6 +141,6 @@ Your actual results will vary based on the dataset, specific hyperparameters, an
 - PTQ accuracy may be slightly lower than FP32 accuracy.
 - QAT should help recover some or all of the accuracy lost during PTQ, and potentially even exceed the FP32 baseline in some cases, or get very close to it.
 
-#### Deployment with TensorRT
+## Deployment with TensorRT
 
 The final model after QAT, saved using `mto.save()`, contains both the model weights and the quantization metadata. This model can be deployed to TensorRT for inference after ONNX export. The process is generally similar to [deploying a ONNX PTQ](../onnx_ptq/README.md#evaluate-the-quantized-onnx-model) model from ModelOpt.

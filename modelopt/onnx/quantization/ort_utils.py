@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Provides basic ORT inference utils, shoule be replaced by modelopt.torch.ort_client."""
+"""Provides basic ORT inference utils, should be replaced by modelopt.torch.ort_client."""
 
 import glob
 import os

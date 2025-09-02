@@ -196,7 +196,7 @@ class SparseGPTSearcher(BaseSparseSearcher):
             handle.remove()
 
     def after_search(self):
-        """Remove Hessian artifcats from network."""
+        """Remove Hessian artifacts from network."""
         super().after_search()
         for _, module in self._named_sparsifiable_modules():
             del module.hessian

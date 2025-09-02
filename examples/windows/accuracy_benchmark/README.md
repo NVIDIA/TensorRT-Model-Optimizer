@@ -6,7 +6,7 @@
   - [MMLU (Massive Multitask Language Understanding)](#mmlu-massive-multitask-language-understanding)
     - [Setup](#setup)
     - [Evaluation Methods](#evaluation-methods)
-- [API changes in ONNX Runtime GenAI v0.6](#api-changes-in-onnx-runtime-genai-v0.6)
+- [API changes in ONNX Runtime GenAI v0.6](#api-changes-in-onnx-runtime-genai-v06)
 - [Troubleshoot](#troubleshoot)
 
 ## Overview

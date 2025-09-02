@@ -185,7 +185,7 @@ def register_hf_attentions_on_the_fly(model):
         return
 
     attention_cls = set()
-    registerd_attn_module = False
+    registered_attn_module = False
     for name, module in model.named_modules():
         # Only register attention classes that are from Huggingface transformers
         if type(module).__name__.endswith("Attention"):
@@ -198,13 +198,13 @@ def register_hf_attentions_on_the_fly(model):
                 if _QuantAttention.is_compatible_attention(attention_type):
                     # Lets register the attention class for KV Cache quantization
                     register(attention_type, _QuantAttention)
-                    registerd_attn_module = True
+                    registered_attn_module = True
                     print(
                         f"Registered {attention_type} to {_QuantAttention.__name__} for KV Cache quantization"
                     )
                 elif _T5QuantAttention.is_compatible_attention(attention_type):
                     register(attention_type, _T5QuantAttention)
-                    registerd_attn_module = True
+                    registered_attn_module = True
                     print(
                         f"Registered {attention_type} to {_T5QuantAttention.__name__} for KV Cache quantization"
                     )
@@ -217,7 +217,7 @@ def register_hf_attentions_on_the_fly(model):
     # Check if the attention class has been registered
     # For T5Attention, we want to avoid registering T5LayerCrossAttention and T5LayerSelfAttention.
     # Hence we check if the attention class has been registered.
-    if registerd_attn_module or not attention_cls:
+    if registered_attn_module or not attention_cls:
         return
 
     # this is the case for models that do not use the new_attention_interface or transformers version < 4.48.0
@@ -565,7 +565,7 @@ class _QuantGptOssExperts(_QuantFunctionalMixin):
 
     Quantizes `gate_up_proj` and `down_proj` weights via dynamic attributes inside `quantize_weight()`.
     Activations into `gate_up_proj` are quantized by `gate_up_proj_input_quantizer`. For `down_proj`
-    activation quantiation, we intercept `torch.Tensor.__matmul__`/`torch.bmm` and quantize inputs
+    activation quantization, we intercept `torch.Tensor.__matmul__`/`torch.bmm` and quantize inputs
     on every second call (since the first call computes `gate_up_proj` outputs and second call
     computes `down_proj` outputs).
     """

@@ -63,6 +63,8 @@ Environment setup
     Both of these containers come with Model Optimizer pre-installed. NeMo container also comes with the HuggingFace and TensorRT-LLM
     dependencies. Make sure to update the Model Optimizer to the latest version if not already.
 
+    For ONNX PTQ, you can use the optimized docker image from [onnx_ptq Dockerfile](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/onnx_ptq/docker).
+
 .. tab:: Local environment (PIP / Conda)
 
     **Setting up a virtual environment**

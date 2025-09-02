@@ -240,7 +240,7 @@ class ConcatNodeProcessor(NodeProcessor):
             cat_dim = node.args[1]
         else:
             # torch.cat does not contain a signature --> we have to use the fake target that is
-            # retrievable from get_testin_overrides (it's a torch utility for exactly this purpose!)
+            # retrievable from get_testing_overrides (it's a torch utility for exactly this purpose!)
             cat_target_fake = get_testing_overrides()[node.target]
             cat_dim = inspect.signature(cat_target_fake).parameters["dim"].default
         assert isinstance(cat_dim, int), "Concat dim must be an integer."

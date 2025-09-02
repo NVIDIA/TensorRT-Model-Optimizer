@@ -4,7 +4,7 @@ Knowledge Distillation is a machine learning technique where a compact "student"
 
 Model Optimizer's Distillation is a set of wrappers and utilities to easily perform Knowledge Distillation among teacher and student models. Given a pretrained teacher model, Distillation has the potential to train a smaller student model faster and/or with higher accuracy than the student model could achieve on its own.
 
-This section focuses on demonstrating how to apply Model Optimizer to perform knowladge distillation with ease.
+This section focuses on demonstrating how to apply Model Optimizer to perform knowledge distillation with ease.
 
 <div align="center">
 
@@ -155,7 +155,7 @@ Keep in mind the training loss of the distillation run is not directly comparabl
 > [!NOTE]
 > We can fit the following in memory using [FSDP](https://huggingface.co/docs/accelerate/en/usage_guides/fsdp) enabled on 8x RTX 6000 (total ~400GB VRAM)
 
-#### Train teacher
+### Train teacher
 
 ```bash
 accelerate launch --multi_gpu --mixed_precision bf16  main.py \
@@ -172,7 +172,7 @@ accelerate launch --multi_gpu --mixed_precision bf16  main.py \
     --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer
 ```
 
-#### Distill teacher into student
+### Distill teacher into student
 
 ```bash
 accelerate launch --multi_gpu --mixed_precision bf16  main.py \

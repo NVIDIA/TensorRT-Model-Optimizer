@@ -501,7 +501,7 @@ def build_qkv(
                 "Duplicating KV heads for KV with non-scalar scales and/or biases is not supported"
             )
 
-        # duplicte kv heads as needed
+        # duplicate kv heads as needed
         k_weight = dup_kv_weight(k_weight, head_size, num_kv_heads, tp_size)
         v_weight = dup_kv_weight(v_weight, head_size, num_kv_heads, tp_size)
         if k_weight_scaling_factor is not None and k_weight_scaling_factor.numel() > 1:
@@ -691,7 +691,7 @@ def _is_qkv(name) -> bool:
 
 
 def _get_hidden_act(act_func) -> str:
-    """Returns the name of the hidden activation functon based on ACT2FN."""
+    """Returns the name of the hidden activation function based on ACT2FN."""
     if isinstance(act_func, str):
         return act_func
 
@@ -998,7 +998,7 @@ def get_expert_linear_names(module: nn.Module) -> list[str]:
         # GPT-OSS MoE modules use gate_up_proj and down_proj
         return ["gate_up_proj", "down_proj"]
     else:
-        # assuing w1, w2, w3 by default
+        # assuming w1, w2, w3 by default
         return ["w1", "w2", "w3"]
 
 
@@ -1705,11 +1705,11 @@ def _split_fused_qkv_weight_and_scaling(
     training_tp: int = 1,
     keep_channel_order: bool = False,
 ):
-    """Reorder the qkv weight for spliting QKV weights.
+    """Reorder the qkv weight for splitting QKV weights.
 
     The shape of the fused QKV weights in HF is different from the shape that
     TRT-LLM requires. In particular, the weight of HF consists of interleaved
-    q, k, v head weights, while that of TRT-LLM is contigous.
+    q, k, v head weights, while that of TRT-LLM is contiguous.
         HF     : [q1, k1, v1, ..., qh, kh, vh]
         TRT-LLM: [q1, ..., qh, k1, ..., kh, v1, vh]
     where qi, vi, ki are weight vectors corresponding to attention head i.

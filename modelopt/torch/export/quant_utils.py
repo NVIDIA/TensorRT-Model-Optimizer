@@ -532,10 +532,10 @@ def _prefix_wildcard_summarize_exclude_modules(unquantized_layers, quantized_lay
             wildcards.add(name[:i] + "*")
         return wildcards
 
-    def next_formated_matching_prefix_wildcards(name: str) -> Generator[list[str], None, None]:
-        """Enumerate formated prefix wildcards. A result may be a combination of prefix wildcards.
+    def next_formatted_matching_prefix_wildcards(name: str) -> Generator[list[str], None, None]:
+        """Enumerate formatted prefix wildcards. A result may be a combination of prefix wildcards.
 
-        Formated here means we only consider wildcards at dot split. We need two patterns.
+        Formatted here means we only consider wildcards at dot split. We need two patterns.
 
         1. a single wildcard: module_name*
         2. a set of 2 wildcards: {module_name, module_name.*}. We need this pattern set because
@@ -549,19 +549,19 @@ def _prefix_wildcard_summarize_exclude_modules(unquantized_layers, quantized_lay
         yield [name]
 
     # any of the wildcard in this set cannot be present in the result
-    negtive_wild_candidates = set()
+    negative_wild_candidates = set()
     for layer in quantized_layers:
-        negtive = all_matching_prefix_wildcards(layer)
-        negtive_wild_candidates.update(negtive)
+        negative = all_matching_prefix_wildcards(layer)
+        negative_wild_candidates.update(negative)
         logger.debug(
-            f"Quantized layer {layer}, prefix wildcards {negtive} identified as negative wildcards"
+            f"Quantized layer {layer}, prefix wildcards {negative} identified as negative wildcards"
         )
 
     res_summary = set()
     for layer in unquantized_layers:
         candidate_wildcards = []
-        for wildcards in next_formated_matching_prefix_wildcards(layer):
-            if any(wildcard in negtive_wild_candidates for wildcard in wildcards):
+        for wildcards in next_formatted_matching_prefix_wildcards(layer):
+            if any(wildcard in negative_wild_candidates for wildcard in wildcards):
                 # need a more specific wildcard
                 logger.debug(
                     f"Unquantized layer {layer}, prefix wildcards {wildcards} invalidated by negative wildcards"

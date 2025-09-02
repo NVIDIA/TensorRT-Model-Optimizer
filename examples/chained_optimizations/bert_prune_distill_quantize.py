@@ -197,7 +197,7 @@ def parse_args(input_args: list[str] | None = None):
         default=384,
         help=(
             "The maximum total input sequence length after tokenization. Sequences longer than this"
-            " will be truncated, and shorter will be padded if `--pad_to_max_lengh` is passed."
+            " will be truncated, and shorter will be padded if `--pad_to_max_length` is passed."
         ),
     )
     parser.add_argument(
@@ -452,7 +452,7 @@ def get_datasets_and_dataloaders(args, tokenizer: PreTrainedTokenizer, accelerat
     # https://huggingface.co/docs/datasets/loading_datasets.
 
     # Preprocessing the datasets.
-    # Preprocessing is slighlty different for training and evaluation.
+    # Preprocessing is slightly different for training and evaluation.
 
     column_names = raw_datasets["train"].column_names
 
@@ -474,7 +474,7 @@ def get_datasets_and_dataloaders(args, tokenizer: PreTrainedTokenizer, accelerat
 
     examples["train"] = raw_datasets["train"]
     if args.max_train_samples is not None:
-        # We will select sample from whole data if agument is specified
+        # We will select sample from whole data if argument is specified
         examples["train"] = examples["train"].select(range(args.max_train_samples))
 
     # Create train feature from dataset
@@ -515,7 +515,7 @@ def get_datasets_and_dataloaders(args, tokenizer: PreTrainedTokenizer, accelerat
 
     # DataLoaders creation:
     if args.pad_to_max_length:
-        # If padding was already done ot max length, we use the default data collator that will just convert everything
+        # If padding was already done to max length, we use the default data collator that will just convert everything
         # to tensors.
         data_collator = default_data_collator
     else:
@@ -1073,7 +1073,7 @@ def train_and_evaluate_model(
         if args.with_tracking:
             log = {
                 "squad": eval_metric,
-                "train_loss": total_loss.item() / len(dataloader["train"]),  # type: ignore[attr-defined]
+                "train_loss": total_loss.item() / len(dataloader["train"]),
                 "epoch": epoch,
                 "step": completed_steps,
             }

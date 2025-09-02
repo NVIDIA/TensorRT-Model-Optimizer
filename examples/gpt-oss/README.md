@@ -15,15 +15,15 @@ Performing finetuning with Quantization Aware Training solves these issues. The 
 1. [LoRA QAT: low memory footprint alternative for full parameter QAT](#lora-qat-low-memory-footprint-alternative-for-full-parameter-qat)
 1. [Quantization Aware Training & Deployment for models beyond GPT-OSS](#quantization-aware-training--deployment-for-models-beyond-gpt-oss)
 
-# Setup
+## Setup
 
 Install the necessary dependencies:
 
-```
+```bash
 pip install -r requirements.txt
 ```
 
-# Quantization Aware Training from ModelOpt
+## Quantization Aware Training from ModelOpt
 
 In Quantization Aware Training, the forward computations are performed with 'fake quantized' values and the backward computations are performed with high precision datatype. In 'fake quantization' the numerical equivalent of the quantized value is represented using a high precision datatype such as BF16. Hence, QAT can be integrated to standard training pipeline such as regular BF16 mixed precision training.
 
@@ -49,7 +49,7 @@ model = mtq.quantize(model, config, forward_loop)
 train(model, train_loader, optimizer, scheduler, ...)
 ```
 
-For an end to end example showcasing the above workflow, checkout [qat-finetune-transformers.ipynb](/examples/gpt-oss/qat-finetune-transformers.ipynb).
+For an end to end example showcasing the above workflow, checkout [qat-finetune-transformers.ipynb](./qat-finetune-transformers.ipynb).
 
 If you are training Huggingface models with trainer classes from Huggingface such as [SFTTrainer](https://huggingface.co/docs/trl/en/sft_trainer) performing QAT is even easier - simply replace the trainer with its equivalent, `QATSFTTrainer` from ModelOpt and specify additional quantization arguments to it. `QATSFTTrainer` will perform the necessary quantization steps in the backend and train the model just like the original `SFTTrainer`.
 
@@ -66,7 +66,7 @@ accelerate launch --config_file configs/zero3.yaml sft.py \
 
 GPT-OSS 20B full parameter SFT needs one node with 8 x 80 GB GPUs. To change dataset or training hyperparameters, either modify `configs/sft_full.yaml` or pass them as command line arguments.
 
-## Recommended QAT Recipe
+### Recommended QAT Recipe
 
 For improved accuracy, we recommend the following QAT recipe:
 
@@ -94,9 +94,9 @@ accelerate launch --config_file configs/zero3.yaml sft.py \
 
 The final QAT checkpoint is in fake-quantized form. Low memory footprint and speedup comes after [deployment](#deployment) to accelerated runtimes.
 
-Note: For restoring the model checkpoint for Pytorch native evaluation, see [ModelOpt Restore using Huggingface APIs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/6_save_load.html#modelopt-save-restore-using-huggingface-checkpointing-apis).
+Note: For restoring the model checkpoint for Pytorch native evaluation, see [ModelOpt Restore using Huggingface APIs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/2_save_load.html#modelopt-save-restore-using-huggingface-checkpointing-apis).
 
-# Deployment
+## Deployment
 
 The GPT-OSS QAT models from above can be deployed in MXFP4 format using performant serving engines like TensorRT-LLM, vLLM, and SGLang. To enable this, we provide a custom conversion script that transforms a Hugging Face–compatible BF16 checkpoint into the same MXFP4 weight-only format used by the original GPT-OSS release. This real MXFP4 quantized checkpoint can be deployed to supported runtimes just like the original GPT-OSS MXFP4 models.
 
@@ -150,13 +150,13 @@ vllm serve <model_path>
 </details>
 <br>
 
-# LoRA QAT: low memory footprint alternative for full parameter QAT
+## LoRA QAT: low memory footprint alternative for full parameter QAT
 
 You may run QAT with LoRA to reduce the training GPU memory requirement. Using one node with 8 x 80 GB GPUs, you could perform QAT with LoRA on GPT OSS 120B model.
 
 Here is how to run LoRA QAT for GPT OSS 120B model:
 
-```
+```bash
 python sft.py --config configs/sft_lora.yaml \
     --model_name_or_path openai/gpt-oss-120b \
     --quant_cfg MXFP4_MLP_WEIGHT_ONLY_CFG \
@@ -175,12 +175,12 @@ python convert_oai_mxfp4_weight_only.py  \
 
 You can deploy this real quantized MXFP4 checkpoint just like the original GPT-OSS MXFP4 model.
 
-# Quantization Aware Training & Deployment for models beyond GPT-OSS
+## Quantization Aware Training & Deployment for models beyond GPT-OSS
 
-## Easy QAT from ModelOpt using LLaMA-Factory
+### Easy QAT from ModelOpt using LLaMA-Factory
 
 ModelOpt provides easy end to end QAT via [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory), an open-source repository for LLM/VLM finetuning. Please refer to [LLaMa-Factory QAT example](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_qat/llama_factory) for performing QAT on your favorite models.
 
-## Deployment of ModelOpt QAT/PTQ models beyond GPT-OSS
+### Deployment of ModelOpt QAT/PTQ models beyond GPT-OSS
 
 ModelOpt supports exporting a wide variety of models after QAT/PTQ to TensorRT-LLM, vLLM, SGLang etc. Please refer to [llm_ptq](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq).

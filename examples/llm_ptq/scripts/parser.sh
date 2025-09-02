@@ -110,8 +110,15 @@ parse_options() {
 
   VALID_TASKS=("build" "mmlu" "mtbench" "benchmark" "lm_eval" "gqa" "livecodebench" "simple_eval")
 
-  for task in $(echo $TASKS | tr ',' ' '); do
-    if [[ ! " ${VALID_TASKS[@]} " =~ " $task " ]]; then
+  for task in $(echo "$TASKS" | tr ',' ' '); do
+    is_valid_task=false
+    for valid_task in "${VALID_TASKS[@]}"; do
+      if [[ "$valid_task" == "$task" ]]; then
+        is_valid_task=true
+        break
+      fi
+    done
+    if [ "$is_valid_task" = false ]; then
       echo "task $task is not valid"
       VALID_TASKS_STRING=$(IFS=','; echo "${VALID_TASKS[*]}")
       echo "Allowed tasks are: $VALID_TASKS_STRING"

@@ -1,0 +1,7 @@
+config:
+  MD013: false # line-length
+  MD024: false # no-duplicate-heading
+  MD028: false # no-blanks-blockquote
+  MD033: false # no-inline-html
+  MD041: false # first-line-heading
+  MD059: false # no-hard-tabs

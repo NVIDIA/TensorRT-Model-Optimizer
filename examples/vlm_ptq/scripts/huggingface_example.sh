@@ -154,7 +154,7 @@ esac
 if [ "${MODEL_TYPE}" = "vila" ]; then
     # Install required dependency for VILA
     pip install -r ../vlm_ptq/requirements-vila.txt
-    # Clone oringinal VILA repo
+    # Clone original VILA repo
     if [ ! -d "$(dirname "$MODEL_PATH")/VILA" ]; then
         echo "VILA repository is needed until it is added to HF model zoo. Cloning the repository parallel to $MODEL_PATH..."
         git clone https://github.com/Efficient-Large-Model/VILA.git "$(dirname "$MODEL_PATH")/VILA" && \

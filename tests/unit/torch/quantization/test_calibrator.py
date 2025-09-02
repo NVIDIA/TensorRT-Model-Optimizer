@@ -192,7 +192,7 @@ class TestEntropyCalibrator:
         x_2[1, 1, 1, 1] = 10.0  # create outlier
         hist_calibrator.collect(x_2)
 
-        # Don't have a better test metric. One outlier 10 should be discared by KL-divergence
+        # Don't have a better test metric. One outlier 10 should be discarded by KL-divergence
         amax = hist_calibrator.compute_amax("entropy", start_bin=128)
 
         if verbose:
@@ -231,7 +231,7 @@ class TestEntropyCalibrator:
         x_3 = torch.rand(11, 7, 3, 3)
         hist_calibrator.collect(x_3)
 
-        # Don't have a better test metric. One outlier 10 should be discared by KL-divergence
+        # Don't have a better test metric. One outlier 10 should be discarded by KL-divergence
         amax = hist_calibrator.compute_amax("entropy", start_bin=128)
 
         if verbose:

@@ -455,7 +455,7 @@ def all_reduce_autograd(
 
 
 def adjust_distillation_model_for_mcore(model: mtd.DistillationModel, distill_cfg: dict[str, Any]):
-    """Extra modifcations to ``mtd.DistillationModel`` requried for Megatron-Core."""
+    """Extra modifications to ``mtd.DistillationModel`` required for Megatron-Core."""
 
     # HACK: Hide teacher during `sharded_state_dict` method.
     def _sharded_state_dict(self, *args, **kwargs) -> ShardedStateDict:

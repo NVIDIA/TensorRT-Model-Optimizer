@@ -564,7 +564,7 @@ class EagleModule(MegatronModule):
         """Get the TransformerLayer implementation spec.
 
         IMPORTANT: EagleModule must use arbitrary_attention_mask since we need to
-                   manupulate the mask to compute the correct loss. The default
+                   manipulate the mask to compute the correct loss. The default
                    causal mask will result in leaking.
         """
         transformer_layer_spec = get_gpt_modelopt_spec(
@@ -761,7 +761,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 "EAGLE-3 does not support hidden state distillation!"
             )
 
-        # EAGLE-3 auxiluary hidden_states (only work for TP+EP, does not work for PP)
+        # EAGLE-3 auxiliary hidden_states (only work for TP+EP, does not work for PP)
         self._aux_hidden_states = []
 
         if self.eagle_config.position_embedding_type not in ["rope", "yarn"]:

@@ -25,7 +25,7 @@ path = Path(__file__).parent
 
 
 def get_cuda_ext(raise_if_failed: bool = False):
-    """Returns the cuda extention for tensor_quant."""
+    """Returns the cuda extension for tensor_quant."""
     if not hasattr(get_cuda_ext, "extension"):
         get_cuda_ext.extension = load_cpp_extension(  # type:ignore[attr-defined]
             name="modelopt_cuda_ext",
@@ -37,7 +37,7 @@ def get_cuda_ext(raise_if_failed: bool = False):
 
 
 def get_cuda_ext_fp8(raise_if_failed: bool = False):
-    """Returns the cuda extention for tensor_quant_fp8."""
+    """Returns the cuda extension for tensor_quant_fp8."""
     if not hasattr(get_cuda_ext_fp8, "extension"):
         get_cuda_ext_fp8.extension = load_cpp_extension(  # type:ignore[attr-defined]
             name="modelopt_cuda_ext_fp8",
@@ -53,7 +53,7 @@ def get_cuda_ext_fp8(raise_if_failed: bool = False):
 
 
 def get_cuda_ext_mx(raise_if_failed: bool = False):
-    """Returns the cuda extention for tensor_quant_mx."""
+    """Returns the cuda extension for tensor_quant_mx."""
     if not hasattr(get_cuda_ext_mx, "extension"):
         get_cuda_ext_mx.extension = load_cpp_extension(  # type:ignore[attr-defined]
             name="modelopt_cuda_ext_mx",

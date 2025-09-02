@@ -101,7 +101,7 @@ class QuantRNNBase(QuantModule):
     def _setup(self):
         for name, _ in self.named_parameters():
             if name.startswith("weight"):
-                # to be compatible with our current config, the name is some what weired
+                # to be compatible with our current config, the name is some what weird
                 # it would be weight_xxx_weight_quantizer
                 weight_quantizer_name = name + "_weight_quantizer"
                 self._register_temp_attribute(
@@ -171,7 +171,7 @@ class QuantRNNFullBase(QuantRNNBase):
 class VFRNNForward:
     """Reimplement the _VF rnn calls with python to enable input quantizers.
 
-    It's less efficient compared to oringinal calls.
+    It's less efficient compared to original calls.
     """
 
     def __init__(
@@ -187,7 +187,7 @@ class VFRNNForward:
     ):
         """Pre-construct necessary parameters for vf calls to reduce overhead.
 
-        Refer to torch RNN modules for parameter informations.
+        Refer to torch RNN modules for parameter information.
         """
         cell = _cell_call_map[mode]
         if has_proj:
@@ -266,12 +266,12 @@ class VFRNNForward:
         if self.is_lstm:
             hn, cn = zip(*all_hiddens)
             all_hiddens = (torch.stack(hn, 0), torch.stack(cn, 0))
-            ouput_tuple = (input, *all_hiddens)
+            output_tuple = (input, *all_hiddens)
         else:
             all_hiddens = torch.stack(all_hiddens, 0)
-            ouput_tuple = (input, all_hiddens)
+            output_tuple = (input, all_hiddens)
 
-        return ouput_tuple
+        return output_tuple
 
     def __call__(self, *args) -> tuple[torch.Tensor, torch.Tensor]:
         """Entry of vf calls.
@@ -398,7 +398,7 @@ def quantized_cell_forward(
 def get_quantized_rnn_layer_forward(cell, reverse=False):
     """Construct the forward call for different rnn cells.
 
-    Note that batch_sizes is here for keeping a consistant signature with the forward of variable length.
+    Note that batch_sizes is here for keeping a consistent signature with the forward of variable length.
     """
 
     def forward(

@@ -262,7 +262,7 @@ def quantize(
 
     # Collect node names to exclude from quantization
     nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
-    nodes_to_exclude.extend(_find_unsupported_fp8_convs_to_exclude(graph))  # type: ignore[union-attr]
+    nodes_to_exclude.extend(_find_unsupported_fp8_convs_to_exclude(graph))
 
     # Change the default configuration of ORT quantization
     op_types = {node.op for node in graph.nodes}

@@ -18,7 +18,7 @@ import json
 
 import pandas as pd
 
-from . import common  # type:ignore[attr-defined]
+from . import common
 from .drop_eval import DropEval
 from .gpqa_eval import GPQAEval
 from .humaneval_eval import HumanEval

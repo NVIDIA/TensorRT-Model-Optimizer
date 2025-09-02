@@ -214,7 +214,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
 
     # for enc-dec model, users need to refer TRT-LLM example to build engines and deployment
     if [[ -f "$SAVE_PATH/encoder/config.json" && -f "$SAVE_PATH/decoder/config.json" && ! -f $MODEL_CONFIG ]]; then
-        echo "Please continue to deployment with the TRT-LLM enc_dec example, https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/enc_dec. Checkpoint export_path: $SAVE_PATH"
+        echo "Please continue to deployment with the TRT-LLM enc_dec example, https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/models/core/enc_dec. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
 
@@ -426,7 +426,7 @@ if [[ $TASKS =~ "benchmark" ]]; then
                 --input-mean $BENCHMARK_INPUT_LEN --output-mean $BENCHMARK_OUTPUT_LEN --input-stdev 0 --output-stdev 0 \
                 --num-requests $BENCHMARK_NUM_REQUESTS >$DATASET_TXT
         else
-            echo "Use exisitng benchmark dataset in $DATASET_TXT."
+            echo "Use existing benchmark dataset in $DATASET_TXT."
         fi
     fi
 

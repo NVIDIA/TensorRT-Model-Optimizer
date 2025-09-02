@@ -149,7 +149,7 @@ class RealQuantLinear(QuantModule):
         )
 
     def get_real_quant_gemm_impl(self, input, *args, **kwargs) -> bool:
-        """Get the real quant GEMM implmenetation base on input arguments."""
+        """Get the real quant GEMM implementation base on input arguments."""
         if not hasattr(self, "_real_quant_gemm_impl"):
             self._real_quant_gemm_impl = backends.gemm_registry.find_match(
                 self, input, *args, **kwargs
@@ -214,7 +214,7 @@ class RealQuantLinear(QuantModule):
                 super().__setitem__(key, value)
 
         # Monkey patch the _parameters.__setitem__ to real quant the weight when loading
-        # HF acclerate loades the weight by directly assigning the weight through the _parameters dict.
+        # HF accelerate loads the weight by directly assigning the weight through the _parameters dict.
         self._parameters = RealQuantParameterDict(self.weight_quantizer, self._parameters)
 
         # Function to dynamically override load_state_dict

@@ -2,7 +2,7 @@
 
 # NVIDIA TensorRT Model Optimizer - Windows
 
-#### A Library to Quantize and Compress Deep Learning Models for Optimized Inference on Native Windows RTX GPUs
+A Library to Quantize and Compress Deep Learning Models for Optimized Inference on Native Windows RTX GPUs
 
 [![Documentation](https://img.shields.io/badge/Documentation-latest-brightgreen.svg?style=flat)](https://nvidia.github.io/TensorRT-Model-Optimizer/)
 [![version](https://img.shields.io/badge/v0.33.0-orange?label=Release)](https://pypi.org/project/nvidia-modelopt/)
@@ -125,8 +125,8 @@ For detailed instructions about deployment of quantized models with DirectML bac
 ## Examples
 
 - We have ONNX PTQ examples for various ONNX model variants:
-  - [PTQ for GenAI LLMs](./onnx_ptq/genai_llm/README.md) covers how to use ONNX Post-Training Quantization (PTQ) with [ONNX Runtime GenAI](https://onnxruntime.ai/docs/genai) built LLM ONNX models, and thier deployment with DirectML.
-  - [PTQ for Whisper](./onnx_ptq/whisper/README.md) illustrates using ONNX Post-Training Quantization (PTQ) with a Whisper ONNX model (i.e. an ASR model). It also provides example sctipt for Optimum-ORT based inference of Whisper using CUDA EP.
+  - [PTQ for GenAI LLMs](./onnx_ptq/genai_llm/README.md) covers how to use ONNX Post-Training Quantization (PTQ) with [ONNX Runtime GenAI](https://onnxruntime.ai/docs/genai) built LLM ONNX models, and their deployment with DirectML.
+  - [PTQ for Whisper](./onnx_ptq/whisper/README.md) illustrates using ONNX Post-Training Quantization (PTQ) with a Whisper ONNX model (i.e. an ASR model). It also provides example script for Optimum-ORT based inference of Whisper using CUDA EP.
   - [PTQ for SAM2](./onnx_ptq/sam2/README.md) illustrates using ONNX Post-Training Quantization (PTQ) with a SAM2 ONNX model (i.e. a segmentation model).
 - [MMLU Benchmark](./accuracy_benchmark/README.md) provides an example script for MMLU benchmarking of LLM models, and demonstrates how to run it with various popular backends like DirectML, TensorRT-LLM\* and model formats like ONNX and PyTorch\*.
 

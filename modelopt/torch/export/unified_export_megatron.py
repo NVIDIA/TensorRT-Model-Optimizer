@@ -296,7 +296,7 @@ class GPTModelExporter:
         save_directory: str | os.PathLike,
         pretrained_model_name_or_path: str | os.PathLike | None = None,
     ):
-        """Save a unified checkpoint which can be deploied by vLLM and TensorRT-LLM.
+        """Save a unified checkpoint which can be deployed by vLLM and TensorRT-LLM.
 
         Args:
             save_directory: Directory to which to save. Will be created if it doesn't exist.

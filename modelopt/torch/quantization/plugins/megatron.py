@@ -111,7 +111,7 @@ def real_quant_module_set_extra_state(self, state: Any):
         The entire restore process can happen on meta device and be materialized later
         with to_empty(). However, to_empty() will reassign the parameter and the
         QTensorWrapper will be removed. We patch RealQuantLinear._apply to preserve
-        QTensorWarpper when to_empty() is applied.
+        QTensorWrapper when to_empty() is applied.
     """
     q_tensor_state = state.get("modelopt_q_tensor_state", None)
 

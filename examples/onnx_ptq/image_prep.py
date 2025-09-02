@@ -49,7 +49,7 @@ def main():
 
     calib_tensor = np.stack(calib_tensor, axis=0)
     if args.fp16:
-        calib_tensor = calib_tensor.astype(np.float16)  # type: ignore[attr-defined]
+        calib_tensor = calib_tensor.astype(np.float16)
     np.save(args.output_path, calib_tensor)
 
 

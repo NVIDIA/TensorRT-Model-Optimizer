@@ -70,7 +70,7 @@ class Engine:
                 shape = shape_dict[name]
             else:
                 shape = self.engine.get_tensor_shape(name)  # type: ignore[union-attr]
-                shape = (batch_size * 2,) + shape[1:]
+                shape = (batch_size * 2, *shape[1:])
             dtype = trt.nptype(self.engine.get_tensor_dtype(name))  # type: ignore[union-attr]
             if self.engine.get_tensor_mode(name) == trt.TensorIOMode.INPUT:  # type: ignore[union-attr]
                 self.context.set_input_shape(name, shape)  # type: ignore[union-attr]

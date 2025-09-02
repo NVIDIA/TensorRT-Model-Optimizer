@@ -2,9 +2,9 @@
 
 This document provides a summary of the performance and accuracy measurements of [TensorRT Model Optimizer - Windows](./README.md) for several popular models. The benchmark results in the following tables serve as reference points and **should not be viewed as the maximum performance** achievable by Model Optimizer - Windows.
 
-### 1 Performance And Accuracy Comparison: ONNX INT4 vs ONNX FP16 Models
+## 1 Performance And Accuracy Comparison: ONNX INT4 vs ONNX FP16 Models
 
-#### 1.1 Performance Comparison
+### 1.1 Performance Comparison
 
 All performance metrics are tested using the [onnxruntime-genai perf benchmark](https://github.com/microsoft/onnxruntime-genai/tree/main/benchmark/python) with the DirectML backend.
 
@@ -22,7 +22,7 @@ Memory savings and inference speedup are compared to the ONNX FP16 baseline.
 |[Llama3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct) | 128 | 256 | 1.96x | 2.19x |
 |[Gemma-2b-it](https://huggingface.co/google/gemma-2b-it) | 128 | 256 | 1.64x | 1.94x |
 
-#### 1.2 Accuracy Comparison
+### 1.2 Accuracy Comparison
 
 For accuracy evaluation, the [Massive Multitask Language Understanding (MMLU)](https://arxiv.org/abs/2009.03300) benchmark has been utilized. Please refer to the [detailed instructions](./accuracy_benchmark/README.md) for running the MMLU accuracy benchmark.
 

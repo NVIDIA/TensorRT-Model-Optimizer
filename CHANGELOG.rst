@@ -18,7 +18,7 @@ Model Optimizer Changelog (Linux)
 - Add support for QAT with HuggingFace + DeepSpeed. See ``examples/gpt_oss`` for an example.
 - Add support for QAT with LoRA. The LoRA adapters can be folded into the base model after QAT and deployed just like a regular PTQ model. See ``examples/gpt_oss`` for an example.
 - ModelOpt provides convenient trainers such as :class:`QATTrainer`, :class:`QADTrainer`, :class:`KDTrainer`, :class:`QATSFTTrainer` which inherits from Huggingface trainers.
-  ModelOpt trainers can be used as drop in replacement of the correspoding Huggingface trainer. See usage examples in ``examples/gpt_oss``, ``examples/llm_qat`` or ``examples/llm_distill``.
+  ModelOpt trainers can be used as drop in replacement of the corresponding Huggingface trainer. See usage examples in ``examples/gpt_oss``, ``examples/llm_qat`` or ``examples/llm_distill``.
 - (Experimental) Add quantization support for custom TensorRT op in ONNX models.
 - Add support for Minifinetuning (MFT; https://arxiv.org/abs/2506.15702) self-corrective distillation, which enables training on small datasets with severely mitigated catastrophic forgetting.
 - Add tree decoding support for Megatron Eagle models.
@@ -55,8 +55,8 @@ Model Optimizer Changelog (Linux)
 
 - NeMo and Megatron-LM distributed checkpoint (``torch-dist``) stored with legacy version can no longer be loaded. The remedy is to load the legacy distributed checkpoint with 0.29 and store a ``torch`` checkpoint and resume with 0.31 to convert to a new format. The following changes only apply to storing and resuming distributed checkpoint.
     - ``quantizer_state`` of :class:`TensorQuantizer <modelopt.torch.quantization.nn.modules.TensorQuantizer>` is now stored in ``extra_state`` of :class:`QuantModule <modelopt.torch.quantization.nn.module.QuantModule>` where it used to be stored in the sharded ``modelopt_state``.
-    - The dtype and shape of ``amax`` and ``pre_quant_scale`` stored in the distributed checkpoint are now retored. Some dtype and shape are previously changed to make all decoder layers to have homogeneous structure in the checkpoint.
-    - Togather with megatron.core-0.13, quantized model will store and resume distributed checkpoint in a heterogenous format.
+    - The dtype and shape of ``amax`` and ``pre_quant_scale`` stored in the distributed checkpoint are now restored. Some dtype and shape are previously changed to make all decoder layers to have homogeneous structure in the checkpoint.
+    - Together with megatron.core-0.13, quantized model will store and resume distributed checkpoint in a heterogenous format.
 - auto_quantize API now accepts a list of quantization config dicts as the list of quantization choices.
     - This API previously accepts a list of strings of quantization format names. It was therefore limited to only pre-defined quantization formats unless through some hacks.
     - With this change, now user can easily use their own custom quantization formats for auto_quantize.
@@ -146,7 +146,7 @@ Model Optimizer Changelog (Linux)
 **New Features**
 
 - Support fast hadamard transform in :class:`TensorQuantizer <modelopt.torch.quantization.nn.modules.TensorQuantizer>`.
-  It can be used for rotation based quantization methods, e.g. QuaRot. Users need to install the package `fast_hadamard_transfrom <https://github.com/Dao-AILab/fast-hadamard-transform>`_ to use this feature.
+  It can be used for rotation based quantization methods, e.g. QuaRot. Users need to install the package `fast_hadamard_transform <https://github.com/Dao-AILab/fast-hadamard-transform>`_ to use this feature.
 - Add affine quantization support for the KV cache, resolving the low accuracy issue in models such as Qwen2.5 and Phi-3/3.5.
 - Add FSDP2 support. FSDP2 can now be used for QAT.
 - Add `LiveCodeBench <https://livecodebench.github.io/>`_  and `Simple Evals <https://github.com/openai/simple-evals>`_ to the ``llm_eval`` examples.

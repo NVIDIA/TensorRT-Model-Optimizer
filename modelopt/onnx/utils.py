@@ -679,7 +679,7 @@ def save_onnx(model: onnx.ModelProto, onnx_path: str, save_as_external_data: boo
         onnx.save(model, onnx_path)
 
 
-def udpate_domain(onnx_model: onnx.ModelProto, op_type: str, domain: str) -> onnx.ModelProto:
+def update_domain(onnx_model: onnx.ModelProto, op_type: str, domain: str) -> onnx.ModelProto:
     """Updates the domain of all the nodes of the specified op_type to the specified domain."""
     for node in onnx_model.graph.node:
         if node.op_type == op_type:

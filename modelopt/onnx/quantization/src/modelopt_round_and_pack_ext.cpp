@@ -53,7 +53,7 @@ int8_t ClipAndRoundOneNumber(bool is_signed, const double num) {
 //      input_array_size:    number of elements in input array
 //             outputs[]:    int8 array for storing the packed output
 //     output_array_size:    size of the output array,
-//                                  - should be large enough to accomodate all final entries
+//                                  - should be large enough to accommodate all final entries
 //                                  - should be at least input_array_size/2
 // Return value:
 //          the number of elements written in output array
