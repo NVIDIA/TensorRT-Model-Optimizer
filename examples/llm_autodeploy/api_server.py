@@ -97,7 +97,7 @@ async def create_completion(request: CompletionRequest):
     sampling_params.temperature = request.temperature
     outs = model_runner.generate(prompts, sampling_params)
 
-    # formating outputs
+    # formatting outputs
     outputs = []
     if isinstance(outs, RequestOutput):
         outs = [outs]

@@ -27,7 +27,7 @@ class ClipFunction(Function):
     """An universal tensor clip function.
 
     Pytorch's clamp() only supports scalar range and doesn't support broadcast. This implementation uses min/max which
-    is more genaral. The gradient is defined according to IBM's PACT paper https://arxiv.org/abs/1805.06085, which is
+    is more general. The gradient is defined according to IBM's PACT paper https://arxiv.org/abs/1805.06085, which is
     also the behavior of Tensorflow's clip_by_value()
     """
 

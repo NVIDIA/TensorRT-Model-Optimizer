@@ -53,7 +53,7 @@ def convert_to_eagle_model(model: nn.Module, config: EagleConfig) -> ConvertRetu
         eagle_architecture_config=config.eagle_architecture_config,
     )
 
-    # no metadata, all specifed via config.
+    # no metadata, all specified via config.
     metadata = {}
 
     return eagle_model, metadata

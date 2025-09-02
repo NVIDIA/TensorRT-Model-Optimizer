@@ -43,7 +43,7 @@ def convert_to_medusa_model(model: nn.Module, config: MedusaConfig) -> ConvertRe
         medusa_num_heads=config.medusa_num_heads, medusa_num_layers=config.medusa_num_layers
     )
 
-    # no metadata, all specifed via config.
+    # no metadata, all specified via config.
     metadata = {}
 
     return medusa_model, metadata

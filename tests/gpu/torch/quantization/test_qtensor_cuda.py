@@ -356,7 +356,7 @@ class TestQTensor:
         def _unpack_tensor(x):
             # Mapping
             e2m1_values = [0, 0.5, 1, 1.5, 2, 3, 4, 6, 0, -0.5, -1, -1.5, -2, -3, -4, -6]
-            # Initalize storage for unpacked tensor
+            # Initialize storage for unpacked tensor
             shape = list(x.shape)
             shape[-1] = shape[-1] * 2
             unpacked = torch.zeros(shape, dtype=torch.float16)

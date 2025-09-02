@@ -42,7 +42,7 @@ class CalibrationDataProvider(CalibrationDataReader):
         calibration_data: CalibrationDataType,
         calibration_shapes: str | None = None,
     ):
-        """Intializes the data provider class with the calibration data iterator.
+        """Initializes the data provider class with the calibration data iterator.
 
         Args:
             onnx_path: Path to the ONNX model.

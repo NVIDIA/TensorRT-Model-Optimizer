@@ -61,7 +61,7 @@ class NFSWorkspace:
 
     @property
     def is_initialized(self):
-        """Whether the workspace is intialized."""
+        """Whether the workspace is initialized."""
         return self._is_initialized
 
     def write_configs_and_weights(self, config_json: dict[str, Any], weights: dict[str, Any]):

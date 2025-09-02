@@ -116,10 +116,10 @@ def evaluate(
                         ...
 
             n01440764, n01728920, etc. are the wordnet ids of the respective class names.
-            An example script to preproces this dataset is provided under examples/onnx_ptq/preprocess_imagenet.py.
+            An example script to preprocess this dataset is provided under examples/onnx_ptq/preprocess_imagenet.py.
         evaluation_type: Type of evaluation to perform. Currently only accuracy is supported.
         TODO: Add support for segmentation tasks.
-        batch_size: Batch size to use for evaluation. Currenlty only batch_size=1 is supported.
+        batch_size: Batch size to use for evaluation. Currently only batch_size=1 is supported.
         evaluate_torch: Whether to evaluate the original PyTorch model.
         num_examples: Number of examples to evaluate on. If None, evaluate on the entire dataset.
 
@@ -170,7 +170,7 @@ def evaluate_accuracy(model, val_loader, num_examples, batch_size, topk=(1,), ra
         val_loader: DataLoader for the validation dataset.
         num_examples: Number of examples to evaluate on. If None, evaluate on the entire dataset.
         batch_size: Batch size to use for evaluation.
-        topk: fuction support topk accuracy. Return list of accuracy equal to topk length.
+        topk: function support topk accuracy. Return list of accuracy equal to topk length.
             example of usage `top1, top5 = evaluate_accuracy(..., topk=(1,5))`
             `top1, top5, top10 = evaluate_accuracy(..., topk=(1,5,10))`
         random_seed: Random seed to use for evaluation.

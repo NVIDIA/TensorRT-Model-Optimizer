@@ -164,7 +164,7 @@ Deployment with Selected Inference Frameworks
 
 .. tab:: SGLang
 
-    Follow the `SGLang installation instructions. <https://docs.sglang.ai/start/install.html>`_
+    Follow the `SGLang installation instructions. <https://docs.sglang.ai/get_started/install.html>`_
 
     Currently we support fp8 quantized models (without fp8 kv cache) for SGLang deployment, you need to use the main branch of SGLang (since Jan 6, 2025) and build it from source.
 

@@ -270,7 +270,7 @@ class ConstraintsFunc:
                 assert lim.endswith("%")
                 fraction_value = float(lim[:-1]) / 100
 
-                # Use _SearchSpaceUnwrapped to avoid reseting the calibration statistics
+                # Use _SearchSpaceUnwrapped to avoid resetting the calibration statistics
                 ss = _SearchSpaceUnwrapped(self.model)
                 config = ss.config()
                 ss.sample(random.original)
@@ -835,7 +835,7 @@ def profile(
     if is_configurable_:
         if verbose:
             print_search_space_summary(model)
-        # add seach space info
+        # add search space info
         _print(f"Number of configurable hparams: {num_configurable}")
         stats["number of configurable hparams"] = num_configurable
         _print(f"Total size of the search space: {size_of_search_space:8.2e}")

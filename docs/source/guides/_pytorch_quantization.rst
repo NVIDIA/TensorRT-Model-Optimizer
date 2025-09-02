@@ -417,12 +417,3 @@ Weight folding avoids repeated quantization of weights during each inference for
 .. note::
 
     After weight folding, the model can no longer be exported to ONNX or fine-tuned with QAT.
-
-Migrate from pytorch_quantization
-=================================
-
-ModelOpt PyTorch quantization is refactored from and extends upon
-`pytorch_quantization <https://docs.nvidia.com/deeplearning/tensorrt/pytorch-quantization-toolkit/docs/index.html>`_.
-
-Previous users of ``pytorch_quantization`` can simply migrate to ``modelopt.torch.quantization`` by
-replacing the import statements.

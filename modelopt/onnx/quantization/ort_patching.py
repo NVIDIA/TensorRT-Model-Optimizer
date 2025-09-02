@@ -441,7 +441,7 @@ def _compute_data_min_max_calibrater_single_node_calibration(calibrater) -> Tens
 
     :return: dictionary mapping: {added node names: (ReduceMin, ReduceMax) pairs }
 
-    Modification: Instead of aggregating two consecutive outputs to a MinMax pair, retreive a MinMax pair from
+    Modification: Instead of aggregating two consecutive outputs to a MinMax pair, retrieve a MinMax pair from
         outputs of Concat.
     """
     if not calibrater.intermediate_outputs:
@@ -530,7 +530,7 @@ def _collect_data_minmax_calibrator(calibrator, data_reader: CalibrationDataRead
 
 
 def _merge_range_minmax_calibrator(calibrator, old_range: TensorsData, new_range: TensorsData):
-    """This function is an auxilliary function of collect_data to solve the OOM issue in the MinMax Calibrator.
+    """This function is an auxiliary function of collect_data to solve the OOM issue in the MinMax Calibrator.
 
     Issue fixed with this function: old_range is not a dictionary, but old_range.data is.
     TODO: create an MR in the ORT repository for this function. Alternatively, we can also file the MR fixing
@@ -560,7 +560,7 @@ def _merge_range_minmax_calibrator(calibrator, old_range: TensorsData, new_range
 def _merge_range_min_max_calibrater_single_node_calibration(
     calibrater, old_range: TensorsData, new_range: TensorsData
 ):
-    """This function is an auxilliary function of collect_data to solve the OOM issue in the MinMax Calibrator.
+    """This function is an auxiliary function of collect_data to solve the OOM issue in the MinMax Calibrator.
 
     Issue fixed with this function: old_range is not a dictionary, but old_range.data is.
     TODO: create an MR in the ORT repository for this function. Alternatively, we can also file the MR fixing
@@ -681,7 +681,7 @@ def _collect_data_min_max_calibrater_single_node_calibration(
         input_queue = [model_input.name for model_input in calibrater.model.graph.input]
 
         pbar = tqdm(total=len(model_to_input_dep_map.keys()))
-        # Resolve nodes are independnet from inputs to add their outputs as inputs
+        # Resolve nodes are independent from inputs to add their outputs as inputs
         inferred_model_list = []
         for model_path, input_deps in model_to_input_dep_map.items():
             if len(input_deps) == 0:
@@ -893,7 +893,7 @@ def _collect_data_histogram_calibrater_single_node_calibration(calibrator, data_
         input_queue = [model_input.name for model_input in calibrator.model.graph.input]
 
         pbar = tqdm(total=len(model_to_input_dep_map.keys()))
-        # Resolve nodes are independnet from inputs to add their outputs as inputs
+        # Resolve nodes are independent from inputs to add their outputs as inputs
         inferred_model_list = []
         for model_path, input_deps in model_to_input_dep_map.items():
             if len(input_deps) == 0:
@@ -1124,7 +1124,7 @@ def _collect_value_histogram_collector_single_node_calibration(histogram_collect
 
 
 def _augment_graph_min_max_calibrater_single_node_calibration(calibrater):
-    """Augment outputs to retreive MinMax pair.
+    """Augment outputs to retrieve MinMax pair.
 
     Adds ReduceMin and ReduceMax nodes to all quantization_candidates op type nodes in
     model and ensures their outputs are stored as part of the graph output.
@@ -1194,13 +1194,13 @@ def _augment_graph_min_max_calibrater_single_node_calibration(calibrater):
             )
         )
 
-    # Make sure alls shapes are resolved before adding min max nodes
+    # Make sure all shapes are resolved before adding min max nodes
     calibrater.model = SymbolicShapeInference.infer_shapes(calibrater.model)
 
     for tensor in tensors:
         add_reduce_min_max(tensor)
 
-    # Make sure alls shapes are resolved after adding min max nodes
+    # Make sure all shapes are resolved after adding min max nodes
     calibrater.model = SymbolicShapeInference.infer_shapes(calibrater.model)
 
     onnx.save(

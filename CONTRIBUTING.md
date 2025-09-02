@@ -105,13 +105,13 @@ git push origin <branch> --force-with-lease
 
   This will append the following to your commit message:
 
-  ```
+  ```text
   Signed-off-by: Your Name <your@email.com>
   ```
 
 - Full text of the Developer Certificate of Origin (DCO):
 
-  ```
+  ```text
     Developer Certificate of Origin
     Version 1.1
 

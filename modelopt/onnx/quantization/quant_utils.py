@@ -26,7 +26,7 @@ UINT4_MAX = 15
 
 
 def pack_float32_to_4bit_optimized(array: np.ndarray | Sequence, signed: bool) -> np.ndarray:
-    """Convert an array of float32 value to a 4bit data-type and pack every two concecutive elements in a byte.
+    """Convert an array of float32 value to a 4bit data-type and pack every two consecutive elements in a byte.
 
     This is the optimized version of pack_float32_to_4bit() utility in ONNX helper file. The basic optimizations
     done here mainly rely on moving some common code out of the per-element function calls or loops, thereby making
@@ -63,7 +63,7 @@ def pack_float32_to_4bit_optimized(array: np.ndarray | Sequence, signed: bool) -
 
 
 def pack_float32_to_4bit_cpp_based(array: np.ndarray | Sequence, signed: bool) -> np.ndarray:
-    """Convert an array of float32 value to a 4bit data-type and pack every two concecutive elements in a byte.
+    """Convert an array of float32 value to a 4bit data-type and pack every two consecutive elements in a byte.
 
     This is the optimized version of pack_float32_to_4bit() utility in ONNX helper file. The basic optimizations
     here is to implement this round_and_pack logic in C++, which is supposed to be faster.
@@ -137,7 +137,7 @@ def get_weights_scaling_factor(
     assert block_size != 0, "Block size is zero. Cannot return per_block amax for given input."
 
     assert k % block_size == 0, (
-        "Weight shape is not divisible for block size for block quantiation."
+        "Weight shape is not divisible for block size for block quantization."
     )
 
     input = input.reshape(n, k // block_size, block_size)

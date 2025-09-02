@@ -160,7 +160,7 @@ class _DMAttributeManager:
         return len(self._og_cls_all)
 
     def append_level(self, original_cls: type[nn.Module]):
-        """Initialize a new level of special atttributes."""
+        """Initialize a new level of special attributes."""
         self._og_cls_all.append(original_cls)
         self._hp_all.append({})
         self._da_cb_all.append({})
@@ -527,10 +527,10 @@ class DynamicModule(nn.Module):
 
         * **Hparams** of the current type are replaced with their currently active value.
             Note that we do not need to explicitly handle hparams of the parent class as they are
-            mutually-exlusive, i.e., hparams are unique across all levels of inheritance.
+            mutually-exclusive, i.e., hparams are unique across all levels of inheritance.
         * **Dynamic Attributes** are handled depending on whether they exist in a parent class:
             1. The same dynamic attribute exists in a parent class. In this case, the callback is
-               folded into ("appended to") the callback for the same dyanmic attribute of the parent
+               folded into ("appended to") the callback for the same dynamic attribute of the parent
                class. This way we ensure that the final value of the attribute remains consistent.
             2. The dynamic attribute does not exist in a parent class. In this case, the attribute
                is not dynamic anymore as there are no more callbacks that could affect the value.
@@ -592,7 +592,7 @@ class DynamicModule(nn.Module):
 
         .. warning::
 
-            Note that this method overwrittes the actual buffers and parameters! Only use in
+            Note that this method overwrites the actual buffers and parameters! Only use in
             specific circumstances!!
         """
         # force-reassign all dynamic attributes
@@ -674,14 +674,14 @@ class DynamicModule(nn.Module):
     def _setup(self):
         """Setup dynamic attributes and hparams after the convert call.
 
-        This method should be overriden by the child class!
+        This method should be overridden by the child class!
         """
         raise NotImplementedError("_setup() must be implemented by child class!")
 
     def modify(self, *args, **kwargs):
         """Modify the module's dynamic choices in a standardized & scalable fashion.
 
-        This method can be overriden by the child class! While users can also directly modify
+        This method can be overridden by the child class! While users can also directly modify
         the choices of individual hparams, this method should provide a way to modify a batch of
         dynamic modules with the same arguments, e.g., ``out_features_ratio`` for ``DynamicLinear``.
 
@@ -697,7 +697,7 @@ class DynamicModule(nn.Module):
         """
 
     def freeze(self):
-        """Restrict the hparams of the dynamic module to the orginal choices.
+        """Restrict the hparams of the dynamic module to the original choices.
 
         This is useful to enforce the behavior of the parent class.
 

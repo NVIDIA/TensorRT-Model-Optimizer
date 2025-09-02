@@ -160,7 +160,7 @@ def build_engine(
             }
         builder_optimization_level: Optimization level for the TensorRT builder.
             For more details, please refer to:
-            https://docs.nvidia.com/deeplearning/tensorrt/api/python_api/infer/Core/BuilderConfig.html
+            https://docs.nvidia.com/deeplearning/tensorrt/latest/_static/python-api/infer/Core/BuilderConfig.html
         output_dir: Directory to save the engine file and trtexec artifacts.
             If not provided, the artifacts will be saved in a temporary directory.
         verbose: Set trtexec command to verbose or not.

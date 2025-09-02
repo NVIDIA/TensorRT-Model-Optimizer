@@ -269,14 +269,14 @@ def get_model_answers(
                 # some models may error out when generating long outputs
                 try:
                     if not engine_dir:
-                        output_ids = model.generate(  # type: ignore[attr-defined]
+                        output_ids = model.generate(
                             torch.as_tensor(input_ids).cuda(),
                             do_sample=do_sample,
                             temperature=temperature,
                             max_new_tokens=max_new_token,
                             top_p=top_p,
                         )
-                        if model.config.is_encoder_decoder:  # type: ignore[attr-defined]
+                        if model.config.is_encoder_decoder:
                             output_ids = output_ids[0]
                         else:
                             output_ids = output_ids[0][len(input_ids[0]) :]
@@ -420,7 +420,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-gpu-memory",
         type=str,
-        help="Maxmum GPU memory used for model weights per GPU.",
+        help="Maximum GPU memory used for model weights per GPU.",
     )
     parser.add_argument(
         "--dtype",

@@ -71,8 +71,8 @@ def _compile_and_profile(model, args, kwargs):
     assert isinstance(device_model.client, TRTLocalClient)
     latency, detailed_results = device_model.profile()
     device_model_outputs = device_model(*args, **kwargs)
-    torch_model_ouptuts = model(*args, **kwargs)
+    torch_model_outputs = model(*args, **kwargs)
     assert latency > 0.0
     assert detailed_results is not None
     assert device_model is not None
-    compare_outputs(device_model_outputs, torch_model_ouptuts, rtol=1e-2, atol=1e-1)
+    compare_outputs(device_model_outputs, torch_model_outputs, rtol=1e-2, atol=1e-1)

@@ -53,7 +53,7 @@ class BaseExampleModel(nn.Module):
         raise NotImplementedError
 
     def get_expected_dependencies(self) -> DependencyDict:
-        """Specify dependencies for each symbol unless they are trival (=0 dependencies)."""
+        """Specify dependencies for each symbol unless they are trivial (=0 dependencies)."""
         return {}
 
     def get_skippable_for_depths(self) -> DepthDict:
@@ -1984,7 +1984,7 @@ class DepthModel1(BaseExampleModel):
         return self.main(x)
 
     def get_num_searchable_symbols(self):
-        return 5 + 1 + 1  # kernel size + conv0 out + depth (no channels since blocked by ouput)
+        return 5 + 1 + 1  # kernel size + conv0 out + depth (no channels since blocked by output)
 
     def get_skippable_for_depths(self) -> DepthDict:
         return {"main.depth": [2, 3, 4]}

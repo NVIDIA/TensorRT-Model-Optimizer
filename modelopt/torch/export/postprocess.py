@@ -164,7 +164,7 @@ def _split_model_config_for_tp(merged_config, split_factor):
         # as: activation scaling factor
         # ps: prequant scaling factor
 
-        # C: Colum Linear
+        # C: Column Linear
         # R: Row Linear
 
         # F: FP8
@@ -180,7 +180,7 @@ def _split_model_config_for_tp(merged_config, split_factor):
         # I4C  P0  S   S
         # I4R  P1  S   P0
 
-        # For INT4 AWQ reference implemention: please check examples/llama/weight.py in the tekit repo
+        # For INT4 AWQ reference implementation: please check examples/llama/weight.py in the tekit repo
         # For normal linear layers, we split the column linear on the dim 0 and row on the dim 1
         assert merged_config.linear_type != LINEAR_GROUP, (
             "Do not support group linear TP merge or split"
@@ -315,7 +315,7 @@ def _merge_model_configs_to_first_tp(config, ranks: list[int], group=None):
         # as: activation scaling factor
         # ps: prequant scaling factor
 
-        # C: Colum Linear
+        # C: Column Linear
         # R: Row Linear
 
         # F: FP8
@@ -750,7 +750,7 @@ def update_lm_head_quantization(
 def check_weight_shape_valid(config, inference_tensor_parallel=1, training_tensor_parallel=1):
     """Check if weight shape are valid with inference TP.
 
-    This function is recurisve.
+    This function is recursive.
     """
 
     def _check_merged_weight(merged_k, tp):

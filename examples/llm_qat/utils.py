@@ -114,7 +114,7 @@ def get_daring_anteater(
             dataset = dataset.shuffle(seed=42).select(range(train_size + eval_size))
             dataset = dataset.map(process_and_tokenize, remove_columns=list(dataset.features))
             dataset = dataset.train_test_split(test_size=eval_size, shuffle=True, seed=42)
-        get_daring_anteater.cached_dataset = dataset  # type: ignore[attr-defined]
+        get_daring_anteater.cached_dataset = dataset
     return dataset[split]
 
 

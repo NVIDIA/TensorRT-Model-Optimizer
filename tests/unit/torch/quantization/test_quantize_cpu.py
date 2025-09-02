@@ -124,7 +124,7 @@ def test_quantize_invalid_cfg():
         model = mtq.quantize(model, config_invalid)
 
 
-def test_inplace_backward_compatiblity():
+def test_inplace_backward_compatibility():
     model = SimpleLinear()
     calib_data = [model.get_input() for _ in range(2)]
 

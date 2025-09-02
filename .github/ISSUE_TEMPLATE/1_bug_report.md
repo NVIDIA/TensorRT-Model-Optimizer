@@ -9,14 +9,11 @@ assignees: ''
 ## Describe the bug
 <!-- Description of what the bug is, its impact (blocker, should have, nice to have) and any stack traces or error messages. -->
 
-
 ### Steps/Code to reproduce bug
 <!-- Please list *minimal* steps or code snippet for us to be able to reproduce the bug. -->
 <!-- A helpful guide on on how to craft a minimal bug report http://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports. -->
 
-
 ### Expected behavior
-
 
 ## System information
 
@@ -36,7 +33,6 @@ assignees: ''
   - ONNXRuntime: ?
   - TensorRT: ?
 - Any other details that may help: ?
-
 
 <details>
 <summary><b>Click to expand: Python script to automatically collect system information</b></summary>

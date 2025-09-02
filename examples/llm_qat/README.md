@@ -28,7 +28,7 @@ pip install nvidia-modelopt[hf]
 pip install -r requirements.txt
 ```
 
-If you want to deploy the quantized model on TRT-LLM, you will also need to install the TRT-LLM dependencies as per the [TRT-LLM documentation](https://nvidia.github.io/TensorRT-LLM/quick-start-guide.html#installation). Alternatively you can use the ModelOpt docker image built from the [ModelOpt docker build step](../../docker/README.md) which has all the dependencies including TRT-LLM installed.
+If you want to deploy the quantized model on TRT-LLM, you will also need to install the TRT-LLM dependencies as per the [TRT-LLM documentation](https://nvidia.github.io/TensorRT-LLM/quick-start-guide.html#installation). Alternatively you can use the ModelOpt docker image built from the [ModelOpt docker build step](../../docker/Dockerfile) which has all the dependencies including TRT-LLM installed.
 
 For NeMo models, use the NeMo container `nvcr.io/nvidia/nemo:25.04` or later which has all the dependencies including TRT-LLM installed.
 
@@ -62,7 +62,7 @@ Step 3: Train/fine-tune the quantized model with a small learning rate, e.g. 1e-
 
 > **_NOTE:_** `Step 3` listed above is the actual 'Quantization Aware Training' step. The optimal hyperparameter setting for QAT can vary depending on the model and training dataset. The optimal QAT duration depends on the dataset, model etc.
 
-> **_NOTE:_** We find QAT without the original precision training/fine-tuning (i.e skipping `Step 1` of the QAT workflow from above) to give worser accuracy. Therefore, we recommend un-quantized original precision training/fine-tuning followed by QAT for best accuracy.
+> **_NOTE:_** We find QAT without the original precision training/fine-tuning (i.e skipping `Step 1` of the QAT workflow from above) to give worse accuracy. Therefore, we recommend un-quantized original precision training/fine-tuning followed by QAT for best accuracy.
 
 > **_NOTE:_** Huggingface models trained with `modelopt.torch.speculative` (mtsp) can be used in QAT directly like regular Huggingface models.
 

@@ -369,7 +369,7 @@ By following these steps, your PEFT LoRA model should be efficiently quantized u
 Cache Diffusion methods, such as [DeepCache](https://arxiv.org/abs/2312.00858), [Block Caching](https://arxiv.org/abs/2312.03209) and [T-Gate](https://arxiv.org/abs/2404.02747), optimize performance by reusing cached outputs from previous steps instead of recalculating them. This **training-free** caching approach is compatible with a variety of models, like **DiT** and **UNet**, enabling considerable acceleration without compromising quality.
 
 <div align="center">
-  <img src="./cache_diffusion/assets/sdxl_cache.png" width="900"/>
+  <img src="./cache_diffusion/assets/sdxl_cache.png" width="900" alt="SDXL Cache"/>
   This diagram shows the default SDXL Cache compute graph in this example.
   Significant speedup is achieve through skipping certain blocks at the specific steps.
 </div>

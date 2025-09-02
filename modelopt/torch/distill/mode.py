@@ -163,7 +163,7 @@ def _convert_for_kd(model: nn.Module, config: KDLossConfig) -> ConvertReturnType
         **{**config, "teacher_model": teacher}  # overwrite with instantiated teacher
     )
 
-    # no metadata, all specifed via config.
+    # no metadata, all specified via config.
     metadata = {}
 
     return distillation_model, metadata

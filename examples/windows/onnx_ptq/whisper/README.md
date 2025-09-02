@@ -85,8 +85,8 @@ Following are some useful parameters of this script. Please refer the script for
 |---------------------------|--------------------------------------------------------------------------------------------------------------|
 | `--model_name` | HuggingFace model ID |
 | `--base_model_dir` | Directory containing all relevant files for the exported ONNX model |
-| `--onnx_path     ` | Input .onnx file path |
-| `--output_path ` | Output .onnx file path. |
+| `--onnx_path` | Input .onnx file path |
+| `--output_path` | Output .onnx file path. |
 | `--calib_method` | Calibration method for quantization (`max` or `entropy`). Default is `max`. |
 | `--quant_mode` | Quantization mode to be used (`int8` or `fp8`). Default is `int8`. |
 | `--calib_size` | Number of input calibration samples. Default is `32`. |

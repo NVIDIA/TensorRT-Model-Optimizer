@@ -4,9 +4,9 @@ This document summarizes performance and accuracy measurements of [TensorRT Mode
 The benchmark in the following tables is provided as reference points and **should not be considered as the peak
 performance** that can be delivered by Model Optimizer. All performance numbers are tested with [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) or [TensorRT](https://developer.nvidia.com/tensorrt-getting-started).
 
-### 1. Post-training quantization (PTQ) for LLMs
+## 1. Post-training quantization (PTQ) for LLMs
 
-#### 1.1 Performance
+### 1.1 Performance
 
 Config: H200, nvidia-modelopt v0.21.1, TensorRT-LLM v0.15, latency measured with [trtllm-bench](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/performance/perf-overview.md#for-non-gh200-systems-1).
 Inference speedup are compared to the BF16 baseline. **Speedup is normalized to the GPU count**.
@@ -33,6 +33,7 @@ The table below shows the MMLU loss in percentage compared to BF16 baseline.
 Config: H100, nvidia-modelopt v0.21.1, TenorR-LLM v0.15.
 Note that typically FP8 is the go-to choices for H100. 4-bit AWQ methods is recommended when GPU memory is a constraint.
 More benchmark with earlier version of Model Optimizer can be found in this [TensorRT-LLM README](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/blogs/quantization-in-TRT-LLM.md#benchmark).
+
 | Model | MMLU loss FP8 |MMLU loss INT4 AWQ|MMLU loss W4A8 AWQ|
 |:-----------------------:|:-------------:|:----------------:|:----------------:|
 | Llama3.1-8B (instruct) | 1.50% | 5.66% | 6.00% |
@@ -42,6 +43,7 @@ More benchmark with earlier version of Model Optimizer can be found in this [Ten
 
 The following table shows inference speedup for INT8 and FP8 on a Stable Diffusion XL 1.0 base model compared to the FP16 baseline.
 Config: Image resolution=1024×1024, 30 steps. TensorRT v9.3. num-warmup-runs=1. Batch size=1.
+
 | GPU | INT8 Latency (ms) | FP8 Latency (ms) | Speedup (INT8 v.s. FP16) | Speedup (FP8 v.s. FP16) |
 |:--------------:|:-----------------:|:----------------:|:------------------------:|:-----------------------:|
 | RTX 6000 Ada | 2,479.19 | 2,441.16 | 1.43x | 1.45x |

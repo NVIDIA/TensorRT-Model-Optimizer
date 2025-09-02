@@ -92,7 +92,7 @@ def load_and_preprocess_state_dict(modelopt_state_root, world_size=8):
         for rank in range(world_size)
     ]
 
-    # calculate the max acroos all TP
+    # calculate the max across all TP
     merged_state_dict = state_dict_list[0]
     for rank in range(world_size):
         for key, amax in state_dict_list[rank].items():

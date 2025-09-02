@@ -61,7 +61,7 @@ ModeloptStateList = list[tuple[str, ModeState]]  # state data structure for mult
 
 
 class ModeloptStateManager:
-    """A class to handle the modelopt state stored for each mode correspondig to a task/mode."""
+    """A class to handle the modelopt state stored for each mode corresponding to a task/mode."""
 
     _state_key = "_modelopt_state"
     _state_version_key = "_modelopt_state_version"

@@ -41,7 +41,7 @@ MLM_WARNING="${YELLOW}WARNING:${WHITE}"
 
 # CHANGE THE FOLLOWING TO YOUR DATA, MEGATRON, and CHECKPOINT DIR
 if [[ -z ${USER_FSW} ]]; then
-    printf "${MLM_ERROR} Varible USER_FSW (read/write scratch space) must be set!\n"
+    printf "${MLM_ERROR} Variable USER_FSW (read/write scratch space) must be set!\n"
     exit 1
 fi
 

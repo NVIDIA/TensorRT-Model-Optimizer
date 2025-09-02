@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility to optimze onnx graphs."""
+"""Utility to optimize onnx graphs."""
 
 import os
 import tempfile
@@ -82,7 +82,7 @@ class Optimizer:
         if return_onnx:
             return onnx_graph
 
-    # TODO: Move this fuctionality to the diffusion runner as it is specific to CLIP.
+    # TODO: Move this functionality to the diffusion runner as it is specific to CLIP.
     def clip_add_hidden_states(self, return_onnx=False):
         """Adds hidden states to the CLIP model graph."""
         hidden_layers = -1

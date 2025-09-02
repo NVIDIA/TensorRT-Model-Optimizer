@@ -333,7 +333,7 @@ class _CalibrateModeRegistryCls(_ModeRegistryCls):
             f"Mode descriptor for `_CalibrateModeRegistryCls` must be a subclass of `BaseCalibrateModeDescriptor`! "
             f"Got: {cls_descriptor}"
         )
-        return super().register_mode(cls_descriptor)  # type: ignore [arg-type]
+        return super().register_mode(cls_descriptor)
 
 
 CalibrateModeRegistry = _CalibrateModeRegistryCls("calibrate_algos")

@@ -177,7 +177,7 @@ class ModeloptBaseRule(ModeloptBaseConfig):
             wrapped_rule = {"*": rule}
         else:
             try:
-                # if this call doesn't fail, it means that field is a valid rule_tpye and we
+                # if this call doesn't fail, it means that field is a valid rule_type and we
                 # need to wrap it.
                 cls.model_validate(rule)
                 wrapped_rule = {"*": rule}

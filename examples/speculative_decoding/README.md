@@ -64,7 +64,7 @@ python3 server_generate.py --data_path Daring-Anteater/train.jsonl --output_path
 #### SLURM Prepare Data
 
 For basic parallelization of synthetic data generation we provide some SLURM support.
-Assuming a `$SLURM_JOB_ID` is present and nodes, n1, n2, n3, n4 are selected the following is achieveable.
+Assuming a `$SLURM_JOB_ID` is present and nodes, n1, n2, n3, n4 are selected the following is achievable.
 
 Example of allocating 4 nodes for 120 minutes
 
@@ -171,7 +171,7 @@ trainer.save_model("<path to the output directory>")
 
 ### MLM Example
 
-https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt
+<https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt>
 
 <!-- ### NeMo:
 

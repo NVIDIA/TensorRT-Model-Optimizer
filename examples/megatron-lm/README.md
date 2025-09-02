@@ -9,13 +9,13 @@
 
 </div>
 
-**Major Features:**
+## Major Features
 
 - Start from Hugging Face pretrained model checkpoint with on the fly conversion.
 - Support all kinds of model parallelism (TP, EP, ETP, PP).
 - Export to TensorRT-LLM, vLLM, and SGLang ready unified checkpoint.
 
-**Support Matrix: {Model}x{Features}**
+## Support Matrix: {Model}x{Features}
 
 | Model | Quantization | EAGLE3 | Q-LoRA | Distillation |
 | ------------------------------------------------------ | -----------| ------ | ----- | ---- |
@@ -50,7 +50,7 @@ USER_FSW=<path_to_scratch_space> bash interactive.sh
 
 <br>
 
-**⭐ FP8 Post-Training Quantization (PTQ):**
+## ⭐ FP8 Post-Training Quantization (PTQ)
 
 Provide the pretrained checkpoint path through variable `${HF_MODEL_CKPT}`:
 
@@ -76,7 +76,7 @@ deployment (`/tmp/Llama-3.2-1B-Instruct-Export`).
 
 <br>
 
-**⭐ Online BF16 EAGLE3 Training:**
+## ⭐ Online BF16 EAGLE3 Training
 
 Online EAGLE3 training has both the target (frozen) and draft models in the memory where the `hidden_states`
 required for training is generated on the fly.
@@ -98,19 +98,19 @@ required for training is generated on the fly.
 
 Periodically, **acceptance length (AL)** is evaluated on MT-Bench prompts. You can find resumable
 Megatron-LM checkpoint (`/tmp/Llama-3.2-1B-Eagle3`) and a Hugging Face-Like exported checkpoiint
-for deploymenet (`/tmp/Llama-3.2-1B-Eagle3-Export`).
+for deployment (`/tmp/Llama-3.2-1B-Eagle3-Export`).
 
-See [ADVANVED.md](ADVANCED.md) for a multi-gpu multi-node training example for `moonshotai/Kimi-K2-Instruct`.
+See [ADVANCED.md](ADVANCED.md) for a multi-gpu multi-node training example for `moonshotai/Kimi-K2-Instruct`.
 
 <br>
 
-**⭐ Offline BF16 EAGLE3 Training:**
+## ⭐ Offline BF16 EAGLE3 Training
 
 Coming soon ...
 
 ## Learn More About Configuration
 
-For simplicity, we use `shell` scripts and varibles as arguments. Each script has at least 1 positional
+For simplicity, we use `shell` scripts and variables as arguments. Each script has at least 1 positional
 argument `[pretrained_model_card]`. Some scripts may require more such as `[qformat]` is needed for
 quantization.
 
@@ -124,14 +124,14 @@ quantization.
 > It is used to get the corresponding Megatron-LM `${MODEL_ARGS}`. For example,
 > `meta-llama/Llama-3.1-8B-Instruct` or `deepseek-ai/DeepSeek-R1` are both supported.
 > \
-> Provide the pretrained checkpoint through varible `${HF_MODEL_CKPT}` in commandline or
+> Provide the pretrained checkpoint through variable `${HF_MODEL_CKPT}` in commandline or
 > in `env_setup_template.sh`. More variables (e.g. `${TP}`, `${EP}`, ...) can be provided though
 > commandline but we recommend passing all variable in a another `shell` script.
 
 When `${HF_MODEL_CKPT}` is not set through the commandline, `./env_setup_template.sh` can be used
 to pass all variables instead. If you have your own script, use `${SANDBOX_ENV_SETUP}`.
 
-```
+```sh
 \
     SANDBOX_ENV_SETUP=<path_to_your_script> \
     bash megatron-lm/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
@@ -140,4 +140,4 @@ to pass all variables instead. If you have your own script, use `${SANDBOX_ENV_S
 If you use our `slurm` script, then you **MUST USE** `${SANDBOX_ENV_SETUP}` (default: `./env_setup_template.sh`).
 Other variables are not passing through `sbatch` and `srun` automatically.
 
-See [ADVANVED.md](ADVANCED.md) to learn all the configurable variables.
+See [ADVANCED.md](ADVANCED.md) to learn all the configurable variables.

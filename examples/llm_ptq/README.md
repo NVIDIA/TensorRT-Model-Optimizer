@@ -40,7 +40,7 @@ For NeMo models, use the NeMo container `nvcr.io/nvidia/nemo:25.04` or later whi
 
 ### 1. Quantize (Post Training Quantization)
 
-With the simple API below, you can very easily use Model Optimizer to quantize your model. Model Optimizer achieves this by converting the percision of your model to the desired percision, and then using a small datset (typically 128-512 samples) to [calibrate](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_basic_quantization.html) the quantization scaling factors. The accuracy of PTQ is typically robust across different choices of calibration data, by default Model Optimizer uses [`cnn_dailymail`](https://huggingface.co/datasets/cnn_dailymail). Users can try other datasets by easily modifying the `calib_set`.
+With the simple API below, you can very easily use Model Optimizer to quantize your model. Model Optimizer achieves this by converting the precision of your model to the desired precision, and then using a small dataset (typically 128-512 samples) to [calibrate](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_basic_quantization.html) the quantization scaling factors. The accuracy of PTQ is typically robust across different choices of calibration data, by default Model Optimizer uses [`cnn_dailymail`](https://huggingface.co/datasets/abisee/cnn_dailymail). Users can try other datasets by easily modifying the `calib_set`.
 
 ```python
 import modelopt.torch.quantization as mtq
@@ -99,7 +99,7 @@ with torch.inference_mode():
     )
 ```
 
-After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build command to build the engines from the exported checkpoints. Please check the [ TensorRT-LLM Build API](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/workflow.md#build-apis) documentation for reference.
+After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build command to build the engines from the exported checkpoints. Please check the [TensorRT-LLM Build API](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/workflow.md#build-apis) documentation for reference.
 
 Please reference our [framework scripts](#framework-scripts) and our [docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html) for more details.
 
@@ -308,7 +308,7 @@ Megatron-LM framework PTQ and TensorRT-LLM deployment examples are maintained in
 
 A list of accuracy validation benchmarks are provided in the [llm_eval](../llm_eval/README.md) directory. Right now MMLU, and MTbench are supported in this example by specifying the `--tasks` flag running the scripts mentioned above. For MTBench, the task only runs the answer generation stage. Please follow [fastchat](https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to get the evaluation judge score.
 
-The [`benchmark_suite.py`](benchmarks/benchmark_suite.py) script is used as a fast performance benchmark. For details, please refer to the [TensorRT-LLM documentation](https://github.com/NVIDIA/TensorRT-LLM/blob/main/benchmarks/)
+The `benchmark_suite.py` script is used as a fast performance benchmark. For details, please refer to the [TensorRT-LLM documentation](https://github.com/NVIDIA/TensorRT-LLM/blob/main/benchmarks/)
 
 This example also covers the [lm_evaluation_harness](https://github.com/EleutherAI/lm-evaluation-harness), MMLU and the human eval accuracy benchmarks, whose details can be found [here](../llm_eval/README.md). The supported lm_eval evaluation tasks are listed [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks)
 
@@ -321,7 +321,7 @@ Model Optimizer supports provide two paths to export the quantized model:
 
 The unified checkpoint<sup>1</sup> format design reflects two key characteristics: 1. The layer structures and tensor names remain aligned with the original Hugging Face checkpoint, and 2. The same checkpoint can be deployed across multiple inference frameworks without modification. A unified checkpoint can be exported using the following commands:
 
-> *<sup>1.</sup>Unified checkpoint export currently does not support sparsity. Speculative decoding is only supported in unified checkpoint export. For legacy deployment, exported unified checkpoint then needs a TensorRT-LLM checkpoint converter (e.g., [this](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/eagle/convert_checkpoint.py)) to convert and build the TensorRT engine(s) for deployment. Alternatively, call TensorRT-LLM LLM-API to deploy the unified checkpoints e.g., check examples [here](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/pytorch#trt-llm-with-pytorch).*
+> *<sup>1.</sup>Unified checkpoint export currently does not support sparsity. Speculative decoding is only supported in unified checkpoint export. For legacy deployment, exported unified checkpoint then needs a TensorRT-LLM checkpoint converter (e.g., [this](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/eagle/convert_checkpoint.py)) to convert and build the TensorRT engine(s) for deployment. Alternatively, call TensorRT-LLM LLM-API to deploy the unified checkpoints e.g., check examples [here](https://github.com/NVIDIA/TensorRT-LLM/blob/main/examples/llm-api/README.md).*
 
 ### API
 
@@ -424,7 +424,7 @@ with torch.inference_mode():
 
 ### Build the TensorRT-LLM engines
 
-After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build command to build the engines from the exported checkpoints. Please check the [ TensorRT-LLM Build API](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/workflow.md#build-apis) documentation for reference.
+After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build command to build the engines from the exported checkpoints. Please check the [TensorRT-LLM Build API](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/workflow.md#build-apis) documentation for reference.
 
 ## Pre-Quantized Checkpoints
 

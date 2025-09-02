@@ -283,7 +283,7 @@ def _test_tree_decode(tree_paths, greedy_steps, rank, size):
             queue.append([child_tree_token, len(index_list)])
             draft_tokens_list.append(draft_token[:, :, child_idx])
             index_list.append(
-                index_list[index][:] + [[cur_len + child_idx, len(eagle_hidden_states_list) - 1]]
+                [*index_list[index][:], [cur_len + child_idx, len(eagle_hidden_states_list) - 1]]
             )
 
 

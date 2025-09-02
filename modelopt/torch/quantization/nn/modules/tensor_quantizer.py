@@ -929,7 +929,7 @@ class TensorQuantizer(nn.Module):
             and self._fake_quant
         ):
             # Tensor reshaping is required for static block quantization
-            # Tensor shapes are handled seperately by the quantization kernels for dynamic block quantization
+            # Tensor shapes are handled separately by the quantization kernels for dynamic block quantization
             self._setup_for_blockquant(inputs)
             inputs = self._process_for_blockquant(inputs)
 

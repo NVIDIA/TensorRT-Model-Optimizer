@@ -36,7 +36,7 @@ def get_ep(inference_ep: list[str]):
     elif "cpu" in inference_ep:
         provider = "CPUExecutionProvider"
     else:
-        raise ValueError("unknonwn ep")
+        raise ValueError("unknown ep")
 
     return provider
 

@@ -358,7 +358,7 @@ def evaluate_ort_native(args, subject, sess, tokenizer, dev_df, test_df, config)
         train_prompt = gen_prompt(dev_df, subject, k)
         prompt = train_prompt + prompt_end
         input_ids = tokenizer.encode(prompt, return_tensors="np").astype(np.int64)
-        # print(f"Context lenght {input_ids.shape[1]}")
+        # print(f"Context length {input_ids.shape[1]}")
         attention_mask = np.ones_like(input_ids, dtype=np.int64)
         position_ids = np.arange(input_ids.shape[1], dtype=np.int64)[np.newaxis, :]
 

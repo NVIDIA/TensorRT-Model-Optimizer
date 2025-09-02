@@ -85,7 +85,7 @@ def build_tensorrt_llm(
             Details: https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/tuning-max-batch-size-and-max-num-tokens.html
         num_build_workers: The number of workers to use for the building process.
             If build time is a concern, you can increase this worker count to num of GPUs.
-            At a lost of higer CPU memory usage footprint.
+            At a lost of higher CPU memory usage footprint.
             If CPU memory is limited, num_build_workers should be set to 1 to conserve memory.
         enable_sparsity: The switch to enable sparsity for TRT compiler.
             With this flag, the TRT compiler will search tactics of sparse kernels for each node of which
