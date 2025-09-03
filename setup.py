@@ -23,7 +23,7 @@ import setuptools
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
 version = os.environ.get(
-    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.33.1" if platform.system() == "Linux" else "0.27.0"
+    "SETUPTOOLS_SCM_PRETEND_VERSION", "0.33.1" if platform.system() == "Linux" else "0.33.0"
 )
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}

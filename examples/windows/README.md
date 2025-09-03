@@ -5,7 +5,7 @@
 #### A Library to Quantize and Compress Deep Learning Models for Optimized Inference on Native Windows RTX GPUs
 
 [![Documentation](https://img.shields.io/badge/Documentation-latest-brightgreen.svg?style=flat)](https://nvidia.github.io/TensorRT-Model-Optimizer/)
-[![version](https://img.shields.io/badge/v0.27.0-orange?label=Release)](https://pypi.org/project/nvidia-modelopt/0.27.0/)
+[![version](https://img.shields.io/badge/v0.33.0-orange?label=Release)](https://pypi.org/project/nvidia-modelopt/)
 [![license](https://img.shields.io/badge/License-Apache%202.0-blue)](../../LICENSE)
 
 [Examples](#examples) |
@@ -59,7 +59,7 @@ pip install onnxruntime-genai-directml>=0.4.0
 pip install onnxruntime-directml==1.20.0
 ```
 
-For more details, please refer to the [detailed installation instructions](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html).
+For more details, please refer to the [detailed installation instructions](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/windows/_installation_for_Windows.html).
 
 ## Techniques
 

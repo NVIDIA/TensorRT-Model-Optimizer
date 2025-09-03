@@ -29,7 +29,7 @@ This repository provides scripts, popular third-party benchmarks, and instructio
 
 The MMLU benchmark assesses LLM performance across a wide range of tasks, producing a score between 0 and 1, where a higher score indicates better accuracy. Please refer the [MMLU Paper](https://arxiv.org/abs/2009.03300) for more details on this.
 
-### MMLU Setup
+### Setup
 
 The table below lists the setup steps to prepare your environment for evaluating LLMs using the MMLU benchmark.
 

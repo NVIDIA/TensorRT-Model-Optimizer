@@ -2,6 +2,14 @@
 Model Optimizer Changelog (Windows)
 ===================================
 
+0.33 (2025-09-03)
+^^^^^^^^^^^^^^^^^
+
+**New Features**
+
+- TensorRT Model Optimizer for Windows now supports `NvTensorRtRtx <https://onnxruntime.ai/docs/execution-providers/TensorRTRTX-ExecutionProvider.html>`_ execution-provider.
+
+
 0.27 (2025-04-30)
 ^^^^^^^^^^^^^^^^^
 

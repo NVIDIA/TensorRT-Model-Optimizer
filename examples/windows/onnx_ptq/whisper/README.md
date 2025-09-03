@@ -73,6 +73,8 @@ python .\whisper_optimum_ort_inference.py --model_name=openai/whisper-large --on
 
 ```
 
+A sample audio file (.wav) is provided with this example (*file*: `demo.wav`).
+
 ## Quantization script
 
 The script `whisper_onnx_quantization.py` supports various quantization schemes for the given ONNX whisper model.

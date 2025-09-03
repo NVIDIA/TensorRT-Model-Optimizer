@@ -35,6 +35,7 @@ import os
 import platform
 import shutil
 import tempfile
+from collections.abc import Sequence
 from typing import Any
 
 import onnx
@@ -227,6 +228,7 @@ def quantize(
     passes: list[str] = ["concat_elimination"],
     simplify: bool = False,
     calibrate_per_node: bool = False,
+    input_shapes_profile: Sequence[dict[str, str]] | None = None,
     **kwargs: Any,
 ) -> None:
     """Quantizes the provided ONNX model.
@@ -247,7 +249,7 @@ def quantize(
             Input shapes used for calibration process.
         calibration_eps:
             Priority order for the execution providers (EP) to calibrate the model.
-            Any subset of ['trt', 'cuda:x', 'dml:x', 'cpu'], where 'x' is the device id.
+            Any subset of ['NvTensorRtRtx', 'trt', 'cuda:x', 'dml:x', 'cpu'], where 'x' is the device id.
 
             .. note::
                 If a custom op is detected in the model, 'trt' will automatically be added to the EP list.
@@ -304,6 +306,39 @@ def quantize(
         calibrate_per_node:
             Calibrate the model node by node instead of calibrating the entire model. This allowes calibration with
             a lower system memory with the cost of longer calibration time.
+        input_shapes_profile:
+            This is a sequence of shapes-profile for each EP in calibration_eps. Some EPs like NvTensorRtRtx use these
+            shapes profile for optimized engine generation for those input shapes. Length of this parameters should
+            equal length of calibration_eps (i.e. one profile data per EP in calibration_eps, in that order).
+            A shapes-profile comprises of "min", "max", and "opt" values for the shapes of model inputs
+            (esp. dynamic shapes). Consider following example snippets for shape-profile data-format of some EPs.
+
+                input_shape_profile_for_NvTensorRtrRtx_EP = {
+                    "nv_profile_min_shapes":  "input1:dim1xdim2...,input2:dim1xdim2...,...",
+
+                    "nv_profile_max_shapes":  "input1:dim1xdim2...,input2:dim1xdim2...,...",
+
+                    "nv_profile_opt_shapes":  "input1:dim1xdim2...,input2:dim1xdim2...,...",
+
+                }
+
+                input_shape_profile_for_TensorRT_EP = {
+                    "trt_profile_min_shapes":  "input1:dim1xdim2...,input2:dim1xdim2...,...",
+
+                    "trt_profile_max_shapes":  "input1:dim1xdim2...,input2:dim1xdim2...,...",
+
+                    "trt_profile_opt_shapes":  "input1:dim1xdim2...,input2:dim1xdim2...,...",
+
+                }
+
+            For EPs that don't require such shapes profile (e.g. CPU EP, CUDA EP, DML EP), empty profile {} can be used.
+            For example, if calibration_eps are ["NvTensorRtRtx", "cpu"], then input_shapes_profile can be set to:
+
+            - [input_shapes_profile_for_NvTensorRtRtx_EP, {}]
+
+            If None of the calibration_eps require any such shapes profile for model inputs, then nothing needs to be
+            set for this "input_shapes_profile" parameter.
+            Default value is None.
         kwargs:
             Additional keyword arguments for int4 quantization, including:
             - awqlite_alpha_step (float): Alpha step for lite, range [0, 1].
@@ -431,6 +466,7 @@ def quantize(
             nodes_to_exclude=nodes_to_exclude,
             use_zero_point=use_zero_point,
             log_level=log_level,
+            input_shapes_profile=input_shapes_profile,
             **kwargs,
         )
     else:

@@ -33,13 +33,66 @@ logging.getLogger().setLevel(logging.INFO)
 pt_to_np = {"torch.int64": np.int64, "torch.float32": np.float32, "torch.float16": np.float16}
 
 
+def prepare_input_shapes_string(
+    batch_size, seq_len, past_seq_len, num_layers, num_kv_heads, head_dim
+):
+    shapes = ""
+
+    shapes += f"input_ids:{batch_size}x{seq_len}"
+    shapes += f",attention_mask:{batch_size}x{seq_len}"
+
+    for i in range(num_layers):
+        key_name = f"past_key_values.{i}.key"
+        value_name = f"past_key_values.{i}.value"
+        shapes += f",{key_name}:{batch_size}x{num_kv_heads}x{past_seq_len}x{head_dim}"
+        shapes += f",{value_name}:{batch_size}x{num_kv_heads}x{past_seq_len}x{head_dim}"
+
+    return shapes
+
+
+def get_input_shapes_profile(model_name_or_path):
+    config = AutoConfig.from_pretrained(model_name_or_path)
+
+    head_dim = config.hidden_size // config.num_attention_heads
+    if hasattr(config, "head_dim") and config.head_dim is not None:
+        head_dim = config.head_dim
+    num_kv_heads = config.num_key_value_heads
+    num_layers = config.num_hidden_layers
+
+    min_shapes = prepare_input_shapes_string(1, 1, 0, num_layers, num_kv_heads, head_dim)
+    max_shapes = prepare_input_shapes_string(1, 1024, 1024, num_layers, num_kv_heads, head_dim)
+    opt_shapes = prepare_input_shapes_string(1, 512, 512, num_layers, num_kv_heads, head_dim)
+
+    return min_shapes, max_shapes, opt_shapes
+
+
+def make_input_shapes_profile_for_ep_list(ep_list, model_name_or_path):
+    # Input-shapes-profile will be used in provider-options for ORT session creation.
+    # Provider options (even if {}) are needed for all EPs when we provide for any one of them.
+    # Using empty shapes_profile for non-NvTensorRtRtx EPs.
+    input_shapes_profile_sequence = []
+    for ep in ep_list:
+        if ep == "NvTensorRtRtx":
+            min_shapes, max_shapes, opt_shapes = get_input_shapes_profile(model_name_or_path)
+            input_shapes_profile = {
+                "nv_profile_min_shapes": min_shapes,
+                "nv_profile_max_shapes": max_shapes,
+                "nv_profile_opt_shapes": opt_shapes,
+            }
+            input_shapes_profile_sequence.append(input_shapes_profile)
+        else:
+            input_shapes_profile_sequence.append({})
+
+    return input_shapes_profile_sequence
+
+
 def make_model_input(
     config,
     input_ids_arg,
     attention_mask_arg,
     add_past_kv_inputs,
     device,
-    use_fp16,
+    use_fp32,
     use_buffer_share,
     add_position_ids,
 ):
@@ -63,7 +116,7 @@ def make_model_input(
 
     if add_past_kv_inputs:
         # print(f"\n--Quantize-Script-- adding past KV cache value\n")
-        torch_dtype = torch.float16 if use_fp16 else torch.float32
+        torch_dtype = torch.float32 if use_fp32 else torch.float16
         batch_size, sequence_length = input_ids.shape
         max_sequence_length = config.max_position_embeddings
         num_heads, head_size = (
@@ -106,7 +159,7 @@ def get_initial_inputs(
     tokenizer,
     prompt,
     device,
-    use_fp16,
+    use_fp32,
     use_buffer_share,
     add_past_kv_inputs,
     add_position_ids,
@@ -120,7 +173,7 @@ def get_initial_inputs(
         tokenizer: Tokenizer to encode and decode text.
         prompt: List of prompts to be supplied for inference.
         device: Device used to run the inference.
-        use_fp16: Flag to select the float16 dtype in torch.
+        use_fp32: Flag to select the float32 dtype in torch.
         use_buffer_share: True when --use_gqa is passed during the onnx export process
         add_past_kv_inputs: True when we want to also pass past_key_values input to model
         add_position_ids: True when we want to also pass position_ids input to model
@@ -138,7 +191,7 @@ def get_initial_inputs(
         encodings_dict["attention_mask"],
         add_past_kv_inputs,
         device,
-        use_fp16,
+        use_fp32,
         use_buffer_share,
         add_position_ids,
     )
@@ -152,7 +205,7 @@ def get_calib_inputs(
     batch_size,
     block_size,
     device,
-    use_fp16,
+    use_fp32,
     use_buffer_share,
     add_past_kv_inputs,
     max_calib_rows_to_load,
@@ -236,7 +289,7 @@ def get_calib_inputs(
             attention_mask,
             add_past_kv_inputs,
             device,
-            use_fp16,
+            use_fp32,
             use_buffer_share,
             add_position_ids,
         )
@@ -312,7 +365,7 @@ def main(args):
         f"\n--Quantize-Script-- algo={args.algo}, dataset={args.dataset}, calib_size={args.calib_size}, "
         f"batch_size={args.batch_size}, block_size={args.block_size}, add-position-ids={args.add_position_ids}, "
         f"past-kv={args.add_past_kv_inputs}, rcalib={args.use_random_calib}, device={args.device}, "
-        f"use_zero_point={args.use_zero_point}\n"
+        f"use_zero_point={args.use_zero_point}, use_fp32={args.use_fp32}\n"
     )
 
     print(
@@ -325,6 +378,21 @@ def main(args):
         f"calibration_eps={args.calibration_eps}\n"
     )
 
+    if os.path.isabs(args.output_path):
+        output_dir_path = os.path.dirname(args.output_path)
+    else:
+        output_dir_path = os.path.dirname(os.path.join(os.getcwd(), args.output_path))
+
+    print(
+        f"\n\n--Quantize-Script-- input onnx path = {args.onnx_path},"
+        f"\n    given output path = {args.output_path}"
+        f"\n    absolute output directory path = {output_dir_path}\n\n"
+    )
+
+    if not os.path.exists(output_dir_path):
+        os.makedirs(output_dir_path)
+        os.chmod(output_dir_path, 0o777)
+
     calib_inputs = get_calib_inputs(
         args.dataset,
         args.model_name,
@@ -333,12 +401,22 @@ def main(args):
         args.batch_size,
         512,
         device,
-        args.use_fp16,
+        args.use_fp32,
         args.use_buffer_share,
         args.add_past_kv_inputs,
         128,
         args.add_position_ids,
         args.trust_remote_code,
+    )
+
+    input_shapes_profile_data = None
+    if "NvTensorRtRtx" in args.calibration_eps and (args.algo not in ["rtn", "rtn_dq"]):
+        # NvTensorRtRtx EP uses (min, max, opt) profile for dynamic shapes in the model's inputs.
+        input_shapes_profile_data = make_input_shapes_profile_for_ep_list(
+            args.calibration_eps, args.model_name
+        )
+    print(
+        f"\n--Quantize-Script-- input_shapes_profile is None? - {input_shapes_profile_data is None}\n"
     )
 
     t = time.time()
@@ -350,6 +428,7 @@ def main(args):
         calibration_eps=args.calibration_eps,
         use_zero_point=args.use_zero_point,
         block_size=args.block_size,
+        input_shapes_profile=input_shapes_profile_data,
         awqlite_alpha_step=args.awqlite_alpha_step,
         awqlite_run_per_subgraph=args.awqlite_run_per_subgraph,
         awqlite_fuse_nodes=args.awqlite_fuse_nodes,
@@ -401,7 +480,7 @@ if __name__ == "__main__":
         "--algo",
         type=str,
         default="awq_lite",
-        help="Device for calibration data",
+        help="Algorithm or calibration-method to use. Choose from [awq_lite, awq_clip, rtn, rtn_dq]",
     )
     parser.add_argument(
         "--dataset",
@@ -422,10 +501,10 @@ if __name__ == "__main__":
         help="Batch size for calibration samples",
     )
     parser.add_argument(
-        "--use_fp16",
-        type=bool,
-        default=True,
-        help="True when KV cache inputs/outputs are in float16.",
+        "--use_fp32",
+        default=False,
+        action="store_true",
+        help="True when KV cache inputs/outputs are in float32.",
     )
     parser.add_argument(
         "--awqlite_alpha_step",
@@ -435,15 +514,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--awqlite_run_per_subgraph",
-        type=bool,
         default=False,
+        action="store_true",
         help="If true, then AWQ scale search will iterate over each subgraphs with quantizable matmuls",
     )
     parser.add_argument(
-        "--awqlite_fuse_nodes",
-        type=bool,
+        "--awqlite_disable_fuse_nodes",
+        dest="awqlite_fuse_nodes",
         default=True,
-        help="If true, then input scaling part will be fused in the parent node as and when possible",
+        action="store_false",
+        help="If fuse_nodes is true, then input scaling part will be fused in the parent node as and when possible",
     )
     parser.add_argument(
         "--awqclip_alpha_step",
@@ -471,32 +551,34 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--use_zero_point",
-        type=bool,
         default=False,
+        action="store_true",
         help="True when we want to perform zero-point based quantization",
     )
     parser.add_argument(
-        "--add_past_kv_inputs",
-        type=bool,
+        "--no_past_kv_inputs",
+        dest="add_past_kv_inputs",
         default=True,
+        action="store_false",
         help="Add past KV cache values in inputs",
     )
     parser.add_argument(
         "--use_buffer_share",
-        type=bool,
         default=False,
+        action="store_true",
         help="True when --use_gqa was passed during export.",
     )
     parser.add_argument(
-        "--add_position_ids",
-        type=bool,
+        "--no_position_ids",
+        dest="add_position_ids",
+        action="store_false",
         default=True,
         help="True when we want to also pass position_ids input to model",
     )
     parser.add_argument(
         "--use_random_calib",
-        type=bool,
         default=False,
+        action="store_true",
         help="True when we want to use a random calibration data",
     )
 
