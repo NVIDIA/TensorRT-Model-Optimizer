@@ -6,6 +6,7 @@
 .pre-commit-config.yaml @NVIDIA/modelopt-setup-codeowners
 CONTRIBUTING.md @NVIDIA/modelopt-setup-codeowners
 LICENSE @NVIDIA/modelopt-setup-codeowners
+LICENSE_HEADER @NVIDIA/modelopt-setup-codeowners
 pyproject.toml @NVIDIA/modelopt-setup-codeowners
 SECURITY.md @NVIDIA/modelopt-setup-codeowners
 setup.py @NVIDIA/modelopt-setup-codeowners
