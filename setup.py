@@ -126,7 +126,7 @@ if __name__ == "__main__":
         author="NVIDIA Corporation",
         url="https://github.com/NVIDIA/TensorRT-Model-Optimizer",
         license="Apache 2.0",
-        license_files=("LICENSE",),
+        license_files=("LICENSE_HEADER",),
         classifiers=[
             "Programming Language :: Python :: 3",
             "Intended Audience :: Developers",

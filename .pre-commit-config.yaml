@@ -57,19 +57,19 @@ repos:
   - repo: https://github.com/Lucas-C/pre-commit-hooks
     rev: v1.5.5
     hooks:
-      # Default hook for Apache 2.0 in core python files
+      # Default hook for Apache 2.0 in python and shell files
       - id: insert-license
         alias: insert-license-py
         args:
           - --license-filepath
-          - ./LICENSE
+          - ./LICENSE_HEADER
           - --comment-style
           - "#"
           - --allow-past-years
-        types: [python]
+        types: [python, shell]
         # NOTE: Exclude files that have copyright or license headers from another company or individual
         # since we want to keep those above the license header added by this hook.
-        # Instead, we should manually add the license header to those files after the original header.
+        # Instead, we should manually add the license header to those files *after* the original header.
         exclude: >
           (?x)^(
               modelopt/onnx/quantization/operators.py|
@@ -98,27 +98,16 @@ repos:
               examples/speculative_decoding/server_generate.py|
           )$
 
-      # Default hook for Apache 2.0 in core c/c++/cuda files
+      # Default hook for Apache 2.0 in c/c++/cuda files
       - id: insert-license
         alias: insert-license-c
         args:
           - --license-filepath
-          - ./LICENSE
+          - ./LICENSE_HEADER
           - --comment-style
           - "/*| *| */"
           - --allow-past-years
         types_or: [c++, cuda, c]
-
-      # Default hook for Apache 2.0 in shell files
-      - id: insert-license
-        alias: insert-license-sh
-        args:
-          - --license-filepath
-          - ./LICENSE
-          - --comment-style
-          - "#"
-          - --allow-past-years
-        types_or: [shell]
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.7.9
