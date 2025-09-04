@@ -68,7 +68,7 @@ example-ada:
       - TEST: [onnx_ptq]
         TEST_TYPE: bash
 
-##### Megatron / NeMo Integration Tests #####
+##### [WIP] Megatron / NeMo Integration Tests #####
 megatron-nemo-integration:
   extends: .tests-default
   variables:
