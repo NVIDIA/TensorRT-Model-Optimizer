@@ -52,27 +52,19 @@ def get_tokenizer(ckpt_path, trust_remote_code=False, **kwargs):
     if "vila" in ckpt_path.lower():
         ckpt_path += "/llm"
 
-    if ckpt_path.endswith(".yaml"):
-        # Model Optimizer modification
-        # For Nemo models, tokenizer is instantiated based on its config
-        from modelopt.deploy.llm.nemo_utils import get_nemo_tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(
+        ckpt_path, trust_remote_code=trust_remote_code, **kwargs
+    )
 
-        tokenizer = get_nemo_tokenizer(ckpt_path)
+    if "qwen" in type(tokenizer).__name__.lower():
+        # qwen use token id 151643 as pad and eos tokens
+        tokenizer.pad_token = tokenizer.convert_ids_to_tokens(151643)
+        tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
 
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(
-            ckpt_path, trust_remote_code=trust_remote_code, **kwargs
-        )
-
-        if "qwen" in type(tokenizer).__name__.lower():
-            # qwen use token id 151643 as pad and eos tokens
-            tokenizer.pad_token = tokenizer.convert_ids_to_tokens(151643)
-            tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
-
-        # can't set attribute 'pad_token' for "<unk>"
-        # We skip this step for Nemo models
-        if tokenizer.pad_token != "<unk>" or tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+    # can't set attribute 'pad_token' for "<unk>"
+    # We skip this step for Nemo models
+    if tokenizer.pad_token != "<unk>" or tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     assert tokenizer.pad_token is not None, f"Pad token for {ckpt_path} cannot be set!"
 

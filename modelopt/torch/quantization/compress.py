@@ -28,7 +28,7 @@ from modelopt.torch.opt.conversion import ModelLikeModule, ModeloptStateManager
 from modelopt.torch.opt.dynamic import _DMRegistryCls
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 
-from .backends.gemm_registry import enable_real_quant_gemm, is_real_quant_gemm_enabled
+from .backends.gemm_registry import disable_real_quant_gemm, enable_real_quant_gemm
 from .config import CompressCfgType, CompressConfig
 from .conversion import _replace_quant_module, set_quantizer_attribute
 from .nn.modules.quant_linear import RealQuantLinear
@@ -53,7 +53,6 @@ RealQuantModuleRegistry = _DMRegistryCls("RealQuant")
 def compress_convert(
     model,
     config: CompressConfig,
-    use_real_quant_gemm: bool = True,
     skip_real_quantize_weight: bool = False,
 ) -> ConvertReturnType:
     """Compress entry point.
@@ -63,7 +62,6 @@ def compress_convert(
     Args:
         model: The model to compress.
         config: The compression configuration.
-        use_real_quant_gemm: Whether to use real quantize GEMM implementation.
         skip_real_quantize_weight: Whether to skip the real quantize step. Currently, it is
             only set to True in the Megatron restore path to unify the restore behavior regardless
             of whether the model is initialized on meta device or not.
@@ -124,8 +122,10 @@ def compress_convert(
         )
 
     # Turn on real quant gemm after compression
-    if use_real_quant_gemm:
+    if config.quant_gemm:
         enable_real_quant_gemm(model)
+    else:
+        disable_real_quant_gemm(model)
 
     metadata = {}
     update_compress_metadata(model, config, metadata)
@@ -149,7 +149,6 @@ def compress_restore(
     model, _ = compress_convert(
         model,
         config,
-        use_real_quant_gemm=metadata.get("use_real_quant_gemm", False),
         skip_real_quantize_weight=("q_tensor_state" not in metadata),
     )
     # restore scale state in weight quantizer
@@ -178,8 +177,6 @@ def compress_restore(
 
 
 def update_compress_metadata(model: nn.Module, config: CompressConfig, metadata: MetadataDict):
-    metadata["use_real_quant_gemm"] = is_real_quant_gemm_enabled(model)
-
     # save scales state in weight quantizer
     real_quantizer_state = {}
     for name, module in model.named_modules():

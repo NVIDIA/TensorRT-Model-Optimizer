@@ -56,7 +56,6 @@ from .model_config import (
     QUANTIZATION_NVFP4_AWQ,
     QUANTIZATION_W4A8_AWQ,
     QUANTIZATION_W4A8_MXFP4_FP8,
-    QUANTIZATION_W4A8_NVFP4_FP8,
 )
 
 logger = logging.getLogger(__name__)
@@ -267,7 +266,6 @@ def get_weight_scaling_factor(module: nn.Module, weight_name: str = "weight") ->
     if quantization_format in [
         QUANTIZATION_NVFP4,
         QUANTIZATION_NVFP4_AWQ,
-        QUANTIZATION_W4A8_NVFP4_FP8,
     ]:
         return NVFP4QTensor.get_weights_scaling_factor(
             weight,
@@ -294,7 +292,6 @@ def get_weight_scaling_factor_2(module: nn.Module, weight_name: str = "weight") 
     if get_quantization_format(module) in [
         QUANTIZATION_NVFP4,
         QUANTIZATION_NVFP4_AWQ,
-        QUANTIZATION_W4A8_NVFP4_FP8,
     ]:
         return NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(weight_quantizer)
 
@@ -487,14 +484,6 @@ def get_quantization_format(module) -> str | None:
                 and input_quantizer.block_sizes is None
             ):
                 return QUANTIZATION_W4A8_MXFP4_FP8
-            if (
-                block_sizes.get("type", "static") == "dynamic"
-                and scale_bits == (4, 3)
-                and input_quantizer.is_enabled
-                and input_quantizer.num_bits == (4, 3)
-                and input_quantizer.block_sizes is None
-            ):
-                return QUANTIZATION_W4A8_NVFP4_FP8
             if scale_bits == (4, 3):
                 return QUANTIZATION_NVFP4
             elif scale_bits == (8, 0):
@@ -640,13 +629,6 @@ def process_layer_quant_config(layer_config_dict):
                 "has_zero_point": False,
                 "pre_quant_scale": True,
             }
-        elif v == "w4a8_nvfp4_fp8":
-            layer_config = {
-                "quant_algo": "W4A8_NVFP4_FP8",
-                "group_size": layer_config_dict[prefix + ".awq_block_size"],
-                "has_zero_point": False,
-                "pre_quant_scale": True,
-            }
         elif v == "w4a8_mxfp4_fp8":
             layer_config = {
                 "quant_algo": "W4A8_MXFP4_FP8",
@@ -765,7 +747,7 @@ def to_quantized_weight(
     if quantization in [QUANTIZATION_INT4_AWQ, QUANTIZATION_W4A8_AWQ]:
         return pack_int4_in_uint8(weight, weights_scaling_factor)
 
-    if quantization in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ, QUANTIZATION_W4A8_NVFP4_FP8]:
+    if quantization in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ]:
         assert block_size is not None, "Block size not passed. Unable to quantize to NVFP4 format."
         assert weights_scaling_factor2 is not None, (
             "Weights scaling factor 2 not passed. Unable to quantize to NVFP4 format"

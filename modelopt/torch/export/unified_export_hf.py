@@ -51,7 +51,6 @@ from .model_config import (
     QUANTIZATION_NVFP4,
     QUANTIZATION_NVFP4_AWQ,
     QUANTIZATION_W4A8_AWQ,
-    QUANTIZATION_W4A8_NVFP4_FP8,
 )
 from .quant_utils import (
     fuse_prequant_layernorm,
@@ -281,7 +280,6 @@ def _export_quantized_weight(
         QUANTIZATION_NVFP4_AWQ,
         QUANTIZATION_NVFP4,
         QUANTIZATION_W4A8_AWQ,
-        QUANTIZATION_W4A8_NVFP4_FP8,
     ]:
         # Register weight_scale_2
         sub_module.register_buffer(

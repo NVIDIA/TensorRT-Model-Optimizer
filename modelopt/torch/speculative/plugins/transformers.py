@@ -37,7 +37,12 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers import Cache, DynamicCache, PretrainedConfig, PreTrainedModel
-from transformers.models.llama.modeling_llama import LlamaAttention, LlamaDecoderLayer, LlamaRMSNorm
+from transformers.models.llama.modeling_llama import (
+    LlamaAttention,
+    LlamaDecoderLayer,
+    LlamaRMSNorm,
+    LlamaRotaryEmbedding,
+)
 from transformers.trainer_pt_utils import LabelSmoother
 from transformers.utils import ModelOutput
 
@@ -421,6 +426,7 @@ class HFEagleModel(EagleModel):
             self.eagle_config,
             decoder_cls,
         )
+        self.eagle_rotary_emb = LlamaRotaryEmbedding(config=self.eagle_config)
 
         if hasattr(self.model.layers[-1].self_attn, "o_proj"):
             device = self.model.layers[-1].self_attn.o_proj.weight.device
@@ -823,7 +829,7 @@ class HFEagleModel(EagleModel):
             )
             with torch.no_grad():
                 inputs_embeds = self.model.embed_tokens(eagle_input_ids)
-            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states, position_ids)
+            position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states, position_ids)
 
             # Then, we run eagle forward
             eagle_postnorm_h, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
@@ -864,7 +870,7 @@ class HFEagleModel(EagleModel):
             )
             with torch.no_grad():
                 inputs_embeds = self.model.embed_tokens(eagle_input_ids_1)
-            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states_1, position_ids_1)
+            position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states_1, position_ids_1)
             eagle_postnorm_h, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
                 eagle_input_hidden_states_1,
                 inputs_embeds,
@@ -912,7 +918,7 @@ class HFEagleModel(EagleModel):
             )
             with torch.no_grad():
                 inputs_embeds = self.model.embed_tokens(eagle_input_ids_2)
-            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states_2, position_ids_2)
+            position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states_2, position_ids_2)
             eagle_postnorm_h, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
                 eagle_input_hidden_states_2,
                 inputs_embeds,
@@ -954,7 +960,7 @@ class HFEagleModel(EagleModel):
             )
             with torch.no_grad():
                 inputs_embeds = self.model.embed_tokens(eagle_input_ids_3)
-            position_embeddings = self.model.rotary_emb(eagle_input_hidden_states_3, position_ids_3)
+            position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states_3, position_ids_3)
             eagle_postnorm_h, _, eagle_logits, eagle_cache = self._eagle_forward(
                 eagle_input_hidden_states_3,
                 inputs_embeds,
@@ -1084,7 +1090,7 @@ class HFEagleModel(EagleModel):
                 None,
                 None,
             )
-            position_embeddings = self.model.rotary_emb(
+            position_embeddings = self.eagle_rotary_emb(
                 eagle_input_hidden_states, eagle_position_ids
             )
 

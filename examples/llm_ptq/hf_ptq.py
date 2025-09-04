@@ -65,7 +65,6 @@ QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
     "nvfp4_awq": mtq.NVFP4_AWQ_LITE_CFG,
     "fp8_pb_wo": mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
     "fp8_pc_pt": mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
-    "w4a8_nvfp4_fp8": mtq.W4A8_NVFP4_FP8_CFG,
     "w4a8_mxfp4_fp8": mtq.W4A8_MXFP4_FP8_CFG,
     "nvfp4_mlp_only": mtq.NVFP4_MLP_ONLY_CFG,
 }
@@ -261,7 +260,11 @@ def main(args):
             quant_cfg = apply_kv_cache_quant(
                 quant_cfg, getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
             )
-        with init_quantized_weights(quant_cfg, gpu_mem_percentage=args.gpu_max_mem_percentage):
+
+        # Do not use real quant GEMM so the calibration can be more accurate.
+        with init_quantized_weights(
+            quant_cfg, gpu_mem_percentage=args.gpu_max_mem_percentage, quant_gemm=False
+        ):
             model_kwargs = {"trust_remote_code": args.trust_remote_code}
             if args.attn_implementation is not None:
                 model_kwargs["attn_implementation"] = args.attn_implementation
@@ -469,6 +472,16 @@ def main(args):
             # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
             if model_type == "gemma" and "int8_sq" in args.qformat:
                 quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
+
+            if model_type == "phi4mm":
+                # Only quantize the language model
+                quant_cfg["quant_cfg"]["*speech*"] = {"enable": False}
+                quant_cfg["quant_cfg"]["*audio*"] = {"enable": False}
+                quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
+                quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
+                warnings.warn(
+                    "Please set the default input_mode to InputMode.LANGUAGE before quantizing."
+                )
 
         if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
@@ -701,7 +714,7 @@ if __name__ == "__main__":
         help=(
             "Specify the percentage of available GPU memory to use for loading the model when "
             "device_map is set to sequential. "
-            "By default, 80% of the available GPU memory is used."
+            "By default, 80%% of the available GPU memory is used."
         ),
         type=float,
         default=0.8,

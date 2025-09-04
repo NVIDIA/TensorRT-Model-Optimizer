@@ -4,7 +4,7 @@ Pruning
 
 .. tip::
 
-    Checkout `Llama 3.1 NeMo Minitron Pruning <https://github.com/NVIDIA/NeMo/tree/main/tutorials/llm/llama/pruning-distillation>`_ and
+    Checkout `Llama 3.1 NeMo Minitron Pruning <https://github.com/NVIDIA-NeMo/NeMo/tree/main/tutorials/llm/llama/pruning-distillation>`_ and
     `ResNet20 on CIFAR-10 Notebook <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/examples/pruning/cifar_resnet.ipynb>`_
     for an end-to-end example of pruning.
 

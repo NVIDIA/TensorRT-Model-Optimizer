@@ -20,9 +20,7 @@ from setuptools_scm import get_version
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-# TODO: Set version to static stable release version when creating the release branch
-# version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "X.Y.Z")
-version = get_version(root=".", fallback_version="0.0.0")
+version = get_version(root=".", fallback_version="0.35.0")
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
@@ -69,7 +67,7 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.17.0",
-        "transformers>=4.48,<5.0",  # Should match modelopt/torch/__init__.py and tox.ini
+        "transformers>=4.48,<4.56",  # Should match modelopt/torch/__init__.py and tox.ini
         "deepspeed>=0.9.6 ; platform_system != 'Darwin' and platform_system != 'Windows'",
     ],
     # linter tools

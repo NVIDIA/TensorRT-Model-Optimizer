@@ -1,12 +1,13 @@
 Model Optimizer Changelog (Linux)
 =================================
 
-0.35 (2025-08-xx)
+0.35 (2025-09-04)
 ^^^^^^^^^^^^^^^^^
 
 **Deprecations**
 
 - Deprecate ``torch<2.6`` support.
+- Deprecate NeMo 1.0 model support.
 
 **Bug Fixes**
 

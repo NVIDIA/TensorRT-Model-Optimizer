@@ -26,76 +26,7 @@ Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#pre-requisites) for
 
 ## Getting Started
 
-### 1. Quantize (Post Training Quantization)
-
-With the simple API below, you can very easily use Model Optimizer to quantize your model. Model Optimizer achieves this by converting the precision of your model to the desired precision, and then using a small dataset (typically 128-512 samples) to [calibrate](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_basic_quantization.html) the quantization scaling factors. The accuracy of PTQ is typically robust across different choices of calibration data, by default Model Optimizer uses [`cnn_dailymail`](https://huggingface.co/datasets/abisee/cnn_dailymail). Users can try other datasets by easily modifying the `calib_set`.
-
-```python
-import modelopt.torch.quantization as mtq
-from modelopt.torch.utils.vlm_dataset_utils import get_vlm_dataset_dataloader
-from modelopt.torch.utils.image_processor import MllamaImageProcessor
-
-model = AutoModelForCausalLM.from_pretrained("...")
-
-# Select the quantization config, for example, INT8 Smooth Quant
-config = mtq.INT8_SMOOTHQUANT_CFG
-
-# Choose visual language dataset if needed, for example, scienceqa
-# Otherwise, cnn_dailymail is used as calibration dataset
-processor = MllamaImageProcessor(AutoProcessor.from_pretrained("..."), device)
-calib_dataloader = get_vlm_dataset_dataloader("scienceqa", processor)
-
-# Prepare the calibration set and define a forward loop
-def forward_loop(model, calib_dataloader):
-    for data in calib_dataloader:
-        model(data)
-
-# PTQ of the language_model with in-place replacement to quantized modules
-model = mtq.quantize(model.language_model, config, forward_loop)
-```
-
-### 2. Export Quantized Model
-
-Once your model is quantized, you can now export that model to a checkpoint for easy deployment. \
-We provide two APIs to export the quantized model:
-
-- Unified Hugging Face checkpoints, which can be deployed on TensorRT-LLM (Pytorch and C++ backends), [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang).
-- (Legacy) TensorRT-LLM checkpoints, a format that works with TensorRT-LLM C++ backend only.
-
-#### Unified Hugging Face Checkpoints
-
-```python
-from modelopt.torch.export import export_hf_checkpoint
-
-with torch.inference_mode():
-    export_hf_checkpoint(
-        model,  # The quantized model.
-        export_dir,  # The directory where the exported files will be stored.
-    )
-```
-
-#### (Legacy) TensorRT-LLM Checkpoints
-
-The user can specify the inference time TP and PP size and the export API will organize the weights to fit the target GPUs.
-
-```python
-from modelopt.torch.export import export_tensorrt_llm_checkpoint
-
-with torch.inference_mode():
-    export_tensorrt_llm_checkpoint(
-        model,  # The quantized model.
-        decoder_type,  # The type of the model, e.g gpt, gptj, or llama.
-        dtype,  # The exported weights data type.
-        export_dir,  # The directory where the exported files will be stored.
-        inference_tensor_parallel,  # The number of GPUs used in the inference time tensor parallel.
-        inference_pipeline_parallel,  # The number of GPUs used in the inference time pipeline parallel.
-        use_nfs_workspace,  # If exporting in a multi-node setup, please specify a shared directory like NFS for cross-node communication.
-    )
-```
-
-After the TensorRT-LLM checkpoint export, you can use the `trtllm-build` build command to build the engines from the exported checkpoints. Please check the [TensorRT-LLM Build API](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/architecture/workflow.md#build-apis) documentation for reference.
-
-Please reference our [framework scripts](#framework-scripts) and our [docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html) for more details.
+Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#getting-started) for the getting-started.
 
 ## Support Matrix
 

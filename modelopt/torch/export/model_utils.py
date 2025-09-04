@@ -35,6 +35,7 @@ MODEL_NAME_TO_TYPE = {
     "phi3small": "phi3small",
     "phi3": "phi3",
     "PhiMoEForCausalLM": "phi3",
+    "Phi4MMForCausalLM": "phi4mm",
     "phi": "phi",
     "TLGv4ForCausalLM": "phi",
     "MixtralForCausalLM": "llama",

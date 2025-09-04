@@ -79,7 +79,9 @@ def weight_access_and_writeback_context(module):
 
 
 @contextmanager
-def init_quantized_weights(quant_cfg: dict[str, Any], gpu_mem_percentage: float = 0.8):
+def init_quantized_weights(
+    quant_cfg: dict[str, Any], gpu_mem_percentage: float = 0.8, quant_gemm: bool = False
+):
     """Context manager for initializing and loading HuggingFace models with quantized and compressed weights.
 
     This context manager patches `from_pretrained` to automatically:
@@ -91,6 +93,7 @@ def init_quantized_weights(quant_cfg: dict[str, Any], gpu_mem_percentage: float 
     Args:
         quant_cfg: The quantization config to apply to the model
         gpu_mem_percentage: Percentage of GPU memory to use (0.0-1.0)
+        quant_gemm: Whether to enable quantized GEMM
 
     Example:
         ```python
@@ -191,7 +194,7 @@ def init_quantized_weights(quant_cfg: dict[str, Any], gpu_mem_percentage: float 
             model = cls.from_config(config, torch_dtype=torch_dtype)
 
         mtq.quantize(model, quant_cfg)
-        mtq.compress(model)
+        mtq.compress(model, config=mtq.CompressConfig(quant_gemm=quant_gemm))
         _device_map = get_model_device_map(model, gpu_mem_percentage)
 
         return load_checkpoint_and_dispatch(

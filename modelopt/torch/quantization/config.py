@@ -545,7 +545,7 @@ NVFP4_SVDQUANT_DEFAULT_CFG = {
     "algorithm": {"method": "svdquant", "lowrank": 32},
 }
 
-W4A8_NVFP4_FP8_CFG = {
+NVFP4_FP8_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {
             "num_bits": (2, 1),
@@ -633,7 +633,7 @@ choices: set[str] = {
     "NVFP4_FP8_MHA_CONFIG",
     "NVFP4_KV_CFG",
     "NVFP4_KV_ROTATE_CFG",
-    "W4A8_NVFP4_FP8_CFG",
+    "NVFP4_FP8_CFG",
     "NVFP4_SVDQUANT_DEFAULT_CFG",
     "W4A8_AWQ_BETA_CFG",
     "W4A8_MXFP4_FP8_CFG",
@@ -1135,6 +1135,12 @@ class CompressConfig(ModeloptBaseConfig):
         default={"*": True},
         title="""Enable weight compression for the given pattern. Default is False for all weights.
         Call `compress` function to compress the model weights.""",
+    )
+
+    quant_gemm: bool = ModeloptField(
+        default=True,
+        title="Enable quantized GEMM.",
+        description="If True, quantized GEMM compute will be enabled. Otherwise, we only do weight-only quantization.",
     )
 
 
