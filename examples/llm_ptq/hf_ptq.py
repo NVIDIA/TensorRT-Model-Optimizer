@@ -569,28 +569,36 @@ def main(args):
 
         export_path = args.export_path
 
-        # Check for VLMs by looking for vision_config in model config or language_model attribute
-        is_vlm = False
-        try:
-            is_vlm = hasattr(full_model.config, "vision_config") or hasattr(
-                full_model, "language_model"
-            )
-        except Exception:
-            # Fallback to the original check if config access fails
-            is_vlm = hasattr(full_model, "language_model")
+        # Check for VLMs by looking for various multimodal indicators in model config
+        config = full_model.config
+        is_vlm = (
+            hasattr(config, "vision_config")  # Standard vision config (e.g., Qwen2.5-VL)
+            or hasattr(full_model, "language_model")  # Language model attribute (e.g., LLaVA)
+            or getattr(config, "model_type", "") == "phi4mm"  # Phi-4 multimodal
+            or hasattr(config, "vision_lora")  # Vision LoRA configurations
+            or hasattr(config, "audio_processor")  # Audio processing capabilities
+            or (
+                hasattr(config, "embd_layer") and hasattr(config.embd_layer, "image_embd_layer")
+            )  # Image embedding layers
+        )
 
         if is_vlm:
-            # Save original model config and the preprocessor config to the export path for VLMs.
-
-            print(f"Saving original model and processor configs to {export_path}")
+            # Save original model config and the processor config to the export path for VLMs.
+            print(f"Saving original model config to {export_path}")
 
             AutoConfig.from_pretrained(
                 args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
             ).save_pretrained(export_path)
 
-            AutoProcessor.from_pretrained(
-                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-            ).save_pretrained(export_path)
+            # Try to save processor config if available
+            try:
+                print(f"Saving processor config to {export_path}")
+                AutoProcessor.from_pretrained(
+                    args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+                ).save_pretrained(export_path)
+            except Exception as e:
+                print(f"Warning: Could not save processor config: {e}")
+                print("This is normal for some VLM architectures that don't use AutoProcessor")
 
         if model_type == "mllama":
             full_model_config = model.config
