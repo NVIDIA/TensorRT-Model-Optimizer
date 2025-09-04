@@ -18,15 +18,8 @@
 import setuptools
 from setuptools_scm import get_version
 
-# Package configuration ############################################################################
-name = "nvidia-modelopt"
-# TODO: Set version to static stable release version when creating the release branch
-# version = os.environ.get("SETUPTOOLS_SCM_PRETEND_VERSION", "X.Y.Z")
+# TODO: Set fallback_version to X.Y.Z release version when creating the release branch
 version = get_version(root=".", fallback_version="0.0.0")
-packages = setuptools.find_namespace_packages(include=["modelopt*"])
-package_dir = {"": "."}
-package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
-setup_kwargs = {}
 
 # Required and optional dependencies ###############################################################
 required_deps = [
@@ -103,9 +96,8 @@ optional_deps = {
     # build/packaging tools
     "dev-build": [
         "cython",
-        "setuptools>=67.8.0",
-        "setuptools_scm>=7.1.0",
-        "twine",
+        "setuptools>=80",
+        "setuptools-scm>=8",
     ],
 }
 
@@ -118,7 +110,7 @@ optional_deps["dev"] = [deps for k in optional_deps for deps in optional_deps[k]
 
 if __name__ == "__main__":
     setuptools.setup(
-        name=name,
+        name="nvidia-modelopt",
         version=version,
         description="Nvidia TensorRT Model Optimizer: a unified model optimization and deployment toolkit.",
         long_description="Checkout https://github.com/nvidia/TensorRT-Model-Optimizer for more information.",
@@ -136,8 +128,7 @@ if __name__ == "__main__":
         python_requires=">=3.10,<3.13",
         install_requires=required_deps,
         extras_require=optional_deps,
-        packages=packages,
-        package_dir=package_dir,
-        package_data=package_data,
-        **setup_kwargs,
+        packages=setuptools.find_namespace_packages(include=["modelopt*"]),
+        package_dir={"": "."},
+        package_data={"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]},
     )
