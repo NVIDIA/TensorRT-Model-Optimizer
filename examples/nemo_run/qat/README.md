@@ -18,12 +18,12 @@ Currently the Simplified Flow runs the following steps in order:
 ```mermaid
 graph TD;
 Data-->SFT;
-Import-->Evaluate BF16;
+Import-->Evaluate_BF16;
 Import-->PTQ;
-PTQ-->Evaluate PTQ;
+PTQ-->Evaluate_PTQ;
 PTQ --> SFT;
-SFT-->Evaluate SFT;
-SFT-->Export SFT;
+SFT-->Evaluate_SFT;
+SFT-->Export_SFT;
 ```
 
 ## Supported models
