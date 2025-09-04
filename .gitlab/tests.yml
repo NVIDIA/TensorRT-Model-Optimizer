@@ -1,10 +1,11 @@
 # NOTE: Make sure this file is consistent with .github/workflows/{unit,gpu}_tests.yml
 .tests-default:
   stage: tests
-  when: manual # Default manual trigger
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: always
+    - if: $CI_PIPELINE_SOURCE != "schedule"
+      when: manual
 
 ##### Unit Tests #####
 unit:
