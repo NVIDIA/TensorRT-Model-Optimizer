@@ -992,7 +992,7 @@ def quantize_weights_to_int4(
 
     # Remove transpose and reshape nodes
     new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
-    graph.node.clear()
+    del graph.node[:]
     graph.node.extend(new_nodes)
 
     def is_fp32_cast(node: onnx.NodeProto) -> bool:

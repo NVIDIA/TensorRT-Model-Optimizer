@@ -29,7 +29,7 @@ from modelopt.torch._deploy.compilation import compile
 deployment = {
     "runtime": "TRT",
     "accelerator": "GPU",
-    "precision": "fp32",
+    "precision": "stronglyTyped",
     "onnx_opset": "21",
 }
 

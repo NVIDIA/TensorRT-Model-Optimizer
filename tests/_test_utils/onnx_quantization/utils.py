@@ -20,7 +20,11 @@ def _assert_nodes_are_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable):
-                assert node.i(inp_idx).op == "DequantizeLinear", (
-                    f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                qnode = node
+                # After quantization, the quantized node can be casted
+                if qnode.i(inp_idx).op == "Cast":
+                    qnode = qnode.i(inp_idx)
+                assert qnode.i(inp_idx).op == "DequantizeLinear", (
+                    f"Input '{inp.name}' of node '{qnode.name}' is not quantized but should be!"
                 )
     return True
