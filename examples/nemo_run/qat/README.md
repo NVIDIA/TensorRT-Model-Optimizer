@@ -2,20 +2,35 @@
 
 ## Overview
 
-This directory also contains an end-to-end NeMo QAT Simplified Flow example, which supports both QAT with cross-entropy loss and QAD (quantization-aware distillation) with knowledge-distillation loss between the full-precision teacher and quantized student models.
+This directory contains an end-to-end QAT Simplified Flow example using NeMo for model training. It supports both QAT with cross-entropy loss and QAD (quantization-aware distillation) with knowledge-distillation loss between the BF16 teacher and quantized student models.
 
 ## Flow Stages
 
 Currently the Simplified Flow runs the following steps in order:
 
 1. Process Nvidia/OpenScience data (if `--data-path` is not specified)
-1. Import NeMo model checkpoint 1. PTQ the model
+1. Import NeMo BF16 model checkpoint and evaluate 5% of MMLU on BF16 checkpoint
+1. PTQ the model and evaluate 5% of MMLU on PTQ Checkpoint
 1. SFT (finetune) the model
-1. Export model to Unified checkpoint (HuggingFace) format
+1. Evaluate 5% of MMLU on the SFT checkpoint
+1. Export model to Unified checkpoint (HuggingFace) format in lower precision
+
+```mermaid
+graph TD;
+Data-->SFT;
+Import-->Evaluate BF16;
+Import-->PTQ;
+PTQ-->Evaluate PTQ;
+PTQ --> SFT;
+SFT-->Evaluate SFT;
+SFT-->Export SFT;
+```
 
 ## Supported models
 
-Currently supports models that can be trained on 1 node with 8 x 80GB GPUs. The default configuration uses:
+Locally this script currently supports models that can be trained on 1 node with 8 x 80GB GPUs. On Slurm you can configure the number of nodes/gpus for training and PTQ with the following flags: `--train-nodes`, `--train-gpus`, `--ptq-gpus`.
+
+The default configuration works on 1 node with 4 H100 GPUs for PTQ and 8 H100 GPUs for training with the following model:
 
 - **Model**: Qwen3-8B
 - **Recipe**: qwen3_8b
@@ -24,7 +39,7 @@ Currently supports models that can be trained on 1 node with 8 x 80GB GPUs. The 
 
 ### Prerequisites
 
-You can run the example either locally (if your server has GPUs) or on a Slurm cluster.
+You can run the example either locally  or on a Slurm cluster.
 
 To run the example locally, launch a [NeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo) with version 25.07 or higher using Docker on on a Slurm interactive node. Mount your cloned `modelopt` repository to the container by adding this mount flag to your Docker/Slurm command: `-v <modelopt-path>:/workspace/modelopt -v <modelopt-path>/modelopt:/usr/local/lib/python3.12/dist-packages/modelopt`.
 
@@ -34,19 +49,21 @@ To run SFT properly you may also need to clone NeMo at the respective commits, a
 
 To run the example on slurm, edit the `SLURM_CONFIG` at the bottom of `nemo_qat_flow.py` with the appropriate credentials, container, cluster name (host), and container mounts. Make sure you are mounting the NeMo and Megatron-LM repositories above in the Slurm cluster and that you've checked out the correct commits.
 
+### Dataset limitations
+The current QAT recipe has been tuned for the Qwen3-8B model to improve accuracy on the MMLU benchmark after PTQ degradation. QAT/QAD results are highly dependent on the specific model, dataset, and hyperparameters. There is no guarantee that the same dataset will recover the accuracy of the PTQ model. Feel free to try your own model and dataset combinations and test which combination works best.
+
 ### Running the Flow Locally
 
 After launching the NeMo container with the specified mounts, follow these examples to run the flow locally.
 
 #### QAT
 
-From the `nemo_run` folder, launch the example with `python qat/nemo_qat_flow.py --experiment qat_experiment`. To use a different model than the default model (Qwen3-8B), you can add the `--model-name <hf-model-name> --finetune-recipe <recipe-name>` flags and use the model's HuggingFace name and NeMo recipe names listed [here](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/llm/recipes). To provide your own custom dataset, use the `--data-path` flag, otherwise the default [NVIDIA OpenScience](https://huggingface.co/datasets/nvidia/OpenScience) dataset will be used.
+From the `nemo_run` folder, launch the example with the `qat/nemo_qat_flow.py` script. To use a different model than the default model (Qwen3-8B), you can add the `--model-name <hf-model-name> --finetune-recipe <recipe-name>` flags and use the model's HuggingFace name and NeMo recipe names listed [here](https://github.com/NVIDIA/NeMo/tree/main/nemo/collections/llm/recipes). To provide your own custom dataset, use the `--data-path` flag, otherwise the default [NVIDIA OpenScience](https://huggingface.co/datasets/nvidia/OpenScience) dataset will be used.
 
 To perform QAT, run:
 
 ```bash
-python qat/nemo_qat_flow.py \
-    --experiment qat_experiment
+python qat/nemo_qat_flow.py  --log-dir /my/log/dir --experiment qat_experiment
 ```
 
 > **_NOTE:_** To enable KV cache quantization, add `--enable-kv-cache` and specify qformat using `--kv-cache-qformat <fp8, nvfp4>`.
@@ -58,9 +75,7 @@ In order to train using QAD, launch the example with `python qat/nemo_qat_flow.p
 To perform QAD training, run:
 
 ```bash
-python qat/nemo_qat_flow.py \
-    --distill \
-    --experiment qad_experiment
+python qat/nemo_qat_flow.py --distill --log-dir /my/log/dir --experiment qad_experiment
 ```
 
 ### Running the Flow on Slurm
