@@ -527,6 +527,9 @@ def _get_successive_consumers(
         raise ValueError(f"Invalid consumer for {node.name}")
 
     quantized_node = tensor_consumers.get(dq_node.output[0], [None])[0]
+    if quantized_node.op_type == "Cast":
+        quantized_node = tensor_consumers.get(quantized_node.output[0], [None])[0]
+
     if not quantized_node:
         raise ValueError(f"No consumer found for {dq_node.name}")
 
@@ -992,7 +995,7 @@ def quantize_weights_to_int4(
 
     # Remove transpose and reshape nodes
     new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
-    graph.node.clear()
+    del graph.node[:]
     graph.node.extend(new_nodes)
 
     def is_fp32_cast(node: onnx.NodeProto) -> bool:

@@ -49,7 +49,6 @@ class TRTLocalClient(RuntimeClient):
                 "bf16",
                 "fp8",
                 "int8",
-                "int8_iq",
                 "int4",
                 "stronglyTyped",
                 "best",
