@@ -45,49 +45,12 @@ def process_subset(raw_dir, proc_dir):
     split_ds["test"].to_json(os.path.join(proc_dir, "validation.jsonl"))
 
 
-# TODO remove below?
-def sample_openscience(raw_dir, proc_dir, sample_ratio=1):
-    """Process raw OpenScience data by subsampling the dataset by default, then
-    writing into train/val split with 99/1 ratio"""
-    files = os.listdir(raw_dir)
-    num_data = 0
-
-    for file in files:
-        # Open each jsonl
-        if file.endswith("jsonl"):
-            print(f"Sampling from {file}")
-            with (
-                open(os.path.join(raw_dir, file)) as f_raw,
-                open(os.path.join(proc_dir, "training.jsonl"), "a") as f_train,
-                open(os.path.join(proc_dir, "validation.jsonl"), "a") as f_val,
-            ):
-                for idx, line in enumerate(f_raw):
-                    if idx % sample_ratio != 0:
-                        continue
-                    data = json.loads(line)
-                    # convert dictionary to OpenAI chat: from {"input": "...", "output": "..."}
-                    # to [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
-                    data = {
-                        "messages": [
-                            {"role": "user", "content": data["input"]},
-                            {"role": "assistant", "content": data["output"]},
-                        ]
-                    }
-
-                    if num_data % 100 == 0:
-                        f_val.write(json.dumps(data) + "\n")
-                    else:
-                        f_train.write(json.dumps(data) + "\n")
-                    num_data += 1
-
-
 if __name__ == "__main__":
     args = get_parser().parse_args()
     raw_dir = f"{args.output_dir}/openscience_raw"
     proc_dir = f"{args.output_dir}/openscience_proc"
 
     if not os.path.exists(raw_dir):
-        # download_hf_dataset("nvidia/OpenScience", raw_dir)
         q235_subset = load_dataset("nvidia/OpenScience", data_files="OS-Q3-235B-4.jsonl")
         q235_subset.save_to_disk(raw_dir)
 
@@ -97,4 +60,3 @@ if __name__ == "__main__":
         process_subset(raw_dir, proc_dir)
     else:
         print(f"Processed OpenScience dataset exists in: {proc_dir}, skipped processing")
-    # process_openscience(raw_dir, proc_dir)
