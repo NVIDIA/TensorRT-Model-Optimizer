@@ -2,7 +2,10 @@
 .tests-default:
   stage: tests
   rules:
-    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "external_pull_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web"
+      when: manual
+    - if: $CI_PIPELINE_SOURCE != "web"
+      when: never
 
 ##### Unit Tests #####
 unit:
@@ -65,7 +68,7 @@ example-ada:
       - TEST: [onnx_ptq]
         TEST_TYPE: bash
 
-##### [WIP] Megatron / NeMo Integration Tests #####
+##### Megatron / NeMo Integration Tests #####
 megatron-nemo-integration:
   extends: .tests-default
   variables:
