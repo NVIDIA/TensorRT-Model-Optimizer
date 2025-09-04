@@ -24,7 +24,6 @@ write your own one. Currently, we support plugins for
 - :meth:`fairscale<modelopt.torch.quantization.plugins.fairscale>`
 - :meth:`huggingface<modelopt.torch.quantization.plugins.huggingface>`
 - :meth:`megatron<modelopt.torch.quantization.plugins.megatron>`
-- :meth:`nemo<modelopt.torch.quantization.plugins.nemo>`
 - :meth:`peft<modelopt.torch.quantization.plugins.peft>`
 - :meth:`transformer_engine<modelopt.torch.quantization.plugins.transformer_engine>`
 """

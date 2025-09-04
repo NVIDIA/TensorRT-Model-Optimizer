@@ -17,6 +17,7 @@
 
 import re
 from collections import defaultdict
+from functools import reduce
 
 import numpy as np
 import onnx
@@ -106,6 +107,10 @@ def has_path_type(
         node_type = "BiasAdd"
     elif node_type == "Mul" and has_const_input(node):
         node_type = "ConstMul"
+
+    # Special type conversion from NonBiasAdd to Add if all Add inputs are non-constant
+    if node_type == "Add" and path_type[0] == "NonBiasAdd":
+        path_type[0] = "Add"
 
     # Check if current non-wild node type does not match the expected path type
     # And if path type is not optional (ex. BiasAdd)
@@ -453,6 +458,22 @@ def classify_partition_nodes(
     return non_quantizable_partition_nodes, quantizable_partition_nodes, no_quantize_inputs
 
 
+def classify_partially_quantized_weighted_ops(
+    graph: Graph, nodes_to_exclude: list[str]
+) -> list[tuple[Node, Node, str]]:
+    """Ensures that the input of non-quantizable weighted nodes do not get quantized."""
+    no_quantize_inputs = []
+    linear_nodes_to_exclude = [
+        node for node in graph.nodes if node.name in nodes_to_exclude and is_linear_op(node.op)
+    ]
+    for node in linear_nodes_to_exclude:
+        for tensor in node.inputs:
+            if tensor.inputs:
+                producer_node = tensor.inputs[0]
+                no_quantize_inputs.append((producer_node, node, tensor.name))
+    return no_quantize_inputs
+
+
 def build_non_residual_input_map(
     graph: Graph,
 ) -> tuple[dict[str, str], list[tuple[Node, Node, str]]]:
@@ -554,20 +575,44 @@ def remove_partial_input_qdq(
             # Reached end of the graph
             continue
         if dq_node.op == "DequantizeLinear":
-            dq_node = dq_node.outputs[0]  # source_node->Q->DQ->target_node
-            while len(dq_node.outputs):
-                # Find the input index in the target connecting with source_node
-                target_input_idx_arr = [
-                    idx
-                    for idx, inp in enumerate(dq_node.outputs[0].inputs)
-                    if inp.name == dq_node.name
-                ]
-                target_input_idx = target_input_idx_arr[0] if target_input_idx_arr else 0
+            dq_node = dq_node.outputs[0]  # source_node->Q->DQ->target_node0
 
-                # Connect the output of source_node with the outputs of DQ until DQ is not connected to any other
-                #   layers. Note that when a connection is removed, this is also deleted from dq_node.outputs, thus
-                #   why we keep iterating over the same idx=0 in dq_node.outputs[0].
-                dq_node.outputs[0].inputs[target_input_idx] = source_node.outputs[0]
+            # Find the input index in the target connecting with source_node
+            target_input_idx_arr = [
+                idx for idx, inp in enumerate(dq_node.outputs[0].inputs) if inp.name == dq_node.name
+            ]
+            target_input_idx = target_input_idx_arr[0] if target_input_idx_arr else 0
+
+            # Connect the output of source_node with the output of DQ
+            dq_node.outputs[0].inputs[target_input_idx] = source_node.outputs[0]
+
+    # Check for quantized residual Adds where the parallel branch is not being quantized
+    for source, target, non_qdq_input_name in no_quantize_inputs:
+        if target.op != "Add":
+            continue
+
+        target_node = graph_nodes[target.name]
+        for inp_idx, inp in enumerate(target_node.inputs):
+            if inp.inputs[0].op == "DequantizeLinear":
+                try:
+                    parent_node = inp.inputs[0].i().i()
+                except Exception:
+                    # Reached beginning of the graph
+                    continue
+                quant_out_count = [
+                    out_idx
+                    for out_idx, out in enumerate(parent_node.outputs)
+                    if out.outputs[0].op == "QuantizeLinear"
+                ]
+                non_quant_out_count = [
+                    out
+                    for out in parent_node.outputs
+                    for _, _, non_qdq_inp_name in no_quantize_inputs
+                    if out.name == non_qdq_inp_name
+                ]
+                # Bypass QDQ nodes if only one branch is quantized and the parallel branch should not be quantized
+                if len(quant_out_count) == 1 and non_quant_out_count:
+                    target_node.inputs[inp_idx] = parent_node.outputs[quant_out_count[0]]
 
     graph.cleanup()
     graph.toposort()
@@ -718,6 +763,76 @@ def find_nodes_from_matmul_to_exclude(
     return [*set(nodes_to_exclude)]
 
 
+def find_nodes_from_convs_to_exclude(graph: Graph, quantize_mode: str = "int8"):
+    """Find unsupported Conv nodes to exclude from quantization.
+
+    - The input and output channels should be >= 16. The exception is for Conv layers in INT8 quantization mode,
+      which supports it if the input or output channel % 8.
+    - The filter size for FP8 conv kernels should be less than 32.
+
+    Args:
+        graph: Onnx model graph.
+        quantize_mode: Quantize mode (int8 or fp8).
+
+    Returns:
+        List of Conv nodes.
+    """
+    unsupported_conv_nodes = []
+    logger.info("Scanning for unsupported Conv nodes for quantization")
+    for node in graph.nodes:
+        if node.op == "Conv":
+            weight = node.inputs[1]
+
+            # If weight.shape is None, it means the weight is not a constant tensor.
+            # Skip the convs with non-constant weights.
+            if weight.shape is None:
+                logger.debug(f"Skipped quantizing conv: {node.name} due to non-constant weight")
+                unsupported_conv_nodes.append(node.name)
+                continue
+
+            assert 3 <= len(weight.shape) <= 5, (
+                f"Invalid weight shape {weight.shape}. Only 1D, 2D, and 3D convolutions are supported"
+            )
+            output_channel = weight.shape[0]
+            input_channel = weight.shape[1]
+            group = node.attrs.get("group", 1)
+            kernel_shape = node.attrs.get("kernel_shape", [1, 1])
+            if output_channel < 16 or input_channel < 16:
+                if quantize_mode == "int8":
+                    # If standard Conv (group == 1), check for supported configs:
+                    # (1) OC or IC % 8
+                    # (2) Conv is the 1st layer of the graph or OC or IC >= 16
+                    # (3) Kernel shape is the same in all dimensions (i.e, 3x3)
+                    if (
+                        group == 1
+                        and (output_channel % 8 == 0 or input_channel % 8 == 0)
+                        and (
+                            any(inp in graph.inputs for inp in node.inputs)
+                            or (output_channel >= 16 or input_channel >= 16)
+                        )
+                        and len(set(kernel_shape)) == 1
+                    ):
+                        continue
+
+                    # If grouped Conv (group > 1), check for supported configs:
+                    # (1) OC % 8
+                    # (2) Kernel shape is >= 3 across all dimensions
+                    if group > 1 and output_channel % 8 == 0 and all(k >= 3 for k in kernel_shape):
+                        continue
+
+                logger.debug(f"Found Conv with I/O channel size less than 16: {node.name}")
+                unsupported_conv_nodes.append(node.name)
+                continue
+
+            filter_size = reduce(lambda x, y: x * y, weight.shape[2:])
+            if quantize_mode == "fp8" and filter_size > 32:
+                logger.debug(f"Found large filter conv for FP8: {node.name}")
+                unsupported_conv_nodes.append(node.name)
+
+    logger.info(f"Found {len(unsupported_conv_nodes)} unsupported Conv nodes for quantization")
+    return unsupported_conv_nodes
+
+
 def _exclude_matmuls_by_symbolic_inference(
     model: onnx.ModelProto, matmul_nodes: list, calibration_shapes: str | None = None
 ) -> list[str]:
@@ -755,10 +870,13 @@ def _exclude_matmuls_by_symbolic_inference(
             raise RuntimeError(f"Shape inference did not find shape for {output_name}.")
 
         dims = value_info.type.tensor_type.shape.dim
-        if len(dims) < 2:
-            raise RuntimeError(f"Shape for {output_name} is incorrect.")
+        if all(isinstance(inp, Variable) for inp in matmul_node.inputs):
+            if len(dims) < 2:
+                raise RuntimeError(f"Shape for {output_name} is incorrect.")
 
-        if dims[-1].dim_value == 1 or dims[-2].dim_value == 1:
+            if dims[-1].dim_value == 1 or dims[-2].dim_value == 1:
+                nodes_to_exclude.append(matmul_node.name)
+        elif len(dims) < 3 and any(out.dim_value == 1 for out in dims):
             nodes_to_exclude.append(matmul_node.name)
 
     return nodes_to_exclude
@@ -790,11 +908,14 @@ def _exclude_matmuls_by_inference(
     nodes_to_exclude = []
     for matmul_node in matmul_nodes:
         matmul_output = output_map[matmul_node.outputs[0].name]
-        if (
-            len(matmul_output.shape) < 2
-            or matmul_output.shape[-1] == 1
-            or matmul_output.shape[-2] == 1
-        ):
+        if all(isinstance(inp, Variable) for inp in matmul_node.inputs):
+            if (
+                len(matmul_output.shape) < 2
+                or matmul_output.shape[-1] == 1
+                or matmul_output.shape[-2] == 1
+            ):
+                nodes_to_exclude.append(matmul_node.name)
+        elif len(matmul_output.shape) < 3 and any(out == 1 for out in matmul_output.shape):
             nodes_to_exclude.append(matmul_node.name)
 
     return nodes_to_exclude

@@ -14,7 +14,7 @@ To run the example, launch a [NeMo container](https://catalog.ngc.nvidia.com/org
 
 To run SFT properly you may also need to clone NeMo and Megatron-LM at the respective commits, and mount to `/opt/NeMo` and `/opt/megatron-lm`:
 
-- `git clone https://github.com/NVIDIA/NeMo && cd NeMo && git checkout d7b87b1`
+- `git clone https://github.com/NVIDIA-NeMo/NeMo && cd NeMo && git checkout d7b87b1`
 - `git clone https://github.com/NVIDIA/Megatron-LM.git && cd Megatron-LM && git checkout 8c15450`
 
 ### Data Preparation

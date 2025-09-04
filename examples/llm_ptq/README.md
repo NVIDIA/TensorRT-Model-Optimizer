@@ -105,44 +105,25 @@ Please reference our [framework scripts](#framework-scripts) and our [docs](http
 
 ## Support Matrix
 
-### Supported Models
+### Hugging Face Supported Models
 
 | Model | fp8 | int8_sq | int4_awq | w4a8_awq<sup>1</sup> | nvfp4<sup>5</sup> |
 | :---: | :---: | :---: | :---: | :---: | :---: |
-| GPTJ | ✅ | ✅ | ✅ | ✅ | - |
-| LLAMA 2 | ✅ | ✅ | ✅ | ✅ | - |
-| LLAMA 3, 3.1, 3.3 | ✅ | ❌ | ✅ | ✅<sup>3</sup> | ✅ |
+| LLAMA 3.x | ✅ | ❌ | ✅ | ✅<sup>3</sup> | ✅ |
 | LLAMA 4 <sup>6</sup> | ✅ | ❌ | ❌ | ❌ | ✅ |
-| LLAMA 2 (Nemo) | ✅ | ✅ | ✅ | ✅ | - |
-| CodeLlama | ✅ | ✅ | ✅ | ❌ | - |
-| Mistral | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Mixtral 8x7B, 8x22B | ✅ | ❌ | ✅<sup>2</sup> | ❌ | ✅ |
-| Snowflake Arctic<sup>2</sup> | ✅ | ❌ | ✅ | ❌ | - |
-| Falcon 40B, 180B | ✅ | ✅ | ✅ | ✅ | - |
-| Falcon 7B | ✅ | ✅ | ❌ | ❌ | - |
-| MPT 7B, 30B | ✅ | ✅ | ✅ | ✅ | - |
-| Baichuan 1, 2 | ✅ | ✅ | ✅ | ✅ | - |
-| ChatGLM2, 3 6B | ❌ | ❌ | ✅ | ❌ | - |
-| Bloom | ✅ | ✅ | ✅ | ✅ | - |
-| Phi-1,2,3,4 | ✅ | ✅ | ✅ | ✅<sup>3</sup> | - |
+| Mixtral | ✅ | ❌ | ✅<sup>2</sup> | ❌ | ✅ |
+| Phi-3,4 | ✅ | ✅ | ✅ | ✅<sup>3</sup> | - |
 | Phi-3.5 MOE | ✅ | ❌ | ❌ | ❌ | - |
 | Llama-Nemotron Super | ✅ | ❌ | ❌ | ❌ | ✅ |
 | Llama-Nemotron Ultra | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Nemotron 8B | ✅ | ❌ | ✅ | ❌ | - |
-| Gemma 2B, 7B | ✅ | ❌ | ✅ | ✅ | - |
-| Gemma 3 1B | ✅<sup>2</sup> | ❌ | ✅ | ❌ | - |
-| RecurrentGemma 2B | ✅ | ✅ | ✅ | ❌ | - |
-| StarCoder 2 | ✅ | ✅ | ✅ | ❌ | - |
+| Gemma 3 | ✅<sup>2</sup> | - | ✅ | - | - |
 | QWen 2, 2.5 <sup>4</sup> | ✅ | ✅ | ✅ | ✅ | ✅ |
-| QWen MOE | ✅ | - | - | - | ✅ |
 | QWen3 MOE <sup>6</sup> | ✅ | - | - | - | ✅ |
 | QwQ | ✅ | - | - | - | ✅ |
-| DBRX | ✅ | ❌ | ❌ | ❌ | - |
-| InternLM2 | ✅ | ❌ | ✅ | ✅<sup>3</sup> | - |
-| Exaone | ✅ | ✅ | ✅ | ✅ | - |
-| Minitron | ✅ | ✅ | ✅ | ✅<sup>2</sup> | ✅ |
 | T5 | ✅ | ✅ | ✅ | ✅ | - |
 | Whisper | ✅ | ❌ | ❌ | ❌ | - |
+
+> *This is a subset of the models supported. For the full list please check the [TensorRT-LLM support matrix](https://nvidia.github.io/TensorRT-LLM/reference/precision.html#support-matrix)*
 
 > *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty.* \
 > *<sup>2.</sup>For some models, there is only support for exporting quantized checkpoints.* \
@@ -154,6 +135,10 @@ Please reference our [framework scripts](#framework-scripts) and our [docs](http
 > *The accuracy loss after PTQ may vary depending on the actual model and the quantization method. Different models may have different accuracy loss and usually the accuracy loss is more significant when the base model is small. If the accuracy after PTQ is not meeting the requirement, please try either modifying [hf_ptq.py](./hf_ptq.py) and disabling the KV cache quantization or using the [QAT](./../llm_qat/README.md) instead.*
 
 > You can also create your own custom config using [this](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/_pytorch_quantization.html#custom-calibration-algorithm) guide.
+
+### NeMo Supported Models
+
+Please refer to the [NeMo 2.0 PTQ documentation](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/quantization/quantization.html#support-matrix) for supported models.
 
 ## AutoQuantize
 
@@ -224,18 +209,6 @@ The example scripts above also have an additional flag `--tasks`, where the actu
 
 > *NOTE: AutoQuantize requires backpropagation of the model. Models without backpropagation support (e.g., Llama-4) will not work with AutoQuantize.*
 
-### AutoQuantize for NeMo models
-
-The usage is similar for NeMo models to perform `AutoQuantize`. Please refer to the [NeMo Example Script](#nemo-example-script) section for the full setup instructions.
-
-[Script](./scripts/nemo_example.sh)
-
-```bash
-# --auto_quantize_bits specifies the constraint for `AutoQuantize`
-# --quant specifies the formats to be searched for `AutoQuantize`. Multiple formats can be searched over by passing them as comma separated values
-scripts/nemo_example.sh --type gpt --model $GPT_MODEL_FILE --quant fp8,int4_awq --auto_quantize_bits 6.4 --tp [1|2|4|8]
-```
-
 ## Real Quant
 
 When working with large language models, memory constraints can be a significant challenge. ModelOpt provides a workflow for initializing HF models with compressed weights across multiple GPUs to dramatically reduce memory usage. Check `--low_memory_mode` option in hf_ptq.py for more details.
@@ -280,27 +253,17 @@ scripts/huggingface_example.sh --model $HF_PATH --quant [fp8|nvfp4|int8_sq|int4_
 
 > *You can now add `--low_memory_mode` to the command when setting `--export_fmt=hf` to lower the memory requirements of the PTQ process. With this mode, the script will compress model weights to low precision before calibration. This mode is only supported for FP8 and NVFP4 with max calibration.*
 
-#### Llama 4
-
-We support FP8 and NVFP4 quantized Llama 4 model Hugging Face checkpoint export using the following command:
-
-```bash
-python hf_ptq.py --pyt_ckpt_path=<llama4 model path> --export_path=<quantized hf checkpoint> --qformat=[fp8|nvfp4] --export_fmt=hf
-```
-
-The quantized checkpoint can be deployed following the TensorRT-LLM instructions. Note since we only quantize the language model in Llama 4, the exported config has `Llama4ForCausalLM`, but TensorRT-LLM expects `Llama4ForConditionalGeneration` which is from the original Llama 4. Therefore our script will copy over the original config files to the exported checkpoint folder.
-
 #### Deepseek R1
 
 [PTQ for DeepSeek](../deepseek/README.md) shows how to quantize the DeepSeek model with FP4 and export to TensorRT-LLM.
 
-### NeMo Example [Script](./scripts/nemo_example.sh)
+### NeMo Example Script
 
-Please refer to the [NeMo PTQ documentation](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/quantization/quantization.html) for more details.
+NeMo 2.0 framework PTQ and TensorRT-LLM deployment examples are maintained in the NeMo GitHub repo. Please refer to the [NeMo PTQ documentation](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/quantization/quantization.html) for more details.
 
 ### Megatron-LM Example Script
 
-Megatron-LM framework PTQ and TensorRT-LLM deployment examples are maintained in the Megatron-LM GitHub repo. Please refer to the examples [here](https://github.com/NVIDIA/Megatron-LM/tree/main/examples/export).
+Megatron-LM framework PTQ and TensorRT-LLM deployment examples are maintained in the Megatron-LM GitHub repo. Please refer to the examples [here](https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt).
 
 ## Evaluate Accuracy
 

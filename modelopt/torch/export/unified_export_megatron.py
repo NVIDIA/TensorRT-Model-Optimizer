@@ -236,9 +236,13 @@ class GPTModelExporter:
                 self.rules = self.all_rules["MedusaLlamaForCausalLM"]
 
             if mode == "eagle" and export_extra_modules:
-                is_eagle3 = mode_cfg["config"]["eagle_architecture_config"]["use_aux_hidden_state"]
-
-                architectures = "LlamaForCausalLMEagle3" if is_eagle3 else "LlamaForCausalLMEagle"
+                if mode_cfg["config"]["eagle_architecture_config"]["use_aux_hidden_state"]:
+                    if mode_cfg["config"]["eagle_architecture_config"]["num_hidden_layers"] > 1:
+                        architectures = "LlamaForCausalLMEagle3Deep"
+                    else:
+                        architectures = "LlamaForCausalLMEagle3"
+                else:
+                    architectures = "LlamaForCausalLMEagle"
 
                 self.rules = self.all_rules[architectures]
 
@@ -946,7 +950,14 @@ class GPTModelExporter:
         for layer in eagle_module.decoder.layers:
             layer_id = layer.layer_number - 1
 
-            if layer_id > 0 or self.model.eagle_config.use_input_layernorm_in_first_layer:
+            # The first layernorm needs special handling here. We have a dedicated mapping
+            # for the first layernorm since in EAGLE3 it will be mapped to hidden_norm
+            # instead of input_layernorm (due to the specialized transformer layer).
+            # The remaining EAGLE3 layers (if more than 1) are normal transformer layers
+            # where input_layernorm is mapped to input_layernorm.
+            if layer_id == 0 and self.model.eagle_config.use_input_layernorm_in_first_layer:
+                self.rules["first_input_layernorm"](layer.input_layernorm, layer_id)
+            elif layer_id > 0:
                 self.rules["input_layernorm"](layer.input_layernorm, layer_id)
 
             if "MLASelfAttention" in str(type(layer.self_attention)):

@@ -241,6 +241,14 @@ def get_parser() -> argparse.ArgumentParser:
             "Useful for reducing memory consumption during large model inference."
         ),
     )
+    argparser.add_argument(
+        "--direct_io_types",
+        action="store_true",
+        help=(
+            "If True, the I/O types in the quantized ONNX model will be modified to be lower precision whenever "
+            "possible. Else, they will match the I/O types in the given ONNX model."
+        ),
+    )
     return argparser
 
 
@@ -284,6 +292,7 @@ def main():
         passes=args.passes,
         simplify=args.simplify,
         calibrate_per_node=args.calibrate_per_node,
+        direct_io_types=args.direct_io_types,
     )
 
 

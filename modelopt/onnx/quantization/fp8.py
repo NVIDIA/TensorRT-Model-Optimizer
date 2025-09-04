@@ -18,13 +18,11 @@
 import os
 import tempfile
 import time
-from functools import reduce
 
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 from onnx import numpy_helper
-from onnx_graphsurgeon.ir.graph import Graph
 from onnxruntime.quantization import CalibrationMethod
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
@@ -34,6 +32,8 @@ from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.quantization.graph_utils import (
     convert_fp16_io,
     expand_node_names_from_patterns,
+    find_nodes_from_convs_to_exclude,
+    find_nodes_from_matmul_to_exclude,
     find_nodes_to_exclude,
     get_concat_eliminated_tensors,
     get_tensor_producer_nodes,
@@ -45,56 +45,6 @@ from modelopt.onnx.quantization.int8 import _find_nodes_to_quantize
 from modelopt.onnx.quantization.ort_patching import _quantize_static as quantize_static
 from modelopt.onnx.quantization.ort_utils import configure_ort
 from modelopt.onnx.quantization.qdq_utils import has_qdq_nodes
-
-
-def _find_unsupported_fp8_convs_to_exclude(graph: Graph):
-    """Find unsupported FP8 Conv nodes to exclude.
-
-    The input and output channel alignment requirement for FP8
-    conv kernels for input and output type FP8E4M3 should be both 16.
-    The filter size for FP8 conv kernels should be less than 32.
-
-    Args:
-        graph: Onnx model graph.
-
-    Returns:
-        List of Conv nodes.
-    """
-    unsupported_conv_nodes = []
-    logger.info("Scanning for unsupported FP8 Conv nodes")
-    for node in graph.nodes:
-        if node.op == "Conv":
-            weight = node.inputs[1]
-
-            # If weight.shape is None, it means the weight is not a constant tensor.
-            # Skip the convs with non-constant weights.
-            if weight.shape is None:
-                logger.debug(f"Skipped quantizing conv: {node.name} due to non-constant weight")
-                unsupported_conv_nodes.append(node.name)
-                continue
-
-            assert 3 <= len(weight.shape) <= 5, (
-                f"Invalid weight shape {weight.shape}. Only 1D, 2D, and 3D convolutions are supported"
-            )
-            output_channel = weight.shape[0]
-            input_channel = weight.shape[1]
-            if output_channel % 16 != input_channel % 16:
-                logger.debug(f"Found unpaddable conv for FP8: {node.name}")
-                unsupported_conv_nodes.append(node.name)
-                continue
-
-            if output_channel < 16 or input_channel < 16:
-                logger.debug(f"Found Conv with I/O channel size less than 16: {node.name}")
-                unsupported_conv_nodes.append(node.name)
-                continue
-
-            filter_size = reduce(lambda x, y: x * y, weight.shape[2:])
-            if filter_size > 32:
-                logger.debug(f"Found large filter conv for FP8: {node.name}")
-                unsupported_conv_nodes.append(node.name)
-
-    logger.info(f"Found {len(unsupported_conv_nodes)} unsupported FP8 Conv nodes")
-    return unsupported_conv_nodes
 
 
 def int8_to_fp8(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
@@ -229,6 +179,7 @@ def quantize(
     log_level: str = "INFO",
     calibrate_per_node: bool = False,
     custom_ops_to_quantize: list[str] = [],
+    direct_io_types: bool = False,
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies FP8 GEMM only quantization to an ONNX file.
@@ -260,9 +211,26 @@ def quantize(
         )
     op_types_to_quantize.extend(list(custom_ops_to_quantize))
 
+    enable_gemv_detection_for_trt = kwargs.get("enable_gemv_detection_for_trt", True)
+    if enable_gemv_detection_for_trt:
+        # Either of m or n in matmul is 1, this matmul cannot utilize TensorCores.
+        # The perf of adding Q/DQ layers is not good in TRT. Thus, in this case,
+        # do not add Q/DQ layers to this matmul.
+        logger.info("Detecting GEMV patterns for TRT optimization")
+        matmul_nodes_to_exclude = find_nodes_from_matmul_to_exclude(
+            onnx_path,
+            use_external_data_format,
+            intermediate_generated_files,
+            calibration_data_reader,
+            calibration_eps,
+            calibration_shapes,
+        )
+        nodes_to_exclude.extend(matmul_nodes_to_exclude)  # type: ignore[union-attr]
+        logger.debug(f"Excluding {len(matmul_nodes_to_exclude)} MatMul nodes due to GEMV pattern")
+
     # Collect node names to exclude from quantization
     nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
-    nodes_to_exclude.extend(_find_unsupported_fp8_convs_to_exclude(graph))
+    nodes_to_exclude.extend(find_nodes_from_convs_to_exclude(graph, quantize_mode="fp8"))
 
     # Change the default configuration of ORT quantization
     op_types = {node.op for node in graph.nodes}
@@ -349,7 +317,7 @@ def quantize(
         # Convert to fp16/bf16 model.
         onnx_model = convert_to_f16(
             onnx_model,
-            keep_io_types=True,
+            keep_io_types=not direct_io_types,
             op_block_list=["Resize"],
             low_precision_type=high_precision_dtype,
             trt_plugins=trt_extra_plugin_lib_paths,

@@ -119,7 +119,6 @@ def run_eval(
     dtype,
     revision,
     engine_dir,
-    vocab_file,
     nim_model,
     args,
 ):
@@ -152,7 +151,6 @@ def run_eval(
             top_p=top_p,
             temperature=temperature,
             engine_dir=engine_dir,
-            vocab_file=vocab_file,
             nim_model=nim_model,
         )
         for i in range(0, len(questions), chunk_size)
@@ -177,18 +175,11 @@ def get_model_answers(
     top_p=None,
     temperature=None,
     engine_dir=None,
-    vocab_file=None,
     nim_model=None,
 ):
     # Model Optimizer modification
     if engine_dir:
-        if vocab_file:
-            from modelopt.deploy.llm.nemo_utils import get_nemo_tokenizer
-
-            tokenizer = get_nemo_tokenizer(vocab_file)
-        else:
-            model_ckpt_path = model_path
-            tokenizer = get_tokenizer(model_ckpt_path, trust_remote_code=args.trust_remote_code)
+        tokenizer = get_tokenizer(model_path, trust_remote_code=args.trust_remote_code)
         if engine_dir:
             # get model type
             last_part = os.path.basename(engine_dir)
@@ -441,11 +432,6 @@ if __name__ == "__main__":
         help="The path to the TensorRT LLM engine directory.",
     )
     parser.add_argument(
-        "--vocab-file",
-        type=str,
-        help="The path to the vocabulary file.",
-    )
-    parser.add_argument(
         "--nim-model",
         type=str,
         help="The NIM model handle to use",
@@ -517,7 +503,6 @@ if __name__ == "__main__":
         dtype=str_to_torch_dtype(args.dtype),
         revision=args.revision,
         engine_dir=args.engine_dir,
-        vocab_file=args.vocab_file,
         nim_model=args.nim_model,
         args=args,
     )

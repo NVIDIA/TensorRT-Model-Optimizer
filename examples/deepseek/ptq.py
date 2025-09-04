@@ -276,7 +276,7 @@ def ptq(
         mtq_cfg["quant_cfg"]["*attn*weight_quantizer"] = {"num_bits": (4, 3), "axis": None}
         mtq_cfg["quant_cfg"]["*attn*input_quantizer"] = {"num_bits": (4, 3), "axis": None}
 
-    if args.enable_wo_quant and "FP4" in quant_cfg:
+    if not args.disable_wo_quant and "FP4" in quant_cfg:
         mtq_cfg["quant_cfg"]["*wo*weight_quantizer"] = mtq_cfg["quant_cfg"]["*input_quantizer"]
         mtq_cfg["quant_cfg"]["*wo*input_quantizer"] = mtq_cfg["quant_cfg"]["*weight_quantizer"]
     ## ptq
@@ -287,7 +287,7 @@ def ptq(
     return model
 
 
-def save_amax_and_quant_config(model, output_path: str, enable_fp8_kvcache: bool):
+def save_amax_and_quant_config(model, output_path: str, enable_fp8_kvcache: bool = True):
     """Saves the amax values of the model to the output path."""
     world_size = int(os.getenv("WORLD_SIZE", "1"))
     rank = int(os.getenv("RANK", "0"))
@@ -353,8 +353,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--batch_size", type=int, default=8, help="batch size for quantization.")
     parser.add_argument("--calib_size", type=int, default=512, help="samples for calibration.")
-    parser.add_argument("--enable_fp8_kvcache", type=bool, default=True, help="enable fp8 kvcache.")
-    parser.add_argument("--enable_wo_quant", action="store_true", help="enable MLA wo quant.")
+    parser.add_argument("--disable_fp8_kvcache", action="store_true", help="disable fp8 kvcache.")
+    parser.add_argument("--disable_wo_quant", action="store_true", help="disable MLA wo quant.")
     parser.add_argument("--trust_remote_code", action="store_true", help="trust remote code.")
 
     args = parser.parse_args()
@@ -363,4 +363,4 @@ if __name__ == "__main__":
         args.model_path, trust_remote_code=args.trust_remote_code
     )
     model = ptq(model, tokenizer, args.quant_cfg, args.batch_size, args.calib_size)
-    save_amax_and_quant_config(model, args.output_path, args.enable_fp8_kvcache)
+    save_amax_and_quant_config(model, args.output_path, not args.disable_fp8_kvcache)

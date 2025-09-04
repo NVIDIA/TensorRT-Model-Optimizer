@@ -26,18 +26,18 @@ skip_if_no_tensorrt()
 
 def _create_test_model_trt():
     opset_version = 13
-    tensor_shapes = [1, 1, 128, 768]
+    tensor_shapes = [1, 16, 128, 768]
 
     # Instantiate ONNX variables
     input_0 = gs.Variable(name="input_0", dtype=np.float32, shape=tensor_shapes)
     conv_0_weight = gs.Constant(
-        name="conv_0_weight", values=np.ones((tensor_shapes[0], 1, 1, 1), dtype=np.float32)
+        name="conv_0_weight", values=np.ones((tensor_shapes[1], 16, 1, 1), dtype=np.float32)
     )
     conv_0_output = gs.Variable(name="conv_0_out")  # , dtype=np.float32, shape=tensor_shapes)
     input_1 = gs.Variable(name="input_1", dtype=np.float32, shape=tensor_shapes)
     custom_output = gs.Variable(name="custom_skip_ln_0_out")  # , dtype=np.float32)
     conv_1_weight = gs.Constant(
-        name="conv_1_weight", values=np.ones((tensor_shapes[0], 1, 1, 1), dtype=np.float32)
+        name="conv_1_weight", values=np.ones((16, 16, 1, 1), dtype=np.float32)
     )
     output = gs.Variable(name="output", dtype=np.float32)  # , shape=tensor_shapes)
 

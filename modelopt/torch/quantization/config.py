@@ -1137,6 +1137,12 @@ class CompressConfig(ModeloptBaseConfig):
         Call `compress` function to compress the model weights.""",
     )
 
+    quant_gemm: bool = ModeloptField(
+        default=True,
+        title="Enable quantized GEMM.",
+        description="If True, quantized GEMM compute will be enabled. Otherwise, we only do weight-only quantization.",
+    )
+
 
 CompressCfgType = dict[str, bool] | None | CompressConfig
 

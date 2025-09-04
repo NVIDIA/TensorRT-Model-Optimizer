@@ -55,7 +55,7 @@ def download_and_prepare_minipile_dataset(output_dir: Path) -> Path:
     return jsonl_file
 
 
-def test_megatron_preprocess_data_with_minipile_dataset(skip_on_windows, tmp_path):
+def test_megatron_preprocess_data_with_minipile_dataset(tmp_path):
     """Test megatron_preprocess_data function with nanotron/minipile_100_samples dataset.
 
     This test:
@@ -71,22 +71,19 @@ def test_megatron_preprocess_data_with_minipile_dataset(skip_on_windows, tmp_pat
     assert input_jsonl.exists(), "Input JSONL file should exist"
     assert input_jsonl.stat().st_size > 0, "Input JSONL file should not be empty"
 
-    # Set up output paths
-    output_prefix = tmp_path / "test_output"
-
     # Test the megatron_preprocess_data function
     megatron_preprocess_data(
-        input_path=str(input_jsonl),
-        output_prefix=str(output_prefix),
+        input_path=input_jsonl,
+        output_dir=tmp_path,
         tokenizer_name_or_path="gpt2",  # Use a small, common tokenizer
         json_keys=["text"],
         append_eod=False,
         workers=1,
-        partitions=1,
         log_interval=10,
     )
 
     # Verify that output files were created
+    output_prefix = tmp_path / "minipile_100_samples"
     expected_bin_file = f"{output_prefix}_text_document.bin"
     expected_idx_file = f"{output_prefix}_text_document.idx"
 
@@ -124,22 +121,20 @@ def test_megatron_preprocess_data_with_custom_parameters(tmp_path):
     with open(input_jsonl, "w", encoding="utf-8") as f:
         f.writelines(json.dumps(item) + "\n" for item in test_data)
 
-    output_prefix = tmp_path / "custom_test_output"
-
     # Test with different parameters
     megatron_preprocess_data(
-        input_path=str(input_jsonl),
-        output_prefix=str(output_prefix),
+        input_path=input_jsonl,
+        output_dir=tmp_path,
         tokenizer_name_or_path="gpt2",
         json_keys=["text"],
         append_eod=True,  # Test with end-of-document token
-        max_document_length=50,  # Test with character limit
+        max_sequence_length=5,  # Test with sequence length limit
         workers=1,
-        partitions=1,
         log_interval=1,
     )
 
     # Verify output files exist
+    output_prefix = tmp_path / "test_data"
     expected_bin_file = f"{output_prefix}_text_document.bin"
     expected_idx_file = f"{output_prefix}_text_document.idx"
 

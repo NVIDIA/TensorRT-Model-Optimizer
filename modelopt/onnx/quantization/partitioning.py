@@ -98,6 +98,7 @@ def _build_fusible_partition(
         fusible_patterns = [
             ["Mul", "Sigmoid", "Conv"],
             ["Mul", "Sigmoid", "BatchNormalization", "Conv"],
+            ["Mul", "Sigmoid", "Add"],
         ]
         if any(has_path_type(mul_node, graph, p, is_forward=False) for p in fusible_patterns):
             return True
@@ -399,12 +400,14 @@ def find_mha_partitions(graph: Graph) -> list[list[Node]]:
     """Finds the MHA core (QK_AV) patterns in the graph that should not be quantized.
 
     A common MHA implementation looks like this:
-    t -> MatMul -> (optional) Pointwise ops (such as Add, Mul, Sub) -> Softmax -> MatMul -> output
+    t -> MatMul -> (optional) Pointwise ops (such as Add, Mul, Sub) with constant input -> Softmax -> MatMul -> output
     Patterns that do not look like that should not be quantized (at least for now).
     """
     mha_chain_types = [
         [
             "MatMul",
+            "NonBiasAdd",  # without constant inputs
+            "Softmax",
             "MatMul",
         ],
     ]

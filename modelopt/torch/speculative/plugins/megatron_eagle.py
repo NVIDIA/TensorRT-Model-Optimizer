@@ -421,11 +421,17 @@ class EagleTransformerBlock(TransformerBlock):
             state_dict_prefix = (
                 f"{layer_prefix}{global_layer_offset}."  # module list index in TransformerBlock
             )
-            sharded_prefix = layer_prefix
-            sharded_pp_offset = [
-                (0, global_layer_offset, num_layers)
-            ]  # PP sharding offset for ShardedTensors
 
+            if num_layers > 1:
+                # For multi-layer EAGLE, we use heterogenuous distrubted checkpoint
+                sharded_prefix = state_dict_prefix
+                sharded_pp_offset = []
+            else:
+                # For single EAGLE, we use homogenous distrubted checkpoint for backward compatibility
+                sharded_prefix = layer_prefix
+                sharded_pp_offset = [
+                    (0, global_layer_offset, num_layers)
+                ]  # PP sharding offset for ShardedTensors
             layer_sharded_state_dict = layer.sharded_state_dict(
                 state_dict_prefix, sharded_pp_offset, metadata
             )
@@ -516,7 +522,9 @@ class EagleModule(MegatronModule):
             )
 
         if self._num_aux_hidden_states > 0:
-            layer = self.decoder.layers[0]
+            # Register forward hook to the last EAGLE3 layer to extract the pre-norm hidden_state
+            # for eagle3 auto regression.
+            layer = self.decoder.layers[-1]
             layer.register_forward_hook(self._eagle3_layer_forward_hook)
 
             self_attention = layer.self_attention

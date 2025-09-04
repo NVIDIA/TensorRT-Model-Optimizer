@@ -55,26 +55,22 @@ def fp8_per_tensor_gemm(quant_module, input, bias=None):
         )
         return output.reshape(*input_shape[:-1], output.shape[-1])
 
-    cached_scale_a = hasattr(quant_module, "_scale_a")
-    input_amax = quant_module.input_quantizer.amax
-    if input_amax is None:
-        cached_scale_a = False
-        input_amax = reduce_amax(input)
-        assert input_amax != 0
+    cached_scale_a = (
+        hasattr(quant_module, "_scale_a") and quant_module.input_quantizer.amax is not None
+    )
 
     if not cached_scale_a:
+        input_amax = quant_module.input_quantizer.amax or reduce_amax(input)
+        assert input_amax != 0
         quant_module._scale_a = (input_amax.float() / 448.0).to(device=input.device)
 
     cached_scale_b = (
-        hasattr(quant_module, "_scale_b") and quant_module.weight.dtype == torch.float8_e4m3fn
+        hasattr(quant_module, "_scale_b") and quant_module.weight_quantizer.amax is not None
     )
-    weight_amax = quant_module.weight_quantizer.amax
-    if weight_amax is None:
-        cached_scale_b = False
-        weight_amax = reduce_amax(quant_module.weight)
-        assert weight_amax != 0
 
     if not cached_scale_b:
+        weight_amax = quant_module.weight_quantizer.amax or reduce_amax(quant_module.weight)
+        assert weight_amax != 0
         quant_module._scale_b = (weight_amax.float() / 448.0).to(device=quant_module.weight.device)
 
     if quant_module.weight.dtype != torch.float8_e4m3fn:
@@ -92,7 +88,7 @@ def fp8_per_tensor_gemm(quant_module, input, bias=None):
     # _scaled_mm does not support bias for float32 input, so we add it manually
     if input.dtype == torch.float32 and bias is not None:
         output += bias
-    return output.reshape(*input.shape[:-1], output.shape[-1])
+    return output
 
 
 def _fp8_availability_check(module, input, args, kwargs):

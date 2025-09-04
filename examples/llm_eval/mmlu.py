@@ -250,15 +250,8 @@ def main(
     # Model Optimizer modification
     # Enable automatic save/load of modelopt state huggingface checkpointing
     mto.enable_huggingface_checkpointing()
-    if vocab_file := kwargs.get("vocab_file"):
-        from modelopt.deploy.llm.nemo_utils import get_nemo_tokenizer
-
-        tokenizer = get_nemo_tokenizer(vocab_file)
-    else:
-        model_ckpt_path = kwargs["model_path"]
-        tokenizer = get_tokenizer(
-            model_ckpt_path, trust_remote_code=kwargs.get("trust_remote_code", False)
-        )
+    model_path = kwargs["model_path"]
+    tokenizer = get_tokenizer(model_path, trust_remote_code=kwargs.get("trust_remote_code", False))
     if kwargs.get("engine_dir"):
         # get model type
         last_part = os.path.basename(kwargs["engine_dir"])

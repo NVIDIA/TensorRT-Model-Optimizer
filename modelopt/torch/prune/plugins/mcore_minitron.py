@@ -58,37 +58,29 @@ SUPPORTED_HPARAMS = {
     "num_layers",
 }
 
+SUPPORTED_MODELS = set()
 
-def get_supported_model_config_map() -> dict[type, str]:
-    """Get supported models (inside function to avoid circular imports)."""
-    supported_model_config_map = {}
-    try:
-        from megatron.core.models.gpt import GPTModel
+try:
+    from megatron.core.models.gpt import GPTModel
 
-        supported_model_config_map[GPTModel] = "config"
-    except Exception:
-        pass
+    SUPPORTED_MODELS.add(GPTModel)
+except Exception:
+    pass
 
-    try:
-        from megatron.core.models.mamba import MambaModel
+try:
+    from megatron.core.models.mamba import MambaModel
 
-        supported_model_config_map[MambaModel] = "config"
-    except Exception:
-        pass
+    SUPPORTED_MODELS.add(MambaModel)
+except Exception:
+    pass
 
-    try:
-        from nemo.collections import llm
-        from nemo.collections.nlp.models.language_modeling.megatron_gpt_model import (
-            MegatronGPTModel,
-        )
+try:
+    from nemo.collections import llm
 
-        supported_model_config_map[MegatronGPTModel] = "cfg"
-        # NOTE: llm.MambaModel is a subclass of llm.GPTModel
-        supported_model_config_map[llm.GPTModel] = "config"
-    except Exception:
-        pass
-
-    return supported_model_config_map
+    # NOTE: llm.MambaModel is a subclass of llm.GPTModel
+    SUPPORTED_MODELS.add(llm.GPTModel)
+except Exception:
+    pass
 
 
 class MCoreMinitronSearcher(BaseSearcher):
@@ -158,15 +150,14 @@ class MCoreMinitronSearcher(BaseSearcher):
     def run_search(self) -> None:
         """Run actual search."""
         # Run forward loop to collect activations and sort parameters
-        supported_model_config_map = get_supported_model_config_map()
         model_cfg = None
-        for m_type, cfg_name in supported_model_config_map.items():
+        for m_type in SUPPORTED_MODELS:
             if isinstance(self.model, m_type):
-                model_cfg = getattr(self.model, cfg_name)
+                model_cfg = self.model.config
                 break
         if model_cfg is None:
             raise NotImplementedError(
-                f"Only {supported_model_config_map.keys()} models are supported! Got: {type(self.model)}"
+                f"Only {SUPPORTED_MODELS} models are supported! Got: {type(self.model)}"
             )
 
         assert self.forward_loop is not None

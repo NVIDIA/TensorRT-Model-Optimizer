@@ -31,9 +31,11 @@ from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.quantization.calib_utils import import_scales_from_calib_cache
 from modelopt.onnx.quantization.graph_utils import (
     build_non_residual_input_map,
+    classify_partially_quantized_weighted_ops,
     classify_partition_nodes,
     expand_node_names_from_patterns,
     filter_quantizable_kgen_heads,
+    find_nodes_from_convs_to_exclude,
     find_nodes_from_matmul_to_exclude,
     find_nodes_to_exclude,
     get_concat_eliminated_tensors,
@@ -77,6 +79,8 @@ def _find_nodes_to_quantize(
     _, quantizable_partition_nodes, no_quantize_inputs = classify_partition_nodes(
         cask_fusible_partitions,
     )
+
+    no_quantize_inputs += classify_partially_quantized_weighted_ops(graph, nodes_to_exclude or [])
 
     quantizable_kgen_heads, no_quantize_kgen_inputs = filter_quantizable_kgen_heads(
         cask_fusible_partitions,
@@ -125,6 +129,7 @@ def quantize(
     log_level: str = "INFO",
     calibrate_per_node: bool = False,
     custom_ops_to_quantize: list[str] = [],
+    direct_io_types: bool = False,
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies INT8 quantization to an ONNX file using the compiler friendly heuristics.
@@ -167,6 +172,7 @@ def quantize(
 
     # Collect node names to exclude from quantization
     nodes_to_exclude = find_nodes_to_exclude(graph, nodes_to_exclude, op_types_to_exclude)  # type: ignore[arg-type]
+    nodes_to_exclude.extend(find_nodes_from_convs_to_exclude(graph, quantize_mode="int8"))
 
     # Change the default configuration of ORT quantization
     op_types_to_quantize = op_types_to_quantize or []
@@ -272,7 +278,7 @@ def quantize(
         # Note: from convert_to_f16's perspective, high_precision_dtype is the precision to reduce to from FP32
         onnx_model = convert_to_f16(
             onnx_model,
-            keep_io_types=True,
+            keep_io_types=not direct_io_types,
             low_precision_type=high_precision_dtype,
             trt_plugins=trt_extra_plugin_lib_paths,
         )

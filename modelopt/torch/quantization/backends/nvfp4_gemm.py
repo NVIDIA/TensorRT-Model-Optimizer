@@ -25,56 +25,107 @@ from modelopt.torch.quantization.backends.gemm_registry import gemm_registry
 from modelopt.torch.quantization.backends.utils import fp4_compatible
 from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import NVFP4QTensor, QTensorWrapper
-
-
-def _to_nvfp4(inputs, amax=None):
-    """Convert inputs to nvfp4."""
-    import tensorrt_llm  # noqa: F401
-
-    vec_size = 16
-    if amax is None:
-        amax = inputs.abs().amax()
-    global_scale = 448.0 * 6.0 / amax.float()
-    fp4, scale = torch.ops.trtllm.fp4_quantize(inputs, global_scale, vec_size, False)
-    return fp4, scale, global_scale
+from modelopt.torch.quantization.utils import reduce_amax
 
 
 def nvfp4_gemm(quant_module, input_tensor, bias=None):
     """GEMM function for fp4 quantization."""
-    import tensorrt_llm._torch.auto_deploy.custom_ops.quant  # noqa: F401
+    import tensorrt_llm._torch  # noqa: F401
+
+    def _fp4_linear(
+        input: torch.Tensor,
+        weight_fp4: torch.Tensor,
+        bias: torch.Tensor | None = None,
+        input_scale: torch.Tensor | None = None,
+        weight_scale: torch.Tensor | None = None,
+        alpha: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        input_shape = input.shape
+        weight_shape = weight_fp4.shape
+
+        # FP4 compatibility
+        assert input_scale is not None
+        assert weight_scale is not None
+        assert alpha is not None
+
+        n = weight_shape[0]
+        k = input_shape[-1]
+        assert k % 16 == 0
+        assert weight_shape[-1] % 8 == 0
+        assert weight_scale.numel() % (128 * 4) == 0
+
+        input = input.reshape(-1, k)
+
+        x_fp4, x_sf_block = torch.ops.trtllm.fp4_quantize(input, input_scale, 16, False)
+
+        output = torch.ops.trtllm.nvfp4_gemm(
+            x_fp4, weight_fp4, x_sf_block, weight_scale, alpha, input.dtype
+        )
+
+        if bias is not None:
+            output = output + bias
+
+        return output.reshape(*input_shape[:-1], n)
+
+    if input_tensor.dtype == torch.float32:
+        input_tensor = input_tensor.to(torch.float16)
+
+    cached_input_global_scale = (
+        hasattr(quant_module, "_input_global_scale")
+        and quant_module.input_quantizer.amax is not None
+    )
+
+    if not cached_input_global_scale:
+        input_amax = quant_module.input_quantizer.amax or reduce_amax(input_tensor)
+        assert input_amax != 0
+        quant_module._input_global_scale = 448.0 * 6.0 / input_amax.float()
 
     weight = quant_module.weight
+
+    cached_weight_global_scale = hasattr(quant_module, "_weight_global_scale")
     if isinstance(weight, QTensorWrapper):  # weight is already compressed.
         weight = weight.get_qtensor()
         assert isinstance(weight, NVFP4QTensor)
         weight_fp4 = weight._quantized_data
         weight_scale = quant_module.weight_quantizer._scale
-        weight_global_scale = 1.0 / quant_module.weight_quantizer._double_scale
+
+        if not cached_weight_global_scale:
+            quant_module._weight_global_scale = 1.0 / quant_module.weight_quantizer._double_scale
     else:
         if isinstance(weight, torch.nn.Parameter):
             weight = weight.data
         if weight.dtype == torch.float32:
             weight = weight.to(torch.float16)
-        weight_fp4, weight_scale, weight_global_scale = _to_nvfp4(
-            weight, quant_module.weight_quantizer.amax
+
+        cached_weight_global_scale = (
+            cached_weight_global_scale
+            and quant_module.weight_quantizer.amax == quant_module._weight_amax
+        )
+        if not cached_weight_global_scale:
+            weight_amax = quant_module.weight_quantizer.amax or reduce_amax(weight)
+            assert weight_amax != 0
+            quant_module._weight_global_scale = 448.0 * 6.0 / weight_amax.float()
+            quant_module._weight_amax = weight_amax
+
+        weight_fp4, weight_scale = torch.ops.trtllm.fp4_quantize(
+            weight, quant_module._weight_global_scale, 16, False
         )
 
-    if input_tensor.dtype == torch.float32:
-        input_tensor = input_tensor.to(torch.float16)
-    input_amax = quant_module.input_quantizer.amax
-    if input_amax is None:
-        input_amax = input_tensor.abs().amax()
-    input_global_scale = 448.0 * 6.0 / input_amax.float()
-    alpha = 1.0 / (weight_global_scale * input_global_scale)
-    output = torch.ops.auto_deploy.torch_quant_fp4_linear(
+    if not (
+        cached_input_global_scale and cached_weight_global_scale and hasattr(quant_module, "alpha")
+    ):
+        quant_module.alpha = 1.0 / (
+            quant_module._weight_global_scale * quant_module._input_global_scale
+        )
+
+    return _fp4_linear(
         input_tensor,
         weight_fp4,
         bias=bias,
-        input_scale=input_global_scale,
+        input_scale=quant_module._input_global_scale,
         weight_scale=weight_scale,
-        alpha=alpha,
+        alpha=quant_module.alpha,
     )
-    return output
 
 
 class Nvfp4Linear(Function):
@@ -115,7 +166,10 @@ class Nvfp4Linear(Function):
                 assert isinstance(weight, NVFP4QTensor)
                 # Only block_size=16 is supported, this is also check in _nvfp4_availability_check
                 weight = weight.dequantize(
-                    scale=scale, double_scale=double_scale, block_sizes={-1: 16}
+                    scale=scale,
+                    double_scale=double_scale,
+                    block_sizes={-1: 16},
+                    fast=True,
                 )
             grad_input = grad_outputs @ weight
         if input_tensor is not None:
@@ -141,7 +195,7 @@ def _nvfp4_availability_check(module, input, args, kwargs):
     """Comprehensive check for FP4 GEMM availability."""
     # NOTE: Having the import at the top causes mpirun commands inside pytest (vlm_ptq) to fail without any error
     try:
-        import tensorrt_llm._torch.auto_deploy.custom_ops.quant  # noqa: F401
+        import tensorrt_llm  # noqa: F401
     except ImportError:
         return False
 
@@ -184,7 +238,7 @@ def _nvfp4_availability_check(module, input, args, kwargs):
 
     # When the input.shape[1] is not the multiple of 64, GEMM will sometimes output NaN.
     # When the weight.shape[0] is not the multiple of 32, GEMM will not support.
-    if input.shape[1] % 64 != 0 or module.weight.shape[0] % 32 != 0:
+    if input.shape[-1] % 64 != 0 or module.weight.shape[0] % 32 != 0:
         return False
 
     # Only block_size==16 is supported.

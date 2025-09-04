@@ -30,10 +30,9 @@ set_seed()
 
 
 @pytest.mark.parametrize(
-    ("model", "config", "gemm_forward", "atol", "rtol"),
+    ("config", "gemm_forward", "atol", "rtol"),
     [
         pytest.param(
-            OneLayerLinear(in_features=64, out_features=32),
             mtq.NVFP4_DEFAULT_CFG,
             Nvfp4Linear.apply,
             0.5,
@@ -43,7 +42,6 @@ set_seed()
             ],
         ),
         pytest.param(
-            SimpleLinear(),
             mtq.FP8_DEFAULT_CFG,
             Fp8PerTensorLinear.apply,
             0.05,
@@ -54,7 +52,9 @@ set_seed()
         ),
     ],
 )
-def test_gemm(model, config, gemm_forward, atol, rtol):
+@pytest.mark.parametrize("input_dim", [2, 3])
+def test_gemm(config, gemm_forward, atol, rtol, input_dim):
+    model = OneLayerLinear(in_features=64, out_features=32)
     model = model.to(torch.float16).cuda()
     calib_data = [model.get_input().to(torch.float16).cuda() for _ in range(8)]
 
@@ -67,7 +67,14 @@ def test_gemm(model, config, gemm_forward, atol, rtol):
     mtq.quantize(model, config, forward_loop)
 
     module = model.net[0]
-    input_tensor = calib_data[0].clone()
+    if input_dim <= 2:
+        input_tensor = calib_data[0].clone()
+    else:
+        # Use expand_dims to match input_dim directly
+        input_tensor = calib_data[0]
+        if input_tensor.dim() < input_dim:
+            shape = (1,) * (input_dim - input_tensor.dim()) + input_tensor.shape
+            input_tensor = input_tensor.reshape(shape)
     expected = torch.nn.functional.linear(input_tensor, module.weight, bias=None)
 
     # Test without bias
@@ -249,12 +256,10 @@ def test_dynamic_gemm(model, config, gemm_forward, atol, rtol):
         assert torch.allclose(output_fp16, output_calib_quant_gemm, atol=atol, rtol=rtol)
 
         # The way the compression of the weights and inputs might be different.
-        # E.g. we may use torch.compile in the gemms.=
-        assert torch.allclose(output_dynamic_quant_gemm, output_dynamic_quant, atol=0.05, rtol=0.1)
-        assert torch.allclose(output_calib_quant_gemm, output_calib_quant, atol=0.05, rtol=0.1)
+        # E.g. we may use torch.compile in the gemms.
+        assert torch.allclose(output_dynamic_quant_gemm, output_dynamic_quant, atol=atol / 3)
+        assert torch.allclose(output_calib_quant_gemm, output_calib_quant, atol=atol / 3)
         assert torch.allclose(
-            output_dynamic_quant_gemm, output_dynamic_quant_compressed, atol=0.05, rtol=0.1
+            output_dynamic_quant_gemm, output_dynamic_quant_compressed, atol=atol / 3
         )
-        assert torch.allclose(
-            output_calib_quant_gemm, output_calib_quant_compressed, atol=0.05, rtol=0.1
-        )
+        assert torch.allclose(output_calib_quant_gemm, output_calib_quant_compressed, atol=atol / 3)

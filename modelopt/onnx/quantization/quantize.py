@@ -229,6 +229,7 @@ def quantize(
     simplify: bool = False,
     calibrate_per_node: bool = False,
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
+    direct_io_types: bool = False,
     **kwargs: Any,
 ) -> None:
     """Quantizes the provided ONNX model.
@@ -339,6 +340,9 @@ def quantize(
             If None of the calibration_eps require any such shapes profile for model inputs, then nothing needs to be
             set for this "input_shapes_profile" parameter.
             Default value is None.
+        direct_io_types:
+            If True, modify the I/O types in the quantized ONNX model to be lower precision whenever possible.
+            If False, keep the I/O types in the quantized ONNX model the same as in the given ONNX model.
         kwargs:
             Additional keyword arguments for int4 quantization, including:
             - awqlite_alpha_step (float): Alpha step for lite, range [0, 1].
@@ -428,7 +432,7 @@ def quantize(
     # (1) If disable_mha_qdq is set, don't add Q/DQ layers to MatMuls in MHA pattern.
     # (2) else when quantize_mode == "int8", if seq_len > 512, don't add Q/DQ layers to
     # MatMuls in MHA pattern.
-    # (2) else when quantize_mode == "fp8", if head_size > 256 or head_size <= 8
+    # (3) else when quantize_mode == "fp8", if head_size > 256 or head_size <= 8
     # or mha doesn't meet fp8 fMHA v2 pattern, don't add Q/DQ layers to MatMuls in MHA pattern.
     nodes_to_exclude = find_nodes_from_mha_to_exclude(
         onnx_path,
@@ -463,6 +467,7 @@ def quantize(
             log_level=log_level,
             calibrate_per_node=calibrate_per_node,
             custom_ops_to_quantize=list(custom_ops_to_quantize.keys()),
+            direct_io_types=direct_io_types,
             **kwargs,
         )
     elif "int4" in quantize_mode:

@@ -13,13 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 import pytest
+from _test_utils.torch_misc import set_seed
 from _test_utils.torch_quantization.models import SimpleLinear
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.backends import gemm_registry
 from modelopt.torch.quantization.backends.fp8_per_tensor_gemm import Fp8PerTensorLinear
 from modelopt.torch.quantization.backends.utils import fp8_compatible
+
+set_seed()
 
 
 @pytest.mark.skipif(not fp8_compatible(), reason="FP8 is not supported on this GPU")
