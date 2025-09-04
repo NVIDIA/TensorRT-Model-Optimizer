@@ -25,7 +25,9 @@ import torch
 from accelerate.hooks import remove_hook_from_module
 from example_utils import apply_kv_cache_quant, get_model, get_processor, get_tokenizer, is_enc_dec
 from transformers import (
+    AutoConfig,
     AutoModelForCausalLM,
+    AutoProcessor,
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
     WhisperProcessor,
@@ -567,9 +569,18 @@ def main(args):
 
         export_path = args.export_path
 
-        if hasattr(full_model, "language_model"):
+        # Check for VLMs by looking for vision_config in model config or language_model attribute
+        is_vlm = False
+        try:
+            is_vlm = hasattr(full_model.config, "vision_config") or hasattr(
+                full_model, "language_model"
+            )
+        except Exception:
+            # Fallback to the original check if config access fails
+            is_vlm = hasattr(full_model, "language_model")
+
+        if is_vlm:
             # Save original model config and the preprocessor config to the export path for VLMs.
-            from transformers import AutoConfig, AutoProcessor
 
             print(f"Saving original model and processor configs to {export_path}")
 
