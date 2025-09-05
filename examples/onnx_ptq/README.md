@@ -120,7 +120,7 @@ The following evaluation requires the `val` directory of the [ImageNet dataset](
 python evaluate.py \
     --onnx_path=<path to classification model> \
     --imagenet_path=<path to the ImageNet dataset> \
-    --quantize_mode=<fp8|int8|int4> \
+    --quantize_mode=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```
 

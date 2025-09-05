@@ -124,7 +124,7 @@ def quantize(
     use_external_data_format: bool = False,
     intermediate_generated_files: list[str] = [],
     trt_extra_plugin_lib_paths: list[str] | None = None,
-    high_precision_dtype: str = "fp32",
+    high_precision_dtype: str = "fp16",
     passes: list[str] = ["concat_elimination"],
     log_level: str = "INFO",
     calibrate_per_node: bool = False,

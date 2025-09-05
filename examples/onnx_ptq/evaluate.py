@@ -48,29 +48,16 @@ def main():
     parser.add_argument(
         "--eval_data_size", type=int, default=None, help="Number of examples to evaluate"
     )
-    # By default, TensorRT autotunes tensor types to generate the fastest engine. When you specify
-    # to TensorRT that a network is strongly typed, it infers a type for each intermediate and
-    # output tensor using the rules in the operator type specification. For networks quantized in
-    # INT4 or FP8 mode, stronglyTyped as the mode is recommended for TensorRT deployment. Though
-    # INT8 networks are generally compiled with int8 mode, certain INT8 ViT networks compiled with
-    # stronglyTyped precision have shown better performance.
-    parser.add_argument(
-        "--quantize_mode",
-        type=str,
-        default="stronglyTyped",
-        choices=["fp8", "fp16", "fp32", "int4", "int8", "int8_iq", "bf16", "best", "stronglyTyped"],
-        help="Quantization mode for the TensorRT engine. \
-            Supported options: fp8, fp16, fp32, int8, int8_iq(implicit quantization), bf16, best, stronglyTyped",
-    )
     parser.add_argument(
         "--results_path", type=str, default=None, help="Save the results to the specified path"
     )
 
     args = parser.parse_args()
 
+    # Note. stronglyTyped is recommended, all other modes have been deprecated in TensorRT
     deployment = {
         "runtime": "TRT",
-        "precision": args.quantize_mode,
+        "precision": "stronglyTyped",
     }
 
     # Create an ONNX bytes object with the specified path
