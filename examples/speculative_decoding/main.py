@@ -47,6 +47,13 @@ import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
 from modelopt.torch.utils import print_rank_0
 
+try:
+    import wandb
+
+    wandb.init()
+except ImportError:
+    wandb = None
+
 torch.manual_seed(0)
 mto.enable_huggingface_checkpointing()
 
@@ -170,6 +177,8 @@ def train():
                 {
                     "hidden_size": model.config.hidden_size,
                     "vocab_size": model.config.vocab_size,
+                    # we also overwrite max_pos_embedding for deployment compatibility
+                    "max_position_embeddings": model.config.max_position_embeddings,
                     "draft_vocab_size": custom_config["draft_vocab_size"]
                     if eagle_args.eagle_config and "draft_vocab_size" in custom_config
                     else model.config.vocab_size,
@@ -213,6 +222,8 @@ def train():
                     device=kwargs["model"].device,
                 )
                 print_rank_0(f"Step {state.global_step} AR: {sum(ars) / len(ars):.4f}")
+                if wandb:
+                    wandb.log({"validate_ar": sum(ars) / len(ars)}, step=state.global_step)
             return control
 
     trainer = Trainer(
