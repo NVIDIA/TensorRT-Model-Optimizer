@@ -713,7 +713,7 @@ class HFEagleModel(EagleModel):
                 base_model_loss = loss_fct(loss_logits, labels)
 
         # Map the base model logits to the draft vocab
-        if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+        if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size and self.training:
             base_model_logits = self._map_logits_to_draft_vocab(base_model_logits)
 
         return base_model_hidden_states, base_model_logits, base_model_loss, past_key_values
