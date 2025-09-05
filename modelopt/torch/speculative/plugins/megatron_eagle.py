@@ -524,9 +524,11 @@ class EagleModule(MegatronModule):
         if self._num_aux_hidden_states > 0:
             # Register forward hook to the last EAGLE3 layer to extract the pre-norm hidden_state
             # for eagle3 auto regression.
-            layer = self.decoder.layers[-1]
-            layer.register_forward_hook(self._eagle3_layer_forward_hook)
+            last_layer = self.decoder.layers[-1]
+            last_layer.register_forward_hook(self._eagle3_layer_forward_hook)
 
+            # The first EAGLE3 layer needs to be specialized.
+            layer = self.decoder.layers[0]
             self_attention = layer.self_attention
             if not isinstance(self_attention, SelfAttention):
                 raise ValueError("EAGLE-3 only support SelfAttention (MHA, GQA).")
