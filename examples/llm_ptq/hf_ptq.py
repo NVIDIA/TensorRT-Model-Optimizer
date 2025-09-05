@@ -41,6 +41,7 @@ from modelopt.torch.export import (
     export_tensorrt_llm_checkpoint,
     get_model_type,
 )
+from modelopt.torch.export.model_utils import is_multimodal_model
 from modelopt.torch.quantization.config import need_calibration
 from modelopt.torch.quantization.plugins.accelerate import init_quantized_weights
 from modelopt.torch.quantization.utils import is_quantized
@@ -569,18 +570,8 @@ def main(args):
 
         export_path = args.export_path
 
-        # Check for VLMs by looking for various multimodal indicators in model config
-        config = full_model.config
-        is_vlm = (
-            hasattr(config, "vision_config")  # Standard vision config (e.g., Qwen2.5-VL)
-            or hasattr(full_model, "language_model")  # Language model attribute (e.g., LLaVA)
-            or getattr(config, "model_type", "") == "phi4mm"  # Phi-4 multimodal
-            or hasattr(config, "vision_lora")  # Vision LoRA configurations
-            or hasattr(config, "audio_processor")  # Audio processing capabilities
-            or (
-                hasattr(config, "embd_layer") and hasattr(config.embd_layer, "image_embd_layer")
-            )  # Image embedding layers
-        )
+        # Check if the model is a multimodal/VLM model
+        is_vlm = is_multimodal_model(full_model)
 
         if is_vlm:
             # Save original model config and the processor config to the export path for VLMs.
