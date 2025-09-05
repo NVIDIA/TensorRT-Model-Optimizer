@@ -869,11 +869,6 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
                 post_state_dict[prefix + new_suffix] = value
                 break
 
-    # Squeeze tensors with a leading dimension of 1
-    for key, value in post_state_dict.items():
-        if isinstance(value, torch.Tensor) and value.dim() == 3 and value.shape[0] == 1:
-            post_state_dict[key] = value.squeeze(0)
-
     # remove real quant parameters from the state dict
     keys_to_delete = []
     for key, value in post_state_dict.items():
