@@ -123,7 +123,7 @@ def main():
         "--batch_size",
         type=int,
         default=1,
-        help="Batch size for calibration.",
+        help="Batch size for calibration and ONNX model export.",
     )
 
     args = parser.parse_args()
