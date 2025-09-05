@@ -25,7 +25,9 @@ import torch
 from accelerate.hooks import remove_hook_from_module
 from example_utils import apply_kv_cache_quant, get_model, get_processor, get_tokenizer, is_enc_dec
 from transformers import (
+    AutoConfig,
     AutoModelForCausalLM,
+    AutoProcessor,
     PreTrainedTokenizer,
     PreTrainedTokenizerFast,
     WhisperProcessor,
@@ -39,6 +41,7 @@ from modelopt.torch.export import (
     export_tensorrt_llm_checkpoint,
     get_model_type,
 )
+from modelopt.torch.export.model_utils import is_multimodal_model
 from modelopt.torch.quantization.config import need_calibration
 from modelopt.torch.quantization.plugins.accelerate import init_quantized_weights
 from modelopt.torch.quantization.utils import is_quantized
@@ -567,19 +570,26 @@ def main(args):
 
         export_path = args.export_path
 
-        if hasattr(full_model, "language_model"):
-            # Save original model config and the preprocessor config to the export path for VLMs.
-            from transformers import AutoConfig, AutoProcessor
+        # Check if the model is a multimodal/VLM model
+        is_vlm = is_multimodal_model(full_model)
 
-            print(f"Saving original model and processor configs to {export_path}")
+        if is_vlm:
+            # Save original model config and the processor config to the export path for VLMs.
+            print(f"Saving original model config to {export_path}")
 
             AutoConfig.from_pretrained(
                 args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
             ).save_pretrained(export_path)
 
-            AutoProcessor.from_pretrained(
-                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-            ).save_pretrained(export_path)
+            # Try to save processor config if available
+            try:
+                print(f"Saving processor config to {export_path}")
+                AutoProcessor.from_pretrained(
+                    args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+                ).save_pretrained(export_path)
+            except Exception as e:
+                print(f"Warning: Could not save processor config: {e}")
+                print("This is normal for some VLM architectures that don't use AutoProcessor")
 
         if model_type == "mllama":
             full_model_config = model.config
