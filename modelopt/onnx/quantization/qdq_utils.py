@@ -612,7 +612,11 @@ def _cast_fp8(array: np.ndarray) -> np.ndarray:
 
 
 def _cast_fp4(array: np.ndarray) -> np.ndarray:
-    """Cast a numpy array to FLOAT4E2M1 using PyTorch."""
+    """Cast a numpy array to FLOAT4E2M1 using PyTorch.
+
+    Note: The first dimension of the array must be divisible by 2
+    as two FP4 values are packed into a single byte.
+    """
     array_f32_t = torch.from_numpy(array)
     array_f32_t_shape = array_f32_t.shape
     assert array_f32_t_shape[0] % 2 == 0, "array_f32_t_shape[0] must be divisible by 2"
