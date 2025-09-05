@@ -57,7 +57,7 @@ def _get_most_recent_ckpt(directory: str):
         str: Path to the most recent subdirectory.
     """
     exp_dir = Path(directory) / "default"
-    if not exp_dir.exists(): 
+    if not exp_dir.exists():
         raise FileNotFoundError(f"Experiment directory {exp_dir} does not exist")
 
     checkpoint_dir = exp_dir / "checkpoints"

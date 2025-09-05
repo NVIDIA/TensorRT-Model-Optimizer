@@ -138,7 +138,7 @@ def get_args():
         "--enable_kv_cache",
         help="Enables KV-cache quantization",
         action="store_true",
-        default=False
+        default=False,
     )
     return parser.parse_args()
 
