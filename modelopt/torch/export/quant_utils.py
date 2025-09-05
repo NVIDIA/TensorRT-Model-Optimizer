@@ -878,7 +878,7 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
             and value.shape[0] == 1
         ):
             post_state_dict[key] = value.squeeze(0)
-    
+
     # remove real quant parameters from the state dict
     keys_to_delete = []
     for key, value in post_state_dict.items():
