@@ -27,6 +27,10 @@ from typing import Any
 import torch
 import torch.nn as nn
 
+from modelopt.torch.export.plugins import (
+    rename_and_prune_if_spec_decoding,
+    set_config_if_spec_decoding,
+)
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
@@ -490,6 +494,14 @@ def _export_hf_checkpoint(
     return quantized_state_dict, quant_config
 
 
+def _quant_applied(hf_quant_config: dict) -> bool:
+    """Check if any quantization is applied."""
+    return not (
+        hf_quant_config["quantization"]["quant_algo"] == QUANTIZATION_NONE
+        and not hf_quant_config["quantization"]["quantized_layers"]
+    )
+
+
 def export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
@@ -509,11 +521,15 @@ def export_hf_checkpoint(
     try:
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
-        # Save hf_quant_config.json for backward compatibility
-        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
-            json.dump(hf_quant_config, file, indent=4)
+        # When there's no quantization applied, we avoid saving hf_quant_config.json for compatibility
+        if _quant_applied(hf_quant_config):
+            # Save hf_quant_config.json for backward compatibility
+            with open(f"{export_dir}/hf_quant_config.json", "w") as file:
+                json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
+
+        post_state_dict = rename_and_prune_if_spec_decoding(model, post_state_dict)
 
         # Save model
         model.save_pretrained(
@@ -527,6 +543,8 @@ def export_hf_checkpoint(
             config_data = json.load(file)
 
         config_data["quantization_config"] = hf_quant_config
+
+        config_data = set_config_if_spec_decoding(model, config_data)
 
         with open(original_config, "w") as file:
             json.dump(config_data, file, indent=4)
