@@ -1,6 +1,6 @@
 # NeMo QAT/QAD Flow: Advanced Topics
 
-If you need to run QAT/QAD on a Slurm cluster (for example to use more than 1 node)
+If you need to run QAT/QAD on a Slurm cluster (for example to use more than 1 node), this guide covers how to configure and launch on Slurm.
 
 To run the example on slurm, edit the `SLURM_CONFIG` at the bottom of `nemo_qat_flow.py` with the appropriate credentials, container, cluster name (host), and container mounts. Make sure you are mounting the NeMo and Megatron-LM repositories above in the Slurm cluster and that you've checked out the correct commits.
 

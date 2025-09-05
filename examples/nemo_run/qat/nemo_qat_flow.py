@@ -138,14 +138,8 @@ def get_args():
         "--enable_kv_cache",
         help="Enables KV-cache quantization",
         action="store_true",
+        default=False
     )
-    parser.add_argument(
-        "--disable_kv_cache",
-        dest="enable_kv_cache",
-        action="store_false",
-    )
-
-    parser.set_defaults(enable_kv_cache=None)
     return parser.parse_args()
 
 
@@ -265,7 +259,7 @@ def main(args):
     )
     eval_sft = run.Script(
         mmlu_script_path,
-        args=["--ckpt_dir", exp_dir],
+        args=["--finetuned_ckpt_dir", exp_dir],
         entrypoint="python",
     )
 

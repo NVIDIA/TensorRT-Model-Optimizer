@@ -57,7 +57,8 @@ def _get_most_recent_ckpt(directory: str):
         str: Path to the most recent subdirectory.
     """
     exp_dir = Path(directory) / "default"
-    assert exp_dir.exists(), f"Experiment directory {exp_dir} does not exist"
+    if not exp_dir.exists(): 
+        raise FileNotFoundError(f"Experiment directory {exp_dir} does not exist")
 
     checkpoint_dir = exp_dir / "checkpoints"
     if checkpoint_dir.exists():
@@ -65,7 +66,8 @@ def _get_most_recent_ckpt(directory: str):
     else:
         most_recent = _get_most_recent_subdir(exp_dir)
         checkpoint_dir = most_recent / "checkpoints"
-        assert checkpoint_dir.exists(), f"Checkpoint directory {checkpoint_dir} does not exist"
+        if not checkpoint_dir.exists():
+            raise FileNotFoundError(f"Checkpoint directory {checkpoint_dir} does not exist")
         most_recent = _get_most_recent_subdir(checkpoint_dir)
 
     return str(most_recent)

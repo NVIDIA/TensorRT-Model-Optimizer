@@ -12,18 +12,20 @@
 
 This directory contains an end-to-end QAT Simplified Flow example using NeMo for model training. It supports both QAT with cross-entropy loss and QAD (quantization-aware distillation) with knowledge-distillation loss between the BF16 teacher and quantized student models.
 
-After PTQ (post-training quantization), the quantized model may
+After PTQ (post-training quantization), the quantized model may show some accuracy degradation on tasks like MMLU; the QAT/QAD stages aim to recover that loss.
 
 ## Flow Stages
 
-Currently the Simplified Flow runs the following steps in order:
+The Simplified Flow runs the following steps in order:
 
-1. Process Nvidia/OpenScience data (if `--data-path` is not specified)
-1. Import NeMo BF16 model checkpoint and evaluate 5% of MMLU on BF16 checkpoint
-1. PTQ the model and evaluate 5% of MMLU on PTQ Checkpoint
-1. SFT (finetune) the model
-1. Evaluate 5% of MMLU on the SFT checkpoint
-1. Export model to Unified checkpoint (HuggingFace) format in lower precision
+1. 00_openscience_data — Process NVIDIA/OpenScience data (skipped if `--data-path` is given)
+1. 01_import_model — Import NeMo BF16 model checkpoint
+1. 02_mmlu_bf16 — Evaluate 5% MMLU on BF16 checkpoint
+1. 03_ptq — Apply PTQ
+1. 04_mmlu_ptq — Evaluate 5% MMLU on PTQ checkpoint
+1. 05_train — SFT/QAT (and optional QAD)
+1. 06_mmlu_sft — Evaluate 5% MMLU on SFT/QAT checkpoint
+1. 07_export_hf — Export to Hugging Face (Unified) format
 
 ```mermaid
 graph TD;

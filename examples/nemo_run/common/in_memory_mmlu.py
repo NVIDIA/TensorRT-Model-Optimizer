@@ -25,9 +25,10 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Run MMLU evaluation with ModelOpt Megatron model. Provide either --nemo_ckpt or --ckpt_dir"
     )
-    parser.add_argument("--nemo_ckpt", type=str, required=False, help="Path to NeMo checkpoint.")
-    parser.add_argument(
-        "--ckpt_dir",
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--nemo_ckpt", type=str, required=False, help="Path to NeMo checkpoint.")
+    group.add_argument(
+        "--finetuned_ckpt_dir",
         required=False,
         type=str,
         help="Checkpoint directory of 1 or more finetuned models",
@@ -43,7 +44,6 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    assert args.nemo_ckpt or args.ckpt_dir, "Provide one of either --nemo_ckpt or --ckpt_dir."
     ckpt_path = args.nemo_ckpt
     if args.ckpt_dir:
         ckpt_path = _get_most_recent_ckpt(args.ckpt_dir)
