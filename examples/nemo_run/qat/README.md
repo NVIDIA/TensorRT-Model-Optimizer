@@ -12,7 +12,7 @@
 
 This directory contains an end-to-end QAT Simplified Flow example using NeMo for model training. It supports both QAT with cross-entropy loss and QAD (quantization-aware distillation) with knowledge-distillation loss between the BF16 teacher and quantized student models.
 
-After PTQ (post-training quantization), the quantized model may 
+After PTQ (post-training quantization), the quantized model may
 
 ## Flow Stages
 
@@ -36,7 +36,6 @@ graph TD;
 05_train-->07_export_hf;
 ```
 
-
 ## Usage
 
 ### Prerequisites
@@ -49,10 +48,10 @@ To run the example locally, launch a [NeMo container](https://catalog.ngc.nvidia
 - `git clone https://github.com/NVIDIA-NeMo/NeMo.git && cd NeMo && git checkout ddcb75f`
 
 Example docker command:
+
 ```
 docker run -v  /home/user/:/home/user/ -v /home/user/NeMo:/opt/NeMo -v /home/user/TensorRT-Model-Optimizer/modelopt/:/usr/local/lib/python3.12/dist-packages/modelopt --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.07 bash
 ```
-
 
 ### Running the Flow Locally
 
@@ -80,7 +79,6 @@ To perform QAD training, run:
 python qat/nemo_qat_flow.py --distill --log-dir /my/log/dir --experiment qad_experiment
 ```
 
-
 ## Supported models
 
 Locally this script currently supports models that can be trained on 1 node with 8 x 80GB GPUs. On Slurm you can configure the number of nodes/gpus for training and PTQ with the following flags: `--train-nodes`, `--train-gpus`, `--ptq-gpus`.
@@ -90,10 +88,10 @@ The default configuration works on 1 node with 4 H100 GPUs for PTQ and 8 H100 GP
 - **Model**: Qwen3-8B
 - **Recipe**: qwen3_8b
 
-
 ### Custom Chat Template
 
 By default the script will use the model/tokenizer's chat template, which may not contain the `{% generation %}` and `{% endgeneration %}` tags around the assistant tokens which are needed to generate the assistant loss mask (see [this PR](https://github.com/huggingface/transformers/pull/30650)). To provide path to a custom chat template, use the `--chat-template <my_template.txt>` flag.
 
 ### Dataset limitations
+
 The current QAT recipe has been tuned for the Qwen3-8B model to improve accuracy on the MMLU benchmark after PTQ degradation. QAT/QAD results are highly dependent on the specific model, dataset, and hyperparameters. There is no guarantee that the same dataset will recover the accuracy of the PTQ model. Feel free to try your own model and dataset combinations and test which combination works best.
