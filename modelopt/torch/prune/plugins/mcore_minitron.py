@@ -58,29 +58,37 @@ SUPPORTED_HPARAMS = {
     "num_layers",
 }
 
-SUPPORTED_MODELS = set()
 
-try:
-    from megatron.core.models.gpt import GPTModel
+def get_supported_models():
+    """Get the supported models for Minitron pruning.
 
-    SUPPORTED_MODELS.add(GPTModel)
-except Exception:
-    pass
+    NOTE: Keep inside function to avoid circular import issues.
+    """
+    supported_models = set()
 
-try:
-    from megatron.core.models.mamba import MambaModel
+    try:
+        from megatron.core.models.gpt import GPTModel
 
-    SUPPORTED_MODELS.add(MambaModel)
-except Exception:
-    pass
+        supported_models.add(GPTModel)
+    except Exception:
+        pass
 
-try:
-    from nemo.collections import llm
+    try:
+        from megatron.core.models.mamba import MambaModel
 
-    # NOTE: llm.MambaModel is a subclass of llm.GPTModel
-    SUPPORTED_MODELS.add(llm.GPTModel)
-except Exception:
-    pass
+        supported_models.add(MambaModel)
+    except Exception:
+        pass
+
+    try:
+        from nemo.collections import llm
+
+        # NOTE: llm.MambaModel is a subclass of llm.GPTModel
+        supported_models.add(llm.GPTModel)
+    except Exception:
+        pass
+
+    return supported_models
 
 
 class MCoreMinitronSearcher(BaseSearcher):
@@ -151,13 +159,14 @@ class MCoreMinitronSearcher(BaseSearcher):
         """Run actual search."""
         # Run forward loop to collect activations and sort parameters
         model_cfg = None
-        for m_type in SUPPORTED_MODELS:
+        supported_models = get_supported_models()
+        for m_type in supported_models:
             if isinstance(self.model, m_type):
                 model_cfg = self.model.config
                 break
         if model_cfg is None:
             raise NotImplementedError(
-                f"Only {SUPPORTED_MODELS} models are supported! Got: {type(self.model)}"
+                f"Only {supported_models} models are supported! Got: {type(self.model)}"
             )
 
         assert self.forward_loop is not None
