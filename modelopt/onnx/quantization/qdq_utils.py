@@ -23,7 +23,6 @@ import onnx
 import onnx_graphsurgeon as gs
 import torch
 from onnx import numpy_helper
-from onnx.reference.custom_element_types import float8e4m3fn
 
 from modelopt.onnx import utils
 from modelopt.onnx.logging_config import logger
@@ -50,6 +49,7 @@ DEQUANTIZE_NODE_NAME = "DequantizeLinear"
 onnx_dtype_map = {
     "BFloat16": onnx.TensorProto.BFLOAT16,
     "Float": onnx.TensorProto.FLOAT,
+    "Float4": onnx.TensorProto.FLOAT4E2M1,
     "Float8": onnx.TensorProto.FLOAT8E4M3FN,
     "Half": onnx.TensorProto.FLOAT16,
     "INT8": onnx.TensorProto.INT8,
@@ -592,7 +592,7 @@ def _convert_weight(
     zp_array = zp_array.reshape(*reshape_dims)
 
     # Convert to INT8/FP8
-    if zp_array.dtype == float8e4m3fn:
+    if zp_array.dtype == onnx_dtype_map["Float8"]:
         scaled = np.asarray(weight_array / scale_array) + zp_array
     else:
         scaled = np.asarray((weight_array / scale_array).round())
@@ -607,17 +607,22 @@ def _cast_fp8(array: np.ndarray) -> np.ndarray:
     if torch.cuda.is_available():
         array_f32_t = array_f32_t.cuda()
     array_f8_t = array_f32_t.clamp(min=-448, max=448).to(torch.float8_e4m3fn).view(torch.uint8)
-    array_f8 = array_f8_t.cpu().numpy().astype((np.uint8, [("e4m3fn", "u1")]))
+    array_f8 = array_f8_t.cpu().numpy().astype(np.uint8)
     return array_f8
 
 
 def _cast_fp4(array: np.ndarray) -> np.ndarray:
     """Cast a numpy array to FLOAT4E2M1 using PyTorch."""
     array_f32_t = torch.from_numpy(array)
+    array_f32_t_shape = array_f32_t.shape
+    assert array_f32_t_shape[0] % 2 == 0, "array_f32_t_shape[0] must be divisible by 2"
+    array_f4_t_shape = (array_f32_t_shape[0] // 2, *array_f32_t_shape[1:])
     if torch.cuda.is_available():
         array_f32_t = array_f32_t.cuda()
     array_f4_t = NVFP4QTensor._cast_fp4(array_f32_t)
-    array_f4 = array_f4_t.cpu().numpy().astype((np.uint8, [("float4e2m1", "u1")]))
+    array_f4_t = array_f4_t.flatten()
+    array_f4_t_packed = (array_f4_t[::2] | (array_f4_t[1::2] << 4)).reshape(array_f4_t_shape)
+    array_f4 = array_f4_t_packed.cpu().numpy().astype(np.uint8)
     return array_f4
 
 
@@ -685,7 +690,7 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
             scaled = _convert_weight(weight_array, scale_array, zp_array, quantized_node)
 
             # Create and update new weight tensor
-            if zp_array.dtype == float8e4m3fn:
+            if zp_array.dtype == onnx_dtype_map["Float8"]:
                 new_weight = _create_fp8_tensor(scaled, weight_name)
                 logger.debug(f"Converted {weight_name} to FP8")
             else:
@@ -920,6 +925,10 @@ def quantize_weights_to_int4(
         assert reshape_node.op_type == "Reshape", f"Expected Reshape node for {node.name}"
         reshape_node_output = reshape_node.output[0]
 
+        # Remove constant node from reshape node
+        shape_constant_name = next(input for input in reshape_node.input if "Constant" in input)
+        nodes_to_remove.append(tensor_producer_map[shape_constant_name].name)
+
         # Get the shape of the output of the reshape node
         reshape_output_value_info = value_info_map.get(reshape_node_output)
         if reshape_output_value_info is not None:
@@ -937,12 +946,17 @@ def quantize_weights_to_int4(
         scale_shape = [*weight_shape[:-1], weight_shape[-1] // block_size]
         scale = scale.reshape(scale_shape)
         reshape_child_nodes = [n for n in graph.node if reshape_node.output[0] in n.input]
-        # reshape_node.input = []
         assert len(reshape_child_nodes) == 1, f"Expected exactly one transpose node for {node.name}"
 
+        # Remove unnecessary Cast node
+        cast_node = reshape_child_nodes[0]
+        assert cast_node.op_type == "Cast", f"Expected Cast node for {node.name}"
+        nodes_to_remove.append(cast_node.name)
+        cast_child_nodes = [n for n in graph.node if cast_node.output[0] in n.input]
+
         # Transpose weights and scales if present
-        if reshape_child_nodes[0].op_type == "Transpose":
-            transpose_node = reshape_child_nodes[0]
+        if cast_child_nodes[0].op_type == "Transpose":
+            transpose_node = cast_child_nodes[0]
             nodes_to_remove.append(transpose_node.name)
             assert transpose_node.op_type == "Transpose", f"Expected Transpose node for {node.name}"
             perm = None
@@ -959,7 +973,7 @@ def quantize_weights_to_int4(
             )
             matmul_node = transpose_child_nodes[0]
         else:
-            matmul_node = reshape_child_nodes[0]
+            matmul_node = cast_child_nodes[0]
         assert matmul_node.op_type in ["MatMul", "Gemm"], (
             f"Expected MatMul or Gemm node for {node.name}"
         )
@@ -990,6 +1004,21 @@ def quantize_weights_to_int4(
         initializer_map[weight_name].CopyFrom(weights_int4_onnx)
         logger.debug(f"Converted {weight_name} to INT4 precision")
 
+    def is_pre_quant_scale_node(node: onnx.NodeProto) -> bool:
+        has_pqs_input = any(input for input in node.input if "_pre_quant_scale" in input)
+        return node.op_type == "Mul" and has_pqs_input
+
+    # Remove unnecessay Cast after Pre-quant scale
+    for node in graph.node:
+        if is_pre_quant_scale_node(node):
+            pqs_child_nodes = [n for n in graph.node if node.output[0] in n.input]
+            assert len(pqs_child_nodes) == 1, f"Expected exactly one child node for {node.name}"
+            cast_node = pqs_child_nodes[0]
+            assert cast_node.op_type == "Cast", f"Expected Cast node for {node.name}"
+            node.output.clear()
+            node.output.extend(cast_node.output)
+            nodes_to_remove.append(cast_node.name)
+
     # Remove transpose and reshape nodes
     new_nodes = [node for node in graph.node if node.name not in nodes_to_remove]
     graph.node.clear()
@@ -1004,7 +1033,7 @@ def quantize_weights_to_int4(
     for node in graph.node:
         if node.op_type == "Cast":
             # Skip Cast nodes that are part of normalization layers and outputs
-            if ("norm/Cast" in node.name and is_fp32_cast(node)) or node.name == "/Cast":
+            if "norm/Cast" in node.name and is_fp32_cast(node):
                 continue
             for attr in node.attribute:
                 if attr.name == "to" and attr.i == onnx.TensorProto.FLOAT:
@@ -1099,7 +1128,13 @@ def quantize_weights_to_mxfp8(
         # Expand block array so that it can be broadcasted with weight
         se8m0_fp32 = np.repeat(se8m0_fp32, block_size, axis=quant_axis)
         scaled_weight = weight / np.exp2(se8m0_fp32 - e8_m0_bias)
-        weights_e4m3 = onnx.numpy_helper.from_array(_cast_fp8(scaled_weight), weight_name)
+        weights_e4m3 = onnx.helper.make_tensor(
+            name=weight_name,
+            data_type=onnx_dtype_map["Float8"],
+            dims=[*scaled_weight.shape],
+            vals=_cast_fp8(scaled_weight).tobytes(),
+            raw=True,
+        )
         initializer_map[weight_name].CopyFrom(weights_e4m3)
         logger.debug(f"Converted {weight_name} to MXFP8")
 
@@ -1181,11 +1216,24 @@ def replace_fp4qdq_with_2dq(
     sw_f32_per_tensor_name = sw_f8_per_block_name + "_f32_scale"
 
     # Create TensorProto for initializers
-    w_f4_proto = onnx.numpy_helper.from_array(w_f4, w_f4_name)
+    w_f4_proto = onnx.helper.make_tensor(
+        name=w_f4_name,
+        data_type=onnx_dtype_map["Float4"],
+        dims=[w_f4.shape[0] * 2, *w_f4.shape[1:]],
+        vals=w_f4.tobytes(),
+        raw=True,
+    )
     sw_f32_per_tensor_proto = onnx.numpy_helper.from_array(
         sw_f32_per_tensor, sw_f32_per_tensor_name
     )
     sw_f8_per_block_proto = onnx.numpy_helper.from_array(sw_f8_per_block, sw_f8_per_block_name)
+    sw_f8_per_block_proto = onnx.helper.make_tensor(
+        name=sw_f8_per_block_name,
+        data_type=onnx_dtype_map["Float8"],
+        dims=[*sw_f8_per_block.shape],
+        vals=sw_f8_per_block.tobytes(),
+        raw=True,
+    )
 
     # Add ValueInfo for the initializers if not present
     _add_input_value_info(graph, w_f4_proto)
