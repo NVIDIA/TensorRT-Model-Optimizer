@@ -88,5 +88,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Required GPU tests did not succeed
-        if: ${{ needs.check-file-changes.outputs.any_changed == 'true' && needs.gpu-tests-pr.result != 'success' }}
+        if: ${{ needs.check-file-changes.result != 'success' || (needs.check-file-changes.outputs.any_changed == 'true' && needs.gpu-tests-pr.result != 'success') }}
         run: exit 1
