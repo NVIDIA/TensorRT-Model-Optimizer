@@ -34,26 +34,18 @@ if [ -z "$MODEL_PATH" ]; then
     exit 1
 fi
 
-#Check if arguments are supported by HF export path
-if [ "$EXPORT_FORMAT" = "hf" ]; then
-    if [ "$SPARSITY_FMT" != "dense" ]; then
-        echo "Unsupported sparsity argument: Expected dense" >&2
+#Iterate over list of qformats provided and check if they are supported in HF export path
+IFS=","
+for qformat in $QFORMAT; do
+    case $qformat in
+    fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq | w4a8_nvfp4_fp8 | w4a8_mxfp4_fp8) ;;
+    *)
+        echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq, w4a8_nvfp4_fp8, w4a8_mxfp4_fp8]" >&2
         exit 1
-    fi
-
-    #Iterate over list of qformats provided and check if they are supported in HF export path
-    IFS=","
-    for qformat in $QFORMAT; do
-        case $qformat in
-        fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq | w4a8_nvfp4_fp8 | w4a8_mxfp4_fp8) ;;
-        *)
-            echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq, w4a8_nvfp4_fp8, w4a8_mxfp4_fp8]" >&2
-            exit 1
-            ;;
-        esac
-    done
-    IFS=" "
-fi
+        ;;
+    esac
+done
+IFS=" "
 
 # Check if ENABLE_SPARSITY environment variable is set to "true"
 if [ "$SPARSITY_FMT" = "dense" ]; then
@@ -83,24 +75,6 @@ for qformat in $QFORMAT; do
 done
 IFS=" "
 
-case $TP in
-1 | 2 | 4 | 8) ;;
-*)
-    echo "Unknown tp argument: Expected one of: [1, 2, 4, 8]" >&2
-    exit 1
-    ;;
-esac
-
-case $PP in
-1 | 2 | 4 | 8) ;;
-*)
-    echo "Unknown pp argument: Expected one of: [1, 2, 4, 8]" >&2
-    exit 1
-    ;;
-esac
-
-GPU_NAME=$(nvidia-smi --id 0 --query-gpu=name --format=csv,noheader,nounits | sed 's/ /_/g')
-
 echo "Using the following config: max input $BUILD_MAX_INPUT_LEN max output $BUILD_MAX_OUTPUT_LEN max batch $BUILD_MAX_BATCH_SIZE"
 
 script_dir="$(dirname "$(readlink -f "$0")")"
@@ -115,22 +89,13 @@ QFORMAT_MODIFIED="${QFORMAT//,/_}"
 
 MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')
 
-MODEL_FULL_NAME=${MODEL_NAME}_${SPARSITY_FMT}_${QFORMAT_MODIFIED}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}_tp${TP}_pp${PP}
-
-if [ $EXPORT_FORMAT != "tensorrt_llm" ]; then
-    MODEL_FULL_NAME=${MODEL_NAME}_${QFORMAT_MODIFIED}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}_${EXPORT_FORMAT}
-fi
+MODEL_FULL_NAME=${MODEL_NAME}_${QFORMAT_MODIFIED}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}_${EXPORT_FORMAT}
 
 SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_FULL_NAME}
 
 MODEL_CONFIG=${SAVE_PATH}/config.json
 
-ENGINE_DIR=${SAVE_PATH}/${TP}x${PP}x${GPU_NAME}_input${BUILD_MAX_INPUT_LEN}_output${BUILD_MAX_OUTPUT_LEN}_batch${BUILD_MAX_BATCH_SIZE}_engine
-if [ $EXPORT_FORMAT = "hf" ]; then
-    ENGINE_DIR=${SAVE_PATH}
-fi
-
-mkdir -p $ENGINE_DIR
+mkdir -p $SAVE_PATH
 
 if [ "${REMOVE_EXISTING_MODEL_CONFIG,,}" = "true" ]; then
     rm -f $MODEL_CONFIG
@@ -180,14 +145,13 @@ else
     MODEL_CONFIG_EXIST=false
 fi
 
-if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_DIR) ]]; then
+if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH) ]]; then
 
-    if [ "$EXPORT_FORMAT" == "hf" ] && ([ "$qformat" == "bf16" ] || [ "$qformat" == "fp16" ]); then
+    if [ "$qformat" == "bf16" ] || [ "$qformat" == "fp16" ]; then
         if [ -d "$MODEL_PATH" ]; then
             MODEL_CONFIG_EXIST=true
             MODEL_CONFIG=$MODEL_PATH/config.json
-            mkdir -p $ENGINE_DIR
-            for file in $MODEL_PATH/*; do ln -sf "$file" $ENGINE_DIR/; done
+            for file in $MODEL_PATH/*; do ln -sf "$file" $SAVE_PATH/; done
         else
             echo "Please use the model directory where the config.json file is present."
             exit 1
@@ -203,9 +167,6 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --qformat="${QFORMAT// /,}" \
             --calib_size=$CALIB_SIZE \
             --batch_size=$CALIB_BATCH_SIZE \
-            --inference_tensor_parallel=$TP \
-            --inference_pipeline_parallel=$PP \
-            --export_fmt=$EXPORT_FORMAT \
             $PTQ_ARGS \
             $AWQ_ARGS
     else
@@ -218,6 +179,11 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         exit 0
     fi
 
+    if [[ "$SPARSITY_FMT" != "dense" ]]; then
+        echo "Sparse quantization detected (SPARSITY_FMT=$SPARSITY_FMT). Please deploy with the TRT-LLM using trtllm-build. Checkpoint export_path: $SAVE_PATH"
+        exit 0
+    fi
+
     if [[ "$QFORMAT" == *"nvfp4"* ]] || [[ "$KV_CACHE_QUANT" == *"nvfp4"* ]]; then
         cuda_major=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader -i 0 | cut -d. -f1)
 
@@ -227,37 +193,16 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
         fi
     fi
 
-    if [ $EXPORT_FORMAT = "tensorrt_llm" ]; then
-        echo "Building tensorrt_llm engine from Model Optimizer-quantized model..."
-
-        BUILD_ARGS=""
-        if [[ $TASKS =~ "benchmark" && ! $TASKS =~ "lm_eval" ]]; then
-            BUILD_ARGS+=" --perf "
-        fi
-
-        python modelopt_to_tensorrt_llm.py \
-            --model_config=$MODEL_CONFIG \
-            --engine_dir=$ENGINE_DIR \
-            --tokenizer=$MODEL_PATH \
-            --max_input_len=$BUILD_MAX_INPUT_LEN \
-            --max_output_len=$BUILD_MAX_OUTPUT_LEN \
-            --max_batch_size=$BUILD_MAX_BATCH_SIZE \
-            --num_build_workers=$GPUS \
-            --enable_sparsity=$ENABLE_SPARSITY \
-            $BUILD_ARGS
-    else
-
-        if [[ ! " fp8 nvfp4 bf16 fp16 " =~ " ${QFORMAT} " ]]; then
-            echo "Quant $QFORMAT not supported with the TensorRT-LLM torch llmapi. Allowed values are: fp8, nvfp4, bf16, fp16"
-            exit 0
-        fi
-
-        if $TRUST_REMOTE_CODE; then
-            RUN_ARGS+=" --trust_remote_code "
-        fi
-
-        python run_tensorrt_llm.py --engine_dir=$ENGINE_DIR $RUN_ARGS
+    if [[ ! " fp8 nvfp4 bf16 fp16 int4_awq w4a8_awq " =~ " ${QFORMAT} " ]]; then
+        echo "Quant $QFORMAT not supported with the TensorRT-LLM torch llmapi. Allowed values are: fp8, nvfp4, bf16, fp16, int4_awq, w4a8_awq"
+        exit 0
     fi
+
+    if $TRUST_REMOTE_CODE; then
+        RUN_ARGS+=" --trust_remote_code "
+    fi
+
+    python run_tensorrt_llm.py --engine_dir=$SAVE_PATH $RUN_ARGS
 fi
 
 if [[ -d "${MODEL_PATH}" ]]; then
@@ -288,7 +233,7 @@ if [[ $TASKS =~ "lm_eval" ]]; then
         lm_eval_flags+=" --trust_remote_code "
     fi
 
-    LM_EVAL_RESULT=${ENGINE_DIR}/lm_eval.txt
+    LM_EVAL_RESULT=${SAVE_PATH}/lm_eval.txt
     echo "Evaluating lm_eval, result saved to $LM_EVAL_RESULT..."
 
     pushd ../llm_eval/
@@ -297,7 +242,7 @@ if [[ $TASKS =~ "lm_eval" ]]; then
 
     python lm_eval_tensorrt_llm.py \
         --model trt-llm \
-        --model_args tokenizer=$MODEL_PATH,engine_dir=$ENGINE_DIR,max_gen_toks=$BUILD_MAX_OUTPUT_LEN \
+        --model_args tokenizer=$MODEL_PATH,engine_dir=$SAVE_PATH,max_gen_toks=$BUILD_MAX_OUTPUT_LEN \
         --tasks $LM_EVAL_TASKS \
         --batch_size $BUILD_MAX_BATCH_SIZE $lm_eval_flags | tee $LM_EVAL_RESULT
 
@@ -307,7 +252,7 @@ fi
 
 if [[ $TASKS =~ "mmlu" ]]; then
 
-    MMLU_RESULT=${ENGINE_DIR}/mmlu.txt
+    MMLU_RESULT=${SAVE_PATH}/mmlu.txt
     echo "Evaluating MMLU, result saved to $MMLU_RESULT..."
 
     pushd ../llm_eval/
@@ -327,7 +272,7 @@ if [[ $TASKS =~ "mmlu" ]]; then
     python mmlu.py \
         --model_name causal \
         --model_path $MODEL_ABS_PATH \
-        --engine_dir $ENGINE_DIR \
+        --engine_dir $SAVE_PATH \
         --data_dir $MMLU_DATA_PATH | tee $MMLU_RESULT
     popd
 
@@ -337,10 +282,10 @@ if [[ $TASKS =~ "mtbench" ]]; then
 
     pushd ../llm_eval/
 
-    bash run_fastchat.sh -h $MODEL_ABS_PATH -e $ENGINE_DIR
-    find data/mt_bench/model_answer/ -type f -name '*.jsonl' -exec mv {} $ENGINE_DIR \;
+    bash run_fastchat.sh -h $MODEL_ABS_PATH -e $SAVE_PATH
+    find data/mt_bench/model_answer/ -type f -name '*.jsonl' -exec mv {} $SAVE_PATH \;
 
-    JSONL_PATH=$(readlink -f $(find $ENGINE_DIR -type f -name '*.jsonl'))
+    JSONL_PATH=$(readlink -f $(find $SAVE_PATH -type f -name '*.jsonl'))
     echo "FastChat generation complete. The results are saved under $JSONL_PATH . Please run the judge(https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge) to evaluate the quality of the responses."
 
     popd
@@ -350,13 +295,13 @@ fi
 if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     # Clean a previous session if exists
     pkill -f "trtllm-serve" && while pgrep -f "trtllm-serve" >/dev/null; do sleep 1; done
-    HASH=$(echo -n "$ENGINE_DIR" | md5sum | awk '{print $1}')
+    HASH=$(echo -n "$SAVE_PATH" | md5sum | awk '{print $1}')
     PORT=$((10000 + (0x${HASH:0:4} % 50001)))
     echo "Starting trtllm-serve on $PORT"
-    trtllm-serve $ENGINE_DIR --host 0.0.0.0 --port $PORT >$ENGINE_DIR/serve.txt 2>&1 &
+    trtllm-serve $SAVE_PATH --host 0.0.0.0 --port $PORT >$SAVE_PATH/serve.txt 2>&1 &
     SERVE_PID=$!
 
-    tail -f $ENGINE_DIR/serve.txt | while read line; do
+    tail -f $SAVE_PATH/serve.txt | while read line; do
         if echo "$line" | grep -q "Application startup complete"; then
             echo "Application startup complete."
             break
@@ -370,16 +315,16 @@ if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     pushd ../llm_eval/
 
     if [[ $TASKS =~ "livecodebench" ]]; then
-        bash run_livecodebench.sh $MODEL_FULL_NAME $BUILD_MAX_BATCH_SIZE $BUILD_MAX_OUTPUT_LEN $PORT | tee $ENGINE_DIR/livecodebench.txt
-        mkdir -p $ENGINE_DIR/livecodebench
-        mv LiveCodeBench/output/$MODEL_FULL_NAME/* $ENGINE_DIR/livecodebench
-        echo "LiveCodeBench results are saved under $ENGINE_DIR/livecodebench."
+        bash run_livecodebench.sh $MODEL_FULL_NAME $BUILD_MAX_BATCH_SIZE $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/livecodebench.txt
+        mkdir -p $SAVE_PATH/livecodebench
+        mv LiveCodeBench/output/$MODEL_FULL_NAME/* $SAVE_PATH/livecodebench
+        echo "LiveCodeBench results are saved under $SAVE_PATH/livecodebench."
 
     fi
 
     if [[ $TASKS =~ "simple_eval" ]]; then
-        bash run_simple_eval.sh $MODEL_FULL_NAME $SIMPLE_EVAL_TASKS $BUILD_MAX_OUTPUT_LEN $PORT | tee $ENGINE_DIR/simple_eval.txt
-        echo "Simple eval results are saved under $ENGINE_DIR/simple_eval.txt."
+        bash run_simple_eval.sh $MODEL_FULL_NAME $SIMPLE_EVAL_TASKS $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/simple_eval.txt
+        echo "Simple eval results are saved under $SAVE_PATH/simple_eval.txt."
     fi
 
     popd
@@ -389,22 +334,17 @@ fi
 
 if [[ $TASKS =~ "benchmark" ]]; then
 
-    if [ -z "$perf" ]; then
-        echo "!!!Warning: Not building tensorrt llm with optimized perf (e.g. context logits enabled). The benchmark result might be lower than optimal perf."
-        echo "Please rebuild the engine and not run accuracy evals where the context logits are needed (e.g. lm_eval)."
-    fi
-
     if [ "$PP" -ne 1 ]; then
         echo "Benchmark does not work with multi PP. Please run the c++ benchmark in the TensorRT-LLM repo..."
         exit 1
     fi
 
-    BENCHMARK_RESULT=${ENGINE_DIR}/benchmark.txt
+    BENCHMARK_RESULT=${SAVE_PATH}/benchmark.txt
     echo "Evaluating performance, result saved to $BENCHMARK_RESULT..."
 
     # Prepare datasets for TRT-LLM benchmark
     if [ -z "$TRT_LLM_CODE_PATH" ]; then
-        TRT_LLM_CODE_PATH=/workspace/tensorrt_llm
+        TRT_LLM_CODE_PATH=/app/tensorrt_llm
         echo "Setting default TRT_LLM_CODE_PATH to $TRT_LLM_CODE_PATH."
     fi
 
@@ -430,20 +370,8 @@ if [[ $TASKS =~ "benchmark" ]]; then
         fi
     fi
 
-    MODEL_ARGS=""
-    EXTRA_ARGS=""
-    if [ "$EXPORT_FORMAT" = "hf" ]; then
-        MODEL_ARGS="--model_path $ENGINE_DIR "
-        EXTRA_ARGS="--backend pytorch "
-        if [ "$TP" -ne 1 ]; then
-            EXTRA_ARGS+="--tp $TP "
-        fi
-        if [ "$PP" -ne 1 ]; then
-            EXTRA_ARGS+="--pp $PP "
-        fi
-    else
-        EXTRA_ARGS="--engine_dir $ENGINE_DIR "
-    fi
+    MODEL_ARGS="--model_path $SAVE_PATH "
+    EXTRA_ARGS="--backend pytorch "
 
     if [ "$BUILD_MAX_BATCH_SIZE" -gt 1 ]; then
         trtllm-bench --model $MODEL_PATH $MODEL_ARGS throughput $EXTRA_ARGS --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT

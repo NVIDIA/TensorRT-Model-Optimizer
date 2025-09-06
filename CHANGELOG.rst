@@ -6,6 +6,10 @@ Model Optimizer Changelog (Linux)
 
 **Deprecations**
 
+- TRT-LLM's TRT backend in ``examples/llm_ptq`` and ``examples/vlm_ptq``.
+- ``--export_fmt`` flag in ``examples/llm_ptq`` is removed. By default we export to the unified Hugging Face checkpoint format.
+- ``examples/vlm_eval`` as it depends on the deprecated TRT-LLM's TRT backend.
+
 **Bug Fixes**
 
 **New Features**
