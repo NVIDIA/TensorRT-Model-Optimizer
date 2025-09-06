@@ -182,17 +182,6 @@ class EagleModule(nn.Module):
         """Init function for EagleModule."""
         super().__init__()
         self.config = config
-
-        # NOTE:This is a temporary fix to support Qwen and Mixtral in current release.
-        # This is refactored in following MR.
-        config_overwrite = {
-            "mlp_bias": False,
-            "attention_bias": False,
-            "head_dim": self.config.hidden_size // self.config.num_attention_heads,
-        }
-        for key, value in config_overwrite.items():
-            setattr(self.config, key, value)
-
         self.layers = nn.ModuleList(
             [decoder_layer_cls(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
@@ -696,8 +685,10 @@ class HFEagleModel(EagleModel):
         past_key_values,
         freeze_base_model,
         labels,
-        kwargs,
+        **kwargs,
     ):
+        # TODO: This function still use eagle_module. Ideally we should remove it,
+        # so we can del model.eagle_module on the base model ranks to save memory.
         with torch.no_grad() if freeze_base_model else contextlib.nullcontext():
             outputs = super().forward(
                 input_ids=input_ids,
@@ -708,8 +699,6 @@ class HFEagleModel(EagleModel):
                 **kwargs,
             )
             past_key_values = outputs.past_key_values
-            if not isinstance(past_key_values, Cache):
-                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
             base_model_hidden_states = outputs.hidden_states[-1]
             base_model_logits = outputs.logits
 
@@ -723,13 +712,17 @@ class HFEagleModel(EagleModel):
 
         # Map the base model logits to the draft vocab
         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size and self.training:
-            reverse_mapping = (
-                torch.arange(len(self.eagle_module.d2t)).to(self.eagle_module.d2t.device)
-                + self.eagle_module.d2t
-            )
-            base_model_logits = base_model_logits[:, :, reverse_mapping]
+            assert hasattr(self.eagle_module, "d2t"), "d2t buffer not initialized"
+            base_model_logits = self._map_logits_to_draft_vocab(base_model_logits)
 
         return base_model_hidden_states, base_model_logits, base_model_loss, past_key_values
+
+    def _map_logits_to_draft_vocab(self, full_logits):
+        reverse_mapping = (
+            torch.arange(len(self.eagle_module.d2t)).to(self.eagle_module.d2t.device)
+            + self.eagle_module.d2t
+        )
+        return full_logits[:, :, reverse_mapping]
 
     def _eagle_forward(
         self,
@@ -795,17 +788,34 @@ class HFEagleModel(EagleModel):
             loss_mask = torch.ones_like(input_ids, dtype=torch.bool, device=input_ids.device)
 
         # ====First, we run base model forward====
-        base_model_hidden_states, base_model_logits, base_model_loss, past_key_values = (
-            self._base_model_forward(
-                input_ids,
-                attention_mask,
-                position_ids,
-                past_key_values,
-                self.eagle_freeze_base_model,
-                labels,
-                kwargs,
+        if "base_model_outputs" in kwargs:
+            # Parse base model outputs forwarded from teacher
+            base_outputs = kwargs["base_model_outputs"]
+            base_model_hidden_states = base_outputs["base_model_hidden_states"]
+            if "base_model_logits" in base_outputs:
+                base_model_logits = base_outputs["base_model_logits"]
+            else:
+                base_model_logits = self.lm_head(base_model_hidden_states)
+                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                    base_model_logits = self._map_logits_to_draft_vocab(base_model_logits)
+            base_model_loss = None
+            past_key_values = None
+
+        else:
+            base_model_hidden_states, base_model_logits, base_model_loss, past_key_values = (
+                self._base_model_forward(
+                    input_ids,
+                    attention_mask,
+                    position_ids,
+                    past_key_values,
+                    self.eagle_freeze_base_model,
+                    labels,
+                    **kwargs,
+                )
             )
-        )
+
+        if not isinstance(past_key_values, Cache):
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
 
         # ====Run eagle forward====
         eagle_loss = None
@@ -813,9 +823,11 @@ class HFEagleModel(EagleModel):
             # In EAGLE-3, we have an additional FC layer to concentrate hidden states from multiple base model layers
             batch_size, seq_length, _ = base_model_hidden_states.shape
             if self.eagle_config.use_aux_hidden_state:
-                eagle_input_hidden_states = self.eagle_module.fc(
-                    torch.cat(self.pop_aux_hidden_states(), dim=-1)
-                )
+                if "base_model_outputs" in kwargs:
+                    aux_hidden_states = kwargs["base_model_outputs"]["aux_hidden_states"]
+                else:
+                    aux_hidden_states = torch.cat(self.pop_aux_hidden_states(), dim=-1)
+                eagle_input_hidden_states = self.eagle_module.fc(aux_hidden_states)
             else:
                 eagle_input_hidden_states = base_model_hidden_states
 
@@ -842,10 +854,11 @@ class HFEagleModel(EagleModel):
 
             if not isinstance(eagle_cache, Cache):
                 eagle_cache = DynamicCache.from_legacy_cache(eagle_cache)
+
             past_key_values.eagle_cache = eagle_cache
 
             # Compute loss on the eagle modules
-            regression_loss, classification_loss = self._eagle_loss(
+            regression_loss, classification_loss, accuracy_0 = self._eagle_loss(
                 base_model_hidden_states[:, 1:],
                 base_model_logits[:, 1:],
                 eagle_postnorm_h[:, :-1],
@@ -879,7 +892,7 @@ class HFEagleModel(EagleModel):
                 position_embeddings,
             )
 
-            regression_loss, classification_loss = self._eagle_loss(
+            regression_loss, classification_loss, accuracy_1 = self._eagle_loss(
                 # base model predict +1 tok, while eagle predict +2
                 # so we shift base model outputs compared to eagle outputs
                 base_model_hidden_states[:, 1:],
@@ -927,7 +940,7 @@ class HFEagleModel(EagleModel):
                 position_embeddings,
             )
 
-            regression_loss, classification_loss = self._eagle_loss(
+            regression_loss, classification_loss, accuracy_2 = self._eagle_loss(
                 base_model_hidden_states[:, 1:],
                 base_model_logits[:, 1:],
                 eagle_postnorm_h[:, -seq_length:-1, :],
@@ -969,7 +982,7 @@ class HFEagleModel(EagleModel):
                 position_embeddings,
             )
 
-            regression_loss, classification_loss = self._eagle_loss(
+            regression_loss, classification_loss, accuracy_3 = self._eagle_loss(
                 base_model_hidden_states[:, 1:],
                 base_model_logits[:, 1:],
                 eagle_postnorm_h[
@@ -1006,11 +1019,14 @@ class HFEagleModel(EagleModel):
                 "Both base_model_loss and eagle_loss are skipped. At least one loss must be computed."
             )
 
+        train_acc = (accuracy_0, accuracy_1, accuracy_2, accuracy_3) if self.training else None
+
         return ModelOutput(
             loss=loss,
             logits=base_model_logits,
             past_key_values=past_key_values,
             hidden_states=base_model_hidden_states,
+            train_acc=train_acc,
         )
 
     def _eagle_loss(
@@ -1034,7 +1050,15 @@ class HFEagleModel(EagleModel):
         regression_loss = torch.sum(torch.mean(loss_mask * regression_loss, 2)) / (
             loss_mask.sum() + 1e-5
         )
-        return regression_loss, classification_loss
+        # Compute accuracy
+        base_predict_tok = base_model_logits.clone().detach().argmax(dim=-1)
+        eagle_predict_tok = eagle_logits.clone().detach().argmax(dim=-1)
+        valid = loss_mask[:, :, 0].bool()
+        correct = (base_predict_tok == eagle_predict_tok) & valid
+        denom = valid.sum().clamp_min(1).float()
+        accuracy = round(correct.sum().float().div(denom).item(), 3)
+
+        return regression_loss, classification_loss, accuracy
 
     @torch.no_grad()
     def pseudo_speculative_generate(
@@ -1055,7 +1079,7 @@ class HFEagleModel(EagleModel):
 
         base_model_hidden_states = base_model_outputs.hidden_states[-1]
         base_model_logits = base_model_outputs.logits
-        base_token = base_model_logits[:, -1:, :].argmax(dim=-1)
+        base_token = base_model_logits[:, -1:, :].argmax(dim=-1).to(input_ids.device)
 
         # Early return
         if steps < 1:
@@ -1132,7 +1156,7 @@ class HFARValidation(AcceptanceRateValidation):
         input_ids = copy.deepcopy(input_ids).to(torch.cuda.current_device())
         for _ in range(osl):
             input_id, _ = self.model.pseudo_speculative_generate(input_ids, steps=0)
-            input_ids = torch.cat((input_ids, input_id), dim=-1)
+            input_ids = torch.cat((input_ids, input_id.to(input_ids.device)), dim=-1)
             if input_id[0, 0] == self.end_token:
                 break
         return input_ids
