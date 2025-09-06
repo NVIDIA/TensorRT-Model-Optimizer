@@ -153,10 +153,17 @@ def main(args):
     exp_dir = f"{args.log_dir.rstrip('/')}/{args.experiment}"
 
     # 1. Process data
+    # TODO figure out path
+    # LOCALLY common/process.py works
+    # On slurm examples/nemo_run/common/process.py works
+
+    openscience_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../common/process_openscience.py")
+    )
     openscience_data = run.Script(
-        os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../common/process_openscience.py")
-        ),
+        openscience_path
+        if not args.use_slurm
+        else "examples/nemo_run/common/process_openscience.py",
         entrypoint="python",
         args=["--output-dir", exp_dir],
     )
@@ -226,7 +233,6 @@ def main(args):
         train = distillation_recipe(ptq_model_out, bf16_ckpt_path)
     else:
         train = get_finetune_recipe(args.finetune_recipe)
-        # TODO support resume from previous experiment?
         train.resume.restore_config.path = ptq_model_out
         train.optim.config.lr = args.learning_rate
     train.tokenizer = "data"
@@ -236,7 +242,7 @@ def main(args):
     train.trainer.max_steps = TRAIN_STEPS
     train.trainer.devices = args.train_gpus
     train.trainer.num_nodes = args.train_nodes
-    train.trainer.limit_val_batches = 2  # TODO remove
+    train.trainer.limit_val_batches = 32
 
     # 5. Export
     export = run.Partial(
@@ -247,6 +253,8 @@ def main(args):
     mmlu_script_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "../common/in_memory_mmlu.py")
     )
+    if args.use_slurm:
+        mmlu_script_path = "examples/nemo_run/common/in_memory_mmlu.py"
     eval_ptq = run.Script(
         mmlu_script_path,
         args=["--nemo_ckpt", ptq_model_out],
@@ -343,7 +351,7 @@ if __name__ == "__main__":
             time="240",
             container_image="nvcr.io/nvidia/nemo:25.07",
             env_vars={
-                "HF_TOKEN": "<your-token>",
+                "HF_TOKEN": "",
             },
             use_local_tunnel=False,
             host="",
@@ -360,7 +368,7 @@ if __name__ == "__main__":
     # # # # # CONFIGURABLE PARAMETERS # # # # #
     SEQUENCE_LENGTH = 4096
     MBS = 1
-    GBS = 256
+    GBS = 512
     TRAIN_STEPS = 200
     VAL_INTERVAL = 50
     # # # # # # # # # # # # # # # # # # # # # #

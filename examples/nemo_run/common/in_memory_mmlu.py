@@ -51,6 +51,7 @@ if __name__ == "__main__":
         ckpt_path,
         tensor_model_parallel_size=args.tensor_parallelism,
         pipeline_model_parallel_size=args.pipeline_parallelism,
+        devices=args.tensor_parallelism * args.pipeline_parallelism,
     )
     tokenizer = model.tokenizer.tokenizer
     megatron_mmlu(model.module, tokenizer)
