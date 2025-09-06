@@ -19,5 +19,5 @@ from modelopt.torch.utils import import_plugin
 
 with import_plugin("megatron_importer"):
     from .megatron_importer import *
-with import_plugin("transformers"):
-    from .hf_spec_export import *
+
+from .hf_spec_export import *
