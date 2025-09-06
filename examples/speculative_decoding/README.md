@@ -2,11 +2,11 @@
 
 [![Documentation](https://img.shields.io/badge/Docs-TensorRT--Model--Optimizer-blue?logo=readthedocs&style=flat-square)](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/5_speculative_decoding.html)
 
-Speculative decoding accelerates auto-regressive generation in large language models (LLMs) by leveraging a lightweight draft model to predict the next γ tokens. The main LLM then verifies these candidate tokens in a single forward pass. If the draft model correctly predicts α tokens, the LLM can accept and generate α+1 tokens per verification step, significantly improving throughput.
+Speculative decoding accelerates auto-regressive generation in large language models (LLMs) by leveraging a lightweight draft model to predict the next γ tokens. The main LLM then verifies these candidate tokens in a single forward pass. If the draft model correctly predicts α tokens, the LLM can accept and generate α+1 tokens per verification step, significantly improving generation speed.
 
-This folder contains end-to-end runnable speculative decoding fine-tuning pipeline where Llama3.2-1B from huggingface is trained on Daring-Anteater dataset.
+This folder contains an end-to-end runnable speculative decoding fine‑tuning pipeline in which Llama‑3.2‑1B (Hugging Face) is trained on the Daring‑Anteater dataset.
 
-This example focus on training with HF. To train with Megatron-LM, please refer to [this link](https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt) in Megatron-LM repo.
+This example focuses on training with Hugging Face. To train with Megatron‑LM, see the [Megatron‑LM example](https://github.com/NVIDIA/Megatron-LM/tree/main/examples/post_training/modelopt).
 
 ## Contents
 
@@ -15,9 +15,9 @@ This example focus on training with HF. To train with Megatron-LM, please refer 
 | **Section** | **Description** | **Jump To** |
 | :------------: | :------------: | :------------: |
 | Pre-Requisites | Required & optional dependencies | \[[Link](#pre-requisites)\] |
-| Simplified Workflow | Train, evaluate and export eagle model with one-line command | \[[Link](#getting-started-simplified-workflow)\] |
-| Complete Workflow | Full example with configurable traininig pipeline | \[[Link](#support-matrix)\] |
-| Support Matrix | Supported models for speculative decoding training | \[[Link](#deployment)\] |
+| Simplified Workflow | Train, evaluate, and export eagle model with one-line command | \[[Link](#getting-started-simplified-workflow)\] |
+| Complete Workflow | Full example with configurable training pipeline | \[[Link](#complete-workflow)\] |
+| Support Matrix | Supported models for speculative decoding training | \[[Link](#support-matrix)\] |
 | Speculation Module Checkpoints | View pre-trained speculation modules ready to deploy! | \[[Link](#speculation-module-checkpoints)\] |
 | Resources | Extra links to relevant resources | \[[Link](#resources)\] |
 
@@ -50,7 +50,6 @@ This one-line command runs a minimal example workflow of training and exporting 
 - Fine-tunes the model on the [Daring-Anteater](https://huggingface.co/datasets/nvidia/Daring-Anteater) dataset
 - Evaluates the acceptance rate on [MT-Bench](https://huggingface.co/datasets/HuggingFaceH4/mt_bench_prompts)
 - Exports a checkpoint ready for deployment
-- Run an interactive inference demo with vLLM using provided prompt
 
 ## Complete Workflow
 
@@ -75,19 +74,23 @@ Then, we generate conversations with base model and prompts from Daring-Anteater
 python server_generate.py --data_path Daring-Anteater/train.jsonl --output_path synthetic/train.jsonl
 ```
 
+To add a system prompt, use the `--system_prompt <system_prompt_text>` argument.
+
+For large scale data generation, please see [SLURM prepare data](SLURM_prepare_data.md) for SLURM support.
+
 ### (Optional) Draft Vocabulary Compression
 
 We can optionally use smaller vocab size for the draft model for faster training and inference. E.g. Llama3.2-1B has a vocab size of 128256. In this example, we construct a draft vocab mapping of size 32k by finding the most commonly appeared vocabs in our training set:
 
 ```bash
-python calibrate_draft_vocab.py --model meta-llama/Llama-3.2-1B-Instruct --data Daring-Anteater/train.jsonl ----draft_vocab_size 32000 --save_dir draft_vocab_cache
+python calibrate_draft_vocab.py --model meta-llama/Llama-3.2-1B-Instruct --data Daring-Anteater/train.jsonl --draft_vocab_size 32000 --save_dir draft_vocab_cache
 ```
 
 This will produce a `d2t.pt` file in `save_dir`, which is the mapping from draft vocabs to full vocab that will be read by our draft model later.
 
 ### (Optional) Configuring Draft Model
 
-For eagle1 and eagle3 we provide an [default model architecture config](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/modelopt/torch/speculative/eagle/default_config.py#L18) in modelopt. User can overwrite default settings by providing additional json dict. In this example, we overwrite the `draft_vocab_size` by in `eagle_config.json`:
+For EAGLE‑1 and EAGLE‑3 we provide a [default model architecture config](https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/modelopt/torch/speculative/config.py#L37) in ModelOpt. You can override default settings by providing an additional JSON dict. In this example, we override `draft_vocab_size` in `eagle_config.json`:
 
 ```json
 {
@@ -97,8 +100,8 @@ For eagle1 and eagle3 we provide an [default model architecture config](https://
 
 ### Training Draft Model with Modelopt
 
-`main.py` provides a example for converting a base HF model for speculative decoding and training it. It consists of a few simple steps:
-First, load base model and tokenzier from hugginface:
+`main.py` provides an example for converting a HF base model for speculative decoding and training it. It consists of a few simple steps:
+First, load the base model and tokenizer from Hugging Face:
 
 ```python
 model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -116,7 +119,7 @@ config = {
 }[training_args.mode]["config"]
 
 # overwrite config with custom config
-config["eagle_architecture_config"].update({"<overwrite_kyes>": "<overwrite_values>"})
+config["eagle_architecture_config"].update({"<overwrite_keys>": "<overwrite_values>"})
 
 # Mandatory: hidden size, vocab size and max position embeddings must match base model
 config["eagle_architecture_config"].update(
@@ -128,7 +131,7 @@ config["eagle_architecture_config"].update(
 )
 ```
 
-Then, we convert model to a speculative deocoding model:
+Then, we convert model to a speculative decoding model:
 
 ```python
 mtsp.convert(model, [("eagle", config)])
@@ -149,7 +152,7 @@ trainer.save_state()
 trainer.save_model("<path to the output directory>")
 ```
 
-We omitted details like tokenizer initialization for simplicity. A complete training example is provided in `main.py`, along with a bash script to launch the training with huggingface accelrate in `launch_train.sh`, which can be runned by:
+We omitted details like tokenizer initialization for simplicity. A complete training example is provided in `main.py`, along with a bash script to launch training with Hugging Face Accelerate in `launch_train.sh`, which can be run by:
 
 ```bash
 ./launch_train.sh --model $BASE_MODEL \
@@ -157,7 +160,7 @@ We omitted details like tokenizer initialization for simplicity. A complete trai
             --data $DATA \
             --num_gpu $NUM_GPU \
             --num_epochs 10 \
-            --eagle_config eagle_config.json #This is where we overwrite default eagle configs
+            --eagle_config eagle_config.json #This is where we optionally overwrite default eagle configs
 ```
 
 The saved modelopt checkpoint is similar in architecture to HF models. It can be further optimized through **ModelOpt**, e.g., PTQ and QAT.
@@ -166,7 +169,7 @@ The saved modelopt checkpoint is similar in architecture to HF models. It can be
 
 After training draft model, we can evaluate the saved modelopt checkpoint on MT-bench by:
 
-```python
+```bash
 python ar_validate.py --model_path $OUTPUT_DIR
 ```
 
@@ -174,19 +177,19 @@ Alternatively, we can export the checkpoint and run evaluation on serving framew
 
 ### Export
 
-```python
+```bash
 python export_hf_checkpoint.py --model_path $OUTPUT_DIR --export_path $EXPORT_PATH
 ```
 
-This will export the model from a modelopt checkpoint to a deployment-compatible formart.
+This exports the model from a ModelOpt checkpoint to a deployment‑compatible format.
 
 ### Deployment
 
-The exported checkpoint can be deployed on TRT-LLM or vLLM.
+The exported checkpoint can be deployed on TRT-LLM or SGLang.
 
 #### TRT-LLM
 
-To serve the checkpoint with trtllm, we can run trtllm-serve with:
+To serve the checkpoint with trtllm, run trtllm-serve with:
 
 ```bash
 trtllm-serve <base_model_checkpoint> --host 0.0.0.0 --port 8000 --backend pytorch --max_batch_size 32 --max_num_tokens 8192 --max_seq_len 8192 --extra_llm_api_options extra-llm-api-config.yml
@@ -213,9 +216,9 @@ kv_cache_config:
 
 Please refer to [TRT-LLM Doc: Speculative Decoding](https://nvidia.github.io/TensorRT-LLM/examples/llm_speculative_decoding.html) for detailed usage.
 
-#### vLLM
+#### SGLang
 
-Please refer to [vLLM Doc: Speculative Decoding](https://docs.vllm.ai/en/v0.9.0/features/spec_decode.html) for detailed usage.
+Please refer to [SGLang Doc: Speculative Decoding](https://docs.sglang.ai/advanced_features/speculative_decoding.html#EAGLE-3-Decoding) for detailed usage.
 
 #### Deploying Quantized model
 
@@ -233,8 +236,8 @@ See more details on deployment of quantized model to TRTLLM [here](../llm_ptq/RE
 
 ## Speculation Module Checkpoints
 
-Ready-to-deploy speculation module checkpoints \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4)\]
-Deployable on [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), [vLLM](https://github.com/vllm-project/vllm) and [SGLang](https://github.com/sgl-project/sglang)!\
+Ready-to-deploy speculation module checkpoints \[[🤗 Hugging Face - NVIDIA TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/model-optimizer-66aa84f7966b3150262481a4)\]
+Deployable on [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) and [SGLang](https://github.com/sgl-project/sglang)!\
 More models coming soon!
 
 ## Resources

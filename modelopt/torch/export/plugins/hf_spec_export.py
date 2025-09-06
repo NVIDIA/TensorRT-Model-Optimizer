@@ -13,16 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Modifiy stated_dict and config for exporting speculative decoding in official format."""
+"""Modify state_dict and config for exporting speculative decoding in official format."""
 
 import torch
 import torch.nn as nn
+import transformers
 
 from modelopt.torch.speculative.plugins.transformers import HFEagleModel
 
-SPECULATIVE_DECODING_MODES = ["eagle", "medusa"]
-
-EALGE_MODELOPT_TO_OFFICIAL = {
+EAGLE_MODELOPT_TO_OFFICIAL = {
     "required": {
         "layers.0.self_attn.q_proj.weight": "midlayer.self_attn.q_proj.weight",
         "layers.0.self_attn.k_proj.weight": "midlayer.self_attn.k_proj.weight",
@@ -55,26 +54,31 @@ def _check_state_dict_keys_match(draft_model: nn.Module, required_items: dict):
 def rename_and_prune_if_spec_decoding(model: nn.Module, post_state_dict: dict):
     """Only return the state dict of the draft model in official format and ignore the base model."""
     # check the model has only speculative decoding
-    opt_modes = model._modelopt_state
-    if len(opt_modes) != 1 or opt_modes[0][0] != "eagle":
+    opt_modes = getattr(model, "_modelopt_state", None)
+    if (
+        not isinstance(opt_modes, (list, tuple))
+        or len(opt_modes) != 1
+        or opt_modes[0][0] != "eagle"
+    ):
         # if there's other opts, return as is
         return post_state_dict
 
     assert isinstance(model, HFEagleModel)
     # Check if the state dict keys match
-    _check_state_dict_keys_match(model.eagle_module, EALGE_MODELOPT_TO_OFFICIAL["required"])
+    _check_state_dict_keys_match(model.eagle_module, EAGLE_MODELOPT_TO_OFFICIAL["required"])
 
     # Convert key names and save the state dict
+    eagle_state = model.eagle_module.state_dict()
     export_state_dict = {}
     for ours_key, export_key in {
-        **EALGE_MODELOPT_TO_OFFICIAL["required"],
-        **EALGE_MODELOPT_TO_OFFICIAL["optional"],
+        **EAGLE_MODELOPT_TO_OFFICIAL["required"],
+        **EAGLE_MODELOPT_TO_OFFICIAL["optional"],
     }.items():
-        if ours_key in model.eagle_module.state_dict():
-            export_state_dict[export_key] = model.eagle_module.state_dict()[ours_key]
+        if ours_key in eagle_state:
+            export_state_dict[export_key] = eagle_state[ours_key]
 
     # TODO: (hg) this is a temp fix. Find cleaner way to do this.
-    if "eagle_lm_head.weight" not in model.eagle_module.state_dict():
+    if "eagle_lm_head.weight" not in eagle_state:
         export_state_dict["lm_head.weight"] = model.state_dict()["lm_head.weight"]
 
     return export_state_dict
@@ -90,7 +94,7 @@ def set_config_if_spec_decoding(model: nn.Module, config_data: dict):
 
     # This is the config keys in official checkpoint.
     template_config = {
-        "architectures": ["LlamaForCausalLM"],
+        "architectures": ["LlamaForCausalLMEagle3"],
         "bos_token_id": None,
         "eos_token_id": None,
         "hidden_act": None,
@@ -106,7 +110,7 @@ def set_config_if_spec_decoding(model: nn.Module, config_data: dict):
         "rms_norm_eps": None,
         "tie_word_embeddings": False,
         "torch_dtype": None,
-        "transformers_version": None,
+        "transformers_version": transformers.__version__,
         "use_cache": None,
         "vocab_size": None,
         "draft_vocab_size": None,

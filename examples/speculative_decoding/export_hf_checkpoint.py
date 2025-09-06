@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Export a HF checkpoint (with ModelOpt state) for deployment."""
+
 import argparse
 
 import torch
@@ -23,9 +25,13 @@ from modelopt.torch.export import export_hf_checkpoint
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, default="")
-    parser.add_argument("--export_path", type=str, default="")
+    parser = argparse.ArgumentParser(
+        description="Export a HF checkpoint (with ModelOpt state) for deployment."
+    )
+    parser.add_argument("--model_path", type=str, default="Path of the trained checkpoint.")
+    parser.add_argument(
+        "--export_path", type=str, default="Destination directory for exported files."
+    )
     return parser.parse_args()
 
 
@@ -33,6 +39,7 @@ mto.enable_huggingface_checkpointing()
 
 args = parse_args()
 model = AutoModelForCausalLM.from_pretrained(args.model_path, torch_dtype="auto")
+model.eval()
 with torch.inference_mode():
     export_hf_checkpoint(
         model,  # The quantized model.

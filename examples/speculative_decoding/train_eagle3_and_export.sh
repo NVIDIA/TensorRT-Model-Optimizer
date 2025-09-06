@@ -22,7 +22,7 @@ BASE_MODEL=meta-llama/Llama-3.2-1B-Instruct
 NUM_GPU=1
 DATA=Daring-Anteater/train.jsonl
 
-# Parse input arguments --base-model, --num_gpu, and --data
+# Parse input arguments --base_model, --num_gpu, and --data
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
@@ -50,13 +50,15 @@ if [[ "$NUM_GPU" == 1 ]]; then
   export CUDA_VISIBLE_DEVICES=0
 else
   # Export as 0,1,...,N-1 for NUM_GPU GPUs
-  export CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((NUM_GPU-1)))
+  devs="$(seq -s, 0 $((NUM_GPU-1)))"
+  export CUDA_VISIBLE_DEVICES="$devs"
 fi
 
 MODEL_BASENAME=$(basename "$BASE_MODEL")
 
 echo "==== [1/3] Training draft model ===="
 OUTPUT_DIR=ckpts/${MODEL_BASENAME}-$(date +%Y%m%d_%H%M)
+mkdir -p "$(dirname "$OUTPUT_DIR")"
 ./launch_train.sh --model $BASE_MODEL \
             --output_dir $OUTPUT_DIR \
             --data $DATA \
@@ -69,4 +71,5 @@ python ar_validate.py --model_path $OUTPUT_DIR
 
 echo "==== [3/3] Exporting checkpoint to deployment format ===="
 EXPORT_PATH=export/${MODEL_BASENAME}-$(date +%Y%m%d_%H%M)
+mkdir -p "$(dirname "$EXPORT_PATH")"
 python export_hf_checkpoint.py --model_path $OUTPUT_DIR --export_path $EXPORT_PATH

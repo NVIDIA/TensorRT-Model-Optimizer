@@ -699,8 +699,6 @@ class HFEagleModel(EagleModel):
                 **kwargs,
             )
             past_key_values = outputs.past_key_values
-            if not isinstance(past_key_values, Cache):
-                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
             base_model_hidden_states = outputs.hidden_states[-1]
             base_model_logits = outputs.logits
 
@@ -714,6 +712,7 @@ class HFEagleModel(EagleModel):
 
         # Map the base model logits to the draft vocab
         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size and self.training:
+            assert hasattr(self.eagle_module, "d2t"), "d2t buffer not initialized"
             base_model_logits = self._map_logits_to_draft_vocab(base_model_logits)
 
         return base_model_hidden_states, base_model_logits, base_model_loss, past_key_values
@@ -815,6 +814,9 @@ class HFEagleModel(EagleModel):
                 )
             )
 
+        if not isinstance(past_key_values, Cache):
+            past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+
         # ====Run eagle forward====
         eagle_loss = None
         if self.training:
@@ -853,8 +855,7 @@ class HFEagleModel(EagleModel):
             if not isinstance(eagle_cache, Cache):
                 eagle_cache = DynamicCache.from_legacy_cache(eagle_cache)
 
-            # NOTE: diabled for now.
-            # past_key_values.eagle_cache = eagle_cache
+            past_key_values.eagle_cache = eagle_cache
 
             # Compute loss on the eagle modules
             regression_loss, classification_loss, accuracy_0 = self._eagle_loss(
@@ -1049,12 +1050,14 @@ class HFEagleModel(EagleModel):
         regression_loss = torch.sum(torch.mean(loss_mask * regression_loss, 2)) / (
             loss_mask.sum() + 1e-5
         )
-        base_predict_tok = base_model_logits.argmax(dim=-1)
-        eagle_predict_tok = eagle_logits.argmax(dim=-1)
-        accuracy = (
-            (loss_mask[:, :, 0] * (base_predict_tok == eagle_predict_tok)).float().mean().item()
-        )
-        accuracy = round(accuracy, 3)
+        # Compute accuracy
+        base_predict_tok = base_model_logits.clone().detach().argmax(dim=-1)
+        eagle_predict_tok = eagle_logits.clone().detach().argmax(dim=-1)
+        valid = loss_mask[:, :, 0].bool()
+        correct = (base_predict_tok == eagle_predict_tok) & valid
+        denom = valid.sum().clamp_min(1).float()
+        accuracy = round(correct.sum().float().div(denom).item(), 3)
+
         return regression_loss, classification_loss, accuracy
 
     @torch.no_grad()
