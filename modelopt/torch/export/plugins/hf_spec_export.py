@@ -17,9 +17,6 @@
 
 import torch
 import torch.nn as nn
-import transformers
-
-from modelopt.torch.speculative.plugins.transformers import HFEagleModel
 
 EAGLE_MODELOPT_TO_OFFICIAL = {
     "required": {
@@ -63,7 +60,6 @@ def rename_and_prune_if_spec_decoding(model: nn.Module, post_state_dict: dict):
         # if there's other opts, return as is
         return post_state_dict
 
-    assert isinstance(model, HFEagleModel)
     # Check if the state dict keys match
     _check_state_dict_keys_match(model.eagle_module, EAGLE_MODELOPT_TO_OFFICIAL["required"])
 
@@ -90,8 +86,6 @@ def set_config_if_spec_decoding(model: nn.Module, config_data: dict):
         # return as is
         return config_data
 
-    assert isinstance(model, HFEagleModel)
-
     # This is the config keys in official checkpoint.
     template_config = {
         "architectures": ["LlamaForCausalLMEagle3"],
@@ -110,7 +104,7 @@ def set_config_if_spec_decoding(model: nn.Module, config_data: dict):
         "rms_norm_eps": None,
         "tie_word_embeddings": False,
         "torch_dtype": None,
-        "transformers_version": transformers.__version__,
+        "transformers_version": None,
         "use_cache": None,
         "vocab_size": None,
         "draft_vocab_size": None,
