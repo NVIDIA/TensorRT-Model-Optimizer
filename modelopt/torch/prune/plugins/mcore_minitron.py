@@ -58,30 +58,6 @@ SUPPORTED_HPARAMS = {
     "num_layers",
 }
 
-SUPPORTED_MODELS = set()
-
-try:
-    from megatron.core.models.gpt import GPTModel
-
-    SUPPORTED_MODELS.add(GPTModel)
-except Exception:
-    pass
-
-try:
-    from megatron.core.models.mamba import MambaModel
-
-    SUPPORTED_MODELS.add(MambaModel)
-except Exception:
-    pass
-
-try:
-    from nemo.collections import llm
-
-    # NOTE: llm.MambaModel is a subclass of llm.GPTModel
-    SUPPORTED_MODELS.add(llm.GPTModel)
-except Exception:
-    pass
-
 
 class MCoreMinitronSearcher(BaseSearcher):
     """Searcher for Minitron pruning algorithm."""
@@ -150,16 +126,6 @@ class MCoreMinitronSearcher(BaseSearcher):
     def run_search(self) -> None:
         """Run actual search."""
         # Run forward loop to collect activations and sort parameters
-        model_cfg = None
-        for m_type in SUPPORTED_MODELS:
-            if isinstance(self.model, m_type):
-                model_cfg = self.model.config
-                break
-        if model_cfg is None:
-            raise NotImplementedError(
-                f"Only {SUPPORTED_MODELS} models are supported! Got: {type(self.model)}"
-            )
-
         assert self.forward_loop is not None
         is_training = self.model.training
         self.model.eval()
@@ -178,6 +144,7 @@ class MCoreMinitronSearcher(BaseSearcher):
                 hp.active = export_config[hp_name]
 
         # kv_channels can be None so we need to save original from original hidden_size and num_attention_heads
+        model_cfg = self.model.config
         orig_kv_channels = getattr(model_cfg, "kv_channels")
         if orig_kv_channels is None:
             orig_kv_channels = getattr(model_cfg, "hidden_size") // getattr(
