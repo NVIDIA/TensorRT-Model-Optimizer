@@ -496,10 +496,8 @@ def _export_hf_checkpoint(
 
 def _quant_applied(hf_quant_config: dict) -> bool:
     """Check if any quantization is applied."""
-    return not (
-        hf_quant_config["quantization"]["quant_algo"] == QUANTIZATION_NONE
-        and not hf_quant_config["quantization"]["quantized_layers"]
-    )
+    q = hf_quant_config.get("quantization", {})
+    return not (q.get("quant_algo") == QUANTIZATION_NONE and not q.get("quantized_layers"))
 
 
 def export_hf_checkpoint(
@@ -521,11 +519,10 @@ def export_hf_checkpoint(
     try:
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
-        # When there's no quantization applied, we avoid saving hf_quant_config.json for compatibility
-        if _quant_applied(hf_quant_config):
-            # Save hf_quant_config.json for backward compatibility
-            with open(f"{export_dir}/hf_quant_config.json", "w") as file:
-                json.dump(hf_quant_config, file, indent=4)
+        # NOTE: (hg) Should we save hf_quant_config when there's no quantization applied?
+        # Save hf_quant_config.json for backward compatibility
+        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
+            json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
