@@ -27,10 +27,6 @@ from typing import Any
 import torch
 import torch.nn as nn
 
-from modelopt.torch.export.plugins import (
-    rename_and_prune_if_spec_decoding,
-    set_config_if_spec_decoding,
-)
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
@@ -57,6 +53,7 @@ from .model_config import (
     QUANTIZATION_W4A8_AWQ,
     QUANTIZATION_W4A8_NVFP4_FP8,
 )
+from .plugins import rename_and_prune_if_spec_decoding, set_config_if_spec_decoding
 from .quant_utils import (
     fuse_prequant_layernorm,
     get_activation_scaling_factor,
