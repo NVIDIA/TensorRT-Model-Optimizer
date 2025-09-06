@@ -28,7 +28,7 @@ This example focuses on training with Hugging Face. To train with Megatron‑LM,
 Install Modelopt with `hf` dependencies and other requirements for this example:
 
 ```bash
-pip install nvidia-modelopt[hf]
+pip install -e ...
 pip install -r requirements.txt
 ```
 
