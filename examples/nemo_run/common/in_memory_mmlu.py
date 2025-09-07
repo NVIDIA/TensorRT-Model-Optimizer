@@ -45,7 +45,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
     ckpt_path = args.nemo_ckpt
-    if args.ckpt_dir:
+    if args.finetuned_ckpt_dir:
         ckpt_path = _get_most_recent_ckpt(args.ckpt_dir)
     model, trainer = setup_trainer_and_restore_model_with_modelopt_spec(
         ckpt_path,
