@@ -4,13 +4,6 @@ name: Unit tests
 on:
   pull_request:
     branches: [main, release/*]
-    paths:
-      - ".github/workflows/unit_tests.yml"
-      - "modelopt/**"
-      - "tests/unit/**"
-      - "pyproject.toml"
-      - "setup.py"
-      - "tox.ini"
   push:
     branches: [main, release/*]
     paths:
