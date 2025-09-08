@@ -150,6 +150,7 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --logging_steps 100 \
     --tf32 True \
     --data_path $DATA \
+    --report_to tensorboard \
     $SPECULATIVE_ARGS
 "
 
