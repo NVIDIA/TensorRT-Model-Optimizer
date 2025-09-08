@@ -32,7 +32,7 @@ try:
     from tensorrt_llm.llmapi.llm import LLM as TRTLLM
     from tensorrt_llm.llmapi.tokenizer import TokenizerBase
 except ImportError:
-    print("Please upgrade tensorrt-llm to 1.0.0rc or later")
+    print("Please upgrade tensorrt-llm to 1.1.0rc2 or later")
     raise
 
 
