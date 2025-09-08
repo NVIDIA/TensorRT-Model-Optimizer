@@ -491,12 +491,6 @@ def _export_hf_checkpoint(
     return quantized_state_dict, quant_config
 
 
-def _quant_applied(hf_quant_config: dict) -> bool:
-    """Check if any quantization is applied."""
-    q = hf_quant_config.get("quantization", {})
-    return not (q.get("quant_algo") == QUANTIZATION_NONE and not q.get("quantized_layers"))
-
-
 def export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
