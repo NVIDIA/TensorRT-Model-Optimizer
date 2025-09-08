@@ -559,6 +559,15 @@ class PrecisionConverter:
 
     def _bypass_cast_node(self, node: onnx.NodeProto) -> None:
         # handling only a single input and output, as we only remove cast nodes
+        """
+        Bypass (remove) a Cast node by rewiring its producer(s) and consumer(s) in-place in the model graph.
+        
+        This function expects the provided node to be a Cast with exactly one input and one output (asserted).
+        If the Cast's output is a graph output, the graph output name must be preserved: producers that
+        originally wrote the Cast input and any consumers of that input are rewired to produce/use the
+        graph output name instead. Otherwise, consumers of the Cast output are rewired to consume the
+        Cast input directly. Modifies self.model.graph in-place.
+        """
         assert len(node.input) == 1
         assert len(node.output) == 1
 
@@ -576,6 +585,11 @@ class PrecisionConverter:
                     for i, prod_out in enumerate(producer.output):
                         if prod_out == input_tensor:
                             producer.output[i] = output_tensor
+                consumers = utils.get_consumer_nodes(self.model, input_tensor)
+                for consumer in consumers:
+                    for i, input_name in enumerate(consumer.input):
+                        if input_name == input_tensor:
+                            consumer.input[i] = output_tensor
         if (
             not is_output_producer
         ):  # Reconnect consumers of the cast output to use the cast input instead
