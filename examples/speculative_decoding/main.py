@@ -54,6 +54,15 @@ mto.enable_huggingface_checkpointing()
 @dataclass
 class ModelArguments:
     model_name_or_path: str | None = field(default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    omit_target_layers: bool = field(
+        default=False,
+        metadata={
+            "help": """Set `num_hidden_layers=0` for the base model. This is useful when training
+            in offline mode with precomputed hidden states, in order to save memory.
+            Note that evaluation is currently not supported with this setting, as the base model
+            is required to generate the baseline completions."""
+        },
+    )
 
 
 @dataclass
@@ -62,10 +71,28 @@ class DataArguments:
         metadata={"help": "Path to the training data."},
     )
     eval_data_path: str = field(default=None, metadata={"help": "Path to the evaluation data."})
+    offline_data_path: str = field(
+        default=None,
+        metadata={"help": "Path to the offline training data. See `offline_training`."},
+    )
     lazy_preprocess: bool = True
     draft_vocab_cache_dir: str = field(
         default="draft_vocab_cache",
         metadata={"help": "Path to the d2t cache directory."},
+    )
+    offline_training: bool = field(
+        default=False,
+        metadata={
+            "help": """Set to True to enable offline training where the
+                                 training data is loaded from pre-computed files only. This can
+                                 improve training speed when the target model and/or dataset are
+                                 large, but requires a lot of disk space.
+
+                                 When using this setting, set `offline_data_path` to a directory
+                                 containing many `.pt` files, each containing a
+                                 pre-processed data sample. `data_path` should still point to the
+                                 original conversations file."""
+        },
     )
 
 
@@ -128,9 +155,13 @@ def train():
         model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype="auto")
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
+        model_kwargs = {"num_hidden_layers": 0} if model_args.omit_target_layers else {}
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path, torch_dtype="auto"
+            model_args.model_name_or_path, torch_dtype="auto", **model_kwargs
         )
+        model.config.num_orig_hidden_layers = transformers.AutoConfig.from_pretrained(
+            model_args.model_name_or_path
+        ).num_hidden_layers
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             model_max_length=training_args.training_seq_len,
@@ -170,6 +201,8 @@ def train():
                 {
                     "hidden_size": model.config.hidden_size,
                     "vocab_size": model.config.vocab_size,
+                    # we also overwrite max_pos_embedding for deployment compatibility
+                    "max_position_embeddings": model.config.max_position_embeddings,
                     "draft_vocab_size": custom_config["draft_vocab_size"]
                     if eagle_args.eagle_config and "draft_vocab_size" in custom_config
                     else model.config.vocab_size,
@@ -204,6 +237,8 @@ def train():
             self.ar_validate_steps = ar_validate_steps
 
         def on_step_end(self, args, state, control, **kwargs):
+            if self.ar_validate_steps <= 0:
+                return control
             if state.global_step % self.ar_validate_steps == 0 and state.global_step > 0:
                 print_rank_0("Running AR validation...")
                 ars = validate_ar(
