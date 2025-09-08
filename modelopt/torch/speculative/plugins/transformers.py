@@ -345,7 +345,8 @@ class HFEagleModel(EagleModel):
     """Eagle Model Class for huggingface models."""
 
     def _set_default_aux_hidden_state_layers(self):
-        num_layers = self.config.num_hidden_layers
+        # Read a custom config attribute since we override num_hidden_layers for offline training
+        num_layers = self.config.num_orig_hidden_layers
         self.eagle_config.eagle_aux_hidden_state_layer_ids = [
             1,
             max(0, num_layers // 2 - 1),
@@ -428,7 +429,11 @@ class HFEagleModel(EagleModel):
         )
         self.eagle_rotary_emb = LlamaRotaryEmbedding(config=self.eagle_config)
 
-        if hasattr(self.model.layers[-1].self_attn, "o_proj"):
+        if len(self.model.layers) == 0:
+            # For offline training, the base model has no layers.
+            # Read the device from the lm_head instead.
+            device = self.lm_head.weight.device
+        elif hasattr(self.model.layers[-1].self_attn, "o_proj"):
             device = self.model.layers[-1].self_attn.o_proj.weight.device
         elif hasattr(self.model.layers[-1].self_attn, "q_proj"):
             device = self.model.layers[-1].self_attn.q_proj.weight.device
@@ -696,22 +701,31 @@ class HFEagleModel(EagleModel):
         past_key_values,
         freeze_base_model,
         labels,
+        precomputed_hidden_states,
         kwargs,
     ):
         with torch.no_grad() if freeze_base_model else contextlib.nullcontext():
-            outputs = super().forward(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                past_key_values=past_key_values,
-                output_hidden_states=True,
-                **kwargs,
-            )
-            past_key_values = outputs.past_key_values
-            if not isinstance(past_key_values, Cache):
-                past_key_values = DynamicCache.from_legacy_cache(past_key_values)
-            base_model_hidden_states = outputs.hidden_states[-1]
-            base_model_logits = outputs.logits
+            if precomputed_hidden_states is not None:
+                # Offline training: use precomputed hidden states and apply lm_head only
+                base_model_hidden_states = precomputed_hidden_states
+                base_model_logits = self.lm_head(base_model_hidden_states)
+                if past_key_values is None:
+                    past_key_values = Cache([])
+            else:
+                # Normal training/inference: run the full base model forward
+                outputs = super().forward(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    position_ids=position_ids,
+                    past_key_values=past_key_values,
+                    output_hidden_states=True,
+                    **kwargs,
+                )
+                past_key_values = outputs.past_key_values
+                if not isinstance(past_key_values, Cache):
+                    past_key_values = DynamicCache.from_legacy_cache(past_key_values)
+                base_model_hidden_states = outputs.hidden_states[-1]
+                base_model_logits = outputs.logits
 
             # Optionally, compute base model loss when we want to tune the base model.
             base_model_loss = None
@@ -772,6 +786,8 @@ class HFEagleModel(EagleModel):
         loss_mask: torch.Tensor | None = None,
         classification_loss_coefficient: float | None = 1,
         regression_loss_coefficient: float | None = 0,
+        hidden_states: torch.Tensor | None = None,
+        aux_hidden_states: list[torch.Tensor] | None = None,
         **kwargs,
     ) -> Any:
         """Forward pass of the EagleModel.
@@ -803,7 +819,8 @@ class HFEagleModel(EagleModel):
                 past_key_values,
                 self.eagle_freeze_base_model,
                 labels,
-                kwargs,
+                precomputed_hidden_states=hidden_states,
+                kwargs=kwargs,
             )
         )
 
@@ -813,9 +830,14 @@ class HFEagleModel(EagleModel):
             # In EAGLE-3, we have an additional FC layer to concentrate hidden states from multiple base model layers
             batch_size, seq_length, _ = base_model_hidden_states.shape
             if self.eagle_config.use_aux_hidden_state:
-                eagle_input_hidden_states = self.eagle_module.fc(
-                    torch.cat(self.pop_aux_hidden_states(), dim=-1)
-                )
+                if aux_hidden_states is not None:
+                    # Offline training: use precomputed aux hidden states
+                    eagle_input_hidden_states = self.eagle_module.fc(aux_hidden_states)
+                else:
+                    # Normal training: aux hidden states are collected by forward hook functions
+                    eagle_input_hidden_states = self.eagle_module.fc(
+                        torch.cat(self.pop_aux_hidden_states(), dim=-1)
+                    )
             else:
                 eagle_input_hidden_states = base_model_hidden_states
 
