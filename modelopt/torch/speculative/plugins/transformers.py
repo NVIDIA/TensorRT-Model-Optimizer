@@ -334,7 +334,8 @@ class HFEagleModel(EagleModel):
     """Eagle Model Class for huggingface models."""
 
     def _set_default_aux_hidden_state_layers(self):
-        num_layers = self.config.num_hidden_layers
+        # Read a custom config attribute since we override num_hidden_layers for offline training
+        num_layers = self.config.num_orig_hidden_layers
         self.eagle_config.eagle_aux_hidden_state_layer_ids = [
             1,
             max(0, num_layers // 2 - 1),
@@ -417,7 +418,11 @@ class HFEagleModel(EagleModel):
         )
         self.eagle_rotary_emb = LlamaRotaryEmbedding(config=self.eagle_config)
 
-        if hasattr(self.model.layers[-1].self_attn, "o_proj"):
+        if len(self.model.layers) == 0:
+            # For offline training, the base model has no layers.
+            # Read the device from the lm_head instead.
+            device = self.lm_head.weight.device
+        elif hasattr(self.model.layers[-1].self_attn, "o_proj"):
             device = self.model.layers[-1].self_attn.o_proj.weight.device
         elif hasattr(self.model.layers[-1].self_attn, "q_proj"):
             device = self.model.layers[-1].self_attn.q_proj.weight.device
@@ -765,6 +770,8 @@ class HFEagleModel(EagleModel):
         loss_mask: torch.Tensor | None = None,
         classification_loss_coefficient: float | None = 1,
         regression_loss_coefficient: float | None = 0,
+        hidden_states: torch.Tensor | None = None,
+        aux_hidden_states: list[torch.Tensor] | None = None,
         **kwargs,
     ) -> Any:
         """Forward pass of the EagleModel.

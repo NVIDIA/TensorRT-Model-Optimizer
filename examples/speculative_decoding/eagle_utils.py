@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import json
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -172,6 +173,64 @@ class LazySupervisedDataset(Dataset):
         return ret
 
 
+class OfflineSupervisedDataset(Dataset):
+    """Lazy offline dataset for supervised fine-tuning.
+
+    This dataset loads data on-the-fly from pre-processed .pt data files as well as
+    input conversations in JSON format.
+
+    Args:
+        data_entries (list): A list of tuples (raw_data_example, file_path).
+        tokenizer (transformers.PreTrainedTokenizer): The tokenizer to use for data preprocessing.
+    """
+
+    def __init__(self, data_entries, tokenizer: transformers.PreTrainedTokenizer):
+        super().__init__()
+        print_rank_0("Formatting inputs...Skip in offline mode")
+        self.tokenizer = tokenizer
+        self.data_entries = data_entries
+
+        # Does not cache the hidden states, as those have an extremely large memory footprint.
+        self.cached_data_dict = {}
+
+    def __len__(self):
+        return len(self.data_entries)
+
+    def __getitem__(self, i) -> dict[str, torch.Tensor]:
+        # Load the conversational data, using the cache
+        raw_data, offline_file_path = self.data_entries[i]
+        if i in self.cached_data_dict:
+            preprocessed_base = self.cached_data_dict[i]
+        else:
+            ret = preprocess([raw_data], self.tokenizer)
+            preprocessed_base = {
+                "input_ids": ret["input_ids"][0],
+                "labels": ret["labels"][0],
+                "attention_mask": ret["attention_mask"][0],
+                "loss_mask": ret["loss_mask"][0],
+            }
+            self.cached_data_dict[i] = preprocessed_base
+
+        # Extend the data sample with the hidden states from the .pt file
+        max_length = self.tokenizer.model_max_length
+        offline_data = torch.load(offline_file_path)
+        offline_data["input_ids"] = offline_data["input_ids"][:max_length]
+        offline_data["hidden_states"] = offline_data["hidden_states"][:max_length, :]
+        offline_data["aux_hidden_states"] = offline_data["aux_hidden_states"][:max_length, :]
+
+        # Make sure the input_ids have the same shape
+        if not torch.equal(preprocessed_base["input_ids"], offline_data["input_ids"]):
+            msg = f"""Input IDs from offline data do not match the preprocessed input IDs
+                                for offline data sample at {offline_file_path}."""
+            raise ValueError(msg)
+
+        ret = {**preprocessed_base}  # Shallow copy so we don't accidentally modify the cache
+        ret["hidden_states"] = offline_data["hidden_states"]
+        ret["aux_hidden_states"] = offline_data["aux_hidden_states"]
+
+        return ret
+
+
 def make_eagle_supervised_data_module(
     tokenizer: transformers.PreTrainedTokenizer, data_args
 ) -> dict:
@@ -184,18 +243,60 @@ def make_eagle_supervised_data_module(
     Returns:
         dict: A dictionary containing train and eval datasets.
     """
-    dataset_cls = LazySupervisedDataset if data_args.lazy_preprocess else SupervisedDataset
-    print_rank_0("Loading data...")
-
-    if data_args.data_path.endswith("jsonl"):
-        with open(data_args.data_path) as f:
+    # Load the conversations from the source file
+    with open(data_args.data_path) as f:
+        if data_args.data_path.endswith("jsonl"):
             data_json = [json.loads(line) for line in f]
-    else:
-        data_json = json.load(open(data_args.data_path))
-    train_dataset = dataset_cls(data_json[: int(len(data_json) * 0.95)], tokenizer=tokenizer)
-    eval_dataset = dataset_cls(data_json[int(len(data_json) * 0.95) :], tokenizer=tokenizer)
+        else:
+            data_json = json.load(f)
 
-    data_collator = DataCollatorWithPadding()
+    if data_args.offline_training:
+        print_rank_0("Loading pre-processed data for offline training...")
+        dataset_cls = OfflineSupervisedDataset
+
+        # Glob for all .pt files in the data_path directory
+        offline_data_path = Path(data_args.offline_data_path)
+        all_files = {str(p) for p in offline_data_path.glob("*.pt")}
+        if not all_files:
+            raise ValueError(f"No .pt files found in {data_args.offline_data_path}")
+
+        # Filter to conversations that exist in the offline data and in the provided json
+        valid_entries = []
+        for entry in data_json:
+            conv_id = entry.get("conversation_id") or entry.get("id")
+            if not conv_id:
+                raise ValueError(
+                    "Each entry in the data json must have a 'conversation_id' or 'id' field."
+                )
+            file_path = str(offline_data_path / f"{conv_id}.pt")
+            if file_path in all_files:
+                valid_entries.append((entry, file_path))
+
+        if len(valid_entries) == 0:
+            msg = """No valid files found in the offline data path that match the conversation IDs
+            in the provided data json. Please ensure that the offline data path is correct and
+            contains .pt files named after the conversation IDs, and that the input conversations
+            json has the correct format (with 'conversation_id' or 'id' fields)."""
+            raise ValueError(msg)
+        elif len(valid_entries) < len(data_json):
+            print_rank_0(
+                f"Warning: Only {len(valid_entries)} out of {len(data_json)} conversations"
+                " have corresponding .pt files in the offline data path. Continuing..."
+            )
+
+        num_train = int(len(valid_entries) * 0.95)
+        train_dataset = dataset_cls(valid_entries[:num_train], tokenizer=tokenizer)
+        eval_dataset = dataset_cls(valid_entries[num_train:], tokenizer=tokenizer)
+
+        data_collator = DataCollatorForOffline()
+    else:
+        print_rank_0("Loading input conversations...")
+        dataset_cls = LazySupervisedDataset if data_args.lazy_preprocess else SupervisedDataset
+
+        train_dataset = dataset_cls(data_json[: int(len(data_json) * 0.95)], tokenizer=tokenizer)
+        eval_dataset = dataset_cls(data_json[int(len(data_json) * 0.95) :], tokenizer=tokenizer)
+
+        data_collator = DataCollatorWithPadding()
 
     return {
         "train_dataset": train_dataset,
@@ -237,6 +338,32 @@ class DataCollatorWithPadding:
             "attention_mask": batch_attention_mask,
             "loss_mask": batch_loss_mask,
             "labels": batch_labels,
+        }
+
+        return batch
+
+
+class DataCollatorForOffline(DataCollatorWithPadding):
+    def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
+        base_batch = super().__call__(features)
+        if "hidden_states" not in features[0]:
+            print(features[0].keys())
+            print(features[0])
+            print(features)
+            raise ValueError("Features do not contain 'hidden_states' key.")
+        max_hs_length = max(item["hidden_states"].shape[0] for item in features)
+
+        batch_hidden_states = torch.stack(
+            [self.paddingtensor2d(item["hidden_states"], max_hs_length) for item in features]
+        )
+        batch_aux_hidden_states = torch.stack(
+            [self.paddingtensor2d(item["aux_hidden_states"], max_hs_length) for item in features]
+        )
+
+        batch = {
+            **base_batch,
+            "hidden_states": batch_hidden_states,
+            "aux_hidden_states": batch_aux_hidden_states,
         }
 
         return batch
