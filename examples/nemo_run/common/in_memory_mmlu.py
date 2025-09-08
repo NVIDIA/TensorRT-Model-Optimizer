@@ -23,7 +23,10 @@ from modelopt.torch.utils.plugins.megatron_mmlu import megatron_mmlu
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Run MMLU evaluation with ModelOpt Megatron model. Provide either --nemo_ckpt or --ckpt_dir"
+        description=(
+            "Run MMLU evaluation with ModelOpt Megatron model. Provide either --nemo_ckpt"
+            "or --finetuned_ckpt_dir"
+        )
     )
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--nemo_ckpt", type=str, required=False, help="Path to NeMo checkpoint.")
@@ -46,7 +49,7 @@ if __name__ == "__main__":
     args = parse_args()
     ckpt_path = args.nemo_ckpt
     if args.finetuned_ckpt_dir:
-        ckpt_path = _get_most_recent_ckpt(args.ckpt_dir)
+        ckpt_path = _get_most_recent_ckpt(args.finetuned_ckpt_dir)
     model, trainer = setup_trainer_and_restore_model_with_modelopt_spec(
         ckpt_path,
         tensor_model_parallel_size=args.tensor_parallelism,
