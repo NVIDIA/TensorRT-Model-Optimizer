@@ -576,6 +576,11 @@ class PrecisionConverter:
                     for i, prod_out in enumerate(producer.output):
                         if prod_out == input_tensor:
                             producer.output[i] = output_tensor
+                consumers = utils.get_consumer_nodes(self.model, input_tensor)
+                for consumer in consumers:
+                    for i, input_name in enumerate(consumer.input):
+                        if input_name == input_tensor:
+                            consumer.input[i] = output_tensor
         if (
             not is_output_producer
         ):  # Reconnect consumers of the cast output to use the cast input instead
