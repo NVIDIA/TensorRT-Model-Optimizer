@@ -310,7 +310,7 @@ def main(args):
         # 3. Train PTQ model (QAT or QAD)
         if args.use_slurm:  # Set training arguments
             gpu_executor.nodes = args.train_nodes
-            gpu_executor.devices = gpu_executor.ntasks_per_node = args.train_gpus
+            gpu_executor.gpus_per_node = gpu_executor.ntasks_per_node = args.train_gpus
         else:
             gpu_executor.ntasks_per_node = args.train_gpus
         train_dep = [s3]
