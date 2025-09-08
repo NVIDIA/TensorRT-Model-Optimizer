@@ -95,6 +95,7 @@ def llama_path(tiny_llama_path):
         PTQCommand(quant="bf16"),
         PTQCommand(quant="int8_sq"),
         # ("int8_sq", "tensorrt_llm", "sparsegpt"),
+        PTQCommand(quant="int8_wo", export_fmt="hf"),
         PTQCommand(quant="int4_awq"),
         PTQCommand(quant="int4_awq", export_fmt="hf"),
         PTQCommand(quant="nvfp4"),
