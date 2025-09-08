@@ -418,8 +418,10 @@ class _RealQuantMegatronParallelLinear(RealQuantLinear):
             while the original forward only takes 1 positional argument. We must above the fallback path
             in RealQuantLinear.forward().
         """
-        if self._should_run_real_quant_gemm and self.get_real_quant_gemm_impl(
-            input, *args, **kwargs
+        if (
+            self._should_run_real_quant_gemm
+            and self.get_real_quant_gemm_impl(input, *args, **kwargs)
+            and input.numel() > 1
         ):
             allreduce_dgrad = kwargs.get("allreduce_dgrad", False)
             tp_group = kwargs.get("tp_group")
