@@ -348,7 +348,7 @@ if __name__ == "__main__":
             account="",
             partition_gpu="batch",
             partition_cpu="cpu",
-            time="240",
+            time="04:00:00",
             container_image="nvcr.io/nvidia/nemo:25.07",
             env_vars={
                 "HF_TOKEN": "",
