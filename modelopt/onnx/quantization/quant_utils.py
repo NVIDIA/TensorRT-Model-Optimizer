@@ -15,6 +15,7 @@
 
 """Provides some basic utilities that can be used in quantize() methods."""
 
+import math
 from collections.abc import Sequence
 
 import numpy as np
@@ -23,6 +24,9 @@ INT4_MIN = -8
 INT4_MAX = 7
 UINT4_MIN = 0
 UINT4_MAX = 15
+# following min-value for clip is taken from AutoAWQ where zero-point based quantization is
+# supported and working
+CLIP_MIN = 1e-5
 
 
 def pack_float32_to_4bit_optimized(array: np.ndarray | Sequence, signed: bool) -> np.ndarray:
@@ -151,6 +155,186 @@ def get_weights_scaling_factor(
     zero_mask = per_block_scale == 0
     q_per_block_scale[zero_mask] = 1.0
     return q_per_block_scale.astype(np.float32)
+
+
+def get_num_bits(precision_info: dict[str, int] | None = None, name: str | None = None) -> int:
+    """Determine the number of bits for quantization from precision_info."""
+    if precision_info and name in precision_info:
+        num_bits = precision_info[name]
+    else:
+        num_bits = 4
+    return num_bits
+
+
+def _next_block_size_multiple(x: float, block_size: int) -> float:
+    return math.ceil(x / block_size) * block_size
+
+
+def _pad(w: np.ndarray, block_size: int, quantize_axis: int = 0) -> np.ndarray:
+    """Pads `w` to next largest multiple of block_size, on quantize_axis."""
+    assert quantize_axis <= len(w.shape), (
+        f"incorrect quantize-axis {quantize_axis}, w-shape={w.shape}"
+    )
+
+    if w.shape[quantize_axis] % block_size == 0:
+        return w
+
+    pad_width = (
+        _next_block_size_multiple(w.shape[quantize_axis], block_size) - w.shape[quantize_axis]
+    )
+    pads = [(0, 0) for _ in range(len(w.shape))]
+    pads[quantize_axis] = (0, pad_width)
+    return np.pad(w, pads, mode="constant", constant_values=0)
+
+
+def _depad(w: np.ndarray, orig_shape: tuple, quantize_axis: int = 0) -> np.ndarray:
+    """Depad quantize_axis to original shape."""
+    if w.shape == orig_shape:
+        return w
+    ans = None
+    if quantize_axis == 0:
+        ans = w[0 : orig_shape[0], ...]
+    elif quantize_axis == 1:
+        ans = w[..., 0 : orig_shape[1]]
+    else:
+        raise ValueError("Incorrect Quantize-axis: it must be 0 or 1 for a 2D array")
+    return ans
+
+
+def find_scales(
+    w: np.ndarray,
+    block_size: int,
+    quantize_axis: int = 0,
+    alpha: float = 1.0,
+    use_zero_point: bool = False,
+    precision_info: dict[str, int] | None = None,
+    name: str | None = None,
+):
+    """Find scale factors for `w` via `s = max(w.block(block_size)) / 7`."""
+    num_bits = get_num_bits(precision_info, name)
+    # If block_size == -1 and num_bits == 8 as no support for int8 block-wise dq node,
+    # set block_size to the size of the quantize_axis dimension to do per-channel quantization
+    if block_size == -1 or num_bits == 8:
+        block_size = w.shape[quantize_axis]
+    w = _pad(w, block_size, quantize_axis)
+    if quantize_axis == 0:
+        w = w.T
+
+    s_last_dim = w.shape[-1] // block_size
+    s_shape = list(w.shape)
+    s_shape[-1] = s_last_dim
+    z = None
+    if not use_zero_point:
+        scale = 2 ** (num_bits - 1)
+        w_amax = np.abs(w.reshape(-1, block_size)).max(axis=-1)
+        s = (w_amax * alpha) / scale
+        s = s.reshape(s_shape)
+    else:
+        max_val = w.reshape(-1, block_size).max(axis=-1)
+        min_val = w.reshape(-1, block_size).min(axis=-1)
+        max_int = (2**num_bits) - 1
+        min_int = 0
+        s = (max_val - min_val).clip(min=CLIP_MIN) / max_int
+        # z = -np.round(temp).clip(min=min_int, max=max_int)    # gives 0 - need to check
+        temp = min_val / s
+        temp = np.round(temp)
+        temp = -temp
+        temp = temp.clip(min=min_int, max=max_int)
+        z = temp
+        assert s.shape == z.shape, "s and z shape mismatch"
+        s = s.reshape(s_shape)
+        z = z.reshape(s_shape)
+    assert z is None or use_zero_point is True, "zero-point value and use-zero-point not in sync"
+    if quantize_axis == 0:
+        s = s.T
+        if z is not None:
+            z = z.T
+    return s, z
+
+
+def rtn(
+    w: np.ndarray,
+    s: np.ndarray,
+    block_size: int,
+    quantize_axis: int = 0,
+    zp: np.ndarray = None,
+    precision_info: dict[str, int] | None = None,
+    name: str | None = None,
+) -> np.ndarray:
+    """Quantizes `w` with scale factors `s` via Round-to-Nearest.
+
+    Ties are broken by rounding to the nearest even number.
+    """
+    num_bits = get_num_bits(precision_info, name)
+    # If block_size == -1 and num_bits == 8 as no support for int8 block-wise dq node,
+    # set block_size to the size of the quantize_axis dimension to do per-channel quantization
+    if block_size == -1 or num_bits == 8:
+        block_size = w.shape[quantize_axis]
+    w_padded = _pad(w, block_size, quantize_axis)
+    num_blocks = w_padded.shape[quantize_axis] // s.shape[quantize_axis]
+    if zp is None:
+        maxq = 2 ** (num_bits - 1) - 1
+        minq = -(2 ** (num_bits - 1))
+        w_padded = (
+            np.rint(w_padded / s.repeat(num_blocks, axis=quantize_axis))
+            .clip(minq, maxq)
+            .astype(np.int8)
+        )
+    else:
+        maxq = (2**num_bits) - 1
+        minq = 0
+        w_padded = (
+            (
+                np.rint(w_padded / s.repeat(num_blocks, axis=quantize_axis))
+                + zp.repeat(num_blocks, axis=quantize_axis)
+            )
+            .clip(minq, maxq)
+            .astype(np.int8)
+        )
+    return _depad(w_padded, w.shape, quantize_axis)
+
+
+def dq_tensor(
+    w: np.ndarray,
+    s: np.ndarray,
+    block_size: int,
+    quantize_axis: int = 0,
+    zp: np.ndarray = None,
+    precision_info: dict[str, int] | None = None,
+    name: str | None = None,
+) -> np.ndarray:
+    """Dequantizes `w` with scale factors `s`."""
+    num_bits = get_num_bits(precision_info, name)
+    # If block_size == -1 and num_bits == 8 as no support for int8 block-wise dq node,
+    # set block_size to the size of the quantize_axis dimension to do per-channel quantization
+    if block_size == -1 or num_bits == 8:
+        block_size = w.shape[quantize_axis]
+    w_padded = _pad(w, block_size, quantize_axis)
+    num_blocks = w_padded.shape[quantize_axis] // s.shape[quantize_axis]
+    if zp is None:
+        w_padded = w_padded * s.repeat(num_blocks, axis=quantize_axis)
+    else:
+        w_padded = (w_padded - zp.repeat(num_blocks, axis=quantize_axis)) * s.repeat(
+            num_blocks, axis=quantize_axis
+        )
+    return _depad(w_padded, w.shape, quantize_axis)
+
+
+def quant_tensor(
+    w: np.ndarray,
+    block_size: int,
+    quantize_axis: int = 0,
+    alpha: float = 1.0,
+    use_zero_point: bool = False,
+    precision_info: dict[str, int] | None = None,
+    name: str | None = None,
+):
+    """Quantize a tensor using alpha etc. and return the quantized tensor."""
+    scale, zp = find_scales(
+        w, block_size, quantize_axis, alpha, use_zero_point, precision_info, name
+    )
+    wq = rtn(w, scale, block_size, quantize_axis, zp, precision_info, name)
+    return wq, scale, zp
 
 
 def quantize(
