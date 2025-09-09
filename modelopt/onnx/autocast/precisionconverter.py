@@ -602,7 +602,7 @@ class PrecisionConverter:
                         name=node.name,
                         inputs=[node.input[0]],
                         outputs=[node.output[0]],
-                        to=node.attribute[0].i,
+                        to=utils.get_cast_to_type(node),
                     )
                     casts_to_skip.append(node.name)
                     casts_to_add.append(new_cast)
