@@ -32,6 +32,7 @@ from onnx import TensorProto, helper, numpy_helper
 
 import modelopt.onnx.autocast.utils as utils
 import modelopt.onnx.utils as onnx_utils
+from modelopt.onnx.autocast.graphsanitizer import GraphSanitizer
 from modelopt.onnx.autocast.logging_config import configure_logging, logger
 
 configure_logging()
@@ -73,6 +74,9 @@ class PrecisionConverter:
         low_precision_type: str = "fp16",
         init_conversion_max_bytes: int | None = None,
         custom_ops: set[str] | None = None,
+        min_opset: int = 13,
+        max_ir_version: int | None = None,
+        trt_plugins: list[str] | None = [],
     ) -> None:
         """Initialize PrecisionConverter.
 
@@ -109,6 +113,9 @@ class PrecisionConverter:
         self.original_network_io.update(
             {io.name: io.type.tensor_type.elem_type for io in self.model.graph.output}
         )
+        self.min_opset = min_opset
+        self.max_ir_version = max_ir_version
+        self.trt_plugins = trt_plugins
 
     def convert(
         self,
@@ -131,6 +138,8 @@ class PrecisionConverter:
             raise Exception(
                 "AutoCast can only operate on valid ONNX models, but the input model is invalid. See log for details."
             )
+
+        self._sanitize_model()
 
         # Filter out nodes that are not allowed to be in low precision
         # This is done here and not in NodeClassifier because it is required for the model to be valid
@@ -1050,3 +1059,13 @@ class PrecisionConverter:
             get_consumer_nodes = utils.get_consumer_nodes(self.model, const_producer.output[0])
             return len(get_consumer_nodes) == 1 and get_consumer_nodes[0] == node
         return False
+
+    def _sanitize_model(self):
+        graph_sanitizer = GraphSanitizer(
+            self.model,
+            self.min_opset,
+            trt_plugins=self.trt_plugins,
+            max_ir_version=self.max_ir_version,
+        )
+        graph_sanitizer.sanitize()
+        self.model = graph_sanitizer.model
