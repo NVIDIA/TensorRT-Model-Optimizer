@@ -1026,7 +1026,7 @@ def test_constant_cast_folding(model_with_constant_cast_patterns, low_precision_
 
 
 @pytest.fixture
-def model_with_casted_output():
+def model_with_casted_input_to_output():
     """Create a model with an output produced by a Cast node."""
     # Create input and outputs
     x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
@@ -1067,14 +1067,13 @@ def model_with_casted_output():
 
     model = onnx_utils.infer_shapes(model)
     value_info_map, initializer_map, node_to_init_map = utils.setup_mappings(model)
-    onnx.save(model, "/tmp/model_with_casted_output.onnx")
 
     return model, value_info_map, initializer_map, node_to_init_map
 
 
 @pytest.mark.parametrize("low_precision_type", ["fp16", "bf16"])
-def test_casted_output_model(model_with_casted_output, low_precision_type):
-    model, value_info_map, initializer_map, node_to_init_map = model_with_casted_output
+def test_casted_input_to_output_model(model_with_casted_input_to_output, low_precision_type):
+    model, value_info_map, initializer_map, node_to_init_map = model_with_casted_input_to_output
 
     converter = PrecisionConverter(
         model,
