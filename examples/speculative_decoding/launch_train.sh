@@ -74,10 +74,6 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       NUM_GPU="${1#*=}"
       ;;
-    --do_eval*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      DO_EVAL="${1#*=}"
-      ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
@@ -91,11 +87,13 @@ set -x
 # Get the default value for save_steps based on the available number of GPUs
 GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count())")
 # Calculate save_steps
-DEFAULT_SAVE_STEPS=$((192 / GPU_COUNT))
+DEFAULT_SAVE_STEPS=$((8192 / GPU_COUNT))
 
 MODEL=${MODEL:-"TinyLlama/TinyLlama-1.1B-Chat-v1.0"}
-MODE=${MODE:-"medusa"}
-OUTPUT_DIR=${OUTPUT_DIR:-"tinyllama-medusa"}
+MODE=${MODE:-"eagle3"}
+# Set default OUTPUT_DIR to ckpts/{modelname}, where {modelname} is the last part of the model path
+MODEL_BASENAME=$(basename "$MODEL")
+OUTPUT_DIR=${OUTPUT_DIR:-"ckpts/${MODEL_BASENAME}-$(date +%Y%m%d_%H%M)"}
 NUM_EPOCHS=${NUM_EPOCHS:-1}
 SAVE_STEPS=${SAVE_STEPS:-$DEFAULT_SAVE_STEPS}
 LR=${LR:-"1e-4"}
@@ -106,8 +104,7 @@ REDRAFTER_TOKENS=${REDRAFTER_TOKENS:-1}
 REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 NUM_GPU=${NUM_GPU:-1}
-DO_EVAL=${DO_EVAL:-"True"}
-TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-2048}
+TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-512}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
@@ -128,6 +125,8 @@ else
   MULTI_GPU="--multi_gpu"
 fi
 
+# Disable tokenizers parallelism to avoid warning
+export TOKENIZERS_PARALLELISM=False
 CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --mode $MODE \
     --model_name_or_path $MODEL \
@@ -139,7 +138,7 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --per_device_train_batch_size $TRAIN_BS \
     --per_device_eval_batch_size $TRAIN_BS \
     --gradient_accumulation_steps 1 \
-    --do_eval $DO_EVAL \
+    --do_eval False \
     --eval_accumulation_steps 1 \
     --save_strategy steps \
     --save_steps $SAVE_STEPS \
@@ -150,7 +149,6 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --logging_steps 100 \
     --tf32 True \
     --data_path $DATA \
-    --report_to tensorboard \
     $SPECULATIVE_ARGS
 "
 

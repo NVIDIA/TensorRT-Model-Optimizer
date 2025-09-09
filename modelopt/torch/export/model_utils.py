@@ -60,7 +60,7 @@ __doc__ = f"""Utility functions for model type detection and classification.
         {MODEL_NAME_TO_TYPE=}
 """
 
-__all__ = ["get_model_type"]
+__all__ = ["get_model_type", "is_multimodal_model"]
 
 
 def get_model_type(model):
@@ -69,3 +69,43 @@ def get_model_type(model):
         if k.lower() in type(model).__name__.lower():
             return v
     return None
+
+
+def is_multimodal_model(model):
+    """Check if a model is a Vision-Language Model (VLM) or multimodal model.
+
+    This function detects various multimodal model architectures by checking for:
+    - Standard vision configurations (vision_config)
+    - Language model attributes (language_model)
+    - Specific multimodal model types (phi4mm)
+    - Vision LoRA configurations
+    - Audio processing capabilities
+    - Image embedding layers
+
+    Args:
+        model: The HuggingFace model instance to check
+
+    Returns:
+        bool: True if the model is detected as multimodal, False otherwise
+
+    Examples:
+        >>> model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-VL-7B-Instruct")
+        >>> is_multimodal_model(model)
+        True
+
+        >>> model = AutoModelForCausalLM.from_pretrained("microsoft/Phi-4-multimodal-instruct")
+        >>> is_multimodal_model(model)
+        True
+    """
+    config = model.config
+
+    return (
+        hasattr(config, "vision_config")  # Standard vision config (e.g., Qwen2.5-VL)
+        or hasattr(model, "language_model")  # Language model attribute (e.g., LLaVA)
+        or getattr(config, "model_type", "") == "phi4mm"  # Phi-4 multimodal
+        or hasattr(config, "vision_lora")  # Vision LoRA configurations
+        or hasattr(config, "audio_processor")  # Audio processing capabilities
+        or (
+            hasattr(config, "embd_layer") and hasattr(config.embd_layer, "image_embd_layer")
+        )  # Image embedding layers
+    )

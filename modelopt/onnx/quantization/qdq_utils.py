@@ -790,8 +790,10 @@ def remove_input_dq_and_output_q(
                             if cons_idx in quantizable_custom_ops[consumer.op_type]["inp"]:
                                 consumer.input[cons_idx] = q_node.output[0]
                             else:
-                                q_node_prev = tensor_producers[q_node.input[0]]
-                                consumer.input[cons_idx] = q_node_prev.output[0]
+                                q_node_prev = tensor_producers.get(q_node.input[0], None)
+                                consumer.input[cons_idx] = (
+                                    q_node_prev.output[0] if q_node_prev else q_node.input[0]
+                                )
                             break
 
                 # Track DequantizeLinear node indices for cleanup
@@ -828,8 +830,11 @@ def remove_input_dq_and_output_q(
                 if quantizable_custom_ops[producer.op_type]["out"]:
                     dq_node[0].input[0] = producer.output[0]
                 else:
-                    dq_node_next = tensor_consumers[dq_node[0].output[0]]
-                    dq_node_next[0].input[0] = producer.output[0]
+                    dq_node_next = tensor_consumers.get(dq_node[0].output[0], None)
+                    if dq_node_next:
+                        dq_node_next[0].input[0] = producer.output[0]
+                    else:
+                        dq_node[0].input[0] = producer.output[0]
 
                 # Track QuantizeLinear node indices for cleanup
                 q_indices.append(node_idx)
