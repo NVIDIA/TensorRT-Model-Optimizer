@@ -1023,3 +1023,68 @@ def test_constant_cast_folding(model_with_constant_cast_patterns, low_precision_
     assert utils.get_consumer_nodes(converted_model, "const_scalar")[0].op_type == "Add"
     assert len(utils.get_consumer_nodes(converted_model, "const_array")) == 1
     assert utils.get_consumer_nodes(converted_model, "const_array")[0].op_type == "Add"
+
+
+@pytest.fixture
+def model_with_casted_output():
+    """Create a model with an output produced by a Cast node."""
+    # Create input and outputs
+    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [2, 3])
+    y1 = helper.make_tensor_value_info("Y1", TensorProto.FLOAT, [2, 3])  # Intermediate output
+    y2 = helper.make_tensor_value_info("Y2", TensorProto.FLOAT, [2, 3])  # Final output
+
+    # Create constant value
+    const = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype=np.float32)
+
+    # Create constant node
+    const_node = helper.make_node(
+        "Constant",
+        [],
+        ["const"],
+        name="const",
+        value=numpy_helper.from_array(const, name="const_value"),
+    )
+
+    # Create computation nodes
+    add1 = helper.make_node("Add", ["X", "const"], ["add1_out"], name="add1")
+    add2 = helper.make_node("Add", ["add1_out", "const"], ["Y2"], name="add2")
+
+    # Create cast node that feeds directly from input to output
+    cast_input = helper.make_node("Cast", ["X"], ["Y1"], name="cast_input", to=TensorProto.FLOAT)
+
+    graph = helper.make_graph(
+        [const_node, add1, add2, cast_input],
+        "model_with_casted_output",
+        [x],
+        [y1, y2],
+        [],
+    )
+
+    model = helper.make_model(graph, producer_name="model_with_casted_output")
+    model.opset_import[0].version = 20
+    model.ir_version = 10
+    onnx.checker.check_model(model)
+
+    model = onnx_utils.infer_shapes(model)
+    value_info_map, initializer_map, node_to_init_map = utils.setup_mappings(model)
+    onnx.save(model, "/tmp/model_with_casted_output.onnx")
+
+    return model, value_info_map, initializer_map, node_to_init_map
+
+
+@pytest.mark.parametrize("low_precision_type", ["fp16", "bf16"])
+def test_casted_output_model(model_with_casted_output, low_precision_type):
+    model, value_info_map, initializer_map, node_to_init_map = model_with_casted_output
+
+    converter = PrecisionConverter(
+        model,
+        value_info_map,
+        initializer_map,
+        node_to_init_map,
+        keep_io_types=True,
+        low_precision_type=low_precision_type,
+    )
+    converted_model = converter.convert(
+        high_precision_nodes=["cast_input"], low_precision_nodes=["add1", "add2"]
+    )
+    onnx.checker.check_model(converted_model)
