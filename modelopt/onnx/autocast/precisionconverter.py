@@ -566,6 +566,12 @@ class PrecisionConverter:
                         to_type=self.high_precision_type,
                     )
 
+    def _replace_tensor_name(self, consumers, original_tensor_name, new_tensor_name):
+        for consumer in consumers:
+            for idx, inp in enumerate(consumer.input):
+                if inp == original_tensor_name:
+                    consumer.input[idx] = new_tensor_name
+
     def _bypass_cast_node(self, node: onnx.NodeProto) -> None:
         # handling only a single input and output, as we only remove cast nodes
         assert len(node.input) == 1
@@ -585,6 +591,9 @@ class PrecisionConverter:
                     for i, prod_out in enumerate(producer.output):
                         if prod_out == input_tensor:
                             producer.output[i] = output_tensor
+                            consumers = utils.get_consumer_nodes(self.model, prod_out)
+                            if len(consumers) > 1:
+                                self._replace_tensor_name(consumers, prod_out, output_tensor)
         if (
             not is_output_producer
         ):  # Reconnect consumers of the cast output to use the cast input instead
