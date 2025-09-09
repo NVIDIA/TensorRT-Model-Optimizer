@@ -365,7 +365,7 @@ def main(args):
         f"\n--Quantize-Script-- algo={args.algo}, dataset={args.dataset}, calib_size={args.calib_size}, "
         f"batch_size={args.batch_size}, block_size={args.block_size}, add-position-ids={args.add_position_ids}, "
         f"past-kv={args.add_past_kv_inputs}, rcalib={args.use_random_calib}, device={args.device}, "
-        f"use_zero_point={args.use_zero_point}, use_fp32={args.use_fp32}\n"
+        f"use_zero_point={args.use_zero_point}, use_fp32={args.use_fp32} k_quant_mixed={args.k_quant_mixed}\n"
     )
 
     print(
@@ -435,6 +435,8 @@ def main(args):
         awqclip_alpha_step=args.awqclip_alpha_step,
         awqclip_alpha_min=args.awqclip_alpha_min,
         awqclip_bsz_col=args.awqclip_bsz_col,
+        k_quant_mixed=args.k_quant_mixed,
+        int8_layers=args.int8_layers,
     )
     logging.info(f"\nQuantization process took {time.time() - t} seconds")
 
@@ -594,6 +596,20 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
     )
-
+    parser.add_argument(
+        "--k_quant_mixed",
+        default=False,
+        action="store_true",
+        help="True when we want to use k_quant_mixed quantization",
+    )
+    parser.add_argument(
+        "--int8_layers",
+        type=str,
+        default="",
+        help=(
+            "Comma-separated list of layer patterns to quantize to INT8 instead of INT4."
+            "Example: 'layers.0,layers.1,lm_head'"
+        ),
+    )
     args = parser.parse_args()
     main(args)

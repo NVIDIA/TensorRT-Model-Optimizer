@@ -54,7 +54,11 @@ onnx_dtype_map = {
     "Half": onnx.TensorProto.FLOAT16,
     "INT8": onnx.TensorProto.INT8,
     "UINT8": onnx.TensorProto.UINT8,
+    "INT4": onnx.TensorProto.INT4,
+    "UINT4": onnx.TensorProto.UINT4,
 }
+onnx_bit_dtype_signed_map = {4: "INT4", 8: "INT8"}
+onnx_bit_dtype_unsigned_map = {4: "UINT4", 8: "UINT8"}
 
 np_dtype_map = {
     "Float": np.float32,
@@ -303,12 +307,28 @@ def insert_pre_quant_scale_nodes(
     graph.toposort()
 
 
+def update_attributes(attrib: dict[str, Any] | None = None, is_per_channel: bool = False):
+    """Update attribute dictionary for quantization nodes.
+
+    If per-channel quantization is enabled, sets the 'axis' attribute to 1 and removes
+    the 'block_size' attribute if present.
+    """
+    if is_per_channel:
+        if attrib is not None:
+            attrib["axis"] = 1
+            if "block_size" in attrib:
+                attrib.pop("block_size")
+    return attrib
+
+
 def insert_dq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
     quantized_weights: dict[str, np.ndarray],
     attributes: dict[str, Any] | None = None,
     zero_points: dict[str, np.ndarray] | None = None,
+    precision_info: dict[str, int] | None = None,
+    is_per_channel: bool = False,
 ):
     """Insert new initializers and DQ nodes into graph.
 
@@ -325,10 +345,28 @@ def insert_dq_nodes(
         wq: np.ndarray,
         scale: np.ndarray,
         dq_nodes: dict[str, gs.Node],
-        attrs: dict[str, Any],
         zp: np.ndarray,
+        attrs: dict[str, Any] | None = None,
+        precision_info: dict[str, int] | None = None,
+        is_per_channel: bool = False,
     ):
-        tensor_dtype = onnx.TensorProto.INT4 if zp is None else onnx.TensorProto.UINT4
+        attrib = dict(attrs) if attrs is not None else None
+        if precision_info and name in precision_info:
+            tensor_dtype = (
+                onnx_dtype_map[onnx_bit_dtype_signed_map[precision_info[name]]]
+                if zp is None
+                else onnx_dtype_map[onnx_bit_dtype_unsigned_map[precision_info[name]]]
+            )
+            # do per-channel quantization for int8 as no support for int8 block-wise dq node
+            if precision_info[name] == 8:
+                # reshape scale to be per-channel
+                scale = scale.reshape(-1)
+                attrib = update_attributes(attrib, True)
+        else:
+            tensor_dtype = onnx.TensorProto.INT4 if zp is None else onnx.TensorProto.UINT4
+
+        attrib = update_attributes(attrib, is_per_channel)
+
         wq_tensor = make_gs_quantized_weight(name, wq, tensor_dtype)
         scale_tensor = make_gs_scale(name, scale)
         dq_out = make_gs_dequantize_output(name, shape=wq.shape, dtype=scale.dtype)
@@ -340,7 +378,7 @@ def insert_dq_nodes(
             name,
             inputs=inputs,
             outputs=[dq_out],
-            attributes=attrs,
+            attributes=attrib,
         )
         dq_nodes[name] = dq_node
 
@@ -350,7 +388,16 @@ def insert_dq_nodes(
         if zero_points is not None:
             zp = zero_points.get(name)
             assert zp is not None, "zero-point is enabled but zero-point values not found"
-        _insert_helper(name, quantized_weights[name], scale, dq_nodes, attributes, zp)  # type: ignore[arg-type]
+        _insert_helper(
+            name,
+            quantized_weights[name],
+            scale,
+            dq_nodes,
+            zp,
+            attributes,
+            precision_info,
+            is_per_channel,
+        )
 
     _postprocess_qdq(
         graph,
@@ -363,6 +410,7 @@ def insert_qdq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
     weight_map: dict[str, gs.Tensor],
+    precision_info: dict[str, int] | None = None,
 ):
     """Insert scales and QDQ nodes into graph.
 
@@ -379,10 +427,20 @@ def insert_qdq_nodes(
         scale: np.ndarray,
         q_nodes: dict[str, gs.Node],
         dq_nodes: dict[str, gs.Node],
+        precision_info: dict[str, int] | None = None,
     ):
+        if precision_info and name in precision_info:
+            tensor_dtype = onnx_dtype_map[onnx_bit_dtype_signed_map[precision_info[name]]]
+            # do per-channel quantization for int8 as no support for int8 block-wise dq node
+            if precision_info[name] == 8:
+                # reshape scale to be per-channel
+                scale = scale.reshape(-1)
+        else:
+            tensor_dtype = onnx.TensorProto.INT4
+
         scale_tensor = make_gs_scale(name, scale)
-        zp_tensor = make_gs_zp(name, scale.shape, onnx.TensorProto.INT4)
-        q_out = make_gs_quantize_output(name, weight_to_quantize.shape, onnx.TensorProto.INT4)
+        zp_tensor = make_gs_zp(name, scale.shape, tensor_dtype)
+        q_out = make_gs_quantize_output(name, weight_to_quantize.shape, tensor_dtype)
         q_node = make_gs_quantize_node(
             name, inputs=[weight_to_quantize, scale_tensor, zp_tensor], outputs=[q_out]
         )
@@ -395,7 +453,7 @@ def insert_qdq_nodes(
 
     q_nodes, dq_nodes = {}, {}
     for name, scale in scales.items():
-        _insert_helper(name, weight_map[name], scale, q_nodes, dq_nodes)
+        _insert_helper(name, weight_map[name], scale, q_nodes, dq_nodes, precision_info)
 
     _postprocess_qdq(
         graph,
