@@ -46,7 +46,7 @@ parser.add_argument("--temperature", type=float, default=0.0, help="Temperature 
 parser.add_argument(
     "--max_tokens", type=int, default=2048, help="Maximum number of tokens to generate"
 )
-parser.add_argument("--chat", action="store_true", help="Use chat mode")
+parser.add_argument("--chat", default=True, type=bool, help="Use chat mode")
 parser.add_argument("--model", type=str, default="model", help="Model name")
 parser.add_argument("--url", type=str, default="http://localhost:8000/v1", help="URL of the API")
 parser.add_argument("--api_key", type=str, default="token-abc123", help="API key (if any)")
