@@ -129,7 +129,8 @@ for model_path in "${model_paths[@]}"; do
             --onnx_path=$model_dir/fp16/model.onnx \
             --quantize_mode=$quant_mode \
             --calibration_data=$calib_data_path \
-            --output_path=$model_dir/$quant_mode/model.quant.onnx &
+            --output_path=$model_dir/$quant_mode/model.quant.onnx \
+            --calibration_eps=cuda:0 &
         pids+=($!)
     done
 
@@ -161,22 +162,29 @@ for model_path in "${model_paths[@]}"; do
         quant_mode="${all_modes[$i]}"
         gpu_id=$((i % nvidia_gpu_count))
 
-        if [ "$quant_mode" == "fp16" ] || [ "$quant_mode" == "int8_iq" ]; then
+        if [ "$quant_mode" == "fp16" ]; then
             eval_model_path=$model_dir/fp16/model.onnx
+            engine_path=$model_dir/fp16/model.engine
+        elif [ "$quant_mode" == "int8_iq" ]; then
+            eval_model_path=$model_dir/fp16/model.onnx
+            engine_path=$model_dir/int8_iq/model.engine
         else
             eval_model_path=$model_dir/$quant_mode/model.quant.onnx
+            engine_path=$model_dir/$quant_mode/model.quant.engine
         fi
 
         echo "Starting evaluation of $model_name for mode: $quant_mode on GPU $gpu_id"
         if [[ " ${latency_models[@]} " =~ " $model_name " ]]; then
             CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
                 --onnx_path=$eval_model_path \
+                --engine_path=$engine_path \
                 --model_name="${timm_model_name[$model_name]}" \
                 --quantize_mode=$quant_mode \
                 --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv &
         else
             CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
                 --onnx_path=$eval_model_path \
+                --engine_path=$engine_path \
                 --imagenet_path=$imagenet_path \
                 --eval_data_size=$calib_size \
                 --batch_size $batch_size \
