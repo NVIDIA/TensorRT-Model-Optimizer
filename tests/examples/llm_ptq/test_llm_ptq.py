@@ -53,7 +53,6 @@ class TestT5(WithRequirements):
     [
         PTQCommand(quant="fp16"),
         PTQCommand(quant="fp8", min_sm=89),
-        PTQCommand(quant="fp8", export_fmt="hf", min_sm=89),
     ],
     ids=PTQCommand.param_str,
 )
@@ -96,11 +95,8 @@ def llama_path(tiny_llama_path):
         PTQCommand(quant="int8_sq"),
         # ("int8_sq", "tensorrt_llm", "sparsegpt"),
         PTQCommand(quant="int4_awq"),
-        PTQCommand(quant="int4_awq", export_fmt="hf"),
         PTQCommand(quant="nvfp4"),
-        PTQCommand(quant="nvfp4", export_fmt="hf"),
         PTQCommand(quant="nvfp4_awq"),
-        PTQCommand(quant="nvfp4_awq", export_fmt="hf"),
         #
         # autoquant
         PTQCommand(
@@ -108,29 +104,15 @@ def llama_path(tiny_llama_path):
             calib_batch_size=4,
             auto_quantize_bits=6.4,
         ),
-        PTQCommand(
-            quant="int4_awq,nvfp4,fp8",
-            export_fmt="hf",
-            calib_batch_size=4,
-            auto_quantize_bits=6.4,
-        ),
         #
         # kv_cache
         PTQCommand(quant="nvfp4_awq", kv_cache_quant="nvfp4"),
-        PTQCommand(quant="nvfp4_awq", export_fmt="hf", kv_cache_quant="nvfp4"),
         # ("nvfp4_awq", "tensorrt_llm", "nvfp4_affine"),
         # ("nvfp4_awq", "hf", "nvfp4_affine"),
         #
         # autoquant_kv_cache
         PTQCommand(
             quant="int4_awq,nvfp4,fp8,w4a8_awq",
-            kv_cache_quant="nvfp4",
-            calib_batch_size=4,
-            auto_quantize_bits=6.4,
-        ),
-        PTQCommand(
-            quant="int4_awq,nvfp4,fp8,w4a8_awq",
-            export_fmt="hf",
             kv_cache_quant="nvfp4",
             calib_batch_size=4,
             auto_quantize_bits=6.4,
@@ -142,7 +124,6 @@ def llama_path(tiny_llama_path):
         PTQCommand(quant="fp8", min_sm=89),
         PTQCommand(quant="fp8", kv_cache_quant="none", min_sm=89),
         # ("fp8", "tensorrt_llm", "sparsegpt", None),
-        PTQCommand(quant="fp8", export_fmt="hf", min_sm=89),
         PTQCommand(quant="w4a8_awq", min_sm=89),
         #
         # multi_gpu

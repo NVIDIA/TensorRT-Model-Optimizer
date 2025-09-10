@@ -89,28 +89,20 @@ def auto_quantize(
     qformat_list = qformat.split(",")
     assert qformat_list, "No quantization formats provided"
     # Check if all provided quantization formats are supported
-    if args.export_fmt == "hf":
-        assert all(
-            qformat
-            in [
-                "fp8",
-                "int4_awq",
-                "nvfp4",
-                "nvfp4_awq",
-                "w4a8_awq",
-                "fp8_pb_wo",
-                "w4a8_mxfp4_fp8",
-                "nvfp4_mlp_only",
-            ]
-            for qformat in qformat_list
-        ), (
-            "One or more quantization formats provided are not supported for unified checkpoint export"
-        )
-    else:
-        assert all(
-            qformat in ["fp8", "int8_sq", "int4_awq", "w4a8_awq", "nvfp4", "nvfp4_awq"]
-            for qformat in qformat_list
-        ), "One or more quantization formats provided are not supported for tensorrt llm export"
+    assert all(
+        qformat
+        in [
+            "fp8",
+            "int4_awq",
+            "nvfp4",
+            "nvfp4_awq",
+            "w4a8_awq",
+            "fp8_pb_wo",
+            "w4a8_mxfp4_fp8",
+            "nvfp4_mlp_only",
+        ]
+        for qformat in qformat_list
+    ), "One or more quantization formats provided are not supported for unified checkpoint export"
 
     def loss_func(output, data):
         # For transformers AutoModelForCausalLM models, the outputs are wrapped in `CausalLMOutputWithPast`
@@ -219,27 +211,21 @@ def main(args):
             "Quantization supports only one quantization format."
         )
 
-    # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
-    if args.export_fmt == "hf":
-        assert args.sparsity_fmt == "dense", (
-            f"Sparsity format {args.sparsity_fmt} not supported by unified export api."
-        )
-
-        if not args.auto_quantize_bits:
-            assert (
-                args.qformat
-                in [
-                    "int4_awq",
-                    "fp8",
-                    "nvfp4",
-                    "nvfp4_awq",
-                    "w4a8_awq",
-                    "fp8_pb_wo",
-                    "w4a8_mxfp4_fp8",
-                    "nvfp4_mlp_only",
-                ]
-                or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES
-            ), f"Quantization format {args.qformat} not supported for HF export path"
+    if not args.auto_quantize_bits:
+        assert (
+            args.qformat
+            in [
+                "int4_awq",
+                "fp8",
+                "nvfp4",
+                "nvfp4_awq",
+                "w4a8_awq",
+                "fp8_pb_wo",
+                "w4a8_mxfp4_fp8",
+                "nvfp4_mlp_only",
+            ]
+            or args.kv_cache_qformat in KV_QUANT_CFG_CHOICES
+        ), f"Quantization format {args.qformat} not supported for HF export path"
 
     # If low memory mode is enabled, we compress the model while loading the HF checkpoint.
     calibration_only = False
@@ -253,9 +239,6 @@ def main(args):
             attn_implementation=args.attn_implementation,
         )
     else:
-        assert args.export_fmt == "hf", (
-            "Low memory mode is only supported for exporting HF checkpoint."
-        )
         assert args.qformat in QUANT_CFG_CHOICES, (
             f"Quantization format is not supported for low memory mode. Supported formats: {QUANT_CFG_CHOICES.keys()}"
         )
@@ -600,7 +583,10 @@ def main(args):
             setattr(model.config, "architectures", full_model_config.architectures)
 
         start_time = time.time()
-        if args.export_fmt == "tensorrt_llm":
+        if model_type in ["t5", "bart", "whisper"] or args.sparsity_fmt != "dense":
+            # Still export TensorRT-LLM checkpoints for the models not supported by the
+            # TensorRT-LLM torch runtime.
+
             # Move meta tensor back to device before exporting.
             remove_hook_from_module(model, recurse=True)
 
@@ -621,13 +607,16 @@ def main(args):
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
             )
-        elif args.export_fmt == "hf":
+        else:
+            # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
+            assert args.sparsity_fmt == "dense", (
+                f"Sparsity format {args.sparsity_fmt} not supported by unified export api."
+            )
+
             export_hf_checkpoint(
                 full_model,
                 export_dir=export_path,
             )
-        else:
-            raise NotImplementedError(f"{args.export_fmt} not supported")
 
         # Restore default padding and export the tokenizer as well.
         if tokenizer is not None:
@@ -706,13 +695,6 @@ if __name__ == "__main__":
         default="fp8",
         choices=KV_QUANT_CFG_CHOICES.keys(),
         help="Specify KV cache quantization format, default to fp8 if not provided",
-    )
-    parser.add_argument(
-        "--export_fmt",
-        required=False,
-        default="tensorrt_llm",
-        choices=["tensorrt_llm", "hf"],
-        help=("Checkpoint export format"),
     )
     parser.add_argument(
         "--trust_remote_code",
