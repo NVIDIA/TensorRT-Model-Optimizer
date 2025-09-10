@@ -566,7 +566,10 @@ class PrecisionConverter:
                         to_type=self.high_precision_type,
                     )
 
-    def _replace_tensor_name(self, consumers, original_tensor_name, new_tensor_name):
+    def _replace_tensor_name(
+        self, consumers: list[onnx.NodeProto], original_tensor_name: str, new_tensor_name: str
+    ) -> None:
+        """Replace occurrences of a tensor name in the given consumers' inputs with a new tensor name."""
         for consumer in consumers:
             for idx, inp in enumerate(consumer.input):
                 if inp == original_tensor_name:
@@ -583,8 +586,8 @@ class PrecisionConverter:
         # Check if the cast output is also a graph output
         is_output_producer = any(output.name == output_tensor for output in self.model.graph.output)
 
-        # If the removed cast node is producing a network output, we need to update the node producing the cast, as
-        #   the network output name should not be changed
+        # If the removed cast node is producing a network output, update the producer of the cast input so
+        # the network output name is preserved.
         if is_output_producer:
             producers = utils.get_producer_nodes(self.model, input_tensor)
             for producer in producers:
