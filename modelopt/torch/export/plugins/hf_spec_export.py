@@ -82,7 +82,12 @@ def rename_and_prune_if_spec_decoding(model: nn.Module, post_state_dict: dict):
 
 def set_config_if_spec_decoding(model: nn.Module, config_data: dict):
     """Return the config of draft model in official format."""
-    if len(model._modelopt_state) != 1 or model._modelopt_state[0][0] != "eagle":
+    opt_modes = getattr(model, "_modelopt_state", None)
+    if (
+        not isinstance(opt_modes, (list, tuple))
+        or len(opt_modes) != 1
+        or opt_modes[0][0] != "eagle"
+    ):
         # return as is
         return config_data
 

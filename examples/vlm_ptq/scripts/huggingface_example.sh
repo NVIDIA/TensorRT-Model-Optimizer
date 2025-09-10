@@ -30,10 +30,10 @@ for i in $(env | grep ^PMI_ | cut -d"=" -f 1); do unset -v $i; done
 for i in $(env | grep ^PMIX_ | cut -d"=" -f 1); do unset -v $i; done
 
 case $MODEL_TYPE in
-    llava|phi|vila|mllama)
+    llava|phi|vila|mllama|qwen)
         ;;
     *)
-        echo "Unsupported type argument: Expected one of: [llava, phi, vila, mllama]" >&2
+        echo "Unsupported type argument: Expected one of: [llava, phi, vila, mllama, qwen]" >&2
         exit 1
 esac
 
@@ -58,10 +58,10 @@ case $SPARSITY_FMT in
 esac
 
 case $QFORMAT in
-    fp8|int8_sq|int4_awq|w4a8_awq|fp16|bf16)
+    fp8|nvfp4|int8_sq|int4_awq|w4a8_awq|fp16|bf16)
         ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, int8_sq, int4_awq, w4a8_awq, fp16, bf16]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, nvfp4, int8_sq, int4_awq, w4a8_awq, fp16, bf16]" >&2
         exit 1
 esac
 
@@ -91,7 +91,7 @@ fi
 
 BUILD_MAX_OUTPUT_LEN=512
 
-if [ "$MODEL_TYPE" = "llava" ] || [ "$MODEL_TYPE" = "vila" ]; then
+if [ "$MODEL_TYPE" = "llava" ] || [ "$MODEL_TYPE" = "vila" ] || [ "$MODEL_TYPE" = "qwen" ]; then
     BUILD_MAX_BATCH_SIZE=20
 else
     BUILD_MAX_BATCH_SIZE=4
@@ -149,6 +149,9 @@ case "${MODEL_TYPE}" in
         PTQ_ARGS+=" --kv_cache_qformat none "
         VLM_ARGS=" --max_encoder_input_len=6404 --skip_run"
         ;;
+    "qwen")
+        PTQ_ARGS+=" --kv_cache_qformat none "
+        ;;
 esac
 
 if [ "${MODEL_TYPE}" = "vila" ]; then
@@ -177,6 +180,7 @@ if [[ $TASKS =~ "build" ]] || [[ ! -d "$ENGINE_DIR" ]] || [[ ! $(ls -A $ENGINE_D
             --inference_tensor_parallel=$TP \
             --inference_pipeline_parallel=$PP \
             --export_fmt=$EXPORT_FORMAT \
+            --no-verbose \
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
@@ -212,6 +216,10 @@ case "${MODEL_TYPE}" in
         ;;
     "phi")
         VISUAL_MODEL_TYPE="phi-3-vision"
+        ;;
+    "qwen")
+        # Map generic type to TRT-LLM multimodal model type
+        VISUAL_MODEL_TYPE="qwen2_vl"
         ;;
 esac
 
