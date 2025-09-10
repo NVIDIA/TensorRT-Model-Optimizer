@@ -105,7 +105,11 @@ def main():
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
 
-    pipe = PipelineManager.create_pipeline_from(MODEL_ID[args.model], dtype_map[args.model_dtype])
+    pipe = PipelineManager.create_pipeline_from(
+        MODEL_ID[args.model],
+        dtype_map[args.model_dtype],
+        override_model_path=args.override_model_path,
+    )
 
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
