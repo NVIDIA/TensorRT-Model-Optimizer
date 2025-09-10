@@ -579,24 +579,23 @@ class PrecisionConverter:
 
         input_tensor = node.input[0]
         output_tensor = node.output[0]
-        is_output_producer = False
 
-        # If removed cast node is producing a network output, we need to update the node producing the cast
-        # Network output name should not be changed
-        for output in self.model.graph.output:
-            if output.name == output_tensor:
-                is_output_producer = True
-                producers = utils.get_producer_nodes(self.model, input_tensor)
-                for producer in producers:
-                    for i, prod_out in enumerate(producer.output):
-                        if prod_out == input_tensor:
-                            producer.output[i] = output_tensor
-                            consumers = utils.get_consumer_nodes(self.model, prod_out)
-                            if len(consumers) > 1:
-                                self._replace_tensor_name(consumers, prod_out, output_tensor)
-        if (
-            not is_output_producer
-        ):  # Reconnect consumers of the cast output to use the cast input instead
+        # Check if the cast output is also a graph output
+        is_output_producer = any(output.name == output_tensor for output in self.model.graph.output)
+
+        # If the removed cast node is producing a network output, we need to update the node producing the cast, as
+        #   the network output name should not be changed
+        if is_output_producer:
+            producers = utils.get_producer_nodes(self.model, input_tensor)
+            for producer in producers:
+                for i, prod_out in enumerate(producer.output):
+                    if prod_out == input_tensor:
+                        producer.output[i] = output_tensor
+                        consumers = utils.get_consumer_nodes(self.model, prod_out)
+                        if len(consumers) > 1:
+                            self._replace_tensor_name(consumers, prod_out, output_tensor)
+        else:
+            # Reconnect consumers of the cast output to use the cast input instead
             consumers = utils.get_consumer_nodes(self.model, output_tensor)
             for consumer in consumers:
                 for i, input_name in enumerate(consumer.input):
