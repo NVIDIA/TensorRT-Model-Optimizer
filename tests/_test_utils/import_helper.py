@@ -13,9 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib.metadata
 import shutil
 
 import pytest
+from packaging import version
 
 
 def skip_if_no_tensorrt():
@@ -73,3 +75,18 @@ def skip_if_no_megatron(apex_or_te_required: bool = False, mamba_required: bool 
 
     if mamba_required and not has_mamba:
         pytest.skip("Mamba required for Megatron test", allow_module_level=True)
+
+
+def skip_if_onnx_version_above_1_18():
+    package_name = "onnx"
+    required_version = "1.18.0"
+
+    try:
+        installed_version = importlib.metadata.version(package_name)
+    except importlib.metadata.PackageNotFoundError:
+        pytest.skip(f"{package_name} is not installed")
+
+    if version.parse(installed_version) > version.parse(required_version):
+        pytest.skip(
+            f"{package_name} version {installed_version} is less than required {required_version}"
+        )

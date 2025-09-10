@@ -20,7 +20,7 @@ import os
 from functools import partial
 
 import torch
-from _test_utils.import_helper import skip_if_no_libcudnn
+from _test_utils.import_helper import skip_if_no_libcudnn, skip_if_onnx_version_above_1_18
 from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_onnx, find_init
 from _test_utils.torch_quantization.quantize_common import get_awq_config
 
@@ -40,6 +40,8 @@ else:
 
 
 def test_int4_awq(tmp_path):
+    skip_if_onnx_version_above_1_18()
+
     def _forward_loop(model, dataloader):
         """Forward loop for calibration."""
         for data in dataloader:
@@ -114,6 +116,7 @@ def test_int4_awq(tmp_path):
 
 
 def test_int4_awq_cuda(tmp_path):
+    skip_if_onnx_version_above_1_18()
     skip_if_no_libcudnn()
     block_size = 128
 
