@@ -31,7 +31,7 @@ except ImportError:
 import torch.nn.functional as F
 from packaging.version import Version
 from torch import nn
-from torch.onnx._globals import GLOBALS
+from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
 
 from modelopt.torch.utils import standardize_constructor_args
 from modelopt.torch.utils.distributed import DistributedProcessGroup
