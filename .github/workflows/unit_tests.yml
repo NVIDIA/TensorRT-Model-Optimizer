@@ -4,13 +4,6 @@ name: Unit tests
 on:
   pull_request:
     branches: [main, release/*]
-    paths:
-      - ".github/workflows/unit_tests.yml"
-      - "modelopt/**"
-      - "tests/unit/**"
-      - "pyproject.toml"
-      - "setup.py"
-      - "tox.ini"
   push:
     branches: [main, release/*]
     paths:
@@ -126,3 +119,9 @@ jobs:
           python-version: "3.12"
       - name: Run unit tests
         run: pip install tox && tox -e py312-partial-unit-${{ matrix.test-env }}
+  unit-pr-required-check:
+    if: github.event_name == 'pull_request'
+    needs: [linux, windows, multi-py, multi-torch, multi-transformers, partial-install]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All PR unit test jobs completed"

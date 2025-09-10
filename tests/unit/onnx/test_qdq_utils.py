@@ -33,7 +33,6 @@ def create_test_model_with_dq_reshape_transpose_matmul(constant_scale: bool = Fa
 
     # Create reshape shape tensor
     reshape_shape = np.array([16, 16], dtype=np.int64)
-    reshape_shape_tensor = numpy_helper.from_array(reshape_shape, "reshape_shape")
 
     # Create input tensor for MatMul
     input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [None, 2])
@@ -53,16 +52,32 @@ def create_test_model_with_dq_reshape_transpose_matmul(constant_scale: bool = Fa
         "DequantizeLinear", inputs=dq_inputs, outputs=["dq_output"], name="weight_dq"
     )
 
+    reshape_constant = helper.make_node(
+        "Constant",
+        inputs=[],
+        outputs=["reshape_shape_Constant"],
+        value=numpy_helper.from_array(reshape_shape),
+        name="reshape_constant",
+    )
+
     reshape_node = helper.make_node(
         "Reshape",
-        inputs=["dq_output", "reshape_shape"],
+        inputs=["dq_output", "reshape_shape_Constant"],
         outputs=["reshape_output"],
         name="weight_reshape",
     )
 
+    cast_node = helper.make_node(
+        "Cast",
+        inputs=["reshape_output"],
+        outputs=["cast_output"],
+        to=TensorProto.FLOAT,
+        name="weight_cast",
+    )
+
     transpose_node = helper.make_node(
         "Transpose",
-        inputs=["reshape_output"],
+        inputs=["cast_output"],
         outputs=["transpose_output"],
         perm=[1, 0],
         name="weight_transpose",
@@ -78,7 +93,7 @@ def create_test_model_with_dq_reshape_transpose_matmul(constant_scale: bool = Fa
     )
 
     # Create graph
-    nodes = [dq_node, reshape_node, transpose_node, matmul_node]
+    nodes = [dq_node, reshape_constant, reshape_node, cast_node, transpose_node, matmul_node]
     if constant_scale:
         nodes.append(scale_constant)
     graph = helper.make_graph(
@@ -86,7 +101,7 @@ def create_test_model_with_dq_reshape_transpose_matmul(constant_scale: bool = Fa
         name="test_graph",
         inputs=[input_tensor],
         outputs=[helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, 16])],
-        initializer=[weight_tensor, scale_tensor, reshape_shape_tensor],
+        initializer=[weight_tensor, scale_tensor],
         value_info=[reshape_output_info],
     )
 
@@ -234,7 +249,7 @@ class TestQuantizeWeightsToInt4:
             if node.op_type == "Cast":
                 to_attr = next(attr for attr in node.attribute if attr.name == "to")
 
-                if "norm/Cast" in node.name or node.name == "/Cast":
+                if "norm/Cast" in node.name:
                     # These should remain as float32
                     assert to_attr.i == TensorProto.FLOAT
                 else:
@@ -297,39 +312,39 @@ class TestCastFunctions:
         [
             # Basic positive values
             (
-                np.array([0.0, 0.5, 1.0], dtype=np.float32),
-                np.array([0, 1, 2], dtype=(np.uint8, [("float4e2m1", "u1")])),
+                np.array([[0.0, 0.5], [1.0, 1.5]], dtype=np.float32),
+                np.array([[16, 50]], dtype=np.uint8),
             ),
             # Basic negative values
             (
-                np.array([-0.5, -1.0, -1.5], dtype=np.float32),
-                np.array([9, 10, 11], dtype=(np.uint8, [("float4e2m1", "u1")])),
+                np.array([[-0.5, -1.0], [-1.5, 1.75]], dtype=np.float32),
+                np.array([[169, 75]], dtype=np.uint8),
             ),
             # Boundary values with rounding
             (
-                np.array([0.75, 1.75, 3.5], dtype=np.float32),
-                np.array([2, 4, 6], dtype=(np.uint8, [("float4e2m1", "u1")])),
+                np.array([[0.0, 0.75], [1.75, 3.5]], dtype=np.float32),
+                np.array([[32, 100]], dtype=np.uint8),
             ),
             # Large values (saturate to max)
             (
-                np.array([10.0, -10.0], dtype=np.float32),
-                np.array([7, 15], dtype=(np.uint8, [("float4e2m1", "u1")])),
+                np.array([[10.0], [-10.0]], dtype=np.float32),
+                np.array([[247]], dtype=np.uint8),
             ),
             # Very small values (map to zero)
             (
-                np.array([0.1, -0.1], dtype=np.float32),
-                np.array([0, 8], dtype=(np.uint8, [("float4e2m1", "u1")])),
+                np.array([[0.1], [-0.1]], dtype=np.float32),
+                np.array([[128]], dtype=np.uint8),
             ),
             # Zero and negative zero
             (
-                np.array([0.0, -0.0], dtype=np.float32),
-                np.array([0, 0], dtype=(np.uint8, [("float4e2m1", "u1")])),
+                np.array([[0.0], [-0.0]], dtype=np.float32),
+                np.array([[0]], dtype=np.uint8),
             ),
         ],
     )
     def test_cast_fp4(self, input_array, expected_array):
         """Test FP4 casting functionality."""
         result = _cast_fp4(input_array)
-        assert result.dtype == np.dtype((np.uint8, [("float4e2m1", "u1")]))
+        assert result.dtype == np.dtype(np.uint8)
         assert result.shape == expected_array.shape
         assert np.all(result == expected_array)

@@ -47,8 +47,8 @@ optional_deps = {
         "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
         "ml_dtypes",  # for bfloat16 conversion
         "onnx-graphsurgeon",
-        "onnx~=1.18.0",
-        "onnxconverter-common",
+        "onnx~=1.19.0",
+        "onnxconverter-common~=1.16.0",
         "onnxruntime~=1.22.0 ; platform_machine == 'aarch64' or platform_system == 'Darwin'",
         "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
         "onnxruntime-directml==1.20.0; platform_system == 'Windows'",

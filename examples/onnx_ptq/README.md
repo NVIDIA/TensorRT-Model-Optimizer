@@ -120,7 +120,7 @@ The following evaluation requires the `val` directory of the [ImageNet dataset](
 python evaluate.py \
     --onnx_path=<path to classification model> \
     --imagenet_path=<path to the ImageNet dataset> \
-    --quantize_mode=<fp8|int8|int4> \
+    --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```
 
@@ -165,7 +165,7 @@ If the input model is of type image classification, use the following script to 
 python evaluate.py \
     --onnx_path=<path to the exported ONNX model> \
     --imagenet_path=<path to the ImageNet dataset> \
-    --quantize_mode=stronglyTyped \
+    --engine_precision=stronglyTyped \
     --model_name=vit_base_patch16_224
 ```
 

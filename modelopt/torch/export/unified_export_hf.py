@@ -53,6 +53,7 @@ from .model_config import (
     QUANTIZATION_W4A8_AWQ,
     QUANTIZATION_W4A8_NVFP4_FP8,
 )
+from .plugins import rename_and_prune_if_spec_decoding, set_config_if_spec_decoding
 from .quant_utils import (
     fuse_prequant_layernorm,
     get_activation_scaling_factor,
@@ -509,11 +510,14 @@ def export_hf_checkpoint(
     try:
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
+        # NOTE: (hg) Should we save hf_quant_config when there's no quantization applied?
         # Save hf_quant_config.json for backward compatibility
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
+
+        post_state_dict = rename_and_prune_if_spec_decoding(model, post_state_dict)
 
         # Save model
         model.save_pretrained(
@@ -527,6 +531,8 @@ def export_hf_checkpoint(
             config_data = json.load(file)
 
         config_data["quantization_config"] = hf_quant_config
+
+        config_data = set_config_if_spec_decoding(model, config_data)
 
         with open(original_config, "w") as file:
             json.dump(config_data, file, indent=4)

@@ -393,7 +393,9 @@ def get_onnx_bytes_and_metadata(
     # during inference.
     input_none_names = list(set(tree_spec_input.names) - set(input_names))
 
-    use_torch_autocast = not (is_fp4_quantized(model) or is_mxfp8_quantized(model))
+    use_torch_autocast = not (
+        is_fp4_quantized(model) or is_mxfp8_quantized(model) or weights_dtype == "fp32"
+    )
     autocast = torch.autocast("cuda") if use_torch_autocast else nullcontext()
 
     # Get output once (we export in inference mode - so also using inference mode here!)
@@ -485,8 +487,8 @@ def get_onnx_bytes_and_metadata(
     except StopIteration:
         param_dtype = torch.float32
     if weights_dtype in ["fp16", "bf16"] and param_dtype == torch.float32:
-        if is_mxfp8_quantized(model):
-            assert weights_dtype == "fp16", "BF16 + MXFP8 mixed precision is not supported yet"
+        if is_mxfp8_quantized(model) or is_int4_quantized(model):
+            assert weights_dtype == "fp16", "BF16 + MXFP8/INT4 mixed precision is not supported yet"
             onnx_opt_graph = convert_float_to_float16(
                 onnx_opt_graph,
                 keep_io_types=False,

@@ -110,12 +110,6 @@ def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
     ],
 )
 def test_unified_export_megatron(tmp_path, model_type, arch, algo):
-    if algo == "eagle":
-        try:
-            import megatron.core.post_training  # noqa: F401
-        except ImportError:
-            pytest.skip("megatron.core.post_training not found")
-
     # TODO: Fix TP>1 failures
     spawn_multiprocess_job(
         size=1,  # torch.cuda.device_count(),
