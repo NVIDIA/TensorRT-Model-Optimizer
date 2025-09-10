@@ -5,10 +5,12 @@ Model Optimizer Changelog (Linux)
 ^^^^^^^^^^^^^^^^^
 
 **Deprecations**
+- Deprecated ``quantize_mode`` argument in ``examples/onnx_ptq/evaluate.py`` to support strongly typing. Use ``engine_precision`` instead.
 
 **Bug Fixes**
 
 **New Features**
+- ``high_precision_dtype`` default to fp16 in ONNX quantization, i.e. quantized output model weights are now FP16 by default.
 
 0.35 (2025-09-04)
 ^^^^^^^^^^^^^^^^^

@@ -180,11 +180,11 @@ def get_parser() -> argparse.ArgumentParser:
     argparser.add_argument(
         "--high_precision_dtype",
         type=str,
-        default=None,
+        default="fp16",
         choices=["fp32", "fp16", "bf16"],
         help=(
-            "High precision data type, one of ['fp32', 'fp16', 'bf16']. For int8 quantization, the default value is "
-            "'fp32' and 'fp16' for other quantization modes."
+            "High precision data type of the output model. If the input model is of dtype fp32, "
+            "it will be converted to fp16 dtype by default."
         ),
     )
     argparser.add_argument(
@@ -262,8 +262,6 @@ def main():
             # Convert the NpzFile object to a Python dictionary
             calibration_data = {key: calibration_data[key] for key in calibration_data.files}
 
-    default_high_precision_dtype = "fp32" if args.quantize_mode == "int8" else "fp16"
-
     quantize(
         args.onnx_path,
         quantize_mode=args.quantize_mode,
@@ -284,7 +282,7 @@ def main():
         log_file=args.log_file,
         trt_plugins=args.trt_plugins,
         trt_plugins_precision=args.trt_plugins_precision,
-        high_precision_dtype=args.high_precision_dtype or default_high_precision_dtype,
+        high_precision_dtype=args.high_precision_dtype,
         mha_accumulation_dtype=args.mha_accumulation_dtype,
         disable_mha_qdq=args.disable_mha_qdq,
         dq_only=args.dq_only,
