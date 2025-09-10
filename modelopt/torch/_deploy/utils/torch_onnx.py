@@ -487,8 +487,8 @@ def get_onnx_bytes_and_metadata(
     except StopIteration:
         param_dtype = torch.float32
     if weights_dtype in ["fp16", "bf16"] and param_dtype == torch.float32:
-        if is_mxfp8_quantized(model):
-            assert weights_dtype == "fp16", "BF16 + MXFP8 mixed precision is not supported yet"
+        if is_mxfp8_quantized(model) or is_int4_quantized(model):
+            assert weights_dtype == "fp16", "BF16 + MXFP8/INT4 mixed precision is not supported yet"
             onnx_opt_graph = convert_float_to_float16(
                 onnx_opt_graph,
                 keep_io_types=False,

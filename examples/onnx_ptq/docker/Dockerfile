@@ -12,10 +12,11 @@ RUN python -m pip install --upgrade pip \
 
 WORKDIR /workspace
 
-RUN pip install tensorrt==10.13.2.6 && \
-    export TRT_PATH=$(python -c "import tensorrt; import os; print(os.path.dirname(tensorrt.__file__))") && \
-    export LD_LIBRARY_PATH="$TRT_PATH/lib:/usr/include:${LD_LIBRARY_PATH}" && \
-    export PATH="$TRT_PATH/bin:${PATH}"
+RUN pip install tensorrt==10.13.2.6
+ENV TRT_PATH=/usr/local/lib/python3.12/dist-packages/tensorrt
+ENV CUDNN_LIB_DIR=/usr/local/lib/python3.12/dist-packages/nvidia/cudnn/lib
+ENV LD_LIBRARY_PATH="${CUDNN_LIB_DIR}:${TRT_PATH}/lib:/usr/include:${LD_LIBRARY_PATH}"
+ENV PATH="${TRT_PATH}/bin:${PATH}"
 
 # Copy application code and install requirements
 COPY modelopt modelopt/modelopt
