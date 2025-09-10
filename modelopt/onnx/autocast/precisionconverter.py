@@ -595,9 +595,42 @@ class PrecisionConverter:
                         consumer.input[i] = input_tensor
 
     def _remove_preexisting_casts(self) -> None:
-        nodes_to_remove = []
+        # First check for special case where an input is casted directly to an output
+        model_input_names = {input.name for input in self.model.graph.input}
+        model_output_names = {output.name for output in self.model.graph.output}
+        # Ensure that special casts that we add are not removed by the following logic
+        casts_to_skip = []
+        # Add casts as a separate step to avoid modifying the graph while iterating over it
+        casts_to_add = []
         for node in self.model.graph.node:
             if node.op_type == "Cast":
+                if node.input[0] in model_input_names and node.output[0] in model_output_names:
+                    # Create a special cast just for the input-output case.
+                    new_cast = helper.make_node(
+                        "Cast",
+                        name=node.name,
+                        inputs=[node.input[0]],
+                        outputs=[node.output[0]],
+                        to=utils.get_cast_to_type(node),
+                    )
+                    casts_to_skip.append(node.name)
+                    casts_to_add.append(new_cast)
+                    # Now adjust the old cast's name, consumers and producers
+                    node.name = f"{node.name}_io_special_case"
+                    node_new_output_name = f"{node.output[0]}_io_special_case"
+                    for consumer in utils.get_consumer_nodes(self.model, node.output[0]):
+                        for i, input_name in enumerate(consumer.input):
+                            if input_name == node.output[0]:
+                                consumer.input[i] = node_new_output_name
+                    node.output[0] = node_new_output_name
+
+        for cast in casts_to_add:
+            self.model.graph.node.append(cast)
+        casts_to_skip = set(casts_to_skip)
+
+        nodes_to_remove = []
+        for node in self.model.graph.node:
+            if node.op_type == "Cast" and node.name not in casts_to_skip:
                 cast_from_type = self._get_tensor_type(node.input[0])
                 cast_to_type = utils.get_cast_to_type(node)
                 is_fp_cast = cast_to_type in [
