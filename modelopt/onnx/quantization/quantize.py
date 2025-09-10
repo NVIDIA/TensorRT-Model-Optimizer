@@ -219,7 +219,7 @@ def quantize(
     log_file: str | None = None,
     trt_plugins: list[str] | None = None,
     trt_plugins_precision: list[str] | None = None,
-    high_precision_dtype: str | None = None,
+    high_precision_dtype: str = "fp16",
     mha_accumulation_dtype: str = "fp16",
     disable_mha_qdq: bool = False,
     dq_only: bool = True,
@@ -286,12 +286,13 @@ def quantize(
             Each item should have the format <op_type>:<precision>, where precision can be fp32 (default) or fp16.
             For example: op_type_1:fp16 op_type_2:fp32.
         high_precision_dtype:
-            High precision data type, one of ['fp32', 'fp16']. If high_precision_dtype == 'fp16', model's weight and
-            activation will be converted to fp16.
+            High precision data type of the output model. If high_precision_dtype is 'fp16' or 'bf16'
+            and the input model is of dtype fp32, model's weight and activation will be converted to
+            'fp16' or 'bf16'.
         mha_accumulation_dtype:
-            MHA accumulation dtype. One of ['fp32', 'fp16']. 'fp16' by default.
-            If quantize_mode == 'fp8' and mha_accumulation_dtype == 'fp32', Cast nodes will be added to
-            MHA's bmm1 and bmm2's input and output tensors.
+            MHA accumulation dtype. One of ['fp32', 'fp16']. 'fp16' by default. If quantize_mode == 'fp8' and
+            mha_accumulation_dtype == 'fp32', Cast nodes will be added to MHA's bmm1 and bmm2's input
+            and output tensors.
         disable_mha_qdq:
             Don't add Q/DQ layers to MatMuls in MHA pattern.
         dq_only:
@@ -461,7 +462,7 @@ def quantize(
             use_external_data_format=use_external_data_format,
             intermediate_generated_files=intermediate_generated_files,
             trt_extra_plugin_lib_paths=trt_plugins,
-            high_precision_dtype=high_precision_dtype,  # type: ignore[arg-type]
+            high_precision_dtype=high_precision_dtype,
             mha_accumulation_dtype=mha_accumulation_dtype,
             passes=passes,
             log_level=log_level,

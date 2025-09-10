@@ -86,7 +86,6 @@ class TRTMode:
     BFLOAT16 = "bf16"
     FLOAT8 = "fp8"
     INT8 = "int8"
-    INT8_IQ = "int8_iq"
     INT4 = "int4"
     STRONGLY_TYPED = "stronglyTyped"
     BEST = "best"
@@ -98,7 +97,6 @@ TRT_MODE_FLAGS = {
     TRTMode.BFLOAT16: ["--bf16"],
     TRTMode.FLOAT8: ["--fp16", "--fp8"],
     TRTMode.INT8: ["--fp16", "--int8"],
-    TRTMode.INT8_IQ: ["--int8"],
     TRTMode.INT4: ["--fp16", "--int4"],
     TRTMode.STRONGLY_TYPED: ["--stronglyTyped"],
     TRTMode.BEST: ["--best"],

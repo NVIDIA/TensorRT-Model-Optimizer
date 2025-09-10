@@ -161,10 +161,15 @@ for model_path in "${model_paths[@]}"; do
         quant_mode="${all_modes[$i]}"
         gpu_id=$((i % nvidia_gpu_count))
 
-        if [ "$quant_mode" == "fp16" ] || [ "$quant_mode" == "int8_iq" ]; then
+        if [ "$quant_mode" == "fp16" ]; then
             eval_model_path=$model_dir/fp16/model.onnx
+            precision="fp16"
+        elif [ "$quant_mode" == "int8_iq" ]; then
+            eval_model_path=$model_dir/fp16/model.onnx
+            precision="best"
         else
             eval_model_path=$model_dir/$quant_mode/model.quant.onnx
+            precision="stronglyTyped"
         fi
 
         echo "Starting evaluation of $model_name for mode: $quant_mode on GPU $gpu_id"
@@ -172,7 +177,7 @@ for model_path in "${model_paths[@]}"; do
             CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
                 --onnx_path=$eval_model_path \
                 --model_name="${timm_model_name[$model_name]}" \
-                --quantize_mode=$quant_mode \
+                --engine_precision=$precision \
                 --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv &
         else
             CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
@@ -181,7 +186,7 @@ for model_path in "${model_paths[@]}"; do
                 --eval_data_size=$calib_size \
                 --batch_size $batch_size \
                 --model_name="${timm_model_name[$model_name]}" \
-                --quantize_mode=$quant_mode \
+                --engine_precision=$precision \
                 --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv &
         fi
         pids+=($!)
