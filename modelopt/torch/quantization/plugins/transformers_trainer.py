@@ -176,10 +176,13 @@ class QATTrainer(ModelOptHFTrainer):
             for state in modelopt_state["modelopt_state_dict"]
             if "kd_loss" not in state and "export_student" not in state
         ]
-        modelopt_state["modelopt_state_weights"] = get_quantizer_state_dict(self.model)
+        modelopt_state_full = {
+            "modelopt_state_dict": modelopt_state["modelopt_state_dict"],
+            "modelopt_state_weights": get_quantizer_state_dict(self.model),
+        }
 
         if self.args.should_save:
-            torch.save(modelopt_state, self._modelopt_state_path)
+            torch.save(modelopt_state_full, self._modelopt_state_path)
 
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
