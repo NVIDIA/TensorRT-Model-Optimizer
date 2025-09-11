@@ -172,7 +172,7 @@ fi
 
 # Configure backend-specific settings
 case "${BACKEND,,}" in
-  "fsdp1")
+  "fsdp1"|"fsdp")
     CONFIG_FILE="fsdp1.yaml"
     FSDP_ARGS="--fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
     GRADIENT_CHECKPOINTING_ARGS="--gradient_checkpointing True"
