@@ -158,8 +158,10 @@ class QuantLinearConvBase(QuantInputBase):
     def quantize_weight(self):
         """Context in which `self.weight` is quantized."""
         self._enable_weight_quantization = True
-        yield
-        self._enable_weight_quantization = False
+        try:
+            yield
+        finally:
+            self._enable_weight_quantization = False
 
     @staticmethod
     def _get_quantized_weight(module: "QuantLinearConvBase", weight: torch.Tensor) -> torch.Tensor:

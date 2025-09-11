@@ -380,7 +380,7 @@ def apply_mode(
         return model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
     # check if the model is in a wrapper
-    model = unwrap_model(model, raise_error=True)
+    model = unwrap_model(model, force_unwrap=True)
 
     # standardize mode to ModeConfigList
     mode_and_config = get_mode_config(mode)

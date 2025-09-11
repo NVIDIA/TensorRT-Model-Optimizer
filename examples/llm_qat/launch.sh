@@ -100,13 +100,17 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP="${1#*=}"
       ;;
-    --use_fsdp2*)
-      if [[ "$1" != *=* ]]; then shift; fi
-      USE_FSDP2="${1#*=}"
-      ;;
     --max_seq_length*)
       if [[ "$1" != *=* ]]; then shift; fi
       MAX_SEQ_LENGTH="${1#*=}"
+      ;;
+    --backend*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      BACKEND="${1#*=}"
+      ;;
+      --use_fsdp2*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      USE_FSDP2="${1#*=}"
       ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
@@ -142,6 +146,7 @@ COMPRESS=${COMPRESS:-"False"}
 DISTILL=${DISTILL:-"False"}
 TEACHER_MODEL=${TEACHER_MODEL:-$MODEL}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
+BACKEND=${BACKEND:-"fsdp1"}
 
 if [ -z $QUANT_CFG ]; then
   QUANT_ARGS=""
@@ -154,30 +159,55 @@ if [ ! -z $MAX_STEPS ]; then
   OPTIONAL_ARGS="$OPTIONAL_ARGS --max_steps $MAX_STEPS"
 fi
 
-CONFIG_FILE="fsdp1.yaml"
-FSDP_ARGS="--fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
-GRADIENT_CHECKPOINTING_ARGS="--gradient_checkpointing True"
-
+# Set backend based on --backend parameter, with backward compatibility for --use_fsdp2
 if [[ "${USE_FSDP2,,}" == "true" ]]; then
-  echo "Using FSDP2 instead of FSDP1. FSDP2 is not mature yet! Please use it with latest torch and transformers."
-  CONFIG_FILE="fsdp2.yaml"
-  GRADIENT_CHECKPOINTING_ARGS=""
+  echo "Warning: --use_fsdp2 is deprecated. Use --backend=fsdp2 instead."
+  BACKEND="fsdp2"
 fi
 
+# if compress is true, set backend to ddp
+if [[ "${COMPRESS,,}" == "true" ]]; then
+  BACKEND="ddp"
+fi
+
+# Configure backend-specific settings
+case "${BACKEND,,}" in
+  "fsdp1")
+    CONFIG_FILE="fsdp1.yaml"
+    FSDP_ARGS="--fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
+    GRADIENT_CHECKPOINTING_ARGS="--gradient_checkpointing True"
+    ;;
+  "fsdp2")
+    echo "Using FSDP2 instead of FSDP1. FSDP2 is not mature yet! Please use it with latest torch and transformers."
+    CONFIG_FILE="fsdp2.yaml"
+    FSDP_ARGS="--fsdp_transformer_layer_cls_to_wrap $FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP"
+    GRADIENT_CHECKPOINTING_ARGS=""
+    ;;
+  "ddp")
+    CONFIG_FILE="ddp.yaml"
+    FSDP_ARGS=""
+    GRADIENT_CHECKPOINTING_ARGS="--gradient_checkpointing True"
+    ;;
+  "deepspeed")
+    CONFIG_FILE="deepspeed.yaml"
+    FSDP_ARGS=""
+    GRADIENT_CHECKPOINTING_ARGS="--gradient_checkpointing True"
+    ;;
+  *)
+    echo "Error: Invalid backend '$BACKEND'. Supported backends: fsdp1, fsdp2, ddp, deepspeed"
+    exit 1
+    ;;
+esac
+
+# TODO: Remove this after simple distillation is supported
 DISTILLATION_ARGS=""
 if [[ "${DISTILL,,}" == "true" ]]; then
   DISTILLATION_ARGS="--distill $DISTILL --teacher_model $TEACHER_MODEL"
-  # Distillation does not work with memory efficient loading
-  FSDP_ARGS="$FSDP_ARGS --fsdp_cpu_ram_efficient_loading False"
+  # Distillation does not work with memory efficient loading for FSDP
+  if [[ "${BACKEND,,}" == "fsdp1" || "${BACKEND,,}" == "fsdp2" ]]; then
+    FSDP_ARGS="$FSDP_ARGS --fsdp_cpu_ram_efficient_loading False"
+  fi
 fi
-
-# real quantization does not work with FSDP, only works with FSDP2
-if [[ "${COMPRESS,,}" == "true" && "${USE_FSDP2,,}" != "true" ]]; then
-  echo "Compression is not supported with FSDP. Disabling FSDP and using DDP."
-  FSDP_ARGS=""
-  CONFIG_FILE="ddp.yaml"
-fi
-
 
 CMD="accelerate launch --config-file accelerate_config/$CONFIG_FILE $FSDP_ARGS \
     main.py \
@@ -215,4 +245,3 @@ CMD="accelerate launch --config-file accelerate_config/$CONFIG_FILE $FSDP_ARGS \
 start_time=$(date +%s)
 sh -c "$CMD"
 echo "Total time taken: $(( $(date +%s) - $start_time )) seconds"
-python convert_sharded_ckpt.py --hf_model_path $MODEL --sharded_ckpt_path $OUTPUT_DIR --output_path $OUTPUT_DIR
