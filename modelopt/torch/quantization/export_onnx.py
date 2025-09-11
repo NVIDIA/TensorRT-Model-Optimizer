@@ -106,7 +106,14 @@ import contextlib
 
 import onnx
 import torch
-from torch.onnx import _type_utils, symbolic_helper
+from packaging.version import Version
+
+if Version(torch.__version__) >= Version("2.9.0"):
+    from torch.onnx._internal.torchscript_exporter import _type_utils
+else:
+    from torch.onnx import _type_utils
+
+from torch.onnx import symbolic_helper
 from torch.onnx import symbolic_helper as sym_help
 from torch.onnx._internal import jit_utils
 from torch.onnx.symbolic_opset14 import _attention_scale, _causal_attention_mask
