@@ -1133,7 +1133,7 @@ class CompressConfig(ModeloptBaseConfig):
 
     compress: dict[str, bool] = ModeloptField(
         default={"*": True},
-        title="""Enable weight compression for the given pattern. Default is False for all weights.
+        title="""Enable weight compression for the given pattern. Default is True for all weights.
         Call `compress` function to compress the model weights.""",
     )
 
