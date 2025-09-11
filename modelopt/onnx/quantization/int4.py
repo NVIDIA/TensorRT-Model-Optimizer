@@ -19,7 +19,6 @@ import copy
 import gc
 import math
 import os
-import re
 import tempfile
 import time
 from collections.abc import Sequence
@@ -37,13 +36,24 @@ from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.op_types import is_fusible_scaling_op
 from modelopt.onnx.quantization.calib_utils import RandomDataProvider
 from modelopt.onnx.quantization.graph_utils import (
+    _find_quantizable_weights,
     expand_node_names_from_patterns,
+    get_precision_info,
     get_tensor_consumer_nodes,
     get_tensor_producer_nodes,
 )
 from modelopt.onnx.quantization.gs_patching import patch_gs_modules
 from modelopt.onnx.quantization.ort_utils import create_inference_session
-from modelopt.onnx.quantization.quant_utils import _pad, dq_tensor, find_scales, quant_tensor, rtn
+from modelopt.onnx.quantization.quant_utils import (
+    _pad,
+    dq_tensor,
+    find_scales,
+    get_num_bits,
+    quant_tensor,
+    rtn,
+    update_block_size,
+    update_scale_map_for_per_channel_nodes,
+)
 from modelopt.onnx.utils import save_onnx
 
 __all__ = ["quantize"]
@@ -94,6 +104,7 @@ def _quantize_gather_nodes(
     block_size: int,
     use_zero_point: bool,
     dq_only: bool,
+    precision_info: dict[str, int] | None,
 ):
     """Return scale, zero-point, and weights for quantizable gather nodes using INT4 RTN."""
     t = time.time()
@@ -110,11 +121,16 @@ def _quantize_gather_nodes(
                     continue
                 name = in_tensor.name
                 w = in_tensor.values
+                num_bits = get_num_bits(precision_info, name)
+                block_size_updated = update_block_size(
+                    num_bits, block_size, w=w, quantize_axis=gather_quantize_axis
+                )
                 s, zp = find_scales(
                     np.asarray(w),
-                    block_size,
+                    block_size_updated,
                     quantize_axis=gather_quantize_axis,
                     use_zero_point=use_zero_point,
+                    num_bits=num_bits,
                 )
                 s = s.astype(w.dtype)
                 scales_map[name] = s
@@ -130,9 +146,10 @@ def _quantize_gather_nodes(
                     qw = rtn(
                         np.asarray(w),
                         s,
-                        block_size,
+                        block_size_updated,
                         quantize_axis=gather_quantize_axis,
                         zp=zp if zp is None else zp.astype(w.dtype),
+                        num_bits=num_bits,
                     )
                     weights_map[name] = qw.astype(weight_dtype)
                 else:
@@ -153,6 +170,7 @@ def _quantize_gather_nodes(
         )
     else:
         logger.info("Found 0 Gather nodes to quantize")
+    scales_map = update_scale_map_for_per_channel_nodes(scales_map, block_size, precision_info)
     return weights_map, scales_map, zero_point_map
 
 
@@ -161,7 +179,6 @@ def quantize_rtn(
     block_size: int,
     dq_only: bool = False,
     nodes_to_exclude: list[str] = [],
-    precision_info: dict[str, int] | None = None,
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the RTN (Round-to-Nearest) algorithm.
@@ -201,9 +218,13 @@ def quantize_rtn(
     logger.info("Computing scales for gemm weights")
     scales = {}
     gemm_io_type = {}
+    precision_info = get_precision_info(onnx_model, nodes_to_exclude, **kwargs)
     for name, w in gemm_weights.items():
         logger.debug(f"Computing scales for weight {name} of shape {w.shape}")
-        s, zp = find_scales(np.asarray(w), block_size, precision_info=precision_info, name=name)
+        num_bits = get_num_bits(precision_info, name)
+        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        s, zp = find_scales(np.asarray(w), block_size_updated, num_bits=num_bits)
+
         assert zp is None, "zero-point is not enabled but zp is found non-None"
         scales[name] = s
         gemm_io_type[name] = onnx.helper.np_dtype_to_tensor_dtype(cast("int", w.dtype))
@@ -228,29 +249,28 @@ def quantize_rtn(
             gather_block_size,
             use_zero_point=False,
             dq_only=dq_only,
+            precision_info=precision_info,
         )
 
-    is_per_channel = block_size == -1
     if dq_only:
         # Calculate actual quantized weights.
         logger.info("Computing quantized weights for DQ-only mode")
         gemm_weights_quantized = {}
         for name, w in gemm_weights.items():
             logger.debug(f"Quantizing weight {name}")
-            qw = rtn(
-                np.asarray(w), scales[name], block_size, precision_info=precision_info, name=name
-            )
+            num_bits = get_num_bits(precision_info, name)
+            block_size_updated = update_block_size(num_bits, block_size, w=w)
+            qw = rtn(np.asarray(w), scales[name], block_size_updated, num_bits=num_bits)
             if has_cupy:
                 qw = np.asnumpy(qw)
                 scales[name] = np.asnumpy(scales[name])
             gemm_weights_quantized[name] = numpy.asarray(qw)
-
+        scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
         qdq.insert_dq_nodes(
             graph,
             scales,
             quantized_weights=gemm_weights_quantized,
             precision_info=precision_info,
-            is_per_channel=is_per_channel,
         )
 
         if gather_w_map is not None:
@@ -260,12 +280,12 @@ def quantize_rtn(
                 gather_s_map,
                 quantized_weights=gather_w_map,
                 precision_info=precision_info,
-                is_per_channel=is_per_channel,
             )
     else:
         if has_cupy:
             for name in scales:
                 scales[name] = np.asnumpy(scales[name])
+        scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
         qdq.insert_qdq_nodes(graph, scales, weight_map=gemm_tensors, precision_info=precision_info)
         if gather_w_map is not None:
             assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
@@ -317,8 +337,7 @@ def _clip_search(
     w: np.ndarray,
     awq_clip: AWQClipHelper,
     max_tokens: int = 64,
-    precision_info: dict[str, int] | None = None,
-    name: str | None = None,
+    num_bits: int = 4,
     **kwargs,
 ):
     """Apply AWQ algorithm on a weight and return optimum alpha.
@@ -359,11 +378,8 @@ def _clip_search(
         # Compute loss for each alpha value
         for alpha in awq_clip.loss:
             # Perform QDQ on the whole original weight tensor
-            qw, scales, _ = quant_tensor(
-                w_copy, block_size, alpha=alpha, precision_info=precision_info, name=name
-            )
-            cur_w = dq_tensor(qw, scales, block_size, precision_info=precision_info, name=name)
-
+            qw, scales, _ = quant_tensor(w_copy, block_size, alpha=alpha, num_bits=num_bits)
+            cur_w = dq_tensor(qw, scales, block_size)
             # Reshape before getting the batch of size co_bsz to multiply with input
             cur_w = cur_w.T  # ci, co -> co, ci
             cur_w = cur_w.reshape(co, 1, -1, block_size)  # co, 1, n_block, block_size
@@ -381,46 +397,6 @@ def _clip_search(
     awq_clip.update_best_params()
     if has_cupy:
         np.get_default_memory_pool().free_all_blocks()
-
-
-def _find_quantizable_weights(
-    graph: onnx.GraphProto,
-    nodes_to_exclude: list[str],
-) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int]]:
-    """Finds the quantizable weights from the graph."""
-    wa_pack = []
-    gemm_nodes = [
-        node
-        for node in graph.node
-        if node.op_type in ["Gemm", "MatMul"] and node.name not in nodes_to_exclude
-    ]
-    initializer_idxs = {initializer.name: idx for idx, initializer in enumerate(graph.initializer)}
-    for gemm in gemm_nodes:
-        if gemm.input[0] in initializer_idxs:
-            # Ex. two const input to MatMul_115 in fastvit0.onnx
-            # Note. RTN algorithm will quantize these weights though
-            continue
-
-        if gemm.input[1] not in initializer_idxs:
-            continue
-
-        weight_tensor = graph.initializer[initializer_idxs[gemm.input[1]]]
-        if len(weight_tensor.dims) == 1:  # 1D blocked quantization not supported
-            continue
-
-        gemm_io_type = cast("int", weight_tensor.data_type)
-
-        act_tensor = onnx.helper.ValueInfoProto()
-        act_tensor.name = gemm.input[0]
-
-        # TODO: support transA by transposing activation tensors in _clip_search
-        do_transpose = gemm.op_type == "Gemm" and any(
-            attr.name == "transB" and attr.i > 0 for attr in gemm.attribute
-        )
-
-        wa_pack.append((act_tensor, weight_tensor, do_transpose, gemm_io_type))
-
-    return wa_pack
 
 
 def _augment_graph(
@@ -463,7 +439,6 @@ def _quantize_awq_clip(
     force_fp16: bool = False,
     nodes_to_exclude: list[str] = [],
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
-    precision_info: dict[str, int] | None = None,
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
@@ -498,7 +473,7 @@ def _quantize_awq_clip(
     for inp_d in data_reader:
         inputs.append(inp_d)
         assert isinstance(inp_d, dict)
-
+    precision_info = get_precision_info(onnx_model, nodes_to_exclude, **kwargs)
     # Apply AWQ clip on selected weights
     t = time.time()
     alphas = {}
@@ -521,11 +496,10 @@ def _quantize_awq_clip(
         if do_transpose:
             w = w.T
         w = np.asarray(w)
-
-        awq_clip = AWQClipHelper(w, block_size, **kwargs)
-        _clip_search(
-            x, w, awq_clip, precision_info=precision_info, name=weight_tensor.name, **kwargs
-        )
+        num_bits = get_num_bits(precision_info, weight_tensor.name)
+        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        awq_clip = AWQClipHelper(w, block_size_updated, **kwargs)
+        _clip_search(x, w, awq_clip, num_bits=num_bits, **kwargs)
         alphas[weight_tensor.name] = awq_clip.best_alpha
 
     logger.info(f"Clip search for all weights took {time.time() - t} seconds")
@@ -549,9 +523,8 @@ def _quantize_awq_clip(
         w = np.asarray(w)
 
         alpha = alphas.get(weight_tensor.name, 1)
-        qw, scale, _ = quant_tensor(
-            w, block_size, alpha=alpha, precision_info=precision_info, name=weight_tensor.name
-        )
+        num_bits = get_num_bits(precision_info, weight_tensor.name)
+        qw, scale, _ = quant_tensor(w, block_size, alpha=alpha, num_bits=num_bits)
         if has_cupy:
             qw = np.asnumpy(qw)
             scale = np.asnumpy(scale)
@@ -577,35 +550,34 @@ def _quantize_awq_clip(
     gather_s_map = None
     if gather_quantize_axis is not None:
         gather_w_map, gather_s_map, _ = _quantize_gather_nodes(
-            graph,
+            graph_gs,
             nodes_to_exclude,
             gather_quantize_axis,
             gather_block_size,
             use_zero_point=False,
             dq_only=True,
+            precision_info=precision_info,
         )
 
     t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
-    is_per_channel = block_size == -1
+    scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
     qdq.insert_dq_nodes(
         graph_gs,
         scales,
         quantized_weights=gemm_weights_quantized,
         attributes=dq_node_attributes,
         precision_info=precision_info,
-        is_per_channel=is_per_channel,
     )
     if gather_w_map is not None:
         assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
         gather_dq_node_attributes = {"axis": gather_quantize_axis, "block_size": gather_block_size}
         qdq.insert_dq_nodes(
             graph_gs,
-            scales,
+            gather_s_map,
             quantized_weights=gather_w_map,
             attributes=gather_dq_node_attributes,
             precision_info=precision_info,
-            is_per_channel=is_per_channel,
         )
     logger.info(f"Inserting DQ nodes took {time.time() - t} seconds")
 
@@ -707,7 +679,6 @@ def run_awq_scale_search_per_node(
 ):
     """Method that iterates over each quantizable node for scale search."""
     assert len(awq_lite) == len(wa_pack)
-
     for i in tqdm(
         range(len(wa_pack)),
         desc="Running AWQ scale search per node" + tqdm_msg_append_str,
@@ -745,8 +716,9 @@ def run_awq_scale_search_per_node(
         x = np.concatenate(output_dicts[act_tensor.name], axis=0).reshape(
             (-1, w.shape[0])
         )  # n_token, ci
-
-        awq_lite[i] = AWQLiteHelper(x, w, block_size, **kwargs)
+        num_bits = get_num_bits(precision_info, weight_tensor.name)
+        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        awq_lite[i] = AWQLiteHelper(x, w, block_size_updated, **kwargs)
 
         out_actual = x.__matmul__(w)
 
@@ -758,17 +730,13 @@ def run_awq_scale_search_per_node(
             )
             x_scaled = x * 1.0 / awq_scale
             w_scaled = w * awq_scale[:, np.newaxis]
-
             qw, scale, zp = quant_tensor(
                 w_scaled,
-                block_size,
+                block_size_updated,
                 use_zero_point=use_zero_point,
-                precision_info=precision_info,
-                name=weight_tensor.name,
+                num_bits=num_bits,
             )
-            dqw = dq_tensor(
-                qw, scale, block_size, zp=zp, precision_info=precision_info, name=weight_tensor.name
-            )
+            dqw = dq_tensor(qw, scale, block_size_updated, zp=zp)
             out_curr = x_scaled.__matmul__(dqw)
             loss = np.mean(np.power((out_actual - out_curr), 2))
             del out_curr
@@ -777,10 +745,8 @@ def run_awq_scale_search_per_node(
         awq_lite[i].update_best_params()
         if enable_weight_clipping:
             w = w * (awq_lite[i].best_scale[:, np.newaxis])
-            awq_clip = AWQClipHelper(w, block_size, **kwargs)
-            _clip_search(
-                x, w, awq_clip, precision_info=precision_info, name=weight_tensor.name, **kwargs
-            )
+            awq_clip = AWQClipHelper(w, block_size_updated, **kwargs)
+            _clip_search(x, w, awq_clip, num_bits=num_bits, **kwargs)
             clip_alphas[weight_tensor.name] = awq_clip.best_alpha
         del x, w, out_actual, output_dicts
         if has_cupy:
@@ -847,7 +813,6 @@ def get_x_w_mean_for_subgraph(
         np.get_default_memory_pool().free_all_blocks()
 
     assert w_concatenated is not None
-
     org_shape = w_concatenated.shape
     w_concatenated = w_concatenated.reshape(block_size, -1)
     div_by = np.amax(np.abs(w_concatenated), axis=0)
@@ -879,7 +844,6 @@ def run_awq_scale_search_per_subgraph(
     awq_lite,
     inputs,
     tqdm_msg_append_str,
-    precision_info: dict[str, int] | None = None,
     **kwargs: Any,
 ):
     """Method that iterates over each quantizable subgraph/siblings for scale search."""
@@ -935,21 +899,8 @@ def run_awq_scale_search_per_subgraph(
                 assert out_act is not None
                 x_scaled = x * 1.0 / awq_scale
                 w_scaled = w * awq_scale[:, np.newaxis]
-                qw, scale, zp = quant_tensor(
-                    w_scaled,
-                    block_size,
-                    use_zero_point=use_zero_point,
-                    precision_info=precision_info,
-                    name=weight_tensor.name,
-                )
-                dqw = dq_tensor(
-                    qw,
-                    scale,
-                    block_size,
-                    zp=zp,
-                    precision_info=precision_info,
-                    name=weight_tensor.name,
-                )
+                qw, scale, zp = quant_tensor(w_scaled, block_size, use_zero_point=use_zero_point)
+                dqw = dq_tensor(qw, scale, block_size, zp=zp)
                 out_curr = x_scaled.__matmul__(dqw)
                 loss += np.mean(np.power((out_act - out_curr), 2))
                 del out_curr, out_act
@@ -961,7 +912,6 @@ def run_awq_scale_search_per_subgraph(
                 best_error = loss
                 best_alpha = alpha
                 best_scale = awq_scale
-
         for wa_pack_idx in wa_pack_idx_list:
             assert np.isnan(best_scale).sum() == 0, best_scale
             assert awq_lite[wa_pack_idx] is None
@@ -1009,13 +959,12 @@ def _quantize_awq_lite(
     use_zero_point: bool = False,
     nodes_to_exclude: list[str] = [],
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
-    precision_info: dict[str, int] | None = None,
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
     logger.info("Quantizing model using AWQ lite algorithm")
     t = time.time()
-
+    precision_info = get_precision_info(onnx_model, nodes_to_exclude, **kwargs)
     run_per_subgraph = kwargs.get("awqlite_run_per_subgraph", False)
     fuse_nodes = kwargs.get("awqlite_fuse_nodes", True)
 
@@ -1024,6 +973,9 @@ def _quantize_awq_lite(
 
     # TODO - evaluate/add sysram based fast-path support in per-subgraph implementation
     assert not run_per_subgraph or not enable_fast_path_using_high_sysram
+
+    # TODO - add support for handling awq_lite mixed precision for per-subgraph implementation
+    assert not run_per_subgraph or precision_info is None
 
     augmented_model = copy.deepcopy(onnx_model)
     graph = augmented_model.graph
@@ -1096,8 +1048,8 @@ def _quantize_awq_lite(
     act_to_wa_pack_map, act_to_quant_nodes_weight_shape_map = (
         get_act_to_weight_map_and_act_to_wa_pack_map(wa_pack)
     )
-
     if run_per_subgraph:
+        # TODO - add support for handling awq_lite mixed precision for per-subgraph implementation
         awq_lite = run_awq_scale_search_per_subgraph(
             wa_pack,
             act_to_wa_pack_map,
@@ -1109,7 +1061,6 @@ def _quantize_awq_lite(
             awq_lite,
             inputs,
             msg,
-            precision_info,
             **kwargs,
         )
     else:
@@ -1178,13 +1129,14 @@ def _quantize_awq_lite(
         assert enable_weight_clipping or (alpha == 1), (
             "clip range enabled without enabling weight-clipping param"
         )
+        num_bits = get_num_bits(precision_info, weight_tensor.name)
+        block_size_updated = update_block_size(num_bits, block_size, w=w_scaled)
         qw, scale, zp = quant_tensor(
             w_scaled,
-            block_size,
+            block_size_updated,
             alpha=alpha,
             use_zero_point=use_zero_point,
-            precision_info=precision_info,
-            name=weight_tensor.name,
+            num_bits=num_bits,
         )
 
         assert use_zero_point is True or zp is None, "zp is not according to use-zero-point setting"
@@ -1305,11 +1257,12 @@ def _quantize_awq_lite(
             gather_block_size,
             use_zero_point=use_zero_point,
             dq_only=True,
+            precision_info=precision_info,
         )
 
     t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
-
+    scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
     qdq.insert_dq_nodes(
         graph_gs,
         scales,
@@ -1354,119 +1307,6 @@ def _quantize_awq_lite(
     return model
 
 
-def should_quantize_to_int8(layer_name: str, int8_layers: list[str]):
-    """Check if layer should be quantized to INT8.
-
-    The int8_layers list contains ONNX node names like '/model/layers.13/attn/qkv_proj/MatMul'.
-    The layer_name argument is an ONNX initializer name like 'model.layers.13.attn.qkv_proj.MatMul.weight'.
-
-    To match these, we:
-      - Remove the leading slash from the node name.
-      - Replace all '/' with '.' to match the naming convention of the initializer.
-
-    This allows us to correctly identify which weights should be quantized to INT8.
-    """
-    if not int8_layers:
-        return False
-    normalized_patterns = []
-    for pattern in int8_layers:
-        p = pattern.lstrip("/")
-        p = p.replace("/", ".")
-        normalized_patterns.append(p)
-    return any(norm_pattern in layer_name for norm_pattern in normalized_patterns)
-
-
-def get_layer_precision_mapping(
-    onnx_model: onnx.ModelProto,
-    int8_precision_pattern: str | None = None,
-    nodes_to_exclude: list[str] | None = [r"/lm_head"],
-):
-    graph = onnx_model.graph
-
-    nodes_to_exclude = expand_node_names_from_patterns(graph, nodes_to_exclude)
-    # Collect quantizable weight tensors
-    wa_pack = _find_quantizable_weights(graph, nodes_to_exclude)
-
-    if int8_precision_pattern:
-        int8_layers_list = [x.strip() for x in int8_precision_pattern.split(",") if x.strip()]
-
-    else:
-        matmul_nodes = [
-            node
-            for node in onnx_model.graph.node
-            if node.op_type == "MatMul" and "lm_head" not in node.name
-        ]
-
-        # Only include nodes matching the specified patterns for all layers present in the model
-        # For example, for all i where a node exists with name:
-        #   /model/layers.{i}/attn/qkv_proj/MatMul
-        #   /model/layers.{i}/attn/v_proj/MatMul
-        #   /model/layers.{i}/mlp/down_proj/MatMul
-        pattern_regexes = [
-            re.compile(r"^/model/layers\.(\d+)/attn/qkv_proj/MatMul$"),
-            re.compile(r"^/model/layers\.(\d+)/attn/v_proj/MatMul$"),
-            re.compile(r"^/model/layers\.(\d+)/mlp/down_proj/MatMul$"),
-        ]
-
-        # Filter matmul_nodes to only those matching the patterns
-        filtered_matmul_nodes = []
-        for node in matmul_nodes:
-            for pat in pattern_regexes:
-                if pat.match(node.name):
-                    filtered_matmul_nodes.append(node)
-                    break
-
-        # Build a mapping from group key to list of node names (ordered by layer index if possible)
-        def extract_group_key(node_name):
-            # Extract the two components before 'MatMul' in the name, e.g. ...foo.bar.MatMul
-            parts = node_name.split("/")
-            if len(parts) >= 3:
-                return ".".join(parts[-3:-1])
-            return node_name
-
-        group_to_nodes = {}
-        for node in filtered_matmul_nodes:
-            group_key = extract_group_key(node.name)
-            group_to_nodes.setdefault(group_key, []).append(node.name)
-
-        int8_layers_set = set()
-        for names in group_to_nodes.values():
-            n = len(names)
-            if n == 0:
-                continue
-
-            # Try to sort by layer index if present
-            def layer_idx(name):
-                m = re.search(r"layers\.(\d+)\.", name)
-                return int(m.group(1)) if m else 0
-
-            names_sorted = sorted(names, key=layer_idx)
-            first_eighth = int(n // 8)
-            last_eighth = int(n // 8)
-            # First 1/8
-            int8_layers_set.update(names_sorted[:first_eighth])
-            # Last 1/8
-            if last_eighth > 0:
-                int8_layers_set.update(names_sorted[-last_eighth:])
-            # Every third in the rest (excluding first and last eighth)
-            rest_start = first_eighth
-            rest_end = n - last_eighth
-            for i in range(rest_start, rest_end):
-                if (i - rest_start) % 3 == 0:
-                    int8_layers_set.add(names_sorted[i])
-        int8_layers_list = list(int8_layers_set)
-
-    # NEW: Create precision info mapping
-    precision_info = {}
-    for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type) in enumerate(wa_pack):
-        weight_name = weight_tensor.name
-        if should_quantize_to_int8(weight_name, int8_layers_list):
-            precision_info[weight_name] = 8
-        else:
-            precision_info[weight_name] = 4
-    return precision_info
-
-
 def quantize(
     onnx_path: str | onnx.ModelProto,
     calibration_method: str = "awq_lite",
@@ -1478,8 +1318,6 @@ def quantize(
     nodes_to_exclude: list[str] | None = [r"/lm_head"],
     log_level: str = "INFO",
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
-    k_quant_mixed: bool = False,
-    int8_layers: str | None = None,
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Applies INT4 Weight-Only-Quantization (WoQ) to an ONNX model.
@@ -1531,6 +1369,10 @@ def quantize(
                                               Default: None (Gather nodes not quantized).
                 - **gather_block_size** (int): Block-size for Gather nodes quantization.
                                               Default: 32.
+                - **enable_mixed_quant** (bool): If True, enable mixed quantization.
+                                              Default: False.
+                - **int8_layers** (str): comma-separated list of layer patterns to quantize to INT8 instead of INT4.
+                                              Default: [].
     **Returns**: A quantized ONNX model in ONNX ModelProto format.
     """
     configure_logging(level=log_level.upper())
@@ -1561,10 +1403,6 @@ def quantize(
     else:
         onnx_model = onnx_path
 
-    precision_info = None
-    if k_quant_mixed:
-        precision_info = get_layer_precision_mapping(onnx_model, int8_layers, nodes_to_exclude)
-
     # Initialize calibration_data_reader if not provided
     if calibration_data_reader is None:
         calibration_data_reader = RandomDataProvider(onnx_model)
@@ -1578,7 +1416,6 @@ def quantize(
             block_size,
             dq_only="dq" in calibration_method,
             nodes_to_exclude=nodes_to_exclude,
-            precision_info=precision_info,
             **kwargs,
         )
     elif calibration_method in ["awq_lite", "awq_full"]:
@@ -1598,7 +1435,6 @@ def quantize(
             use_zero_point=use_zero_point,
             enable_weight_clipping=do_weight_clipping,
             input_shapes_profile=input_shapes_profile,
-            precision_info=precision_info,
             **kwargs,
         )
     elif calibration_method in ["awq_clip", "awq_clip_trt"]:
@@ -1610,7 +1446,6 @@ def quantize(
             block_size,
             nodes_to_exclude=nodes_to_exclude,
             input_shapes_profile=input_shapes_profile,
-            precision_info=precision_info,
             **kwargs,
         )
     else:

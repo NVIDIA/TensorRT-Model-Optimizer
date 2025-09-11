@@ -157,8 +157,35 @@ def get_weights_scaling_factor(
     return q_per_block_scale.astype(np.float32)
 
 
+def update_block_size(
+    num_bits: int, block_size: int, quantize_axis: int = 0, w: np.ndarray = None
+) -> int:
+    """Update the block size for quantization.
+
+    Args:
+        num_bits (int): Number of bits for quantization.
+        block_size (int): Current block size. If -1, per-channel quantization is used.
+        quantize_axis (int): Axis along which to quantize.
+        w (np.ndarray): Weight tensor to be quantized.
+
+    Returns:
+        int: Updated block size.
+    """
+    if block_size is not None and (block_size == -1 or num_bits == 8):
+        return w.shape[quantize_axis]
+    return block_size
+
+
 def get_num_bits(precision_info: dict[str, int] | None = None, name: str | None = None) -> int:
-    """Determine the number of bits for quantization from precision_info."""
+    """Determine the number of bits for quantization from precision_info.
+
+    Args:
+        precision_info (dict[str, int] | None): Optional dictionary mapping tensor names to number of bits.
+        name (str | None): Name of the tensor.
+
+    Returns:
+        int: Number of bits to use for quantization. Defaults to 4 if not specified.
+    """
     if precision_info and name in precision_info:
         num_bits = precision_info[name]
     else:
@@ -201,21 +228,26 @@ def _depad(w: np.ndarray, orig_shape: tuple, quantize_axis: int = 0) -> np.ndarr
     return ans
 
 
+def update_scale_map_for_per_channel_nodes(
+    scales_map: dict[str, np.ndarray], block_size: int, precision_info: dict[str, int] | None = None
+):
+    """Update the scale map for per-channel nodes."""
+    for name in scales_map:
+        num_bits = get_num_bits(precision_info, name)
+        is_per_channel = (block_size == -1) or (num_bits == 8)
+        scales_map[name] = scales_map[name].reshape(-1) if is_per_channel else scales_map[name]
+    return scales_map
+
+
 def find_scales(
     w: np.ndarray,
     block_size: int,
     quantize_axis: int = 0,
     alpha: float = 1.0,
     use_zero_point: bool = False,
-    precision_info: dict[str, int] | None = None,
-    name: str | None = None,
+    num_bits: int = 4,
 ):
     """Find scale factors for `w` via `s = max(w.block(block_size)) / 7`."""
-    num_bits = get_num_bits(precision_info, name)
-    # If block_size == -1 and num_bits == 8 as no support for int8 block-wise dq node,
-    # set block_size to the size of the quantize_axis dimension to do per-channel quantization
-    if block_size == -1 or num_bits == 8:
-        block_size = w.shape[quantize_axis]
     w = _pad(w, block_size, quantize_axis)
     if quantize_axis == 0:
         w = w.T
@@ -225,7 +257,7 @@ def find_scales(
     s_shape[-1] = s_last_dim
     z = None
     if not use_zero_point:
-        scale = 2 ** (num_bits - 1)
+        scale = 2 ** (num_bits - 1) - 1
         w_amax = np.abs(w.reshape(-1, block_size)).max(axis=-1)
         s = (w_amax * alpha) / scale
         s = s.reshape(s_shape)
@@ -241,6 +273,11 @@ def find_scales(
         temp = -temp
         temp = temp.clip(min=min_int, max=max_int)
         z = temp
+        # Validate zero-point values are within expected range
+        if not np.all((z >= min_int) & (z <= max_int)):
+            raise ValueError(
+                f"Zero-point values out of range [{min_int}, {max_int}]: min={np.min(z)}, max={np.max(z)}"
+            )
         assert s.shape == z.shape, "s and z shape mismatch"
         s = s.reshape(s_shape)
         z = z.reshape(s_shape)
@@ -258,18 +295,12 @@ def rtn(
     block_size: int,
     quantize_axis: int = 0,
     zp: np.ndarray = None,
-    precision_info: dict[str, int] | None = None,
-    name: str | None = None,
+    num_bits: int = 4,
 ) -> np.ndarray:
     """Quantizes `w` with scale factors `s` via Round-to-Nearest.
 
     Ties are broken by rounding to the nearest even number.
     """
-    num_bits = get_num_bits(precision_info, name)
-    # If block_size == -1 and num_bits == 8 as no support for int8 block-wise dq node,
-    # set block_size to the size of the quantize_axis dimension to do per-channel quantization
-    if block_size == -1 or num_bits == 8:
-        block_size = w.shape[quantize_axis]
     w_padded = _pad(w, block_size, quantize_axis)
     num_blocks = w_padded.shape[quantize_axis] // s.shape[quantize_axis]
     if zp is None:
@@ -300,15 +331,8 @@ def dq_tensor(
     block_size: int,
     quantize_axis: int = 0,
     zp: np.ndarray = None,
-    precision_info: dict[str, int] | None = None,
-    name: str | None = None,
 ) -> np.ndarray:
     """Dequantizes `w` with scale factors `s`."""
-    num_bits = get_num_bits(precision_info, name)
-    # If block_size == -1 and num_bits == 8 as no support for int8 block-wise dq node,
-    # set block_size to the size of the quantize_axis dimension to do per-channel quantization
-    if block_size == -1 or num_bits == 8:
-        block_size = w.shape[quantize_axis]
     w_padded = _pad(w, block_size, quantize_axis)
     num_blocks = w_padded.shape[quantize_axis] // s.shape[quantize_axis]
     if zp is None:
@@ -326,14 +350,19 @@ def quant_tensor(
     quantize_axis: int = 0,
     alpha: float = 1.0,
     use_zero_point: bool = False,
-    precision_info: dict[str, int] | None = None,
-    name: str | None = None,
+    num_bits: int = 4,
 ):
-    """Quantize a tensor using alpha etc. and return the quantized tensor."""
-    scale, zp = find_scales(
-        w, block_size, quantize_axis, alpha, use_zero_point, precision_info, name
-    )
-    wq = rtn(w, scale, block_size, quantize_axis, zp, precision_info, name)
+    """Quantize a tensor using alpha etc. and return the quantized tensor.
+
+    Returns:
+        tuple: A tuple containing:
+            - wq: The quantized weight tensor (np.ndarray)
+            - scale: The scale factors used for quantization (np.ndarray)
+            - zp: The zero-point values (np.ndarray or None if not using zero-point)
+    """
+    block_size_updated = update_block_size(num_bits, block_size, w=w)
+    scale, zp = find_scales(w, block_size_updated, quantize_axis, alpha, use_zero_point, num_bits)
+    wq = rtn(w, scale, block_size_updated, quantize_axis, zp, num_bits)
     return wq, scale, zp
 
 
