@@ -35,6 +35,7 @@ from modelopt.onnx.quantization.graph_utils import (
 from modelopt.onnx.quantization.quant_utils import (
     compute_e8m0,
     get_amax,
+    get_num_bits,
     get_weights_scaling_factor,
     get_weights_scaling_factor_2,
     pack_weights_to_int4,
@@ -54,7 +55,11 @@ onnx_dtype_map = {
     "Half": onnx.TensorProto.FLOAT16,
     "INT8": onnx.TensorProto.INT8,
     "UINT8": onnx.TensorProto.UINT8,
+    "INT4": onnx.TensorProto.INT4,
+    "UINT4": onnx.TensorProto.UINT4,
 }
+onnx_bit_dtype_signed_map = {4: "INT4", 8: "INT8"}
+onnx_bit_dtype_unsigned_map = {4: "UINT4", 8: "UINT8"}
 
 np_dtype_map = {
     "Float": np.float32,
@@ -303,12 +308,29 @@ def insert_pre_quant_scale_nodes(
     graph.toposort()
 
 
+def get_tensor_dtype(num_bits: int = 4, has_zero_point: bool = False) -> int:
+    """Get the appropriate tensor dtype based on precision info and zero point presence.
+
+    Args:
+        num_bits: Number of bits for quantization
+        has_zero_point: Whether the tensor has a zero point
+    Returns:
+        ONNX tensor data type constant
+    """
+    if has_zero_point:
+        dtype_str = onnx_bit_dtype_unsigned_map[num_bits]
+    else:
+        dtype_str = onnx_bit_dtype_signed_map[num_bits]
+    return onnx_dtype_map[dtype_str]
+
+
 def insert_dq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
     quantized_weights: dict[str, np.ndarray],
     attributes: dict[str, Any] | None = None,
     zero_points: dict[str, np.ndarray] | None = None,
+    precision_info: dict[str, int] | None = None,
 ):
     """Insert new initializers and DQ nodes into graph.
 
@@ -325,10 +347,12 @@ def insert_dq_nodes(
         wq: np.ndarray,
         scale: np.ndarray,
         dq_nodes: dict[str, gs.Node],
-        attrs: dict[str, Any],
         zp: np.ndarray,
+        attrs: dict[str, Any] | None = None,
+        num_bits: int = 4,
     ):
-        tensor_dtype = onnx.TensorProto.INT4 if zp is None else onnx.TensorProto.UINT4
+        tensor_dtype = get_tensor_dtype(num_bits, zp is not None)
+
         wq_tensor = make_gs_quantized_weight(name, wq, tensor_dtype)
         scale_tensor = make_gs_scale(name, scale)
         dq_out = make_gs_dequantize_output(name, shape=wq.shape, dtype=scale.dtype)
@@ -350,7 +374,23 @@ def insert_dq_nodes(
         if zero_points is not None:
             zp = zero_points.get(name)
             assert zp is not None, "zero-point is enabled but zero-point values not found"
-        _insert_helper(name, quantized_weights[name], scale, dq_nodes, attributes, zp)  # type: ignore[arg-type]
+
+        num_bits = get_num_bits(precision_info, name)
+        attrs = attributes.copy() if attributes is not None else None
+        if ((attrs is not None) and (attrs.get("block_size", None) == -1)) or (num_bits == 8):
+            if attrs is not None:
+                attrs["axis"] = 1
+                if "block_size" in attrs:
+                    del attrs["block_size"]
+        _insert_helper(
+            name,
+            quantized_weights[name],
+            scale,
+            dq_nodes,
+            zp,
+            attrs,
+            num_bits=num_bits,
+        )
 
     _postprocess_qdq(
         graph,
@@ -363,6 +403,7 @@ def insert_qdq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
     weight_map: dict[str, gs.Tensor],
+    precision_info: dict[str, int] | None = None,
 ):
     """Insert scales and QDQ nodes into graph.
 
@@ -379,10 +420,13 @@ def insert_qdq_nodes(
         scale: np.ndarray,
         q_nodes: dict[str, gs.Node],
         dq_nodes: dict[str, gs.Node],
+        num_bits: int = 4,
     ):
+        tensor_dtype = get_tensor_dtype(num_bits)
+
         scale_tensor = make_gs_scale(name, scale)
-        zp_tensor = make_gs_zp(name, scale.shape, onnx.TensorProto.INT4)
-        q_out = make_gs_quantize_output(name, weight_to_quantize.shape, onnx.TensorProto.INT4)
+        zp_tensor = make_gs_zp(name, scale.shape, tensor_dtype)
+        q_out = make_gs_quantize_output(name, weight_to_quantize.shape, tensor_dtype)
         q_node = make_gs_quantize_node(
             name, inputs=[weight_to_quantize, scale_tensor, zp_tensor], outputs=[q_out]
         )
@@ -395,7 +439,14 @@ def insert_qdq_nodes(
 
     q_nodes, dq_nodes = {}, {}
     for name, scale in scales.items():
-        _insert_helper(name, weight_map[name], scale, q_nodes, dq_nodes)
+        _insert_helper(
+            name,
+            weight_map[name],
+            scale,
+            q_nodes,
+            dq_nodes,
+            num_bits=get_num_bits(precision_info, name),
+        )
 
     _postprocess_qdq(
         graph,
