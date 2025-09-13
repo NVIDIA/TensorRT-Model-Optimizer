@@ -169,6 +169,9 @@ class QATTrainer(ModelOptHFTrainer):
 
     def _save_modelopt_state_with_weights(self):
         """Save the modelopt weights for fsdp2 models."""
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
+
         modelopt_state = mto.modelopt_state(self.model)
         # TODO: remove this from ModelOpt HF Trainer flows
         modelopt_state["modelopt_state_dict"] = [
@@ -176,16 +179,13 @@ class QATTrainer(ModelOptHFTrainer):
             for state in modelopt_state["modelopt_state_dict"]
             if "kd_loss" not in state and "export_student" not in state
         ]
-        modelopt_state_full = {
+        modelopt_full_state = {
             "modelopt_state_dict": modelopt_state["modelopt_state_dict"],
             "modelopt_state_weights": get_quantizer_state_dict(self.model),
         }
 
         if self.args.should_save:
-            torch.save(modelopt_state_full, self._modelopt_state_path)
-
-        if torch.distributed.is_initialized():
-            torch.distributed.barrier()
+            torch.save(modelopt_full_state, self._modelopt_state_path)
 
     def _restore_modelopt_state_with_weights(self):
         modelopt_full_state = torch.load(self._modelopt_state_path, weights_only=False)
@@ -196,8 +196,7 @@ class QATTrainer(ModelOptHFTrainer):
         """Quantize the model. Restore the quantization state if it exists."""
         num_samples = min(self.quant_args.calib_size, len(self.eval_dataset))  # type: ignore [union-attr]
         dataset = self.train_dataset if self.train_dataset is not None else self.eval_dataset
-        if isinstance(dataset, torch.utils.data.Dataset):
-            dataset = torch.utils.data.Subset(dataset, list(range(num_samples)))
+        dataset = torch.utils.data.Subset(dataset, list(range(num_samples)))
         data_loader = self.get_eval_dataloader(dataset)
 
         def forward_loop(model):

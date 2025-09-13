@@ -87,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--quant-cfg",
         type=str,
-        default=mtq.NVFP4_DEFAULT_CFG,
+        default="NVFP4_DEFAULT_CFG",
         choices=mtq.config.choices,
         help="Quantization configuration",
     )
@@ -121,7 +121,7 @@ def main() -> None:
             m(batch["input_ids"].to(device))
 
     # Quantize the model
-    model = mtq.quantize(model, args.quant_cfg, calibrate)
+    model = mtq.quantize(model, getattr(mtq, args.quant_cfg), calibrate)
 
     # Initialize optimizer
     optimizer = AdamW(model.parameters(), lr=args.lr)
