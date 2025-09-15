@@ -46,7 +46,7 @@ from transformers.models.llama.modeling_llama import (
 from transformers.trainer_pt_utils import LabelSmoother
 from transformers.utils import ModelOutput
 
-from ..eagle.conversion import EagleDMRegistry, OfflineEagleDMRegistry
+from ..eagle.conversion import EagleDMRegistry
 from ..eagle.eagle_model import EagleModel
 from ..eagle.utils import RMSNorm, expand_mask, make_causal_mask
 from ..medusa.conversion import MedusaDMRegistry
@@ -1139,13 +1139,6 @@ class HFEagleModel(EagleModel):
         draft_tokens = torch.cat(draft_tokens, dim=-1).to(base_token.device)
 
         return base_token, draft_tokens
-
-
-@OfflineEagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
-class DetachedHFEagleModel(HFEagleModel):
-    """A wrapper for detached Eagle module."""
-
-    # TODO: Implement DetachedHFEagleModel class for offline eagle.
 
 
 class HFARValidation(AcceptanceRateValidation):
