@@ -166,12 +166,6 @@ async def main(args: argparse.Namespace) -> None:
 
         try:
             # Send the message to the OpenAI-compatible endpoint
-            # await client.chat.completions.create(
-            #     model=args.model,
-            #     messages=conversations,
-            #     temperature=0.0,
-            #     max_tokens=1,
-            # )
             await client.completions.create(
                 model=args.model,
                 prompt=input_string,
