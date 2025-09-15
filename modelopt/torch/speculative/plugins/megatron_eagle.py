@@ -1199,8 +1199,15 @@ class _DynamicEagleGPTModel(EagleModel):
         if self.eagle_offline:
             # aux_hidden_states and hidden_states are provided for offline eagle
             # _base_model_forward is skipped
+            if return_eagle_inputs:
+                raise ValueError("return_eagle_inputs is unsupported in EAGLE offline mode.")
             aux_hidden_states = kwargs.get("aux_hidden_states")
             hidden_states = kwargs.get("hidden_states")
+            if aux_hidden_states is None or hidden_states is None:
+                raise ValueError(
+                    "EAGLE offline mode requires kwargs: aux_hidden_states=[s,b,k*h], "
+                    "hidden_states=[s,b,h]."
+                )
         else:
             # When return_eagle_inputs is True, return decoder_input_for_eagle.
             # For LLM, decoder_input_for_eagle is just the text embeddings. However, for VLM
