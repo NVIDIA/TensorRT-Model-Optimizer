@@ -73,13 +73,6 @@ class KDSFTTrainer(SFTTrainer, KDTrainer):
     pass
 
 
-def _teacher_factory(model_name_or_path):
-    return transformers.AutoModelForCausalLM.from_pretrained(
-        model_name_or_path,
-        device_map=PartialState().process_index,
-    )
-
-
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, TrainingArguments))
     model_args, training_args = parser.parse_args_into_dataclasses()
@@ -117,7 +110,9 @@ def train():
 
     if model_args.single_model:
         logger.info("Loading single model only...")
-        model = _teacher_factory(model_path)
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_path, device_map=PartialState().process_index
+        )
         logger.info("Model loaded.")
     else:
         logger.info("Loading student model...")
@@ -128,12 +123,12 @@ def train():
         logger.info("Student loaded.")
         # Load checkpoint
         logger.info("Loading teacher model and converting to Distillation model...")
+        teacher_model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_args.teacher_name_or_path,
+            device_map=PartialState().process_index,
+        )
         kd_config = {
-            "teacher_model": (
-                _teacher_factory,
-                (model_args.teacher_name_or_path,),
-                {},
-            ),
+            "teacher_model": teacher_model,
             "criterion": LMLogitsLoss(),
             "expose_minimal_state_dict": False,  # FSDP forces us to disable this
         }

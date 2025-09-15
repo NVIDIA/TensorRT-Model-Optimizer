@@ -39,13 +39,9 @@ First obtain both a pretrained model to act as the teacher and a (usually smalle
 ```python
 from transformers import AutoModelForCausalLM
 
-# Define student
+# Define student & teacher
 student_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
-
-# Define callable which returns teacher
-def teacher_factory():
-    teacher_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-70B-Instruct")
-    return teacher_model
+teacher_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-70B-Instruct")
 ```
 
 ### Set up the meta model
@@ -58,7 +54,7 @@ Please see an example Distillation setup below. This example assumes the outputs
 import modelopt.torch.distill as mtd
 
 distillation_config = {
-    "teacher_model": teacher_factory,  # model initializer
+    "teacher_model": teacher_model,
     "criterion": mtd.LogitsDistillationLoss(),  # callable receiving student and teacher outputs, in order
     "loss_balancer": mtd.StaticLossBalancer(),  # combines multiple losses; omit if only one distillation loss used
 }
@@ -66,7 +62,7 @@ distillation_config = {
 distillation_model = mtd.convert(student_model, mode=[("kd_loss", distillation_config)])
 ```
 
-The `teacher_model` can be either a callable which returns an `nn.Module` or a tuple of `(model_cls, args, kwargs)`. The `criterion` is the distillation loss used between student and teacher tensors. The `loss_balancer` determines how the original and distillation losses are combined (if needed).
+The `teacher_model` can be either a `nn.Module`, a callable which returns an `nn.Module`, or a tuple of `(model_cls, args, kwargs)`. The `criterion` is the distillation loss used between student and teacher tensors. The `loss_balancer` determines how the original and distillation losses are combined (if needed).
 
 See [Distillation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/4_distillation.html) for more info.
 
