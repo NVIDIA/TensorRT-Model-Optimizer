@@ -61,15 +61,6 @@ mto.enable_huggingface_checkpointing()
 @dataclass
 class ModelArguments:
     model_name_or_path: str | None = field(default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-    omit_target_layers: bool = field(
-        default=False,
-        metadata={
-            "help": """Set `num_hidden_layers=0` for the base model. This is useful when training
-            in offline mode with precomputed hidden states, in order to save memory.
-            Note that evaluation is currently not supported with this setting, as the base model
-            is required to generate the baseline completions."""
-        },
-    )
 
 
 @dataclass
@@ -80,26 +71,18 @@ class DataArguments:
     eval_data_path: str = field(default=None, metadata={"help": "Path to the evaluation data."})
     offline_data_path: str = field(
         default=None,
-        metadata={"help": "Path to the offline training data. See `offline_training`."},
+        metadata={
+            "help": """Path to the offline training data. Providing this flag sets
+                  `eagle_offline` in the EagleConfig and enables offline training.
+                  The directory should contain many `.pt` files, each containing a pre-processed
+                  data sample. `data_path` should still point to the original conversations file.
+                  """
+        },
     )
     lazy_preprocess: bool = True
     draft_vocab_cache_dir: str = field(
         default="draft_vocab_cache",
         metadata={"help": "Path to the d2t cache directory."},
-    )
-    offline_training: bool = field(
-        default=False,
-        metadata={
-            "help": """Set to True to enable offline training where the
-                                 training data is loaded from pre-computed files only. This can
-                                 improve training speed when the target model and/or dataset are
-                                 large, but requires a lot of disk space.
-
-                                 When using this setting, set `offline_data_path` to a directory
-                                 containing many `.pt` files, each containing a
-                                 pre-processed data sample. `data_path` should still point to the
-                                 original conversations file."""
-        },
     )
 
 
@@ -158,17 +141,15 @@ def train():
     elif last_checkpoint is not None:
         checkpoint = last_checkpoint
 
+    use_offline_training = data_args.offline_data_path is not None
+
     if checkpoint:
         model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype="auto")
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
-        model_kwargs = {"num_hidden_layers": 0} if model_args.omit_target_layers else {}
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path, torch_dtype="auto", **model_kwargs
+            model_args.model_name_or_path, torch_dtype="auto"
         )
-        model.config.num_orig_hidden_layers = transformers.AutoConfig.from_pretrained(
-            model_args.model_name_or_path
-        ).num_hidden_layers
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             model_max_length=training_args.training_seq_len,
@@ -198,6 +179,9 @@ def train():
             }[training_args.mode]["config"]
 
             # overwrite config with custom config
+            if use_offline_training:
+                config["eagle_offline"] = True
+
             if eagle_args.eagle_config:
                 with open(eagle_args.eagle_config) as f:
                     custom_config = json.load(f)
@@ -237,7 +221,7 @@ def train():
     if training_args.mode == "medusa":
         data_module = make_medusa_supervised_data_module(tokenizer, data_args)
     elif training_args.mode in ["eagle1", "eagle3"]:
-        data_module = make_eagle_supervised_data_module(tokenizer, data_args)
+        data_module = make_eagle_supervised_data_module(tokenizer, data_args, use_offline_training)
 
     class ARValidationCallback(TrainerCallback):
         def __init__(self, ar_validate_steps: int = 500):

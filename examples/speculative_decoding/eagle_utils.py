@@ -225,14 +225,17 @@ class OfflineSupervisedDataset(Dataset):
             raise ValueError(msg)
 
         ret = {**preprocessed_base}  # Shallow copy so we don't accidentally modify the cache
-        ret["hidden_states"] = offline_data["hidden_states"]
-        ret["aux_hidden_states"] = offline_data["aux_hidden_states"]
-
+        ret["kwargs"] = {
+            "base_model_outputs": {
+                "base_model_hidden_states": offline_data["hidden_states"],
+                "aux_hidden_states": offline_data["aux_hidden_states"],
+            }
+        }
         return ret
 
 
 def make_eagle_supervised_data_module(
-    tokenizer: transformers.PreTrainedTokenizer, data_args
+    tokenizer: transformers.PreTrainedTokenizer, data_args, use_offline_training: bool
 ) -> dict:
     """Make dataset and collator for supervised fine-tuning.
 
@@ -250,11 +253,14 @@ def make_eagle_supervised_data_module(
         else:
             data_json = json.load(f)
 
-    if data_args.offline_training:
+    if use_offline_training:
         print_rank_0("Loading pre-processed data for offline training...")
         dataset_cls = OfflineSupervisedDataset
 
         # Glob for all .pt files in the data_path directory
+        assert data_args.offline_data_path is not None, (
+            "offline_data_path must be provided for offline training."
+        )
         offline_data_path = Path(data_args.offline_data_path)
         all_files = {str(p) for p in offline_data_path.glob("*.pt")}
         if not all_files:
@@ -346,15 +352,17 @@ class DataCollatorWithPadding:
 class DataCollatorForOffline(DataCollatorWithPadding):
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
         base_batch = super().__call__(features)
-        if "hidden_states" not in features[0]:
-            print(features[0].keys())
-            print(features[0])
-            print(features)
-            raise ValueError("Features do not contain 'hidden_states' key.")
-        max_hs_length = max(item["hidden_states"].shape[0] for item in features)
+        if "kwargs" not in features[0]:
+            raise ValueError("No kwargs found in batch features. Offline data required.")
+
+        features = [item["kwargs"]["base_model_outputs"] for item in features]
+        max_hs_length = max(item["base_model_hidden_states"].shape[0] for item in features)
 
         batch_hidden_states = torch.stack(
-            [self.paddingtensor2d(item["hidden_states"], max_hs_length) for item in features]
+            [
+                self.paddingtensor2d(item["base_model_hidden_states"], max_hs_length)
+                for item in features
+            ]
         )
         batch_aux_hidden_states = torch.stack(
             [self.paddingtensor2d(item["aux_hidden_states"], max_hs_length) for item in features]
@@ -362,8 +370,12 @@ class DataCollatorForOffline(DataCollatorWithPadding):
 
         batch = {
             **base_batch,
-            "hidden_states": batch_hidden_states,
-            "aux_hidden_states": batch_aux_hidden_states,
+            "kwargs": {
+                "base_model_outputs": {
+                    "base_model_hidden_states": batch_hidden_states,
+                    "aux_hidden_states": batch_aux_hidden_states,
+                }
+            },
         }
 
         return batch

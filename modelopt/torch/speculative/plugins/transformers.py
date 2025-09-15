@@ -311,7 +311,7 @@ class EagleModule(nn.Module):
                 hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                past_key_value=past_key_values,
+                past_key_values=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 position_embeddings=position_embeddings,
@@ -335,7 +335,7 @@ class HFEagleModel(EagleModel):
 
     def _set_default_aux_hidden_state_layers(self):
         # Read a custom config attribute since we override num_hidden_layers for offline training
-        num_layers = self.config.num_orig_hidden_layers
+        num_layers = self.config.num_hidden_layers
         self.eagle_config.eagle_aux_hidden_state_layer_ids = [
             1,
             max(0, num_layers // 2 - 1),
@@ -418,7 +418,7 @@ class HFEagleModel(EagleModel):
         )
         self.eagle_rotary_emb = LlamaRotaryEmbedding(config=self.eagle_config)
 
-        if len(self.model.layers) == 0:
+        if eagle_offline:
             # For offline training, the base model has no layers.
             # Read the device from the lm_head instead.
             device = self.lm_head.weight.device
@@ -770,8 +770,6 @@ class HFEagleModel(EagleModel):
         loss_mask: torch.Tensor | None = None,
         classification_loss_coefficient: float | None = 1,
         regression_loss_coefficient: float | None = 0,
-        hidden_states: torch.Tensor | None = None,
-        aux_hidden_states: list[torch.Tensor] | None = None,
         **kwargs,
     ) -> Any:
         """Forward pass of the EagleModel.
@@ -806,7 +804,7 @@ class HFEagleModel(EagleModel):
                 if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                     base_model_logits = self._map_logits_to_draft_vocab(base_model_logits)
             base_model_loss = None
-            past_key_values = None
+            past_key_values = DynamicCache()  # Dummy cache
 
         else:
             base_model_hidden_states, base_model_logits, base_model_loss, past_key_values = (
