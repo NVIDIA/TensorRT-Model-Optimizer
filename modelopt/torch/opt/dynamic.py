@@ -1273,7 +1273,8 @@ class DynamicSpace:
             A dict of ``(parameter_name, choice)`` that specifies an active subnet.
         """
         return {
-            get_unwrapped_name(name): hp.active for name, hp in self.named_hparams(configurable)
+            get_unwrapped_name(name, self.model): hp.active
+            for name, hp in self.named_hparams(configurable)
         }
 
     def select(self, config: dict[str, Any], strict: bool = True) -> None:

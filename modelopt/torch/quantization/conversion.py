@@ -123,12 +123,12 @@ def restore_quantizer_state(model: nn.Module, config: QuantizeConfig, metadata: 
 
     for name, module in model.named_modules():
         if isinstance(module, TensorQuantizer):
-            name = get_unwrapped_name(name)
+            name = get_unwrapped_name(name, model)
             module.set_from_modelopt_state(quantizer_state_dict[name])
 
     for name, module in model.named_modules():
         if isinstance(module, QuantModule):
-            name = get_unwrapped_name(name)
+            name = get_unwrapped_name(name, model)
             module.modelopt_post_restore(name)
 
     return model
@@ -166,7 +166,7 @@ def update_quantize_metadata(
 def quantizer_state(model: nn.Module) -> dict[str, Any]:
     """Returns the quantizer state dict describing the quantizer states in the model."""
     return {
-        get_unwrapped_name(n): m.get_modelopt_state()
+        get_unwrapped_name(n, model): m.get_modelopt_state()
         for n, m in model.named_modules()
         if isinstance(m, (TensorQuantizer, SequentialQuantizer))
     }
