@@ -844,7 +844,7 @@ class _DynamicEagleGPTModel(EagleModel):
             self.kld = logits_kld_loss
 
     def _get_eagle_input_hidden_states(self, hidden_states: torch.Tensor, apply_fc: bool = True):
-        """When _aux_hidden_states is not empty, then this is EAGLE-3.
+        """When _aux_hidden_states is not empty for online, then this is EAGLE-3.
 
         Args:
             hidden_states: last hidden_states
@@ -1234,7 +1234,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
         if self.eagle_offline:
             eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
-                aux_hidden_states, apply_fc=True
+                aux_hidden_states, apply_fc=self.eagle_config.use_aux_hidden_state
             )
         # If EAGLE-3, aux_hidden_states are gathered by the forward_hook
         elif return_eagle_inputs:
