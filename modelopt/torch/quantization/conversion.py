@@ -198,7 +198,6 @@ def _replace_quant_module(model: nn.Module, version=None, registry=QuantModuleRe
             # REPLACE on the parent (model), not on child
             quantized = registry.convert(child)
             setattr(model, name, quantized)
-            quantized.mopt_ckpt_versn = version
 
         # now recurse into whichever module is now at `model.name`
         _replace_quant_module(getattr(model, name), version=version, registry=registry)

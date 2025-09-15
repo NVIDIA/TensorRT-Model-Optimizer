@@ -26,8 +26,6 @@ from modelopt.torch.quantization.backends.gemm_registry import enable_real_quant
 from modelopt.torch.quantization.utils import is_quantized_linear
 from modelopt.torch.utils import torch_to
 
-from .checkpointing import format_modelopt_checkpoint_by_version
-
 INT4_AWQ_FULL_CFG = mtq.INT4_AWQ_CFG.copy()
 
 INT4_AWQ_FULL_CFG["algorithm"] = "awq_full"
@@ -83,9 +81,6 @@ def save_restore_test(model_cls, device, quant_config, compress=False, version=N
     quantize_model_and_forward(model_quant.to(device), quant_config, calib_data, compress)
 
     state_dict = mto.modelopt_state(model_quant)
-
-    if version is not None:
-        state_dict = format_modelopt_checkpoint_by_version(state_dict, version)
 
     mto.restore_from_modelopt_state(model_ref, state_dict)
     model_ref.load_state_dict(model_quant.state_dict())
