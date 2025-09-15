@@ -412,11 +412,12 @@ class ScaledE4M3Function(Function):
     """E4M3fy input with scale."""
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "t", "t", "i", "i", "s", "b")
+    @symbolic_helper.parse_args("v", "t", "t", "is", "i", "i", "s", "b")
     def symbolic(
         g,
         inputs,
         amax=None,
+        block_sizes=None,
         bias=None,
         E=4,  # noqa: N803
         M=3,  # noqa: N803
@@ -426,7 +427,7 @@ class ScaledE4M3Function(Function):
         """ONNX symbolic function."""
         from .export_onnx import export_fp8
 
-        return export_fp8(g, inputs, amax, trt_high_precision_dtype)
+        return export_fp8(g, inputs, amax, trt_high_precision_dtype, block_sizes)
 
     @staticmethod
     # Default values could cause errors from TorchDynamo during torch.export
@@ -434,6 +435,7 @@ class ScaledE4M3Function(Function):
         ctx,
         inputs,
         amax,
+        block_sizes,
         bias,
         E,  # noqa: N803
         M,  # noqa: N803
