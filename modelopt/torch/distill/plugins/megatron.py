@@ -56,12 +56,14 @@ class DistillationConfig:
         logit_layers: Tuple of logit layer names.
         skip_lm_loss: Whether to skip computing the standard language model loss (default: ``True``).
         kd_loss_scale: Relative scaling factor for the distillation loss if ``skip_lm_loss`` is ``False``.
+        logit_kl_temperature: Temperature for the logit KL-divergence loss.
     """
 
     intermediate_layer_pairs: list[tuple[str, str]] = field(default_factory=list)
     logit_layers: tuple[str, str] = ("output_layer", "output_layer")
     skip_lm_loss: bool = True
     kd_loss_scale: float = 1.0
+    logit_kl_temperature: float = 1.0
     criterion: Criterion | None = None
     loss_balancer: mtd.DistillationLossBalancer | None = None
 
@@ -71,6 +73,7 @@ class DistillationConfig:
             f"{self.intermediate_layer_pairs=}"
         )
         assert self.kd_loss_scale > 0, f"{self.kd_loss_scale=}"
+        assert self.logit_kl_temperature > 0, f"{self.logit_kl_temperature=}"
 
 
 def load_distillation_config(
@@ -96,7 +99,9 @@ def load_distillation_config(
 
     criterion = {}
     if student_cfg.pipeline_model_parallel_size == 1 or parallel_state.is_pipeline_last_stage():
-        criterion[tuple(cfg.logit_layers)] = LogitsKLLoss(student_cfg)
+        criterion[tuple(cfg.logit_layers)] = LogitsKLLoss(
+            student_cfg, temperature=cfg.logit_kl_temperature
+        )
         # NOTE: Projection layer shared among intermediate layer pairs.
         projection_layer = ProjectionLayer(student_cfg, teacher_cfg)
 
