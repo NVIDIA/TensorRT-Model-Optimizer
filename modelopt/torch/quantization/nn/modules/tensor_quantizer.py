@@ -650,19 +650,19 @@ class TensorQuantizer(nn.Module):
 
     def _get_block_sizes_list(self, shape):
         """Convert block_sizes dict to list format based on tensor shape.
-        
+
         Args:
             shape: The tensor shape to use for conversion (can be tuple or torch.Size)
-            
+
         Returns:
             List of block sizes for each dimension, or None if block_sizes is None
-            
+
         Example:
             block_sizes = {-2: 32} with shape [2, 24, 4608, 128] -> [1, 1, 32, 1]
         """
         if self.block_sizes is None:
             return None
-            
+
         block_sizes_list = []
         for dim in range(len(shape)):
             # Check both positive and negative dimension indices
@@ -670,7 +670,7 @@ class TensorQuantizer(nn.Module):
             block_size = self.block_sizes.get(dim, None) or self.block_sizes.get(dim_negative, None)
             block_sizes_list.append(block_size if block_size is not None else 1)
         return block_sizes_list
-    
+
     def _fake_quantize(self, inputs):
         """Fake quantization."""
         amax = None
@@ -956,7 +956,7 @@ class TensorQuantizer(nn.Module):
             and self.block_sizes.get("type", None) != "dynamic"
             and self._fake_quant
         ):
-            # Reshape is required if the logic isn’t handled in the simulation kernel
+            # Reshape is required if the logic isnt handled in the simulation kernel
             self._setup_for_blockquant(inputs)
             setattr(self, "_original_input_shape", inputs.shape)
             inputs = self._process_for_blockquant(inputs)

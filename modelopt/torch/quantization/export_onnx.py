@@ -234,6 +234,7 @@ def _fp8_quantize(
     )
     return q_op
 
+
 def _fp8_block_quantize(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
@@ -289,13 +290,14 @@ def _fp8_dequantize(
         out = g.op("Cast", out, to_i=onnx_dtype_map[otype])  # type: ignore[index]
     return out
 
+
 def _fp8_block_dequantize(
     g: torch.onnx._internal.jit_utils.GraphContext,
     inputs: torch.Value,
     scales: torch.Value,
     trt_high_precision_dtype: str,
     otype: str | None = None,
-    block_sizes: list = [1,1,128,1]
+    block_sizes: list = [1, 1, 128, 1],
 ):
     """Helper Function for Dequantization."""
     output_shape = sym_help._get_tensor_sizes(inputs)
@@ -339,8 +341,7 @@ def export_fp8(
         )
         return _fp8_block_dequantize(
             g, q_tensor, scales_output, trt_high_precision_dtype, otype, block_sizes
-        )  
-
+        )
 
 
 def scaled_dot_product_attention(
@@ -498,7 +499,9 @@ def export_fp8_mha(
         v_input_dtype = value.type().scalarType()
         if {q_input_dtype, k_input_dtype, v_input_dtype} != {high_precision_flag}:
             raise ValueError("The quantized MHA must have 16-bit inputs.")
-        query_scaled = export_fp8(g, query_scaled, q_quantized_scale, high_precision_flag, q_block_shape)
+        query_scaled = export_fp8(
+            g, query_scaled, q_quantized_scale, high_precision_flag, q_block_shape
+        )
         query_scaled = g.op("Cast", query_scaled, to_i=onnx_dtype_map["Float"])
         key_transposed_scaled = export_fp8(
             g, key_transposed_scaled, k_quantized_scale, high_precision_flag, k_block_shape
@@ -531,7 +534,7 @@ def export_fp8_mha(
 
     if not disable_fp8_mha:
         # Softmax's output scale is hard coded to 1.0
-        # We cannot do block quant for the softmax's output 
+        # We cannot do block quant for the softmax's output
         attn_weight = export_fp8(g, attn_weight, 1.0, high_precision_flag, None)
         attn_weight = g.op("Cast", attn_weight, to_i=onnx_dtype_map["Float"])
 
