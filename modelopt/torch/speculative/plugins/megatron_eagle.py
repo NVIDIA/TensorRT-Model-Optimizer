@@ -1284,7 +1284,9 @@ class _DynamicEagleGPTModel(EagleModel):
 
         # If eagle_freeze_base_model is set to True,
         # the base model is frozen .
-        loss = self.compute_language_model_loss(labels, logits_sbh)
+        loss = self.compute_language_model_loss(
+            labels, logits_sbh[:-1] if self.eagle_offline else logits_sbh
+        )
         loss = 0.0 * loss
 
         if self.eagle_config.parallel_draft_step > 1:
