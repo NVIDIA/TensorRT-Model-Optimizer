@@ -176,7 +176,7 @@ def replace_quant_module(model: nn.Module, version=None, registry=QuantModuleReg
     """Recursively replace the module with quantized module."""
     from .plugins.custom import (
         register_custom_model_plugins_on_the_fly,
-        register_custom_post_conversion_plugins,
+        register_custom_post_conversion_plugins, ## not needed for lora megatron
     )
 
     assert not is_quantized(model), "Model must not be quantized!"
