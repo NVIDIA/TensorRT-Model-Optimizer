@@ -459,7 +459,6 @@ class GPTModelImporter:
 
     def _import_state_dict(self):
         model = self.model
-        print("debug", model, flush=True)
 
         layer_pbar = tqdm(model.decoder.layers, disable=self.disable_tqdm)
 
@@ -471,7 +470,6 @@ class GPTModelImporter:
         # Decoder layers
         for layer in layer_pbar:
             layer_id = layer.layer_number - 1
-            print("layer", layer, flush=True)
 
             if isinstance(layer, MambaLayer):
                 if not isinstance(layer.norm, IdentityOp):
@@ -507,7 +505,7 @@ class GPTModelImporter:
                         self.rules["linear_proj"](attention.linear_proj, layer_id)
                     else:
                         layer_pbar.set_description("Importing GQA/MHA")
-                        print("attention", attention, flush=True)
+                        print("debug", hasattr(attention.core_attention, "softmax_offset"), flush=True)
                         if attention.q_layernorm is not None and not isinstance(
                             attention.q_layernorm, (IdentityOp, L2Norm)
                         ):
@@ -516,6 +514,7 @@ class GPTModelImporter:
                         self.rules["linear_qkv"](attention.linear_qkv, layer_id)
                         self.rules["linear_proj"](attention.linear_proj, layer_id)
                         if hasattr(attention.core_attention, "softmax_offset"):
+                            print("softmax_offset", attention.core_attention.softmax_offset, flush=True)
                             self.rules["softmax_offset"](
                                 attention.core_attention.softmax_offset, layer_id
                             )
