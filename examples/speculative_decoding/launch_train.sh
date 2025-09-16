@@ -91,7 +91,7 @@ set -x
 # Get the default value for save_steps based on the available number of GPUs
 GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count())")
 # Calculate save_steps
-DEFAULT_SAVE_STEPS=$((192 / GPU_COUNT))
+DEFAULT_SAVE_STEPS=$((8192 / GPU_COUNT))
 
 MODEL=${MODEL:-"TinyLlama/TinyLlama-1.1B-Chat-v1.0"}
 MODE=${MODE:-"eagle3"}

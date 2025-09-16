@@ -330,12 +330,16 @@ class EagleModule(nn.Module):
 
 
 @EagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
+@OfflineEagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
 class HFEagleModel(EagleModel):
     """Eagle Model Class for huggingface models."""
 
     def _set_default_aux_hidden_state_layers(self):
         # Read a custom config attribute since we override num_hidden_layers for offline training
-        num_layers = self.config.num_hidden_layers
+        if self.eagle_offline:
+            num_layers = self.config.num_orig_hidden_layers
+        else:
+            num_layers = self.config.num_hidden_layers
         self.eagle_config.eagle_aux_hidden_state_layer_ids = [
             1,
             max(0, num_layers // 2 - 1),
@@ -1144,13 +1148,6 @@ class HFEagleModel(EagleModel):
         draft_tokens = torch.cat(draft_tokens, dim=-1).to(base_token.device)
 
         return base_token, draft_tokens
-
-
-@OfflineEagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
-class DetachedHFEagleModel(HFEagleModel):
-    """A wrapper for detached Eagle module."""
-
-    # TODO: Implement DetachedHFEagleModel class for offline eagle.
 
 
 class HFARValidation(AcceptanceRateValidation):

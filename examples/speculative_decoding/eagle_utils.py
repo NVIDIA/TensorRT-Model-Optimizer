@@ -219,12 +219,13 @@ class OfflineSupervisedDataset(Dataset):
         offline_data["aux_hidden_states"] = offline_data["aux_hidden_states"][:max_length, :]
 
         # Make sure the input_ids have the same shape
-        if not torch.equal(preprocessed_base["input_ids"], offline_data["input_ids"]):
+        if preprocessed_base["input_ids"].shape != offline_data["input_ids"].shape:
             msg = f"""Input IDs from offline data do not match the preprocessed input IDs
                                 for offline data sample at {offline_file_path}."""
             raise ValueError(msg)
 
         ret = {**preprocessed_base}  # Shallow copy so we don't accidentally modify the cache
+        ret["input_ids"] = offline_data["input_ids"]
         ret["kwargs"] = {
             "base_model_outputs": {
                 "base_model_hidden_states": offline_data["hidden_states"],
@@ -370,11 +371,9 @@ class DataCollatorForOffline(DataCollatorWithPadding):
 
         batch = {
             **base_batch,
-            "kwargs": {
-                "base_model_outputs": {
-                    "base_model_hidden_states": batch_hidden_states,
-                    "aux_hidden_states": batch_aux_hidden_states,
-                }
+            "base_model_outputs": {
+                "base_model_hidden_states": batch_hidden_states,
+                "aux_hidden_states": batch_aux_hidden_states,
             },
         }
 
