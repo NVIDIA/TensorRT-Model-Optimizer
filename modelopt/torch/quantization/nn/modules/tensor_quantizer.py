@@ -707,12 +707,12 @@ class TensorQuantizer(nn.Module):
             outputs = scaled_e4m3(
                 inputs,
                 amax,
-                block_sizes_list,
                 self._get_bias(inputs),
                 E,
                 M,
                 self._trt_high_precision_dtype,
                 self._pass_through_bwd,
+                block_sizes_list,
             )
 
         else:

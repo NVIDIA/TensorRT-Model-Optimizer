@@ -417,12 +417,12 @@ class ScaledE4M3Function(Function):
         g,
         inputs,
         amax=None,
-        block_sizes=None,
         bias=None,
         E=4,  # noqa: N803
         M=3,  # noqa: N803
         trt_high_precision_dtype=None,
         pass_through_bwd=False,
+        block_sizes=None,
     ):
         """ONNX symbolic function."""
         from .export_onnx import export_fp8
@@ -435,12 +435,12 @@ class ScaledE4M3Function(Function):
         ctx,
         inputs,
         amax,
-        block_sizes,
         bias,
         E,  # noqa: N803
         M,  # noqa: N803
         trt_high_precision_dtype=None,
         pass_through_bwd=False,
+        block_sizes=None,
     ):
         """Forward method."""
         if E != 4 or M != 3:
