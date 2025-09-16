@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2
+FROM nvcr.io/nvidia/tensorrt-llm/release:1.0.0rc6
 
 ARG PIP_EXTRA_INDEX_URL="https://pypi.nvidia.com"
 ENV PIP_EXTRA_INDEX_URL=$PIP_EXTRA_INDEX_URL \
