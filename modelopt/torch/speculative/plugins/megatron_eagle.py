@@ -764,7 +764,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
         # Use default aux_hidden_state layers if use_aux_hidden_state is True
         # but no layer id is given
-        # layer ids are not used in detached eagle, but we need to set this to have correct fc_input_size_multiplier
+        # layer ids are not used in offline eagle, but we need to set this to have correct fc_input_size_multiplier
         if (
             self.eagle_config.use_aux_hidden_state
             and len(self.eagle_config.eagle_aux_hidden_state_layer_ids) == 0
