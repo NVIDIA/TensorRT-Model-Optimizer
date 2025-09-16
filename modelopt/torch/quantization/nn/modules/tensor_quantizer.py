@@ -29,7 +29,6 @@ except ImportError:
     DTensor = None
 
 import torch.nn.functional as F
-from packaging.version import Version
 from torch import nn
 from torch.onnx._globals import GLOBALS
 
@@ -1022,48 +1021,6 @@ class TensorQuantizer(nn.Module):
         s += " quant" if (self._if_quant) else ""
         s += " calib" if (self._if_calib) else ""
         return s
-
-    @property
-    def mopt_ckpt_versn(self):
-        """Version of the checkpoint if it is restored from a checkpoint."""
-        return getattr(self, "_mopt_ckpt_versn", None)
-
-    @mopt_ckpt_versn.setter
-    def mopt_ckpt_versn(self, version: str):
-        self._mopt_ckpt_versn = str(version)
-
-    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
-        """Special handling for loading older checkpoints.
-
-        This implementation is for backward compatibility and can be deprecated in future versions.
-
-        Args:
-            state_dict: A dict containing the state of the top level module
-            prefix: A string that prefixes all of this modules state in state_dict, e.g. 'model.conv1.'
-        """
-        if self.mopt_ckpt_versn is None or Version(self.mopt_ckpt_versn) >= Version("0.29"):
-            # Warnings below are raised if users use partial state dictionary intentionally (eg:- HF ckpts)
-            # For ModelOpt >= 0.29, the buffers will be correctly created, So lets skip the warnings
-            return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
-
-        _attrs = ["_amax", "_pre_quant_scale", "_svdquant_lora_a", "_svdquant_lora_b"]
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        for attr in _attrs:
-            has_dst = attr in self._buffers
-            has_src = prefix + attr in state_dict
-
-            if not has_src and has_dst:
-                warnings.warn(f"{prefix[:-1]}: No {attr} in state_dict.")
-            elif has_src and not has_dst:
-                warnings.warn(
-                    f"{prefix[:-1]}: No '{attr}' buffer to load {attr} into."
-                    f" '{attr}` is created as a buffer for now. Please move the model to the correct device and "
-                    "dtype after this by calling `model.to(device, dtype)`."
-                )
-                self.register_buffer(attr, state_dict[prefix + attr].clone().detach().to(device))
-
-        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def _get_properties_for_modelopt_state(self):
         return (

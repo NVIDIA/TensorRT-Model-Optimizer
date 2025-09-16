@@ -309,7 +309,9 @@ class PipelineManager:
 
     @staticmethod
     def create_pipeline_from(
-        model_type: ModelType, torch_dtype: torch.dtype = torch.bfloat16
+        model_type: ModelType,
+        torch_dtype: torch.dtype = torch.bfloat16,
+        override_model_path: str | None = None,
     ) -> DiffusionPipeline:
         """
         Create and return an appropriate pipeline based on configuration.
@@ -321,7 +323,9 @@ class PipelineManager:
             ValueError: If model type is unsupported
         """
         try:
-            model_id = MODEL_REGISTRY[model_type]
+            model_id = (
+                MODEL_REGISTRY[model_type] if override_model_path is None else override_model_path
+            )
             if model_type == ModelType.SD3_MEDIUM:
                 pipe = StableDiffusion3Pipeline.from_pretrained(model_id, torch_dtype=torch_dtype)
             elif model_type in [ModelType.FLUX_DEV, ModelType.FLUX_SCHNELL]:

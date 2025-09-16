@@ -722,7 +722,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--verbose",
-        help="Print verbose output (e.g. quantization summary). Disable by --no_verbose.",
+        help="Print verbose output (e.g. quantization summary). Disable by --no-verbose.",
         default=True,
         action=argparse.BooleanOptionalAction,
     )

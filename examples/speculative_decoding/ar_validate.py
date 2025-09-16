@@ -26,7 +26,7 @@ from modelopt.torch.speculative.plugins.transformers import HFARValidation
 mto.enable_huggingface_checkpointing()
 
 
-def validate_ar(model, tokenizer, ds, steps=3, osl=20, num_samples=20, device=None):
+def validate_ar(model, tokenizer, ds, steps=3, osl=20, num_samples=80, device=None):
     validator = HFARValidation(model, tokenizer)
     num_samples = min(num_samples, len(ds))
     ars = []
@@ -54,12 +54,12 @@ def validate_ar(model, tokenizer, ds, steps=3, osl=20, num_samples=20, device=No
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, required=True, help="Path to model directory")
-    parser.add_argument("--steps", type=int, default=1, help="Steps for AR validation")
+    parser.add_argument("--steps", type=int, default=3, help="Steps for AR validation")
     parser.add_argument(
-        "--osl", type=int, default=100, help="Output sequence length for AR validation"
+        "--osl", type=int, default=32, help="Output sequence length for AR validation"
     )
     parser.add_argument(
-        "--num_samples", type=int, default=20, help="Number of MT-Bench samples to use"
+        "--num_samples", type=int, default=80, help="Number of MT-Bench samples to use"
     )
     parser.add_argument(
         "--ar_lower_bound",

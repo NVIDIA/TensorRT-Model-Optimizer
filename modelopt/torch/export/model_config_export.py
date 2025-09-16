@@ -362,6 +362,7 @@ def torch_to_tensorrt_llm_checkpoint(
                     "glm",
                     "llama",
                     "mllama",
+                    "qwen",
                 ], f"lm_head not available for decoder {decoder_type}"
                 config.share_embedding_table = True
 
