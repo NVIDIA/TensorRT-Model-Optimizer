@@ -87,11 +87,9 @@ fi
 
 QFORMAT_MODIFIED="${QFORMAT//,/_}"
 
-MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')
+MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')_${QFORMAT_MODIFIED}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}
 
-MODEL_FULL_NAME=${MODEL_NAME}_${QFORMAT_MODIFIED}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}_${EXPORT_FORMAT}
-
-SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_FULL_NAME}
+SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}
 
 MODEL_CONFIG=${SAVE_PATH}/config.json
 
@@ -188,13 +186,13 @@ if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH
         cuda_major=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader -i 0 | cut -d. -f1)
 
         if [ "$cuda_major" -lt 10 ]; then
-            echo "Please build the tensorrt_llm engine on Blackwell GPU for deployment. Checkpoint export_path: $SAVE_PATH"
+            echo "Please deploy the NVFP4 checkpoint on a Blackwell GPU. Checkpoint export_path: $SAVE_PATH"
             exit 0
         fi
     fi
 
     if [[ ! " fp8 nvfp4 bf16 fp16 int4_awq w4a8_awq " =~ " ${QFORMAT} " ]]; then
-        echo "Quant $QFORMAT not supported with the TensorRT-LLM torch llmapi. Allowed values are: fp8, nvfp4, bf16, fp16, int4_awq, w4a8_awq"
+        echo "Quant $QFORMAT specified. Please read TensorRT-LLM quantization support matrix https://nvidia.github.io/TensorRT-LLM/features/quantization.html#quantization-in-tensorrt-llm and use TensorRT-LLM for deployment. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
 
@@ -315,15 +313,15 @@ if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     pushd ../llm_eval/
 
     if [[ $TASKS =~ "livecodebench" ]]; then
-        bash run_livecodebench.sh $MODEL_FULL_NAME $BUILD_MAX_BATCH_SIZE $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/livecodebench.txt
+        bash run_livecodebench.sh $MODEL_NAME $BUILD_MAX_BATCH_SIZE $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/livecodebench.txt
         mkdir -p $SAVE_PATH/livecodebench
-        mv LiveCodeBench/output/$MODEL_FULL_NAME/* $SAVE_PATH/livecodebench
+        mv LiveCodeBench/output/$MODEL_NAME/* $SAVE_PATH/livecodebench
         echo "LiveCodeBench results are saved under $SAVE_PATH/livecodebench."
 
     fi
 
     if [[ $TASKS =~ "simple_eval" ]]; then
-        bash run_simple_eval.sh $MODEL_FULL_NAME $SIMPLE_EVAL_TASKS $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/simple_eval.txt
+        bash run_simple_eval.sh $MODEL_NAME $SIMPLE_EVAL_TASKS $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/simple_eval.txt
         echo "Simple eval results are saved under $SAVE_PATH/simple_eval.txt."
     fi
 
@@ -332,61 +330,5 @@ if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     kill $SERVE_PID
 fi
 
-if [[ $TASKS =~ "benchmark" ]]; then
-
-    if [ "$PP" -ne 1 ]; then
-        echo "Benchmark does not work with multi PP. Please run the c++ benchmark in the TensorRT-LLM repo..."
-        exit 1
-    fi
-
-    BENCHMARK_RESULT=${SAVE_PATH}/benchmark.txt
-    echo "Evaluating performance, result saved to $BENCHMARK_RESULT..."
-
-    # Prepare datasets for TRT-LLM benchmark
-    if [ -z "$TRT_LLM_CODE_PATH" ]; then
-        TRT_LLM_CODE_PATH=/app/tensorrt_llm
-        echo "Setting default TRT_LLM_CODE_PATH to $TRT_LLM_CODE_PATH."
-    fi
-
-    # Synthesize the tokenized benchmarking dataset
-    TRT_LLM_PREPARE_DATASET=$TRT_LLM_CODE_PATH/benchmarks/cpp/prepare_dataset.py
-
-    # Align with the official benchmark
-    BENCHMARK_INPUT_LEN=$BUILD_MAX_INPUT_LEN
-    BENCHMARK_OUTPUT_LEN=$BUILD_MAX_OUTPUT_LEN
-    BENCHMARK_NUM_REQUESTS=256
-
-    DATASET_TXT=${SAVE_PATH}/synthetic_${BENCHMARK_INPUT_LEN}_${BENCHMARK_OUTPUT_LEN}_${BENCHMARK_NUM_REQUESTS}.txt
-
-    if [ -z "$TRT_LLM_PREPARE_DATASET" ]; then
-        echo "Unable to prepare dataset for benchmarking. Please set TRT_LLM_CODE_PATH to the TRT-LLM code path."
-    else
-        if ! [ -f $DATASET_TXT ]; then
-            python $TRT_LLM_PREPARE_DATASET --stdout --tokenizer $MODEL_PATH token-norm-dist \
-                --input-mean $BENCHMARK_INPUT_LEN --output-mean $BENCHMARK_OUTPUT_LEN --input-stdev 0 --output-stdev 0 \
-                --num-requests $BENCHMARK_NUM_REQUESTS >$DATASET_TXT
-        else
-            echo "Use existing benchmark dataset in $DATASET_TXT."
-        fi
-    fi
-
-    MODEL_ARGS="--model_path $SAVE_PATH "
-    EXTRA_ARGS="--backend pytorch "
-
-    if [ "$BUILD_MAX_BATCH_SIZE" -gt 1 ]; then
-        trtllm-bench --model $MODEL_PATH $MODEL_ARGS throughput $EXTRA_ARGS --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
-    else
-        trtllm-bench --model $MODEL_PATH $MODEL_ARGS latency $EXTRA_ARGS --dataset $DATASET_TXT | tee -a $BENCHMARK_RESULT
-    fi
-
-fi
-
-if [ -n "$FREE_SPACE" ]; then
-    rm -f $SAVE_PATH/*.json
-    rm -f $SAVE_PATH/*.safetensors
-    rm -f $SAVE_PATH/*/*.json
-    rm -f $SAVE_PATH/*/*.engine
-    rm -f $SAVE_PATH/*/*.cache
-fi
 
 popd

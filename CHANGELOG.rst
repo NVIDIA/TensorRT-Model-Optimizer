@@ -6,7 +6,7 @@ Model Optimizer Changelog (Linux)
 
 **Deprecations**
 
-- TRT-LLM's TRT backend in ``examples/llm_ptq`` and ``examples/vlm_ptq``.
+- TRT-LLM's TRT backend in ``examples/llm_ptq`` and ``examples/vlm_ptq``. Tasks ``build`` and ``benchmark`` support are removed and replaced with ``quant``. For performance evaluation, please use ``trtllm-bench`` directly.
 - ``--export_fmt`` flag in ``examples/llm_ptq`` is removed. By default we export to the unified Hugging Face checkpoint format.
 - ``examples/vlm_eval`` as it depends on the deprecated TRT-LLM's TRT backend.
 

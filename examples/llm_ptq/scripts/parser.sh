@@ -54,7 +54,6 @@ parse_options() {
       --lm_eval_tasks ) LM_EVAL_TASKS="$2"; shift 2;;
       --lm_eval_limit ) LM_EVAL_LIMIT="$2"; shift 2;;
       --simple_eval_tasks ) SIMPLE_EVAL_TASKS="$2"; shift 2;;
-      --num_samples ) NUM_SAMPLES="$2"; shift 2;;
       --trust_remote_code ) TRUST_REMOTE_CODE=true; shift;;
       --use_seq_device_map ) USE_SEQ_DEVICE_MAP=true; shift;;
       --gpu_max_mem_percentage ) GPU_MAX_MEM_PERCENTAGE="$2"; shift 2;;
@@ -96,7 +95,7 @@ parse_options() {
     exit 1
   fi
 
-  VALID_TASKS=("quant" "mmlu" "mtbench" "benchmark" "lm_eval" "livecodebench" "simple_eval")
+  VALID_TASKS=("quant" "mmlu" "mtbench" "lm_eval" "livecodebench" "simple_eval")
 
   for task in $(echo "$TASKS" | tr ',' ' '); do
     is_valid_task=false

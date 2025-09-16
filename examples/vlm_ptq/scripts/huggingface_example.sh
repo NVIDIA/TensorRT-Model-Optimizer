@@ -35,10 +35,10 @@ if [ -z "$MODEL_PATH" ]; then
 fi
 
 case $QFORMAT in
-    fp8|int8_sq|int4_awq|w4a8_awq|fp16|bf16|nvfp4)
+    fp8|int8_sq|int4_awq|w4a8_awq|nvfp4)
         ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, int8_sq, int4_awq, w4a8_awq, nvfp4]" >&2
         exit 1
 esac
 
@@ -50,8 +50,8 @@ if [ -z "$ROOT_SAVE_PATH" ]; then
     ROOT_SAVE_PATH=$(pwd)
 fi
 
-MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')
-SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}_${QFORMAT}
+MODEL_NAME=$(basename $MODEL_PATH | sed 's/[^0-9a-zA-Z\-]/_/g')_${QFORMAT}${KV_CACHE_QUANT:+_kv_${KV_CACHE_QUANT}}
+SAVE_PATH=${ROOT_SAVE_PATH}/saved_models_${MODEL_NAME}
 
 MODEL_CONFIG=${SAVE_PATH}/config.json
 

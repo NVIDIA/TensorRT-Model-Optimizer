@@ -117,16 +117,16 @@ def run_llm_export_command(
 
 def run_llm_ptq_command(*, model: str, quant: str, **kwargs):
     kwargs.update({"model": model, "quant": quant})
-    kwargs.setdefault("tasks", "build")
+    kwargs.setdefault("tasks", "quant")
     kwargs.setdefault("calib", 16)
 
     cmd_parts = _extend_cmd_parts(["scripts/huggingface_example.sh", "--no-verbose"], **kwargs)
     run_example_command(cmd_parts, "llm_ptq")
 
 
-def run_vlm_ptq_command(*, model: str, type: str, quant: str, **kwargs):
-    kwargs.update({"model": model, "type": type, "quant": quant})
-    kwargs.setdefault("tasks", "build")
+def run_vlm_ptq_command(*, model: str, quant: str, **kwargs):
+    kwargs.update({"model": model, "quant": quant})
+    kwargs.setdefault("tasks", "quant")
     kwargs.setdefault("calib", 16)
 
     cmd_parts = _extend_cmd_parts(["scripts/huggingface_example.sh"], **kwargs)

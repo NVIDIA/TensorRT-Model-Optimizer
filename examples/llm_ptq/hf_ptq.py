@@ -584,25 +584,16 @@ def main(args):
 
         start_time = time.time()
         if model_type in ["t5", "bart", "whisper"] or args.sparsity_fmt != "dense":
-            # Still export TensorRT-LLM checkpoints for the models not supported by the
-            # TensorRT-LLM torch runtime.
+            warnings.warn(
+                "Still exporting TensorRT-LLM checkpoints for models not supported by the TensorRT-LLM torch runtime."
+            )
 
             # Move meta tensor back to device before exporting.
             remove_hook_from_module(model, recurse=True)
 
-            dtype = None
-            if "w4a8_awq" in args.qformat:
-                # TensorRT-LLM w4a8 only support fp16 as the dtype.
-                dtype = torch.float16
-
-            # For Gemma2-27B, TRT-LLM only works with bfloat16 as the dtype.
-            if model_type == "gemma2":
-                dtype = torch.bfloat16
-
             export_tensorrt_llm_checkpoint(
                 model,
                 model_type,
-                dtype=dtype,
                 export_dir=export_path,
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,

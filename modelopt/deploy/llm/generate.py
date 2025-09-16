@@ -30,7 +30,6 @@ try:
     from tensorrt_llm.llmapi import CudaGraphConfig
     from tensorrt_llm.llmapi import KvCacheConfig as TRT_KvCacheConfig
     from tensorrt_llm.llmapi.llm import LLM as TRTLLM
-    from tensorrt_llm.llmapi.tokenizer import TokenizerBase
 except ImportError:
     print("Please upgrade tensorrt-llm to 1.1.0rc2 or later")
     raise
@@ -57,7 +56,7 @@ class LLM(TRTLLM):
     def __init__(
         self,
         checkpoint_dir: str | Path,
-        tokenizer: "str | Path | TokenizerBase | None" = None,
+        tokenizer: "str | Path | None" = None,
         kv_cache_config: dict[str, int | float] = {},
         medusa_choices: Any = None,
         tp: int = 0,
@@ -67,7 +66,7 @@ class LLM(TRTLLM):
         """Initializes the LLM runner class.
 
         Args:
-            engine_dir: the directory path of the TensorRT-LLM engine.
+            checkpoint_dir: the directory path of the model checkpoint.
             tokenizer: the tokenizer. For example, a tokenizer from the Huggingface model.
             kv_cache_config: the kv cache config as a dict. Please refer to
                 https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/
@@ -112,7 +111,7 @@ class LLM(TRTLLM):
         # Check if any key in config contains both "num" and "experts"
         ep = 1
         enable_attention_dp = False
-        for k in config.keys():
+        for k in config:
             if "num" in k and "experts" in k:
                 ep = torch.cuda.device_count()
                 enable_attention_dp = True
