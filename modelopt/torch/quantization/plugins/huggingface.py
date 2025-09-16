@@ -559,6 +559,16 @@ try:
 except ImportError:
     pass
 
+try:
+    from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
+
+    if Qwen3NextSparseMoeBlock not in QuantModuleRegistry:
+        QuantModuleRegistry.register({Qwen3NextSparseMoeBlock: "hf.Qwen3NextSparseMoeBlock"})(
+            _QuantMoeSparseMoe
+        )
+except ImportError:
+    pass
+
 
 class _QuantGptOssExperts(_QuantFunctionalMixin):
     """Quantized wrapper for `transformers.GptOssExperts`.
