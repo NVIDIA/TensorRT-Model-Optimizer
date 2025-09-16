@@ -147,9 +147,15 @@ def train():
         model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype="auto")
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
+        model_kwargs = {"num_hidden_layers": 0} if use_offline_training else {}
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path, torch_dtype="auto"
+            model_args.model_name_or_path, torch_dtype="auto", **model_kwargs
         )
+        if use_offline_training:
+            # When doing offline training, we need to set num_hidden_layers
+            # since we override it when loading the model for space savings
+            model_config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path)
+            model.config.num_orig_hidden_layers = model_config.num_hidden_layers
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             model_max_length=training_args.training_seq_len,
