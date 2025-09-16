@@ -48,25 +48,22 @@ class TrainingArguments(transformers.TrainingArguments):
     do_train: bool = True
     do_eval: bool = True
     save_strategy: str = "no"
-    max_seq_length: int = 1024
+    max_length: int = 1024
     optim: str = "adamw_torch"
     learning_rate: float = 1e-5
     lr_scheduler_type: str = "cosine"
     dataloader_drop_last: bool = True
     dataset_num_proc: int = 8
-    dataset_batch_size: int = 500
     bf16: bool = True
     tf32: bool = True
 
 
 def llama_text_format_func(sample):
-    texts = []
-    for p, q, r in zip(sample["system_prompt"], sample["question"], sample["response"]):
-        if not p:
-            texts.append(f"<s>[INST] {q}[/INST]\n{r}</s>")
-        else:
-            texts.append(f"<s>[INST] <<SYS>>{p}<</SYS>>\n{q}[/INST]\n{r}</s>")
-    return texts
+    p, q, r = sample["system_prompt"], sample["question"], sample["response"]
+    if not p:
+        return f"<s>[INST] {q}[/INST]\n{r}</s>"
+    else:
+        return f"<s>[INST] <<SYS>>{p}<</SYS>>\n{q}[/INST]\n{r}</s>"
 
 
 class KDSFTTrainer(SFTTrainer, KDTrainer):
@@ -130,7 +127,6 @@ def train():
         kd_config = {
             "teacher_model": teacher_model,
             "criterion": LMLogitsLoss(),
-            "expose_minimal_state_dict": False,  # FSDP forces us to disable this
         }
         model = mtd.convert(model, mode=[("kd_loss", kd_config)])
         logger.info("Models converted.")

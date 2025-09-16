@@ -154,35 +154,47 @@ Keep in mind the training loss of the distillation run is not directly comparabl
 ### Train teacher
 
 ```bash
-accelerate launch --multi_gpu --mixed_precision bf16  main.py \
+accelerate launch \
+    --multi_gpu \
+    --mixed_precision bf16 \
+    --fsdp_version 2 \
+    --fsdp_reshard_after_forward True \
+    --fsdp_auto_wrap_policy 'TRANSFORMER_BASED_WRAP' \
+    --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer \
+    \
+    main.py \
     --single_model \
     --teacher_name_or_path 'meta-llama/Llama-2-7b-hf' \
     --output_dir ./llama2-7b-sft \
     --logging_steps 5 \
     --max_steps 400 \
-    --max_seq_length 2048 \
+    --max_length 2048 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_checkpointing True \
-    --fsdp 'full_shard auto_wrap' \
-    --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer
+    --gradient_checkpointing True
 ```
 
 ### Distill teacher into student
 
 ```bash
-accelerate launch --multi_gpu --mixed_precision bf16  main.py \
+accelerate launch \
+    --multi_gpu \
+    --mixed_precision bf16  \
+    --fsdp_version 2 \
+    --fsdp_reshard_after_forward True \
+    --fsdp_auto_wrap_policy 'TRANSFORMER_BASED_WRAP' \
+    --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer \
+    \
+    main.py \
     --teacher_name_or_path ./llama2-7b-sft \
     --student_name_or_path 'TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T' \
     --output_dir ./llama2-distill \
     --logging_steps 5 \
     --max_steps 200 \
-    --max_seq_length 2048 \
+    --max_length 2048 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_checkpointing False \
-    --fsdp 'full_shard auto_wrap' \
-    --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer
+    --gradient_checkpointing False
 ```
 
 > [!NOTE]
