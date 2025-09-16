@@ -148,5 +148,4 @@ python export_trtllm_ckpt.py --model_name_or_path meta-llama/Llama-2-7b-hf \
 
 ## Build TensorRT-LLM Engine
 
-For guidance on how to build TensorRT-LLM engines, please refer to [link](../llm_ptq/README.md#TensorRT-LLM-Engine-Build).
-To validate the built TensorRT-LLM engines, please follow the instructions at [link](../llm_ptq/README.md#TensorRT-LLM-Engine-Validation).
+For guidance on how to build TensorRT-LLM engines, please refer to [link](https://nvidia.github.io/TensorRT-LLM/commands/trtllm-build.html#trtllm-build) and use the `--weight_sparsity` flag.

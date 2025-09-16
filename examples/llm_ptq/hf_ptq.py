@@ -697,6 +697,13 @@ if __name__ == "__main__":
         help="Specify KV cache quantization format, default to fp8 if not provided",
     )
     parser.add_argument(
+        "--export_fmt",
+        required=False,
+        default="hf",
+        choices=["tensorrt_llm", "hf"],
+        help="Deprecated. Please avoid using this argument.",
+    )
+    parser.add_argument(
         "--trust_remote_code",
         help="Set trust_remote_code for Huggingface models and tokenizers",
         default=False,
@@ -748,6 +755,9 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    if args.export_fmt != "hf":
+        warnings.warn("Deprecated. --export_fmt will be ignored.")
 
     args.dataset = args.dataset.split(",") if args.dataset else None
     args.calib_size = [int(num_sample) for num_sample in args.calib_size.split(",")]
