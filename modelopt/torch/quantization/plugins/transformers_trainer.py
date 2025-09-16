@@ -203,7 +203,7 @@ class QATTrainer(ModelOptHFTrainer):
         data_loader = self.get_eval_dataloader(dataset)
 
         def forward_loop(model):
-            for batch in tqdm(data_loader, desc="Calibrating"):
+            for batch in tqdm(data_loader, desc="Calibrating", disable=not self.accelerator.is_main_process):
                 batch = self._prepare_inputs(batch)
                 # Important: We should forward pass using the unwrapped model
                 # mtq.quantize will unwrap the model pass the unwrapped model to the forward_loop
