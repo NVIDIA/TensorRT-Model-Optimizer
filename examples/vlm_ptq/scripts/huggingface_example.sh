@@ -69,6 +69,9 @@ if $TRUST_REMOTE_CODE; then
     PTQ_ARGS+=" --trust_remote_code "
 fi
 
+if [ -n "$KV_CACHE_QUANT" ]; then
+    PTQ_ARGS+=" --kv_cache_qformat=$KV_CACHE_QUANT "
+fi
 
 if [ "${MODEL_TYPE}" = "vila" ]; then
     # Install required dependency for VILA
@@ -95,6 +98,20 @@ if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
+    fi
+fi
+
+if [[ "$QFORMAT" != "fp8" ]]; then
+    echo "For quant format $QFORMAT, please refer to the TensorRT-LLM documentation for deployment. Checkpoint saved to $SAVE_PATH."
+    exit 0
+fi
+
+if [[ "$QFORMAT" == *"nvfp4"* ]] || [[ "$KV_CACHE_QUANT" == *"nvfp4"* ]]; then
+    cuda_major=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader -i 0 | cut -d. -f1)
+
+    if [ "$cuda_major" -lt 10 ]; then
+        echo "Please deploy the NVFP4 checkpoint on a Blackwell GPU. Checkpoint export_path: $SAVE_PATH"
+        exit 0
     fi
 fi
 
