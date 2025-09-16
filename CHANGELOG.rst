@@ -23,6 +23,7 @@ Model Optimizer Changelog (Linux)
 **Bug Fixes**
 
 - Fix attention head ranking logic for pruning Megatron Core GPT models.
+- Upgrade TensorRT-LLM dependency to 1.1.0rc2.
 
 **New Features**
 
