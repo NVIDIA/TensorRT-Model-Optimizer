@@ -336,10 +336,10 @@ class HFEagleModel(EagleModel):
 
     def _set_default_aux_hidden_state_layers(self):
         # Read a custom config attribute since we override num_hidden_layers for offline training
-        if self.eagle_offline:
-            num_layers = self.config.num_orig_hidden_layers
-        else:
-            num_layers = self.config.num_hidden_layers
+        num_layers = self.config.num_hidden_layers
+        if self.eagle_offline and (num_layers is None or num_layers <= 0):
+            num_layers = getattr(self.config, "num_orig_hidden_layers", 0)
+
         self.eagle_config.eagle_aux_hidden_state_layer_ids = [
             1,
             max(0, num_layers // 2 - 1),
