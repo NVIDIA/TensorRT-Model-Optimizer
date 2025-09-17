@@ -22,12 +22,23 @@ jobs:
       any_changed: ${{ steps.changed-tests.outputs.any_changed }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - id: get-pr-info
         uses: nv-gha-runners/get-pr-info@main
+      # Get commit from main branch that is present in the PR to use as base for changed files
+      - id: calculate-merge-base
+        env:
+          PR_SHA: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).head.sha }}
+          BASE_SHA: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.sha }}
+        run: |
+          (echo -n "merge-base="; git merge-base "$BASE_SHA" "$PR_SHA") | tee --append "${GITHUB_OUTPUT}"
       - name: Check for changes in test-relevant directories
         id: changed-tests
         uses: step-security/changed-files@v46.0.5
         with:
+          base_sha: ${{ steps.calculate-merge-base.outputs.merge-base }}
+          sha: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).head.sha }}
           files: |
             .github/workflows/gpu_tests.yml
             modelopt/**
@@ -35,7 +46,7 @@ jobs:
             tox.ini
             pyproject.toml
             setup.py
-          base_sha: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.ref }}
+          fail_on_initial_diff_error: true
   wait-checks:
     needs: [check-file-changes]
     if: needs.check-file-changes.outputs.any_changed == 'true'
@@ -70,3 +81,12 @@ jobs:
     timeout-minutes: 90
     container: *gpu_container
     steps: *gpu_steps
+  gpu-pr-required-check:
+    # Run even if gpu-tests-pr is skipped
+    if: ${{ startsWith(github.ref, 'refs/heads/pull-request/') && always() }}
+    needs: [check-file-changes, gpu-tests-pr]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Required GPU tests did not succeed
+        if: ${{ needs.check-file-changes.result != 'success' || (needs.check-file-changes.outputs.any_changed == 'true' && needs.gpu-tests-pr.result != 'success') }}
+        run: exit 1

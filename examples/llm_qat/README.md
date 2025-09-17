@@ -82,7 +82,6 @@ def forward_loop(model):
 
 
 # Quantize the model in-place; The model should be unwrapped from any distributed wrapper
-# The model may be wrapped in a DataParallel or DistributedDataParallel after `mtq.quantize`
 model = mtq.quantize(model, mtq.INT8_DEFAULT_CFG, forward_loop)
 
 # Save the modelopt quantizer states

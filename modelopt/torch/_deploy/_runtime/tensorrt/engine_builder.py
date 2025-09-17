@@ -103,10 +103,10 @@ def _get_trtexec_params(
 def _is_low_bit_mode(trt_mode: str) -> bool:
     return trt_mode in [
         TRTMode.INT8,
-        TRTMode.INT8_IQ,
         TRTMode.INT4,
         TRTMode.FLOAT8,
         TRTMode.BEST,
+        TRTMode.STRONGLY_TYPED,
     ]
 
 

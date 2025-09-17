@@ -41,6 +41,7 @@ Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#current-out-of-the-
 | Llava | llava | ✅ | ✅ | ✅ | ✅ | ❌ |
 | VILA | vila | ✅ | ✅ | ✅ | ✅ | ❌ |
 | Phi-3-vision | phi | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Qwen2.5-VL | qwen | ✅ | ✅ | ✅ | ✅ | ❌ |
 
 > *<sup>1.</sup>The w4a8_awq is an experimental quantization scheme that may result in a higher accuracy penalty.* \
 > *<sup>2.</sup>A selective set of the popular models are internally tested. The actual model support list may be longer. NVFP4 inference requires Blackwell GPUs and TensorRT-LLM v0.17 or later.*
@@ -51,7 +52,7 @@ Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#current-out-of-the-
 
 Please refer to the [llm_ptq/README.md](../llm_ptq/README.md) about the details of model quantization.
 
-The following scripts provide an all-in-one and step-by-step model quantization example for Llava, VILA and Phi-3-vision models. The quantization format and the number of GPUs will be supplied as inputs to these scripts. By default, we build the engine for the fp8 format and 1 GPU.
+The following scripts provide an all-in-one and step-by-step model quantization example for Llava, VILA, Phi-3-vision and Qwen2.5-VL models. The quantization format and the number of GPUs will be supplied as inputs to these scripts. By default, we build the engine for the fp8 format and 1 GPU.
 
 ### Hugging Face Example [Script](./scripts/huggingface_example.sh)
 
@@ -74,6 +75,13 @@ For [Phi-3-vision](https://huggingface.co/microsoft/Phi-3-vision-128k-instruct):
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-vision-128k-instruct
 scripts/huggingface_example.sh --type phi --model Phi-3-vision-128k-instruct --quant [fp8|int8_sq|int4_awq|w4a8_awq]
+```
+
+For [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct):
+
+```bash
+git clone https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
+scripts/huggingface_example.sh --type qwen --model Qwen2.5-VL-7B-Instruct --export_fmt hf --quant [fp8|nvfp4|int8_sq|int4_awq|w4a8_awq]
 ```
 
 The example scripts above also have an additional flag `--tasks gqa`, which will trigger evaluation of the built TensorRT engine using GQA benchmark. Details of the evaluation is explained in this [tutorial](../vlm_eval/README.md).
