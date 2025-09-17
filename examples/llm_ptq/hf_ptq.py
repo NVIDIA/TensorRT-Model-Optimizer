@@ -748,7 +748,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.export_fmt != "hf":
-        warnings.warn("Deprecated. --export_fmt will be ignored.")
+        warnings.warn("Deprecated. --export_fmt forced to hf.")
 
     args.dataset = args.dataset.split(",") if args.dataset else None
     args.calib_size = [int(num_sample) for num_sample in args.calib_size.split(",")]

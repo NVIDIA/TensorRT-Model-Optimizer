@@ -83,8 +83,6 @@ def test_unified_hf_export_and_check_safetensors(
         str(tiny_model_dir),
         "--qformat",
         qformat,
-        "--export_fmt",
-        "hf",
         "--export_path",
         str(output_dir),
     ]
