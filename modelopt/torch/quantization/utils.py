@@ -25,7 +25,7 @@ import torch.nn.functional as F
 from torch.distributed.fsdp import FSDPModule
 from torch.distributed.tensor import Replicate
 
-from modelopt.torch.utils import print_rank_0
+from modelopt.torch.utils import get_unwrapped_name, print_rank_0
 
 __all__ = [
     "EXPORT_MODE",
@@ -441,3 +441,26 @@ def enable_weight_access_and_writeback(module, root_model):
 
     with context:
         yield
+
+
+def get_quantizer_state_dict(model: nn.Module):
+    """Get the state dict of the quantizers in the model."""
+    # We should not call model.state_dict() here.
+    # With FSDP, model.state_dict() will hang if it is not called from all processes
+    from .nn import TensorQuantizer
+
+    quantizer_state_dict = {}
+    for name, module in model.named_modules():
+        if isinstance(module, TensorQuantizer):
+            quantizer_state_dict[get_unwrapped_name(name, model)] = module.state_dict()
+    return quantizer_state_dict
+
+
+def set_quantizer_state_dict(model: nn.Module, quantizer_state_dict: dict):
+    """Set the state dict of the quantizers in the model."""
+    from .nn import TensorQuantizer
+
+    for name, module in model.named_modules():
+        key = get_unwrapped_name(name, model)
+        if isinstance(module, TensorQuantizer) and key in quantizer_state_dict:
+            module.load_state_dict(quantizer_state_dict[key])
