@@ -93,7 +93,7 @@ If `trust_remote_code` needs to be true, please append the command with the `--t
 ### TensorRT-LLM
 
 ```sh
-python lm_eval_tensorrt_llm.py --model trt-llm --model_args tokenizer=<HF model folder>,engine_dir=<TRT LLM engine dir> --tasks <comma separated tasks> --batch_size <engine batch size>
+python lm_eval_tensorrt_llm.py --model trt-llm --model_args tokenizer=<HF model folder>,engine_dir=<Quantized checkpoint dir> --tasks <comma separated tasks> --batch_size <engine batch size>
 ```
 
 ## MMLU
@@ -140,7 +140,7 @@ python mmlu.py --model_name causal --model_path <HF model folder or model card> 
 ### Evaluate the TensorRT-LLM engine
 
 ```bash
-python mmlu.py --model_name causal --model_path <HF model folder or model card> --engine_dir <built TensorRT-LLM folder>
+python mmlu.py --model_name causal --model_path <HF model folder or model card> --engine_dir <Quantized checkpoint dir>
 ```
 
 ## MT-Bench
@@ -163,7 +163,7 @@ bash run_fastchat.sh -h <HF model folder or model card> --quant_cfg MODELOPT_QUA
 ### Evaluate the TensorRT-LLM engine
 
 ```bash
-bash run_fastchat.sh -h <HF model folder or model card> <built TensorRT-LLM folder>
+bash run_fastchat.sh -h <HF model folder or model card> <Quantized checkpoint dir>
 ```
 
 ### Judging the responses
