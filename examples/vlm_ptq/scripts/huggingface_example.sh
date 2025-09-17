@@ -145,6 +145,10 @@ case "${MODEL_TYPE}" in
         VISUAL_FEATURE=576
         VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
         ;;
+    "qwen")
+        VISUAL_FEATURE=1280
+        VLM_ARGS=" --max_multimodal_len=$((BUILD_MAX_BATCH_SIZE * VISUAL_FEATURE)) "
+        ;;
     "mllama")
         PTQ_ARGS+=" --kv_cache_qformat none "
         VLM_ARGS=" --max_encoder_input_len=6404 --skip_run"
