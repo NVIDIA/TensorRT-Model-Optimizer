@@ -32,9 +32,15 @@ def _extend_cmd_parts(cmd_parts: list[str], **kwargs):
     return cmd_parts
 
 
-def run_example_command(cmd_parts: list[str], example_path: str):
+def run_example_command(cmd_parts: list[str], example_path: str, setup_free_port: bool = False):
     print(f"[{example_path}] Running command: {cmd_parts}")
-    subprocess.run(cmd_parts, cwd=MODELOPT_ROOT / "examples" / example_path, check=True)
+    env = os.environ.copy()
+
+    if setup_free_port:
+        free_port = get_free_port()
+        env["MASTER_PORT"] = str(free_port)
+
+    subprocess.run(cmd_parts, cwd=MODELOPT_ROOT / "examples" / example_path, env=env, check=True)
 
 
 def run_command_in_background(cmd_parts, example_path, stdout=None, stderr=None, text=True):

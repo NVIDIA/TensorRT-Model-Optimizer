@@ -106,7 +106,7 @@ import contextlib
 
 import onnx
 import torch
-from torch.onnx import _type_utils, symbolic_helper
+from torch.onnx import symbolic_helper
 from torch.onnx import symbolic_helper as sym_help
 from torch.onnx._internal import jit_utils
 from torch.onnx.symbolic_opset14 import _attention_scale, _causal_attention_mask
@@ -356,6 +356,11 @@ def scaled_dot_product_attention(
     enable_gqa: bool = False,
 ):
     """Perform scaled dot product attention."""
+    if hasattr(torch.onnx, "_type_utils"):
+        from torch.onnx import _type_utils
+    else:
+        from torch.onnx._internal.torchscript_exporter import _type_utils
+
     assert (not is_causal) or (is_causal and symbolic_helper._is_none(attn_mask)), (
         "is_causal and attn_mask cannot be set at the same time"
     )
@@ -461,6 +466,11 @@ def export_fp8_mha(
                         Cast
     """
     from torch.onnx.symbolic_opset14 import _attention_scale, _causal_attention_mask
+
+    if hasattr(torch.onnx, "_type_utils"):
+        from torch.onnx import _type_utils
+    else:
+        from torch.onnx._internal.torchscript_exporter import _type_utils
 
     # Pass all arguments, including x, to the custom ONNX operator
     assert (not is_causal) or (is_causal and sym_help._is_none(attn_mask)), (
