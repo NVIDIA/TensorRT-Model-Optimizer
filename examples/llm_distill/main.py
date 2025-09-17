@@ -21,7 +21,6 @@ import datasets
 import torch
 import torch.distributed
 import transformers
-from accelerate import PartialState
 from accelerate.logging import get_logger
 from transformers import AutoTokenizer
 from trl import SFTTrainer
@@ -108,21 +107,19 @@ def train():
     if model_args.single_model:
         logger.info("Loading single model only...")
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_path, device_map=PartialState().process_index
+            model_path, dtype=torch.bfloat16 if training_args.bf16 else None
         )
         logger.info("Model loaded.")
     else:
         logger.info("Loading student model...")
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.student_name_or_path,
-            device_map=PartialState().process_index,
+            model_args.student_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
         )
         logger.info("Student loaded.")
         # Load checkpoint
         logger.info("Loading teacher model and converting to Distillation model...")
         teacher_model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.teacher_name_or_path,
-            device_map=PartialState().process_index,
+            model_args.teacher_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
         )
         kd_config = {
             "teacher_model": teacher_model,
@@ -134,8 +131,6 @@ def train():
     # Fix problematic settings that logger.info excessive warnings
     model.generation_config.temperature = None
     model.generation_config.top_p = None
-    if training_args.gradient_checkpointing:
-        training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
 
     # Trainer
     trainer_cls = SFTTrainer if model_args.single_model else KDSFTTrainer
