@@ -30,7 +30,6 @@ except ImportError:
 
 import torch.nn.functional as F
 from torch import nn
-from torch.onnx._globals import GLOBALS
 
 from modelopt.torch.utils import standardize_constructor_args
 from modelopt.torch.utils.distributed import DistributedProcessGroup
@@ -879,6 +878,11 @@ class TensorQuantizer(nn.Module):
         Returns:
             outputs: A Tensor of type output_dtype
         """
+        if hasattr(torch.onnx, "_globals"):
+            from torch.onnx._globals import GLOBALS
+        else:
+            from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
+
         if DTensor is not None and isinstance(inputs, DTensor):
             # TensorQuantizer only handles regular non-DTensor inputs
             device_mesh, placements = inputs.device_mesh, inputs.placements
