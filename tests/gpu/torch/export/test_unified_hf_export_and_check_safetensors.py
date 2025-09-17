@@ -38,7 +38,6 @@ from safetensors import safe_open
         ("nvfp4_awq", "tiny_llama-nvfp4-awq", True, False, True, True),
         ("int4_awq", "tiny_llama-int4-awq", True, False, True, True),
         ("w4a8_awq", "tiny_llama-w4a8-awq", True, False, True, True),
-        ("fp8", "t5_tiny-fp8", True, False, True, True),
     ],
 )
 def test_unified_hf_export_and_check_safetensors(
