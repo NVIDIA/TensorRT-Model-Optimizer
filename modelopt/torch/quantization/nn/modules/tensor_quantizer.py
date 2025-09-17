@@ -959,7 +959,7 @@ class TensorQuantizer(nn.Module):
             and self.block_sizes.get("type", None) != "dynamic"
             and self._fake_quant
         ):
-            # Reshape is required if the logic isnt handled in the simulation kernel
+            # Reshape is required if the logic is not handled in the simulation kernel
             self._setup_for_blockquant(inputs)
             setattr(self, "_original_input_shape", inputs.shape)
             inputs = self._process_for_blockquant(inputs)
