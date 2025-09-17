@@ -24,6 +24,10 @@ import torch
 from tqdm import tqdm as tqdm
 from transformers import AutoModel, AutoTokenizer
 
+REMOVE_THINK_CHAT_TEMPLATE = (
+    "{% if '</think>' in content %}{% set content = content.split('</think>')[-1] %}{% endif %}"
+)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -92,6 +96,7 @@ async def main(args: argparse.Namespace) -> None:
     tokenizer = AutoTokenizer.from_pretrained(args.model)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.chat_template = tokenizer.chat_template.replace(REMOVE_THINK_CHAT_TEMPLATE, "")
 
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -132,7 +137,12 @@ async def main(args: argparse.Namespace) -> None:
                 )
             # Extract hidden states from layers with index (2, N/2, N-3), and the output hidden states
             hidden_states = outputs.hidden_states
-            selected_layer_indices = [2, num_hidden_layers // 2, num_hidden_layers - 3]
+            selected_layer_indices = [
+                2,
+                max(0, num_hidden_layers // 2),
+                max(1, num_hidden_layers - 3),
+            ]
+            selected_layer_indices = sorted(set(selected_layer_indices))
             aux_hidden_states = torch.cat(
                 [hidden_states[i].squeeze(0).cpu() for i in selected_layer_indices], dim=-1
             )

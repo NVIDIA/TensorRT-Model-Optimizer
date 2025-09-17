@@ -152,7 +152,7 @@ async def main(args: argparse.Namespace) -> None:
             )
 
         input_ids = tokenizer.apply_chat_template(
-            conversations, return_tensors=None, add_generation_template=False
+            conversations, return_tensors=None, add_generation_template=False, tokenize=True
         )
         num_input_tokens = len(input_ids)
         if num_input_tokens <= 10 or num_input_tokens > args.max_seq_len:

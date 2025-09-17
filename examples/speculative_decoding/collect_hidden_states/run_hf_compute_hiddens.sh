@@ -17,7 +17,7 @@
 # This script computes hidden states using a Hugging Face model and saves them to
 # the specified output directory.
 
-python3 collect_hidden_states/compute_hiddens_hf.py \
+python3 collect_hidden_states/compute_hidden_states_hf.py \
   --model meta-llama/Llama-3.2-1B-Instruct \
   --input-file synthetic_conversations/daring-anteater.jsonl \
   --output-dir /mnt/md0/eagle-hidden-states/llama1b/daring_anteater/

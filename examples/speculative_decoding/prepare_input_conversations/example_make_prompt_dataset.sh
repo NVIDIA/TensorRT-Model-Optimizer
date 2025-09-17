@@ -16,10 +16,10 @@
 # Example script to prepare a dataset of prompts for generation
 # Lines in this script can be uncommented to include specific datasets/splits in the prompt dataset.
 
-python3 make_prompts_for_gen/add_sharegpt.py --output-split eval --output-file data/mtbench_prompts_dataset.json
-# python3 make_prompts_for_gen/add_ultrachat.py --ultrachat-split train_sft --output-split train
-# python3 make_prompts_for_gen/add_ultrachat.py --ultrachat-split train_gen --output-split train
-# python3 make_prompts_for_gen/add_ultrachat.py --ultrachat-split test_sft --output-split mix_test
-# python3 make_prompts_for_gen/add_ultrachat.py --ultrachat-split test_gen --output-split mix_test
-python3 make_prompts_for_gen/add_mtbench.py --output-split train --output-file data/mtbench_prompts_dataset.json
-# python3 make_prompts_for_gen/add_mtbench.py --output-split eval --output-file data/mtbench_prompts_dataset.json
+python3 prepare_input_conversations/add_daring_anteater.py --output-split-name train
+# python3 prepare_input_conversations/add_sharegpt.py --output-split-name train
+# python3 prepare_input_conversations/add_ultrachat.py --ultrachat-split train_sft --output-split-name train
+# python3 prepare_input_conversations/add_ultrachat.py --ultrachat-split train_gen --output-split-name train
+# python3 prepare_input_conversations/add_ultrachat.py --ultrachat-split test_sft --output-split-name mix_test
+# python3 prepare_input_conversations/add_ultrachat.py --ultrachat-split test_gen --output-split-name mix_test
+python3 prepare_input_conversations/add_mtbench.py --output-split-name mix_test

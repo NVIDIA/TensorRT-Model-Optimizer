@@ -25,6 +25,7 @@ import aiohttp
 
 async def download_file(url: str, destination: Path) -> None:
     """Download a file from a URL to a specified destination."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
     async with aiohttp.ClientSession() as session, session.get(url) as response:
         if response.status != 200:
             msg = f"Failed to download {url}: {response.status}"
@@ -83,7 +84,8 @@ def add_conversations_to_split(conversations: list, dataset_dir: Path, split: st
     else:
         print(f"Added {num_new_entries} new conversations to {dataset_file}.")
 
-    with open(dataset_file, "w", encoding="utf-8") as f:
+    dataset_dir.mkdir(parents=True, exist_ok=True)
+    with dataset_file.open("w", encoding="utf-8") as f:
         for entry in all_conversations:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
