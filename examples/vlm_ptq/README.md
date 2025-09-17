@@ -81,7 +81,7 @@ For [Qwen2.5-VL](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct):
 
 ```bash
 git clone https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct
-scripts/huggingface_example.sh --type qwen --model Qwen2.5-VL-7B-Instruct --export_fmt hf --quant [fp8|nvfp4|int8_sq|int4_awq|w4a8_awq]
+scripts/huggingface_example.sh --type qwen --model Qwen2.5-VL-7B-Instruct --quant [fp8|nvfp4|int8_sq|int4_awq|w4a8_awq]
 ```
 
 The example scripts above also have an additional flag `--tasks gqa`, which will trigger evaluation of the built TensorRT engine using GQA benchmark. Details of the evaluation is explained in this [tutorial](../vlm_eval/README.md).
