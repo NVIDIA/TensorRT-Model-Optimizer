@@ -33,10 +33,16 @@ def _run_command(extra_cmd_args: list[str]):
             *extra_cmd_args,
         ],
         "llm_qat",
+        setup_free_port=True,
     )
 
-
-def test_llama_qat_int4w_int8a(tiny_llama_path, tmp_path):
+@pytest.mark.parametrize("backend", [
+    "fsdp1",
+    "fsdp2",
+    "deepspeed",
+    "ddp",
+])
+def test_llama_qat_int4w_int8a(tiny_llama_path, tmp_path, backend):
     ptq_output_dir = tmp_path / "ptq"
     qat_output_dir = tmp_path / "qat"
 
@@ -47,6 +53,7 @@ def test_llama_qat_int4w_int8a(tiny_llama_path, tmp_path):
             "--do_train", "False",
             "--quant_cfg", "INT4_WEIGHT_INT8_ACTIVATIONS",
             "--output_dir", ptq_output_dir,
+            "--backend", backend,
         ]
     )
 
@@ -56,9 +63,27 @@ def test_llama_qat_int4w_int8a(tiny_llama_path, tmp_path):
             "--model", ptq_output_dir,
             "--do_train", "True",
             "--output_dir", qat_output_dir,
+            "--backend", backend,
         ]
     )
 
+@pytest.mark.parametrize("backend", [
+    "fsdp1",
+    "fsdp2",
+    "deepspeed",
+    "ddp",
+])
+def test_llama_qat_int4w_int8a_direct_qat(tiny_llama_path, tmp_path, backend):
+    # Run PTQ + QAT together
+    _run_command(
+        [
+            "--model", tiny_llama_path,
+            "--do_train", "True",
+            "--quant_cfg", "INT4_WEIGHT_INT8_ACTIVATIONS",
+            "--output_dir", tmp_path,
+            "--backend", backend,
+        ]
+    )
 
 def test_llama_lora_qat_nvfp4(tiny_llama_path, tmp_path):
     _run_command(
