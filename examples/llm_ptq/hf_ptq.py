@@ -583,7 +583,11 @@ def main(args):
             setattr(model.config, "architectures", full_model_config.architectures)
 
         start_time = time.time()
-        if model_type in ["t5", "bart", "whisper"] or args.sparsity_fmt != "dense":
+        if (
+            model_type in ["t5", "bart", "whisper"]
+            or args.sparsity_fmt != "dense"
+            or "int8_sq" in args.qformat
+        ):
             warnings.warn(
                 "Still exporting TensorRT-LLM checkpoints for models not supported by the TensorRT-LLM torch runtime."
             )
@@ -603,6 +607,12 @@ def main(args):
             assert args.sparsity_fmt == "dense", (
                 f"Sparsity format {args.sparsity_fmt} not supported by unified export api."
             )
+
+            if args.inference_tensor_parallel != 1 or args.inference_pipeline_parallel != 1:
+                warnings.warn(
+                    "Unified HF export format does not specify inference tensor parallel or pipeline parallel. "
+                    "They will be set at deployment time."
+                )
 
             export_hf_checkpoint(
                 full_model,

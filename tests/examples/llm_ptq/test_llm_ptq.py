@@ -47,7 +47,7 @@ class TestT5(WithRequirements):
 @pytest.mark.parametrize(
     "command",
     [
-        PTQCommand(quant="fp8", min_sm=89),
+        PTQCommand(quant="fp8", min_sm=90),
     ],
     ids=PTQCommand.param_str,
 )
@@ -77,7 +77,9 @@ class TestWhisper(WithRequirements):
     "command",
     [
         PTQCommand(quant="int8_sq", kv_cache_quant="none"),
+        PTQCommand(quant="int8_sq", kv_cache_quant="none", tp=2, pp=2),
         PTQCommand(quant="int4_awq", kv_cache_quant="none"),
+        PTQCommand(quant="w4a8_awq", kv_cache_quant="none"),
         PTQCommand(quant="nvfp4"),
         PTQCommand(quant="nvfp4_awq"),
         # autoquant
@@ -104,13 +106,12 @@ class TestWhisper(WithRequirements):
         ),
         # sm89
         PTQCommand(quant="fp8", min_sm=89),
-        PTQCommand(quant="fp8", kv_cache_quant="none", min_sm=89),
-        PTQCommand(quant="w4a8_awq", kv_cache_quant="none", min_sm=89, max_sm=89),
-        # sm100
+        PTQCommand(quant="fp8", kv_cache_quant="none", min_sm=89),  # sm100
         PTQCommand(quant="nvfp4", min_sm=100),
         #
         # multi_gpu
-        PTQCommand(quant="nvfp4", min_gpu=2),
+        PTQCommand(quant="fp8", min_gpu=2, min_sm=89),
+        PTQCommand(quant="nvfp4", min_gpu=2, min_sm=100),
     ],
     ids=PTQCommand.param_str,
 )

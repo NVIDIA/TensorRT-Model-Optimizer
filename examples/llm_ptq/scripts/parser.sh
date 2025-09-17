@@ -21,6 +21,8 @@ parse_options() {
     MODEL_PATH=""
     QFORMAT=""
     KV_CACHE_QUANT=""
+    TP=1
+    PP=1
     SPARSITY_FMT="dense"
     LM_EVAL_TASKS="mmlu,gsm8k"
     LM_EVAL_LIMIT=
@@ -34,7 +36,7 @@ parse_options() {
     USE_SEQ_DEVICE_MAP=false
 
   # Parse command-line options
-  ARGS=$(getopt -o "" -l "model:,quant:,kv_cache_quant:,sparsity:,awq_block_size:,calib:,calib_batch_size:,auto_quantize_bits:,input:,output:,batch:,tasks:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,use_seq_device_map,gpu_max_mem_percentage:,kv_cache_free_gpu_memory_fraction:,low_memory_mode,no-verbose,calib_dataset:" -n "$0" -- "$@")
+  ARGS=$(getopt -o "" -l "model:,quant:,kv_cache_quant:,tp:,pp:,sparsity:,awq_block_size:,calib:,calib_batch_size:,auto_quantize_bits:,output:,batch:,tasks:,lm_eval_tasks:,lm_eval_limit:,simple_eval_tasks:,trust_remote_code,use_seq_device_map,gpu_max_mem_percentage:,kv_cache_free_gpu_memory_fraction:,low_memory_mode,no-verbose,calib_dataset:" -n "$0" -- "$@")
 
   eval set -- "$ARGS"
   while true; do
@@ -42,12 +44,13 @@ parse_options() {
       --model ) MODEL_PATH="$2"; shift 2;;
       --quant ) QFORMAT="$2"; shift 2;;
       --kv_cache_quant ) KV_CACHE_QUANT="$2"; shift 2;;
+      --tp ) TP="$2"; shift 2;;
+      --pp ) PP="$2"; shift 2;;
       --sparsity ) SPARSITY_FMT="$2"; shift 2;;
       --awq_block_size ) AWQ_BLOCK_SIZE="$2"; shift 2;;
       --calib ) CALIB_SIZE="$2"; shift 2;;
       --calib_batch_size ) CALIB_BATCH_SIZE="$2"; shift 2;;
       --auto_quantize_bits ) AUTO_QUANTIZE_BITS="$2"; shift 2;;
-      --input ) BUILD_MAX_INPUT_LEN="$2"; shift 2;;
       --output ) BUILD_MAX_OUTPUT_LEN="$2"; shift 2;;
       --batch ) BUILD_MAX_BATCH_SIZE="$2"; shift 2;;
       --tasks ) TASKS="$2"; shift 2;;
@@ -68,7 +71,6 @@ parse_options() {
 
   DEFAULT_CALIB_SIZE=512
   DEFAULT_CALIB_BATCH_SIZE=0
-  DEFAULT_BUILD_MAX_INPUT_LEN=4096
   DEFAULT_BUILD_MAX_OUTPUT_LEN=1024
   DEFAULT_BUILD_MAX_BATCH_SIZE=2
 
@@ -77,9 +79,6 @@ parse_options() {
   fi
   if [ -z "$CALIB_BATCH_SIZE" ]; then
     CALIB_BATCH_SIZE=$DEFAULT_CALIB_BATCH_SIZE
-  fi
-  if [ -z "$BUILD_MAX_INPUT_LEN" ]; then
-    BUILD_MAX_INPUT_LEN=$DEFAULT_BUILD_MAX_INPUT_LEN
   fi
   if [ -z "$BUILD_MAX_OUTPUT_LEN" ]; then
     BUILD_MAX_OUTPUT_LEN=$DEFAULT_BUILD_MAX_OUTPUT_LEN
@@ -125,6 +124,8 @@ parse_options() {
   echo "================="
   echo "model: $MODEL_PATH"
   echo "quant: $QFORMAT"
+  echo "tp (TensorRT-LLM Checkpoint only): $TP"
+  echo "pp (TensorRT-LLM Checkpoint only): $PP"
   echo "sparsity: $SPARSITY_FMT"
   echo "awq_block_size: $AWQ_BLOCK_SIZE"
   echo "calib: $CALIB_SIZE"

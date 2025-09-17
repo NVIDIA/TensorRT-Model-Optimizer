@@ -34,19 +34,6 @@ if [ -z "$MODEL_PATH" ]; then
     exit 1
 fi
 
-#Iterate over list of qformats provided and check if they are supported in HF export path
-IFS=","
-for qformat in $QFORMAT; do
-    case $qformat in
-    fp16 | bf16 | fp8 | fp8_pc_pt | fp8_pb_wo | int4_awq | nvfp4 | nvfp4_awq | w4a8_awq | w4a8_nvfp4_fp8 | w4a8_mxfp4_fp8) ;;
-    *)
-        echo "Unsupported quant argument: Expected one of: [fp16, bf16, fp8, fp8_pc_pt, fp8_pb_wo, int4_awq, nvfp4, nvfp4_awq, w4a8_awq, w4a8_nvfp4_fp8, w4a8_mxfp4_fp8]" >&2
-        exit 1
-        ;;
-    esac
-done
-IFS=" "
-
 # Check if ENABLE_SPARSITY environment variable is set to "true"
 if [ "$SPARSITY_FMT" = "dense" ]; then
     ENABLE_SPARSITY=false
@@ -74,8 +61,6 @@ for qformat in $QFORMAT; do
     esac
 done
 IFS=" "
-
-echo "Using the following config: max input $BUILD_MAX_INPUT_LEN max output $BUILD_MAX_OUTPUT_LEN max batch $BUILD_MAX_BATCH_SIZE"
 
 script_dir="$(dirname "$(readlink -f "$0")")"
 
@@ -165,6 +150,8 @@ if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH
             --qformat="${QFORMAT// /,}" \
             --calib_size=$CALIB_SIZE \
             --batch_size=$CALIB_BATCH_SIZE \
+            --inference_tensor_parallel=$TP \
+            --inference_pipeline_parallel=$PP \
             $PTQ_ARGS \
             $AWQ_ARGS
     else
@@ -191,7 +178,7 @@ if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH
         fi
     fi
 
-    if [[ ! " fp8 nvfp4 bf16 fp16 int4_awq w4a8_awq " =~ " ${QFORMAT} " ]]; then
+    if [[ ! " fp8 nvfp4 bf16 fp16 " =~ " ${QFORMAT} " ]]; then
         echo "Quant $QFORMAT specified. Please read TensorRT-LLM quantization support matrix https://nvidia.github.io/TensorRT-LLM/features/quantization.html#quantization-in-tensorrt-llm and use TensorRT-LLM for deployment. Checkpoint export_path: $SAVE_PATH"
         exit 0
     fi
@@ -237,6 +224,8 @@ if [[ $TASKS =~ "lm_eval" ]]; then
     pushd ../llm_eval/
 
     pip install -r requirements.txt
+
+    echo "Using the following config: max output $BUILD_MAX_OUTPUT_LEN max batch $BUILD_MAX_BATCH_SIZE"
 
     python lm_eval_tensorrt_llm.py \
         --model trt-llm \
@@ -313,6 +302,7 @@ if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     pushd ../llm_eval/
 
     if [[ $TASKS =~ "livecodebench" ]]; then
+        echo "Using the following config: max output $BUILD_MAX_OUTPUT_LEN max batch $BUILD_MAX_BATCH_SIZE"
         bash run_livecodebench.sh $MODEL_NAME $BUILD_MAX_BATCH_SIZE $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/livecodebench.txt
         mkdir -p $SAVE_PATH/livecodebench
         mv LiveCodeBench/output/$MODEL_NAME/* $SAVE_PATH/livecodebench
@@ -321,6 +311,7 @@ if [[ $TASKS =~ "livecodebench" || $TASKS =~ "simple_eval" ]]; then
     fi
 
     if [[ $TASKS =~ "simple_eval" ]]; then
+        echo "Using the following config: max output $BUILD_MAX_OUTPUT_LEN max batch $BUILD_MAX_BATCH_SIZE"
         bash run_simple_eval.sh $MODEL_NAME $SIMPLE_EVAL_TASKS $BUILD_MAX_OUTPUT_LEN $PORT | tee $SAVE_PATH/simple_eval.txt
         echo "Simple eval results are saved under $SAVE_PATH/simple_eval.txt."
     fi
