@@ -468,7 +468,7 @@ class ScaledE4M3Function(Function):
     @staticmethod
     def backward(ctx, grad_outputs):
         """Implements straight through estimation with clipping."""
-        return _fake_quant_backward_function(ctx, grad_outputs, num_args=7)
+        return _fake_quant_backward_function(ctx, grad_outputs, num_args=8)
 
 
 def _dynamic_block_quantize_forward(
