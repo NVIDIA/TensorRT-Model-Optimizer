@@ -13,12 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Distillation API subpackage for torch."""
+"""PEFT/LoRA plugins for various frameworks."""
 
-from . import mode
-from .config import *
-from .convert import *
-
-# isort: off
-# Import plugins last to avoid circular imports
-from . import plugins
+# Import plugins to register them
+try:
+    from . import megatron
+except ImportError:
+    pass  # Megatron not available

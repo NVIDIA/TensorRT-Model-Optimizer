@@ -13,12 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Distillation API subpackage for torch."""
+"""Custom PEFT/LoRA plugins registry."""
 
-from . import mode
-from .config import *
-from .convert import *
+# Registry for custom model plugins
+CUSTOM_MODEL_PLUGINS = set()
 
-# isort: off
-# Import plugins last to avoid circular imports
-from . import plugins
+
+def register_custom_model_plugins_on_the_fly(model):
+    """Registers custom PEFT/LoRA plugins on the fly.
+
+    This is called before LoRAModule replacement to allow plugins
+    to configure the model (e.g., for distributed checkpointing).
+    """
+    for callback in CUSTOM_MODEL_PLUGINS:
+        callback(model)
