@@ -748,10 +748,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--attn_implementation",
         help=(
-            "Specify the attention implementation to use."
+            "Specify the attention implementation to use. "
             "This arg will be passed to the HF model loading if specified."
         ),
-        default=None,
+        default="eager",
         type=str,
     )
 
