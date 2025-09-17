@@ -106,12 +106,14 @@ async def main(args: argparse.Namespace) -> None:
     num_total_conversations = min(
         len(all_conversations), args.debug_max_num_conversations or len(all_conversations)
     )
-    for entry in tqdm(
-        all_conversations[: args.debug_max_num_conversations],
-        desc="Processing conversations",
-        total=num_total_conversations,
+    for idx, entry in enumerate(
+        tqdm(
+            all_conversations[: args.debug_max_num_conversations],
+            desc="Processing conversations",
+            total=num_total_conversations,
+        )
     ):
-        conversation_id = entry["conversation_id"]
+        conversation_id = entry.get("conversation_id", "{:08d}".format(idx))
         conversations = entry["conversations"]
         if not conversations or not isinstance(conversations, list):
             num_invalid += 1
