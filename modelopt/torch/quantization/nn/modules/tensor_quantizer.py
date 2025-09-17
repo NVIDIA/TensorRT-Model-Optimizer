@@ -960,6 +960,7 @@ class TensorQuantizer(nn.Module):
             and self._fake_quant
         ):
             # Reshape is required if the logic is not handled in the simulation kernel
+            # Only MX format and NVFP4 reshape are currently supported by the kernel.
             self._setup_for_blockquant(inputs)
             setattr(self, "_original_input_shape", inputs.shape)
             inputs = self._process_for_blockquant(inputs)
