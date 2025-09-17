@@ -185,15 +185,3 @@ class _QuantVLLMFusedMoE(QuantModule):
         output = super().forward(hidden_states, router_logits)
         self.invoke_fused_moe_quantized = self._invoke_fused_moe_quantized
         return output
-
-    @property
-    def mopt_ckpt_versn(self):
-        """Checkpoint version of the modelopt."""
-        return None
-
-    @mopt_ckpt_versn.setter
-    def mopt_ckpt_versn(self, version: str):
-        """Set the checkpoint version for the TensorQuantizer states."""
-        # vLLM defined an apply method that overwrites nn.Module.apply
-        # To avoid conflicting, disable the apply call here
-        # self.apply(_set_ckpt_version)
