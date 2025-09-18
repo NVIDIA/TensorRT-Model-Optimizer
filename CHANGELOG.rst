@@ -15,6 +15,7 @@ Model Optimizer Changelog (Linux)
 
 - ``high_precision_dtype`` default to fp16 in ONNX quantization, i.e. quantized output model weights are now FP16 by default.
 - Upgrade TensorRT-LLM dependency to 1.1.0rc2.
+- Support Phi-4-multimodal and Qwen2.5-VL quantized HF checkpoint export in ``examples/vlm_ptq``.
 
 0.35 (2025-09-04)
 ^^^^^^^^^^^^^^^^^
