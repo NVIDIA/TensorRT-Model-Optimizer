@@ -32,4 +32,4 @@ dataset_test_split: test
 # ModelOpt Quantization Parameters
 quant_cfg:  # Examples: MXFP4_MLP_WEIGHT_ONLY_CFG, NVFP4_MLP_WEIGHT_ONLY_CFG, NVFP4_MLP_ONLY_CFG
             # For the full list of supported configs, do: mtq.config.choices
-calib_size: 128
+calib_size: 2048
