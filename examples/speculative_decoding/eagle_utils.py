@@ -271,7 +271,7 @@ def make_eagle_supervised_data_module(
         valid_entries = []
         for entry in data_json:
             conv_id = entry.get("conversation_id") or entry.get("id")
-            if not conv_id:
+            if conv_id is None:
                 raise ValueError(
                     "Each entry in the data json must have a 'conversation_id' or 'id' field."
                 )
