@@ -35,10 +35,10 @@ if [ -z "$MODEL_PATH" ]; then
 fi
 
 case $QFORMAT in
-    fp8|int4_awq|w4a8_awq|nvfp4)
+    fp8|int8_sq|int4_awq|w4a8_awq|nvfp4)
         ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, int4_awq, w4a8_awq, nvfp4]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, int8_sq, int4_awq, w4a8_awq, nvfp4]" >&2
         exit 1
 esac
 
@@ -95,6 +95,8 @@ if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH
             --qformat=$QFORMAT \
             --calib_size=$CALIB_SIZE \
             --batch_size=$CALIB_BATCH_SIZE \
+            --inference_tensor_parallel=$TP \
+            --inference_pipeline_parallel=$PP \
             $PTQ_ARGS
     else
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
