@@ -27,8 +27,7 @@ PTQ_EXAMPLE_DIR = Path(__file__).parents[2] / "examples" / "llm_ptq"
 @dataclass
 class PTQCommand:
     quant: str
-    export_fmt: str = "tensorrt_llm"
-    tasks: str = "build"
+    tasks: str = "quant"
     calib: int = 16
     sparsity: str | None = None
     kv_cache_quant: str | None = None
@@ -38,7 +37,9 @@ class PTQCommand:
     tp: int | None = None
     pp: int | None = None
     min_sm: int | None = None
+    max_sm: int | None = None
     min_gpu: int | None = None
+    batch: int | None = None
 
     def run(self, model_path: str):
         if self.min_sm and torch.cuda.get_device_capability() < (
@@ -46,6 +47,13 @@ class PTQCommand:
             self.min_sm % 10,
         ):
             pytest.skip(reason=f"Requires sm{self.min_sm} or higher")
+            return
+
+        if self.max_sm and torch.cuda.get_device_capability() > (
+            self.max_sm // 10,
+            self.max_sm % 10,
+        ):
+            pytest.skip(reason=f"Requires sm{self.max_sm} or lower")
             return
 
         if self.min_gpu and torch.cuda.device_count() < self.min_gpu:

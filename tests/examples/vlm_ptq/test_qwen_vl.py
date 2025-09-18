@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,14 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
 
-from tensorrt_llm.tools.multimodal_builder import MultimodalEngineBuilder, add_multimodal_arguments
+import pytest
+from _test_utils.examples.run_command import run_vlm_ptq_command
+from _test_utils.model import QWEN_VL_PATH
+from _test_utils.torch_misc import minimum_gpu
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser = add_multimodal_arguments(parser)
-    args = parser.parse_args()
 
-    builder = MultimodalEngineBuilder(args)
-    builder.build()
+@pytest.mark.parametrize("quant", ["fp8", "int8_sq", "nvfp4"])
+@minimum_gpu(2)
+def test_qwen_vl_multi_gpu(quant):
+    run_vlm_ptq_command(model=QWEN_VL_PATH, quant=quant)

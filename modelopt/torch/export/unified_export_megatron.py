@@ -1085,7 +1085,10 @@ class GPTModelExporter:
                             self.rules["k_layernorm"](layer.self_attention.k_layernorm, layer_id)
                         self.rules["linear_qkv"](layer.self_attention.linear_qkv, layer_id)
                         self.rules["linear_proj"](layer.self_attention.linear_proj, layer_id)
-                        if hasattr(layer.self_attention.core_attention, "softmax_offset"):
+                        if (
+                            getattr(layer.self_attention.core_attention, "softmax_offset", None)
+                            is not None
+                        ):
                             self.rules["softmax_offset"](
                                 layer.self_attention.core_attention.softmax_offset, layer_id
                             )
