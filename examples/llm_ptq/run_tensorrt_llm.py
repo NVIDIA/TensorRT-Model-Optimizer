@@ -80,9 +80,8 @@ def run(args):
     outputs = llm.generate_tokens(input_texts, args.max_output_len)
     print(f"Generated tokens: {outputs}")
 
-    if llm.gather_context_logits:
-        logits = llm.generate_context_logits(input_texts)
-        print(f"Generated logits: {logits}")
+    logits = llm.generate_context_logits(input_texts)
+    print(f"Generated logits: {logits}")
 
 
 if __name__ == "__main__":
