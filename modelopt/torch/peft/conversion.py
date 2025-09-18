@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Quantization conversion/restore utilities."""
+"""PEFT conversion and restore utilities for LoRA modules."""
 
 from typing import Any
 
@@ -23,7 +23,7 @@ from modelopt.torch.opt.conversion import ApplyModeError, ModelLikeModule, Model
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 from modelopt.torch.utils import get_unwrapped_name
 
-from .config import PEFTConfig, _QuantizeExportConfig
+from .config import PEFTConfig
 from .lora.layer import LoRAModule, LoRAModuleRegistry
 
 __all__ = [
@@ -33,13 +33,12 @@ __all__ = [
 
 
 def convert_to_peft_model(model: ModelLikeModule, config: PEFTConfig) -> ConvertReturnType:
-    """Convert the model to a quantized one as per `config`."""
+    """Convert the model to a peft one as per `config`."""
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
     # TODO: Replace to LoRA module
     replace_lora_module(model, version=ModeloptStateManager(model).state_version, config=config)
-    # set_quantizer_by_cfg(model, config.get("quant_cfg", {}))
 
     metadata = {}
     # Should return adapaters, active_adapters
@@ -57,6 +56,7 @@ def restore_peft_model(
 
 def restore_peft_state(model: ModelLikeModule, metadata: MetadataDict):
     """Restore PEFT state from metadata or extra_state.
+
     For backward compatibility, we check metadata first. For distributed
     checkpoints (NeMo-MCore), the state will be in extra_state of each LoRAModule
     and will be restored automatically via set_extra_state() during load_state_dict().
@@ -115,13 +115,11 @@ def replace_lora_module(
 
 
 def export_peft_model(model: nn.Module, config):
-    """Export the quantized model to a quantized model."""
-    raise NotImplementedError("Exporting a quantized model is not supported yet.")
+    raise NotImplementedError("Exporting a peft model is not supported yet.")
 
 
 def restore_export_peft_model(model: nn.Module, config, metadata: MetadataDict):
-    """Restores the quantized model from the given state dict."""
-    raise NotImplementedError("Restoring a quantized & exported model is not supported yet.")
+    raise NotImplementedError("Restoring a peft & exported model is not supported yet.")
 
 
 def _replace_lora_module(model: nn.Module, version=None, registry=LoRAModuleRegistry):
@@ -133,20 +131,9 @@ def _replace_lora_module(model: nn.Module, version=None, registry=LoRAModuleRegi
         _replace_lora_module(getattr(model, name), version=version, registry=registry)
 
 
-def export_quantized_model(model: nn.Module, config: _QuantizeExportConfig) -> ConvertReturnType:
-    """Export the quantized model to a quantized model."""
-    raise NotImplementedError("Exporting a quantized model is not supported yet.")
-
-
-def restore_export_quantized_model(
-    model: nn.Module, config: _QuantizeExportConfig, metadata: MetadataDict
-) -> nn.Module:
-    """Restores the quantized model from the given state dict."""
-    raise NotImplementedError("Restoring a quantized & exported model is not supported yet.")
-
-
 def update_peft_metadata_in_model(model: nn.Module) -> None:
     """Update the PEFT metadata in the model's ModeloptStateManager.
+
     This function should be called after manually modifying LoRA adapters to ensure
     the metadata stored in the ModeloptStateManager reflects the current state.
 

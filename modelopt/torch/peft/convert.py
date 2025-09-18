@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""User-facing quantization API."""
+"""User-facing PEFT API for LoRA module conversion and adapter management."""
 
 import fnmatch
 from typing import Any
@@ -33,12 +33,15 @@ def update_model(
     config: dict[str, Any | PEFTConfig],
 ):
     """Update model with PEFT/LoRA adapters.
+
     This function handles both initial PEFT conversion and adding additional adapters:
     - First call: Converts modules to LoRAModules and adds the first adapter
     - Subsequent calls: Adds new adapters to existing LoRAModules
+
     Args:
         model: The model to update
         config: PEFT configuration containing adapter settings
+
     Returns:
         The updated model with LoRA adapters
     """
@@ -50,6 +53,15 @@ def update_model(
 
 
 def add_adapter(model, config):
+    """Add a new LoRA adapter to the model.
+
+    Args:
+        model: Model with LoRA modules to add adapters to
+        config: Configuration dict containing adapter_cfg and adapter_name
+
+    Returns:
+        The model with the new adapter added
+    """
     adapter_cfg = config["adapter_cfg"]
     adapter_name = config["adapter_name"]
 
@@ -112,7 +124,4 @@ def is_peft_model(model: nn.Module) -> bool:
     Returns:
         True if the model contains LoRA modules, False otherwise
     """
-    for _, module in model.named_modules():
-        if isinstance(module, LoRAModule):
-            return True
-    return False
+    return any(isinstance(module, LoRAModule) for _, module in model.named_modules())
