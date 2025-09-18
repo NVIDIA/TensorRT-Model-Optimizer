@@ -133,6 +133,7 @@ def quantize(
     model: nn.Module,
     config: dict[str, Any | QuantizeConfig],
     forward_loop: ForwardLoop | None = None,
+    insert_quantizer_only: bool = False,
 ) -> nn.Module:
     """Quantizes and calibrates the model in-place.
 
@@ -224,6 +225,8 @@ def quantize(
     Returns: A pytorch model which has been quantized and calibrated.
     """
     model = apply_mode(model, mode=[("quantize", config)], registry=QuantizeModeRegistry)
+    if insert_quantizer_only:
+        return model
     return calibrate(model, config["algorithm"], forward_loop=forward_loop)
 
 

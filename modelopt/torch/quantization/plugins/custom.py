@@ -114,7 +114,13 @@ class _ParallelLinear(_QuantFunctionalMixin, QuantModule):
 
         # Memorize the original weight.dtype for modelopt_post_restore given that
         # the dtype can change later.
-        self.original_weight_dtype = None if self.weight is None else self.weight.dtype
+        if hasattr(self, "weight"):
+            self.original_weight_dtype = None if self.weight is None else self.weight.dtype
+        elif hasattr(self, "weight0"):
+            self.original_weight_dtype = None if self.weight0 is None else self.weight0.dtype
+            self.weight = self.weight0
+        else:
+            self.original_weight_dtype = None
 
     def modelopt_post_restore(self, prefix: str = ""):
         """Post restore to correctly configure the TensorQuantizer states for MCore/distributed frameworks.

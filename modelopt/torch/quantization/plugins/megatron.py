@@ -15,9 +15,11 @@
 
 """Support quantization for megatron linear layers."""
 
+import contextlib
 import warnings
 from typing import Any
 
+import megatron.core.extensions.transformer_engine as megatron_te
 import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
@@ -362,6 +364,122 @@ class _QuantMegatronMLP(_MegatronMLP):
         r"weight_quantizer\.(\d+\.)*_amax$",
         r"weight_quantizer\.(\d+\.)*_scale$",
     ]
+
+
+# @QuantModuleRegistry.register({megatron_te.TEGroupedLinear: "megatron_TEGroupedLinear"})
+class _QuantTEGroupedLinear(_MegatronParallelLinear):
+    # def _setup(self):
+    #     self.parallel_state = ParallelState(
+    #         getattr(mcore_parallel, "get_expert_data_parallel_group", "get_data_parallel_group")(),
+    #         mcore_parallel.get_tensor_model_parallel_group(),
+    #     )
+    #     # self.input_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_input)
+    #     # self.weight_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_weight)
+    #     # self.output_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_output)
+    #     # self.output_quantizer.disable()
+    def _setup(self):
+        super()._setup()
+        self.parallel_state = ParallelState(
+            getattr(mcore_parallel, "get_expert_data_parallel_group", "get_data_parallel_group")(),
+            mcore_parallel.get_expert_tensor_parallel_group(),
+        )
+
+    @contextlib.contextmanager
+    def quantize_weight(self):
+        """Context in which MoE weight is quantized."""
+        self._enable_weight_quantization = True
+        try:
+            yield
+        finally:
+            for module in self.modules():
+                if isinstance(module, TensorQuantizer) and hasattr(module, "_cached_quant_val"):
+                    delattr(module, "_cached_quant_val")
+        self._enable_weight_quantization = False
+
+    def forward(self, x, *args, **kwargs):
+        """Forward."""
+        x = self.input_quantizer(x)
+        with self.quantize_weight():
+            return super().forward(x, *args, **kwargs)
+
+    def _get_weight_tensors(self):
+        weight_tensors = super()._get_weight_tensors()
+        if not self._enable_weight_quantization:
+            return weight_tensors
+
+        return [self.weight_quantizer(w) for w in weight_tensors]
+
+    def fold_weight(self):
+        weights = [getattr(self, f"weight{i}") for i in range(self.num_gemms)]
+        for w in weights:
+            w.data.copy_(self.weight_quantizer(w))
+        self.weight_quantizer.disable()
+
+
+@QuantModuleRegistry.register(
+    {megatron_te.TEColumnParallelGroupedLinear: "megatron_TEColumnParallelGroupedLinear"}
+)
+class TEColumnParallelGroupedLinear(_QuantTEGroupedLinear):
+    _is_column_parallel = True
+
+    def _get_shard_axis_dict(self, state_dict):
+        """Getting the sharded axis for amax and pre_quant_scale.
+
+        By default, ColumnParallelLinear shards the output dimension (dim=0). However,
+        depending the quantization algorithm, not all amax or pre_quant_scale need
+        to be sharded.
+
+        We check the quantizer.axis to decide whether an amax needs to be sharded.
+        Except for dynamic block quantization (NVFP4, axis: None) or per-tensor (FP8,
+        axis: None), the rest of algorithms all need to be sharded
+
+        Prequant scaling is applied per-input-channel; hence no sharding is required.
+        """
+        shard_axis_dict = {}
+        for k in state_dict:
+            if "weight_quantizer." in k:
+                weight_quantizer_axis = self.get_submodule(k.rsplit(".", 1)[0]).axis
+                if weight_quantizer_axis is not None:
+                    shard_axis_dict[k] = 0
+        return shard_axis_dict
+
+
+@QuantModuleRegistry.register(
+    {megatron_te.TERowParallelGroupedLinear: "megatron_TERowParallelGroupedLinear"}
+)
+class TERowParallelGroupedLinear(_QuantTEGroupedLinear):
+    _is_row_parallel = True
+
+    def _get_shard_axis_dict(self, state_dict):
+        """Getting the sharded axis for amax and pre_quant_scale.
+
+        By default, RowParallelLinear shards the input dimension (dim=1). However,
+        depending the quantization algorithm, not all amax or pre_quant_scale need
+        to be shard.
+
+        We check the quantizer.axis to decide whether an amax needs to be sharded.
+        Only static block quantization needs to be sharded and its axis is either (0,) or (0, 2).
+        The first case is used in AWQ the later case is used in blocked 2D quantization.
+        Dynamic block quantization (NVFP4 axis:None), per-tensor (FP8, axis: None)
+        and per-channel (INT8_SQ or FP8_PER_CHANNEL, axis: 1) do not require input sharding.
+
+        Prequant scaling is applied per-input-channel; hence it is always sharded.
+        """
+        shard_axis_dict = {}
+        for k in state_dict:
+            if "weight_quantizer." in k:
+                weight_quantizer_axis = None
+                if isinstance(self.weight_quantizer, TensorQuantizer):
+                    weight_quantizer_axis = self.weight_quantizer.axis
+                elif "weight_quantizer.0." in k:
+                    weight_quantizer_axis = self.weight_quantizer[0].axis
+                elif "weight_quantizer.1." in k:
+                    weight_quantizer_axis = self.weight_quantizer[1].axis
+                if isinstance(weight_quantizer_axis, tuple):
+                    shard_axis_dict[k] = 1
+            if k == "input_quantizer._pre_quant_scale":
+                shard_axis_dict[k] = 0
+        return shard_axis_dict
 
 
 class _RealQuantMegatronParallelLinear(RealQuantLinear):

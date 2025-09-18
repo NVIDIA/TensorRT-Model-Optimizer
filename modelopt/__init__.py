@@ -17,4 +17,4 @@
 
 from importlib.metadata import version as _version
 
-__version__ = _version("nvidia-modelopt")
+__version__ = "0.39.0"

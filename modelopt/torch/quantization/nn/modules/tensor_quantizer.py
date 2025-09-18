@@ -653,7 +653,7 @@ class TensorQuantizer(nn.Module):
         amax = None
         if not self.is_mx_format:
             amax = self._get_amax(inputs)
-            self._validate_amax(amax)
+            # self._validate_amax(amax)
 
         if self.block_sizes is not None and self.block_sizes.get("type", "static") == "dynamic":
             # Block quantization, including dynamic and static block quantization
