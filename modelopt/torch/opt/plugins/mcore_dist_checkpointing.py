@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+import yaml
 from megatron.core import dist_checkpointing, mpu
 from megatron.core.dist_checkpointing.serialization import get_default_load_sharded_strategy
 from megatron.core.dist_checkpointing.strategies.common import COMMON_STATE_FNAME
@@ -122,6 +123,30 @@ def save_sharded_modelopt_state(
         sharded_strategy: configures sharded tensors saving behavior and backend
         prefix: the prefix to add to the modelopt_state keys ("model." for NeMo)
     """
+
+    def _parse_transformer_config(transformer_config: dict) -> dict:
+        config = {}
+        for k, v in transformer_config.items():
+            if isinstance(v, (bool, int, str)):
+                config[k] = v
+            else:
+                config[k] = str(v)
+        config = {k: v for k, v in config.items() if "fp4" not in k and "fp8" not in k}
+        config = {k: v for k, v in config.items() if "tp_" not in k and "parallel" not in k}
+        config = {k: v for k, v in config.items() if "cuda_graph" not in k}
+        config = {k: v for k, v in config.items() if "init_" not in k and "cpu" not in k}
+        config = {k: v for k, v in config.items() if "recompute" not in k and "inference" not in k}
+        config = {k: v for k, v in config.items() if "pipeline" not in k and "comm" not in k}
+        config = {k: v for k, v in config.items() if "batch" not in k}
+        return config
+
+    if dist.is_master():
+        run_config_name = f"{checkpoint_name}/modelopt_run_config.yaml"
+        config_dict = _parse_transformer_config(copy.deepcopy(model[0].config.__dict__))
+        config_dict["nvidia_modelopt_version"] = modelopt.__version__
+        with open(run_config_name, "w") as f:
+            yaml.dump(config_dict, f, default_flow_style=False)
+
     if not mto.ModeloptStateManager.is_converted(model[0]):
         return
     if len(model) > 1:
