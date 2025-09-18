@@ -80,12 +80,6 @@ class KDTrainer(ModelOptHFTrainer):
                     state_dict=state_dict,
                 )
                 self.processing_class.save_pretrained(output_dir)
-                if export_student:
-                    modelopt_state["modelopt_state_dict"] = [
-                        state
-                        for state in modelopt_state["modelopt_state_dict"]
-                        if "kd_loss" not in state and "export_student" not in state
-                    ]
                 torch.save(modelopt_state, f"{output_dir}/modelopt_state.pth")
         else:
             model = model.export() if export_student else model
