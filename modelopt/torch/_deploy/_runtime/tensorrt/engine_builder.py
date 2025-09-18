@@ -213,8 +213,11 @@ def build_engine(
         final_output_dir = Path(output_dir or Path(gettempdir()) / DEFAULT_ARTIFACT_DIR)
         final_output_dir.mkdir(parents=True, exist_ok=True)
         engine_path = (
-            engine_path if engine_path else final_output_dir / f"{onnx_bytes.model_name}.engine"
+            Path(engine_path)
+            if engine_path
+            else final_output_dir / f"{onnx_bytes.model_name}.engine"
         )
+        engine_path.parent.mkdir(parents=True, exist_ok=True)
         calib_cache_path = final_output_dir / "calib_cache" if calib_cache else None
         timing_cache_path = final_output_dir / "timing.cache"
 
