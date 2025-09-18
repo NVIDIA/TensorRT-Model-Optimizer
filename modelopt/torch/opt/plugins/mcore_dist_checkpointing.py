@@ -36,6 +36,21 @@ from modelopt.torch.utils.network import SUPPORTED_WRAPPERS
 
 SUPPORTED_WRAPPERS[Float16Module] = "module"
 
+DROP_SUBSTRINGS = [
+    "fp4",
+    "fp8",
+    "tp_",
+    "parallel",
+    "cuda_graph",
+    "init_",
+    "cpu",
+    "recompute",
+    "inference",
+    "pipeline",
+    "comm",
+    "batch",
+]
+
 
 def remove_per_module_state(
     modelopt_state: dict[str, Any],
@@ -126,18 +141,15 @@ def save_sharded_modelopt_state(
 
     def _parse_transformer_config(transformer_config: dict) -> dict:
         config = {}
+
         for k, v in transformer_config.items():
+            if any(substring in k for substring in DROP_SUBSTRINGS):
+                continue
             if isinstance(v, (bool, int, str)):
                 config[k] = v
             else:
                 config[k] = str(v)
-        config = {k: v for k, v in config.items() if "fp4" not in k and "fp8" not in k}
-        config = {k: v for k, v in config.items() if "tp_" not in k and "parallel" not in k}
-        config = {k: v for k, v in config.items() if "cuda_graph" not in k}
-        config = {k: v for k, v in config.items() if "init_" not in k and "cpu" not in k}
-        config = {k: v for k, v in config.items() if "recompute" not in k and "inference" not in k}
-        config = {k: v for k, v in config.items() if "pipeline" not in k and "comm" not in k}
-        config = {k: v for k, v in config.items() if "batch" not in k}
+
         return config
 
     if dist.is_master():

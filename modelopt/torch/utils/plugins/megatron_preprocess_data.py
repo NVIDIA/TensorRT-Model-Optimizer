@@ -210,13 +210,16 @@ def main():
 
     >>> python megatron_preprocess_data.py \
             --dataset "nvidia/Nemotron-Pretraining-Dataset-sample" \
-            --tokenizer "nvidia/Nemotron-Pretraining-Tokenizer" \
+            --tokenizer "meta-llama/Llama-3.2-1B-Instruct" \
             --output_dir "./processed_data"
     """
     parser = argparse.ArgumentParser(prog="megatron_preprocess_data")
     parser.add_argument("--input_path", type=str, default=None, help="Input path.")
     parser.add_argument(
-        "--dataset", type=str, default=None, help="Hugging Face Hub dataset name or path"
+        "--dataset",
+        type=str,
+        default="nvidia/Nemotron-Pretraining-Dataset-sample",
+        help="Hugging Face Hub dataset name or path",
     )
     parser.add_argument("--subset", type=str, default=None, help="Hugging Face Hub dataset subset")
     parser.add_argument("--split", type=str, default="train", help="Hugging Face Hub dataset split")
@@ -225,7 +228,7 @@ def main():
     )
     parser.add_argument("--tokenizer", type=str, required=True, help="Tokenizer name or path")
     parser.add_argument("--json_keys", nargs="+", default=["text"], help="JSON keys to tokenize")
-    parser.add_argument("--append_eod", type=bool, default=False, help="Append <eod> token")
+    parser.add_argument("--append_eod", action="store_true", help="Append <eod> token")
     parser.add_argument(
         "--max_sequence_length", type=int, default=None, help="Maximum sequence length"
     )
@@ -235,8 +238,6 @@ def main():
 
     if args.input_path is None:
         args.input_path = []
-        if args.dataset is None:
-            args.dataset = "nvidia/Nemotron-Pretraining-Dataset-sample"
 
         response = requests.get(
             "https://datasets-server.huggingface.co/splits?dataset={}".format(args.dataset),
@@ -250,9 +251,9 @@ def main():
             split = entry["split"]
 
             if args.subset is not None and args.subset != subset:
-                continue
+                skip_processing = True
             if args.split is not None and args.split != split:
-                continue
+                skip_processing = True
 
             print(f"Loading dataset {name} with subset {subset} and split {split}")
             dataset = load_dataset(name, subset, split=split)
