@@ -147,19 +147,15 @@ def test_distillation_save_restore(distillation_model, tmp_path):
     new_student = tiny_mobilenet()
     distillation_model_new = mto.restore(new_student, tmp_path / "ckpt.pt")
 
-    assert isinstance(distillation_model_new, mtd.DistillationModel)
-    assert distillation_model_new.teacher_model is not None
+    # Ensure state config was reset
+    manager = mto.ModeloptStateManager(distillation_model_new)
+    cfg = manager._state[-1][1]["config"]
+    assert cfg["teacher_model"] == nn.Module
+    assert isinstance(next(iter(cfg["criterion"].values())), Loss)
+    assert cfg["loss_balancer"] is None
 
-    input = get_input_tensor()
-
-    # disable dropout for deterministic results
-    distillation_model.eval()
-    distillation_model_new.eval()
-
-    out = distillation_model(input)
-    out_new = distillation_model_new(input)
-
-    assert torch.allclose(out, out_new)
+    # Should not have restored anything
+    assert isinstance(distillation_model_new, type(new_student))
 
 
 def test_distillation_export(distillation_model, tmp_path):

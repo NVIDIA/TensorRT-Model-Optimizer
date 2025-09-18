@@ -21,7 +21,6 @@ import datasets
 import torch
 import torch.distributed
 import transformers
-from accelerate import PartialState
 from accelerate.logging import get_logger
 from transformers import AutoTokenizer
 from trl import SFTTrainer
@@ -48,36 +47,26 @@ class TrainingArguments(transformers.TrainingArguments):
     do_train: bool = True
     do_eval: bool = True
     save_strategy: str = "no"
-    max_seq_length: int = 1024
+    max_length: int = 1024
     optim: str = "adamw_torch"
     learning_rate: float = 1e-5
     lr_scheduler_type: str = "cosine"
     dataloader_drop_last: bool = True
     dataset_num_proc: int = 8
-    dataset_batch_size: int = 500
     bf16: bool = True
     tf32: bool = True
 
 
 def llama_text_format_func(sample):
-    texts = []
-    for p, q, r in zip(sample["system_prompt"], sample["question"], sample["response"]):
-        if not p:
-            texts.append(f"<s>[INST] {q}[/INST]\n{r}</s>")
-        else:
-            texts.append(f"<s>[INST] <<SYS>>{p}<</SYS>>\n{q}[/INST]\n{r}</s>")
-    return texts
+    p, q, r = sample["system_prompt"], sample["question"], sample["response"]
+    if not p:
+        return f"<s>[INST] {q}[/INST]\n{r}</s>"
+    else:
+        return f"<s>[INST] <<SYS>>{p}<</SYS>>\n{q}[/INST]\n{r}</s>"
 
 
 class KDSFTTrainer(SFTTrainer, KDTrainer):
     pass
-
-
-def _teacher_factory(model_name_or_path):
-    return transformers.AutoModelForCausalLM.from_pretrained(
-        model_name_or_path,
-        device_map=PartialState().process_index,
-    )
 
 
 def train():
@@ -117,25 +106,24 @@ def train():
 
     if model_args.single_model:
         logger.info("Loading single model only...")
-        model = _teacher_factory(model_path)
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_path, dtype=torch.bfloat16 if training_args.bf16 else None
+        )
         logger.info("Model loaded.")
     else:
         logger.info("Loading student model...")
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.student_name_or_path,
-            device_map=PartialState().process_index,
+            model_args.student_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
         )
         logger.info("Student loaded.")
         # Load checkpoint
         logger.info("Loading teacher model and converting to Distillation model...")
+        teacher_model = transformers.AutoModelForCausalLM.from_pretrained(
+            model_args.teacher_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
+        )
         kd_config = {
-            "teacher_model": (
-                _teacher_factory,
-                (model_args.teacher_name_or_path,),
-                {},
-            ),
+            "teacher_model": teacher_model,
             "criterion": LMLogitsLoss(),
-            "expose_minimal_state_dict": False,  # FSDP forces us to disable this
         }
         model = mtd.convert(model, mode=[("kd_loss", kd_config)])
         logger.info("Models converted.")
@@ -143,8 +131,6 @@ def train():
     # Fix problematic settings that logger.info excessive warnings
     model.generation_config.temperature = None
     model.generation_config.top_p = None
-    if training_args.gradient_checkpointing:
-        training_args.gradient_checkpointing_kwargs = {"use_reentrant": False}
 
     # Trainer
     trainer_cls = SFTTrainer if model_args.single_model else KDSFTTrainer
