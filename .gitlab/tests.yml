@@ -56,6 +56,7 @@ example:
   script:
     # Uninstall apex since T5 Int8 (PixArt) + Apex is not supported as per https://github.com/huggingface/transformers/issues/21391
     - if [ "$TEST" = "diffusers" ]; then pip uninstall -y apex; fi
+    - if [ -f examples/$TEST/requirements.txt ]; then pip install -r examples/$TEST/requirements.txt; fi
     - if [ "$TEST_TYPE" = "pytest" ]; then pytest -s tests/examples/$TEST; else bash tests/examples/test_$TEST.sh; fi
 
 example-ada:

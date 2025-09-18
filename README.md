@@ -68,7 +68,7 @@ To install from source in editable mode with all development dependencies or to 
 
 ```bash
 # Clone the Model Optimizer repository
-git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer.git
+git clone git@github.com:NVIDIA/TensorRT-Model-Optimizer.git
 cd TensorRT-Model-Optimizer
 
 pip install -e .[dev]

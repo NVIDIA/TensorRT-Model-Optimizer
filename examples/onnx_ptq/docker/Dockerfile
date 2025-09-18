@@ -19,16 +19,16 @@ ENV LD_LIBRARY_PATH="${CUDNN_LIB_DIR}:${TRT_PATH}/lib:/usr/include:${LD_LIBRARY_
 ENV PATH="${TRT_PATH}/bin:${PATH}"
 
 # Copy application code and install requirements
-COPY modelopt modelopt/modelopt
-COPY examples/onnx_ptq modelopt/examples/onnx_ptq
-COPY setup.py modelopt/setup.py
-COPY pyproject.toml modelopt/pyproject.toml
+COPY modelopt TensorRT-Model-Optimizer/modelopt
+COPY examples/onnx_ptq TensorRT-Model-Optimizer/examples/onnx_ptq
+COPY setup.py TensorRT-Model-Optimizer/setup.py
+COPY pyproject.toml TensorRT-Model-Optimizer/pyproject.toml
 
 # Install onnx_ptq requirements
-RUN pip install -r modelopt/examples/onnx_ptq/requirements.txt
+RUN pip install -r TensorRT-Model-Optimizer/examples/onnx_ptq/requirements.txt
 
 # Install modelopt
-RUN pip install -e "./modelopt[hf,onnx]"
+RUN pip install -e "./TensorRT-Model-Optimizer[hf,onnx]"
 
 # Allow users to run without root
 RUN chmod -R 777 /workspace
