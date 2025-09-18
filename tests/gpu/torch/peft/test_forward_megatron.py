@@ -464,6 +464,7 @@ def _test_quantize_then_lora():
         print(
             f"LoRA forward pass successful! Output shape: {output_lora_quant.shape if hasattr(output_lora_quant, 'shape') else 'N/A'}"
         )
+        print(model)
         print("Test passed!")
     finally:
         # Clean up model parallel groups
@@ -471,11 +472,83 @@ def _test_quantize_then_lora():
 
 
 def _test_quantize_then_lora_save_restore():
-    pass
+    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=1234)
+
+    try:
+        model_ref = _gpt_model_provider(tp_size=1)
+        model_test = _gpt_model_provider(tp_size=1)
+        prompt_tokens = torch.randint(
+            0, model_test.vocab_size, (2, model_test.max_sequence_length)
+        ).cuda()
+
+        def forward_func(mod):
+            output = megatron_prefill(model_ref, prompt_tokens)
+
+        mtq.quantize(model_ref, mtq.FP8_DEFAULT_CFG, forward_func)
+        lora_config = {
+            "adapter_type": "lora",
+            "adapter_name": "default",
+            "adapter_cfg": {
+                "*attention*": {"rank": 32, "scale": 1},
+                "*mlp*": {"rank": 64, "scale": 1},
+            },
+        }
+        model_ref = mtp.update_model(model_ref, lora_config)
+        tmp_path = "./model_ref"
+        save_distributed_checkpoint(tmp_path, model_ref)
+        save_sharded_modelopt_state([model_ref], tmp_path)
+        restore_sharded_modelopt_state([model_test], tmp_path)
+        model_test = load_distributed_checkpoint(tmp_path, model_test)
+        # Run forward pass
+        output_test = megatron_prefill(model_test, prompt_tokens)
+        output_ref = megatron_prefill(model_ref, prompt_tokens)
+        print(
+            f"Forward pass successful! Output shape: {output_test.shape if hasattr(output_test, 'shape') else 'N/A'}"
+        )
+        print(model_ref)
+        print(f"output_test: {output_test}")
+        print(f"output_ref: {output_ref}")
+
+    finally:
+        # Clean up model parallel groups
+        parallel_state.destroy_model_parallel()
 
 
 def _test_lora_then_quantize():
-    pass
+    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=1234)
+
+    try:
+        model = _gpt_model_provider(tp_size=1)
+        prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+        lora_config = {
+            "adapter_type": "lora",
+            "adapter_name": "default",
+            "adapter_cfg": {
+                "*attention*": {"rank": 32, "scale": 1},
+                "*mlp*": {"rank": 64, "scale": 1},
+            },
+        }
+
+        def forward_func(mod):
+            output = megatron_prefill(model, prompt_tokens)
+
+        model = mtp.update_model(model, lora_config)
+        mtq.quantize(model, mtq.FP8_DEFAULT_CFG, forward_func)
+        lora_count = 0
+        for name, module in model.named_modules():
+            if hasattr(module, "_lora_adapters"):
+                lora_count += 1
+                print(f"LoRA module found: {name}")
+        print(f"\nTotal LoRA modules: {lora_count}")
+        output_lora_quant = megatron_prefill(model, prompt_tokens)
+        print(
+            f"LoRA forward pass successful! Output shape: {output_lora_quant.shape if hasattr(output_lora_quant, 'shape') else 'N/A'}"
+        )
+        print("Test passed!")
+        print(model)
+    finally:
+        # Clean up model parallel groups
+        parallel_state.destroy_model_parallel()
 
 
 def _test_lora_then_quantize_save_restore():
@@ -520,7 +593,9 @@ def main():
         # _test_lora_save_and_restore()
         # _test_lora_add_2nd_lora()
         # _test_lora_save_and_restore_with2loras()
-        _test_quantize_then_lora()
+        # _test_quantize_then_lora()
+        # _test_quantize_then_lora_save_restore()
+        _test_lora_then_quantize()
     finally:
         if torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
