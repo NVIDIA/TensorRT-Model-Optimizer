@@ -1073,15 +1073,13 @@ class _DynamicEagleGPTModel(EagleModel):
         """Compute the total loss for EAGLE.
 
         logits: [s, b, vocab // TP]
-        labels: [b, s] or [b, s-1] for offline mode
+        labels: [b, s]
         eagle_logits: [s, b, vocab // TP]
         """
         # Compute lm loss (classification loss) or KLDivergence
         if self.eagle_self_logit_distillation:
             mapping = self.eagle_module.d2t if hasattr(self.eagle_module, "d2t") else None
             token_loss = self.kld(eagle_logits[:-1, :, :], logits[1:, :, :], mapping)
-        elif labels.shape[1] < eagle_logits.shape[0]:
-            token_loss = self.compute_language_model_loss(labels[:, 1:], eagle_logits[:-2, :, :])
         else:
             token_loss = self.compute_language_model_loss(labels[:, 1:], eagle_logits[:-1, :, :])
 
@@ -1281,20 +1279,26 @@ class _DynamicEagleGPTModel(EagleModel):
         # all eagle weights have been exercised for quantization calibration purpose.
         if labels is None:
             return logits_sbh.transpose(0, 1).contiguous()
+        elif labels.shape[1] == input_ids.shape[1] - 1:
+            # For offline training, labels may be 1 token shorter than input_ids.
+            # We will just pad a 0 to the labels to make the seq_len the same as
+            # input_ids. This will introduce a small error in training if logit_distillation
+            # is False, and testing accuracy is wrong for the last token.
+            right_token_pad = torch.zeros(
+                (labels.shape[0], 1),
+                dtype=labels.dtype,
+                device=labels.device,
+            )
+            labels = torch.cat((labels, right_token_pad), dim=-1)
 
         # If eagle_freeze_base_model is set to True,
         # the base model is frozen .
-        if self.eagle_offline:
-            loss = torch.zeros(input_ids.shape).to(input_ids.device)
-        else:
-            loss = self.compute_language_model_loss(labels, logits_sbh)
+        loss = self.compute_language_model_loss(labels, logits_sbh)
         loss = 0.0 * loss
 
         if self.eagle_config.parallel_draft_step > 1:
             for i in range(self.eagle_config.parallel_draft_step):
-                eagle_logits = eagle_logits_0[
-                    i * logits_sbh.shape[0] : (i + 1) * logits_sbh.shape[0]
-                ]
+                eagle_logits = eagle_logits_0[i * labels.shape[1] : (i + 1) * labels.shape[1]]
                 loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
                 loss_ = loss_[:, i:]
                 loss[:, i + 1 :] += 1.0 * loss_
@@ -1307,7 +1311,7 @@ class _DynamicEagleGPTModel(EagleModel):
             acc = []
             with torch.no_grad():
                 gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_0[:-2, :, :] if self.eagle_offline else eagle_logits_0[:-1, :, :]
+                    eagle_logits_0[:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                 if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
@@ -1337,7 +1341,7 @@ class _DynamicEagleGPTModel(EagleModel):
             packed_seq_params=packed_seq_params,
             **(extra_block_kwargs or {}),
         )
-        eagle_logits_1 = eagle_logits_2x[logits_sbh.shape[0] :, :, :]
+        eagle_logits_1 = eagle_logits_2x[-labels.shape[1] :, :, :]
 
         loss_1 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_1)
         # [b, s - 2]
@@ -1348,7 +1352,7 @@ class _DynamicEagleGPTModel(EagleModel):
             acc = []
             with torch.no_grad():
                 gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_1[1:-2, :, :] if self.eagle_offline else eagle_logits_1[1:-1, :, :]
+                    eagle_logits_1[1:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                 if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
@@ -1379,7 +1383,7 @@ class _DynamicEagleGPTModel(EagleModel):
             **(extra_block_kwargs or {}),
         )
 
-        eagle_logits_2 = eagle_logits_3x[-logits_sbh.shape[0] :, :, :]
+        eagle_logits_2 = eagle_logits_3x[-labels.shape[1] :, :, :]
 
         loss_2 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_2)
         # [b, s - 3]
@@ -1390,7 +1394,7 @@ class _DynamicEagleGPTModel(EagleModel):
             acc = []
             with torch.no_grad():
                 gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_2[2:-2, :, :] if self.eagle_offline else eagle_logits_2[2:-1, :, :]
+                    eagle_logits_2[2:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                 if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
@@ -1421,7 +1425,7 @@ class _DynamicEagleGPTModel(EagleModel):
             **(extra_block_kwargs or {}),
         )
 
-        eagle_logits_3 = eagle_logits_4x[-logits_sbh.shape[0] :, :, :]
+        eagle_logits_3 = eagle_logits_4x[-labels.shape[1] :, :, :]
 
         loss_3 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_3)
         # [b, s - 4]
@@ -1432,7 +1436,7 @@ class _DynamicEagleGPTModel(EagleModel):
             acc = []
             with torch.no_grad():
                 gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_3[3:-2, :, :] if self.eagle_offline else eagle_logits_3[3:-1, :, :]
+                    eagle_logits_3[3:-1, :, :]
                 )
                 eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                 if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
