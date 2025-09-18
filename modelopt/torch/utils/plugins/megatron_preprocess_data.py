@@ -239,10 +239,15 @@ def main():
     if args.input_path is None:
         args.input_path = []
 
-        response = requests.get(
-            "https://datasets-server.huggingface.co/splits?dataset={}".format(args.dataset),
-            timeout=10,
-        )
+        try:
+            response = requests.get(
+                f"https://datasets-server.huggingface.co/splits?dataset={args.dataset}",
+                timeout=10,
+            )
+            response.raise_for_status()
+        except requests.RequestException as e:
+            print(f"Failed to fetch dataset splits for {args.dataset}: {e}")
+            return
 
         for entry in response.json()["splits"]:
             skip_processing = False
