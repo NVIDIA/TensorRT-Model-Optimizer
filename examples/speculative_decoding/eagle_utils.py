@@ -270,7 +270,7 @@ def make_eagle_supervised_data_module(
         # Filter to conversations that exist in the offline data and in the provided json
         valid_entries = []
         for entry in data_json:
-            conv_id = entry.get("conversation_id") or entry.get("id")
+            conv_id = entry.get("conversation_id", entry.get("id"))
             if conv_id is None:
                 raise ValueError(
                     "Each entry in the data json must have a 'conversation_id' or 'id' field."
