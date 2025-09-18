@@ -9,8 +9,20 @@ from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParall
 
 from .layer import LoRAModule, LoRAModuleRegistry
 
-# Default rank for LoRA decomposition
+try:
+    from modelopt.torch.quantization.plugins.megatron import (
+        _MegatronColumnParallelLinear as QuantColumnParallelLinear,
+    )
+    from modelopt.torch.quantization.plugins.megatron import (
+        _MegatronRowParallelLinear as QuantRowParallelLinear,
+    )
+
+    QUANT_MODULES_AVAILABLE = True
+except ImportError:
+    QUANT_MODULES_AVAILABLE = False
+
 DEFAULT_LORA_RANK = 64
+DEFAULT_SCALE = 1.0
 
 
 class _MegatronParallelLoRABase(LoRAModule):
@@ -33,7 +45,7 @@ class _MegatronParallelLoRABase(LoRAModule):
         return lora_a_init, lora_b_init
 
     def _register_adapter_with_device(
-        self, adapter_name: str, lora_a: nn.Module, lora_b: nn.Module, rank: int
+        self, adapter_name: str, lora_a: nn.Module, lora_b: nn.Module, rank: int, scale: float
     ) -> None:
         """Register LoRA adapter modules and ensure correct device placement.
 
@@ -43,23 +55,29 @@ class _MegatronParallelLoRABase(LoRAModule):
             lora_b: LoRA B module (up-projection)
             rank: Rank of the LoRA decomposition
         """
-        # Move LoRA modules to the same device as the parent module
-        # Try to get device from parent module's parameters or buffers
+        # Move LoRA modules to the same device and dtype as the parent module
+        # Try to get device and dtype from parent module's parameters or buffers
         device = None
+        dtype = None
         for p in self.parameters():
             device = p.device
+            dtype = p.dtype
             break
         if device is None:
             for b in self.buffers():
                 device = b.device
+                dtype = b.dtype
                 break
 
-        # If we found a device, move LoRA modules to it
+        # If we found a device and dtype, move LoRA modules to match
         if device is not None:
             lora_a = lora_a.to(device)
             lora_b = lora_b.to(device)
+        if dtype is not None:
+            lora_a = lora_a.to(dtype)
+            lora_b = lora_b.to(dtype)
 
-        super()._register_adapter(adapter_name, lora_a, lora_b, rank)
+        super()._register_adapter(adapter_name, lora_a, lora_b, rank, scale)
 
 
 @LoRAModuleRegistry.register({ColumnParallelLinear: "megatron_ColumnParallelLinear"})
@@ -70,7 +88,9 @@ class _MegatronColumnParallelLinear(_MegatronParallelLoRABase):
     the parallelization scheme of the base layer.
     """
 
-    def update_layer_lora(self, adapter_name: str, rank: int = DEFAULT_LORA_RANK) -> None:
+    def update_layer_lora(
+        self, adapter_name: str, rank: int = DEFAULT_LORA_RANK, scale: float = DEFAULT_SCALE
+    ) -> None:
         """Create and register a new LoRA adapter for ColumnParallelLinear.
 
         Args:
@@ -100,7 +120,7 @@ class _MegatronColumnParallelLinear(_MegatronParallelLoRABase):
             init_method=lora_b_init,
         )
 
-        self._register_adapter_with_device(adapter_name, lora_a, lora_b, rank)
+        self._register_adapter_with_device(adapter_name, lora_a, lora_b, rank, scale)
 
 
 @LoRAModuleRegistry.register({RowParallelLinear: "megatron_RowParallelLinear"})
@@ -111,7 +131,9 @@ class _MegatronRowParallelLinear(_MegatronParallelLoRABase):
     the parallelization scheme of the base layer.
     """
 
-    def update_layer_lora(self, adapter_name: str, rank: int = DEFAULT_LORA_RANK) -> None:
+    def update_layer_lora(
+        self, adapter_name: str, rank: int = DEFAULT_LORA_RANK, scale: float = DEFAULT_SCALE
+    ) -> None:
         """Create and register a new LoRA adapter for RowParallelLinear.
 
         Args:
@@ -141,4 +163,15 @@ class _MegatronRowParallelLinear(_MegatronParallelLoRABase):
             init_method=lora_b_init,
         )
 
-        self._register_adapter_with_device(adapter_name, lora_a, lora_b, rank)
+        self._register_adapter_with_device(adapter_name, lora_a, lora_b, rank, scale)
+
+
+# Register quantized versions if available
+if QUANT_MODULES_AVAILABLE:
+    # Register the same LoRA implementations for quantized modules
+    LoRAModuleRegistry.register({QuantColumnParallelLinear: "quant_megatron_ColumnParallelLinear"})(
+        _MegatronColumnParallelLinear
+    )
+    LoRAModuleRegistry.register({QuantRowParallelLinear: "quant_megatron_RowParallelLinear"})(
+        _MegatronRowParallelLinear
+    )
