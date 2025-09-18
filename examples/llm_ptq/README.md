@@ -203,7 +203,7 @@ scripts/huggingface_example.sh --type llama --model $HF_PATH --quant w4a8_awq,fp
 The above example perform `AutoQuantize` where the less quantization accuracy sensitive layers are quantized with `w4a8_awq` (specified by `--quant w4a8_awq`) and the more sensitive layers
 are kept un-quantized such that the effective bits is 4.8 (specified by `--auto_quantize_bits 4.8`).
 
-The example scripts above also have an additional flag `--tasks`, where the actual tasks run in the script can be customized. The allowed tasks are `build,mmlu,benchmark,lm_eval,livecodebench` specified in the script [parser](./scripts/parser.sh). The tasks combo can be specified with a comma-separated task list. Some tasks like mmlu can take a long time to run. To run lm_eval tasks, please also specify the `--lm_eval_tasks` flag with comma separated lm_eval tasks [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks).
+The example scripts above also have an additional flag `--tasks`, where the actual tasks run in the script can be customized. The allowed tasks are `quant,mmlu,lm_eval,livecodebench` specified in the script [parser](./scripts/parser.sh). The tasks combo can be specified with a comma-separated task list. Some tasks like mmlu can take a long time to run. To run lm_eval tasks, please also specify the `--lm_eval_tasks` flag with comma separated lm_eval tasks [here](https://github.com/EleutherAI/lm-evaluation-harness/tree/main/lm_eval/tasks).
 
 > *If GPU out-of-memory error is reported running the scripts, please try editing the scripts and reducing the max batch size to save GPU memory.*
 
@@ -251,7 +251,7 @@ scripts/huggingface_example.sh --model $HF_PATH --quant [fp8|nvfp4|int8_sq|int4_
 
 > *If a GPU OOM error occurs during model quantization despite sufficient memory, setting the --use_seq_device_map flag can help. This enforces sequential device mapping, distributing the model across GPUs and utilizing up to 80% of each GPU's memory.*
 
-> *You can now add `--low_memory_mode` to the command when setting `--export_fmt=hf` to lower the memory requirements of the PTQ process. With this mode, the script will compress model weights to low precision before calibration. This mode is only supported for FP8 and NVFP4 with max calibration.*
+> *You can add `--low_memory_mode` to the command to lower the memory requirements of the PTQ process. With this mode, the script will compress model weights to low precision before calibration. This mode is only supported for FP8 and NVFP4 with max calibration.*
 
 #### Deepseek R1
 
@@ -301,7 +301,7 @@ with torch.inference_mode():
 ### Quantize and Export
 
 ```bash
-python hf_ptq.py --pyt_ckpt_path <huggingface_model_card> --qformat fp8 --export_fmt hf --export_path <quantized_ckpt_path> --trust_remote_code
+python hf_ptq.py --pyt_ckpt_path <huggingface_model_card> --qformat fp8 --export_path <quantized_ckpt_path> --trust_remote_code
 ```
 
 ### Hugging Face framework [Script](./scripts/huggingface_example.sh)
@@ -309,7 +309,7 @@ python hf_ptq.py --pyt_ckpt_path <huggingface_model_card> --qformat fp8 --export
 Alternatively, the framework script `huggingface_example.sh` also supports quantize and export:
 
 ```bash
-scripts/huggingface_example.sh --model <huggingface_model_card> --quant fp8 --export_fmt hf
+scripts/huggingface_example.sh --model <huggingface_model_card> --quant fp8
 ```
 
 ### Deployment

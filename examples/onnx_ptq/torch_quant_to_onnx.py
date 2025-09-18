@@ -83,12 +83,12 @@ def quantize_model(model, config, data_loader=None):
     return quantized_model
 
 
-def get_model_input_shape(model_name):
+def get_model_input_shape(model_name, batch_size):
     """Get the input shape from timm model configuration."""
     model = timm.create_model(model_name, pretrained=True, num_classes=1000)
     data_config = timm.data.resolve_model_data_config(model)
     input_size = data_config["input_size"]
-    return (1, *tuple(input_size))  # Add batch dimension
+    return (batch_size, *tuple(input_size))  # Add batch dimension
 
 
 def main():
@@ -119,11 +119,17 @@ def main():
         default=512,
         help="Number of images to use in calibration [1-512]",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1,
+        help="Batch size for calibration and ONNX model export.",
+    )
 
     args = parser.parse_args()
 
     # Get input shape from model config
-    input_shape = get_model_input_shape(args.timm_model_name)
+    input_shape = get_model_input_shape(args.timm_model_name, args.batch_size)
 
     # Create model and move to appropriate device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

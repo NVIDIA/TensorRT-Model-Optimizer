@@ -63,6 +63,11 @@ LLAVA_PATH = _select_path(
     local_id="llava-1.5-7b-hf",
 )
 
+QWEN_VL_PATH = _select_path(
+    remote_id="Qwen/Qwen2-VL-2B-Instruct",
+    local_id="Qwen2-VL-2B-Instruct",
+)
+
 # Diffusers
 FLUX_SCHNELL_PATH = _select_path(
     remote_id="hf-internal-testing/tiny-flux-pipe",

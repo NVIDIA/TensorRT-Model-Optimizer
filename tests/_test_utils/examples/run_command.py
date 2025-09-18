@@ -32,9 +32,15 @@ def _extend_cmd_parts(cmd_parts: list[str], **kwargs):
     return cmd_parts
 
 
-def run_example_command(cmd_parts: list[str], example_path: str):
+def run_example_command(cmd_parts: list[str], example_path: str, setup_free_port: bool = False):
     print(f"[{example_path}] Running command: {cmd_parts}")
-    subprocess.run(cmd_parts, cwd=MODELOPT_ROOT / "examples" / example_path, check=True)
+    env = os.environ.copy()
+
+    if setup_free_port:
+        free_port = get_free_port()
+        env["MASTER_PORT"] = str(free_port)
+
+    subprocess.run(cmd_parts, cwd=MODELOPT_ROOT / "examples" / example_path, env=env, check=True)
 
 
 def run_command_in_background(cmd_parts, example_path, stdout=None, stderr=None, text=True):
@@ -117,16 +123,16 @@ def run_llm_export_command(
 
 def run_llm_ptq_command(*, model: str, quant: str, **kwargs):
     kwargs.update({"model": model, "quant": quant})
-    kwargs.setdefault("tasks", "build")
+    kwargs.setdefault("tasks", "quant")
     kwargs.setdefault("calib", 16)
 
     cmd_parts = _extend_cmd_parts(["scripts/huggingface_example.sh", "--no-verbose"], **kwargs)
     run_example_command(cmd_parts, "llm_ptq")
 
 
-def run_vlm_ptq_command(*, model: str, type: str, quant: str, **kwargs):
-    kwargs.update({"model": model, "type": type, "quant": quant})
-    kwargs.setdefault("tasks", "build")
+def run_vlm_ptq_command(*, model: str, quant: str, **kwargs):
+    kwargs.update({"model": model, "quant": quant})
+    kwargs.setdefault("tasks", "quant")
     kwargs.setdefault("calib", 16)
 
     cmd_parts = _extend_cmd_parts(["scripts/huggingface_example.sh"], **kwargs)

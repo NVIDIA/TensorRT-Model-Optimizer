@@ -416,9 +416,10 @@ def interpret_trt_plugins_precision_flag(
             # Will add Q/DQ nodes in the requested I/O indices
             inp_precision_quant = [i for i, p in enumerate(inp_precision) if p in ["int8", "fp8"]]
             out_precision_quant = [i for i, p in enumerate(out_precision) if p in ["int8", "fp8"]]
-            custom_ops_to_quantize[op_type] = {
-                "inp": inp_precision_quant,
-                "out": out_precision_quant,
-            }
+            if inp_precision_quant or out_precision_quant:
+                custom_ops_to_quantize[op_type] = {
+                    "inp": inp_precision_quant,
+                    "out": out_precision_quant,
+                }
 
     return custom_ops_to_cast, custom_ops_to_quantize

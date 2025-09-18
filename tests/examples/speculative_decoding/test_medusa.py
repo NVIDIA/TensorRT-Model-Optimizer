@@ -29,7 +29,7 @@ def install_transformers_lt_4_50():
 
 
 # fmt: off
-def _run_hf_ptq(model_path, output_dir, qformat, export_fmt):
+def _run_hf_ptq(model_path, output_dir, qformat):
     run_example_command(
         [
             "python", "hf_ptq.py",
@@ -38,7 +38,6 @@ def _run_hf_ptq(model_path, output_dir, qformat, export_fmt):
             "--calib_size", "64",
             "--export_path", output_dir,
             "--qformat", qformat,
-            "--export_fmt", export_fmt,
         ],
         "llm_ptq",
     )
@@ -66,8 +65,7 @@ def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, tiny_daring_anteater_pa
     )
 
     # Test PTQ on Medusa
-    _run_hf_ptq(medusa_path, tmp_path / "medusa-tinyllama-trtllm", "fp8", "tensorrt_llm")
-    _run_hf_ptq(medusa_path, tmp_path / "medusa-tinyllama-hf", "fp8", "hf")
+    _run_hf_ptq(medusa_path, tmp_path / "medusa-tinyllama-hf", "fp8")
 
     # Test QAT on Medusa
     run_example_command(

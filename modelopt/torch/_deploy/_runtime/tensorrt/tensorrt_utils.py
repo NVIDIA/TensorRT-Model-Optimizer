@@ -24,7 +24,7 @@ import torch
 from modelopt.onnx.utils import get_batch_size
 from modelopt.onnx.utils import get_input_names as get_onnx_input_names
 
-from .constants import TENSORRT_8_MAJOR_VERSION, TRTMode
+from .constants import TENSORRT_8_MAJOR_VERSION
 
 
 def is_trt8():
@@ -129,11 +129,6 @@ def get_output_shapes(
             shape = context.get_binding_shape(binding_index)
             output_shapes.append(shape)
     return output_shapes
-
-
-def validate_precision(precision: str) -> bool:
-    """Returns whether an input precision is in supported set."""
-    return precision in [TRTMode.FLOAT32, TRTMode.FLOAT16, TRTMode.INT8]
 
 
 def calib_data_generator(onnx_bytes: bytes, input_tensors: list[np.ndarray]):
