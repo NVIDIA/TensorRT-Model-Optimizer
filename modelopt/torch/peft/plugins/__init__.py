@@ -15,8 +15,7 @@
 
 """PEFT/LoRA plugins for various frameworks."""
 
-# Import plugins to register them
-try:
-    from . import megatron
-except ImportError:
-    pass  # Megatron not available
+from contextlib import suppress
+
+with suppress(ImportError):
+    from . import megatron as _megatron
