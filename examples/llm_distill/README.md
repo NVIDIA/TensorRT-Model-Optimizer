@@ -39,13 +39,9 @@ First obtain both a pretrained model to act as the teacher and a (usually smalle
 ```python
 from transformers import AutoModelForCausalLM
 
-# Define student
+# Define student & teacher
 student_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
-
-# Define callable which returns teacher
-def teacher_factory():
-    teacher_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-70B-Instruct")
-    return teacher_model
+teacher_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-70B-Instruct")
 ```
 
 ### Set up the meta model
@@ -58,7 +54,7 @@ Please see an example Distillation setup below. This example assumes the outputs
 import modelopt.torch.distill as mtd
 
 distillation_config = {
-    "teacher_model": teacher_factory,  # model initializer
+    "teacher_model": teacher_model,
     "criterion": mtd.LogitsDistillationLoss(),  # callable receiving student and teacher outputs, in order
     "loss_balancer": mtd.StaticLossBalancer(),  # combines multiple losses; omit if only one distillation loss used
 }
@@ -66,7 +62,7 @@ distillation_config = {
 distillation_model = mtd.convert(student_model, mode=[("kd_loss", distillation_config)])
 ```
 
-The `teacher_model` can be either a callable which returns an `nn.Module` or a tuple of `(model_cls, args, kwargs)`. The `criterion` is the distillation loss used between student and teacher tensors. The `loss_balancer` determines how the original and distillation losses are combined (if needed).
+The `teacher_model` can be either a `nn.Module`, a callable which returns an `nn.Module`, or a tuple of `(model_cls, args, kwargs)`. The `criterion` is the distillation loss used between student and teacher tensors. The `loss_balancer` determines how the original and distillation losses are combined (if needed).
 
 See [Distillation](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/4_distillation.html) for more info.
 
@@ -158,35 +154,33 @@ Keep in mind the training loss of the distillation run is not directly comparabl
 ### Train teacher
 
 ```bash
-accelerate launch --multi_gpu --mixed_precision bf16  main.py \
+accelerate launch --config-file ./accelerate_config/fsdp2.yaml \
+    main.py \
     --single_model \
     --teacher_name_or_path 'meta-llama/Llama-2-7b-hf' \
     --output_dir ./llama2-7b-sft \
-    --logging_steps 5 \
-    --max_steps 400 \
-    --max_seq_length 2048 \
+    --max_length 2048 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_checkpointing True \
-    --fsdp 'full_shard auto_wrap' \
-    --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer
+    --max_steps 400 \
+    --logging_steps 5
 ```
 
 ### Distill teacher into student
 
 ```bash
-accelerate launch --multi_gpu --mixed_precision bf16  main.py \
+accelerate launch --config-file ./accelerate_config/fsdp2.yaml \
+    --fsdp_cpu_ram_efficient_loading False \
+    --fsdp_activation_checkpointing False \
+    main.py \
     --teacher_name_or_path ./llama2-7b-sft \
     --student_name_or_path 'TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T' \
     --output_dir ./llama2-distill \
-    --logging_steps 5 \
-    --max_steps 200 \
-    --max_seq_length 2048 \
+    --max_length 2048 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 4 \
-    --gradient_checkpointing False \
-    --fsdp 'full_shard auto_wrap' \
-    --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer
+    --max_steps 200 \
+    --logging_steps 5
 ```
 
 > [!NOTE]

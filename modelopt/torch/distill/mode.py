@@ -83,7 +83,12 @@ class KnowledgeDistillationModeDescriptor(ModeDescriptor):
     @property
     def update_for_new_mode(self) -> UpdateEntrypoint:
         """The mode's entrypoint for updating the models state for adding new mode."""
-        return _update_kd_state_before_new_mode
+        return _reset_kd_state_config
+
+    @property
+    def update_for_save(self) -> UpdateEntrypoint:
+        """The mode's entrypoint for updating the models state before saving."""
+        return _reset_kd_state_config
 
 
 @DistillModeRegistry.register_mode
@@ -171,16 +176,12 @@ def _convert_for_kd(model: nn.Module, config: KDLossConfig) -> ConvertReturnType
 
 def _restore_kd_model(model: nn.Module, config: KDLossConfig, metadata: MetadataDict) -> nn.Module:
     """Function for restoring a previously convert model to a distillation meta-model."""
-    # the metadata should be empty
-    assert not metadata, "No metadata expected!"
-
-    return _convert_for_kd(model, config)[0]
+    # NOTE: DistillationModel will purposely remain unrestored
+    return model
 
 
-def _update_kd_state_before_new_mode(
-    model: nn.Module, config: KDLossConfig, metadata: MetadataDict
-) -> None:
-    """Function for updating the model's state before new mode."""
+def _reset_kd_state_config(model: nn.Module, config: KDLossConfig, metadata: MetadataDict):
+    """Function for resetting the state's config."""
     config.teacher_model = nn.Module
     config.criterion = Loss()
     config.loss_balancer = None
@@ -216,8 +217,5 @@ def _export_student(model: nn.Module, config: ExportStudentConfig) -> ConvertRet
 def _restore_exported_student(
     model: nn.Module, config: ExportStudentConfig, metadata: MetadataDict
 ) -> nn.Module:
-    """Function for restoring a previously exported distillation meta-model."""
-    # no metadata is used by the mode
-    assert not metadata, "No metadata expected!"
-
-    return _export_student(model, config)[0]
+    # NOTE: DistillationModel was unrestored so this does nothing
+    return model

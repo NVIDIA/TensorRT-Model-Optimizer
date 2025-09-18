@@ -21,7 +21,7 @@
 # It is recommended to execute this script inside the Model Optimization Toolkit TensorRT Docker container.
 # Please ensure that the ImageNet dataset is available in the container at the specified path.
 
-# Usage: ./test_onnx_ptq.sh /path/to/imagenet /path/to/models
+# Usage: ./test_onnx_ptq.sh [--no-clean] [/path/to/imagenet] [/path/to/models]
 
 set -exo pipefail
 
@@ -34,12 +34,35 @@ cuda_capability=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | hea
 
 
 pushd $public_example_dir
+
+# Parse arguments
+clean_mode=true
+imagenet_path=""
+models_folder=""
+
+for arg in "$@"; do
+    case $arg in
+        --no-clean)
+            clean_mode=false
+            shift
+            ;;
+        *)
+            if [ -z "$imagenet_path" ]; then
+                imagenet_path="$arg"
+            elif [ -z "$models_folder" ]; then
+                models_folder="$arg"
+            fi
+            shift
+            ;;
+    esac
+done
+
 export TQDM_DISABLE=1
 
 
 # Setting image and model paths (contains 8 models)
-imagenet_path=${1:-/data/imagenet/}
-models_folder=${2:-/models/onnx}
+imagenet_path=${imagenet_path:-/data/imagenet/}
+models_folder=${models_folder:-/models/onnx}
 calib_size=64
 batch_size=1
 
@@ -88,8 +111,8 @@ declare -A timm_model_name=(
 latency_models=("efficientnet_b0" "efficientnet_b3" "efficientnet-lite4-11" "faster_vit_timm_opset13_simplified" "faster_vit_timm_opset17_simplified" "inception-v1-12" "inception-v2-9")
 
 # Create build directory to store all the results
+rm -rf build
 mkdir -p build
-
 
 # Iterate over each model path to create directories for all modes for each model
 for model_path in "${model_paths[@]}"; do
@@ -129,7 +152,8 @@ for model_path in "${model_paths[@]}"; do
             --onnx_path=$model_dir/fp16/model.onnx \
             --quantize_mode=$quant_mode \
             --calibration_data=$calib_data_path \
-            --output_path=$model_dir/$quant_mode/model.quant.onnx &
+            --output_path=$model_dir/$quant_mode/model.quant.onnx \
+            --calibration_eps=cuda:0 &
         pids+=($!)
     done
 
@@ -163,12 +187,15 @@ for model_path in "${model_paths[@]}"; do
 
         if [ "$quant_mode" == "fp16" ]; then
             eval_model_path=$model_dir/fp16/model.onnx
+            engine_path=$model_dir/fp16/model.engine
             precision="fp16"
         elif [ "$quant_mode" == "int8_iq" ]; then
             eval_model_path=$model_dir/fp16/model.onnx
+            engine_path=$model_dir/int8_iq/model.engine
             precision="best"
         else
             eval_model_path=$model_dir/$quant_mode/model.quant.onnx
+            engine_path=$model_dir/$quant_mode/model.quant.engine
             precision="stronglyTyped"
         fi
 
@@ -176,12 +203,14 @@ for model_path in "${model_paths[@]}"; do
         if [[ " ${latency_models[@]} " =~ " $model_name " ]]; then
             CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
                 --onnx_path=$eval_model_path \
+                --engine_path=$engine_path \
                 --model_name="${timm_model_name[$model_name]}" \
                 --engine_precision=$precision \
                 --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv &
         else
             CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
                 --onnx_path=$eval_model_path \
+                --engine_path=$engine_path \
                 --imagenet_path=$imagenet_path \
                 --eval_data_size=$calib_size \
                 --batch_size $batch_size \
@@ -209,6 +238,15 @@ for model_path in "${model_paths[@]}"; do
 done
 
 python $test_utils_dir/aggregate_results.py --results_dir=build
+
+if [ "$clean_mode" = true ]; then
+    echo "Cleaning build artifacts..."
+    rm -rf build/
+    echo "Build artifacts cleaned successfully."
+    popd
+    exit 0
+fi
+
 popd
 
 
