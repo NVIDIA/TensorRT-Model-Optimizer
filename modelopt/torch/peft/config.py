@@ -13,15 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from collections.abc import Callable
 from typing import Literal
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 from modelopt.torch.utils.network import ConstructorLike
+
 BiasType = Literal["static", "dynamic"]
 BiasMethod = Literal["mean", "max_min"]
+
 
 class QuantizerAttributeConfig(ModeloptBaseConfig):
     """Quantizer attribute type."""
@@ -358,9 +359,10 @@ class SVDQuantConfig(QuantizeAlgorithmConfig):
 
 # QuantizeAlgoCfgType = _QuantizeAlgoCfgType | list[_QuantizeAlgoCfgType] | None
 
-#TODO Jingyu Xin
+
+# TODO Jingyu Xin
 class PEFTConfig(ModeloptBaseConfig):
-    """Default configuration for ``quantize`` mode."""
+    """Default configuration for ``peft`` mode."""
 
     adapter_name: str = ModeloptField(
         default="default",
@@ -380,8 +382,11 @@ class PEFTConfig(ModeloptBaseConfig):
         validate_default=True,
     )
 
+
 class ExportPEFTConfig(ModeloptBaseConfig):
     """An empty config."""
+
+
 class CompressConfig(ModeloptBaseConfig):
     """Default configuration for ``compress`` mode."""
 

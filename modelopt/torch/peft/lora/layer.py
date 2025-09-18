@@ -73,7 +73,7 @@ class LoRAModule(DynamicModule):
         self._active_adapters.clear()
 
     def _register_adapter(
-        self, adapter_name: str, lora_a: nn.Module, lora_b: nn.Module, rank: int
+        self, adapter_name: str, lora_a: nn.Module, lora_b: nn.Module, rank: int, scale: float = 1.0
     ) -> None:
         """Register a new LoRA adapter with explicit rank tracking.
 
@@ -82,6 +82,7 @@ class LoRAModule(DynamicModule):
             lora_a: LoRA A module (down-projection)
             lora_b: LoRA B module (up-projection)
             rank: Rank of the LoRA decomposition
+            scale: Scale factor for the LoRA output
         """
         # Add as submodules for proper parameter registration
         self.add_module(f"lora_a_{adapter_name}", lora_a)
@@ -92,13 +93,14 @@ class LoRAModule(DynamicModule):
             "lora_a": lora_a,
             "lora_b": lora_b,
             "rank": rank,  # Store rank explicitly for reliability
+            "scale": scale,
         }
 
         # Automatically activate new adapters
         self.activate_adapter(adapter_name)
 
     @abstractmethod
-    def update_layer_lora(self, adapter_name: str, rank: int = 64) -> None:
+    def update_layer_lora(self, adapter_name: str, rank: int = 64, scale: float = 1.0) -> None:
         """Create and register a new LoRA adapter.
 
         This method must be implemented by subclasses to create the appropriate
@@ -107,6 +109,7 @@ class LoRAModule(DynamicModule):
         Args:
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition (default: 64)
+            scale: Scale factor for the LoRA output (default: 1.0)
         """
         raise NotImplementedError("Subclasses must implement update_layer_lora")
 
@@ -148,13 +151,11 @@ class LoRAModule(DynamicModule):
                 "is_active": adapter_name in self._active_adapters,
                 "lora_a_type": type(lora_a).__name__,
                 "lora_b_type": type(lora_b).__name__,
+                "scale": adapter_modules.get("scale", 1.0),
             }
 
         modelopt_state["adapters"] = adapters_config
         modelopt_state["active_adapters"] = list(self._active_adapters)
-
-        # Store the base module type for validation
-        modelopt_state["base_module_type"] = type(self).__name__
 
         return modelopt_state
 
@@ -176,6 +177,36 @@ class LoRAModule(DynamicModule):
         peft_state = self.get_peft_state()
 
         return {"modelopt_peft_state": peft_state}
+
+    def set_from_peft_state(self, peft_state: dict[str, Any]) -> None:
+        """Restore LoRA adapters from saved PEFT state.
+
+        This method recreates LoRA adapters based on their saved configuration.
+        Note: This only restores the adapter structure, not the weights.
+
+        Args:
+            peft_state: Dictionary containing adapter configurations
+        """
+        adapters_config = peft_state.get("adapters", {})
+
+        # Clear existing adapters first
+        self._lora_adapters.clear()
+        self._active_adapters.clear()
+
+        # Recreate each adapter based on saved configuration
+        for adapter_name, config in adapters_config.items():
+            rank = config.get("rank")
+            scale = config.get("scale", 1.0)
+
+            if rank is not None:
+                # Create the adapter with saved configuration
+                self.update_layer_lora(adapter_name, rank=rank, scale=scale)
+
+                # Set activation state
+                if config.get("is_active", False):
+                    self.activate_adapter(adapter_name)
+                else:
+                    self.deactivate_adapter(adapter_name)
 
     def set_extra_state(self, state: dict[str, Any]) -> None:
         """Restore extra state for distributed checkpointing.
@@ -245,7 +276,8 @@ class LoRAModule(DynamicModule):
                     if isinstance(lora_b_output, tuple):
                         lora_b_output = lora_b_output[0]
 
-                    result = result + lora_b_output
+                    scale = adapter.get("scale", 1.0)
+                    result = result + scale * lora_b_output
 
         # Return output in the same format as the base layer
         if other_outputs:

@@ -42,6 +42,7 @@ def convert_to_peft_model(model: ModelLikeModule, config: PEFTConfig) -> Convert
     # set_quantizer_by_cfg(model, config.get("quant_cfg", {}))
 
     metadata = {}
+    # Should return adapaters, active_adapters
     update_peft_metadata(model, config, metadata)
 
     return model, metadata
