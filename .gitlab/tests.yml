@@ -49,15 +49,15 @@ example:
   tags: [docker, linux, 2-gpu, sm<89]
   parallel:
     matrix:
-      - TEST: [diffusers, llm_distill, llm_qat, llm_sparsity, onnx_ptq, speculative_decoding]
+      - EXAMPLE: [diffusers, llm_distill, llm_qat, llm_sparsity, onnx_ptq, speculative_decoding]
   allow_failure: true # Allow to continue next stages even if job is canceled (e.g. during release)
   before_script:
-    - pip install ".[all]" -U
+    - pip install ".[all,dev-test]"
   script:
     # Uninstall apex since T5 Int8 (PixArt) + Apex is not supported as per https://github.com/huggingface/transformers/issues/21391
-    - if [ "$TEST" = "diffusers" ]; then pip uninstall -y apex; fi
-    - if [ -f examples/$TEST/requirements.txt ]; then pip install -r examples/$TEST/requirements.txt; fi
-    - if [ "$TEST_TYPE" = "pytest" ]; then pytest -s tests/examples/$TEST; else bash tests/examples/test_$TEST.sh; fi
+    - if [ "$EXAMPLE" = "diffusers" ]; then pip uninstall -y apex; fi
+    - find examples/$EXAMPLE -name "requirements.txt" | while read req_file; do pip install -r "$req_file" || exit 1; done
+    - if [ "$TEST_TYPE" = "pytest" ]; then pytest -s tests/examples/$EXAMPLE; else bash tests/examples/test_$EXAMPLE.sh; fi
 
 example-ada:
   extends: example
@@ -65,8 +65,8 @@ example-ada:
   tags: [docker, linux, 2-gpu, sm>=89]
   parallel:
     matrix:
-      - TEST: [llm_eval, llm_ptq, vlm_ptq, llm_autodeploy]
-      - TEST: [onnx_ptq]
+      - EXAMPLE: [llm_eval, llm_ptq, vlm_ptq, llm_autodeploy]
+      - EXAMPLE: [onnx_ptq]
         TEST_TYPE: bash
 
 ##### Megatron / NeMo Integration Tests #####
