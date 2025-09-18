@@ -174,12 +174,6 @@ class QATTrainer(ModelOptHFTrainer):
             torch.distributed.barrier()
 
         modelopt_state = mto.modelopt_state(self.model)
-        # TODO: remove this from ModelOpt HF Trainer flows
-        modelopt_state["modelopt_state_dict"] = [
-            state
-            for state in modelopt_state["modelopt_state_dict"]
-            if "kd_loss" not in state and "export_student" not in state
-        ]
         modelopt_state["modelopt_state_weights"] = get_quantizer_state_dict(self.model)
 
         if self.args.should_save:
