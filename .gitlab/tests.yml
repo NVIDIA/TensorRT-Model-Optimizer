@@ -34,9 +34,9 @@ unit:
   tags: [docker, linux, 2-gpu]
   before_script:
     # Add libcudnn*.so and libnv*.so to path
-    - export LD_LIBRARY_PATH="/usr/include:/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib:${LD_LIBRARY_PATH}"
+    - export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib"
     # Add trtexec to path
-    - export PATH="/usr/local/tensorrt/targets/x86_64-linux-gnu/bin:${PATH}"
+    - export PATH="${PATH}:/usr/local/tensorrt/targets/x86_64-linux-gnu/bin"
     # Install git-lfs for Daring-Anteater dataset
     - apt-get update && apt-get install -y git-lfs
     - git lfs install --system
@@ -56,7 +56,7 @@ example-torch:
     matrix:
       - EXAMPLE: [llm_distill, llm_sparsity, speculative_decoding]
   script:
-    - pip install ".[all,dev-test]"
+    - pip install ".[hf,dev-test]"
     - find examples/$EXAMPLE -name "requirements.txt" | while read req_file; do pip install -r "$req_file" || exit 1; done
     - pytest -s tests/examples/$EXAMPLE
 
