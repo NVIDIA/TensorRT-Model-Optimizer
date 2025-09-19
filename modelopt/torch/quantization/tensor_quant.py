@@ -412,7 +412,7 @@ class ScaledE4M3Function(Function):
     """E4M3fy input with scale."""
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "t", "t", "i", "i", "s", "b")
+    @symbolic_helper.parse_args("v", "t", "t", "is", "i", "i", "s", "b")
     def symbolic(
         g,
         inputs,
@@ -422,11 +422,12 @@ class ScaledE4M3Function(Function):
         M=3,  # noqa: N803
         trt_high_precision_dtype=None,
         pass_through_bwd=False,
+        block_sizes=None,
     ):
         """ONNX symbolic function."""
         from .export_onnx import export_fp8
 
-        return export_fp8(g, inputs, amax, trt_high_precision_dtype)
+        return export_fp8(g, inputs, amax, trt_high_precision_dtype, block_sizes)
 
     @staticmethod
     # Default values could cause errors from TorchDynamo during torch.export
@@ -439,6 +440,7 @@ class ScaledE4M3Function(Function):
         M,  # noqa: N803
         trt_high_precision_dtype=None,
         pass_through_bwd=False,
+        block_sizes=None,
     ):
         """Forward method."""
         if E != 4 or M != 3:
@@ -466,7 +468,7 @@ class ScaledE4M3Function(Function):
     @staticmethod
     def backward(ctx, grad_outputs):
         """Implements straight through estimation with clipping."""
-        return _fake_quant_backward_function(ctx, grad_outputs, num_args=7)
+        return _fake_quant_backward_function(ctx, grad_outputs, num_args=8)
 
 
 def _dynamic_block_quantize_forward(
