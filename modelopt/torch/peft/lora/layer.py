@@ -64,6 +64,8 @@ class LoRAModule(DynamicModule):
         self.add_module(f"lora_b_{adapter_name}", lora_b)
 
         # Store in adapter dictionary with explicit rank
+        if adapter_name in self._lora_adapters:
+            raise ValueError(f"adapter_name: {adapter_name} is already exist..")
         self._lora_adapters[adapter_name] = {
             "lora_a": lora_a,
             "lora_b": lora_b,
