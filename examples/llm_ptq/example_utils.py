@@ -185,6 +185,17 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
+    # Special handling for vision-language models that may have device mapping issues
+    # Check if this is a VL model by looking at the model path
+    is_vl_model = any(
+        vl_keyword in ckpt_path.lower() for vl_keyword in ["vl", "vision", "nemotron-nano-vl"]
+    )
+    if is_vl_model:
+        print(
+            "Detected vision-language model. Disabling automatic device mapping to avoid device_map errors."
+        )
+        device_map = None
+
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
     if attn_implementation is not None:
         config_kwargs["attn_implementation"] = attn_implementation
@@ -282,6 +293,12 @@ def get_model(
                 **model_kwargs,
             )
     model.eval()
+
+    # If device_map was disabled (None), manually move model to target device
+    if device_map is None and device != "cpu":
+        print(f"Moving model to {device} device...")
+        model = model.to(device)
+
     if device == "cuda" and not is_model_on_gpu(model):
         print("Warning: Some parameters are not on a GPU. Calibration can be slow or hit OOM")
 
