@@ -40,7 +40,7 @@ Environment setup
 
     .. code-block:: shell
 
-        export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib:${LD_LIBRARY_PATH}"
+        export LD_LIBRARY_PATH="/usr/include:/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib:${LD_LIBRARY_PATH}"
         export PATH="/usr/local/tensorrt/targets/x86_64-linux-gnu/bin:${PATH}"
 
     You may need to install additional dependencies from the respective examples's `requirements.txt` file.
@@ -51,8 +51,8 @@ Environment setup
     and for NVIDIA NeMo framework, you can use the `NeMo container <https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo/tags>`_.
     Both of these containers come with Model Optimizer pre-installed. Make sure to update the Model Optimizer to the latest version if not already.
 
-    For ONNX PTQ, you can use the docker image from `onnx_ptq Dockerfile <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/onnx_ptq/docker>`_
-    which includes the latest publicly available TensorRT version, providing access to cutting-edge features and superior performance.
+    For ONNX / TensorRT use cases, you can also use the `TensorRT container <https://catalog.ngc.nvidia.com/orgs/nvidia/containers/tensorrt/tags>`_
+    which provides superior performance to the PyTorch container.
 
 .. tab:: Local environment (PIP / Conda)
 
@@ -76,9 +76,8 @@ Environment setup
 
     If you wish to use ModelOpt in conjunction with other NVIDIA libraries (e.g. TensorRT, TensorRT-LLM, NeMo, Triton, etc.),
     please make sure to check the ease of installation of these libraries in a local environment. If you face any
-    issues, we recommend using a docker image for a seamless experience. For example, `TensorRT-LLM documentation <https://nvidia.github.io/TensorRT-LLM/>`_.
-    requires installing in a docker image. You may still choose to use other ModelOpt's features locally for example,
-    quantizing a HuggingFace model and then use a docker image for deployment.
+    issues, we recommend using a docker image for a seamless experience. You may still choose to use other ModelOpt's
+    features locally for example, quantizing a HuggingFace model and then use a docker image for deployment.
 
 Install Model Optimizer
 =======================
