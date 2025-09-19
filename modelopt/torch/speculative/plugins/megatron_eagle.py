@@ -309,11 +309,13 @@ def set_multi_step_attention_mask(attn_mask, step):
     s = attn_mask.shape[-1]
     for iter in range(2, step + 1):
         # iter starts from 2nd step
-        zero_mask = torch.ones(attn_mask.shape[0], attn_mask.shape[1], attn_mask.shape[2], s).bool()
+        zero_mask = attn_mask.new_ones(
+            attn_mask.shape[0], attn_mask.shape[1], attn_mask.shape[2], s
+        ).bool()
         mask_0 = attn_mask.clone().detach()[:, :, -s:, :]
-        mask_0[:, :, iter - 2] = True
+        mask_0[:, :, iter - 2, :] = True
         mask_0[:, :, :, :-1] = mask_0[:, :, :, 1:]
-        mask_1 = torch.ones(attn_mask.shape[0], attn_mask.shape[1], s, s).bool()
+        mask_1 = attn_mask.new_ones(attn_mask.shape[0], attn_mask.shape[1], s, s).bool()
         for i in range(iter - 1, s - 1):
             mask_1[:, :, i, i] = False
 
