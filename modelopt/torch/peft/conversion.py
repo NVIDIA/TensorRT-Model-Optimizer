@@ -185,13 +185,11 @@ def add_adapter(model, config: PEFTConfig):
                         continue
                 else:
                     raise NotImplementedError(f"Unsupported type {type(wildcard_or_filter_func)}")
-                if adapter_setting.enable:  # type: ignore[union-attr]
-                    module.update_layer_lora(
-                        adapter_name,
-                        adapter_setting,
-                    )
+                module.update_layer_lora(
+                    adapter_name,
+                    adapter_setting,
+                )
 
-    _update_peft_metadata_in_state(model)
     return model
 
 

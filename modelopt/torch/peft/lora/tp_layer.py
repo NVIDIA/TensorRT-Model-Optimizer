@@ -46,7 +46,13 @@ class _MegatronParallelLoRABase(LoRAModule):
         return lora_a_init, lora_b_init
 
     def _register_adapter_with_device(
-        self, adapter_name: str, lora_a: nn.Module, lora_b: nn.Module, rank: int, scale: float
+        self,
+        adapter_name: str,
+        lora_a: nn.Module,
+        lora_b: nn.Module,
+        rank: int,
+        scale: float,
+        enable: bool,
     ) -> None:
         """Register LoRA adapter modules and ensure correct device placement.
 
@@ -78,7 +84,7 @@ class _MegatronParallelLoRABase(LoRAModule):
             lora_a = lora_a.to(dtype)
             lora_b = lora_b.to(dtype)
 
-        super()._register_adapter(adapter_name, lora_a, lora_b, rank, scale)
+        super()._register_adapter(adapter_name, lora_a, lora_b, rank, scale, enable)
 
 
 @LoRAModuleRegistry.register({ColumnParallelLinear: "megatron_ColumnParallelLinear"})
@@ -120,7 +126,7 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
         )
 
         self._register_adapter_with_device(
-            adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale
+            adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale, attr_config.enable
         )
 
 
@@ -163,7 +169,7 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
         )
 
         self._register_adapter_with_device(
-            adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale
+            adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale, attr_config.enable
         )
 
 
