@@ -34,7 +34,7 @@ Environment setup
     `TensorRT-LLM docker image <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tensorrt-llm/containers/release/tags>`_,
     e.g., ``nvcr.io/nvidia/tensorrt-llm/release:<version>``.
 
-    You may upgrade the Model Optimizer to the latest version if not already as described in the next section.
+    Make sure to upgrade Model Optimizer to the latest version using ``pip`` as described in the next section.
 
     You would also need to setup appropriate environment variables for the TensorRT binaries as follows:
 

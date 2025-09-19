@@ -27,6 +27,14 @@ Cache Diffusion is a technique that reuses cached outputs from previous diffusio
 
 ## Pre-Requisites
 
+### Docker
+
+Please use the TensorRT docker image (e.g., `nvcr.io/nvidia/tensorrt:25.08-py3`) or visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
+
+Also follow the installation steps below to upgrade to the latest version of Model Optimizer and install example-specific dependencies.
+
+### Local Installation
+
 Install Model Optimizer with `onnx` and `hf` dependencies using `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/):
 
 ```bash
