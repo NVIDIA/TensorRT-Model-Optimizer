@@ -57,9 +57,9 @@ def main():
     os.makedirs(args.save_path, exist_ok=True)
 
     with open(os.path.join(args.save_path, "cnn_train.json"), "w") as write_f:
-        json.dump(tokenized_dataset["train"]["text"], write_f, indent=4, ensure_ascii=False)
+        json.dump(list(tokenized_dataset["train"]["text"]), write_f, indent=4, ensure_ascii=False)
     with open(os.path.join(args.save_path, "cnn_eval.json"), "w") as write_f:
-        json.dump(tokenized_dataset["test"]["text"], write_f, indent=4, ensure_ascii=False)
+        json.dump(list(tokenized_dataset["test"]["text"]), write_f, indent=4, ensure_ascii=False)
 
 
 if __name__ == "__main__":

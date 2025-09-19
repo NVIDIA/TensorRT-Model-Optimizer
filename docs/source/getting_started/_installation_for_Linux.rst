@@ -30,39 +30,29 @@ Environment setup
 
 .. tab:: Docker image (Recommended)
 
-    **Using ModelOpt's docker image**
+    To use Model Optimizer with full dependencies (e.g. TensorRT/TensorRT-LLM deployment), we recommend using the
+    `TensorRT-LLM docker image <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tensorrt-llm/containers/release/tags>`_,
+    e.g., ``nvcr.io/nvidia/tensorrt-llm/release:<version>``.
 
-    To use Model Optimizer with full dependencies (e.g. TensorRT/TensorRT-LLM deployment), we recommend using our provided docker image
-    which is based on the `TensorRT-LLM <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tensorrt-llm/containers/release/tags>`_
-    docker image with additional dependencies installed.
+    You may upgrade the Model Optimizer to the latest version if not already as described in the next section.
 
-    After installing the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_,
-    please run the following commands to build the Model Optimizer docker container which has all the base
-    dependencies pre-installed. You may need to install additional dependencies from the examples's `requirements.txt` file.
+    You would also need to setup appropriate environment variables for the TensorRT binaries as follows:
 
     .. code-block:: shell
 
-        # Clone the ModelOpt repository
-        git clone git@github.com:NVIDIA/TensorRT-Model-Optimizer.git
-        cd TensorRT-Model-Optimizer
+        export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib:${LD_LIBRARY_PATH}"
+        export PATH="/usr/local/tensorrt/targets/x86_64-linux-gnu/bin:${PATH}"
 
-        # Build the docker (will be tagged `docker.io/library/modelopt_examples:latest`)
-        # You may customize `docker/Dockerfile` to include or exclude certain dependencies you may or may not need.
-        bash docker/build.sh
+    You may need to install additional dependencies from the respective examples's `requirements.txt` file.
 
-        # Run the docker image
-        docker run --gpus all -it --shm-size 20g --rm docker.io/library/modelopt_examples:latest bash
-
-        # Check installation (inside the docker container)
-        python -c "import modelopt; print(modelopt.__version__)"
-
-    **Using alternative NVIDIA docker images**
+    **Alternative NVIDIA docker images**
 
     For PyTorch, you can also use `NVIDIA NGC PyTorch container <https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch/tags>`_
     and for NVIDIA NeMo framework, you can use the `NeMo container <https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo/tags>`_.
     Both of these containers come with Model Optimizer pre-installed. Make sure to update the Model Optimizer to the latest version if not already.
 
-    For ONNX PTQ, you can use the optimized docker image from [onnx_ptq Dockerfile](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/onnx_ptq/docker).
+    For ONNX PTQ, you can use the docker image from `onnx_ptq Dockerfile <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/onnx_ptq/docker>`_
+    which includes the latest publicly available TensorRT version, providing access to cutting-edge features and superior performance.
 
 .. tab:: Local environment (PIP / Conda)
 

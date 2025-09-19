@@ -24,7 +24,7 @@ Model Optimizer enables highly performant quantization formats including NVFP4, 
 
 ### Docker
 
-Build from this [Dockerfile](./docker/Dockerfile) which includes the latest publicly available TensorRT version, providing access to cutting-edge features and superior performance compared to the `modelopt_examples` [Docker image](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/docker/Dockerfile).
+Build from this [Dockerfile](./docker/Dockerfile) which includes the latest publicly available TensorRT version, providing access to cutting-edge features and superior performance.
 
 Build the Docker image (will be tagged `docker.io/library/onnx_ptq_examples:latest`)
 

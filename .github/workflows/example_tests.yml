@@ -68,12 +68,14 @@ jobs:
     container: &example_container
       image: nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2
       env:
-        LD_LIBRARY_PATH: "/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib:${LD_LIBRARY_PATH}"
-        # PATH: "/usr/local/tensorrt/targets/x86_64-linux-gnu/bin:${PATH}"
         PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
     steps: &example_steps
       - uses: actions/checkout@v4
       - uses: nv-gha-runners/setup-proxy-cache@main
+      - name: Setup environment variables
+        run: |
+          echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib:${LD_LIBRARY_PATH}" >> $GITHUB_ENV
+          echo "PATH=/usr/local/tensorrt/targets/x86_64-linux-gnu/bin:${PATH}" >> $GITHUB_ENV
       - name: Run example tests
         run: |
           pip install ".[all,dev-test]"

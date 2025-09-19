@@ -30,7 +30,6 @@ modelopt/torch/trace @NVIDIA/modelopt-torch-nas-prune-codeowners
 modelopt/torch/utils @NVIDIA/modelopt-torch-utils-codeowners
 
 # Examples
-/docker @NVIDIA/modelopt-docker-codeowners
 /README.md @NVIDIA/modelopt-examples-codeowners
 /examples @NVIDIA/modelopt-examples-codeowners
 /examples/chained_optimizations @NVIDIA/modelopt-torch-nas-prune-codeowners
