@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.init as init
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 
+from ..config import PEFTAttributeConfig
 from .layer import LoRAModule, LoRAModuleRegistry
 
 try:
@@ -32,14 +33,16 @@ class _MegatronParallelLoRABase(LoRAModule):
     LoRA implementations, reducing code duplication.
     """
 
-    def _get_init_methods(self) -> tuple[Callable, Callable]:
+    def _get_init_methods(self, lora_a_init, lora_b_init) -> tuple[Callable, Callable]:
         """Get initialization methods for LoRA A and B matrices.
 
         Returns:
             Tuple of (lora_a_init, lora_b_init) initialization functions
         """
-        lora_a_init = lambda weight: init.kaiming_uniform_(weight, a=math.sqrt(5))  # noqa: E731  # LoRA A: Kaiming uniform
-        lora_b_init = lambda weight: init.zeros_(weight)  # noqa: E731  # LoRA B: zeros
+        if lora_a_init is None:
+            lora_a_init = lambda weight: init.kaiming_uniform_(weight, a=math.sqrt(5))  # noqa: E731  # LoRA A: Kaiming uniform
+        if lora_b_init is None:
+            lora_b_init = lambda weight: init.zeros_(weight)  # noqa: E731  # LoRA B: zeros
         return lora_a_init, lora_b_init
 
     def _register_adapter_with_device(
@@ -87,7 +90,9 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
     """
 
     def update_layer_lora(
-        self, adapter_name: str, rank: int = DEFAULT_LORA_RANK, scale: float = DEFAULT_SCALE
+        self,
+        adapter_name: str,
+        attr_config: PEFTAttributeConfig,
     ) -> None:
         """Create and register a new LoRA adapter for ColumnParallelLinear.
 
@@ -95,30 +100,28 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition
         """
-        lora_a_init, lora_b_init = self._get_init_methods()
-
-        # Create LoRA A: input_size -> rank (with gather for full reduction)
         lora_a = ColumnParallelLinear(
             self.input_size,
-            rank,
+            attr_config.rank,
             config=self.config,
             bias=False,
-            gather_output=True,  # Gather outputs for complete transformation
-            init_method=lora_a_init,
+            gather_output=True,
+            init_method=attr_config.lora_a_init,
             disable_grad_reduce=getattr(self.config, "sequence_parallel", False),
         )
 
-        # Create LoRA B: rank -> output_size (no gather, stays distributed)
         lora_b = ColumnParallelLinear(
-            rank,
+            attr_config.rank,
             self.output_size,
             config=self.config,
             bias=False,
             gather_output=False,  # Keep output distributed like base layer
-            init_method=lora_b_init,
+            init_method=attr_config.lora_a_init,
         )
 
-        self._register_adapter_with_device(adapter_name, lora_a, lora_b, rank, scale)
+        self._register_adapter_with_device(
+            adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale
+        )
 
 
 @LoRAModuleRegistry.register({RowParallelLinear: "megatron_RowParallelLinear"})
@@ -130,7 +133,9 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
     """
 
     def update_layer_lora(
-        self, adapter_name: str, rank: int = DEFAULT_LORA_RANK, scale: float = DEFAULT_SCALE
+        self,
+        adapter_name: str,
+        attr_config: PEFTAttributeConfig,
     ) -> None:
         """Create and register a new LoRA adapter for RowParallelLinear.
 
@@ -138,35 +143,32 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition
         """
-        lora_a_init, lora_b_init = self._get_init_methods()
-
-        # Create LoRA A: input_size -> rank (row parallel, input already distributed)
         lora_a = RowParallelLinear(
             self.input_size,
-            rank,
+            attr_config.rank,
             config=self.config,
-            input_is_parallel=True,  # Input is already distributed
+            input_is_parallel=True,
             skip_bias_add=True,
             bias=False,
-            init_method=lora_a_init,
+            init_method=attr_config.lora_a_init,
         )
 
-        # Create LoRA B: rank -> output_size (column parallel with gather)
         lora_b = ColumnParallelLinear(
-            rank,
+            attr_config.rank,
             self.output_size,
             config=self.config,
             bias=False,
-            gather_output=True,  # Gather to match base layer output
-            init_method=lora_b_init,
+            gather_output=True,
+            init_method=attr_config.lora_b_init,
         )
 
-        self._register_adapter_with_device(adapter_name, lora_a, lora_b, rank, scale)
+        self._register_adapter_with_device(
+            adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale
+        )
 
 
 # Register quantized versions if available
 if QUANT_MODULES_AVAILABLE:
-    # Register the same LoRA implementations for quantized modules
     LoRAModuleRegistry.register({QuantColumnParallelLinear: "quant_megatron_ColumnParallelLinear"})(
         _LoRAMegatronColumnParallelLinear
     )
@@ -200,7 +202,6 @@ if QUANT_MODULES_AVAILABLE:
         def _setup(self):
             QuantRowParallelLinear._setup(self)
 
-    # Register LoRA modules in QuantModuleRegistry so they can be quantized
     QuantModuleRegistry.register(
         {_LoRAMegatronColumnParallelLinear: "lora_megatron_ColumnParallelLinear"}
     )(_QuantLoRAMegatronColumnParallelLinear)

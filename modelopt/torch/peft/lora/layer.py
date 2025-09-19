@@ -9,6 +9,8 @@ import torch.nn as nn
 
 from modelopt.torch.opt.dynamic import DynamicModule, _DMRegistryCls
 
+from ..config import PEFTAttributeConfig
+
 __all__ = [
     "LoRAModule",
     "LoRAModuleRegistry",
@@ -100,7 +102,11 @@ class LoRAModule(DynamicModule):
         self.activate_adapter(adapter_name)
 
     @abstractmethod
-    def update_layer_lora(self, adapter_name: str, rank: int = 64, scale: float = 1.0) -> None:
+    def update_layer_lora(
+        self,
+        adapter_name: str,
+        attr_config: PEFTAttributeConfig,
+    ) -> None:
         """Create and register a new LoRA adapter.
 
         This method must be implemented by subclasses to create the appropriate
@@ -110,6 +116,8 @@ class LoRAModule(DynamicModule):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition (default: 64)
             scale: Scale factor for the LoRA output (default: 1.0)
+            lora_a_init: Optional initialization function for LoRA A matrix
+            lora_b_init: Optional initialization function for LoRA B matrix
         """
         raise NotImplementedError("Subclasses must implement update_layer_lora")
 
@@ -189,24 +197,17 @@ class LoRAModule(DynamicModule):
         """
         adapters_config = peft_state.get("adapters", {})
 
-        # Clear existing adapters first
         self._lora_adapters.clear()
         self._active_adapters.clear()
 
-        # Recreate each adapter based on saved configuration
         for adapter_name, config in adapters_config.items():
-            rank = config.get("rank")
-            scale = config.get("scale", 1.0)
+            self.update_layer_lora(adapter_name, config)
 
-            if rank is not None:
-                # Create the adapter with saved configuration
-                self.update_layer_lora(adapter_name, rank=rank, scale=scale)
-
-                # Set activation state
-                if config.get("is_active", False):
-                    self.activate_adapter(adapter_name)
-                else:
-                    self.deactivate_adapter(adapter_name)
+            # Set activation state
+            if config.get("is_active", False):
+                self.activate_adapter(adapter_name)
+            else:
+                self.deactivate_adapter(adapter_name)
 
     def set_extra_state(self, state: dict[str, Any]) -> None:
         """Restore extra state for distributed checkpointing.
@@ -281,7 +282,7 @@ class LoRAModule(DynamicModule):
 
         # Return output in the same format as the base layer
         if other_outputs:
-            return (result,) + other_outputs
+            return (result, *other_outputs)
         else:
             return result
 
