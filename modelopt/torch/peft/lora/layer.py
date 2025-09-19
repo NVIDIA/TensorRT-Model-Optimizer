@@ -31,7 +31,6 @@ class LoRAModule(DynamicModule):
     def _setup(self) -> None:
         """Initialize LoRA-specific attributes."""
         self._lora_adapters: dict[str, dict[str, Any]] = {}
-        self._active_adapters: set = set()
 
     @property
     def adapter_names(self) -> set:
@@ -43,39 +42,14 @@ class LoRAModule(DynamicModule):
         """Return the set of currently active adapter names."""
         return self._active_adapters.copy()
 
-    def activate_adapter(self, adapter_name: str) -> None:
-        """Activate a specific adapter.
-
-        Args:
-            adapter_name: Name of the adapter to activate
-
-        Raises:
-            ValueError: If adapter_name is not registered
-        """
-        if adapter_name not in self._lora_adapters:
-            raise ValueError(
-                f"Adapter '{adapter_name}' not found. Available: {list(self._lora_adapters.keys())}"
-            )
-        self._active_adapters.add(adapter_name)
-
-    def deactivate_adapter(self, adapter_name: str) -> None:
-        """Deactivate a specific adapter.
-
-        Args:
-            adapter_name: Name of the adapter to deactivate
-        """
-        self._active_adapters.discard(adapter_name)
-
-    def activate_all_adapters(self) -> None:
-        """Activate all registered adapters."""
-        self._active_adapters = self.adapter_names.copy()
-
-    def deactivate_all_adapters(self) -> None:
-        """Deactivate all adapters."""
-        self._active_adapters.clear()
-
     def _register_adapter(
-        self, adapter_name: str, lora_a: nn.Module, lora_b: nn.Module, rank: int, scale: float = 1.0
+        self,
+        adapter_name: str,
+        lora_a: nn.Module,
+        lora_b: nn.Module,
+        rank: int,
+        scale: float = 1.0,
+        enable: bool = True,
     ) -> None:
         """Register a new LoRA adapter with explicit rank tracking.
 
@@ -86,7 +60,6 @@ class LoRAModule(DynamicModule):
             rank: Rank of the LoRA decomposition
             scale: Scale factor for the LoRA output
         """
-        # Add as submodules for proper parameter registration
         self.add_module(f"lora_a_{adapter_name}", lora_a)
         self.add_module(f"lora_b_{adapter_name}", lora_b)
 
@@ -94,12 +67,10 @@ class LoRAModule(DynamicModule):
         self._lora_adapters[adapter_name] = {
             "lora_a": lora_a,
             "lora_b": lora_b,
-            "rank": rank,  # Store rank explicitly for reliability
+            "rank": rank,
             "scale": scale,
+            "enable": enable,
         }
-
-        # Automatically activate new adapters
-        self.activate_adapter(adapter_name)
 
     @abstractmethod
     def update_layer_lora(
@@ -156,14 +127,11 @@ class LoRAModule(DynamicModule):
 
             adapters_config[adapter_name] = {
                 "rank": rank,
-                "is_active": adapter_name in self._active_adapters,
-                "lora_a_type": type(lora_a).__name__,
-                "lora_b_type": type(lora_b).__name__,
+                "enable": adapter_modules.get("enable", True),
                 "scale": adapter_modules.get("scale", 1.0),
             }
 
         modelopt_state["adapters"] = adapters_config
-        modelopt_state["active_adapters"] = list(self._active_adapters)
 
         return modelopt_state
 
@@ -246,41 +214,29 @@ class LoRAModule(DynamicModule):
         Returns:
             Output from the base layer plus active LoRA adaptations
         """
-        # Call the base layer's forward method
         output = super().forward(x, *args, **kwargs)
 
-        # Handle different output types from base layer
         if isinstance(output, tuple):
-            # If output is a tuple, assume first element is the main result
             result = output[0]
             other_outputs = output[1:]
         else:
-            # If output is a single tensor
             result = output
             other_outputs = ()
 
-        # Apply active LoRA adapters
-        if self._active_adapters and self._lora_adapters:
-            for adapter_name in self._active_adapters:
-                if adapter_name in self._lora_adapters:
-                    adapter = self._lora_adapters[adapter_name]
-                    # LoRA computation: result = result + B(A(x))
-                    lora_a = adapter["lora_a"]
-                    lora_b = adapter["lora_b"]
+        for adapter_name in self._lora_adapters:
+            adapter = self._lora_adapters[adapter_name]
+            if adapter["enable"]:
+                lora_a = adapter["lora_a"]
+                lora_b = adapter["lora_b"]
+                lora_a_output = lora_a(x)
+                if isinstance(lora_a_output, tuple):
+                    lora_a_output = lora_a_output[0]
+                lora_b_output = lora_b(lora_a_output)
+                if isinstance(lora_b_output, tuple):
+                    lora_b_output = lora_b_output[0]
+                scale = adapter["scale"]
+                result = result + scale * lora_b_output
 
-                    # Handle different forward signatures
-                    lora_a_output = lora_a(x)
-                    if isinstance(lora_a_output, tuple):
-                        lora_a_output = lora_a_output[0]
-
-                    lora_b_output = lora_b(lora_a_output)
-                    if isinstance(lora_b_output, tuple):
-                        lora_b_output = lora_b_output[0]
-
-                    scale = adapter.get("scale", 1.0)
-                    result = result + scale * lora_b_output
-
-        # Return output in the same format as the base layer
         if other_outputs:
             return (result, *other_outputs)
         else:
