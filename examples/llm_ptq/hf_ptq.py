@@ -93,6 +93,7 @@ def auto_quantize(
         qformat
         in [
             "fp8",
+            "int8_sq",
             "int4_awq",
             "nvfp4",
             "nvfp4_awq",
