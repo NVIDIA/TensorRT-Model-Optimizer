@@ -44,11 +44,8 @@ def update_model(
     Returns:
         The updated model with LoRA adapters
     """
-    # Validate config by converting to PEFTConfig if needed
-
     # Check if model is already in PEFT mode by looking for LoRA modules
     if not is_peft_model(model):
-        # First time - need to convert to PEFT mode
         apply_mode(model, mode=[("peft", config)], registry=PEFTModeRegistry)
     else:
         if not isinstance(config, PEFTConfig):

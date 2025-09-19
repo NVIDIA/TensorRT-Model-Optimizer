@@ -6,6 +6,7 @@ from collections.abc import Callable
 import torch.nn as nn
 import torch.nn.init as init
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
 from ..config import PEFTAttributeConfig
 from .layer import LoRAModule, LoRAModuleRegistry
@@ -129,6 +130,40 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale, attr_config.enable
         )
 
+    def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
+        """Sharding along axis 0 for ColumnParallelLinear, bias not sharded.
+
+        For ColumnParallelLinear:
+        - lora_a weight: sharded at dim 0
+        - lora_b weight: sharded at dim 0
+        """
+        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
+
+        if hasattr(self, "_lora_adapters"):
+            lora_state_dict = {}
+            state_dict = self.state_dict(prefix="", keep_vars=True)
+
+            for adapter_name in self._lora_adapters:
+                lora_a_key = f"lora_a_{adapter_name}.weight"
+                lora_b_key = f"lora_b_{adapter_name}.weight"
+
+                if lora_a_key in state_dict:
+                    lora_state_dict[lora_a_key] = state_dict[lora_a_key]
+                if lora_b_key in state_dict:
+                    lora_state_dict[lora_b_key] = state_dict[lora_b_key]
+
+            lora_sharding_dims = {}
+            for key in lora_state_dict:
+                lora_sharding_dims[key] = 0
+
+            if lora_state_dict:
+                lora_sharded = make_sharded_tensors_for_checkpoint(
+                    lora_state_dict, prefix, lora_sharding_dims, sharded_offsets
+                )
+                sharded_state_dict.update(lora_sharded)
+
+        return sharded_state_dict
+
 
 @LoRAModuleRegistry.register({RowParallelLinear: "megatron_RowParallelLinear"})
 class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
@@ -171,6 +206,43 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
         self._register_adapter_with_device(
             adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale, attr_config.enable
         )
+
+    def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
+        """Sharding along axis 1 for RowParallelLinear, bias not sharded.
+
+        For RowParallelLinear:
+        - lora_a weight: sharded at dim 1 (RowParallelLinear)
+        - lora_b weight: sharded at dim 0 (ColumnParallelLinear)
+        """
+        sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
+
+        if hasattr(self, "_lora_adapters"):
+            lora_state_dict = {}
+            state_dict = self.state_dict()
+
+            for adapter_name in self._lora_adapters:
+                lora_a_key = f"lora_a_{adapter_name}.weight"
+                lora_b_key = f"lora_b_{adapter_name}.weight"
+
+                if lora_a_key in state_dict:
+                    lora_state_dict[lora_a_key] = state_dict[lora_a_key]
+                if lora_b_key in state_dict:
+                    lora_state_dict[lora_b_key] = state_dict[lora_b_key]
+
+            lora_sharding_dims = {}
+            for key in lora_state_dict:
+                if "lora_a_" in key:
+                    lora_sharding_dims[key] = 1
+                elif "lora_b_" in key:
+                    lora_sharding_dims[key] = 0
+
+            if lora_state_dict:
+                lora_sharded = make_sharded_tensors_for_checkpoint(
+                    lora_state_dict, prefix, lora_sharding_dims, sharded_offsets
+                )
+                sharded_state_dict.update(lora_sharded)
+
+        return sharded_state_dict
 
 
 # Register quantized versions if available
