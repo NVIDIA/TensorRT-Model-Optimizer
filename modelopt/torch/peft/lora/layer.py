@@ -165,17 +165,9 @@ class LoRAModule(DynamicModule):
         """
         adapters_config = peft_state.get("adapters", {})
 
-        self._lora_adapters.clear()
-        self._active_adapters.clear()
-
         for adapter_name, config in adapters_config.items():
-            self.update_layer_lora(adapter_name, config)
-
-            # Set activation state
-            if config.get("is_active", False):
-                self.activate_adapter(adapter_name)
-            else:
-                self.deactivate_adapter(adapter_name)
+            if adapter_name not in self._lora_adapters:
+                self.update_layer_lora(adapter_name, config)
 
     def set_extra_state(self, state: dict[str, Any]) -> None:
         """Restore extra state for distributed checkpointing.
