@@ -25,16 +25,26 @@ This example focuses on training with Hugging Face. To train with Megatron‑LM,
 
 ## Pre-Requisites
 
+### Docker
+
+Please use the PyTorch docker image (e.g., `nvcr.io/nvidia/pytorch:25.06-py3`) or visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
+
+Also follow the installation steps below to upgrade to the latest version of Model Optimizer and install dataset and example-specific dependencies.
+
+### Local Installation
+
 Install Modelopt with `hf` dependencies and other requirements for this example:
 
 ```bash
-pip install -e ...
+pip install -U nvidia-modelopt[hf]
 pip install -r requirements.txt
 ```
 
 We use [Daring-Anteater](https://huggingface.co/datasets/nvidia/Daring-Anteater) dataset in this example. Download by:
 
 ```bash
+apt-get update && apt-get install -y git-lfs
+git lfs install --system
 git clone https://huggingface.co/datasets/nvidia/Daring-Anteater
 ```
 

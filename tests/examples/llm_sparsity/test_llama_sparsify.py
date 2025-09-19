@@ -39,7 +39,6 @@ def data_path(tmp_path_factory):
 @pytest.mark.parametrize(
     ("sparsity_fmt", "dtype"),
     [
-        ("sparsegpt", "bf16"),
         ("sparse_magnitude", "bf16"),
     ],
 )

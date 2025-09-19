@@ -25,16 +25,25 @@ This section focuses on Post-training quantization, a technique that reduces mod
 
 ## Pre-Requisites
 
+### Docker
+
+For Hugging Face models, please use the TensorRT-LLM docker image (e.g., `nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2`).
+For NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.07`).
+Visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
+
+Also follow the installation steps below to upgrade to the latest version of Model Optimizer and install example-specific dependencies.
+
+### Local Installation
+
 For Hugging Face models, install Model Optimizer with `hf` dependencies using `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/) and install the requirements for the example:
 
 ```bash
-pip install nvidia-modelopt[hf]
+pip install -U nvidia-modelopt[hf]
 pip install -r requirements.txt
 ```
 
-If you want to deploy the quantized model on TRT-LLM, you will also need to install the TRT-LLM dependencies as per the [TRT-LLM documentation](https://nvidia.github.io/TensorRT-LLM/quick-start-guide.html#installation). Alternatively you can use the ModelOpt docker image built from the [ModelOpt docker build step](../../docker/README.md) which has all the dependencies including TRT-LLM installed.
-
-For NeMo models, use the NeMo container `nvcr.io/nvidia/nemo:25.04` or later which has all the dependencies including TRT-LLM installed.
+For TensorRT-LLM deployment, please use the TensorRT-LLM docker image or follow their [installation docs](https://nvidia.github.io/TensorRT-LLM/installation/index.html).
+Similarly, for vLLM or SGLang deployment, please use their installation docs.
 
 ## Getting Started
 
