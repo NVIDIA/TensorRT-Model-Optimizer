@@ -15,6 +15,7 @@
 
 """User-facing PEFT API for LoRA module conversion and adapter management."""
 
+import fnmatch
 from typing import Any
 
 import torch.nn as nn
@@ -25,6 +26,14 @@ from modelopt.torch.peft.conversion import add_adapter
 
 from .lora.layer import LoRAModule
 from .mode import PEFTModeRegistry
+
+__all__ = [
+    "disable_adapters",
+    "enable_adapters",
+    "get_adapter_states",
+    "is_peft_model",
+    "update_model",
+]
 
 
 def update_model(
@@ -67,3 +76,145 @@ def is_peft_model(model: nn.Module) -> bool:
         True if the model contains LoRA modules, False otherwise
     """
     return any(isinstance(module, LoRAModule) for _, module in model.named_modules())
+
+
+def _set_adapter_state(model, enable_state, layer_patterns=None, adapter_patterns=None):
+    """Helper function to set adapter states.
+
+    Args:
+        model: Model with LoRA adapters
+        enable_state: Boolean state to set for matching adapters
+        layer_patterns: Optional list of layer name patterns (wildcards or callables)
+        adapter_patterns: Optional list of adapter name patterns (wildcards)
+    """
+    assert is_peft_model(model), "It's not a MO-PEFT model"
+
+    def matches_any_pattern(name, patterns, allow_callable=True):
+        for pattern in patterns:
+            if isinstance(pattern, str):
+                if fnmatch.fnmatch(name, pattern):
+                    return True
+            elif allow_callable and callable(pattern):
+                if pattern(name):
+                    return True
+            else:
+                pattern_type = "pattern" if allow_callable else "adapter pattern"
+                raise TypeError(f"Unsupported {pattern_type} type: {type(pattern)}")
+        return False
+
+    for module_name, module in model.named_modules():
+        if isinstance(module, LoRAModule):
+            if layer_patterns is not None:
+                if not matches_any_pattern(module_name, layer_patterns, allow_callable=True):
+                    continue
+
+            for adapter_name, adapter_dict in module._lora_adapters.items():
+                if adapter_patterns is not None:
+                    if not matches_any_pattern(
+                        adapter_name, adapter_patterns, allow_callable=False
+                    ):
+                        continue
+
+                adapter_dict["enable"] = enable_state
+
+
+def disable_adapters(model, layers_to_disable=None, adapters_to_disable=None):
+    """Disable LoRA adapters in the model.
+
+    Args:
+        model: Model with LoRA adapters
+        layers_to_disable: Optional list of layer name patterns (wildcards or callables)
+                          to disable adapters on. If None, disables on all layers.
+        adapters_to_disable: Optional list of adapter name patterns (wildcards) to disable.
+                           If None, disables all adapters.
+
+    Examples:
+        # Disable all adapters
+        disable_adapters(model)
+
+        # Disable adapters only on attention layers
+        disable_adapters(model, layers_to_disable=["*attention*"])
+
+        # Disable only "default" adapters
+        disable_adapters(model, adapters_to_disable=["*default*"])
+
+        # Disable "default" adapters on attention layers only
+        disable_adapters(model, layers_to_disable=["*attention*"], adapters_to_disable=["*default*"])
+    """
+    _set_adapter_state(
+        model,
+        enable_state=False,
+        layer_patterns=layers_to_disable,
+        adapter_patterns=adapters_to_disable,
+    )
+
+
+def enable_adapters(model, layers_to_enable=None, adapters_to_enable=None):
+    """Enable LoRA adapters in the model.
+
+    Args:
+        model: Model with LoRA adapters
+        layers_to_enable: Optional list of layer name patterns (wildcards or callables)
+                         to enable adapters on. If None, enables on all layers.
+        adapters_to_enable: Optional list of adapter name patterns (wildcards) to enable.
+                          If None, enables all adapters.
+
+    Examples:
+        # Enable all adapters
+        enable_adapters(model)
+
+        # Enable adapters only on MLP layers
+        enable_adapters(model, layers_to_enable=["*mlp*"])
+
+        # Enable only "finetuned" adapters
+        enable_adapters(model, adapters_to_enable=["*finetuned*"])
+
+        # Enable "finetuned" adapters on MLP layers only
+        enable_adapters(model, layers_to_enable=["*mlp*"], adapters_to_enable=["*finetuned*"])
+    """
+    _set_adapter_state(
+        model,
+        enable_state=True,
+        layer_patterns=layers_to_enable,
+        adapter_patterns=adapters_to_enable,
+    )
+
+
+def get_adapter_states(model):
+    """Get the current state of all adapters in the model.
+
+    Args:
+        model: Model with LoRA adapters
+
+    Returns:
+        Dict mapping module names to their adapter states
+
+    Example:
+        >>> states = get_adapter_states(model)
+        >>> print(states)
+        {
+            'transformer.layers.0.attention': {
+                'default': {'enabled': True, 'rank': 32},
+                'finetuned': {'enabled': False, 'rank': 64}
+            },
+            'transformer.layers.0.mlp': {
+                'default': {'enabled': True, 'rank': 32}
+            }
+        }
+    """
+    assert is_peft_model(model), "It's not a MO-PEFT model"
+
+    adapter_states = {}
+    for module_name, module in model.named_modules():
+        if isinstance(module, LoRAModule):
+            module_adapters = {}
+            for adapter_name, adapter_dict in module._lora_adapters.items():
+                module_adapters[adapter_name] = {
+                    "enabled": adapter_dict.get("enable", True),
+                    "rank": adapter_dict.get("rank", "unknown"),
+                    "scale": adapter_dict.get("scale", 1.0),
+                }
+            if module_adapters:
+                adapter_states[module_name] = module_adapters
+
+    return adapter_states
