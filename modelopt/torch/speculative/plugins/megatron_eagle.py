@@ -843,7 +843,7 @@ class _DynamicEagleGPTModel(EagleModel):
         rotary_pos_emb = self.eagle_module.rotary_pos_emb(padded_input_ids.shape[-1])
 
         attn_mask = attention_mask.clone().detach()
-        attn_mask[:, :, :-1, :-1] = attention_mask[:, :, 1:, 1:]
+        attn_mask[:, :, :-1, :-1] = attn_mask[:, :, 1:, 1:]
         attn_mask[:, :, -1, :] = True
         attn_mask[:, :, :, -1] = True
 
