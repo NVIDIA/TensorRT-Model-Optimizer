@@ -154,7 +154,9 @@ def save_sharded_modelopt_state(
 
     if dist.is_master():
         run_config_name = f"{checkpoint_name}/modelopt_run_config.yaml"
-        config_dict = _parse_transformer_config(copy.deepcopy(model[0].config.__dict__))
+        # We avoid deepcopy here since some attributes in Megatron-Bridge config cannot be
+        # deepcopy.
+        config_dict = _parse_transformer_config(model[0].config.__dict__)
         config_dict["nvidia_modelopt_version"] = modelopt.__version__
         with open(run_config_name, "w") as f:
             yaml.dump(config_dict, f, default_flow_style=False)
