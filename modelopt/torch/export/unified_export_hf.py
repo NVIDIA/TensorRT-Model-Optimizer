@@ -75,6 +75,58 @@ __all__ = ["export_hf_checkpoint"]
 SPECULATIVE_DECODING_MODULE_NAMES = ["medusa_heads", "eagle_module", "drafter"]
 
 
+def _create_fake_vl_inputs(model, fake_input_ids):
+    """Create fake vision-language model inputs for export process.
+
+    Args:
+        model: The VL model
+        fake_input_ids: The fake text input IDs tensor
+
+    Returns:
+        dict: Dictionary of fake inputs for the VL model
+    """
+    device = fake_input_ids.device
+    batch_size = fake_input_ids.shape[0]
+
+    # Create fake inputs based on common VL model patterns
+    fake_inputs = {
+        "input_ids": fake_input_ids,
+        "attention_mask": torch.ones_like(fake_input_ids),
+    }
+
+    # Add vision-specific inputs based on model configuration
+    if hasattr(model.config, "vision_config"):
+        vision_config = model.config.vision_config
+        # Create fake pixel values based on vision config
+        if hasattr(vision_config, "image_size"):
+            image_size = vision_config.image_size
+        else:
+            image_size = 224  # Default size
+
+        if hasattr(vision_config, "num_channels"):
+            num_channels = vision_config.num_channels
+        else:
+            num_channels = 3  # RGB default
+
+        # Create fake pixel values
+        fake_inputs["pixel_values"] = torch.zeros(
+            [batch_size, num_channels, image_size, image_size], dtype=torch.float32, device=device
+        )
+
+    # Handle Nemotron-specific inputs
+    model_name = getattr(model, "name_or_path", "").lower()
+    if "nemotron" in model_name:
+        # Nemotron models may need specific image flags
+        fake_inputs["image_flags"] = torch.zeros([batch_size, 1], dtype=torch.long, device=device)
+
+        # Some VL models need aspect ratio information
+        fake_inputs["aspect_ratio_ids"] = None
+        fake_inputs["aspect_ratio_mask"] = None
+        fake_inputs["cross_attention_mask"] = None
+
+    return fake_inputs
+
+
 def _is_enabled_quantizer(quantizer):
     if hasattr(quantizer, "is_enabled") and quantizer.is_enabled:
         return True
@@ -134,6 +186,14 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     with torch.no_grad():
         fake_input = torch.ones([1, 2], dtype=torch.long).to(model.device)
         decoder_fake_input = fake_input
+
+        # Check if this is a VL model that needs special input handling
+        is_vl_model = (
+            hasattr(model.config, "vision_config")
+            or hasattr(model, "vision_model")
+            or "nemotron" in getattr(model, "name_or_path", "").lower()
+        )
+
         if model_type.startswith("whisper"):
             # For Whisper models, we need to pass a fake input with the specific sequence length
             from transformers import AutoFeatureExtractor
@@ -142,6 +202,18 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             fake_input = torch.ones(
                 [1, model.config.num_mel_bins, feature_extractor.nb_max_frames], dtype=model.dtype
             ).to(model.device)
+        elif is_vl_model:
+            # For VL models, create proper fake vision inputs
+            print("Detected VL model during export - creating fake vision inputs")
+            try:
+                # Try to create proper fake vision inputs for the VL model
+                fake_kwargs = _create_fake_vl_inputs(model, fake_input)
+            except Exception as e:
+                print(f"Failed to create fake VL inputs: {e}")
+                print("Skipping requantize_resmooth_fused_llm_layers for VL model")
+                for handle in handles:
+                    handle.remove()
+                return
 
         # Run forward pass so that all modules sharing the same input are collected using forward hook.
 
@@ -149,6 +221,9 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             if getattr(model.config, "is_encoder_decoder", False):
                 # For encoder-decoder models, we need to pass both the encoder and decoder input ids
                 model(fake_input, decoder_input_ids=decoder_fake_input)
+            elif is_vl_model:
+                # For VL models, use the fake vision inputs
+                model(**fake_kwargs)
             else:
                 model(fake_input)
 
