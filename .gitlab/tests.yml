@@ -67,13 +67,12 @@ example-ada:
       - TEST: [llm_eval, llm_ptq, vlm_ptq, llm_autodeploy]
       - TEST: [onnx_ptq]
         TEST_TYPE: bash
-
 ##### Megatron / NeMo Integration Tests #####
-megatron-nemo-integration:
-  extends: .tests-default
-  variables:
-    UPSTREAM_REF: $CI_COMMIT_REF_NAME
-  trigger:
-    project: omniml/integration/nmm-sandbox
-    branch: main
-    strategy: depend # Make sure the upstream task is waiting for the downstream task
+# megatron-nemo-integration:
+#   extends: .tests-default
+#   variables:
+#     UPSTREAM_REF: $CI_COMMIT_REF_NAME
+#   trigger:
+#     project: omniml/integration/nmm-sandbox
+#     branch: main
+#     strategy: depend # Make sure the upstream task is waiting for the downstream task

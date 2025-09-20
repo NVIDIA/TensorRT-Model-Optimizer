@@ -20,7 +20,7 @@ from setuptools_scm import get_version
 
 # Package configuration ############################################################################
 name = "nvidia-modelopt"
-version = get_version(root=".", fallback_version="0.35.0")
+version = get_version(root=".", fallback_version="0.35.1")
 packages = setuptools.find_namespace_packages(include=["modelopt*"])
 package_dir = {"": "."}
 package_data = {"modelopt": ["**/*.h", "**/*.cpp", "**/*.cu"]}
