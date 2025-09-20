@@ -43,7 +43,6 @@ def convert_to_peft_model(model: ModelLikeModule, config: PEFTConfig) -> Convert
 
     metadata = {}
     add_adapter(model, config)
-    # Should return adapaters, active_adapters
     update_peft_metadata(model, config, metadata)
 
     return model, metadata
