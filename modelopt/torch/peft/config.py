@@ -27,12 +27,12 @@ from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 __all__ = ["ExportPEFTConfig", "PEFTAttributeConfig", "PEFTConfig"]
 
 
-def default_lora_a_init(weight):
+def kaiming_init(weight):
     """Default initialization for LoRA A matrix using Kaiming uniform."""
     return init.kaiming_uniform_(weight, a=math.sqrt(5))
 
 
-def default_lora_b_init(weight):
+def zero_init(weight):
     """Default initialization for LoRA B matrix using zeros."""
     return init.zeros_(weight)
 
@@ -62,13 +62,13 @@ class PEFTAttributeConfig(ModeloptBaseConfig):
     )
 
     lora_a_init: Callable[[object], None] | None = ModeloptField(
-        default=default_lora_a_init,
+        default=kaiming_init,
         title="LoRA A matrix initializer",
         description="Custom initialization function for LoRA A matrix. Default to Kaiming uniform initialization.",
     )
 
     lora_b_init: Callable[[object], None] | None = ModeloptField(
-        default=default_lora_b_init,
+        default=zero_init,
         title="LoRA B matrix initializer",
         description="Custom initialization function for LoRA B matrix. Default to zero initialization.",
     )
