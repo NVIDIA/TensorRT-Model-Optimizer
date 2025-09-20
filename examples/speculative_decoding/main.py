@@ -69,6 +69,16 @@ class DataArguments:
         metadata={"help": "Path to the training data."},
     )
     eval_data_path: str = field(default=None, metadata={"help": "Path to the evaluation data."})
+    offline_data_path: str = field(
+        default=None,
+        metadata={
+            "help": """Path to the offline training data. Providing this flag sets
+                  `eagle_offline` in the EagleConfig and enables offline training.
+                  The directory should contain many `.pt` files, each containing a pre-processed
+                  data sample. `data_path` should still point to the original conversations file.
+                  """
+        },
+    )
     lazy_preprocess: bool = True
     draft_vocab_cache_dir: str = field(
         default="draft_vocab_cache",
@@ -131,13 +141,21 @@ def train():
     elif last_checkpoint is not None:
         checkpoint = last_checkpoint
 
+    use_offline_training = data_args.offline_data_path is not None
+
     if checkpoint:
         model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype="auto")
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
+        model_kwargs = {"num_hidden_layers": 0} if use_offline_training else {}
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path, torch_dtype="auto"
+            model_args.model_name_or_path, torch_dtype="auto", **model_kwargs
         )
+        if use_offline_training:
+            # When doing offline training, we need to set num_hidden_layers
+            # since we override it when loading the model for space savings
+            model_config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path)
+            model.config.num_orig_hidden_layers = model_config.num_hidden_layers
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             model_max_length=training_args.training_seq_len,
@@ -167,6 +185,9 @@ def train():
             }[training_args.mode]["config"]
 
             # overwrite config with custom config
+            if use_offline_training:
+                config["eagle_offline"] = True
+
             if eagle_args.eagle_config:
                 with open(eagle_args.eagle_config) as f:
                     custom_config = json.load(f)
@@ -206,13 +227,15 @@ def train():
     if training_args.mode == "medusa":
         data_module = make_medusa_supervised_data_module(tokenizer, data_args)
     elif training_args.mode in ["eagle1", "eagle3"]:
-        data_module = make_eagle_supervised_data_module(tokenizer, data_args)
+        data_module = make_eagle_supervised_data_module(tokenizer, data_args, use_offline_training)
 
     class ARValidationCallback(TrainerCallback):
         def __init__(self, ar_validate_steps: int = 500):
             self.ar_validate_steps = ar_validate_steps
 
         def on_step_end(self, args, state, control, **kwargs):
+            if self.ar_validate_steps <= 0:
+                return control
             if state.global_step % self.ar_validate_steps == 0 and state.global_step > 0:
                 print_rank_0("Running AR validation...")
                 ars = validate_ar(
