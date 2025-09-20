@@ -265,6 +265,16 @@ def main(args):
 
     model_type = get_model_type(model)
 
+    # Special handling for Nemotron VL models that aren't detected by standard model type detection
+    # For HF export, we want to keep vision unquantized, so we treat it as a regular language model
+    # and only quantize the language components
+    if model_type != "mllama" and is_multimodal_model(model):
+        print(
+            f"Detected multimodal model: {type(model).__name__}. "
+            f"For HF export, will quantize language components only, keeping vision unquantized."
+        )
+        # Keep as regular model type to use text-only calibration
+
     device = model.device
     if hasattr(model, "model"):
         device = model.model.device
@@ -471,20 +481,41 @@ def main(args):
                     "Please set the default input_mode to InputMode.LANGUAGE before quantizing."
                 )
 
+            # For Nemotron VL models, disable quantization of vision components
+            is_nemotron_vl = (
+                "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
+            )
+            if is_nemotron_vl:
+                print("Disabling quantization for vision components in Nemotron VL model")
+                quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
+                quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
+                # Also disable radio model components specifically
+                quant_cfg["quant_cfg"]["*radio*"] = {"enable": False}
+                quant_cfg["quant_cfg"]["*visual*"] = {"enable": False}
+
         if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
             input_ids = next(iter(calib_dataloader))[
                 "input_features" if model_type == "whisper" else "input_ids"
             ][0:1]
-            try:
-                generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
-            except Exception as e:
-                print(
-                    "Error during model generation. Please check if your transformers version is "
-                    "compatible with the model."
-                )
-                print(f"Error details: {e}")
-                raise
+
+            # Skip preview generation for Nemotron VL models that require special handling
+            is_nemotron_vl = (
+                "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
+            )
+            if is_nemotron_vl:
+                print("Skipping preview generation for Nemotron VL model (requires image input)")
+                generated_ids_before_ptq = None
+            else:
+                try:
+                    generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
+                except Exception as e:
+                    print(
+                        "Error during model generation. Please check if your transformers version is "
+                        "compatible with the model."
+                    )
+                    print(f"Error details: {e}")
+                    raise
             if model_type == "gptoss" and args.qformat == "nvfp4_mlp_only":
                 print("Applying nvfp4 quantization (MoE only) for gpt-oss")
 
@@ -496,9 +527,13 @@ def main(args):
             # Run some samples
             torch.cuda.empty_cache()
             generated_ids_after_ptq = None
-            if model_type != "llama4":
+            if model_type != "llama4" and not is_nemotron_vl:
                 # Our fake quantizer may not be fully compatible with torch.compile.
                 generated_ids_after_ptq = full_model.generate(input_ids, max_new_tokens=100)
+            elif is_nemotron_vl:
+                print(
+                    "Skipping post-quantization generation for Nemotron VL model (requires image input)"
+                )
             else:
                 warnings.warn(
                     "Llama4 Maverick generation after quantization has a bug. Skipping generation sample."
@@ -561,9 +596,12 @@ def main(args):
             # Save original model config and the processor config to the export path for VLMs.
             print(f"Saving original model config to {export_path}")
 
-            AutoConfig.from_pretrained(
-                args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-            ).save_pretrained(export_path)
+            config_kwargs = {"trust_remote_code": args.trust_remote_code}
+            if args.attn_implementation is not None:
+                config_kwargs["attn_implementation"] = args.attn_implementation
+            AutoConfig.from_pretrained(args.pyt_ckpt_path, **config_kwargs).save_pretrained(
+                export_path
+            )
 
             # Try to save processor config if available
             try:
@@ -749,10 +787,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--attn_implementation",
         help=(
-            "Specify the attention implementation to use."
+            "Specify the attention implementation to use. "
             "This arg will be passed to the HF model loading if specified."
         ),
-        default=None,
+        default="eager",
         type=str,
     )
 
