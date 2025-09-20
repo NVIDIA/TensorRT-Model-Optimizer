@@ -18,6 +18,7 @@
 import re
 from collections import defaultdict
 from functools import reduce
+from typing import Any, cast
 
 import numpy as np
 import onnx
@@ -623,6 +624,223 @@ def _find_nodes_from_op_types_to_exclude(graph: Graph, op_types_to_exclude=None)
     if op_types_to_exclude:
         nodes_to_exclude = [node.name for node in graph.nodes if node.op in op_types_to_exclude]
     return nodes_to_exclude
+
+
+def _find_quantizable_weights(
+    graph: onnx.GraphProto,
+    nodes_to_exclude: list[str],
+) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int]]:
+    """Finds the quantizable weights from the graph."""
+    wa_pack = []
+    gemm_nodes = [
+        node
+        for node in graph.node
+        if node.op_type in ["Gemm", "MatMul"] and node.name not in nodes_to_exclude
+    ]
+    initializer_idxs = {initializer.name: idx for idx, initializer in enumerate(graph.initializer)}
+    for gemm in gemm_nodes:
+        if gemm.input[0] in initializer_idxs:
+            # Ex. two const input to MatMul_115 in fastvit0.onnx
+            # Note. RTN algorithm will quantize these weights though
+            continue
+
+        if gemm.input[1] not in initializer_idxs:
+            continue
+
+        weight_tensor = graph.initializer[initializer_idxs[gemm.input[1]]]
+        if len(weight_tensor.dims) == 1:  # 1D blocked quantization not supported
+            continue
+
+        gemm_io_type = cast("int", weight_tensor.data_type)
+
+        act_tensor = onnx.helper.ValueInfoProto()
+        act_tensor.name = gemm.input[0]
+
+        # TODO: support transA by transposing activation tensors in _clip_search
+        do_transpose = gemm.op_type == "Gemm" and any(
+            attr.name == "transB" and attr.i > 0 for attr in gemm.attribute
+        )
+
+        wa_pack.append((act_tensor, weight_tensor, do_transpose, gemm_io_type))
+
+    return wa_pack
+
+
+def should_quantize_to_int8(layer_name: str, int8_layers: list[str]):
+    """Check if layer should be quantized to INT8.
+
+    The int8_layers list contains ONNX node names like '/model/layers.13/attn/qkv_proj/MatMul'.
+    The layer_name argument is an ONNX initializer name like 'model.layers.13.attn.qkv_proj.MatMul.weight'.
+
+    To match these, we:
+      - Remove the leading slash from the node name.
+      - Replace all '/' with '.' to match the naming convention of the initializer.
+
+    This allows us to correctly identify which weights should be quantized to INT8.
+    """
+    if not int8_layers:
+        return False
+
+    # Normalize both to dot-delimited tokens and require exact token sequence match.
+    def tokens(s: str) -> list[str]:
+        return s.lstrip("/").replace("/", ".").split(".")
+
+    hay = tokens(layer_name)
+    for pat in int8_layers:
+        needle = tokens(pat)
+        n, m = len(hay), len(needle)
+        for i in range(n - m + 1):
+            if hay[i : i + m] == needle:
+                return True
+    return False
+
+
+def validate_int8_layers(layers_str: str) -> bool:
+    """Validate the format of int8_layers string."""
+    if not layers_str:
+        return True
+    # Basic validation: check for valid characters and structure
+    import re
+
+    pattern = r"^[a-zA-Z0-9_.,\-]$"
+    return bool(re.match(pattern, layers_str))
+
+
+def get_layer_precision_mapping(
+    onnx_model: onnx.ModelProto,
+    int8_precision_pattern: str | None = None,
+    nodes_to_exclude: list[str] | None = [r"/lm_head"],
+):
+    """Generate a mapping of layer names to their quantization precision (INT4 or INT8) for an ONNX model.
+
+    Args:
+        onnx_model (onnx.ModelProto): The ONNX model to analyze.
+        int8_precision_pattern (str, optional): Comma-separated string of layer patterns to quantize to INT8.
+            If None, a default set of patterns is used to select layers for INT8 quantization.
+        nodes_to_exclude (list[str], optional): List of node name patterns to exclude from quantization.
+            Defaults to [r"/lm_head"].
+
+    Returns:
+        dict: A mapping from layer names to their quantization precision (e.g., {"layer_name": "int8"}).
+    """
+    graph = onnx_model.graph
+
+    nodes_to_exclude = expand_node_names_from_patterns(graph, nodes_to_exclude)
+    # Collect quantizable weight tensors
+    wa_pack = _find_quantizable_weights(graph, nodes_to_exclude)
+
+    if int8_precision_pattern:
+        if not validate_int8_layers(int8_precision_pattern):
+            raise ValueError("Invalid format for --int8_layers. Use comma-separated layers.")
+        int8_layers_list = [x.strip() for x in int8_precision_pattern.split(",") if x.strip()]
+
+    else:
+        matmul_nodes = [
+            node
+            for node in onnx_model.graph.node
+            if node.op_type == "MatMul" and "lm_head" not in node.name
+        ]
+
+        # Only include nodes matching the specified patterns for all layers present in the model
+        # For example, for all i where a node exists with name:
+        #   /model/layers.{i}/attn/qkv_proj/MatMul
+        #   /model/layers.{i}/attn/v_proj/MatMul
+        #   /model/layers.{i}/mlp/down_proj/MatMul
+        pattern_regexes = [
+            re.compile(r"^/model/layers\.(\d+)/attn/qkv_proj/MatMul$"),
+            re.compile(r"^/model/layers\.(\d+)/attn/v_proj/MatMul$"),
+            re.compile(r"^/model/layers\.(\d+)/mlp/down_proj/MatMul$"),
+        ]
+
+        # Filter matmul_nodes to only those matching the patterns
+        filtered_matmul_nodes = []
+        for node in matmul_nodes:
+            for pat in pattern_regexes:
+                if pat.match(node.name):
+                    filtered_matmul_nodes.append(node)
+                    break
+
+        # Build a mapping from group key to list of node names (ordered by layer index if possible)
+        def extract_group_key(node_name):
+            # Extract the two components before 'MatMul' in the name, e.g. ...foo.bar.MatMul
+            parts = node_name.split("/")
+            if len(parts) >= 3:
+                return ".".join(parts[-3:-1])
+            return node_name
+
+        group_to_nodes = {}
+        for node in filtered_matmul_nodes:
+            group_key = extract_group_key(node.name)
+            group_to_nodes.setdefault(group_key, []).append(node.name)
+
+        int8_layers_set = set()
+        for names in group_to_nodes.values():
+            n = len(names)
+            if n == 0:
+                continue
+
+            # Try to sort by layer index if present
+            def layer_idx(name):
+                m = re.search(r"layers\.(\d+)\.", name)
+                return int(m.group(1)) if m else 0
+
+            names_sorted = sorted(names, key=layer_idx)
+            first_eighth = int(n // 8)
+            last_eighth = int(n // 8)
+            # First 1/8
+            int8_layers_set.update(names_sorted[:first_eighth])
+            # Last 1/8
+            if last_eighth > 0:
+                int8_layers_set.update(names_sorted[-last_eighth:])
+            # Every third in the rest (excluding first and last eighth)
+            rest_start = first_eighth
+            rest_end = n - last_eighth
+            for i in range(rest_start, rest_end):
+                if (i - rest_start) % 3 == 0:
+                    int8_layers_set.add(names_sorted[i])
+        int8_layers_list = list(int8_layers_set)
+
+    # NEW: Create precision info mapping
+    precision_info = {}
+    for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type) in enumerate(wa_pack):
+        weight_name = weight_tensor.name
+        if should_quantize_to_int8(weight_name, int8_layers_list):
+            precision_info[weight_name] = 8
+        else:
+            precision_info[weight_name] = 4
+    return precision_info
+
+
+def get_precision_info(
+    onnx_model: onnx.ModelProto,
+    nodes_to_exclude: list[str] | None = [r"/lm_head"],
+    **kwargs: Any,
+):
+    """Generate a mapping of weight tensor names to their quantization precision (e.g., 4 or 8 bits).
+
+    This function determines the quantization precision for each weight tensor in the ONNX model,
+    based on the provided configuration. If mixed quantization is enabled, it uses the layer
+    precision mapping; otherwise, it returns None.
+
+    Args:
+        onnx_model (onnx.ModelProto): The ONNX model to analyze.
+        nodes_to_exclude (list[str] | None): List of node name patterns to exclude from quantization.
+        **kwargs: Additional keyword arguments, such as:
+            - enable_mixed_quant (bool): Whether to enable mixed quantization.
+            - int8_layers (str): Comma-separated list of layer patterns to quantize to INT8.
+
+    Returns:
+        dict[str, int] | None: A mapping from weight tensor names to their quantization precision,
+        or None if mixed quantization is not enabled.
+    """
+    precision_info = None
+    enable_mixed_quant = kwargs.get("enable_mixed_quant", False)
+    int8_layers = kwargs.get("int8_layers")
+    if enable_mixed_quant:
+        precision_info = get_layer_precision_mapping(onnx_model, int8_layers, nodes_to_exclude)
+    else:
+        precision_info = None
+    return precision_info
 
 
 def expand_node_names_from_patterns(
