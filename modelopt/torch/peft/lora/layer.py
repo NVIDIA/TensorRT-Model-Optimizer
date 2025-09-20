@@ -25,7 +25,6 @@ class LoRAModule(DynamicModule):
 
     Attributes:
         _lora_adapters: Dictionary mapping adapter names to their LoRA A and B matrices
-        _active_adapters: Set of currently active adapter names
     """
 
     def _setup(self) -> None:
@@ -36,11 +35,6 @@ class LoRAModule(DynamicModule):
     def adapter_names(self) -> set:
         """Return the set of all registered adapter names."""
         return set(self._lora_adapters.keys())
-
-    @property
-    def active_adapters(self) -> set:
-        """Return the set of currently active adapter names."""
-        return self._active_adapters.copy()
 
     def _register_adapter(
         self,
@@ -103,7 +97,6 @@ class LoRAModule(DynamicModule):
         Returns:
             Dictionary containing:
             - adapters: Dict mapping adapter names to their configuration
-            - active_adapters: List of currently active adapter names
         """
         modelopt_state = {}
 
