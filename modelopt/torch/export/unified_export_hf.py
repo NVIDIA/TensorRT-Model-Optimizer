@@ -75,85 +75,6 @@ __all__ = ["export_hf_checkpoint"]
 SPECULATIVE_DECODING_MODULE_NAMES = ["medusa_heads", "eagle_module", "drafter"]
 
 
-def _create_fake_vl_inputs(model, fake_input_ids):
-    """Create fake vision-language model inputs for export process.
-
-    Args:
-        model: The VL model
-        fake_input_ids: The fake text input IDs tensor
-
-    Returns:
-        dict: Dictionary of fake inputs for the VL model
-    """
-    import inspect
-
-    device = fake_input_ids.device
-    batch_size = fake_input_ids.shape[0]
-
-    # Get the model's forward method signature to see what parameters it accepts
-    forward_signature = inspect.signature(model.forward)
-    accepted_params = set(forward_signature.parameters.keys())
-
-    # Create fake inputs based on common VL model patterns
-    fake_inputs = {}
-
-    # Always include basic text inputs if accepted
-    if "input_ids" in accepted_params:
-        fake_inputs["input_ids"] = fake_input_ids
-    if "attention_mask" in accepted_params:
-        fake_inputs["attention_mask"] = torch.ones_like(fake_input_ids)
-
-    # Add vision-specific inputs based on model configuration and accepted parameters
-    if hasattr(model.config, "vision_config") and "pixel_values" in accepted_params:
-        vision_config = model.config.vision_config
-        # Create fake pixel values based on vision config
-        if hasattr(vision_config, "image_size"):
-            image_size = vision_config.image_size
-        else:
-            image_size = 224  # Default size
-
-        if hasattr(vision_config, "num_channels"):
-            num_channels = vision_config.num_channels
-        else:
-            num_channels = 3  # RGB default
-
-        # Create fake pixel values
-        fake_inputs["pixel_values"] = torch.zeros(
-            [batch_size, num_channels, image_size, image_size], dtype=torch.float32, device=device
-        )
-
-    # Handle Nemotron-specific inputs based on testing results
-    model_name = getattr(model, "name_or_path", "").lower()
-    if "nemotron" in model_name:
-        if "pixel_values" in accepted_params:
-            # Based on testing, Nemotron expects pixel_values with shape [14, 3, 512, 512]
-            # This represents 14 image patches, each 512x512 pixels with 3 channels
-            num_patches = 14
-            patch_size = 512
-            num_channels = 3
-
-            # Override any previous pixel_values with the correct Nemotron format
-            # Use small random values instead of zeros to avoid NoneType issues
-            fake_inputs["pixel_values"] = (
-                torch.randn(
-                    [num_patches, num_channels, patch_size, patch_size],
-                    dtype=torch.float32,
-                    device=device,
-                )
-                * 0.1
-            )  # Small values to avoid extreme activations
-
-        if "image_flags" in accepted_params:
-            # Based on testing, image_flags should have shape [14] (no batch dimension)
-            # to match the [14, 256, 4096] tensor it's used to mask
-            num_patches = 14  # From pixel_values shape [14, 3, 512, 512]
-            fake_inputs["image_flags"] = torch.zeros(
-                [num_patches], dtype=torch.long, device=device
-            )  # Shape [14] to match vision tensor dimensions
-
-    return fake_inputs
-
-
 def _is_enabled_quantizer(quantizer):
     if hasattr(quantizer, "is_enabled") and quantizer.is_enabled:
         return True
@@ -230,42 +151,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                 [1, model.config.num_mel_bins, feature_extractor.nb_max_frames], dtype=model.dtype
             ).to(model.device)
         elif is_vl_model:
-            # For VL models, create proper fake vision inputs
-            print("Detected VL model during export - creating fake vision inputs")
-
-            # Pre-emptively initialize distributed for Nemotron models that require it
-            model_name = getattr(model, "name_or_path", "").lower()
-            if "nemotron" in model_name:
-                import os
-
-                import torch.distributed as dist
-
-                if not dist.is_available() or not dist.is_initialized():
-                    print("Pre-initializing distributed processing for Nemotron VL model")
-                    # Set up minimal distributed environment
-                    os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
-                    os.environ.setdefault("MASTER_PORT", "29500")
-                    os.environ.setdefault("RANK", "0")
-                    os.environ.setdefault("WORLD_SIZE", "1")
-
-                    if dist.is_available() and not dist.is_initialized():
-                        try:
-                            dist.init_process_group(
-                                backend="nccl" if torch.cuda.is_available() else "gloo",
-                                rank=0,
-                                world_size=1,
-                            )
-                        except Exception as dist_e:
-                            print(f"Failed to initialize distributed processing: {dist_e}")
-            try:
-                # Try to create proper fake vision inputs for the VL model
-                fake_kwargs = _create_fake_vl_inputs(model, fake_input)
-            except Exception as e:
-                print(f"Failed to create fake VL inputs: {e}")
-                print("Skipping requantize_resmooth_fused_llm_layers for VL model")
-                for handle in handles:
-                    handle.remove()
-                return
+            # For VL models, run optimization on language model component only
+            print("Detected VL model during export - optimizing language model component")
 
         # Run forward pass so that all modules sharing the same input are collected using forward hook.
 
@@ -300,21 +187,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                         print(f"Language model optimization failed: {e}")
                         print("Continuing with export...")
                 else:
-                    # Fallback: try full model with VL inputs
-                    print("No separate language_model found - trying full VL model")
-                    try:
-                        model(**fake_kwargs)
-                        print("✅ Full VL model optimization completed successfully")
-                    except (ValueError, RuntimeError, AttributeError) as e:
-                        if (
-                            "Default process group has not been initialized" in str(e)
-                            or "must match the size of tensor" in str(e)
-                            or "'bool' object has no attribute 'sum'" in str(e)
-                        ):
-                            print(f"VL model forward pass failed: {e}")
-                            print("Skipping optimization for VL model - continuing with export")
-                        else:
-                            raise
+                    print("Warning: No language_model found in VL model - skipping optimization")
+                    print("This is unexpected for most VL models")
             else:
                 model(fake_input)
 
