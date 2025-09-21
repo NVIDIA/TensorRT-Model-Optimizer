@@ -575,6 +575,9 @@ def main(args):
                 print("Running text-only preview generation for Nemotron VL model...")
                 try:
                     # Try text-only generation using model.chat with None for images
+                    if tokenizer is None:
+                        raise ValueError("Tokenizer is required for Nemotron VL text generation")
+
                     question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
                     generation_config = {
                         "max_new_tokens": 100,
@@ -639,6 +642,9 @@ def main(args):
                 print("Running text-only preview generation for quantized Nemotron VL model...")
                 try:
                     # Try text-only generation using model.chat with None for images
+                    if tokenizer is None:
+                        raise ValueError("Tokenizer is required for Nemotron VL text generation")
+
                     question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
                     generation_config = {
                         "max_new_tokens": 100,
