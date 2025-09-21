@@ -626,11 +626,11 @@ def _find_nodes_from_op_types_to_exclude(graph: Graph, op_types_to_exclude=None)
     return nodes_to_exclude
 
 
-def _find_quantizable_weights(
+def _find_int4_quantizable_weights(
     graph: onnx.GraphProto,
     nodes_to_exclude: list[str],
 ) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int]]:
-    """Finds the quantizable weights from the graph."""
+    """Finds the int4 quantizable weights from the graph."""
     wa_pack = []
     gemm_nodes = [
         node
@@ -666,19 +666,19 @@ def _find_quantizable_weights(
     return wa_pack
 
 
-def should_quantize_to_int8(layer_name: str, int8_layers: list[str]):
-    """Check if layer should be quantized to INT8.
+def should_quantize_to_8bit(layer_name: str, layers_8bit: list[str]):
+    """Check if layer should be quantized to 8 bits.
 
-    The int8_layers list contains ONNX node names like '/model/layers.13/attn/qkv_proj/MatMul'.
+    The layers_8bit list contains ONNX node names like '/model/layers.13/attn/qkv_proj/MatMul'.
     The layer_name argument is an ONNX initializer name like 'model.layers.13.attn.qkv_proj.MatMul.weight'.
 
     To match these, we:
       - Remove the leading slash from the node name.
       - Replace all '/' with '.' to match the naming convention of the initializer.
 
-    This allows us to correctly identify which weights should be quantized to INT8.
+    This allows us to correctly identify which weights should be quantized to 8 bits.
     """
-    if not int8_layers:
+    if not layers_8bit:
         return False
 
     # Normalize both to dot-delimited tokens and require exact token sequence match.
@@ -686,7 +686,7 @@ def should_quantize_to_int8(layer_name: str, int8_layers: list[str]):
         return s.lstrip("/").replace("/", ".").split(".")
 
     hay = tokens(layer_name)
-    for pat in int8_layers:
+    for pat in layers_8bit:
         needle = tokens(pat)
         n, m = len(hay), len(needle)
         for i in range(n - m + 1):
@@ -695,44 +695,42 @@ def should_quantize_to_int8(layer_name: str, int8_layers: list[str]):
     return False
 
 
-def validate_int8_layers(layers_str: str) -> bool:
-    """Validate the format of int8_layers string."""
+def validate_8bit_layers(layers_str: str) -> bool:
+    """Validate the format of layers_8bit string."""
     if not layers_str:
         return True
-    # Basic validation: check for valid characters and structure
-    import re
-
-    pattern = r"^[a-zA-Z0-9_.,\-]$"
+    # Allow comma-separated list of path-like tokens
+    pattern = r"^\s*[/a-zA-Z0-9_.\-]+(\s*,\s*[/a-zA-Z0-9_.\-]+)*\s*$"
     return bool(re.match(pattern, layers_str))
 
 
 def get_layer_precision_mapping(
     onnx_model: onnx.ModelProto,
-    int8_precision_pattern: str | None = None,
+    precision_pattern_8bit: str | None = None,
     nodes_to_exclude: list[str] | None = [r"/lm_head"],
 ):
-    """Generate a mapping of layer names to their quantization precision (INT4 or INT8) for an ONNX model.
+    """Generate a mapping of layer names to their quantization precision (4 bits or 8 bits) for an ONNX model.
 
     Args:
         onnx_model (onnx.ModelProto): The ONNX model to analyze.
-        int8_precision_pattern (str, optional): Comma-separated string of layer patterns to quantize to INT8.
-            If None, a default set of patterns is used to select layers for INT8 quantization.
+        precision_pattern_8bit (str, optional): Comma-separated string of layer patterns to quantize to 8 bits.
+            If None, a default set of patterns is used to select layers for 8 bits quantization.
         nodes_to_exclude (list[str], optional): List of node name patterns to exclude from quantization.
             Defaults to [r"/lm_head"].
 
     Returns:
-        dict: A mapping from layer names to their quantization precision (e.g., {"layer_name": "int8"}).
+        dict: A mapping from layer names to their quantization precision (e.g., {"layer_name": "8"}).
     """
     graph = onnx_model.graph
 
     nodes_to_exclude = expand_node_names_from_patterns(graph, nodes_to_exclude)
     # Collect quantizable weight tensors
-    wa_pack = _find_quantizable_weights(graph, nodes_to_exclude)
+    wa_pack = _find_int4_quantizable_weights(graph, nodes_to_exclude)
 
-    if int8_precision_pattern:
-        if not validate_int8_layers(int8_precision_pattern):
-            raise ValueError("Invalid format for --int8_layers. Use comma-separated layers.")
-        int8_layers_list = [x.strip() for x in int8_precision_pattern.split(",") if x.strip()]
+    if precision_pattern_8bit:
+        if not validate_8bit_layers(precision_pattern_8bit):
+            raise ValueError("Invalid format for --layers_8bit. Use comma-separated layers.")
+        layers_list_8bit = [x.strip() for x in precision_pattern_8bit.split(",") if x.strip()]
 
     else:
         matmul_nodes = [
@@ -773,7 +771,7 @@ def get_layer_precision_mapping(
             group_key = extract_group_key(node.name)
             group_to_nodes.setdefault(group_key, []).append(node.name)
 
-        int8_layers_set = set()
+        layers_8bit_set = set()
         for names in group_to_nodes.values():
             n = len(names)
             if n == 0:
@@ -788,23 +786,23 @@ def get_layer_precision_mapping(
             first_eighth = int(n // 8)
             last_eighth = int(n // 8)
             # First 1/8
-            int8_layers_set.update(names_sorted[:first_eighth])
+            layers_8bit_set.update(names_sorted[:first_eighth])
             # Last 1/8
             if last_eighth > 0:
-                int8_layers_set.update(names_sorted[-last_eighth:])
+                layers_8bit_set.update(names_sorted[-last_eighth:])
             # Every third in the rest (excluding first and last eighth)
             rest_start = first_eighth
             rest_end = n - last_eighth
             for i in range(rest_start, rest_end):
                 if (i - rest_start) % 3 == 0:
-                    int8_layers_set.add(names_sorted[i])
-        int8_layers_list = list(int8_layers_set)
+                    layers_8bit_set.add(names_sorted[i])
+        layers_list_8bit = list(layers_8bit_set)
 
     # NEW: Create precision info mapping
     precision_info = {}
     for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type) in enumerate(wa_pack):
         weight_name = weight_tensor.name
-        if should_quantize_to_int8(weight_name, int8_layers_list):
+        if should_quantize_to_8bit(weight_name, layers_list_8bit):
             precision_info[weight_name] = 8
         else:
             precision_info[weight_name] = 4
@@ -827,7 +825,7 @@ def get_precision_info(
         nodes_to_exclude (list[str] | None): List of node name patterns to exclude from quantization.
         **kwargs: Additional keyword arguments, such as:
             - enable_mixed_quant (bool): Whether to enable mixed quantization.
-            - int8_layers (str): Comma-separated list of layer patterns to quantize to INT8.
+            - layers_8bit (str): Comma-separated list of layer patterns to quantize to 8 bit.
 
     Returns:
         dict[str, int] | None: A mapping from weight tensor names to their quantization precision,
@@ -835,9 +833,9 @@ def get_precision_info(
     """
     precision_info = None
     enable_mixed_quant = kwargs.get("enable_mixed_quant", False)
-    int8_layers = kwargs.get("int8_layers")
+    layers_8bit = kwargs.get("layers_8bit")
     if enable_mixed_quant:
-        precision_info = get_layer_precision_mapping(onnx_model, int8_layers, nodes_to_exclude)
+        precision_info = get_layer_precision_mapping(onnx_model, layers_8bit, nodes_to_exclude)
     else:
         precision_info = None
     return precision_info

@@ -36,7 +36,9 @@ from modelopt.onnx.logging_config import configure_logging, logger
 from modelopt.onnx.op_types import is_fusible_scaling_op
 from modelopt.onnx.quantization.calib_utils import RandomDataProvider
 from modelopt.onnx.quantization.graph_utils import (
-    _find_quantizable_weights,
+    _find_int4_quantizable_weights as _find_quantizable_weights,
+)
+from modelopt.onnx.quantization.graph_utils import (
     expand_node_names_from_patterns,
     get_precision_info,
     get_tensor_consumer_nodes,
@@ -50,9 +52,9 @@ from modelopt.onnx.quantization.quant_utils import (
     find_scales,
     get_num_bits,
     quant_tensor,
+    reshape_scales_for_per_channel_nodes,
     rtn,
     update_block_size,
-    update_scale_map_for_per_channel_nodes,
 )
 from modelopt.onnx.utils import save_onnx
 
@@ -121,6 +123,7 @@ def _quantize_gather_nodes(
                     continue
                 name = in_tensor.name
                 w = in_tensor.values
+                # Updating the block size as for 8bit quantization, per-channel quantization is used.
                 num_bits = get_num_bits(precision_info, name)
                 block_size_updated = update_block_size(
                     num_bits, block_size, w=w, quantize_axis=gather_quantize_axis
@@ -170,7 +173,7 @@ def _quantize_gather_nodes(
         )
     else:
         logger.info("Found 0 Gather nodes to quantize")
-    scales_map = update_scale_map_for_per_channel_nodes(scales_map, block_size, precision_info)
+    scales_map = reshape_scales_for_per_channel_nodes(scales_map, block_size, precision_info)
     return weights_map, scales_map, zero_point_map
 
 
@@ -221,6 +224,7 @@ def quantize_rtn(
     precision_info = get_precision_info(onnx_model, nodes_to_exclude, **kwargs)
     for name, w in gemm_weights.items():
         logger.debug(f"Computing scales for weight {name} of shape {w.shape}")
+        # Updating the block size as for 8bit quantization, per-channel quantization is used.
         num_bits = get_num_bits(precision_info, name)
         block_size_updated = update_block_size(num_bits, block_size, w=w)
         s, zp = find_scales(np.asarray(w), block_size_updated, num_bits=num_bits)
@@ -258,6 +262,7 @@ def quantize_rtn(
         gemm_weights_quantized = {}
         for name, w in gemm_weights.items():
             logger.debug(f"Quantizing weight {name}")
+            # Updating the block size as for 8bit quantization, per-channel quantization is used.
             num_bits = get_num_bits(precision_info, name)
             block_size_updated = update_block_size(num_bits, block_size, w=w)
             qw = rtn(np.asarray(w), scales[name], block_size_updated, num_bits=num_bits)
@@ -265,7 +270,7 @@ def quantize_rtn(
                 qw = np.asnumpy(qw)
                 scales[name] = np.asnumpy(scales[name])
             gemm_weights_quantized[name] = numpy.asarray(qw)
-        scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
+        scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
         qdq.insert_dq_nodes(
             graph,
             scales,
@@ -285,7 +290,7 @@ def quantize_rtn(
         if has_cupy:
             for name in scales:
                 scales[name] = np.asnumpy(scales[name])
-        scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
+        scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
         qdq.insert_qdq_nodes(graph, scales, weight_map=gemm_tensors, precision_info=precision_info)
         if gather_w_map is not None:
             assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
@@ -497,6 +502,7 @@ def _quantize_awq_clip(
             w = w.T
         w = np.asarray(w)
         num_bits = get_num_bits(precision_info, weight_tensor.name)
+        # Updating the block size as for 8bit quantization, per-channel quantization is used.
         block_size_updated = update_block_size(num_bits, block_size, w=w)
         awq_clip = AWQClipHelper(w, block_size_updated, **kwargs)
         _clip_search(x, w, awq_clip, num_bits=num_bits, **kwargs)
@@ -524,7 +530,9 @@ def _quantize_awq_clip(
 
         alpha = alphas.get(weight_tensor.name, 1)
         num_bits = get_num_bits(precision_info, weight_tensor.name)
-        qw, scale, _ = quant_tensor(w, block_size, alpha=alpha, num_bits=num_bits)
+        # Updating the block size as for 8bit quantization, per-channel quantization is used.
+        block_size_updated = update_block_size(num_bits, block_size, w=w)
+        qw, scale, _ = quant_tensor(w, block_size_updated, alpha=alpha, num_bits=num_bits)
         if has_cupy:
             qw = np.asnumpy(qw)
             scale = np.asnumpy(scale)
@@ -561,7 +569,7 @@ def _quantize_awq_clip(
 
     t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
-    scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
+    scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
     qdq.insert_dq_nodes(
         graph_gs,
         scales,
@@ -716,6 +724,7 @@ def run_awq_scale_search_per_node(
         x = np.concatenate(output_dicts[act_tensor.name], axis=0).reshape(
             (-1, w.shape[0])
         )  # n_token, ci
+        # Updating the block size as for 8bit quantization, per-channel quantization is used.
         num_bits = get_num_bits(precision_info, weight_tensor.name)
         block_size_updated = update_block_size(num_bits, block_size, w=w)
         awq_lite[i] = AWQLiteHelper(x, w, block_size_updated, **kwargs)
@@ -1129,6 +1138,7 @@ def _quantize_awq_lite(
         assert enable_weight_clipping or (alpha == 1), (
             "clip range enabled without enabling weight-clipping param"
         )
+        # Updating the block size as for 8bit quantization, per-channel quantization is used.
         num_bits = get_num_bits(precision_info, weight_tensor.name)
         block_size_updated = update_block_size(num_bits, block_size, w=w_scaled)
         qw, scale, zp = quant_tensor(
@@ -1262,7 +1272,7 @@ def _quantize_awq_lite(
 
     t = time.time()
     dq_node_attributes = {"axis": 0, "block_size": block_size}
-    scales = update_scale_map_for_per_channel_nodes(scales, block_size, precision_info)
+    scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
     qdq.insert_dq_nodes(
         graph_gs,
         scales,
@@ -1371,7 +1381,7 @@ def quantize(
                                               Default: 32.
                 - **enable_mixed_quant** (bool): If True, enable mixed quantization.
                                               Default: False.
-                - **int8_layers** (str): comma-separated list of layer patterns to quantize to INT8 instead of INT4.
+                - **layers_8bit** (str): comma-separated list of layer patterns to quantize to INT8 instead of INT4.
                                               Default: [].
     **Returns**: A quantized ONNX model in ONNX ModelProto format.
     """

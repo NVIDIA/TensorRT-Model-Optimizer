@@ -199,7 +199,7 @@ def _next_block_size_multiple(x: float, block_size: int) -> float:
 
 def _pad(w: np.ndarray, block_size: int, quantize_axis: int = 0) -> np.ndarray:
     """Pads `w` to next largest multiple of block_size, on quantize_axis."""
-    assert quantize_axis <= len(w.shape), (
+    assert 0 <= quantize_axis < len(w.shape), (
         f"incorrect quantize-axis {quantize_axis}, w-shape={w.shape}"
     )
 
@@ -228,10 +228,10 @@ def _depad(w: np.ndarray, orig_shape: tuple, quantize_axis: int = 0) -> np.ndarr
     return ans
 
 
-def update_scale_map_for_per_channel_nodes(
+def reshape_scales_for_per_channel_nodes(
     scales_map: dict[str, np.ndarray], block_size: int, precision_info: dict[str, int] | None = None
 ):
-    """Update the scale map for per-channel nodes."""
+    """Update the scale map for per-channel nodes. For per channel quantization the scale needs to be 1D."""
     for name in scales_map:
         num_bits = get_num_bits(precision_info, name)
         is_per_channel = (block_size == -1) or (num_bits == 8)
@@ -260,7 +260,7 @@ def find_scales(
         scale = 2 ** (num_bits - 1) - 1
         w_amax = np.abs(w.reshape(-1, block_size)).max(axis=-1)
         s = (w_amax * alpha) / scale
-        s = s.reshape(s_shape)
+        s = np.clip(s, CLIP_MIN, None).reshape(s_shape)
     else:
         max_val = w.reshape(-1, block_size).max(axis=-1)
         min_val = w.reshape(-1, block_size).min(axis=-1)
@@ -360,9 +360,8 @@ def quant_tensor(
             - scale: The scale factors used for quantization (np.ndarray)
             - zp: The zero-point values (np.ndarray or None if not using zero-point)
     """
-    block_size_updated = update_block_size(num_bits, block_size, w=w)
-    scale, zp = find_scales(w, block_size_updated, quantize_axis, alpha, use_zero_point, num_bits)
-    wq = rtn(w, scale, block_size_updated, quantize_axis, zp, num_bits)
+    scale, zp = find_scales(w, block_size, quantize_axis, alpha, use_zero_point, num_bits)
+    wq = rtn(w, scale, block_size, quantize_axis, zp, num_bits)
     return wq, scale, zp
 
 

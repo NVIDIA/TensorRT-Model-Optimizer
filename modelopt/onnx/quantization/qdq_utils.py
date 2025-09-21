@@ -324,6 +324,28 @@ def get_tensor_dtype(num_bits: int = 4, has_zero_point: bool = False) -> int:
     return onnx_dtype_map[dtype_str]
 
 
+def update_attributes_for_per_channel_nodes(
+    attributes: dict[str, Any] | None = None, num_bits: int = 4
+) -> dict[str, Any] | None:
+    """Get the attributes for per-channel nodes."""
+    attrs = attributes.copy() if attributes is not None else None
+    if ((attrs is not None) and (attrs.get("block_size", None) == -1)) or (num_bits == 8):
+        if attrs is not None:
+            attrs["axis"] = 1
+            if "block_size" in attrs:
+                del attrs["block_size"]
+    return attrs
+
+
+def validate_scale_shape_for_per_channel_nodes(
+    scale: np.ndarray, attrs: dict[str, Any] | None = None, num_bits: int = 4
+):
+    """Validate the shape of the scale tensor for per-channel nodes."""
+    if attrs is not None:
+        if ("block_size" not in attrs) or (num_bits == 8):
+            assert scale.ndim == 1, "Scale shape is not valid for per-channel nodes"
+
+
 def insert_dq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
@@ -376,12 +398,10 @@ def insert_dq_nodes(
             assert zp is not None, "zero-point is enabled but zero-point values not found"
 
         num_bits = get_num_bits(precision_info, name)
+        # Updating the attributes for per-channel nodes.
         attrs = attributes.copy() if attributes is not None else None
-        if ((attrs is not None) and (attrs.get("block_size", None) == -1)) or (num_bits == 8):
-            if attrs is not None:
-                attrs["axis"] = 1
-                if "block_size" in attrs:
-                    del attrs["block_size"]
+        attrs = update_attributes_for_per_channel_nodes(attrs, num_bits)
+        validate_scale_shape_for_per_channel_nodes(scale, attrs, num_bits)
         _insert_helper(
             name,
             quantized_weights[name],
