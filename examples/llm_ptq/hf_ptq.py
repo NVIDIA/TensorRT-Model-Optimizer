@@ -16,8 +16,10 @@
 import argparse
 import copy
 import random
+import shutil
 import time
 import warnings
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -81,6 +83,56 @@ KV_QUANT_CFG_CHOICES = {
 }
 
 mto.enable_huggingface_checkpointing()
+
+
+def copy_custom_model_files(source_path: str, export_path: str, trust_remote_code: bool = False):
+    """Copy custom model files (configuration_*.py, modeling_*.py, etc.) from source to export directory.
+
+    Args:
+        source_path: Path to the original model directory
+        export_path: Path to the exported model directory
+        trust_remote_code: Whether trust_remote_code was used (only copy files if True)
+    """
+    if not trust_remote_code:
+        return
+
+    source_dir = Path(source_path)
+    export_dir = Path(export_path)
+
+    if not source_dir.exists():
+        print(f"Warning: Source directory {source_path} does not exist")
+        return
+
+    if not export_dir.exists():
+        print(f"Warning: Export directory {export_path} does not exist")
+        return
+
+    # Common patterns for custom model files that need to be copied
+    custom_file_patterns = [
+        "configuration_*.py",
+        "modeling_*.py",
+        "tokenization_*.py",
+        "processing_*.py",
+        "image_processing_*.py",
+        "feature_extraction_*.py",
+    ]
+
+    copied_files = []
+    for pattern in custom_file_patterns:
+        for file_path in source_dir.glob(pattern):
+            if file_path.is_file():
+                dest_path = export_dir / file_path.name
+                try:
+                    shutil.copy2(file_path, dest_path)
+                    copied_files.append(file_path.name)
+                    print(f"Copied custom model file: {file_path.name}")
+                except Exception as e:
+                    print(f"Warning: Failed to copy {file_path.name}: {e}")
+
+    if copied_files:
+        print(f"Successfully copied {len(copied_files)} custom model files to {export_path}")
+    else:
+        print("No custom model files found to copy")
 
 
 def auto_quantize(
@@ -604,6 +656,9 @@ def main(args):
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
             )
+
+            # Copy custom model files for TensorRT-LLM export as well
+            copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
         else:
             # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
             assert args.sparsity_fmt == "dense", (
@@ -620,6 +675,9 @@ def main(args):
                 full_model,
                 export_dir=export_path,
             )
+
+        # Copy custom model files (configuration_*.py, modeling_*.py, etc.) if trust_remote_code is used
+        copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
 
         # Restore default padding and export the tokenizer as well.
         if tokenizer is not None:
