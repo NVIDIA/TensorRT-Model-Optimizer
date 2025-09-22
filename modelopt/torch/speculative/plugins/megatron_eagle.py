@@ -845,7 +845,7 @@ class _DynamicEagleGPTModel(EagleModel):
         rotary_pos_emb = self.eagle_module.rotary_pos_emb(padded_input_ids.shape[-1])
 
         attn_mask = attention_mask.clone().detach()
-        attn_mask[:, :, :-1, :-1] = attn_mask[:, :, 1:, 1:]
+        attn_mask[:, :, :-1, :-1] = attention_mask[:, :, 1:, 1:]
         attn_mask[:, :, -1, :] = True
         attn_mask[:, :, :, -1] = True
 
@@ -914,6 +914,55 @@ class _DynamicEagleGPTModel(EagleModel):
             eagle_inputs["attention_mask"] = attn_mask
             eagle_inputs["position_ids"] = position_ids
             eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
+
+            if self.config.sequence_parallel:
+                gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
+            else:
+                gathered_hidden_states = hidden_states
+            eagle_inputs["hidden_states"] = gathered_hidden_states
+
+            for i in range(self.eagle_config.parallel_draft_step - 1):
+                eagle_inputs["input_ids"] = torch.cat(
+                    (
+                        eagle_inputs["input_ids"],
+                        torch.full(
+                            padded_input_ids.shape,
+                            getattr(self, f"mask_token_{i}"),
+                            device=padded_input_ids.device,
+                            dtype=padded_input_ids.dtype,
+                        ),
+                    ),
+                    dim=-1,
+                )
+
+                eagle_inputs["hidden_states"] = torch.cat(
+                    (
+                        eagle_inputs["hidden_states"],
+                        torch.zeros(
+                            (1 + i, b, h), dtype=hidden_states.dtype, device=hidden_states.device
+                        ),
+                        gathered_hidden_states[: -(1 + i)],
+                    ),
+                    dim=0,
+                )
+
+                eagle_inputs["position_ids"] = torch.cat(
+                    (eagle_inputs["position_ids"], position_ids), dim=-1
+                )
+
+                if rotary_pos_emb is not None:
+                    eagle_inputs["rotary_pos_emb"] = torch.cat(
+                        (eagle_inputs["rotary_pos_emb"], rotary_pos_emb), dim=0
+                    )
+
+            if self.config.sequence_parallel:
+                eagle_inputs["hidden_states"] = scatter_to_sequence_parallel_region(
+                    eagle_inputs["hidden_states"]
+                )
+
+            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
+                attn_mask, self.eagle_config.parallel_draft_step
+            )
         elif features.shape[0] == hidden_states.shape[0]:
             eagle_inputs["input_ids"] = torch.cat(
                 (padded_input_ids, padded_input_ids),
