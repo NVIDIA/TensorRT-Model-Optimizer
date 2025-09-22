@@ -29,7 +29,7 @@ import torch.nn as nn
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
-from modelopt.torch.quantization.qtensor import NVFP4QTensor, QTensorWrapper
+from modelopt.torch.quantization.qtensor import NVFP4QTensor
 from modelopt.torch.quantization.utils import quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
@@ -314,11 +314,12 @@ def _export_quantized_weight(
         )[0]
 
         quantized_weight = to_quantized_weight(
-            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
+            weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
             block_size,
+            dtype,
         )
 
         quantized_weight, weight_scale = maybe_transpose_expert_weight_dimensions(
@@ -326,11 +327,12 @@ def _export_quantized_weight(
         )
     else:
         quantized_weight = to_quantized_weight(
-            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
+            weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
             block_size,
+            dtype,
         )
 
     setattr(sub_module, weight_name, nn.Parameter(quantized_weight, requires_grad=False))
