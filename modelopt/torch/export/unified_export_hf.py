@@ -341,11 +341,12 @@ def _export_quantized_weight(
         )[0]
 
         quantized_weight = to_quantized_weight(
-            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
+            weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
             block_size,
+            dtype,
         )
 
         quantized_weight, weight_scale = maybe_transpose_expert_weight_dimensions(
@@ -353,11 +354,12 @@ def _export_quantized_weight(
         )
     else:
         quantized_weight = to_quantized_weight(
-            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
+            weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
             block_size,
+            dtype,
         )
 
     setattr(sub_module, weight_name, nn.Parameter(quantized_weight, requires_grad=False))
