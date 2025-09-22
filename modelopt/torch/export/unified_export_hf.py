@@ -29,7 +29,7 @@ import torch.nn as nn
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
-from modelopt.torch.quantization.qtensor import NVFP4QTensor
+from modelopt.torch.quantization.qtensor import NVFP4QTensor, QTensorWrapper
 from modelopt.torch.quantization.utils import quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
@@ -85,6 +85,9 @@ def _is_enabled_quantizer(quantizer):
 
 def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     """Group modules that take the same input and register shared parameters in module."""
+    # Skip for LoRA finetuned models
+    if hasattr(model, "base_model"):
+        return
     # TODO: Handle DBRX MoE
     input_to_linear = defaultdict(list)
     output_to_layernorm = defaultdict(None)
@@ -311,7 +314,7 @@ def _export_quantized_weight(
         )[0]
 
         quantized_weight = to_quantized_weight(
-            weight.to(dtype),
+            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
@@ -323,7 +326,7 @@ def _export_quantized_weight(
         )
     else:
         quantized_weight = to_quantized_weight(
-            weight.to(dtype),
+            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
@@ -457,7 +460,11 @@ def _export_hf_checkpoint(
     for name, sub_module in layer_pool.items():
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
-            if is_quantlinear(sub_module):
+            if (
+                is_quantlinear(sub_module)
+                and hasattr(sub_module, "weight_quantizer")
+                and sub_module.weight_quantizer.is_enabled
+            ):
                 _export_quantized_weight(sub_module, dtype)
             elif (
                 "Llama4TextExperts" in type(sub_module).__name__
@@ -519,7 +526,9 @@ def export_hf_checkpoint(
 
         post_state_dict = rename_and_prune_if_spec_decoding(model, post_state_dict)
 
-        # Save model
+        # For QLoRA models we export the base model
+        if hasattr(model, "base_model"):
+            model = model.base_model
         model.save_pretrained(
             export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
         )
