@@ -25,3 +25,6 @@ with import_plugin("megatron_mmlu"):
 
 with import_plugin("megatron_preprocess_data"):
     from .megatron_preprocess_data import *
+
+with import_plugin("transformers_datasets"):
+    from .trasnformers_datasets import *
