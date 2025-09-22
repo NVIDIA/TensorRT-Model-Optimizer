@@ -36,7 +36,7 @@ from typing import Any
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from torch.nn.attention.flex_attention import create_block_mask
+from torch.nn.attention.flex_attention import BlockMask, create_block_mask
 from transformers import Cache, DynamicCache, PretrainedConfig, PreTrainedModel
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
@@ -451,9 +451,11 @@ class HFEagleModel(EagleModel):
                 if layer_idx in self.eagle_config.eagle_aux_hidden_state_layer_ids:
                     layer.register_forward_hook(self._collect_aux_hidden_states_forward_hook)
 
+        self.num_ttt_steps = 3  # NOTE: (hg) hardcoded for now. Might add to config later.
         # compile and cach flex attention masks
         self.cached_attn_blk_masks = [
-            self._get_ttt_block_mask(self.eagle_config.training_seq_len, i) for i in range(3)
+            self._compile_ttt_block_mask(self.eagle_config.training_seq_len, i)
+            for i in range(self.num_ttt_steps)
         ]
 
     def _prepare_decoder_attention_mask(
@@ -533,31 +535,30 @@ class HFEagleModel(EagleModel):
 
         return eagle_input_ids, attention_mask, position_ids
 
-    def _get_ttt_block_mask(self, seq_length, ttt_step):
-        """Helper function to get block mask for TTT steps."""
+    def _compile_ttt_block_mask(self, seq_length, ttt_step) -> BlockMask:
+        """Compile TTT attention_masks with symbolic masks and return a BlockMask object for flex attention."""
         if ttt_step == 0:
 
             def msk(b, h, q_idx, kv_idx):
+                # symbolic attention mask of shape [seq_len, 2* seq_len] for TTT step 0
                 return (kv_idx <= (q_idx - 1)) | (kv_idx == q_idx + seq_length)
 
-            block_mask = create_block_mask(
-                msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 2
-            )
+            return create_block_mask(msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 2)
         elif ttt_step == 1:
 
             def msk(b, h, q_idx, kv_idx):
+                # attention mask of shape [seq_len, 3* seq_len] for TTT step 1
                 return (
                     (kv_idx <= (q_idx - 2))
                     | ((kv_idx == q_idx + seq_length - 1) & (kv_idx >= seq_length))
                     | ((kv_idx == q_idx + 2 * seq_length) & (kv_idx >= seq_length * 2))
                 )
 
-            block_mask = create_block_mask(
-                msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 3
-            )
+            return create_block_mask(msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 3)
         elif ttt_step == 2:
 
             def msk(b, h, q_idx, kv_idx):
+                # attention mask of shape [seq_len, 4* seq_len] for TTT step 2
                 return (
                     (kv_idx <= (q_idx - 3))
                     | ((kv_idx == q_idx + seq_length - 2) & (kv_idx >= seq_length))
@@ -565,12 +566,9 @@ class HFEagleModel(EagleModel):
                     | ((kv_idx == q_idx + 3 * seq_length) & (kv_idx >= seq_length * 3))
                 )
 
-            block_mask = create_block_mask(
-                msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 4
-            )
+            return create_block_mask(msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 4)
         else:
             raise ValueError(f"EAGLE TTT step {ttt_step} is not supported")
-        return block_mask
 
     def _base_model_forward(
         self,
@@ -763,7 +761,7 @@ class HFEagleModel(EagleModel):
             train_accs.append(acc)
 
             # ====Perform training-time-testing with 3 extra eagle forward passes====
-            for ttt_step in range(3):
+            for ttt_step in range(self.num_ttt_steps):
                 eagle_input_hidden_states = torch.cat(
                     (
                         torch.zeros(
