@@ -24,8 +24,6 @@ Supports both GPT (attention-based) and Mamba (state-space) models, as well as h
 Actual dynamic module implementations are at :mod:`modelopt.torch.nas.plugins.megatron`.
 """
 
-from warnings import warn
-
 import torch
 from pydantic import create_model
 
@@ -209,22 +207,3 @@ class MCoreMinitronModeDescriptor(FastNASModeDescriptor):
     def search_algorithm(self) -> type[BaseSearcher]:
         """Specifies the search algorithm to use for this mode (if any)."""
         return MCoreMinitronSearcher
-
-
-@NASModeRegistry.register_mode
-@PruneModeRegistry.register_mode
-class MCoreGPTMinitronModeDescriptor(MCoreMinitronModeDescriptor):
-    """[Deprecated] Class to describe the ``"mcore_gpt_minitron"`` mode.
-
-    The properties of this mode can be inspected via the source code.
-    """
-
-    @property
-    def name(self) -> str:
-        """Returns the value (str representation) of the mode."""
-        warn(
-            "`mcore_gpt_minitron` mode is deprecated will be removed in a later release. "
-            "Please use `mcore_minitron` instead.",
-            DeprecationWarning,
-        )
-        return "mcore_gpt_minitron"

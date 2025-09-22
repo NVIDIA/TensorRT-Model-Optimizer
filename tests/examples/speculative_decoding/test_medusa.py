@@ -13,19 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import subprocess
 
-import pytest
 from _test_utils.examples.run_command import run_example_command
-
-
-# TODO: Medusa QAT FSDP test hangs if transformers>=4.50
-@pytest.fixture(scope="session", autouse=True)
-def install_transformers_lt_4_50():
-    subprocess.run(
-        ["pip", "install", "transformers<4.50"],
-        check=True,
-    )
 
 
 # fmt: off

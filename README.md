@@ -26,6 +26,8 @@ Model Optimizer is also integrated with [NVIDIA NeMo](https://github.com/NVIDIA-
 
 ## Latest News
 
+- [2025/09/17] [An Introduction to Speculative Decoding for Reducing Latency in AI Inference](https://developer.nvidia.com/blog/an-introduction-to-speculative-decoding-for-reducing-latency-in-ai-inference/)
+- [2025/09/11] [How Quantization Aware Training Enables Low-Precision Accuracy Recovery](https://developer.nvidia.com/blog/how-quantization-aware-training-enables-low-precision-accuracy-recovery/)
 - [2025/08/29] [Fine-Tuning gpt-oss for Accuracy and Performance with Quantization Aware Training](https://developer.nvidia.com/blog/fine-tuning-gpt-oss-for-accuracy-and-performance-with-quantization-aware-training/)
 - [2025/08/01] [Optimizing LLMs for Performance and Accuracy with Post-Training Quantization](https://developer.nvidia.com/blog/optimizing-llms-for-performance-and-accuracy-with-post-training-quantization/)
 - [2025/06/24] [Introducing NVFP4 for Efficient and Accurate Low-Precision Inference](https://developer.nvidia.com/blog/introducing-nvfp4-for-efficient-and-accurate-low-precision-inference/)
@@ -66,7 +68,7 @@ To install from source in editable mode with all development dependencies or to 
 
 ```bash
 # Clone the Model Optimizer repository
-git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer.git
+git clone git@github.com:NVIDIA/TensorRT-Model-Optimizer.git
 cd TensorRT-Model-Optimizer
 
 pip install -e .[dev]

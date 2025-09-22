@@ -9,13 +9,14 @@ Model Optimizer Changelog (Linux)
 - Deprecated ``quantize_mode`` argument in ``examples/onnx_ptq/evaluate.py`` to support strongly typing. Use ``engine_precision`` instead.
 - Deprecated TRT-LLM's TRT backend in ``examples/llm_ptq`` and ``examples/vlm_ptq``. Tasks ``build`` and ``benchmark`` support are removed and replaced with ``quant``. For performance evaluation, please use ``trtllm-bench`` directly.
 - ``--export_fmt`` flag in ``examples/llm_ptq`` is removed. By default we export to the unified Hugging Face checkpoint format.
-- ``int8_sq`` quantization format is deprecated from the ``examples/vlm_ptq`` with respect to the TensorRT-LLM's torch backend switch. Please refer to the previous releases if this quantization format is needed.
 - Deprecated ``examples/vlm_eval`` as it depends on the deprecated TRT-LLM's TRT backend.
 
 **New Features**
 
 - ``high_precision_dtype`` default to fp16 in ONNX quantization, i.e. quantized output model weights are now FP16 by default.
 - Upgrade TensorRT-LLM dependency to 1.1.0rc2.
+- Support Phi-4-multimodal and Qwen2.5-VL quantized HF checkpoint export in ``examples/vlm_ptq``.
+- Add Minitron pruning example for Megatron-LM framework. See ``examples/megatron-lm`` for more details.
 
 0.35 (2025-09-04)
 ^^^^^^^^^^^^^^^^^

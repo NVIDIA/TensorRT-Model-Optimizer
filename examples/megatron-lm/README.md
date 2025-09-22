@@ -17,13 +17,13 @@
 
 ## Support Matrix: {Model}x{Features}
 
-| Model | Quantization | EAGLE3 | Q-LoRA | Distillation |
-| ------------------------------------------------------ | -----------| ------ | ----- | ---- |
-| `moonshotai/Kimi-K2-Instruct` | ✅ | **Online** | | |
-| `Qwen/Qwen3-{30B-A3B, 235B-A22B}` | **WAR** | **Online** | | |
-| `Qwen/Qwen3-{0.6B, 8B}` | ✅ | **Online** | | |
-| `deepseek-ai/DeepSeek-R1` | ✅ | **Online** | | |
-| `meta-llama/Llama-{3.1-8B, 3.1-405B, 3.2-1B}-Instruct` | ✅ | **Online** | | |
+| Model | Quantization | EAGLE3 | Q-LoRA | Pruning (PP only) | Distillation |
+| :---: | :---: | :---: | :---: | :---: | :---: |
+| `moonshotai/Kimi-K2-Instruct` | ✅ | **Online** | | | |
+| `Qwen/Qwen3-{30B-A3B, 235B-A22B}` | **WAR** | **Online** | | | |
+| `Qwen/Qwen3-{0.6B, 8B}` | ✅ | **Online** | | ✅ | ✅ |
+| `deepseek-ai/DeepSeek-R1` | ✅ | **Online** | | | |
+| `meta-llama/Llama-{3.1-8B, 3.1-405B, 3.2-1B}-Instruct` | ✅ | **Online** | | ✅ | ✅ |
 
 ## Getting Started in a Local Environment
 
@@ -50,20 +50,20 @@ USER_FSW=<path_to_scratch_space> bash interactive.sh
 
 <br>
 
-## ⭐ FP8 Post-Training Quantization (PTQ)
+### ⭐ FP8 Post-Training Quantization (PTQ)
 
 Provide the pretrained checkpoint path through variable `${HF_MODEL_CKPT}`:
 
 ```sh
 \
     TP=1 \
-    HF_MODEL_CKPT=<pretrained_checkpoint_path> \
+    HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_SAVE=/tmp/Llama-3.2-1B-Instruct-FP8 \
     bash megatron-lm/examples/post_training/modelopt/quantize.sh meta-llama/Llama-3.2-1B-Instruct fp8
 
 \
     PP=1 \
-    HF_MODEL_CKPT=<pretrained_checkpoint_path> \
+    HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_LOAD=/tmp/Llama-3.2-1B-Instruct-FP8 \
     EXPORT_DIR=/tmp/Llama-3.2-1B-Instruct-Export \
     bash megatron-lm/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
@@ -76,7 +76,7 @@ deployment (`/tmp/Llama-3.2-1B-Instruct-Export`).
 
 <br>
 
-## ⭐ Online BF16 EAGLE3 Training
+### ⭐ Online BF16 EAGLE3 Training
 
 Online EAGLE3 training has both the target (frozen) and draft models in the memory where the `hidden_states`
 required for training is generated on the fly.
@@ -84,13 +84,13 @@ required for training is generated on the fly.
 ```sh
 \
     TP=1 \
-    HF_MODEL_CKPT=<pretrained_checkpoint_path> \
+    HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_SAVE=/tmp/Llama-3.2-1B-Eagle3 \
     bash megatron-lm/examples/post_training/modelopt/eagle3.sh meta-llama/Llama-3.2-1B-Instruct
 
 \
     PP=1 \
-    HF_MODEL_CKPT=<pretrained_checkpoint_path> \
+    HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_LOAD=/tmp/Llama-3.2-1B-Eagle3 \
     EXPORT_DIR=/tmp/Llama-3.2-1B-Eagle3-Export \
     bash megatron-lm/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
@@ -104,9 +104,30 @@ See [ADVANCED.md](ADVANCED.md) for a multi-gpu multi-node training example for `
 
 <br>
 
-## ⭐ Offline BF16 EAGLE3 Training
+### ⭐ Offline BF16 EAGLE3 Training
 
 Coming soon ...
+
+### ⭐ Pruning
+
+Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Available pruning options are:
+
+- `TARGET_FFN_HIDDEN_SIZE`
+- `TARGET_HIDDEN_SIZE`
+- `TARGET_NUM_ATTENTION_HEADS`
+- `TARGET_NUM_QUERY_GROUPS`
+- `TARGET_MAMBA_NUM_HEADS`
+- `TARGET_MAMBA_HEAD_DIM`
+- `TARGET_NUM_LAYERS`
+- `LAYERS_TO_DROP` (comma separated, 1-indexed list of layer numbers to directly drop)
+
+```sh
+PP=1 \
+TARGET_NUM_LAYERS=24 \
+HF_MODEL_CKPT=<pretrained_model_name_or_path> \
+MLM_MODEL_SAVE=/tmp/Qwen3-8B-DPruned \
+bash megatron-lm/examples/post_training/modelopt/prune.sh qwen/Qwen3-8B
+```
 
 ## Learn More About Configuration
 
@@ -116,7 +137,7 @@ quantization.
 
 ```sh
 \
-    HF_MODEL_CKPT=[pretrained_checkpoint] \
+    HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     bash megatron-lm/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
 ```
 

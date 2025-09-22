@@ -34,16 +34,16 @@ Environment setup
 
     To use Model Optimizer with full dependencies (e.g. TensorRT/TensorRT-LLM deployment), we recommend using our provided docker image
     which is based on the `TensorRT-LLM <https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tensorrt-llm/containers/release/tags>`_
-    docker image with additional example-specific dependencies installed.
+    docker image with additional dependencies installed.
 
     After installing the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_,
-    please run the following commands to build the Model Optimizer docker container which has all the necessary
-    dependencies pre-installed for running the examples.
+    please run the following commands to build the Model Optimizer docker container which has all the base
+    dependencies pre-installed. You may need to install additional dependencies from the examples's `requirements.txt` file.
 
     .. code-block:: shell
 
         # Clone the ModelOpt repository
-        git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer.git
+        git clone git@github.com:NVIDIA/TensorRT-Model-Optimizer.git
         cd TensorRT-Model-Optimizer
 
         # Build the docker (will be tagged `docker.io/library/modelopt_examples:latest`)
@@ -60,8 +60,7 @@ Environment setup
 
     For PyTorch, you can also use `NVIDIA NGC PyTorch container <https://catalog.ngc.nvidia.com/orgs/nvidia/containers/pytorch/tags>`_
     and for NVIDIA NeMo framework, you can use the `NeMo container <https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo/tags>`_.
-    Both of these containers come with Model Optimizer pre-installed. NeMo container also comes with the HuggingFace and TensorRT-LLM
-    dependencies. Make sure to update the Model Optimizer to the latest version if not already.
+    Both of these containers come with Model Optimizer pre-installed. Make sure to update the Model Optimizer to the latest version if not already.
 
     For ONNX PTQ, you can use the optimized docker image from [onnx_ptq Dockerfile](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/onnx_ptq/docker).
 
