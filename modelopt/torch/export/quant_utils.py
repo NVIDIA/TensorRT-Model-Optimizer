@@ -727,6 +727,7 @@ def to_quantized_weight(
     quantization: str,
     weights_scaling_factor2: torch.Tensor | None = None,
     block_size: int | None = None,
+    dtype: torch.dtype | None = None,
 ):
     """Converts the weight to the quantized (packed) format."""
     if weights_scaling_factor is not None:
@@ -738,6 +739,9 @@ def to_quantized_weight(
     # For compressed weights, we directly return the data from wrapper
     if isinstance(weight, QTensorWrapper):
         return weight.data
+
+    if dtype:
+        weight = weight.to(dtype)
 
     if quantization == QUANTIZATION_FP8:
         # Fix RuntimeError: Promotion for Float8 Types is not supported, attempted to promote Float8_e4m3fn and Float
