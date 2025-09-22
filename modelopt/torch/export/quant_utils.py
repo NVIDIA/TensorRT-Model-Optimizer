@@ -844,6 +844,9 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
         "k_bmm_quantizer._bias_value": "k_proj.k_bias",
         "v_bmm_quantizer._bias_value": "v_proj.v_bias",
         "input_quantizer._pre_quant_scale": "pre_quant_scale",
+        "base_layer.weight": "weight",
+        "base_layer.input_scale": "input_scale",
+        "base_layer.weight_scale": "weight_scale",
     }
 
     post_state_dict = {}
@@ -860,6 +863,7 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
             and "_amax" not in key
             and "_bias_value" not in key
             and "input_quantizer._pre_quant_scale" not in key
+            and "base_layer" not in key
         ):
             post_state_dict[key] = value
             continue
@@ -909,6 +913,11 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
             key.endswith("weight_quantizer." + q_key)
             for q_key in RealQuantLinear.list_of_scale_tensors
         ):
+            keys_to_delete.append(key)
+
+    # remove LoRA adapters from state dict
+    for key, value in post_state_dict.items():
+        if "lora" in key and key not in keys_to_delete:
             keys_to_delete.append(key)
 
     # Check for tied weights and remove duplicates

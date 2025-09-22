@@ -16,6 +16,7 @@
 """ModelOpt plugin for transformers Trainer."""
 
 import gc
+import json
 import os
 import types
 from dataclasses import dataclass, field
@@ -28,6 +29,7 @@ import modelopt.torch.quantization as mtq
 from modelopt.torch.distill import KDLossConfig
 from modelopt.torch.distill.mode import _convert_for_kd
 from modelopt.torch.distill.plugins.huggingface import KDTrainer
+from modelopt.torch.export.unified_export_hf import export_hf_checkpoint
 from modelopt.torch.opt.conversion import restore_from_modelopt_state
 from modelopt.torch.opt.plugins import ModelOptHFTrainer
 from modelopt.torch.quantization.config import QuantizeConfig
@@ -217,6 +219,7 @@ class QATTrainer(ModelOptHFTrainer):
         gc.collect()
 
         self._save_modelopt_state_with_weights()
+
         torch.cuda.empty_cache()
 
         if self.accelerator.is_main_process:
@@ -274,6 +277,25 @@ class QATTrainer(ModelOptHFTrainer):
         else:
             outputs = super().save_model(*args, **kwargs)
         return outputs
+
+    def _load_best_model(self, *args, **kwargs):
+        """Load the best model."""
+        is_lora = getattr(self.args, "lora", None)
+        if not is_lora:
+            super()._load_best_model(*args, **kwargs)
+        else:
+            # Custom logic for loading best model with LoRA
+            adapter_name = self.model.active_adapter()
+            self.model.delete_adapter(adapter_name)
+            self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
+
+    def export_base_model_hf_checkpoint(self):
+        """Export the basemodel to HF checkpoint for deployment."""
+        # Save config.json
+        if self.accelerator.is_main_process:
+            with open(f"{self.args.output_dir}/config.json", "w") as f:
+                json.dump(self.model.config.to_dict(), f, indent=2)
+            export_hf_checkpoint(self.model, export_dir=f"{self.args.output_dir}/base_model")
 
     def _patch_accelerate_for_fsdp2_fix(self):
         """Fixes for accelerate prepare.

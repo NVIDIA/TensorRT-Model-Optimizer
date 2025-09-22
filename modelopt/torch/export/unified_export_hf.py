@@ -87,6 +87,9 @@ def _is_enabled_quantizer(quantizer):
 
 def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     """Group modules that take the same input and register shared parameters in module."""
+    # Skip for LoRA finetuned models
+    if hasattr(model, "base_model"):
+        return
     # TODO: Handle DBRX MoE
     input_to_linear = defaultdict(list)
     output_to_layernorm = defaultdict(None)
@@ -338,7 +341,7 @@ def _export_quantized_weight(
         )[0]
 
         quantized_weight = to_quantized_weight(
-            weight.to(dtype),
+            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
@@ -350,7 +353,7 @@ def _export_quantized_weight(
         )
     else:
         quantized_weight = to_quantized_weight(
-            weight.to(dtype),
+            weight.to(dtype) if not isinstance(weight, QTensorWrapper) else weight,
             weight_scale,
             quantization_format,
             weight_scale_2,
