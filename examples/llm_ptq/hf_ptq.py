@@ -316,6 +316,7 @@ def main(args):
                     mtq.quantize(child, disabled_quant_cfg, forward_loop=None)
 
             model = model.language_model
+            model_type = get_model_type(model)
 
     if args.sparsity_fmt != "dense":
         if args.batch_size == 0:
