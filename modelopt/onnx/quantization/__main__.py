@@ -36,7 +36,7 @@ def get_parser() -> argparse.ArgumentParser:
         type=str,
         choices=["fp8", "int8", "int4"],
         default="int8",
-        help=("Quantization mode for the given ONNX model."),
+        help="Quantization mode for the given ONNX model.",
     )
     argparser.add_argument(
         "--calibration_method",
@@ -246,7 +246,8 @@ def get_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "If True, the I/O types in the quantized ONNX model will be modified to be lower precision whenever "
-            "possible. Else, they will match the I/O types in the given ONNX model."
+            "possible. Else, they will match the I/O types in the given ONNX model. "
+            "The currently supported precisions are {fp16, int8, fp8}."
         ),
     )
     return argparser

@@ -60,7 +60,11 @@ from modelopt.onnx.quantization.graph_utils import (
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
 from modelopt.onnx.quantization.ort_utils import update_trt_ep_support
-from modelopt.onnx.quantization.qdq_utils import qdq_to_dq, remove_input_dq_and_output_q
+from modelopt.onnx.quantization.qdq_utils import (
+    qdq_to_dq,
+    remove_graph_input_q,
+    remove_input_dq_and_output_q,
+)
 from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag, load_onnx_model
 from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
 
@@ -498,6 +502,8 @@ def quantize(
                 onnx_model = remove_input_dq_and_output_q(
                     onnx_model, quantizable_custom_ops=custom_ops_to_quantize
                 )
+            if direct_io_types:
+                onnx_model = remove_graph_input_q(onnx_model)
             # Sort nodes topologically
             graph = gs.import_onnx(onnx_model)
             graph.toposort().cleanup()
