@@ -11,7 +11,7 @@ pip install -e ".[dev]"
 ```
 
 If you are working on features that require dependencies like TensorRT-LLM or Megatron-Core, consider using a docker container to simplify the setup process.
-See [docker README](./README.md#installation--docker) for more details.
+Visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
 
 ## 🧹 Code linting and formatting
 

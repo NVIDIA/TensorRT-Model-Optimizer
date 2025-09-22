@@ -21,14 +21,22 @@ This section focuses on demonstrating how to apply Model Optimizer to perform kn
 
 ## Pre-Requisites
 
+### Docker
+
+For Hugging Face models, please use the PyTorch docker image (e.g., `nvcr.io/nvidia/pytorch:25.06-py3`).
+For NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.07`) which has all the dependencies installed.
+Visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
+
+Also follow the installation steps below to upgrade to the latest version of Model Optimizer and install example-specific dependencies.
+
+### Local Installation
+
 For Hugging Face models, install Model Optimizer with `hf` dependencies using `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/) and install the requirements for the example:
 
 ```bash
-pip install nvidia-modelopt[hf]
+pip install -U nvidia-modelopt[hf]
 pip install -r requirements.txt
 ```
-
-For NeMo models, use the NeMo container `nvcr.io/nvidia/nemo:25.07` or later which has all the dependencies installed.
 
 ## Getting Started
 
