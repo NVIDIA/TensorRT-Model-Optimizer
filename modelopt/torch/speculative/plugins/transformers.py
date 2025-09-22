@@ -311,7 +311,7 @@ class EagleModule(nn.Module):
                 hidden_states,
                 attention_mask=attention_mask,
                 position_ids=position_ids,
-                past_key_value=past_key_values,
+                past_key_values=past_key_values,
                 output_attentions=output_attentions,
                 use_cache=use_cache,
                 position_embeddings=position_embeddings,
@@ -334,7 +334,11 @@ class HFEagleModel(EagleModel):
     """Eagle Model Class for huggingface models."""
 
     def _set_default_aux_hidden_state_layers(self):
+        # Read a custom config attribute since we override num_hidden_layers for offline training
         num_layers = self.config.num_hidden_layers
+        if self.eagle_offline and (num_layers is None or num_layers <= 0):
+            num_layers = getattr(self.config, "num_orig_hidden_layers", 0)
+
         self.eagle_config.eagle_aux_hidden_state_layer_ids = [
             1,
             max(0, num_layers // 2 - 1),
@@ -417,7 +421,11 @@ class HFEagleModel(EagleModel):
         )
         self.eagle_rotary_emb = LlamaRotaryEmbedding(config=self.eagle_config)
 
-        if hasattr(self.model.layers[-1].self_attn, "o_proj"):
+        if eagle_offline:
+            # For offline training, the base model has no layers.
+            # Read the device from the lm_head instead.
+            device = self.lm_head.weight.device
+        elif hasattr(self.model.layers[-1].self_attn, "o_proj"):
             device = self.model.layers[-1].self_attn.o_proj.weight.device
         elif hasattr(self.model.layers[-1].self_attn, "q_proj"):
             device = self.model.layers[-1].self_attn.q_proj.weight.device
@@ -799,7 +807,7 @@ class HFEagleModel(EagleModel):
                 if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                     base_model_logits = self._map_logits_to_draft_vocab(base_model_logits)
             base_model_loss = None
-            past_key_values = None
+            past_key_values = DynamicCache()  # Dummy cache
 
         else:
             base_model_hidden_states, base_model_logits, base_model_loss, past_key_values = (
