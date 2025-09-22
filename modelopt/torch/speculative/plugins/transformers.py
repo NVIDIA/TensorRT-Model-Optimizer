@@ -330,7 +330,6 @@ class EagleModule(nn.Module):
 
 
 @EagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
-@OfflineEagleDMRegistry.register({PreTrainedModel: "hf.PreTrainedModel"})
 class HFEagleModel(EagleModel):
     """Eagle Model Class for huggingface models."""
 

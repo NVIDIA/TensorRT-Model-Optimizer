@@ -269,12 +269,12 @@ def make_eagle_supervised_data_module(
 
         # Filter to conversations that exist in the offline data and in the provided json
         valid_entries = []
-        for entry in data_json:
-            conv_id = entry.get("conversation_id") or entry.get("id")
-            if not conv_id:
-                raise ValueError(
-                    "Each entry in the data json must have a 'conversation_id' or 'id' field."
-                )
+        for idx, entry in enumerate(data_json):
+            conv_id = entry.get("conversation_id")
+            if conv_id is None:
+                conv_id = entry.get("id")
+            if conv_id is None:
+                conv_id = "{:08d}".format(idx)
             file_path = str(offline_data_path / f"{conv_id}.pt")
             if file_path in all_files:
                 valid_entries.append((entry, file_path))

@@ -84,10 +84,6 @@ async def main(args: argparse.Namespace) -> None:
     with args.input_file.open("r", encoding="utf-8") as f:
         all_conversations.extend([json.loads(line) for line in f if line.strip()])
 
-    if any(not entry.get("conversation_id") for entry in all_conversations):
-        msg = "All conversations must have a 'conversation_id' field."
-        raise ValueError(msg)
-
     print("Loaded", len(all_conversations), "conversations from", args.input_file)
 
     model = AutoModel.from_pretrained(args.model, torch_dtype="auto", device_map="auto")

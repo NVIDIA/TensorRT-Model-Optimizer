@@ -95,10 +95,6 @@ async def main(args: argparse.Namespace) -> None:
     with args.input_file.open("r", encoding="utf-8") as f:
         all_conversations.extend([json.loads(line) for line in f if line.strip()])
 
-    if any(not entry.get("conversation_id") for entry in all_conversations):
-        msg = "All conversations must have a 'conversation_id' field."
-        raise ValueError(msg)
-
     print("Loaded", len(all_conversations), "conversations from", args.input_file)
 
     client: AsyncOpenAI = AsyncOpenAI(
@@ -127,12 +123,14 @@ async def main(args: argparse.Namespace) -> None:
     num_total_conversations = min(
         len(all_conversations), args.debug_max_num_conversations or len(all_conversations)
     )
-    for entry in tqdm(
-        all_conversations[: args.debug_max_num_conversations],
-        desc="Processing conversations",
-        total=num_total_conversations,
+    for idx, entry in enumerate(
+        tqdm(
+            all_conversations[: args.debug_max_num_conversations],
+            desc="Processing conversations",
+            total=num_total_conversations,
+        )
     ):
-        conversation_id = entry["conversation_id"]
+        conversation_id = entry.get("conversation_id", "{:08d}".format(idx))
         conversations = entry["conversations"]
         if not conversations or not isinstance(conversations, list):
             num_invalid += 1
