@@ -236,7 +236,10 @@ class OfflineSupervisedDataset(Dataset):
 
 
 def make_eagle_supervised_data_module(
-    tokenizer: transformers.PreTrainedTokenizer, data_args, use_offline_training: bool
+    tokenizer: transformers.PreTrainedTokenizer,
+    data_args,
+    use_offline_training: bool,
+    max_length=None,
 ) -> dict:
     """Make dataset and collator for supervised fine-tuning.
 
@@ -295,7 +298,7 @@ def make_eagle_supervised_data_module(
         train_dataset = dataset_cls(valid_entries[:num_train], tokenizer=tokenizer)
         eval_dataset = dataset_cls(valid_entries[num_train:], tokenizer=tokenizer)
 
-        data_collator = DataCollatorForOffline()
+        data_collator = DataCollatorForOffline(max_length=max_length)
     else:
         print_rank_0("Loading input conversations...")
         dataset_cls = LazySupervisedDataset if data_args.lazy_preprocess else SupervisedDataset
@@ -303,7 +306,7 @@ def make_eagle_supervised_data_module(
         train_dataset = dataset_cls(data_json[: int(len(data_json) * 0.95)], tokenizer=tokenizer)
         eval_dataset = dataset_cls(data_json[int(len(data_json) * 0.95) :], tokenizer=tokenizer)
 
-        data_collator = DataCollatorWithPadding()
+        data_collator = DataCollatorWithPadding(max_length=max_length)
 
     return {
         "train_dataset": train_dataset,
@@ -313,6 +316,9 @@ def make_eagle_supervised_data_module(
 
 
 class DataCollatorWithPadding:
+    def __init__(self, max_length=None):
+        self.max_length = max_length
+
     def paddingtensor2d(self, intensors, length):
         n, dim = intensors.shape
         padding_tensor = torch.zeros(length - n, dim, dtype=intensors.dtype)
@@ -325,7 +331,11 @@ class DataCollatorWithPadding:
         return outtensors
 
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
-        max_length = max(item["input_ids"].shape[0] for item in features)
+        max_length = (
+            self.max_length
+            if self.max_length is not None
+            else max(item["input_ids"].shape[0] for item in features)
+        )
         batch_input_ids = torch.stack(
             [self.paddingtensor(item["input_ids"], max_length) for item in features]
         )
@@ -351,13 +361,20 @@ class DataCollatorWithPadding:
 
 
 class DataCollatorForOffline(DataCollatorWithPadding):
+    def __init__(self, max_length=None):
+        super().__init__(max_length=max_length)
+
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
         base_batch = super().__call__(features)
         if "kwargs" not in features[0]:
             raise ValueError("No kwargs found in batch features. Offline data required.")
 
         features = [item["kwargs"]["base_model_outputs"] for item in features]
-        max_hs_length = max(item["base_model_hidden_states"].shape[0] for item in features)
+        max_hs_length = (
+            self.max_length
+            if self.max_length is not None
+            else max(item["base_model_hidden_states"].shape[0] for item in features)
+        )
 
         batch_hidden_states = torch.stack(
             [
