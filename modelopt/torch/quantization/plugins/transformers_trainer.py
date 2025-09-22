@@ -16,7 +16,6 @@
 """ModelOpt plugin for transformers Trainer."""
 
 import gc
-import json
 import os
 import types
 from dataclasses import dataclass, field
@@ -219,7 +218,6 @@ class QATTrainer(ModelOptHFTrainer):
         gc.collect()
 
         self._save_modelopt_state_with_weights()
-
         torch.cuda.empty_cache()
 
         if self.accelerator.is_main_process:
@@ -294,8 +292,6 @@ class QATTrainer(ModelOptHFTrainer):
         """Export the basemodel to HF checkpoint for deployment."""
         # Save config.json
         if self.accelerator.is_main_process:
-            with open(f"{self.args.output_dir}/config.json", "w") as f:
-                json.dump(self.model.config.to_dict(), f, indent=2)
             export_hf_checkpoint(self.model, export_dir=f"{self.args.output_dir}/base_model")
 
     def _patch_accelerate_for_fsdp2_fix(self):
