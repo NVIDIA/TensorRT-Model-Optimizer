@@ -274,7 +274,7 @@ def train():
         trainer.save_model(training_args.output_dir, **kwargs)
 
     if training_args.lora and getattr(quant_args, "compress", False):
-        trainer.export_base_model_hf_checkpoint()
+        trainer.export_base_model()
 
 
 if __name__ == "__main__":

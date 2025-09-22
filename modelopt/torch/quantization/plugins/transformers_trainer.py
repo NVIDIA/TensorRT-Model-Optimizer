@@ -279,17 +279,18 @@ class QATTrainer(ModelOptHFTrainer):
         return outputs
 
     def _load_best_model(self, *args, **kwargs):
-        """Load the best model."""
+        """Load the best model for final evaluation."""
         is_lora = getattr(self.args, "lora", None)
         if not is_lora:
             super()._load_best_model(*args, **kwargs)
         else:
             # Custom logic for loading best model with LoRA
+            # TODO: Remove once we migrate to using get_peft_model()
             adapter_name = self.model.active_adapter()
             self.model.delete_adapter(adapter_name)
             self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
 
-    def export_base_model_hf_checkpoint(self):
+    def export_base_model(self):
         """Export the basemodel to HF checkpoint for deployment."""
         # Save config.json
         if self.accelerator.is_main_process:
