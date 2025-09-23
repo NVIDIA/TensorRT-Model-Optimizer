@@ -1491,12 +1491,11 @@ class _DynamicEagleGPTModel(EagleModel):
 
         draft_tokens = []
         for _ in range(steps):
-            if self.eagle_config.parallel_draft_step > 1:
-                for i in range(self.eagle_config.parallel_draft_step - 1):
-                    eagle_ids = torch.cat(
-                        (eagle_ids, getattr(self, f"mask_token_{i}").view((1, 1))), dim=-1
-                    )
-                    hidden_states = torch.cat((hidden_states, hidden_states[-1:]), dim=0)
+            for i in range(self.eagle_config.parallel_draft_step - 1):
+                eagle_ids = torch.cat(
+                    (eagle_ids, getattr(self, f"mask_token_{i}").view((1, 1))), dim=-1
+                )
+                hidden_states = torch.cat((hidden_states, hidden_states[-1:]), dim=0)
             padded_eagle_ids, seq_len, padded_hidden_states = right_padding(
                 eagle_ids, hidden_states
             )
@@ -1530,31 +1529,25 @@ class _DynamicEagleGPTModel(EagleModel):
                 )
             eagle_next_hidden_states_input = eagle_next_hidden_states_input[:seq_len, :, :]
 
-            if self.eagle_config.parallel_draft_step > 1:
-                draft_token = (
-                    gather_from_tensor_model_parallel_region(eagle_logits)[
-                        -self.eagle_config.parallel_draft_step :, :, :
-                    ]
-                    .argmax(dim=-1)
-                    .transpose(0, 1)
-                )
-            else:
-                draft_token = (
-                    gather_from_tensor_model_parallel_region(eagle_logits)[-1:, :, :]
-                    .argmax(dim=-1)
-                    .transpose(0, 1)
-                )
+            draft_token = (
+                gather_from_tensor_model_parallel_region(eagle_logits)[
+                    -self.eagle_config.parallel_draft_step :, :, :
+                ]
+                .argmax(dim=-1)
+                .transpose(0, 1)
+            )
             if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                 draft_token += self.eagle_module.d2t[draft_token]
-
-            if self.eagle_config.parallel_draft_step > 1:
-                return base_token, draft_token
 
             draft_tokens.append(draft_token)
 
             eagle_ids = torch.cat((eagle_ids, draft_token), dim=-1)
             hidden_states = torch.cat(
-                (hidden_states, eagle_next_hidden_states_input[-1:, :, :]), dim=0
+                (
+                    hidden_states,
+                    eagle_next_hidden_states_input[-self.eagle_config.parallel_draft_step :, :, :],
+                ),
+                dim=0,
             )
 
         draft_tokens = torch.cat(draft_tokens, dim=-1)
