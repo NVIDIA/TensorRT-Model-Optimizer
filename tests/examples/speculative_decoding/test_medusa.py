@@ -38,12 +38,11 @@ def test_llama_medusa_fp8_qat(tiny_llama_path, num_gpus, tiny_daring_anteater_pa
     # Test Medusa
     run_example_command(
         [
-            "./launch.sh",
+            "./launch_train.sh",
             "--model", tiny_llama_path,
             "--data", tiny_daring_anteater_path,
             "--num_epochs", "1",
             "--lr", "1e-5",
-            "--do_eval", "False",
             "--num_gpu", str(num_gpus),
             "--mode", "medusa",
             "--output_dir", medusa_path,
