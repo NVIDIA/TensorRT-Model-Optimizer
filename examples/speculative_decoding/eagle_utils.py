@@ -316,7 +316,7 @@ def make_eagle_supervised_data_module(
 
 
 class DataCollatorWithPadding:
-    def __init__(self, max_length=None):
+    def __init__(self, max_length):
         self.max_length = max_length
 
     def paddingtensor2d(self, intensors, length):
@@ -331,23 +331,18 @@ class DataCollatorWithPadding:
         return outtensors
 
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
-        max_length = (
-            self.max_length
-            if self.max_length is not None
-            else max(item["input_ids"].shape[0] for item in features)
-        )
         batch_input_ids = torch.stack(
-            [self.paddingtensor(item["input_ids"], max_length) for item in features]
+            [self.paddingtensor(item["input_ids"], self.max_length) for item in features]
         )
         batch_attention_mask = torch.stack(
-            [self.paddingtensor(item["attention_mask"], max_length) for item in features]
+            [self.paddingtensor(item["attention_mask"], self.max_length) for item in features]
         )
         batch_loss_mask = torch.stack(
-            [self.paddingtensor(item["loss_mask"], max_length) for item in features]
+            [self.paddingtensor(item["loss_mask"], self.max_length) for item in features]
         )
 
         batch_labels = torch.stack(
-            [self.paddingtensor(item["labels"], max_length) for item in features]
+            [self.paddingtensor(item["labels"], self.max_length) for item in features]
         )
 
         batch = {
@@ -367,20 +362,15 @@ class DataCollatorForOffline(DataCollatorWithPadding):
             raise ValueError("No kwargs found in batch features. Offline data required.")
 
         features = [item["kwargs"]["base_model_outputs"] for item in features]
-        max_hs_length = (
-            self.max_length
-            if self.max_length is not None
-            else max(item["base_model_hidden_states"].shape[0] for item in features)
-        )
 
         batch_hidden_states = torch.stack(
             [
-                self.paddingtensor2d(item["base_model_hidden_states"], max_hs_length)
+                self.paddingtensor2d(item["base_model_hidden_states"], self.max_length)
                 for item in features
             ]
         )
         batch_aux_hidden_states = torch.stack(
-            [self.paddingtensor2d(item["aux_hidden_states"], max_hs_length) for item in features]
+            [self.paddingtensor2d(item["aux_hidden_states"], self.max_length) for item in features]
         )
 
         batch = {
