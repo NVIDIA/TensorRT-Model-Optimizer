@@ -548,7 +548,7 @@ class TensorQuantizer(nn.Module):
 
     def _validate_amax(self, amax):
         # Dynamic control flow is not supported by torch dynamo
-        if not is_torch_export_mode() and not torch._dynamo.is_compiling():
+        if not is_torch_export_mode() and not torch.compiler.is_compiling():
             assert torch.all(amax >= 0) and not torch.any(torch.isinf(amax)), (
                 f"Got invalid amax: {amax}"
             )
@@ -880,7 +880,7 @@ class TensorQuantizer(nn.Module):
         """
         if hasattr(torch.onnx, "_globals"):
             from torch.onnx._globals import GLOBALS
-        else:
+        else:  # torch >= 2.9
             from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
 
         if DTensor is not None and isinstance(inputs, DTensor):
@@ -914,7 +914,7 @@ class TensorQuantizer(nn.Module):
 
         if (
             not is_torch_export_mode()
-            and not torch._dynamo.is_compiling()
+            and not torch.compiler.is_compiling()
             and GLOBALS.in_onnx_export
         ):
             # GLOBALS could break TorchDynamo for some Pytorch versions (i.e., 2.3.0)
