@@ -129,7 +129,7 @@ if [[ "$OFFLINE_DATA_PATH" != "" ]]; then
     echo "Offline data path $OFFLINE_DATA_PATH does not exist or is not a directory."
     exit 1
   else
-    OFFLINE_TRAINING_ARGS="--offline-data-path $OFFLINE_DATA_PATH"
+    OFFLINE_TRAINING_ARGS="--offline-data-path $OFFLINE_DATA_PATH --ar_validate_steps -1"
   fi
 else
   OFFLINE_TRAINING_ARGS=""
