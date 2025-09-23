@@ -790,7 +790,9 @@ class _DynamicEagleGPTModel(EagleModel):
         eagle_inputs["position_ids"] = torch.empty(
             0, dtype=position_ids.dtype, device=position_ids.device
         )
-        eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
+        eagle_inputs["rotary_pos_emb"] = torch.empty(
+            0, dtype=rotary_pos_emb.dtype, device=rotary_pos_emb.device
+        )
         if self.config.sequence_parallel:
             gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
             gathered_features = (
@@ -831,13 +833,15 @@ class _DynamicEagleGPTModel(EagleModel):
                         eagle_inputs["hidden_states"],
                         gathered_hidden_states
                         if step == 0
-                        else (
-                            torch.zeros(
-                                (1, b, h),
-                                dtype=hidden_states.dtype,
-                                device=hidden_states.device,
-                            ),
-                            feature[:-1, :, :],
+                        else torch.cat(
+                            (
+                                torch.zeros(
+                                    (1, b, h),
+                                    dtype=hidden_states.dtype,
+                                    device=hidden_states.device,
+                                ),
+                                feature[:-1, :, :],
+                            )
                         ),
                     ),
                     dim=0,
