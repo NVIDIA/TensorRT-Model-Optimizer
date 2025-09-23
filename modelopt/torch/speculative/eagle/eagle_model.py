@@ -45,6 +45,7 @@ class EagleModel(DynamicModule):
         self.eagle_report_acc = eagle_report_acc
         self.eagle_reuse_base_decoder = eagle_reuse_base_decoder
         self.eagle_loss_decay_factor = eagle_loss_decay_factor
+
         if eagle_architecture_config.get("parallel_draft_step", 1) > 1:
             for i in range(eagle_architecture_config.get("parallel_draft_step") - 1):
                 self.register_buffer(f"mask_token_{i}", torch.tensor(-1))
