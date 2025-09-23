@@ -62,8 +62,66 @@ class QuantLinear(_LegacyQuantLinearConvBaseMixin, nn.Linear):
 Linear = QuantLinear
 
 
+class SVDQuantTensorQuantizer(TensorQuantizer):
+    """TensorQuantizer with svdquant LoRA support."""
+
+    @property
+    def svdquant_lora_a(self):
+        """Lora a weights for svdquant."""
+        if not hasattr(self, "_svdquant_lora_a"):
+            return None
+        return self._svdquant_lora_a
+
+    @svdquant_lora_a.setter
+    def svdquant_lora_a(self, value):
+        """Lora a weights for svdquant."""
+        assert value is not None, "svdquant_lora_a cannot be set to None."
+
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor(value)
+
+        if not hasattr(self, "_svdquant_lora_a"):
+            self.register_buffer("_svdquant_lora_a", value.clone().detach())
+        else:
+            if self._svdquant_lora_a.shape != value.shape:
+                raise RuntimeError("Changing shape when setting svdquant_lora_a is not allowed.")
+            self._svdquant_lora_a.data.copy_(
+                value.clone().detach().to(self._svdquant_lora_a.device)
+            )
+
+    @property
+    def svdquant_lora_b(self):
+        """Lora b weights for svdquant."""
+        if not hasattr(self, "_svdquant_lora_b"):
+            return None
+        return self._svdquant_lora_b
+
+    @svdquant_lora_b.setter
+    def svdquant_lora_b(self, value):
+        """Lora b weights for svdquant."""
+        assert value is not None, "svdquant_lora_b cannot be set to None."
+
+        if not isinstance(value, torch.Tensor):
+            value = torch.tensor(value)
+
+        if not hasattr(self, "_svdquant_lora_b"):
+            self.register_buffer("_svdquant_lora_b", value.clone().detach())
+        else:
+            if self._svdquant_lora_b.shape != value.shape:
+                raise RuntimeError("Changing shape when setting svdquant_lora_b is not allowed.")
+            self._svdquant_lora_b.data.copy_(
+                value.clone().detach().to(self._svdquant_lora_b.device)
+            )
+
+
 class SVDQuantLinear(QuantLinearConvBase):
     """Base class for quantized linear modules with SVDQuant."""
+
+    def _setup(self):
+        """Overrides and bypass the _setup function."""
+        if isinstance(self.weight_quantizer, SVDQuantTensorQuantizer):
+            return
+        self.weight_quantizer.__class__ = SVDQuantTensorQuantizer
 
     def _not_sequential_quantizers(self):
         return isinstance(self.weight_quantizer, TensorQuantizer) and isinstance(
@@ -103,9 +161,6 @@ class SVDQuantLinear(QuantLinearConvBase):
         else:
             output = super().forward(input, *args, **kwargs)
         return output
-
-    def _setup(self):
-        """Overrides and bypass the _setup function."""
 
     def fold_weight(self):
         """Fold the weight for faster eval."""
