@@ -361,9 +361,6 @@ class DataCollatorWithPadding:
 
 
 class DataCollatorForOffline(DataCollatorWithPadding):
-    def __init__(self, max_length=None):
-        super().__init__(max_length=max_length)
-
     def __call__(self, features: list[dict[str, Any]]) -> dict[str, Any]:
         base_batch = super().__call__(features)
         if "kwargs" not in features[0]:
