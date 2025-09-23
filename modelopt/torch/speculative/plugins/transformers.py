@@ -452,11 +452,15 @@ class HFEagleModel(EagleModel):
                     layer.register_forward_hook(self._collect_aux_hidden_states_forward_hook)
 
         self.num_ttt_steps = 3  # NOTE: (hg) hardcoded for now. Might add to config later.
-        # compile and cach flex attention masks
-        self.cached_attn_blk_masks = [
-            self._compile_ttt_block_mask(self.eagle_config.training_seq_len, i)
-            for i in range(self.num_ttt_steps)
-        ]
+        self._cached_attn_blk_masks = []
+
+    def _get_ttt_attention_mask(self, seq_length, ttt_step):
+        # compile and cached flex attention masks in first call
+        if ttt_step >= len(self._cached_attn_blk_masks):
+            self._cached_attn_blk_masks.append(self._compile_ttt_block_mask(seq_length, ttt_step))
+
+        # return cached flex attention mask
+        return self._cached_attn_blk_masks[ttt_step]
 
     def _prepare_decoder_attention_mask(
         self, attention_mask, input_shape, inputs_embeds, past_key_values_length
@@ -773,7 +777,7 @@ class HFEagleModel(EagleModel):
                     ),
                     dim=1,
                 )
-                attention_mask = self.cached_attn_blk_masks[ttt_step]
+                attention_mask = self._get_ttt_attention_mask(seq_length, ttt_step)
                 _, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
                     eagle_input_hidden_states,
                     inputs_embeds,

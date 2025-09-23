@@ -203,8 +203,6 @@ def train():
                     "draft_vocab_size": custom_config["draft_vocab_size"]
                     if eagle_args.eagle_config and "draft_vocab_size" in custom_config
                     else model.config.vocab_size,
-                    # pass in the seq length for flex attention mask compilation
-                    "training_seq_len": training_args.training_seq_len,
                 }
             )
 
