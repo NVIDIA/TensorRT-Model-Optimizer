@@ -194,78 +194,11 @@ def set_multi_step_attention_mask(attn_mask, step):
     h0 h1 h2 h3 h4 h5 h6 h7  (base hidden_states)
     l0 l1 l2 l3 l4 l5 l6 l7  (base labels)
 
+    ttt_step=2
+    parallel_draft_step=2
 
-    (1st)         | i1 i2 i3 i4 i5 i6 i7 -- |
-    (out)         | h0 h1 h2 h3 h4 h5 h6 h7 |
-    =========================================
-    f1 l1 | i1 h0 |  x                      |
-    f2 l2 | i2 h1 |  x  x                   |
-    f3 l3 | i3 h2 |  x  x  x                |
-    f4 l4 | i4 h3 |  x  x  x  x             |
-    f5 l5 | i5 h4 |  x  x  x  x  x          |
-    f6 l6 | i6 h5 |  x  x  x  x  x  x       |
-    f7 l7 | i7 h6 |  x  x  x  x  x  x  x    |
-    -- -- | -- h7 |  o  o  o  o  o  o  o  o |
-    =========================================
-
-
-    (2nd)         | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- |
-    (out)         | h0 h1 h2 h3 h4 h5 h6 h7 | -- F1 F2 F3 F4 F5 F6 F7 |
-    ===================================================================
-    F1 l1 | i1 h0 |  x                      |                         |
-    F2 l2 | i2 h1 |  x  x                   |                         |
-    F3 l3 | i3 h2 |  x  x  x                |                         |
-    F4 l4 | i4 h3 |  x  x  x  x             |                         |
-    F5 l5 | i5 h4 |  x  x  x  x  x          |                         |
-    F6 l6 | i6 h5 |  x  x  x  x  x  x       |                         |
-    F7 l7 | i7 h6 |  x  x  x  x  x  x  x    |                         |
-    -- -- | -- h7 |  o  o  o  o  o  o  o  o |                         |
-    ===================================================================
-    -- -- | i1 -- |                         |                         |
-    G2 l2 | i2 F1 |  x  o                   |     x                   |
-    G3 l3 | i3 F2 |  x  x  o                |        x                |
-    G4 l4 | i4 F3 |  x  x  x  o             |           x             |
-    G5 l5 | i5 F4 |  x  x  x  x  o          |              x          |
-    G6 l6 | i6 F5 |  x  x  x  x  x  o       |                 x       |
-    G7 l7 | i7 F6 |  x  x  x  x  x  x  o    |                    x    |
-    -- -- | -- F7 |                         |                         |
-    ===================================================================
-
-
-    (3rd)         | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- |
-    (out)         | h0 h1 h2 h3 h4 h5 h6 h7 | -- F1 F2 F3 F4 F5 F6 F7 | -- -- G2 G3 G4 G5 G6 G7 |
-    =============================================================================================
-    F1 l1 | i1 h0 |  x                      |                         |                         |
-    F2 l2 | i2 h1 |  x  x                   |                         |                         |
-    F3 l3 | i3 h2 |  x  x  x                |                         |                         |
-    F4 l4 | i4 h3 |  x  x  x  x             |                         |                         |
-    F5 l5 | i5 h4 |  x  x  x  x  x          |                         |                         |
-    F6 l6 | i6 h5 |  x  x  x  x  x  x       |                         |                         |
-    F7 l7 | i7 h6 |  x  x  x  x  x  x  x    |                         |                         |
-    -- -- | -- h7 |  o  o  o  o  o  o  o  o |                         |                         |
-    =============================================================================================
-    -- -- | i1 -- |                         |                         |                         |
-    G2 l2 | i2 F1 |  x  o                   |     x                   |                         |
-    G3 l3 | i3 F2 |  x  x  o                |        x                |                         |
-    G4 l4 | i4 F3 |  x  x  x  o             |           x             |                         |
-    G5 l5 | i5 F4 |  x  x  x  x  o          |              x          |                         |
-    G6 l6 | i6 F5 |  x  x  x  x  x  o       |                 x       |                         |
-    G7 l7 | i7 F6 |  x  x  x  x  x  x  o    |                    x    |                         |
-    -- -- | -- F7 |                         |                         |                         |
-    =============================================================================================
-    -- -- | i1 -- |                         |                         |                         |
-    -- -- | i2 -- |                         |                         |                         |
-    H3 l3 | i3 G2 |  x  o  o                |     x  o                |        x                |
-    H4 l4 | i4 G3 |  x  x  o  o             |        x  o             |           x             |
-    H5 l5 | i5 G4 |  x  x  x  o  o          |           x  o          |              x          |
-    H6 l6 | i6 G5 |  x  x  x  x  o  o       |              x  o       |                 x       |
-    H7 l7 | i7 G6 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |
-    -- -- | -- G7 |                         |                         |                         |
-    =============================================================================================
-
-
-    (4th)         | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- |
-    (out)         | h0 h1 h2 h3 h4 h5 h6 h7 | -- F1 F2 F3 F4 F5 F6 F7 | -- -- G2 G3 G4 G5 G6 G7 | -- -- -- H3 H4 H5 H6 H7 |
+                  | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- |
+    (out)         | h0 h1 h2 h3 h4 h5 h6 h7 | h0 h1 h2 h3 h4 h5 h6 h7 | -- -- G2 G3 G4 G5 G6 G7 | -- -- G2 G3 G4 G5 G6 G7 |
     =======================================================================================================================
     F1 l1 | i1 h0 |  x                      |                         |                         |                         |
     F2 l2 | i2 h1 |  x  x                   |                         |                         |                         |
@@ -277,13 +210,13 @@ def set_multi_step_attention_mask(attn_mask, step):
     -- -- | -- h7 |  o  o  o  o  o  o  o  o |                         |                         |                         |
     =======================================================================================================================
     -- -- | i1 -- |                         |                         |                         |                         |
-    G2 l2 | i2 F1 |  x  o                   |     x                   |                         |                         |
-    G3 l3 | i3 F2 |  x  x  o                |        x                |                         |                         |
-    G4 l4 | i4 F3 |  x  x  x  o             |           x             |                         |                         |
-    G5 l5 | i5 F4 |  x  x  x  x  o          |              x          |                         |                         |
-    G6 l6 | i6 F5 |  x  x  x  x  x  o       |                 x       |                         |                         |
-    G7 l7 | i7 F6 |  x  x  x  x  x  x  o    |                    x    |                         |                         |
-    -- -- | -- F7 |                         |                         |                         |                         |
+    G2 l2 | i2 h1 |  x  o                   |     x                   |                         |                         |
+    G3 l3 | i3 h2 |  x  x  o                |        x                |                         |                         |
+    G4 l4 | i4 h3 |  x  x  x  o             |           x             |                         |                         |
+    G5 l5 | i5 h4 |  x  x  x  x  o          |              x          |                         |                         |
+    G6 l6 | i6 h5 |  x  x  x  x  x  o       |                 x       |                         |                         |
+    G7 l7 | i7 h6 |  x  x  x  x  x  x  o    |                    x    |                         |                         |
+    -- -- | -- h7 |                         |                         |                         |                         |
     =======================================================================================================================
     -- -- | i1 -- |                         |                         |                         |                         |
     -- -- | i2 -- |                         |                         |                         |                         |
@@ -294,18 +227,16 @@ def set_multi_step_attention_mask(attn_mask, step):
     H7 l7 | i7 G6 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |                         |
     -- -- | -- G7 |                         |                         |                         |                         |
     =======================================================================================================================
-    -- -- | i1 -- |                         |                         |                         |                         |
-    -- -- | i2 -- |                         |                         |                         |                         |
-    -- -- | i3 -- |                         |                         |                         |                         |
-    K4 l4 | i4 H3 |  x                      |     x                   |        x                |          x              |
-    K5 l5 | i5 H4 |  x  x                   |        x                |           x             |             x           |
-    K6 l6 | i6 H5 |  x  x  x                |           x             |              x          |                x        |
-    K7 l7 | i7 H6 |  x  x  x  x             |              x          |                 x       |                   x     |
-    -- -- | -- H7 |                         |                         |                         |                         |
+    -- -- | m0 -- |                         |                         |                         |                         |
+    -- -- | m0 -- |                         |                         |                         |                         |
+    -- -- | m0 -- |                         |                         |                         |                         |
+    K4 l4 | m0 G3 |  x                      |     x                   |        x                |          x              |
+    K5 l5 | m0 G4 |  x  x                   |        x                |           x             |             x           |
+    K6 l6 | m0 G5 |  x  x  x                |           x             |              x          |                x        |
+    K7 l7 | m0 G6 |  x  x  x  x             |              x          |                 x       |                   x     |
+    -- -- | -- G7 |                         |                         |                         |                         |
     =======================================================================================================================
     """  # noqa: E501
-    assert step > 1, "step should be larger than 1 in multi-step attention mask."
-
     s = attn_mask.shape[-1]
     for iter in range(2, step + 1):
         # iter starts from 2nd step
@@ -833,10 +764,12 @@ class _DynamicEagleGPTModel(EagleModel):
         attention_mask: torch.Tensor,
         position_ids: torch.Tensor,
         features: torch.Tensor | None = None,
+        ttt_step: int = 1,
     ):
         """Getting EAGLE module inputs."""
         b = hidden_states.shape[1]
         h = hidden_states.shape[2]
+        s = input_ids.shape[1]
 
         # [b, 1]
         id_padding = torch.zeros((b, 1), dtype=input_ids.dtype, device=input_ids.device)
@@ -851,28 +784,35 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs = {}
 
-        if self.eagle_config.parallel_draft_step > 1:
-            eagle_inputs["input_ids"] = padded_input_ids
-            eagle_inputs["position_ids"] = position_ids
-            if rotary_pos_emb is not None:
-                eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
-            else:
-                # [TODO] (yeyu): there will be problem here with MLA
-                eagle_inputs["rotary_pos_emb"] = None
+        eagle_inputs["input_ids"] = torch.empty(
+            0, dtype=padded_input_ids.dtype, device=padded_input_ids.device
+        )
+        eagle_inputs["position_ids"] = torch.empty(
+            0, dtype=position_ids.dtype, device=position_ids.device
+        )
+        eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
+        if self.config.sequence_parallel:
+            gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
+            gathered_features = (
+                None if features is None else gather_from_sequence_parallel_region(features)
+            )
+        else:
+            gathered_hidden_states = hidden_states
+            gathered_features = features
+        eagle_inputs["hidden_states"] = torch.empty(
+            0, dtype=gathered_hidden_states.dtype, device=gathered_hidden_states.device
+        )
 
-            if self.config.sequence_parallel:
-                gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
-            else:
-                gathered_hidden_states = hidden_states
-            eagle_inputs["hidden_states"] = gathered_hidden_states
-
-            for i in range(self.eagle_config.parallel_draft_step - 1):
+        for step in range(ttt_step):
+            for i in range(self.eagle_config.parallel_draft_step):
                 eagle_inputs["input_ids"] = torch.cat(
                     (
                         eagle_inputs["input_ids"],
-                        torch.full(
+                        padded_input_ids
+                        if i == 0
+                        else torch.full(
                             padded_input_ids.shape,
-                            getattr(self, f"mask_token_{i}"),
+                            getattr(self, f"mask_token_{i - 1}"),
                             device=padded_input_ids.device,
                             dtype=padded_input_ids.dtype,
                         ),
@@ -880,13 +820,25 @@ class _DynamicEagleGPTModel(EagleModel):
                     dim=-1,
                 )
 
+                if step > 0:
+                    feature = gathered_features[
+                        (step * self.eagle_config.parallel_draft_step - 1) * s : step
+                        * self.eagle_config.parallel_draft_step
+                        * s
+                    ]
                 eagle_inputs["hidden_states"] = torch.cat(
                     (
                         eagle_inputs["hidden_states"],
-                        torch.zeros(
-                            (1 + i, b, h), dtype=hidden_states.dtype, device=hidden_states.device
+                        gathered_hidden_states
+                        if step == 0
+                        else (
+                            torch.zeros(
+                                (1, b, h),
+                                dtype=hidden_states.dtype,
+                                device=hidden_states.device,
+                            ),
+                            feature[:-1, :, :],
                         ),
-                        gathered_hidden_states[: -(1 + i)],
                     ),
                     dim=0,
                 )
@@ -900,129 +852,14 @@ class _DynamicEagleGPTModel(EagleModel):
                         (eagle_inputs["rotary_pos_emb"], rotary_pos_emb), dim=0
                     )
 
-            if self.config.sequence_parallel:
-                eagle_inputs["hidden_states"] = scatter_to_sequence_parallel_region(
-                    eagle_inputs["hidden_states"]
-                )
-
-            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
-                attn_mask, self.eagle_config.parallel_draft_step
-            )
-        elif features is None:
-            eagle_inputs["input_ids"] = padded_input_ids
-            eagle_inputs["hidden_states"] = hidden_states
-            eagle_inputs["attention_mask"] = attn_mask
-            eagle_inputs["position_ids"] = position_ids
-            eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
-        elif features.shape[0] == hidden_states.shape[0]:
-            eagle_inputs["input_ids"] = torch.cat(
-                (padded_input_ids, padded_input_ids),
-                dim=-1,
+        if self.config.sequence_parallel:
+            eagle_inputs["hidden_states"] = scatter_to_sequence_parallel_region(
+                eagle_inputs["hidden_states"]
             )
 
-            if self.config.sequence_parallel:
-                gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
-                gathered_features = gather_from_sequence_parallel_region(features)
-            else:
-                gathered_hidden_states = hidden_states
-                gathered_features = features
-            eagle_inputs["hidden_states"] = torch.cat(
-                (
-                    gathered_hidden_states,
-                    torch.zeros((1, b, h), dtype=hidden_states.dtype, device=hidden_states.device),
-                    gathered_features[:-1, :, :],
-                ),
-                dim=0,
-            )
-            if self.config.sequence_parallel:
-                eagle_inputs["hidden_states"] = scatter_to_sequence_parallel_region(
-                    eagle_inputs["hidden_states"]
-                )
-
-            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, 2)
-            eagle_inputs["position_ids"] = torch.cat((position_ids, position_ids), dim=-1)
-
-            if rotary_pos_emb is not None:
-                eagle_inputs["rotary_pos_emb"] = torch.cat((rotary_pos_emb, rotary_pos_emb), dim=0)
-            else:
-                # [TODO] (yeyu): there will be problem here with MLA
-                eagle_inputs["rotary_pos_emb"] = None
-        elif features.shape[0] == hidden_states.shape[0] * 2:
-            eagle_inputs["input_ids"] = torch.cat(
-                (padded_input_ids, padded_input_ids, padded_input_ids),
-                dim=-1,
-            )
-
-            if self.config.sequence_parallel:
-                gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
-                gathered_features = gather_from_sequence_parallel_region(features)
-            else:
-                gathered_hidden_states = hidden_states
-                gathered_features = features
-            eagle_inputs["hidden_states"] = torch.cat(
-                (
-                    gathered_hidden_states,
-                    torch.zeros((1, b, h), dtype=hidden_states.dtype, device=hidden_states.device),
-                    gathered_features[:-1, :, :],
-                ),
-                dim=0,
-            )
-            if self.config.sequence_parallel:
-                eagle_inputs["hidden_states"] = scatter_to_sequence_parallel_region(
-                    eagle_inputs["hidden_states"]
-                )
-
-            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, 3)
-            eagle_inputs["position_ids"] = torch.cat(
-                (position_ids, position_ids, position_ids), dim=-1
-            )
-
-            if rotary_pos_emb is not None:
-                eagle_inputs["rotary_pos_emb"] = torch.cat(
-                    (rotary_pos_emb, rotary_pos_emb, rotary_pos_emb),
-                    dim=0,
-                )
-            else:
-                # [TODO] (yeyu): there will be problem here with MLA
-                eagle_inputs["rotary_pos_emb"] = None
-        else:
-            eagle_inputs["input_ids"] = torch.cat(
-                (padded_input_ids, padded_input_ids, padded_input_ids, padded_input_ids),
-                dim=-1,
-            )
-
-            if self.config.sequence_parallel:
-                gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
-                gathered_features = gather_from_sequence_parallel_region(features)
-            else:
-                gathered_hidden_states = hidden_states
-                gathered_features = features
-            eagle_inputs["hidden_states"] = torch.cat(
-                (
-                    gathered_hidden_states,
-                    torch.zeros((1, b, h), dtype=hidden_states.dtype, device=hidden_states.device),
-                    gathered_features[:-1, :, :],
-                ),
-                dim=0,
-            )
-            if self.config.sequence_parallel:
-                eagle_inputs["hidden_states"] = scatter_to_sequence_parallel_region(
-                    eagle_inputs["hidden_states"]
-                )
-
-            eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, 4)
-            eagle_inputs["position_ids"] = torch.cat(
-                (position_ids, position_ids, position_ids, position_ids), dim=-1
-            )
-
-            if rotary_pos_emb is not None:
-                eagle_inputs["rotary_pos_emb"] = torch.cat(
-                    (rotary_pos_emb, rotary_pos_emb, rotary_pos_emb, rotary_pos_emb),
-                    dim=0,
-                )
-            else:
-                # [TODO] (yeyu): there will be problem here with MLA
-                eagle_inputs["rotary_pos_emb"] = None
+        eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
+            attn_mask, ttt_step * self.eagle_config.parallel_draft_step
+        )
 
         eagle_inputs["embedding"] = self.embedding(
             input_ids=eagle_inputs["input_ids"],
@@ -1258,28 +1095,26 @@ class _DynamicEagleGPTModel(EagleModel):
         loss = self.compute_language_model_loss(labels, logits_sbh)
         loss = 0.0 * loss
 
-        if self.eagle_config.parallel_draft_step > 1:
-            for i in range(self.eagle_config.parallel_draft_step):
-                eagle_logits = eagle_logits_0[i * labels.shape[1] : (i + 1) * labels.shape[1]]
-                loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
-                loss_ = loss_[:, i:]
-                loss[:, i + 1 :] += 1.0 * loss_
-            return loss
-
-        loss_0 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_0)
-        loss[:, 1:] += self.eagle_loss_decay_factor * loss_0
+        eagle_logits_0 = eagle_logits_0[-labels.shape[1] * self.eagle_config.parallel_draft_step :]
+        for i in range(self.eagle_config.parallel_draft_step):
+            eagle_logits = eagle_logits_0[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
+            loss_ = loss_[:, i:]
+            loss[:, i + 1 :] += self.eagle_loss_decay_factor * loss_
 
         if self.eagle_report_acc and not self.training:
             acc = []
             with torch.no_grad():
-                gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_0[:-1, :, :]
-                )
-                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                top1_p = torch.eq(labels[:, 1:], eagle_top1).sum() / eagle_top1.numel()
-                acc.append(top1_p)
+                for i in range(self.eagle_config.parallel_draft_step):
+                    gathered_logits = gather_from_tensor_model_parallel_region(
+                        eagle_logits_0[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+                    )
+                    gathered_logits = gathered_logits[i:-1]
+                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                    top1_p = torch.eq(labels[:, i + 1 :], eagle_top1).sum() / eagle_top1.numel()
+                    acc.append(top1_p)
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
@@ -1294,6 +1129,7 @@ class _DynamicEagleGPTModel(EagleModel):
             attention_mask=attention_mask,
             position_ids=position_ids,
             features=eagle_hidden_states_0_pre_norm,
+            ttt_step=2,
         )
 
         _, eagle_logits_2x, eagle_hidden_states_2x_pre_norm = self._eagle_forward(
@@ -1303,24 +1139,27 @@ class _DynamicEagleGPTModel(EagleModel):
             packed_seq_params=packed_seq_params,
             **(extra_block_kwargs or {}),
         )
-        eagle_logits_1 = eagle_logits_2x[-labels.shape[1] :, :, :]
+        eagle_logits_1 = eagle_logits_2x[-labels.shape[1] * self.eagle_config.parallel_draft_step :]
 
-        loss_1 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_1)
-        # [b, s - 2]
-        loss_1 = loss_1[:, 1:]
-        loss[:, 2:] += self.eagle_loss_decay_factor**2 * loss_1
+        for i in range(self.eagle_config.parallel_draft_step):
+            eagle_logits = eagle_logits_1[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
+            loss_ = loss_[:, i + 1 :]
+            loss[:, i + 2 :] += self.eagle_loss_decay_factor**2 * loss_
 
         if self.eagle_report_acc and not self.training:
             acc = []
             with torch.no_grad():
-                gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_1[1:-1, :, :]
-                )
-                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                top1_p = torch.eq(labels[:, 2:], eagle_top1).sum() / eagle_top1.numel()
-                acc.append(top1_p)
+                for i in range(self.eagle_config.parallel_draft_step):
+                    gathered_logits = gather_from_tensor_model_parallel_region(
+                        eagle_logits_1[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+                    )
+                    gathered_logits = gathered_logits[i + 1 : -1]
+                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                    top1_p = torch.eq(labels[:, i + 2 :], eagle_top1).sum() / eagle_top1.numel()
+                    acc.append(top1_p)
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
@@ -1335,6 +1174,7 @@ class _DynamicEagleGPTModel(EagleModel):
             attention_mask=attention_mask,
             position_ids=position_ids,
             features=eagle_hidden_states_2x_pre_norm,
+            ttt_step=3,
         )
 
         _, eagle_logits_3x, eagle_hidden_states_3x_pre_norm = self._eagle_forward(
@@ -1345,24 +1185,27 @@ class _DynamicEagleGPTModel(EagleModel):
             **(extra_block_kwargs or {}),
         )
 
-        eagle_logits_2 = eagle_logits_3x[-labels.shape[1] :, :, :]
+        eagle_logits_2 = eagle_logits_3x[-labels.shape[1] * self.eagle_config.parallel_draft_step :]
 
-        loss_2 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_2)
-        # [b, s - 3]
-        loss_2 = loss_2[:, 2:]
-        loss[:, 3:] += self.eagle_loss_decay_factor**3 * loss_2
+        for i in range(self.eagle_config.parallel_draft_step):
+            eagle_logits = eagle_logits_2[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
+            loss_ = loss_[:, i + 2 :]
+            loss[:, i + 3 :] += self.eagle_loss_decay_factor**3 * loss_
 
         if self.eagle_report_acc and not self.training:
             acc = []
             with torch.no_grad():
-                gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_2[2:-1, :, :]
-                )
-                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                top1_p = torch.eq(labels[:, 3:], eagle_top1).sum() / eagle_top1.numel()
-                acc.append(top1_p)
+                for i in range(self.eagle_config.parallel_draft_step):
+                    gathered_logits = gather_from_tensor_model_parallel_region(
+                        eagle_logits_2[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+                    )
+                    gathered_logits = gathered_logits[i + 2 : -1]
+                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                    top1_p = torch.eq(labels[:, i + 3 :], eagle_top1).sum() / eagle_top1.numel()
+                    acc.append(top1_p)
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
@@ -1377,6 +1220,7 @@ class _DynamicEagleGPTModel(EagleModel):
             attention_mask=attention_mask,
             position_ids=position_ids,
             features=eagle_hidden_states_3x_pre_norm,
+            ttt_step=4,
         )
 
         _, eagle_logits_4x, eagle_hidden_states_4x_pre_norm = self._eagle_forward(
@@ -1387,24 +1231,27 @@ class _DynamicEagleGPTModel(EagleModel):
             **(extra_block_kwargs or {}),
         )
 
-        eagle_logits_3 = eagle_logits_4x[-labels.shape[1] :, :, :]
+        eagle_logits_3 = eagle_logits_4x[-labels.shape[1] * self.eagle_config.parallel_draft_step :]
 
-        loss_3 = self._compute_eagle_loss(logits_sbh, labels, eagle_logits_3)
-        # [b, s - 4]
-        loss_3 = loss_3[:, 3:]
-        loss[:, 4:] += self.eagle_loss_decay_factor**4 * loss_3
+        for i in range(self.eagle_config.parallel_draft_step):
+            eagle_logits = eagle_logits_3[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
+            loss_ = loss_[:, i + 3 :]
+            loss[:, i + 4 :] += self.eagle_loss_decay_factor**4 * loss_
 
         if self.eagle_report_acc and not self.training:
             acc = []
             with torch.no_grad():
-                gathered_logits = gather_from_tensor_model_parallel_region(
-                    eagle_logits_3[3:-1, :, :]
-                )
-                eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                    eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                top1_p = torch.eq(labels[:, 4:], eagle_top1).sum() / eagle_top1.numel()
-                acc.append(top1_p)
+                for i in range(self.eagle_config.parallel_draft_step):
+                    gathered_logits = gather_from_tensor_model_parallel_region(
+                        eagle_logits_3[i * labels.shape[1] : (i + 1) * labels.shape[1]]
+                    )
+                    gathered_logits = gathered_logits[i + 3 : -1]
+                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                    top1_p = torch.eq(labels[:, i + 4 :], eagle_top1).sum() / eagle_top1.numel()
+                    acc.append(top1_p)
 
             if get_tensor_model_parallel_rank() == 0:
                 print(
