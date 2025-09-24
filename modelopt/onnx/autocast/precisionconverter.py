@@ -181,12 +181,11 @@ class PrecisionConverter:
                 for idx, d in enumerate(vi.type.tensor_type.shape.dim):
                     if d.dim_value:
                         vi.type.tensor_type.shape.dim[idx].dim_param = "unk"
-            if not self.keep_io_types:
-                for out in self.model.graph.output:
-                    out.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
-                    for idx, d in enumerate(out.type.tensor_type.shape.dim):
-                        if d.dim_value:
-                            out.type.tensor_type.shape.dim[idx].dim_param = "unk"
+            for out in self.model.graph.output:
+                out.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
+                for idx, d in enumerate(out.type.tensor_type.shape.dim):
+                    if d.dim_value:
+                        out.type.tensor_type.shape.dim[idx].dim_param = "unk"
             # Populate type information with inferred types
             self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=False)
             self._ensure_types_are_defined()
@@ -451,9 +450,8 @@ class PrecisionConverter:
         for node in high_precision_nodes:
             # Add cast up for network inputs
             cast_to_fp32.extend([input for input in node.input if input in network_inputs])
-            # Add cast down for network outputs (only if not keeping I/O types)
-            if not self.keep_io_types:
-                cast_to_fp16.extend([output for output in node.output if output in network_outputs])
+            # Add cast down for network outputs
+            cast_to_fp16.extend([output for output in node.output if output in network_outputs])
 
         # Remove initializers, they are handled separately
         initializers = {init.name for init in self.model.graph.initializer}
