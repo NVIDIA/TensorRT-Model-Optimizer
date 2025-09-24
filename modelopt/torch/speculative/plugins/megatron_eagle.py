@@ -26,6 +26,7 @@ from megatron.core import InferenceParams, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.dist_checkpointing.utils import replace_prefix_for_sharding
 from megatron.core.extensions.transformer_engine import TENorm
+from megatron.core.inference.contexts import StaticInferenceContext
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel
@@ -240,23 +241,15 @@ def set_multi_step_attention_mask(attn_mask, step):
     s = attn_mask.shape[-1]
     for iter in range(2, step + 1):
         # iter starts from 2nd step
-        zero_mask = attn_mask.new_ones(
-            attn_mask.shape[0], attn_mask.shape[1], attn_mask.shape[2], s
-        ).bool()
-        mask_0 = attn_mask.clone().detach()[:, :, -s:, :]
+        mask_0 = attn_mask.clone().detach()
         mask_0[:, :, iter - 2, :] = True
         mask_0[:, :, :, :-1] = mask_0[:, :, :, 1:]
         mask_1 = attn_mask.new_ones(attn_mask.shape[0], attn_mask.shape[1], s, s).bool()
         for i in range(iter - 1, s - 1):
             mask_1[:, :, i, i] = False
 
-        attn_mask = torch.cat(
-            (
-                torch.cat((attn_mask, zero_mask), dim=-1),
-                torch.cat((mask_0, mask_1), dim=-1),
-            ),
-            dim=-2,
-        )
+        attn_mask = torch.cat((mask_0, mask_1), dim=-1)
+
     return attn_mask
 
 
@@ -516,6 +509,7 @@ class EagleModule(MegatronModule):
         rotary_pos_emb: torch.Tensor = None,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
+        inference_context: StaticInferenceContext | None = None,
         extra_block_kwargs: dict | None = None,
     ) -> torch.Tensor:
         """Forward function."""
@@ -556,6 +550,7 @@ class EagleModule(MegatronModule):
             inference_params=inference_params,
             rotary_pos_emb=rotary_pos_emb,
             packed_seq_params=packed_seq_params,
+            inference_context=inference_context,
             **(extra_block_kwargs or {}),
         )
 
@@ -962,6 +957,7 @@ class _DynamicEagleGPTModel(EagleModel):
         output_weight,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
+        inference_context: StaticInferenceContext | None = None,
         extra_block_kwargs: dict | None = None,
     ):
         eagle_hidden_states, eagle_hidden_states_pre_final_layernorm = self.eagle_module(
@@ -971,15 +967,23 @@ class _DynamicEagleGPTModel(EagleModel):
             eagle_inputs["rotary_pos_emb"],
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            inference_context=inference_context,
             **(extra_block_kwargs or {}),
         )
+
+        # Update inference_context.sequence_len_offset after each call of eagle_module
+        inference_context.sequence_len_offset += eagle_inputs["input_ids"].shape[1]
 
         if hasattr(self.eagle_module, "eagle_output_layer"):
             eagle_logits, _ = self.eagle_module.eagle_output_layer(eagle_hidden_states)
         else:
             eagle_logits, _ = self.output_layer(eagle_hidden_states, weight=output_weight)
 
-        return eagle_hidden_states, eagle_logits, eagle_hidden_states_pre_final_layernorm
+        return (
+            eagle_hidden_states,
+            eagle_logits,
+            eagle_hidden_states_pre_final_layernorm,
+        )
 
     def forward(
         self,
@@ -1033,6 +1037,11 @@ class _DynamicEagleGPTModel(EagleModel):
             output_weight = self.shared_embedding_or_output_weight()
         logits_sbh, _ = self.output_layer(hidden_states, weight=output_weight)
 
+        # EAGLE kv cache
+        eagle_inference_context = StaticInferenceContext(
+            input_ids.shape[0], input_ids.shape[1] * self.eagle_config.parallel_draft_step * 4
+        )
+
         if self.eagle_offline:
             eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
                 aux_hidden_states, apply_fc=self.eagle_config.use_aux_hidden_state
@@ -1075,6 +1084,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 output_weight,
                 inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
+                inference_context=eagle_inference_context,
                 **(extra_block_kwargs or {}),
             )
 
@@ -1141,6 +1151,7 @@ class _DynamicEagleGPTModel(EagleModel):
             output_weight,
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            inference_context=eagle_inference_context,
             **(extra_block_kwargs or {}),
         )
         eagle_logits_1 = eagle_logits_2x[-labels.shape[1] * self.eagle_config.parallel_draft_step :]
@@ -1186,6 +1197,7 @@ class _DynamicEagleGPTModel(EagleModel):
             output_weight,
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            inference_context=eagle_inference_context,
             **(extra_block_kwargs or {}),
         )
 
@@ -1232,6 +1244,7 @@ class _DynamicEagleGPTModel(EagleModel):
             output_weight,
             inference_params=inference_params,
             packed_seq_params=packed_seq_params,
+            inference_context=eagle_inference_context,
             **(extra_block_kwargs or {}),
         )
 
@@ -1442,6 +1455,8 @@ class _DynamicEagleGPTModel(EagleModel):
         steps: int = 1,
     ):
         """Pseudo generate of the EAGLE GPTModel.
+
+        This function does not support kv cache as sequence parallel may be enabled.
 
         Returns:
             base_token (torch.Tensor): token from base model
