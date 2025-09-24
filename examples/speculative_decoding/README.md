@@ -93,6 +93,8 @@ python collect_hidden_states/compute_hidden_states_hf.py \
             --output-dir $HIDDEN_STATES_DIR
 ```
 
+See [`run_hf_compute_hiddens_dp.sh`](./collect_hidden_states/run_hf_compute_hiddens_dp.sh) for a simple example using data parallelism (DP) to accelerate hidden state generation.
+
 Then, train draft model with `--offline-data` argument:
 
 ```bash
