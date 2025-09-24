@@ -81,7 +81,7 @@ def _preprocess_onnx(
     override_shapes: str,
     simplify: bool = False,
     quantize_mode: str = "int8",
-) -> tuple[str, onnx.ModelProto, list[str], bool, bool, bool, dict]:
+) -> tuple[str, onnx.ModelProto, list[str], bool, bool, bool, dict, dict]:
     logger.info(f"Preprocessing the model {onnx_path}")
     intermediate_generated_files = []
     output_dir = os.path.dirname(output_path)
@@ -180,13 +180,14 @@ def _preprocess_onnx(
         intermediate_generated_files.append(onnx_path)
 
     # If custom op precisions are given, add Cast or Q/DQ where appropriate.
+    custom_ops_to_cast = {}
     custom_ops_to_quantize = {}
     if trt_plugins_precision:
         custom_ops_to_cast, custom_ops_to_quantize = interpret_trt_plugins_precision_flag(
             onnx_model, trt_plugins_precision, quantize_mode
         )
-        if custom_ops_to_cast:
-            onnx_model = cast_custom_ops(onnx_model, custom_ops_to_cast)
+        if custom_ops_to_cast.get("fp16", {}):
+            onnx_model = cast_custom_ops(onnx_model, custom_ops_to_cast["fp16"])
             onnx_path = os.path.join(output_dir, f"{model_name}_castFP16.onnx")
             save_onnx(onnx_model, onnx_path, use_external_data_format)
             logger.info(f"Model is cloned to {onnx_path} after casting tensors to FP16")
@@ -199,6 +200,7 @@ def _preprocess_onnx(
         has_custom_op,
         has_dds_op,
         use_external_data_format,
+        custom_ops_to_cast.get("fp32", {}),
         custom_ops_to_quantize,
     )
 
@@ -406,6 +408,7 @@ def quantize(
         has_custom_op,
         has_dds_op,
         use_external_data_format,
+        custom_ops_to_cast_fp32,
         custom_ops_to_quantize,
     ) = _preprocess_onnx(
         onnx_path,
@@ -471,6 +474,7 @@ def quantize(
             passes=passes,
             log_level=log_level,
             calibrate_per_node=calibrate_per_node,
+            custom_ops_to_cast_fp32=list(custom_ops_to_cast_fp32.keys()),
             custom_ops_to_quantize=list(custom_ops_to_quantize.keys()),
             direct_io_types=direct_io_types,
             **kwargs,
