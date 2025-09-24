@@ -24,6 +24,7 @@ from modelopt.torch.quantization.backends.gemm_registry import gemm_registry
 from modelopt.torch.quantization.config import FP8_DEFAULT_CFG
 from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import FP8QTensor, QTensorWrapper
+from modelopt.torch.quantization.triton.fp8_kernel import fp8_gemm
 from modelopt.torch.quantization.utils import reduce_amax
 
 from .utils import fp8_compatible
@@ -33,73 +34,37 @@ FP8_MAX = torch.finfo(torch.float8_e4m3fn).max
 
 
 @torch.compile(dynamic=True)
-def _to_fp8(x, scale):
-    return (x / scale).clamp(FP8_MIN, FP8_MAX).to(torch.float8_e4m3fn)
-
-
-@torch.compile(dynamic=True)
-def _fp8_gemm_impl(input, weight_fp8, scale_a, scale_b, bias=None):
-    input_shape = input.shape
-    input_fp8 = _to_fp8(input, scale_a).reshape(-1, input_shape[-1])
-    weight_fp8_t = weight_fp8.reshape(-1, weight_fp8.shape[-1]).t()
-    output = torch._scaled_mm(
-        input_fp8,
-        weight_fp8_t,
-        scale_a=scale_a,
-        scale_b=scale_b,
-        bias=bias,
-        out_dtype=input.dtype,
-        use_fast_accum=True,
-    )
-    return output.reshape(*input_shape[:-1], output.shape[-1])
+def _to_fp8(x, amax):
+    return (x.to(torch.float32) / amax * 448.0).clamp(FP8_MIN, FP8_MAX).to(torch.float8_e4m3fn)
 
 
 def fp8_per_tensor_gemm(quant_module, input, bias=None):
     """GEMM function for fp8 per tensor quantization."""
-    with torch.cuda.nvtx.range("prepare"):
-        cached_scale_a = (
-            hasattr(quant_module, "_scale_a") and quant_module.input_quantizer.amax is not None
-        )
+    input_amax = (
+        quant_module.input_quantizer.amax
+        if quant_module.input_quantizer.amax is not None
+        else reduce_amax(input)
+    )
+    weight_amax = (
+        quant_module.weight_quantizer.amax
+        if quant_module.weight_quantizer.amax is not None
+        else reduce_amax(quant_module.weight)
+    )
 
-        if not cached_scale_a:
-            # print("compute _scale_a")
-            assert quant_module.input_quantizer.amax is not None
-            input_amax = quant_module.input_quantizer.amax or reduce_amax(input)
-            assert input_amax != 0
-            quant_module._scale_a = (input_amax.float() / 448.0).to(device=input.device)
+    if quant_module.weight.dtype != torch.float8_e4m3fn:
+        with torch.cuda.nvtx.range("compress weight"):
+            weight_fp8 = _to_fp8(quant_module.weight.data, weight_amax)
+    else:
+        weight_fp8 = quant_module.weight.data
 
-        cached_scale_b = (
-            hasattr(quant_module, "_scale_b") and quant_module.weight_quantizer.amax is not None
-        )
-
-        if not cached_scale_b:
-            # print("compute _scale_b")
-            assert quant_module.weight_quantizer.amax is not None
-            weight_amax = quant_module.weight_quantizer.amax or reduce_amax(quant_module.weight)
-            assert weight_amax != 0
-            quant_module._scale_b = (weight_amax.float() / 448.0).to(
-                device=quant_module.weight.device
-            )
-
-        if quant_module.weight.dtype != torch.float8_e4m3fn:
-            with torch.cuda.nvtx.range("compress weight"):
-                weight_fp8 = _to_fp8(quant_module.weight.data, quant_module._scale_b)
-        else:
-            weight_fp8 = quant_module.weight.data
-
-    with torch.cuda.nvtx.range("_fp8_gemm_impl"):
-        output = _fp8_gemm_impl(
-            input,
-            weight_fp8,
-            scale_a=quant_module._scale_a,
-            scale_b=quant_module._scale_b,
-            bias=bias if input.dtype != torch.float32 else None,
-        )
-        output = output.clone()
-        # _scaled_mm does not support bias for float32 input, so we add it manually
-        if input.dtype == torch.float32 and bias is not None:
-            output += bias
-        return output
+    output = fp8_gemm(
+        input,
+        weight_fp8,
+        input_amax,
+        weight_amax,
+        bias=bias,
+    )
+    return output
 
 
 def _fp8_availability_check(module, input, args, kwargs):
