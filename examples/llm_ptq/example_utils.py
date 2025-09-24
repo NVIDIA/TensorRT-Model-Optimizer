@@ -36,16 +36,6 @@ def is_speculative(hf_config):
     )
 
 
-def get_mode_type_from_engine_dir(engine_dir_str):
-    # Split the path by '/' and get the last part
-    last_part = os.path.basename(engine_dir_str)
-
-    # Split the last part by '_' and get the first segment
-    model_type = last_part.split("_")[0]
-
-    return model_type
-
-
 def get_tokenizer(ckpt_path, trust_remote_code=False, **kwargs):
     print(f"Initializing tokenizer from {ckpt_path}")
 
