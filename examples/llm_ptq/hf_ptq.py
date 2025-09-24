@@ -16,16 +16,21 @@
 import argparse
 import copy
 import random
-import shutil
 import time
 import warnings
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
-from example_utils import apply_kv_cache_quant, get_model, get_processor, get_tokenizer, is_enc_dec
+from example_utils import (
+    apply_kv_cache_quant,
+    copy_custom_model_files,
+    get_model,
+    get_processor,
+    get_tokenizer,
+    is_enc_dec,
+)
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -83,56 +88,6 @@ KV_QUANT_CFG_CHOICES = {
 }
 
 mto.enable_huggingface_checkpointing()
-
-
-def copy_custom_model_files(source_path: str, export_path: str, trust_remote_code: bool = False):
-    """Copy custom model files (configuration_*.py, modeling_*.py, etc.) from source to export directory.
-
-    Args:
-        source_path: Path to the original model directory
-        export_path: Path to the exported model directory
-        trust_remote_code: Whether trust_remote_code was used (only copy files if True)
-    """
-    if not trust_remote_code:
-        return
-
-    source_dir = Path(source_path)
-    export_dir = Path(export_path)
-
-    if not source_dir.exists():
-        print(f"Warning: Source directory {source_path} does not exist")
-        return
-
-    if not export_dir.exists():
-        print(f"Warning: Export directory {export_path} does not exist")
-        return
-
-    # Common patterns for custom model files that need to be copied
-    custom_file_patterns = [
-        "configuration_*.py",
-        "modeling_*.py",
-        "tokenization_*.py",
-        "processing_*.py",
-        "image_processing_*.py",
-        "feature_extraction_*.py",
-    ]
-
-    copied_files = []
-    for pattern in custom_file_patterns:
-        for file_path in source_dir.glob(pattern):
-            if file_path.is_file():
-                dest_path = export_dir / file_path.name
-                try:
-                    shutil.copy2(file_path, dest_path)
-                    copied_files.append(file_path.name)
-                    print(f"Copied custom model file: {file_path.name}")
-                except Exception as e:
-                    print(f"Warning: Failed to copy {file_path.name}: {e}")
-
-    if copied_files:
-        print(f"Successfully copied {len(copied_files)} custom model files to {export_path}")
-    else:
-        print("No custom model files found to copy")
 
 
 def auto_quantize(
