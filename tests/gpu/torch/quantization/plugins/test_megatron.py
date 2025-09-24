@@ -32,6 +32,9 @@ from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     tensor_parallel_test_helper,
+    data_parallel_test_helper,
+    context_parallel_test_helper,
+    data_tensor_context_parallel_test_helper,
 )
 from packaging.version import Version
 
@@ -41,6 +44,7 @@ import megatron.core
 from megatron.core.parallel_state import (
     destroy_model_parallel,
     get_data_parallel_group,
+    get_context_parallel_group,
     get_tensor_model_parallel_group,
 )
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
@@ -91,13 +95,13 @@ def test_convert_megatron_parallel_linear(distributed_setup_size_1):
     # Clean up since this is not a spawned process
     destroy_model_parallel()
 
-
+# 1. Tensor Parallel Test
 def _test_tensor_parallel_helper(config, rank, size):
     initialize_for_megatron(tensor_model_parallel_size=2, seed=SEED)
-    model = MegatronModel(size).cuda()
+    model = MegatronModel(tp_size=size).cuda()
 
     tensor_parallel_test_helper(
-        model, config, get_tensor_model_parallel_group(), get_data_parallel_group()
+        model, config, get_tensor_model_parallel_group()
     )
 
 
@@ -118,6 +122,85 @@ def test_tensor_parallel(need_2_gpus, config):
         size=2, job=partial(_test_tensor_parallel_helper, config), backend="nccl"
     )
 
+# 2. Data Parallel Test
+def _test_data_parallel_helper(config, rank, size):
+    # TODO does this model automatically get copied to both DP ranks?
+    initialize_for_megatron(seed=SEED)
+    model = MegatronModel().cuda()
+
+    data_parallel_test_helper(
+        model, config, get_data_parallel_group()
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.INT8_DEFAULT_CFG,
+        mtq.FP8_DEFAULT_CFG,
+        mtq.W4A8_AWQ_BETA_CFG,
+        mtq.INT8_SMOOTHQUANT_CFG,
+        mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+        mtq.INT4_AWQ_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+    ],
+)
+def test_data_parallel(need_2_gpus, config):
+    spawn_multiprocess_job(
+        size=2, job=partial(_test_data_parallel_helper, config), backend="nccl"
+    )
+
+# 3. Context Parallel Test
+def _test_context_parallel_helper(config, rank, size):
+    initialize_for_megatron(context_parallel_size=size, seed=SEED)
+    model = MegatronModel(cp_size=size).cuda()
+
+    context_parallel_test_helper(
+        model, config, get_context_parallel_group()
+    )
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.INT8_DEFAULT_CFG,
+        mtq.FP8_DEFAULT_CFG,
+        mtq.W4A8_AWQ_BETA_CFG,
+        mtq.INT8_SMOOTHQUANT_CFG,
+        mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+        mtq.INT4_AWQ_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+    ],
+)
+def test_context_parallel(need_2_gpus, config):
+    spawn_multiprocess_job(
+        size=2, job=partial(_test_context_parallel_helper, config), backend="nccl"
+    )
+
+# 4. DP=2 + TP=2 + CP=2 Test (on 2*2*2=8 GPUs)
+def _test_data_tensor_context_parallel_helper(config, rank, size):
+    initialize_for_megatron(tensor_model_parallel_size=2, context_parallel_size=2, seed=SEED)
+    model = MegatronModel(tp_size=2, cp_size=2).cuda()
+
+    data_tensor_context_parallel_test_helper(
+        model, config, get_data_parallel_group(), get_tensor_model_parallel_group(), get_context_parallel_group()
+    )
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.INT8_DEFAULT_CFG,
+        mtq.FP8_DEFAULT_CFG,
+        mtq.W4A8_AWQ_BETA_CFG,
+        mtq.INT8_SMOOTHQUANT_CFG,
+        mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+        mtq.INT4_AWQ_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+    ],
+)
+def test_data_tensor_context_parallel(need_8_gpus, config):
+    spawn_multiprocess_job(
+       size=8, job=partial(_test_data_tensor_context_parallel_helper, config), backend="nccl"
+    )
 
 def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64, meta_device=False):
     """Build the model."""

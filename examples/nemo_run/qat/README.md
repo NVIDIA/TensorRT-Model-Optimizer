@@ -92,7 +92,7 @@ In order to train using QAD, launch the example with `python qat/nemo_qat_flow.p
 To perform QAD training, run:
 
 ```bash
-python qat/nemo_qat_flow.py --distill --log-dir /my/log/dir --experiment qad_experiment
+python qat/nemo_qat_flow.py --distill --log-dir /my/log/dir --experiment qad_experiment --tensor_parallelism 4
 ```
 
 ## Supported models

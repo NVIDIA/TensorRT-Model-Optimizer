@@ -116,8 +116,8 @@ def save_restore_test(model_cls, device, quant_config, compress=False, version=N
         mto.restore_from_modelopt_state(model_ref, state_dict)
 
 
-def tensor_parallel_test_helper(model, config, tp_group, dp_group):
-    # The input to fist layer, the column parallel should be the same across all tp ranks
+def tensor_parallel_test_helper(model, config, tp_group):
+    # The input to first layer, the column parallel should be the same across all tp ranks
     calib_data = model.get_dummy_input().cuda()
     dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
 
@@ -149,6 +149,59 @@ def tensor_parallel_test_helper(model, config, tp_group, dp_group):
 
     dist.destroy_process_group()
 
+def data_parallel_test_helper(model, config, dp_group):
+    calib_data = model.get_dummy_input().cuda()
+
+    def forward_loop(model):
+        model(calib_data)
+
+    model = mtq.quantize(model, config, forward_loop)
+
+    fc1_amax = model.fc1.input_quantizer.amax.clone()
+    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=dp_group)
+    assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+
+    fc2_amax = model.fc2.input_quantizer.amax.clone()
+    dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
+    assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+
+def context_parallel_test_helper(model, config, cp_group):
+    calib_data = model.get_dummy_input().cuda()
+
+    def forward_loop(model):
+        model(calib_data)
+
+    model = mtq.quantize(model, config, forward_loop)
+
+    fc1_amax = model.fc1.input_quantizer.amax.clone()
+    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=cp_group)
+    assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+
+    fc2_amax = model.fc2.input_quantizer.amax.clone()
+    dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
+    assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+
+def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, cp_group):
+    calib_data = model.get_dummy_input().cuda()
+    # data should be same across each TP rank
+    dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
+
+    def forward_loop(model):
+        model(calib_data)
+
+    model = mtq.quantize(model, config, forward_loop)
+
+    fc1_amax = model.fc1.input_quantizer.amax.clone()
+    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=tp_group)
+    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=cp_group)
+    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=dp_group)
+    assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+
+    fc2_amax = model.fc2.input_quantizer.amax.clone()
+    dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=tp_group)
+    dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
+    dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
+    assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
 
 def auto_quantize_helper(model):
     model, search_state = mtq.auto_quantize(

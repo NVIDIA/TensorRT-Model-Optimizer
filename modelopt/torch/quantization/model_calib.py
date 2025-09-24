@@ -79,21 +79,22 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
     if not distributed_sync:
         return
 
-    def sync_quantizer_amax_across_dp(quantizer, parallel_state):
+    def sync_quantizer_amax_across_dp_cp(quantizer, parallel_state):
+        """Synchronize the amax across all ranks in the data parallel and context parallel groups."""
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
-                sync_quantizer_amax_across_dp(_q, parallel_state)
+                sync_quantizer_amax_across_dp_cp(_q, parallel_state)
             return
         if getattr(quantizer, "_amax", None) is not None:
             quantizer.sync_amax_across_distributed_group(parallel_state.data_parallel_group)
+            quantizer.sync_amax_across_distributed_group(parallel_state.context_parallel_group)
         # TODO: create sync_bias_across_distributed_group
 
     for name, module in model.named_modules():
         if isinstance(module, QuantModule):
             for child in module.children():
                 if isinstance(child, (TensorQuantizer, SequentialQuantizer)):
-                    sync_quantizer_amax_across_dp(child, module.parallel_state)
-
+                    sync_quantizer_amax_across_dp_cp(child, module.parallel_state)
     # TP sync:
     # Objective: the quantization parameters when TP = 8 then changed to TP=4 then back to TP=8 should be the same
 
@@ -624,6 +625,14 @@ def awq_lite(
     # This will also perform distributed amax sync for input_quantizers
     max_calibrate(model, lambda model: None)
 
+    def sync_act_scale_across_dp_cp(module, data_parallel_group, context_parallel_group):
+        # Sync across Data Parallel (DP)
+        if data_parallel_group.is_initialized():
+            dist.all_reduce(module.awq_lite.act_scale, op=dist.ReduceOp.AVG, group=data_parallel_group.group)
+        # Sync across Context Parallel (CP)
+        if context_parallel_group.is_initialized():
+            dist.all_reduce(module.awq_lite.act_scale, op=dist.ReduceOp.AVG, group=context_parallel_group.group)
+
     for name, module in model.named_modules():
         if (
             is_quantized_linear(module)
@@ -631,6 +640,8 @@ def awq_lite(
             and module.awq_lite.num_cache_steps > 0
         ):
             module.awq_lite.act_scale = module.awq_lite.act_scale / module.awq_lite.num_cache_steps
+            sync_act_scale_across_dp_cp(module, module.parallel_state.data_parallel_group, module.parallel_state.context_parallel_group)
+            
             # Hack: MoEs forward all tokens through all experts if _if_calib is True
             module._if_calib = True
 
