@@ -181,11 +181,12 @@ class PrecisionConverter:
                 for idx, d in enumerate(vi.type.tensor_type.shape.dim):
                     if d.dim_value:
                         vi.type.tensor_type.shape.dim[idx].dim_param = "unk"
-            for out in self.model.graph.output:
-                out.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
-                for idx, d in enumerate(out.type.tensor_type.shape.dim):
-                    if d.dim_value:
-                        out.type.tensor_type.shape.dim[idx].dim_param = "unk"
+            if not self.keep_io_types:
+                for out in self.model.graph.output:
+                    out.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
+                    for idx, d in enumerate(out.type.tensor_type.shape.dim):
+                        if d.dim_value:
+                            out.type.tensor_type.shape.dim[idx].dim_param = "unk"
             # Populate type information with inferred types
             self.model = onnx_utils.infer_shapes(self.model, strict_mode=True, check_type=False)
             self._ensure_types_are_defined()
@@ -200,6 +201,9 @@ class PrecisionConverter:
         # Remove redundant casts
         self._cleanup()
 
+        if self.keep_io_types:
+            self._restore_original_io_types()
+
         self._sanity_check()
 
         return self.model
@@ -209,6 +213,32 @@ class PrecisionConverter:
         for vi in self.model.graph.value_info:
             if vi.type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED:
                 vi.type.tensor_type.elem_type = self.low_precision_type.onnx_type
+
+    def _restore_original_io_types(self):
+        """Restore original I/O types."""
+        # Restore input types
+        for input_tensor in self.model.graph.input:
+            if input_tensor.name in self.original_network_io:
+                original_type = self.original_network_io[input_tensor.name]
+                if input_tensor.type.tensor_type.elem_type != original_type:
+                    input_tensor.type.tensor_type.elem_type = original_type
+                    # Update value_info_map if tensor exists there
+                    if input_tensor.name in self.value_info_map:
+                        self.value_info_map[
+                            input_tensor.name
+                        ].type.tensor_type.elem_type = original_type
+
+        # Restore output types
+        for output_tensor in self.model.graph.output:
+            if output_tensor.name in self.original_network_io:
+                original_type = self.original_network_io[output_tensor.name]
+                if output_tensor.type.tensor_type.elem_type != original_type:
+                    output_tensor.type.tensor_type.elem_type = original_type
+                    # Update value_info_map if tensor exists there
+                    if output_tensor.name in self.value_info_map:
+                        self.value_info_map[
+                            output_tensor.name
+                        ].type.tensor_type.elem_type = original_type
 
     def _propagate_types_shapes_custom_ops(self, model):
         """Propagate types and shapes after insertion of 'Cast' nodes or other graph modifications."""
@@ -421,8 +451,9 @@ class PrecisionConverter:
         for node in high_precision_nodes:
             # Add cast up for network inputs
             cast_to_fp32.extend([input for input in node.input if input in network_inputs])
-            # Add cast down for network outputs
-            cast_to_fp16.extend([output for output in node.output if output in network_outputs])
+            # Add cast down for network outputs (only if not keeping I/O types)
+            if not self.keep_io_types:
+                cast_to_fp16.extend([output for output in node.output if output in network_outputs])
 
         # Remove initializers, they are handled separately
         initializers = {init.name for init in self.model.graph.initializer}
