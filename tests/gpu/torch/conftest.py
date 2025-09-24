@@ -33,6 +33,12 @@ def need_2_gpus():
     if torch.cuda.device_count() < 2:
         pytest.skip("Need at least 2 GPUs to run this test")
 
+@pytest.fixture
+def need_8_gpus():
+    if torch.cuda.device_count() < 8:
+        pytest.skip("Need at least 8 GPUs to run this test")
+
+
 
 @pytest.fixture
 def need_8_gpus():

@@ -84,10 +84,11 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
         """Synchronize the amax across all ranks in the data parallel group."""
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
-                sync_quantizer_amax_across_dp(_q, parallel_state)
+                sync_quantizer_amax_across_dp_cp(_q, parallel_state)
             return
         if getattr(quantizer, "_amax", None) is not None:
             quantizer.sync_amax_across_distributed_group(parallel_state.data_parallel_group)
+            quantizer.sync_amax_across_distributed_group(parallel_state.context_parallel_group)
         # TODO: create sync_bias_across_distributed_group
 
     for name, module in model.named_modules():

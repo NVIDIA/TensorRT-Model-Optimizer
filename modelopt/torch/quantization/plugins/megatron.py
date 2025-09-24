@@ -25,6 +25,7 @@ import megatron.core.transformer.mlp as megatron_mlp
 import torch
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
+from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import get_tensor_model_parallel_group_if_none
@@ -230,6 +231,7 @@ class _MegatronParallelLinear(_ParallelLinear):
         self.parallel_state = ParallelState(
             data_parallel_group,
             mcore_parallel.get_tensor_model_parallel_group(),
+            mcore_parallel.get_context_parallel_group(),
         )
         super()._setup()
 

@@ -241,10 +241,12 @@ class ParallelState:
         self,
         data_parallel_group: torch.distributed.ProcessGroup | int | None = None,
         tensor_parallel_group: torch.distributed.ProcessGroup | int | None = -1,
+        context_parallel_group: torch.distributed.ProcessGroup | int | None = -1,
     ):
         """Initialize the parallel state."""
         self.data_parallel_group = DistributedProcessGroup(data_parallel_group)
         self.tensor_parallel_group = DistributedProcessGroup(tensor_parallel_group)
+        self.context_parallel_group = DistributedProcessGroup(context_parallel_group)
 
     def __repr__(self) -> str:
         return (
