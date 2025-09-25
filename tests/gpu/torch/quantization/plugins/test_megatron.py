@@ -550,3 +550,158 @@ def test_kv_cache_sharded_state_dict(tmp_path, config):
         job=partial(_test_kv_cache_sharded_state_dict_helper, tmp_path, config),
         backend="nccl",
     )
+
+# ---------------------------------------------------------------------------
+# Additional tests appended by CodeRabbit Inc.:
+# Note: This project uses pytest as the testing framework and PyTorch (with Megatron-Core)
+# along with repository utilities in _test_utils for distributed setup/spawning.
+# These tests focus on quantizer attribute propagation, KV-cache behavior with
+# local transformer_impl, compress idempotency, and block-size application.
+# ---------------------------------------------------------------------------
+
+def test_set_quantizer_attribute_propagates(distributed_setup_size_1):
+    initialize_for_megatron(seed=SEED)
+    set_seed(SEED)
+    model = MegatronModel().cuda()
+
+    # Convert modules to quantized equivalents
+    mtq.replace_quant_module(model)
+
+    # Disable all quantizers first, then re-enable specific ones and set attributes
+    mtq.set_quantizer_attribute(model, "*", {"enable": False})
+    mtq.set_quantizer_attribute(model, "*weight_quantizer", {"enable": True, "num_bits": 8})
+    mtq.set_quantizer_attribute(model, "*input_quantizer", {"enable": True})
+
+    saw_weight_bits = False
+    saw_input_enabled = False
+    for module in model.modules():
+        if isinstance(module, (ColumnParallelLinear, RowParallelLinear)):
+            assert hasattr(module, "input_quantizer")
+            assert hasattr(module, "weight_quantizer")
+
+            # Validate 'enable' took effect on input quantizers
+            iq = module.input_quantizer
+            if hasattr(iq, "is_enabled"):
+                assert iq.is_enabled
+                saw_input_enabled = True
+            elif hasattr(iq, "enable"):
+                assert iq.enable
+                saw_input_enabled = True
+
+            # Validate num_bits propagation on weight quantizers when supported
+            wq = module.weight_quantizer
+            if hasattr(wq, "num_bits"):
+                assert wq.num_bits == 8
+                saw_weight_bits = True
+
+    assert saw_input_enabled, "Input quantizers did not report enabled state"
+    assert saw_weight_bits, "No weight quantizer reported num_bits attribute == 8"
+
+    # Clean up since this is not a spawned process
+    destroy_model_parallel()
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.FP8_KV_CFG,
+        mtq.NVFP4_KV_CFG,
+    ],
+)
+def test_kv_cache_quant_local_impl(distributed_setup_size_1, config):
+    """Negative scenario: using a 'local' transformer_impl should not create KV-cache
+    bmm quantizers (TEDotProductAttention not present)."""
+    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=SEED)
+
+    model = get_mcore_gpt_model(
+        tensor_model_parallel_size=1,
+        num_layers=1,
+        hidden_size=64,
+        num_attention_heads=4,
+        vocab_size=32,
+        transformer_impl="local",
+    ).cuda()
+
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    def forward_fn(m):
+        return megatron_prefill(m, prompt_tokens)
+
+    quantized_model = mtq.quantize(model, config, forward_fn)
+
+    # Ensure no k/v bmm quantizers are present under 'local' impl
+    for name, module in quantized_model.named_modules():
+        assert not (
+            hasattr(module, "k_bmm_quantizer") or hasattr(module, "v_bmm_quantizer")
+        ), f"Unexpected KV cache quantizers found on local impl module: {name}"
+
+    # Smoke test
+    out = forward_fn(quantized_model)
+    assert out is not None
+
+    destroy_model_parallel()
+
+
+def test_compress_idempotent(distributed_setup_size_1):
+    """Compressing an already-compressed model should be effectively idempotent."""
+    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=SEED)
+
+    hidden_size = 256
+    config = mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG
+
+    model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    def forward_fn(m):
+        return megatron_prefill(m, prompt_tokens)
+
+    model = mtq.quantize(model, config, forward_fn)
+
+    mem_before = get_model_size(model)
+    mtq.compress(model)
+    mem_after_first = get_model_size(model)
+    # Second compress should not increase memory and should change very little (if at all)
+    mtq.compress(model)
+    mem_after_second = get_model_size(model)
+
+    assert mem_after_first <= mem_before, "compress() increased model size"
+    assert mem_after_second <= mem_after_first * 1.05, "Second compress() is not idempotent enough"
+
+    # Forward still works
+    out = forward_fn(model)
+    assert out is not None
+
+    destroy_model_parallel()
+
+
+def test_mixed_block_sizes_attribute_application(distributed_setup_size_1):
+    """Verify mixed_block_size_config applies 'block_sizes' attributes to weight quantizers."""
+    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=SEED)
+
+    model = _gpt_model_provider(tp_size=1, hidden_size=128)
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    def forward_fn(m):
+        return megatron_prefill(m, prompt_tokens)
+
+    quant_model = mtq.quantize(model, mixed_block_size_config, forward_fn)
+
+    found_expected_block_sizes = False
+    for name, module in quant_model.named_modules():
+        wq = getattr(module, "weight_quantizer", None)
+        if wq is not None:
+            bs = getattr(wq, "block_sizes", None)
+            if isinstance(bs, dict) and (-1 in bs or -2 in bs):
+                # Expect values as configured in mixed_block_size_config
+                if (-1 in bs and bs[-1] in (64, 128)) or (-2 in bs and bs[-2] == 64):
+                    found_expected_block_sizes = True
+                    break
+
+    assert found_expected_block_sizes, "No weight quantizer had expected block_sizes per mixed_block_size_config"
+
+    # Smoke test
+    out = forward_fn(quant_model)
+    assert out is not None
+
+    destroy_model_parallel()
+
