@@ -19,10 +19,20 @@ from typing import Any
 
 import torch
 import transformers
+from ar_validate import validate_ar
+from datasets import load_dataset
 from torch.utils.data import Dataset
+from transformers import TrainerCallback
 from transformers.trainer_pt_utils import LabelSmoother
 
 from modelopt.torch.utils import print_rank_0
+
+try:
+    import wandb
+
+    wandb.init()
+except ImportError:
+    wandb = None
 
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 
@@ -382,3 +392,24 @@ class DataCollatorForOffline(DataCollatorWithPadding):
         }
 
         return batch
+
+
+class ARValidationCallback(TrainerCallback):
+    def __init__(self, ar_validate_steps: int = 1000):
+        self.ar_validate_steps = ar_validate_steps
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if self.ar_validate_steps <= 0:
+            return control
+        if state.global_step % self.ar_validate_steps == 0 and state.global_step > 0:
+            print_rank_0("Running AR validation...")
+            ars = validate_ar(
+                model=kwargs["model"],
+                tokenizer=kwargs["processing_class"],
+                ds=load_dataset("HuggingFaceH4/mt_bench_prompts")["train"],
+                device=kwargs["model"].device,
+            )
+            print_rank_0(f"Step {state.global_step} AR: {sum(ars) / len(ars):.4f}")
+            if wandb:
+                wandb.log({"validate_ar": sum(ars) / len(ars)}, step=state.global_step)
+        return control
