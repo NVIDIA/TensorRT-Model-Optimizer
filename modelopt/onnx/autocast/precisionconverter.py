@@ -215,29 +215,19 @@ class PrecisionConverter:
 
     def _restore_original_io_types(self):
         """Restore original I/O types."""
-        # Restore input types
-        for input_tensor in self.model.graph.input:
-            if input_tensor.name in self.original_network_io:
-                original_type = self.original_network_io[input_tensor.name]
-                if input_tensor.type.tensor_type.elem_type != original_type:
-                    input_tensor.type.tensor_type.elem_type = original_type
-                    # Update value_info_map if tensor exists there
-                    if input_tensor.name in self.value_info_map:
-                        self.value_info_map[
-                            input_tensor.name
-                        ].type.tensor_type.elem_type = original_type
 
-        # Restore output types
-        for output_tensor in self.model.graph.output:
-            if output_tensor.name in self.original_network_io:
-                original_type = self.original_network_io[output_tensor.name]
-                if output_tensor.type.tensor_type.elem_type != original_type:
-                    output_tensor.type.tensor_type.elem_type = original_type
+        def restore_tensor_type(tensor):
+            if tensor.name in self.original_network_io:
+                original_type = self.original_network_io[tensor.name]
+                if tensor.type.tensor_type.elem_type != original_type:
+                    tensor.type.tensor_type.elem_type = original_type
                     # Update value_info_map if tensor exists there
-                    if output_tensor.name in self.value_info_map:
-                        self.value_info_map[
-                            output_tensor.name
-                        ].type.tensor_type.elem_type = original_type
+                    if tensor.name in self.value_info_map:
+                        self.value_info_map[tensor.name].type.tensor_type.elem_type = original_type
+
+        # Restore input and output types
+        for tensor in self.model.graph.input + self.model.graph.output:
+            restore_tensor_type(tensor)
 
     def _propagate_types_shapes_custom_ops(self, model):
         """Propagate types and shapes after insertion of 'Cast' nodes or other graph modifications."""
