@@ -426,9 +426,16 @@ def quantize(
         quantize_mode,
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
+
+    # Update list with op types to exclude from FP16/BF16 conversion
     op_types_to_exclude_fp16 = list(
         dict.fromkeys((op_types_to_exclude_fp16 or []) + list(custom_ops_to_cast_fp32.keys()))
     )
+    if high_precision_dtype == "fp32" and op_types_to_exclude_fp16:
+        logger.warning(
+            "Nodes were detected for exclusion from FP16/BF16 conversion, but 'high_precision_dtype' is set to FP32. "
+            "Since the model won't be converted to a lower precision, this flag is void."
+        )
 
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
