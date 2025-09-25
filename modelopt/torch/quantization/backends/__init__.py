@@ -16,3 +16,4 @@
 """Quantization backends."""
 
 from .gemm_registry import *
+from .nvfp4_gemm import *
