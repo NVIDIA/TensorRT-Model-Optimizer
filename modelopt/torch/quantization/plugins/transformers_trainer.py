@@ -21,6 +21,7 @@ import types
 from dataclasses import dataclass, field
 
 import torch
+from safetensors.torch import save_file
 from tqdm import tqdm
 
 import modelopt.torch.opt as mto
@@ -28,7 +29,6 @@ import modelopt.torch.quantization as mtq
 from modelopt.torch.distill import KDLossConfig
 from modelopt.torch.distill.mode import _convert_for_kd
 from modelopt.torch.distill.plugins.huggingface import KDTrainer
-from modelopt.torch.export.unified_export_hf import export_hf_checkpoint
 from modelopt.torch.opt.conversion import restore_from_modelopt_state
 from modelopt.torch.opt.plugins import ModelOptHFTrainer
 from modelopt.torch.quantization.config import QuantizeConfig
@@ -182,6 +182,18 @@ class QATTrainer(ModelOptHFTrainer):
 
         print_rank_0(f"Saved modelopt state to {self._modelopt_state_path}")
 
+        # Save base model compressed weights for QLoRA
+        if getattr(self.quant_args, "compress", False):
+            # Save base model config.json
+            self.model.config.save_pretrained(self.args.output_dir)
+
+            # Save base model compressed weights excluding lora weights
+            state_dict = self.model.state_dict()
+            for k in [key for key in state_dict if "lora" in key]:
+                del state_dict[k]
+
+            save_file(state_dict, f"{self.args.output_dir}/model.safetensors")
+
     def _restore_modelopt_state_with_weights(self):
         modelopt_state = torch.load(self._modelopt_state_path, weights_only=False)
         modelopt_weights = modelopt_state.pop("modelopt_state_weights", None)
@@ -287,12 +299,6 @@ class QATTrainer(ModelOptHFTrainer):
             adapter_name = self.model.active_adapter()
             self.model.delete_adapter(adapter_name)
             self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
-
-    def export_base_model(self):
-        """Export the basemodel to HF checkpoint for deployment."""
-        # Save config.json
-        if self.accelerator.is_main_process:
-            export_hf_checkpoint(self.model, export_dir=f"{self.args.output_dir}/base_model")
 
     def _patch_accelerate_for_fsdp2_fix(self):
         """Fixes for accelerate prepare.
