@@ -22,11 +22,11 @@ import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import torch
+from megatron.core.extensions.transformer_engine import TEDotProductAttention
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import get_tensor_model_parallel_group_if_none
-from megatron.core.extensions.transformer_engine import TEDotProductAttention
 
 from modelopt.torch.opt.plugins.megatron import (
     _MegatronMLP,
@@ -34,11 +34,11 @@ from modelopt.torch.opt.plugins.megatron import (
 )
 from modelopt.torch.utils.distributed import ParallelState
 
+from ..model_calib import max_calibrate
 from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
-from ..model_calib import max_calibrate
 
 __all__ = []
 
@@ -466,7 +466,13 @@ class _RealQuantMegatronRowParallelLinear(
 
 @QuantModuleRegistry.register({TEDotProductAttention: "TEDotProductAttention"})
 class _QuantTEDotProductAttention(QuantModule):
-    """Quantized version of TEDotProductAttention for Megatron models with KV cache quantization."""
+    """Quantized version of TEDotProductAttention for Megatron models with KV cache quantization.
+
+    This class adds KV cache quantization support to Transformer Engine's TEDotProductAttention
+    module used in Megatron-Core models. It introduces three quantizers (q_bmm_quantizer,
+    k_bmm_quantizer, v_bmm_quantizer) that quantize the query, key, and value tensors after
+    RoPE has been applied.
+    """
 
     def _setup(self):
         """Initialize quantizers for Q, K, V tensors."""
@@ -476,25 +482,35 @@ class _QuantTEDotProductAttention(QuantModule):
 
     def _calibrate_quantizers(self):
         """Calibrate quantizers with minimal dummy tensors."""
-        # Get device from parent module parameters
-        device = next(self.parameters()).device if self.parameters() else torch.device('cuda')
-        
+        # Get device and dtype from the parent module's parameters
+        param = next(iter(self.parameters()), None)
+        device = param.device if param is not None else torch.device("cuda")
+        dtype = param.dtype if param is not None else torch.float16
+
         # TEDotProductAttention expects format 'sbhd' or 'bshd' depending on rope_fusion
         batch_size = 1
         seq_len = 1
-        
+
         # Get dimensions from config
         num_heads = self.config.num_attention_heads
-        head_dim = self.config.kv_channels if hasattr(self.config, 'kv_channels') else self.config.hidden_size // num_heads
-        
+        head_dim = (
+            self.config.kv_channels
+            if hasattr(self.config, "kv_channels")
+            else self.config.hidden_size // num_heads
+        )
+
         # Determine tensor format (default to sbhd if not specified)
-        apply_rope_fusion = getattr(self.config, 'apply_rope_fusion', False)
+        apply_rope_fusion = getattr(self.config, "apply_rope_fusion", False)
         qkv_format = "bshd" if apply_rope_fusion else "sbhd"
 
         if qkv_format == "sbhd":
-            dummy_tensor = torch.randn(seq_len, batch_size, num_heads, head_dim, device=device, dtype=torch.float16)
+            dummy_tensor = torch.randn(
+                seq_len, batch_size, num_heads, head_dim, device=device, dtype=dtype
+            )
         else:
-            dummy_tensor = torch.randn(batch_size, seq_len, num_heads, head_dim, device=device, dtype=torch.float16)
+            dummy_tensor = torch.randn(
+                batch_size, seq_len, num_heads, head_dim, device=device, dtype=dtype
+            )
 
         # Calibrate each quantizer
         quantizers = [
@@ -504,14 +520,14 @@ class _QuantTEDotProductAttention(QuantModule):
         ]
 
         for _, quantizer in quantizers:
-            if quantizer is not None and quantizer.is_enabled:
+            if quantizer is not None and quantizer.is_enabled():
                 if not hasattr(quantizer, "_amax") or quantizer._amax is None:
                     quantizer.reset_amax()
                     max_calibrate(quantizer, lambda q: q(dummy_tensor), distributed_sync=False)
 
     def forward(self, query, key, value, *args, **kwargs):
         """Apply post-RoPE quantization to KV cache.
-        
+
         TEDotProductAttention receives Q, K, V after RoPE is applied,
         so we quantize them directly for KV cache quantization.
         """
@@ -525,7 +541,7 @@ class _QuantTEDotProductAttention(QuantModule):
     def sharded_state_dict(self, prefix="", sharded_offsets=(), metadata=None):
         """Create a sharded state dictionary for distributed checkpointing."""
         sharded_state_dict = {}
-        
+
         # First add non-quantizer parameters
         for k, v in self.state_dict(prefix="", keep_vars=True).items():
             if isinstance(v, torch.Tensor) and v is not None and "_quantizer" not in k:
@@ -542,10 +558,11 @@ class _QuantTEDotProductAttention(QuantModule):
                 sharded_state_dict[amax_key] = quantizer._amax
 
         # Process other quantizer parameters in bmm_quantizers
-        quantizer_state_dict = {}
-        for k, v in self.state_dict(prefix="", keep_vars=True).items():
-            if isinstance(v, torch.Tensor) and "_quantizer" in k and "_amax" not in k:
-                quantizer_state_dict[k] = v
+        quantizer_state_dict = {
+            k: v
+            for k, v in self.state_dict(prefix="", keep_vars=True).items()
+            if isinstance(v, torch.Tensor) and "_quantizer" in k and "_amax" not in k
+        }
 
         if quantizer_state_dict:
             sharded_state_dict.update(
@@ -581,10 +598,11 @@ class _QuantTEDotProductAttention(QuantModule):
         super().modelopt_post_restore(name)
 
         def _check_unsupported_states(quantizer):
+            """Check for unsupported quantizer states and warn if found."""
             if not hasattr(quantizer, "state_dict"):
                 return
 
-            for k in quantizer.state_dict().keys():
+            for k in quantizer.state_dict():
                 if k not in ["_amax", "_pre_quant_scale"]:
                     warnings.warn(
                         f"Restore of {k} for {name} is not supported. The restore of this layer might be "
@@ -598,7 +616,7 @@ class _QuantTEDotProductAttention(QuantModule):
             ("k_bmm_quantizer", self.k_bmm_quantizer),
             ("v_bmm_quantizer", self.v_bmm_quantizer),
         ]:
-            if not hasattr(self, quantizer_name) or not quantizer.is_enabled:
+            if not hasattr(self, quantizer_name) or not quantizer.is_enabled():
                 continue
 
             _check_unsupported_states(quantizer)
