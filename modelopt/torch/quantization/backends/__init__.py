@@ -15,6 +15,9 @@
 
 """Quantization backends."""
 
-from .fp8_per_tensor_gemm import *
+import platform
+
+if platform.system() != "Windows":
+    from .fp8_per_tensor_gemm import *
 from .gemm_registry import *
 from .nvfp4_gemm import *
