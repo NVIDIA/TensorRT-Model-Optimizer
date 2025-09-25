@@ -216,6 +216,7 @@ def quantize(
     override_shapes: str | None = None,
     op_types_to_quantize: list[str] | None = None,
     op_types_to_exclude: list[str] | None = None,
+    op_types_to_exclude_fp16: list[str] | None = None,
     nodes_to_quantize: list[str] | None = None,
     nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
@@ -267,6 +268,9 @@ def quantize(
             This flag does not support regular expression.
         op_types_to_exclude:
             List of op types to exclude from quantization. This flag does not support regular expression.
+        op_types_to_exclude_fp16:
+            List of op types to exclude from FP16 conversion.
+            This is only relevant if '--high_precision_dtype != fp32'.
         nodes_to_quantize:
             List of node names to quantize. If None (default), all supported nodes are quantized.
             This flag supports regular expression.
@@ -422,6 +426,8 @@ def quantize(
         quantize_mode,
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
+    op_types_to_exclude_fp16 = op_types_to_exclude_fp16 or []
+    op_types_to_exclude_fp16.extend(list(custom_ops_to_cast_fp32.keys()))
 
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
@@ -464,6 +470,7 @@ def quantize(
             calibration_eps=calibration_eps,
             op_types_to_quantize=op_types_to_quantize,
             op_types_to_exclude=op_types_to_exclude,
+            op_types_to_exclude_fp16=op_types_to_exclude_fp16,
             nodes_to_quantize=nodes_to_quantize,
             nodes_to_exclude=nodes_to_exclude,
             use_external_data_format=use_external_data_format,
@@ -474,7 +481,6 @@ def quantize(
             passes=passes,
             log_level=log_level,
             calibrate_per_node=calibrate_per_node,
-            custom_ops_to_cast_fp32=list(custom_ops_to_cast_fp32.keys()),
             custom_ops_to_quantize=list(custom_ops_to_quantize.keys()),
             direct_io_types=direct_io_types,
             **kwargs,

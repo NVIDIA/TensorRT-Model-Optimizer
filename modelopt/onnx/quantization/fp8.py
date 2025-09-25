@@ -168,6 +168,7 @@ def quantize(
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] | None = None,
     op_types_to_exclude: list[str] | None = None,
+    op_types_to_exclude_fp16: list[str] = [],
     nodes_to_quantize: list[str] | None = None,
     nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
@@ -178,7 +179,6 @@ def quantize(
     passes: list[str] = ["concat_elimination"],
     log_level: str = "INFO",
     calibrate_per_node: bool = False,
-    custom_ops_to_cast_fp32: list[str] = [],
     custom_ops_to_quantize: list[str] = [],
     direct_io_types: bool = False,
     **kwargs,
@@ -319,7 +319,7 @@ def quantize(
         onnx_model = convert_to_f16(
             onnx_model,
             keep_io_types=not direct_io_types,
-            op_block_list=custom_ops_to_cast_fp32,
+            op_block_list=op_types_to_exclude_fp16,
             low_precision_type=high_precision_dtype,
             trt_plugins=trt_extra_plugin_lib_paths,
         )
