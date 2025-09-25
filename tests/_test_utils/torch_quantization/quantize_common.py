@@ -209,6 +209,7 @@ def data_tensor_context_parallel_test_helper(
             model.fc1.awq_lite, "act_scale", dist.ReduceOp.AVG, groups=[dp_group, tp_group]
         )
 
+
 def data_parallel_test_helper(model, config, dp_group):
     calib_data = model.get_dummy_input().cuda()
 
@@ -225,6 +226,7 @@ def data_parallel_test_helper(model, config, dp_group):
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
     assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
 
+
 def context_parallel_test_helper(model, config, cp_group):
     calib_data = model.get_dummy_input().cuda()
 
@@ -240,6 +242,7 @@ def context_parallel_test_helper(model, config, cp_group):
     fc2_amax = model.fc2.input_quantizer.amax.clone()
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
     assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+
 
 def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, cp_group):
     calib_data = model.get_dummy_input().cuda()
@@ -262,6 +265,7 @@ def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, 
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
     assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+
 
 def auto_quantize_helper(model):
     model, search_state = mtq.auto_quantize(
