@@ -158,13 +158,22 @@ def data_parallel_test_helper(model, config, dp_group):
 
     model = mtq.quantize(model, config, forward_loop)
 
-    fc1_amax = model.fc1.input_quantizer.amax.clone()
-    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=dp_group)
-    assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+    # Input quantizer amax
+    if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
+        fc1_amax = model.fc1.input_quantizer.amax.clone()
+        dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=dp_group)
+        assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+        fc2_amax = model.fc2.input_quantizer.amax.clone()
+        dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
+        assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
 
-    fc2_amax = model.fc2.input_quantizer.amax.clone()
+    # Weight quantizer amax
+    fc1_amax = model.fc1.weight_quantizer.amax.clone()
+    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=dp_group)
+    assert torch.allclose(fc1_amax, model.fc1.weight_quantizer.amax)
+    fc2_amax = model.fc2.weight_quantizer.amax.clone()
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
-    assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+    assert torch.allclose(fc2_amax, model.fc2.weight_quantizer.amax)
 
 
 def context_parallel_test_helper(model, config, cp_group):
@@ -175,13 +184,22 @@ def context_parallel_test_helper(model, config, cp_group):
 
     model = mtq.quantize(model, config, forward_loop)
 
-    fc1_amax = model.fc1.input_quantizer.amax.clone()
-    dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=cp_group)
-    assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+    # Input quantizer amax
+    if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
+        fc1_amax = model.fc1.input_quantizer.amax.clone()
+        dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=cp_group)
+        assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+        fc2_amax = model.fc2.input_quantizer.amax.clone()
+        dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
+        assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
 
-    fc2_amax = model.fc2.input_quantizer.amax.clone()
-    dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
-    assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+    # Weight quantizer amax
+    fc1_weight_amax = model.fc1.weight_quantizer.amax.clone()
+    dist.all_reduce(fc1_weight_amax, op=dist.ReduceOp.MAX, group=cp_group)
+    assert torch.allclose(fc1_weight_amax, model.fc1.weight_quantizer.amax)
+    fc2_weight_amax = model.fc2.weight_quantizer.amax.clone()
+    dist.all_reduce(fc2_weight_amax, op=dist.ReduceOp.MAX, group=cp_group)
+    assert torch.allclose(fc2_weight_amax, model.fc2.weight_quantizer.amax)
 
 
 def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, cp_group):
@@ -194,17 +212,29 @@ def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, 
 
     model = mtq.quantize(model, config, forward_loop)
 
-    fc1_amax = model.fc1.input_quantizer.amax.clone()
+    # Input quantizer amax
+    if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
+        fc1_amax = model.fc1.input_quantizer.amax.clone()
+        dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=tp_group)
+        dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=cp_group)
+        dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=dp_group)
+        assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
+        fc2_amax = model.fc2.input_quantizer.amax.clone()
+        dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=tp_group)
+        dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
+        dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
+        assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+
+    fc1_amax = model.fc1.weight_quantizer.amax.clone()
     dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=tp_group)
     dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=cp_group)
     dist.all_reduce(fc1_amax, op=dist.ReduceOp.MAX, group=dp_group)
-    assert torch.allclose(fc1_amax, model.fc1.input_quantizer.amax)
-
-    fc2_amax = model.fc2.input_quantizer.amax.clone()
+    assert torch.allclose(fc1_amax, model.fc1.weight_quantizer.amax)
+    fc2_amax = model.fc2.weight_quantizer.amax.clone()
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=tp_group)
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=cp_group)
     dist.all_reduce(fc2_amax, op=dist.ReduceOp.MAX, group=dp_group)
-    assert torch.allclose(fc2_amax, model.fc2.input_quantizer.amax)
+    assert torch.allclose(fc2_amax, model.fc2.weight_quantizer.amax)
 
 
 def auto_quantize_helper(model):
