@@ -364,7 +364,8 @@ def copy_custom_model_files(source_path: str, export_path: str, trust_remote_cod
     if not source_dir.exists():
         if resolved_source_path != source_path:
             print(
-                f"Warning: Could not find local cache for HuggingFace model '{source_path}' (resolved to '{resolved_source_path}')"
+                f"Warning: Could not find local cache for HuggingFace model '{source_path}' "
+                f"(resolved to '{resolved_source_path}')"
             )
         else:
             print(f"Warning: Source directory '{source_path}' does not exist")
