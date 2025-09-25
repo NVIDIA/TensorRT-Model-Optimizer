@@ -8,7 +8,7 @@ Model Optimizer Changelog (Linux)
 
 - Deprecated ModelOpt's custom docker images. Please use the PyTorch, TensorRT-LLM or TensorRT docker image directly or refer to the `installation guide <https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html>`_ for more details.
 - Deprecated ``quantize_mode`` argument in ``examples/onnx_ptq/evaluate.py`` to support strongly typing. Use ``engine_precision`` instead.
-- Deprecated TRT-LLM's TRT backend in ``examples/llm_ptq`` and ``examples/vlm_ptq``. Tasks ``build`` and ``benchmark`` support are removed and replaced with ``quant``. For performance evaluation, please use ``trtllm-bench`` directly.
+- Deprecated TRT-LLM's TRT backend in ``examples/llm_ptq`` and ``examples/vlm_ptq``. Tasks ``build`` and ``benchmark`` support are removed and replaced with ``quant``. ``engine_dir`` is replaced with ``checkpoint_dir`` in ``examples/llm_ptq`` and ``examples/vlm_ptq``. For performance evaluation, please use ``trtllm-bench`` directly.
 - ``--export_fmt`` flag in ``examples/llm_ptq`` is removed. By default we export to the unified Hugging Face checkpoint format.
 - Deprecated ``examples/vlm_eval`` as it depends on the deprecated TRT-LLM's TRT backend.
 
@@ -17,6 +17,7 @@ Model Optimizer Changelog (Linux)
 - ``high_precision_dtype`` default to fp16 in ONNX quantization, i.e. quantized output model weights are now FP16 by default.
 - Upgrade TensorRT-LLM dependency to 1.1.0rc2.
 - Support Phi-4-multimodal and Qwen2.5-VL quantized HF checkpoint export in ``examples/vlm_ptq``.
+- Support storing and restoring Minitron pruning activations and scores for re-pruning without running the forward loop again.
 - Add Minitron pruning example for Megatron-LM framework. See ``examples/megatron-lm`` for more details.
 
 0.35 (2025-09-04)
