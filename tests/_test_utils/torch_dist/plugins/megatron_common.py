@@ -390,7 +390,11 @@ def initialize_for_megatron(
 
     NOTE: If used in a non-spawned process, make sure to call `megatron.core.parallel_state.destroy_model_parallel()`.
     """
-    initialize_model_parallel(tensor_model_parallel_size, pipeline_model_parallel_size, context_parallel_size=context_parallel_size)
+    initialize_model_parallel(
+        tensor_model_parallel_size,
+        pipeline_model_parallel_size,
+        context_parallel_size=context_parallel_size,
+    )
     model_parallel_cuda_manual_seed(seed)
 
 

@@ -249,7 +249,11 @@ class ParallelState:
         self.context_parallel_group = DistributedProcessGroup(context_parallel_group)
 
     def __repr__(self) -> str:
-        return f"data_parallel_group: {self.data_parallel_group}, tensor_parallel_group: {self.tensor_parallel_group}, context_parallel_group: {self.context_parallel_group}"
+        return (
+            f"data_parallel_group: {self.data_parallel_group}, "
+            f"tensor_parallel_group: {self.tensor_parallel_group}, "
+            f"context_parallel_group: {self.context_parallel_group}"
+        )
 
 
 def get_group(ranks: list[int]):

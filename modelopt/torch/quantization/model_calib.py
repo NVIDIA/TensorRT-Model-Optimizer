@@ -628,10 +628,14 @@ def awq_lite(
     def sync_act_scale_across_dp_cp(module, data_parallel_group, context_parallel_group):
         # Sync across Data Parallel (DP)
         if data_parallel_group.is_initialized():
-            dist.all_reduce(module.awq_lite.act_scale, op=dist.ReduceOp.AVG, group=data_parallel_group.group)
+            dist.all_reduce(
+                module.awq_lite.act_scale, op=dist.ReduceOp.AVG, group=data_parallel_group.group
+            )
         # Sync across Context Parallel (CP)
         if context_parallel_group.is_initialized():
-            dist.all_reduce(module.awq_lite.act_scale, op=dist.ReduceOp.AVG, group=context_parallel_group.group)
+            dist.all_reduce(
+                module.awq_lite.act_scale, op=dist.ReduceOp.AVG, group=context_parallel_group.group
+            )
 
     for name, module in model.named_modules():
         if (
@@ -640,8 +644,12 @@ def awq_lite(
             and module.awq_lite.num_cache_steps > 0
         ):
             module.awq_lite.act_scale = module.awq_lite.act_scale / module.awq_lite.num_cache_steps
-            sync_act_scale_across_dp_cp(module, module.parallel_state.data_parallel_group, module.parallel_state.context_parallel_group)
-            
+            sync_act_scale_across_dp_cp(
+                module,
+                module.parallel_state.data_parallel_group,
+                module.parallel_state.context_parallel_group,
+            )
+
             # Hack: MoEs forward all tokens through all experts if _if_calib is True
             module._if_calib = True
 
