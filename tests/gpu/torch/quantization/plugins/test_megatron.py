@@ -367,12 +367,26 @@ def _test_fp8_real_quantize_helper(rank, size):
 
 
 def test_fp8_real_quantize():
+    """
+    Runs the FP8 real quantization memory reduction test across all available CUDA devices.
+    
+    Spawns a multiprocess job (NCCL backend) that executes _test_fp8_real_quantize_helper on each detected GPU.
+    """
     size = torch.cuda.device_count()
     spawn_multiprocess_job(size=size, job=_test_fp8_real_quantize_helper, backend="nccl")
 
 
 def _test_kv_cache_quant_helper(config, rank, size):
-    """Helper function for testing KV cache quantization with TEDotProductAttention."""
+    """
+    Verify that TEDotProductAttention modules receive KV-cache quantization and remain functional after quantization.
+    
+    Quantizes a minimal GPT model (built with transformer_impl="modelopt") using the provided `config`, checks that each TEDotProductAttention-like module exposes `k_bmm_quantizer` and `v_bmm_quantizer`, asserts those quantizers are enabled, and performs a smoke forward pass to ensure the quantized model runs.
+    
+    Parameters:
+        config: Quantization configuration used to quantize the model (e.g., FP8_KV_CFG or NVFP4_KV_CFG).
+        rank (int): Process rank in the distributed test invocation.
+        size (int): Tensor model parallel size used to construct the model.
+    """
     initialize_for_megatron(
         tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED
     )
@@ -392,6 +406,15 @@ def _test_kv_cache_quant_helper(config, rank, size):
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     def forward_fn(model):
+        """
+        Run megatron_prefill with the predefined `prompt_tokens` on the given model.
+        
+        Parameters:
+            model: The Megatron model to execute the prefill pass on.
+        
+        Returns:
+            The outputs produced by `megatron_prefill` for the provided model.
+        """
         return megatron_prefill(model, prompt_tokens)
 
     # Test KV cache quantization with the given config
@@ -418,7 +441,17 @@ def _test_kv_cache_quant_helper(config, rank, size):
 
 
 def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
-    """Helper for testing KV cache quantization with sharded state dict save/load."""
+    """
+    Validate that KV-cache quantizers on TEDotProductAttention modules are created and correctly preserved across sharded state_dict save/load.
+    
+    This helper initializes Megatron, constructs two small GPT models using transformer_impl="modelopt" (TEDotProductAttention), quantizes both models with the provided config (KV quantizers must exist on both before checkpointing), runs a sharded save/load roundtrip, and asserts that k_bmm_quantizer and v_bmm_quantizer instances are present and that their internal `_amax` tensors (when present) match between the reference and restored models.
+    
+    Parameters:
+        tmp_path (pathlib.Path): Temporary directory to write sharded checkpoints.
+        config (dict): Quantization configuration dictionary to use for mtq.quantize.
+        rank (int): Distributed process rank for this helper.
+        size (int): Tensor-model-parallel size / world size used to initialize Megatron.
+    """
     # Disable output_layer quantization (same as other sharded state dict tests)
     config["quant_cfg"]["*output_layer*"] = {"enable": False}
 
@@ -450,6 +483,15 @@ def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
     ).cuda()
 
     def forward_fn(model):
+        """
+        Run megatron_prefill with the predefined `prompt_tokens` on the given model.
+        
+        Parameters:
+            model: The Megatron model to execute the prefill pass on.
+        
+        Returns:
+            The outputs produced by `megatron_prefill` for the provided model.
+        """
         return megatron_prefill(model, prompt_tokens)
 
     # Quantize the reference model
@@ -519,13 +561,10 @@ def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
     ],
 )
 def test_kv_cache_quant(config):
-    """Verify KV cache quantization works correctly with TEDotProductAttention.
-
-    This test ensures TEDotProductAttention is properly registered and gets the
-    expected q/k/v_bmm_quantizers when using KV cache configs.
-
-    Note: This test requires Transformer Engine to be installed since TEDotProductAttention
-    is only available with transformer_impl="modelopt" or "transformer_engine" (not "local").
+    """
+    Verify that TEDotProductAttention modules gain the expected KV-cache quantizers when using KV cache configurations.
+    
+    Runs the KV-cache quantization smoke test (via a single-process multiprocess spawn) and requires Transformer Engine or modelopt since TEDotProductAttention is not available with the local transformer implementation.
     """
     spawn_multiprocess_job(size=1, job=partial(_test_kv_cache_quant_helper, config), backend="nccl")
 
@@ -538,11 +577,10 @@ def test_kv_cache_quant(config):
     ],
 )
 def test_kv_cache_sharded_state_dict(tmp_path, config):
-    """Test KV cache quantization with sharded state dict save/load.
-
-    This test verifies the complete workflow of saving and loading KV cache quantized
-    models with distributed checkpointing, ensuring quantizer states are properly
-    preserved across the save/load cycle.
+    """
+    Run a sharded-state-dict save/load test for KV-cache quantized models.
+    
+    Spawns up to 2 processes using NCCL to execute the sharded-state-dict helper with the provided temporary path and quantization config.
     """
     size = min(2, torch.cuda.device_count())  # Use 2 GPUs if available, else 1
     spawn_multiprocess_job(
