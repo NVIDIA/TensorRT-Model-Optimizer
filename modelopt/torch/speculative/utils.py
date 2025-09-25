@@ -15,6 +15,7 @@
 
 """Utils for speculative decoding."""
 
+import contextlib
 import copy
 import warnings
 from collections import Counter, defaultdict, deque
@@ -362,3 +363,16 @@ class AcceptanceRateValidation:
         ar = (ground_truth.shape[1] - isl) / cnt
 
         return ground_truth, ar
+
+
+@contextlib.contextmanager
+def temporary_set_config_value(config, field, value):
+    """Context manager to temporarily change config value."""
+    if not hasattr(config, field):
+        raise AttributeError(f"Config does not have field '{field}'")
+    original_value = getattr(config, field)
+    try:
+        setattr(config, field, value)
+        yield
+    finally:
+        setattr(config, field, original_value)
