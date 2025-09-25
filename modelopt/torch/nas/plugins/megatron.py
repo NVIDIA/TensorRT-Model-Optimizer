@@ -649,6 +649,10 @@ class MambaTransformerLayerMixin(nn.Module):
         if hidden_states.shape[-1] != self.max_hidden_size:
             return
 
+        # use full precision to avoid overflow
+        hidden_states = hidden_states.to(torch.float32)
+        output = output.to(torch.float32)
+
         with torch.no_grad():
             # Lower cosine_similarity means higher importance hence use 1 - cosine_similarity
             score = 1 - F.cosine_similarity(hidden_states, output, dim=2).mean()
@@ -1234,10 +1238,10 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         output = output.to(torch.float32)  # use full precision to avoid overflow
         activations = output.abs().mean(dim=0)  # [batch_size, hidden_size]
         activations = activations.pow(2).sum(dim=0)  # [hidden_size]
-        if module not in self._activations:
-            self._activations[module] = activations
+        if id(module) not in self._activations:
+            self._activations[id(module)] = activations
         else:
-            self._activations[module] += activations
+            self._activations[id(module)] += activations
 
     def _estimate_hidden_size_importance(self) -> TracedHp.Importance:
         """Return the activation magnitude-based importance of the hidden_size."""
@@ -1284,16 +1288,14 @@ class _DynamicMCoreLanguageModel(DynamicModule):
                 mamba_head_dim_divisor=mamba_head_dim_divisor,
             )
 
-    def _export_drop_layers(self) -> None:
-        """Drop layers during export if num_layers hparam is set to a smaller value during pruning."""
+    def _get_layer_scores(self) -> dict[int, torch.Tensor]:
+        """Get the layer scores (1-indexed) from the module."""
         num_layers_hp = self.get_hparam("num_layers")
-        if num_layers_hp.active == num_layers_hp.max:  # no depth pruning
-            return
 
         for layer in self.decoder.layers:
             assert layer._scores > 0, "No scores collected for importance estimation."
 
-        # gather layer scores from all TP regions
+        # gather layer scores from all PP ranks
         layer_scores = {}
         for layer in self.decoder.layers:
             layer_scores[layer.layer_number] = layer._scores
@@ -1302,10 +1304,19 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             all_pp_layer_scores, layer_scores, group=get_pipeline_model_parallel_group()
         )
         layer_scores = {k: v for d in all_pp_layer_scores for k, v in d.items()}  # type: ignore[attr-defined]
-        print_rank_0(f"Layerwise scores for depth pruning: {layer_scores}")
+        print_rank_0(f"Layerwise scores (1-indexed, higher is better): {layer_scores}")
         assert sorted(layer_scores.keys()) == list(range(1, num_layers_hp.max + 1))  # type: ignore[arg-type]
 
+        return layer_scores
+
+    def _export_drop_layers(self) -> None:
+        """Drop layers during export if num_layers hparam is set to a smaller value during pruning."""
+        num_layers_hp = self.get_hparam("num_layers")
+        if num_layers_hp.active == num_layers_hp.max:  # no depth pruning
+            return
+
         # sort layers by scores and drop the lowest ones
+        layer_scores = self._get_layer_scores()
         sorted_layers = sorted(layer_scores.items(), key=lambda x: x[1], reverse=True)
         layers_to_drop = [layer for layer, _ in sorted_layers[num_layers_hp.active :]]  # type: ignore[misc]
         drop_mcore_language_model_layers(self, layers_to_drop=layers_to_drop)
@@ -1336,6 +1347,47 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         super().freeze()
         for layer in self.decoder.layers:
             layer.freeze()
+
+    def get_activations_and_layer_scores(
+        self,
+    ) -> tuple[list[dict[str, torch.Tensor]], dict[int, torch.Tensor]]:
+        """Get the per-rank activations and layer scores from the module."""
+        local_activations = {}
+        for n, m in self.named_modules():
+            if hasattr(m, "_activations"):
+                local_activations[n] = m._activations
+        activations_per_rank = dist.allgather(
+            local_activations, group=get_pipeline_model_parallel_group()
+        )
+        assert len(activations_per_rank) == get_pipeline_model_parallel_world_size()
+
+        layer_scores = self._get_layer_scores()
+
+        return activations_per_rank, layer_scores
+
+    def set_activations_and_layer_scores(
+        self,
+        activations_per_rank: list[dict[str, torch.Tensor]],
+        layer_scores: dict[int, torch.Tensor],
+    ) -> None:
+        """Set the pre-computed layer_scores and per-rank activations instead of running forward.
+
+        Args:
+            layer_scores: Dict from layer_number (1-indexed) to score.
+            activations_per_rank: List of dicts from module name to activations. Should match PP size.
+        """
+        rank = get_pipeline_model_parallel_rank()
+        pp_size = get_pipeline_model_parallel_world_size()
+        assert len(activations_per_rank) == pp_size, (
+            len(activations_per_rank),
+            activations_per_rank,
+            pp_size,
+        )
+        for layer in self.decoder.layers:
+            layer._scores = layer_scores[layer.layer_number]
+        for n, m in self.named_modules():
+            if hasattr(m, "_activations"):
+                m._activations = activations_per_rank[rank][n]
 
 
 def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:

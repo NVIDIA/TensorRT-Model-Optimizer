@@ -124,14 +124,14 @@ def broadcast(obj: Any, src: int = 0, group=None) -> Any:
     return obj
 
 
-def _allgather(tensors: list[torch.Tensor], tensor: torch.Tensor) -> None:
+def _allgather(tensors: list[torch.Tensor], tensor: torch.Tensor, group=None) -> None:
     if backend() == "torch":
-        torch.distributed.all_gather(tensors, tensor)
+        torch.distributed.all_gather(tensors, tensor, group)
 
 
-def allgather(obj: Any) -> list[Any]:
+def allgather(obj: Any, group=None) -> list[Any]:
     """Gathers an object from all processes into a list."""
-    if size() == 1:
+    if size(group) == 1:
         return [obj]
 
     # serialize
@@ -139,8 +139,8 @@ def allgather(obj: Any) -> list[Any]:
 
     # gather the tensor size
     tensor_size = torch.LongTensor([tensor.numel()]).cuda()
-    tensor_sizes = [torch.LongTensor([0]).cuda() for _ in range(size())]
-    _allgather(tensor_sizes, tensor_size)
+    tensor_sizes = [torch.LongTensor([0]).cuda() for _ in range(size(group))]
+    _allgather(tensor_sizes, tensor_size, group)
     tensor_sizes = [int(tensor_size.item()) for tensor_size in tensor_sizes]
     max_size = max(tensor_sizes)
 
@@ -149,7 +149,7 @@ def allgather(obj: Any) -> list[Any]:
     if tensor_size != max_size:
         padding = torch.ByteTensor(size=(max_size - tensor_size,)).cuda()
         tensor = torch.cat((tensor, padding), dim=0)
-    _allgather(tensors, tensor)
+    _allgather(tensors, tensor, group)
 
     # deserialize
     objs = []
@@ -159,9 +159,9 @@ def allgather(obj: Any) -> list[Any]:
     return objs
 
 
-def allreduce(obj: Any, reduction: str = "sum") -> Any:
+def allreduce(obj: Any, reduction: str = "sum", group=None) -> Any:
     """Reduces an object from all processes."""
-    objs = allgather(obj)
+    objs = allgather(obj, group)
     if reduction == "sum":
         return sum(objs)
     else:

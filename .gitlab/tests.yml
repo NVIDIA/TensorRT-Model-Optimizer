@@ -27,7 +27,7 @@ unit:
 ##### GPU Tests #####
 .multi-gpu-tests-default:
   extends: .tests-default
-  timeout: 60m
+  timeout: 90m
   image: nvcr.io/nvidia/pytorch:25.06-py3
   variables:
     GIT_DEPTH: 1000 # For correct version for tests/gpu/torch/quantization/plugins/test_megatron.py
