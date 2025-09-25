@@ -200,9 +200,6 @@ class PrecisionConverter:
         # Remove redundant casts
         self._cleanup()
 
-        if self.keep_io_types:
-            self._restore_original_io_types()
-
         self._sanity_check()
 
         return self.model
@@ -212,22 +209,6 @@ class PrecisionConverter:
         for vi in self.model.graph.value_info:
             if vi.type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED:
                 vi.type.tensor_type.elem_type = self.low_precision_type.onnx_type
-
-    def _restore_original_io_types(self):
-        """Restore original I/O types."""
-
-        def restore_tensor_type(tensor):
-            if tensor.name in self.original_network_io:
-                original_type = self.original_network_io[tensor.name]
-                if tensor.type.tensor_type.elem_type != original_type:
-                    tensor.type.tensor_type.elem_type = original_type
-                    # Update value_info_map if tensor exists there
-                    if tensor.name in self.value_info_map:
-                        self.value_info_map[tensor.name].type.tensor_type.elem_type = original_type
-
-        # Restore input and output types
-        for tensor in self.model.graph.input + self.model.graph.output:
-            restore_tensor_type(tensor)
 
     def _propagate_types_shapes_custom_ops(self, model):
         """Propagate types and shapes after insertion of 'Cast' nodes or other graph modifications."""

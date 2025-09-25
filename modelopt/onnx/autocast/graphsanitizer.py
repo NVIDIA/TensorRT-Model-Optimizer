@@ -65,6 +65,27 @@ class GraphSanitizer:
         self.replace_custom_domain_nodes()
         self.cleanup_model()
         self.set_ir_version(self.max_ir_version)
+        self.convert_fp64_to_fp32()
+
+    def convert_fp64_to_fp32(self) -> None:
+        """Convert FP64 initializers, I/O types, and specific nodes to FP32."""
+        modified = False
+
+        # Convert initializers
+        if self._convert_fp64_initializers():
+            modified = True
+
+        # Convert input/output types
+        if self._convert_fp64_io_types():
+            modified = True
+
+        # Convert specific node types: Cast, ConstantOfShape, Constant
+        if self._convert_fp64_nodes():
+            modified = True
+
+        if modified:
+            logger.info("Converted FP64 initializers, I/O types, and nodes to FP32")
+            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
 
     def find_custom_nodes(self) -> None:
         """Find custom nodes in the model.
@@ -404,6 +425,85 @@ class GraphSanitizer:
                 value = numpy_helper.to_array(init)
                 return value if return_array else value.item()
         return None
+
+    def _convert_fp64_initializers(self) -> bool:
+        """Convert FP64 initializers to FP32.
+
+        Returns:
+            bool: True if any initializers were modified, False otherwise.
+        """
+        modified = False
+
+        for initializer in self.model.graph.initializer:
+            if initializer.data_type == onnx.TensorProto.DOUBLE:
+                # Convert the data to FP32
+                fp64_data = numpy_helper.to_array(initializer)
+                fp32_data = fp64_data.astype(np.float32)
+
+                # Create new initializer with FP32 data
+                new_initializer = numpy_helper.from_array(fp32_data, name=initializer.name)
+
+                # Replace the old initializer
+                initializer.CopyFrom(new_initializer)
+                modified = True
+                logger.debug(f"Converted initializer {initializer.name} from FP64 to FP32")
+
+        return modified
+
+    def _convert_fp64_io_types(self) -> bool:
+        """Convert FP64 input/output types to FP32.
+
+        Returns:
+            bool: True if any I/O types were modified, False otherwise.
+        """
+        modified = False
+
+        def convert_tensor_list(tensors, tensor_type):
+            nonlocal modified
+            for tensor in tensors:
+                if tensor.type.tensor_type.elem_type == onnx.TensorProto.DOUBLE:
+                    tensor.type.tensor_type.elem_type = onnx.TensorProto.FLOAT
+                    modified = True
+                    logger.debug(f"Converted {tensor_type} {tensor.name} from FP64 to FP32")
+
+        convert_tensor_list(self.model.graph.input, "input")
+        convert_tensor_list(self.model.graph.output, "output")
+        convert_tensor_list(self.model.graph.value_info, "value_info")
+
+        return modified
+
+    def _convert_fp64_nodes(self) -> bool:
+        """Convert specific node types from FP64 to FP32.
+
+        Handles Cast, ConstantOfShape, and Constant nodes that use FP64.
+
+        Returns:
+            bool: True if any nodes were modified, False otherwise.
+        """
+        modified = False
+
+        for node in self.model.graph.node:
+            if node.op_type == "Cast":
+                # Check if casting to FP64, change to FP32
+                for attr in node.attribute:
+                    if attr.name == "to" and attr.i == onnx.TensorProto.DOUBLE:
+                        attr.i = onnx.TensorProto.FLOAT
+                        modified = True
+                        logger.debug(f"Converted Cast node {node.name} from FP64 to FP32")
+
+            elif node.op_type in ["ConstantOfShape", "Constant"]:
+                # Check if the value attribute uses FP64
+                for attr in node.attribute:
+                    if attr.name == "value" and attr.t.data_type == onnx.TensorProto.DOUBLE:
+                        # Convert the tensor value to FP32
+                        fp64_data = numpy_helper.to_array(attr.t)
+                        fp32_data = fp64_data.astype(np.float32)
+                        new_tensor = numpy_helper.from_array(fp32_data)
+                        attr.t.CopyFrom(new_tensor)
+                        modified = True
+                        logger.debug(f"Converted {node.op_type} node {node.name} from FP64 to FP32")
+
+        return modified
 
     def cleanup_model(self) -> None:
         """Use GraphSurgeon to cleanup unused nodes, tensors and initializers."""
