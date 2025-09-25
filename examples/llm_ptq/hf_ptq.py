@@ -612,7 +612,7 @@ def main(args):
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
             )
 
-            # Copy custom model files for TensorRT-LLM export as well
+            # Copy custom model files (Python files and JSON configs) for TensorRT-LLM export
             copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
         else:
             # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
@@ -631,7 +631,7 @@ def main(args):
                 export_dir=export_path,
             )
 
-        # Copy custom model files (configuration_*.py, modeling_*.py, etc.) if trust_remote_code is used
+        # Copy custom model files (Python files and JSON configs) if trust_remote_code is used
         copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
 
         # Restore default padding and export the tokenizer as well.

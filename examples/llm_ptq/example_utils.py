@@ -345,7 +345,11 @@ def _resolve_model_path(model_name_or_path: str, trust_remote_code: bool = False
 
 
 def copy_custom_model_files(source_path: str, export_path: str, trust_remote_code: bool = False):
-    """Copy custom model files (configuration_*.py, modeling_*.py, etc.) from source to export directory.
+    """Copy custom model files (configuration_*.py, modeling_*.py, *.json, etc.) from source to export directory.
+
+    This function copies custom Python files and JSON configuration files that are needed for
+    models with custom code. It excludes config.json and model.safetensors.index.json as these
+    are typically handled separately by the model export process.
 
     Args:
         source_path: Path to the original model directory or HuggingFace model ID
@@ -383,12 +387,16 @@ def copy_custom_model_files(source_path: str, export_path: str, trust_remote_cod
         "processing_*.py",
         "image_processing_*.py",
         "feature_extraction_*.py",
+        "*.json",
     ]
 
     copied_files = []
     for pattern in custom_file_patterns:
         for file_path in source_dir.glob(pattern):
             if file_path.is_file():
+                # Skip config.json and model.safetensors.index.json as they're handled separately
+                if file_path.name in ["config.json", "model.safetensors.index.json"]:
+                    continue
                 dest_path = export_dir / file_path.name
                 try:
                     shutil.copy2(file_path, dest_path)
