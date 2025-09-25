@@ -107,8 +107,8 @@ def get_parser() -> argparse.ArgumentParser:
         default=[],
         nargs="+",
         help=(
-            "A space-separated list of node types to exclude from FP16 conversion. "
-            "This is only relevant if '--high_precision_dtype != fp32'."
+            "A space-separated list of node types to exclude from FP16/BF16 conversion. "
+            "Relevant when --high_precision_dtype is 'fp16' or 'bf16'."
         ),
     )
     argparser.add_argument(

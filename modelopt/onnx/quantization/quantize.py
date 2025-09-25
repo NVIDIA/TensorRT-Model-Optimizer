@@ -426,8 +426,9 @@ def quantize(
         quantize_mode,
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
-    op_types_to_exclude_fp16 = op_types_to_exclude_fp16 or []
-    op_types_to_exclude_fp16.extend(list(custom_ops_to_cast_fp32.keys()))
+    op_types_to_exclude_fp16 = list(
+        dict.fromkeys((op_types_to_exclude_fp16 or []) + list(custom_ops_to_cast_fp32.keys()))
+    )
 
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
