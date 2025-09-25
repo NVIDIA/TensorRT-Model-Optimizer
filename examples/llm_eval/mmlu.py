@@ -252,9 +252,9 @@ def main(
     mto.enable_huggingface_checkpointing()
     model_path = kwargs["model_path"]
     tokenizer = get_tokenizer(model_path, trust_remote_code=kwargs.get("trust_remote_code", False))
-    if kwargs.get("engine_dir"):
+    if kwargs.get("checkpoint_dir"):
         # get model type
-        last_part = os.path.basename(kwargs["engine_dir"])
+        last_part = os.path.basename(kwargs["checkpoint_dir"])
         model_type = last_part.split("_")[0]
         # Some models require to set pad_token and eos_token based on external config (e.g., qwen)
         if model_type == "qwen":
@@ -264,7 +264,9 @@ def main(
         assert LLM is not None, "tensorrt_llm APIs could not be imported."
         medusa_choices = kwargs.get("medusa_choices")
         model = LLM(
-            checkpoint_dir=kwargs["engine_dir"], tokenizer=tokenizer, medusa_choices=medusa_choices
+            checkpoint_dir=kwargs["checkpoint_dir"],
+            tokenizer=tokenizer,
+            medusa_choices=medusa_choices,
         )
     else:
         model = select_model(
