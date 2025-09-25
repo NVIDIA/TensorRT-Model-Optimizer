@@ -179,6 +179,7 @@ def convert_to_f16(
     sanitizer.find_custom_nodes()
     sanitizer.convert_opset()
     sanitizer.ensure_graph_name_exists()
+    sanitizer.convert_fp64_to_fp32()
     model = sanitizer.model
 
     # Setup internal mappings
