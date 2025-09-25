@@ -17,7 +17,6 @@ from functools import partial
 
 import pytest
 import torch
-import torch.nn as nn
 from _test_utils.import_helper import skip_if_no_megatron
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
@@ -374,8 +373,10 @@ def test_fp8_real_quantize():
 
 def _test_kv_cache_quant_helper(config, rank, size):
     """Helper function for testing KV cache quantization with TEDotProductAttention."""
-    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED)
-    
+    initialize_for_megatron(
+        tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED
+    )
+
     # Use existing infrastructure to create a minimal GPT model with TEDotProductAttention
     # Note: transformer_impl must be "modelopt" or "transformer_engine" (not "local") to get TEDotProductAttention
     model = get_mcore_gpt_model(
@@ -386,43 +387,45 @@ def _test_kv_cache_quant_helper(config, rank, size):
         vocab_size=32,
         transformer_impl="modelopt",  # This uses TEDotProductAttention via get_gpt_modelopt_spec
     ).cuda()
-    
+
     # Create dummy input for calibration
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
-    
+
     def forward_fn(model):
         return megatron_prefill(model, prompt_tokens)
-    
+
     # Test KV cache quantization with the given config
     quantized_model = mtq.quantize(model, config, forward_fn)
-    
+
     # Find TEDotProductAttention modules and verify they have KV cache quantizers
     te_attention_found = False
     for name, module in quantized_model.named_modules():
         # Check if this is a quantized TEDotProductAttention
-        if hasattr(module, 'q_bmm_quantizer') and hasattr(module, 'k_bmm_quantizer'):
+        if hasattr(module, "q_bmm_quantizer") and hasattr(module, "k_bmm_quantizer"):
             te_attention_found = True
             # Verify all expected quantizers exist
-            assert hasattr(module, 'v_bmm_quantizer'), f"Missing v_bmm_quantizer in {name}"
-            
+            assert hasattr(module, "v_bmm_quantizer"), f"Missing v_bmm_quantizer in {name}"
+
             # Verify K and V quantizers are enabled (main purpose of KV cache configs)
             assert module.k_bmm_quantizer.is_enabled, f"K quantizer not enabled in {name}"
             assert module.v_bmm_quantizer.is_enabled, f"V quantizer not enabled in {name}"
-    
+
     assert te_attention_found, "No TEDotProductAttention with KV cache quantizers found in model"
-    
+
     # Quick smoke test that forward still works
     output = forward_fn(quantized_model)
     assert output is not None, "Forward pass failed"
-    
+
 
 def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
     """Helper for testing KV cache quantization with sharded state dict save/load."""
     # Disable output_layer quantization (same as other sharded state dict tests)
     config["quant_cfg"]["*output_layer*"] = {"enable": False}
-    
-    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED)
-    
+
+    initialize_for_megatron(
+        tensor_model_parallel_size=size, pipeline_model_parallel_size=1, seed=SEED
+    )
+
     # Create GPT models with TEDotProductAttention (transformer_impl="modelopt")
     model_ref = get_mcore_gpt_model(
         tensor_model_parallel_size=size,
@@ -432,7 +435,7 @@ def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
         vocab_size=64,
         transformer_impl="modelopt",  # CRITICAL: Use TEDotProductAttention
     ).cuda()
-    
+
     model_test = get_mcore_gpt_model(
         tensor_model_parallel_size=size,
         num_layers=2,
@@ -441,29 +444,31 @@ def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
         vocab_size=64,
         transformer_impl="modelopt",
     ).cuda()
-    
-    prompt_tokens = torch.randint(0, model_ref.vocab_size, (2, model_ref.max_sequence_length)).cuda()
-    
+
+    prompt_tokens = torch.randint(
+        0, model_ref.vocab_size, (2, model_ref.max_sequence_length)
+    ).cuda()
+
     def forward_fn(model):
         return megatron_prefill(model, prompt_tokens)
-    
+
     # Quantize the reference model
     model_ref = mtq.quantize(model_ref, config, forward_fn)
-    
+
     # CRITICAL: model_test must also be quantized with the same config
     # Otherwise it won't have the KV cache quantizer keys when loading state dict
     model_test = mtq.quantize(model_test, config, forward_fn)
-    
+
     # Verify KV cache quantizers were created
     kv_quantizers_found = False
     for name, module in model_ref.named_modules():
-        if hasattr(module, 'k_bmm_quantizer') and hasattr(module, 'v_bmm_quantizer'):
+        if hasattr(module, "k_bmm_quantizer") and hasattr(module, "v_bmm_quantizer"):
             kv_quantizers_found = True
             assert module.k_bmm_quantizer.is_enabled, f"K quantizer not enabled in {name}"
             assert module.v_bmm_quantizer.is_enabled, f"V quantizer not enabled in {name}"
-    
+
     assert kv_quantizers_found, "No KV cache quantizers found in quantized model"
-    
+
     # Test sharded state dict save/load
     sharded_state_dict_test_helper(
         tmp_path,
@@ -473,32 +478,38 @@ def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
         meta_device=False,
         version=None,
     )
-    
+
     # Verify KV cache quantizers are restored correctly in model_test
     for (name_ref, module_ref), (name_test, module_test) in zip(
         model_ref.named_modules(), model_test.named_modules()
     ):
-        if hasattr(module_ref, 'k_bmm_quantizer'):
-            assert hasattr(module_test, 'k_bmm_quantizer'), f"K quantizer missing after restore in {name_test}"
-            assert hasattr(module_test, 'v_bmm_quantizer'), f"V quantizer missing after restore in {name_test}"
-            
+        if hasattr(module_ref, "k_bmm_quantizer"):
+            assert hasattr(module_test, "k_bmm_quantizer"), (
+                f"K quantizer missing after restore in {name_test}"
+            )
+            assert hasattr(module_test, "v_bmm_quantizer"), (
+                f"V quantizer missing after restore in {name_test}"
+            )
+
             # Check that quantizer states match
-            if hasattr(module_ref.k_bmm_quantizer, '_amax'):
-                assert hasattr(module_test.k_bmm_quantizer, '_amax'), f"K quantizer _amax missing in {name_test}"
+            if hasattr(module_ref.k_bmm_quantizer, "_amax"):
+                assert hasattr(module_test.k_bmm_quantizer, "_amax"), (
+                    f"K quantizer _amax missing in {name_test}"
+                )
                 if module_ref.k_bmm_quantizer._amax is not None:
                     assert torch.allclose(
-                        module_ref.k_bmm_quantizer._amax, 
-                        module_test.k_bmm_quantizer._amax
+                        module_ref.k_bmm_quantizer._amax, module_test.k_bmm_quantizer._amax
                     ), f"K quantizer _amax mismatch in {name_test}"
-            
-            if hasattr(module_ref.v_bmm_quantizer, '_amax'):
-                assert hasattr(module_test.v_bmm_quantizer, '_amax'), f"V quantizer _amax missing in {name_test}"
+
+            if hasattr(module_ref.v_bmm_quantizer, "_amax"):
+                assert hasattr(module_test.v_bmm_quantizer, "_amax"), (
+                    f"V quantizer _amax missing in {name_test}"
+                )
                 if module_ref.v_bmm_quantizer._amax is not None:
                     assert torch.allclose(
-                        module_ref.v_bmm_quantizer._amax,
-                        module_test.v_bmm_quantizer._amax
+                        module_ref.v_bmm_quantizer._amax, module_test.v_bmm_quantizer._amax
                     ), f"V quantizer _amax mismatch in {name_test}"
-            
+
 
 @pytest.mark.parametrize(
     "config",
@@ -509,16 +520,14 @@ def _test_kv_cache_sharded_state_dict_helper(tmp_path, config, rank, size):
 )
 def test_kv_cache_quant(config):
     """Verify KV cache quantization works correctly with TEDotProductAttention.
-    
-    This test ensures TEDotProductAttention is properly registered and gets the 
+
+    This test ensures TEDotProductAttention is properly registered and gets the
     expected q/k/v_bmm_quantizers when using KV cache configs.
-    
+
     Note: This test requires Transformer Engine to be installed since TEDotProductAttention
     is only available with transformer_impl="modelopt" or "transformer_engine" (not "local").
     """
-    spawn_multiprocess_job(
-        size=1, job=partial(_test_kv_cache_quant_helper, config), backend="nccl"
-    )
+    spawn_multiprocess_job(size=1, job=partial(_test_kv_cache_quant_helper, config), backend="nccl")
 
 
 @pytest.mark.parametrize(
@@ -530,7 +539,7 @@ def test_kv_cache_quant(config):
 )
 def test_kv_cache_sharded_state_dict(tmp_path, config):
     """Test KV cache quantization with sharded state dict save/load.
-    
+
     This test verifies the complete workflow of saving and loading KV cache quantized
     models with distributed checkpointing, ensuring quantizer states are properly
     preserved across the save/load cycle.
@@ -539,5 +548,5 @@ def test_kv_cache_sharded_state_dict(tmp_path, config):
     spawn_multiprocess_job(
         size=size,
         job=partial(_test_kv_cache_sharded_state_dict_helper, tmp_path, config),
-        backend="nccl"
+        backend="nccl",
     )
