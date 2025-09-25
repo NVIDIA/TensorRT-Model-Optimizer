@@ -331,7 +331,9 @@ class AcceptanceRateValidation:
 
         if ground_truth is None:
             ground_truth = self.get_ground_truth(input_ids, osl)
-        ground_truth = self.check_data_consistency_across_ranks(ground_truth)
+        ground_truth = self.check_data_consistency_across_ranks(
+            ground_truth, fail_when_mismatch=False
+        )
 
         cnt = 0
         draft_tokens = None
