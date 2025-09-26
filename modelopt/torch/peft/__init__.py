@@ -19,7 +19,3 @@ from . import mode
 from .config import *
 from .conversion import *
 from .convert import *
-
-# isort: off
-# Import plugins last to avoid circular imports
-from . import plugins
