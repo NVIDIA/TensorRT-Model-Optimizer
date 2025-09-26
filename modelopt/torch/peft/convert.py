@@ -24,8 +24,17 @@ from modelopt.torch.opt import apply_mode
 from modelopt.torch.peft.config import PEFTConfig
 from modelopt.torch.peft.conversion import add_adapter
 
+try:
+    from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
+
+    MEGATRON_LAYERS = (ColumnParallelLinear, RowParallelLinear)
+except Exception:
+    MEGATRON_LAYERS = ()
+
 from .lora.layer import LoRAModule
 from .mode import PEFTModeRegistry
+
+MEGATRON_LAYERS = (ColumnParallelLinear, RowParallelLinear)
 
 __all__ = [
     "disable_adapters",
@@ -53,6 +62,8 @@ def update_model(
     Returns:
         The updated model with LoRA adapters
     """
+    assert is_megatron_core_model(model), "We only support mcore format for the PEFT mode"
+
     # Check if model is already in PEFT mode by looking for LoRA modules
     if not is_peft_model(model):
         apply_mode(model, mode=[("peft", config)], registry=PEFTModeRegistry)
@@ -218,3 +229,11 @@ def get_adapter_states(model):
                 adapter_states[module_name] = module_adapters
 
     return adapter_states
+
+
+def is_megatron_core_model(model) -> bool:
+    if MEGATRON_LAYERS:
+        for m in model.modules():
+            if isinstance(m, MEGATRON_LAYERS):
+                return True
+    return False
