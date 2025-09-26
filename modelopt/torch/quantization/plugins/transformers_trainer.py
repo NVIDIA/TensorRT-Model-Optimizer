@@ -21,6 +21,7 @@ import types
 from dataclasses import dataclass, field
 
 import torch
+from safetensors.torch import save_file
 from tqdm import tqdm
 
 import modelopt.torch.opt as mto
@@ -146,7 +147,7 @@ class QATTrainer(ModelOptHFTrainer):
             self.model, "peft_config"
         ):
             # TODO: use get_peft_model here instead of add_adapter
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
 
         if hasattr(self.model, "peft_config") and self.quant_cfg is not None:
@@ -180,6 +181,19 @@ class QATTrainer(ModelOptHFTrainer):
             torch.save(modelopt_state, self._modelopt_state_path)
 
         print_rank_0(f"Saved modelopt state to {self._modelopt_state_path}")
+
+        # Save base model compressed weights for QLoRA
+        if getattr(self.quant_args, "compress", False):
+            # Save base model config.json
+            # weight_quantizer = self.quant_cfg["quant_cfg"]["*weight_quantizer"]
+            self.model.config.save_pretrained(self.args.output_dir)
+
+            # Save base model compressed weights excluding lora weights
+            state_dict = self.model.state_dict()
+            for k in [key for key in state_dict if "lora" in key]:
+                del state_dict[k]
+
+            save_file(state_dict, f"{self.args.output_dir}/model.safetensors")
 
     def _restore_modelopt_state_with_weights(self):
         modelopt_state = torch.load(self._modelopt_state_path, weights_only=False)
@@ -275,6 +289,18 @@ class QATTrainer(ModelOptHFTrainer):
             outputs = super().save_model(*args, **kwargs)
         return outputs
 
+    def _load_best_model(self, *args, **kwargs):
+        """Load the best model for final evaluation."""
+        is_lora = getattr(self.args, "lora", None)
+        if not is_lora:
+            super()._load_best_model(*args, **kwargs)
+        else:
+            # Custom logic for loading best model with LoRA
+            # TODO: Remove once we migrate to using get_peft_model()
+            adapter_name = self.model.active_adapter()
+            self.model.delete_adapter(adapter_name)
+            self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
+
     def _patch_accelerate_for_fsdp2_fix(self):
         """Fixes for accelerate prepare.
 
@@ -337,7 +363,7 @@ class QADTrainer(QATTrainer, KDTrainer):
         if self.quant_cfg is not None and not is_quantized(self.model):
             self._quantize_model()
         if getattr(self.args, "lora_config", None) is not None:
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
         self._convert_to_distillation_model()
 
