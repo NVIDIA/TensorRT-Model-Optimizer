@@ -781,16 +781,6 @@ class _DynamicEagleGPTModel(EagleModel):
         eagle_inputs = {}
 
         eagle_inputs["position_ids"] = position_ids
-        eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
-
-        if self.config.sequence_parallel:
-            gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
-            gathered_features = (
-                None if features is None else gather_from_sequence_parallel_region(features)
-            )
-        else:
-            gathered_hidden_states = hidden_states
-            gathered_features = features
 
         eagle_inputs["input_ids"] = (
             padded_input_ids
@@ -803,6 +793,14 @@ class _DynamicEagleGPTModel(EagleModel):
             )
         )
 
+        if self.config.sequence_parallel:
+            gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
+            gathered_features = (
+                None if features is None else gather_from_sequence_parallel_region(features)
+            )
+        else:
+            gathered_hidden_states = hidden_states
+            gathered_features = features
         if gathered_features is not None:
             feature = gathered_features[-s:]
         eagle_inputs["hidden_states"] = (
@@ -827,6 +825,12 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
             attn_mask, (ttt_step - 1) * self.eagle_config.parallel_draft_step + parallel_draft_step
+        )
+
+        eagle_inputs["rotary_pos_emb"] = torch.cat(
+            [rotary_pos_emb]
+            * ((ttt_step - 1) * self.eagle_config.parallel_draft_step + parallel_draft_step),
+            dim=0,
         )
 
         eagle_inputs["embedding"] = self.embedding(
