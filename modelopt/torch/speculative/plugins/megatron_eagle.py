@@ -780,15 +780,9 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs = {}
 
-        eagle_inputs["input_ids"] = torch.empty(
-            0, dtype=padded_input_ids.dtype, device=padded_input_ids.device
-        )
-        eagle_inputs["position_ids"] = torch.empty(
-            0, dtype=position_ids.dtype, device=position_ids.device
-        )
-        eagle_inputs["rotary_pos_emb"] = torch.empty(
-            0, dtype=rotary_pos_emb.dtype, device=rotary_pos_emb.device
-        )
+        eagle_inputs["position_ids"] = position_ids
+        eagle_inputs["rotary_pos_emb"] = rotary_pos_emb
+
         if self.config.sequence_parallel:
             gathered_hidden_states = gather_from_sequence_parallel_region(hidden_states)
             gathered_features = (
@@ -797,56 +791,34 @@ class _DynamicEagleGPTModel(EagleModel):
         else:
             gathered_hidden_states = hidden_states
             gathered_features = features
-        eagle_inputs["hidden_states"] = torch.empty(
-            0, dtype=gathered_hidden_states.dtype, device=gathered_hidden_states.device
+
+        eagle_inputs["input_ids"] = (
+            padded_input_ids
+            if parallel_draft_step == 1
+            else torch.full(
+                padded_input_ids.shape,
+                getattr(self, f"mask_token_{parallel_draft_step - 2}"),
+                device=padded_input_ids.device,
+                dtype=padded_input_ids.dtype,
+            )
         )
 
-        for step in range(ttt_step):
-            for i in range(parallel_draft_step):
-                eagle_inputs["input_ids"] = torch.cat(
-                    (
-                        eagle_inputs["input_ids"],
-                        padded_input_ids
-                        if i == 0
-                        else torch.full(
-                            padded_input_ids.shape,
-                            getattr(self, f"mask_token_{i - 1}"),
-                            device=padded_input_ids.device,
-                            dtype=padded_input_ids.dtype,
-                        ),
+        if gathered_features is not None:
+            feature = gathered_features[-s:]
+        eagle_inputs["hidden_states"] = (
+            gathered_hidden_states
+            if ttt_step == 1
+            else torch.cat(
+                (
+                    torch.zeros(
+                        (1, b, h),
+                        dtype=hidden_states.dtype,
+                        device=hidden_states.device,
                     ),
-                    dim=-1,
+                    feature[:-1, :, :],
                 )
-
-                if step > 0:
-                    feature = gathered_features[-s:]
-                eagle_inputs["hidden_states"] = torch.cat(
-                    (
-                        eagle_inputs["hidden_states"],
-                        gathered_hidden_states
-                        if step == 0
-                        else torch.cat(
-                            (
-                                torch.zeros(
-                                    (1, b, h),
-                                    dtype=hidden_states.dtype,
-                                    device=hidden_states.device,
-                                ),
-                                feature[:-1, :, :],
-                            )
-                        ),
-                    ),
-                    dim=0,
-                )
-
-                eagle_inputs["position_ids"] = torch.cat(
-                    (eagle_inputs["position_ids"], position_ids), dim=-1
-                )
-
-                if rotary_pos_emb is not None:
-                    eagle_inputs["rotary_pos_emb"] = torch.cat(
-                        (eagle_inputs["rotary_pos_emb"], rotary_pos_emb), dim=0
-                    )
+            )
+        )
 
         if self.config.sequence_parallel:
             eagle_inputs["hidden_states"] = scatter_to_sequence_parallel_region(
