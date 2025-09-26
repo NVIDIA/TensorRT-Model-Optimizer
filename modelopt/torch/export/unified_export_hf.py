@@ -538,10 +538,11 @@ def export_hf_checkpoint(
             model.base_model.save_pretrained(
                 base_export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
             )
-
-        model.save_pretrained(
-            export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
-        )
+            model.save_pretrained(export_dir, save_modelopt_state=save_modelopt_state)
+        else:
+            model.save_pretrained(
+                export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
+            )
 
         original_config = f"{base_export_dir}/config.json"
         config_data = {}
