@@ -153,9 +153,9 @@ class PEFTConfig(ModeloptBaseConfig):
     )
 
     freeze_lora_weights: bool = ModeloptField(
-        default=True,
-        title="Placeholder",
-        description="Placeholder",
+        default=False,
+        title="Freeze lora weights during training",
+        description="Whether to freeze the lora model weights; in most cases, this should be set to False.",
         validate_default=True,
     )
 
