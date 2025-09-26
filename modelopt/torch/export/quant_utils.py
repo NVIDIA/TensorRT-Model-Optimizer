@@ -1105,11 +1105,9 @@ def get_quant_config(
             if block_size == 0:
                 block_size = get_weight_block_size(module)
 
-            # Handles case if default weight quantizer is not enabled or is None
-            if block_size != 0:
-                # Construct per layer config dictionary
-                layer_config_dict[name + ".quantization"] = quantization_format
-                layer_config_dict[name + ".awq_block_size"] = block_size
+            # Construct per layer config dictionary
+            layer_config_dict[name + ".quantization"] = quantization_format
+            layer_config_dict[name + ".awq_block_size"] = block_size
 
         # Find kv cache quant format
         if (

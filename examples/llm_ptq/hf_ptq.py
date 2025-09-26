@@ -244,14 +244,20 @@ def main(args):
     # If low memory mode is enabled, we compress the model while loading the HF checkpoint.
     calibration_only = False
     if not args.low_memory_mode:
-        model = get_model(
-            args.pyt_ckpt_path,
-            args.device,
-            gpu_mem_percentage=args.gpu_max_mem_percentage,
-            trust_remote_code=args.trust_remote_code,
-            use_seq_device_map=args.use_seq_device_map,
-            attn_implementation=args.attn_implementation,
-        )
+        if args.lora:
+            model = get_lora_model(
+                args.pyt_ckpt_path,
+                args.device,
+            )
+        else:
+            model = get_model(
+                args.pyt_ckpt_path,
+                args.device,
+                gpu_mem_percentage=args.gpu_max_mem_percentage,
+                trust_remote_code=args.trust_remote_code,
+                use_seq_device_map=args.use_seq_device_map,
+                attn_implementation=args.attn_implementation,
+            )
     else:
         assert args.qformat in QUANT_CFG_CHOICES, (
             f"Quantization format is not supported for low memory mode. Supported formats: {QUANT_CFG_CHOICES.keys()}"
@@ -648,6 +654,7 @@ def main(args):
                     "They will be set at deployment time."
                 )
 
+            print("DEBUG LOG: Calling unified export hf checkpoint")
             export_hf_checkpoint(
                 full_model,
                 export_dir=export_path,
@@ -796,6 +803,12 @@ if __name__ == "__main__":
         ),
         default=None,
         type=str,
+    )
+    parser.add_argument(
+        "--lora",
+        help="Specify the model to be exported is a LoRA model trained using modelopt.",
+        default=False,
+        action="store_true",
     )
 
     args = parser.parse_args()

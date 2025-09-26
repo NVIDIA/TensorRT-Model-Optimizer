@@ -147,7 +147,7 @@ class QATTrainer(ModelOptHFTrainer):
             self.model, "peft_config"
         ):
             # TODO: use get_peft_model here instead of add_adapter
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
 
         if hasattr(self.model, "peft_config") and self.quant_cfg is not None:
@@ -185,6 +185,7 @@ class QATTrainer(ModelOptHFTrainer):
         # Save base model compressed weights for QLoRA
         if getattr(self.quant_args, "compress", False):
             # Save base model config.json
+            # weight_quantizer = self.quant_cfg["quant_cfg"]["*weight_quantizer"]
             self.model.config.save_pretrained(self.args.output_dir)
 
             # Save base model compressed weights excluding lora weights
@@ -362,7 +363,7 @@ class QADTrainer(QATTrainer, KDTrainer):
         if self.quant_cfg is not None and not is_quantized(self.model):
             self._quantize_model()
         if getattr(self.args, "lora_config", None) is not None:
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
         self._convert_to_distillation_model()
 

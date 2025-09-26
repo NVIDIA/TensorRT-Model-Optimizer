@@ -549,6 +549,8 @@ def export_hf_checkpoint(
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
     """
+    is_lora = hasattr(model, "base_model")
+    base_export_dir: Path | str = f"{export_dir}/base_model" if is_lora else export_dir
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -564,7 +566,7 @@ def export_hf_checkpoint(
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
         # Save hf_quant_config.json for backward compatibility
-        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
+        with open(f"{base_export_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
@@ -574,11 +576,11 @@ def export_hf_checkpoint(
             export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
         )
 
-        original_config = f"{export_dir}/config.json"
+        original_config = f"{base_export_dir}/config.json"
         config_data = {}
 
-        with open(original_config) as file:
-            config_data = json.load(file)
+        # In the case of LoRA model.save_pretrained does not save the correct config.json
+        config_data = model.config.to_dict()
 
         config_data["quantization_config"] = hf_quant_config
 
