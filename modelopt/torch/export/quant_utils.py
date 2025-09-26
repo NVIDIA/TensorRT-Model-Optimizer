@@ -271,13 +271,9 @@ def get_weight_scaling_factor(module: nn.Module, weight_name: str = "weight") ->
         QUANTIZATION_W4A8_NVFP4_FP8,
     ]:
         if hasattr(weight_quantizer, "_scale"):
-            # In this case, weight must be a QTensorWrapper
-            original_shape = weight.metadata["shape"]
-            ws = NVFP4QTensor.get_modelopt_weights_scaling_factor(
-                weight_quantizer._scale, original_shape
+            return NVFP4QTensor.get_modelopt_weights_scaling_factor(
+                weight_quantizer._scale, weight.metadata["shape"]
             )
-            print(f"weight_quantizer._scale: {ws.shape}")
-            return ws
 
         return NVFP4QTensor.get_weights_scaling_factor(
             weight,
