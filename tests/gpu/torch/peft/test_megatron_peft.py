@@ -12,7 +12,7 @@ from _test_utils.torch_dist.plugins.megatron_common import (
 skip_if_no_megatron()
 
 
-import modelopt.torch.peft as mtp
+import modelopt.torch.peft as mtpf
 from modelopt.torch.peft.config import kaiming_init, zero_init
 from modelopt.torch.peft.lora.layer import LoRAModule
 from modelopt.torch.utils.plugins import megatron_prefill
@@ -128,7 +128,7 @@ def _test_forward_with_one_lora(lora_config, rank, size):
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     original_output = megatron_prefill(model, prompt_tokens)
-    mtp.update_model(model, lora_config)
+    mtpf.update_model(model, lora_config)
     lora_output = megatron_prefill(model, prompt_tokens)
     assert lora_output.shape == original_output.shape
     if lora_config == DEFAULT_LORA_CFG_TEST:
@@ -137,10 +137,10 @@ def _test_forward_with_one_lora(lora_config, rank, size):
         )
     else:
         assert not torch.allclose(lora_output, original_output, rtol=1e-5)
-    mtp.disable_adapters(model)
+    mtpf.disable_adapters(model)
     lora_disabled_output = megatron_prefill(model, prompt_tokens)
     assert torch.allclose(lora_disabled_output, original_output, rtol=1e-5)
-    mtp.enable_adapters(model)
+    mtpf.enable_adapters(model)
     lora_reenabled_output = megatron_prefill(model, prompt_tokens)
     assert torch.allclose(lora_reenabled_output, lora_output, rtol=1e-5)
     lora_module_count = 0
@@ -182,20 +182,20 @@ def _test_forward_with_two_loras(lora_config_1, lora_config_2):
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     original_output = megatron_prefill(model, prompt_tokens)
-    mtp.update_model(model, lora_config_1)
+    mtpf.update_model(model, lora_config_1)
     lora_1_output = megatron_prefill(model, prompt_tokens)
-    mtp.update_model(model, lora_config_2)
-    mtp.disable_adapters(model, adapters_to_disable=[lora_config_1["adapter_name"]])
-    mtp.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
+    mtpf.update_model(model, lora_config_2)
+    mtpf.disable_adapters(model, adapters_to_disable=[lora_config_1["adapter_name"]])
+    mtpf.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
     lora_2_output = megatron_prefill(model, prompt_tokens)
     if lora_config_1 != DEFAULT_LORA_CFG_TEST or lora_config_2 != DEFAULT_LORA_CFG_TEST:
         assert not torch.allclose(lora_1_output, lora_2_output, rtol=1e-5)
     assert lora_1_output.shape == lora_2_output.shape
-    mtp.enable_adapters(model, adapters_to_enable=[lora_config_1["adapter_name"]])
-    mtp.disable_adapters(model, adapters_to_disable=[lora_config_2["adapter_name"]])
+    mtpf.enable_adapters(model, adapters_to_enable=[lora_config_1["adapter_name"]])
+    mtpf.disable_adapters(model, adapters_to_disable=[lora_config_2["adapter_name"]])
     switched_output = megatron_prefill(model, prompt_tokens)
     assert torch.allclose(switched_output, lora_1_output, rtol=1e-5)
-    mtp.disable_adapters(model)
+    mtpf.disable_adapters(model)
     both_disabled_output = megatron_prefill(model, prompt_tokens)
     assert torch.allclose(both_disabled_output, original_output, rtol=1e-5)
 
