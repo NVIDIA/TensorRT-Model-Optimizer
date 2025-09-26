@@ -15,7 +15,7 @@
 
 """PEFT/LoRA plugins for various frameworks."""
 
-from contextlib import suppress
+from modelopt.torch.utils import import_plugin
 
-with suppress(ImportError):
-    from . import megatron as _megatron
+with import_plugin("megatron"):
+    from .megatron import *
