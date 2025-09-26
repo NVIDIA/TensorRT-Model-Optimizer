@@ -1,17 +1,35 @@
-"""Tensor Parallel LoRA implementations for Megatron layers."""
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Megatron-Core specific PEFT/LoRA plugins."""
 
 import math
 from collections.abc import Callable
 
+import torch
 import torch.nn as nn
 import torch.nn.init as init
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 
-from ..config import PEFTAttributeConfig
-from .layer import LoRAModule, LoRAModuleRegistry
+from ...config import PEFTAttributeConfig
+from ..layer import LoRAModule, LoRAModuleRegistry
 
 try:
+    from megatron.core.transformer.module import MegatronModule
+
     from modelopt.torch.quantization.plugins.megatron import (
         _MegatronColumnParallelLinear as QuantColumnParallelLinear,
     )
@@ -19,12 +37,43 @@ try:
         _MegatronRowParallelLinear as QuantRowParallelLinear,
     )
 
-    QUANT_MODULES_AVAILABLE = True
+    MEGATRON_AVAILABLE = True
 except ImportError:
-    QUANT_MODULES_AVAILABLE = False
+    MegatronModule = None
+    MEGATRON_AVAILABLE = False
+
+from ...custom import CUSTOM_MODEL_PLUGINS
 
 DEFAULT_LORA_RANK = 64
 DEFAULT_SCALE = 1.0
+
+__all__ = []
+
+
+def megatron_replace_lora_module_hook(model: torch.nn.Module):
+    """Configure Megatron-Core model PEFT/LoRA support.
+
+    This callback is called before the LoRAModule replacement to configure
+    distributed checkpointing support. For each MegatronModule:
+    1. We enable heterogeneous distributed checkpointing
+
+    Note: LoRAModule already has built-in get_extra_state and set_extra_state methods,
+    so we don't need to register callbacks for them.
+    """
+    if not MEGATRON_AVAILABLE:
+        return
+
+    for name, module in model.named_modules():
+        if isinstance(module, MegatronModule):
+            # Enable heterogeneous distributed checkpointing
+            if hasattr(module, "config") and hasattr(
+                module.config, "hetereogenous_dist_checkpoint"
+            ):
+                module.config.hetereogenous_dist_checkpoint = True
+
+
+# Register the hook
+CUSTOM_MODEL_PLUGINS.add(megatron_replace_lora_module_hook)
 
 
 class _MegatronParallelLoRABase(LoRAModule):
@@ -107,22 +156,20 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition
         """
-        lora_a = ColumnParallelLinear(
-            self.input_size,
-            attr_config.rank,
-            config=self.config,
+        lora_a = nn.Linear(
+            in_features=self.input_size,
+            out_features=attr_config.rank,
             bias=False,
-            gather_output=True,
-            init_method=attr_config.lora_a_init,
-            disable_grad_reduce=getattr(self.config, "sequence_parallel", False),
         )
+        with torch.no_grad():
+            attr_config.lora_b_init(lora_a.weight)  # type: ignore[misc]
 
         lora_b = ColumnParallelLinear(
             attr_config.rank,
             self.output_size,
             config=self.config,
             bias=False,
-            gather_output=False,  # Keep output distributed like base layer
+            gather_output=False,
             init_method=attr_config.lora_a_init,
         )
 
@@ -144,11 +191,8 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             state_dict = self.state_dict(prefix="", keep_vars=True)
 
             for adapter_name in self._lora_adapters:
-                lora_a_key = f"lora_a_{adapter_name}.weight"
                 lora_b_key = f"lora_b_{adapter_name}.weight"
 
-                if lora_a_key in state_dict:
-                    lora_state_dict[lora_a_key] = state_dict[lora_a_key]
                 if lora_b_key in state_dict:
                     lora_state_dict[lora_b_key] = state_dict[lora_b_key]
 
@@ -194,14 +238,13 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             init_method=attr_config.lora_a_init,
         )
 
-        lora_b = ColumnParallelLinear(
-            attr_config.rank,
-            self.output_size,
-            config=self.config,
+        lora_b = nn.Linear(
+            in_features=attr_config.rank,
+            out_features=self.output_size,
             bias=False,
-            gather_output=True,
-            init_method=attr_config.lora_b_init,
         )
+        with torch.no_grad():
+            attr_config.lora_b_init(lora_b.weight)  # type: ignore[misc]
 
         self._register_adapter_with_device(
             adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale, attr_config.enable
@@ -222,19 +265,13 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
 
             for adapter_name in self._lora_adapters:
                 lora_a_key = f"lora_a_{adapter_name}.weight"
-                lora_b_key = f"lora_b_{adapter_name}.weight"
 
                 if lora_a_key in state_dict:
                     lora_state_dict[lora_a_key] = state_dict[lora_a_key]
-                if lora_b_key in state_dict:
-                    lora_state_dict[lora_b_key] = state_dict[lora_b_key]
 
             lora_sharding_dims = {}
             for key in lora_state_dict:
-                if "lora_a_" in key:
-                    lora_sharding_dims[key] = 1
-                elif "lora_b_" in key:
-                    lora_sharding_dims[key] = 0
+                lora_sharding_dims[key] = 1
 
             if lora_state_dict:
                 lora_sharded = make_sharded_tensors_for_checkpoint(
@@ -246,7 +283,7 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
 
 
 # Register quantized versions if available
-if QUANT_MODULES_AVAILABLE:
+if MEGATRON_AVAILABLE:
     LoRAModuleRegistry.register({QuantColumnParallelLinear: "quant_megatron_ColumnParallelLinear"})(
         _LoRAMegatronColumnParallelLinear
     )

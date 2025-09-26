@@ -1,3 +1,3 @@
 """LoRA (Low-Rank Adaptation) implementation for parameter-efficient fine-tuning."""
 
-from . import layer, tp_layer
+from . import layer, plugins
