@@ -23,6 +23,7 @@ from packaging.version import Version
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.backends.gemm_registry import enable_real_quant_gemm
+from modelopt.torch.quantization.nn.modules.tensor_quantizer import SequentialQuantizer
 from modelopt.torch.quantization.utils import is_quantized_linear
 from modelopt.torch.utils import torch_to
 
@@ -116,8 +117,8 @@ def save_restore_test(model_cls, device, quant_config, compress=False, version=N
         mto.restore_from_modelopt_state(model_ref, state_dict)
 
 
-def tensor_parallel_test_helper(model, config, tp_group, dp_group):
-    # The input to fist layer, the column parallel should be the same across all tp ranks
+def tensor_parallel_test_helper(model, config, tp_group):
+    # The input to first layer, the column parallel should be the same across all tp ranks
     calib_data = model.get_dummy_input().cuda()
     dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
 
@@ -148,6 +149,72 @@ def tensor_parallel_test_helper(model, config, tp_group, dp_group):
         assert torch.allclose(pre_quant_scale, input_quantizer.pre_quant_scale)
 
     dist.destroy_process_group()
+
+
+def dp_cp_parallel_test_helper(model, config, group):
+    calib_data = model.get_dummy_input().cuda()
+
+    def forward_loop(model):
+        model(calib_data)
+
+    model = mtq.quantize(model, config, forward_loop)
+
+    def reduce_amax(quantizer):
+        amax = quantizer.amax.clone()
+        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=group)
+        assert torch.allclose(amax, quantizer.amax)
+
+    # Input quantizer amax
+    if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
+        reduce_amax(model.fc1.input_quantizer)
+        reduce_amax(model.fc2.input_quantizer)
+
+    # Weight quantizer amax
+    if isinstance(model.fc1.weight_quantizer, SequentialQuantizer):
+        for quantizer in model.fc1.weight_quantizer:
+            reduce_amax(quantizer)
+    else:
+        reduce_amax(model.fc1.weight_quantizer)
+    if isinstance(model.fc2.weight_quantizer, SequentialQuantizer):
+        for quantizer in model.fc2.weight_quantizer:
+            reduce_amax(quantizer)
+    else:
+        reduce_amax(model.fc2.weight_quantizer)
+
+
+def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, cp_group):
+    calib_data = model.get_dummy_input().cuda()
+    # data should be same across each TP rank
+    dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
+
+    def forward_loop(model):
+        model(calib_data)
+
+    model = mtq.quantize(model, config, forward_loop)
+
+    def reduce_amax(quantizer):
+        amax = quantizer.amax.clone()
+        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=tp_group)
+        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=cp_group)
+        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=dp_group)
+        assert torch.allclose(amax, quantizer.amax)
+
+    # Input quantizer amax
+    if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
+        reduce_amax(model.fc1.input_quantizer)
+        reduce_amax(model.fc2.input_quantizer)
+
+    if isinstance(model.fc1.weight_quantizer, SequentialQuantizer):
+        for quantizer in model.fc1.weight_quantizer:
+            reduce_amax(quantizer)
+    else:
+        reduce_amax(model.fc1.weight_quantizer)
+
+    if isinstance(model.fc2.weight_quantizer, SequentialQuantizer):
+        for quantizer in model.fc2.weight_quantizer:
+            reduce_amax(quantizer)
+    else:
+        reduce_amax(model.fc2.weight_quantizer)
 
 
 def auto_quantize_helper(model):
