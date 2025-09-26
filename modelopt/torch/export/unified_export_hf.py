@@ -299,11 +299,11 @@ def _export_quantized_weight(
             expert_type in type(sub_module).__name__
             for expert_type in ["Llama4TextExperts", "GptOssExperts"]
         )
-        
+
         if is_expert_weight:
             # Transpose from (num_experts, in_dim, out_dim) to (num_experts, out_dim, in_dim)
             transposed_weight = weight.transpose(-2, -1).contiguous()
-            
+
             # Compute scaling factor from transposed weight
             weight_scale = NVFP4QTensor.get_weights_scaling_factor(
                 transposed_weight,
@@ -319,10 +319,10 @@ def _export_quantized_weight(
                 weight_scale_2,
                 block_size,
             )
-            
+
             # Transpose quantized weight back to original format (num_experts, in_dim, out_dim)
             quantized_weight = quantized_weight.transpose(-2, -1).contiguous()
-            
+
             # Transpose scaling factor back to match original weight dimensions
             weight_scale = weight_scale.transpose(-2, -1).contiguous()
         else:
