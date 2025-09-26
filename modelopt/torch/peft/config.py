@@ -145,6 +145,20 @@ class PEFTConfig(ModeloptBaseConfig):
         validate_default=True,
     )
 
+    freeze_base_model: bool = ModeloptField(
+        default=True,
+        title="Freeze base weights during training",
+        description="Whether to freeze the base model weights; in most cases, this should be set to True.",
+        validate_default=True,
+    )
+
+    freeze_lora_weights: bool = ModeloptField(
+        default=True,
+        title="Placeholder",
+        description="Placeholder",
+        validate_default=True,
+    )
+
     @field_validator("adapter_type")
     @classmethod
     def validate_adapter_type(cls, v):
