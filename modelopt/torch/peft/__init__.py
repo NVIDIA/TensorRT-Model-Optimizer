@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Distillation API subpackage for torch."""
+"""PEFT API subpackage for torch."""
 
 from . import mode
 from .config import *
