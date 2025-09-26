@@ -178,6 +178,15 @@ INT8_SMOOTHQUANT_CFG = {
     "algorithm": "smoothquant",
 }
 
+INT8_WEIGHT_ONLY_CFG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": 8, "axis": 0},
+        "*input_quantizer": {"enable": False},
+        **_default_disabled_quantizer_cfg,
+    },
+    "algorithm": "max",
+}
+
 FP8_DEFAULT_CFG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
@@ -622,6 +631,7 @@ choices: set[str] = {
     "INT4_BLOCKWISE_WEIGHT_ONLY_CFG",
     "INT8_DEFAULT_CFG",
     "INT8_SMOOTHQUANT_CFG",
+    "INT8_WEIGHT_ONLY_CFG",
     "MXFP4_DEFAULT_CFG",
     "MXFP8_DEFAULT_CFG",
     "MXINT8_DEFAULT_CFG",
