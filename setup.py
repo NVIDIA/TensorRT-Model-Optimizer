@@ -38,7 +38,6 @@ required_deps = [
     "safetensors",
     "torch>=2.6",
     "torchprofile>=0.0.4",
-    "torchvision",
 ]
 
 optional_deps = {
@@ -79,6 +78,7 @@ optional_deps = {
         "pytest-cov",
         "pytest-timeout",
         "timm",
+        "torchvision",
         "tox>4.18",
         "tox-current-env>=0.0.12",
     ],

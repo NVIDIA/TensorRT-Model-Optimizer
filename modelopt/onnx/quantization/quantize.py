@@ -60,7 +60,11 @@ from modelopt.onnx.quantization.graph_utils import (
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
 from modelopt.onnx.quantization.ort_utils import update_trt_ep_support
-from modelopt.onnx.quantization.qdq_utils import qdq_to_dq, remove_input_dq_and_output_q
+from modelopt.onnx.quantization.qdq_utils import (
+    qdq_to_dq,
+    remove_graph_input_q,
+    remove_input_dq_and_output_q,
+)
 from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag, load_onnx_model
 from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
 
@@ -77,7 +81,7 @@ def _preprocess_onnx(
     override_shapes: str,
     simplify: bool = False,
     quantize_mode: str = "int8",
-) -> tuple[str, onnx.ModelProto, list[str], bool, bool, bool, dict]:
+) -> tuple[str, onnx.ModelProto, list[str], bool, bool, bool, dict, dict]:
     logger.info(f"Preprocessing the model {onnx_path}")
     intermediate_generated_files = []
     output_dir = os.path.dirname(output_path)
@@ -176,13 +180,14 @@ def _preprocess_onnx(
         intermediate_generated_files.append(onnx_path)
 
     # If custom op precisions are given, add Cast or Q/DQ where appropriate.
+    custom_ops_to_cast = {}
     custom_ops_to_quantize = {}
     if trt_plugins_precision:
         custom_ops_to_cast, custom_ops_to_quantize = interpret_trt_plugins_precision_flag(
             onnx_model, trt_plugins_precision, quantize_mode
         )
-        if custom_ops_to_cast:
-            onnx_model = cast_custom_ops(onnx_model, custom_ops_to_cast)
+        if custom_ops_to_cast.get("fp16", {}):
+            onnx_model = cast_custom_ops(onnx_model, custom_ops_to_cast["fp16"])
             onnx_path = os.path.join(output_dir, f"{model_name}_castFP16.onnx")
             save_onnx(onnx_model, onnx_path, use_external_data_format)
             logger.info(f"Model is cloned to {onnx_path} after casting tensors to FP16")
@@ -195,6 +200,7 @@ def _preprocess_onnx(
         has_custom_op,
         has_dds_op,
         use_external_data_format,
+        custom_ops_to_cast.get("fp32", {}),
         custom_ops_to_quantize,
     )
 
@@ -210,6 +216,7 @@ def quantize(
     override_shapes: str | None = None,
     op_types_to_quantize: list[str] | None = None,
     op_types_to_exclude: list[str] | None = None,
+    op_types_to_exclude_fp16: list[str] | None = None,
     nodes_to_quantize: list[str] | None = None,
     nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
@@ -261,6 +268,9 @@ def quantize(
             This flag does not support regular expression.
         op_types_to_exclude:
             List of op types to exclude from quantization. This flag does not support regular expression.
+        op_types_to_exclude_fp16:
+            List of op types to exclude from FP16 conversion.
+            This is only relevant if '--high_precision_dtype != fp32'.
         nodes_to_quantize:
             List of node names to quantize. If None (default), all supported nodes are quantized.
             This flag supports regular expression.
@@ -402,6 +412,7 @@ def quantize(
         has_custom_op,
         has_dds_op,
         use_external_data_format,
+        custom_ops_to_cast_fp32,
         custom_ops_to_quantize,
     ) = _preprocess_onnx(
         onnx_path,
@@ -415,6 +426,16 @@ def quantize(
         quantize_mode,
     )
     trt_plugins = update_trt_ep_support(calibration_eps, has_dds_op, has_custom_op, trt_plugins)  # type: ignore[arg-type]
+
+    # Update list with op types to exclude from FP16/BF16 conversion
+    op_types_to_exclude_fp16 = list(
+        dict.fromkeys((op_types_to_exclude_fp16 or []) + list(custom_ops_to_cast_fp32.keys()))
+    )
+    if high_precision_dtype == "fp32" and op_types_to_exclude_fp16:
+        logger.warning(
+            "Nodes were detected for exclusion from FP16/BF16 conversion, but 'high_precision_dtype' is set to FP32. "
+            "Since the model won't be converted to a lower precision, this flag is void."
+        )
 
     # Use random scales if calibration data is not supplied
     if calibration_data is None:
@@ -457,6 +478,7 @@ def quantize(
             calibration_eps=calibration_eps,
             op_types_to_quantize=op_types_to_quantize,
             op_types_to_exclude=op_types_to_exclude,
+            op_types_to_exclude_fp16=op_types_to_exclude_fp16,
             nodes_to_quantize=nodes_to_quantize,
             nodes_to_exclude=nodes_to_exclude,
             use_external_data_format=use_external_data_format,
@@ -498,6 +520,8 @@ def quantize(
                 onnx_model = remove_input_dq_and_output_q(
                     onnx_model, quantizable_custom_ops=custom_ops_to_quantize
                 )
+            if direct_io_types:
+                onnx_model = remove_graph_input_q(onnx_model)
             # Sort nodes topologically
             graph = gs.import_onnx(onnx_model)
             graph.toposort().cleanup()

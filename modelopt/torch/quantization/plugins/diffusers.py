@@ -15,10 +15,10 @@
 
 """Support quantization of diffusers layers."""
 
-import functools
 from collections.abc import Callable, Iterator
 from functools import partial
 from types import ModuleType
+from typing import TYPE_CHECKING
 
 import onnx
 import torch
@@ -27,7 +27,12 @@ from diffusers.models.lora import LoRACompatibleConv, LoRACompatibleLinear
 from torch.autograd import Function
 from torch.nn import functional as F
 from torch.onnx import symbolic_helper
-from torch.onnx._internal import jit_utils, registration
+
+if TYPE_CHECKING:
+    if hasattr(torch.onnx._internal, "jit_utils"):
+        from torch.onnx._internal.jit_utils import GraphContext
+    else:  # torch >= 2.9
+        from torch.onnx._internal.torchscript_exporter.jit_utils import GraphContext
 
 from ..export_onnx import export_fp8_mha
 from ..nn import (
@@ -39,8 +44,6 @@ from ..nn import (
     TensorQuantizer,
 )
 from .custom import _QuantFunctionalMixin
-
-_onnx_symbolic = functools.partial(registration.onnx_symbolic, opset=18)
 
 onnx_dtype_map = {
     "BFloat16": onnx.TensorProto.BFLOAT16,
@@ -205,14 +208,14 @@ class FP8SDPA(Function):
     @staticmethod
     @symbolic_helper.parse_args("v", "v", "v", "v", "f", "b", "v", "t", "t", "t", "s", "b")
     def symbolic(
-        g: jit_utils.GraphContext,
-        query: torch._C.Value,
-        key: torch._C.Value,
-        value: torch._C.Value,
-        attn_mask: torch._C.Value | None = None,
+        g: "GraphContext",
+        query: "torch._C.Value",
+        key: "torch._C.Value",
+        value: "torch._C.Value",
+        attn_mask: "torch._C.Value | None" = None,
         dropout_p: float = 0.0,
         is_causal: bool = False,
-        scale: torch._C.Value | None = None,
+        scale: "torch._C.Value | None" = None,
         q_quantized_scale: float = 1.0,
         k_quantized_scale: float = 1.0,
         v_quantized_scale: float = 1.0,

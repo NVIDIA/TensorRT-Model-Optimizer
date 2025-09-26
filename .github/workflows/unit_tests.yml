@@ -10,7 +10,6 @@ on:
       - ".github/workflows/unit_tests.yml"
       - "modelopt/**"
       - "tests/unit/**"
-      - "pyproject.toml"
       - "setup.py"
       - "tox.ini"
   schedule:

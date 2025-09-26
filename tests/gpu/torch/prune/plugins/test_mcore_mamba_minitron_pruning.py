@@ -14,6 +14,8 @@
 # limitations under the License.
 
 
+from functools import partial
+
 import torch
 from _test_utils.import_helper import skip_if_no_megatron
 
@@ -29,7 +31,7 @@ from megatron.core.ssm.mamba_layer import MambaLayer
 import modelopt.torch.prune as mtp
 
 
-def _test_mcore_mamba_pruning(rank, size):
+def _test_mcore_mamba_pruning(ckpt_path, rank, size):
     num_layers = min(size * 2, 8)
     hidden_size = 256
     ffn_hidden_size = 128
@@ -40,18 +42,22 @@ def _test_mcore_mamba_pruning(rank, size):
     mamba_num_groups = 2
     batch_size = 2
 
-    model = get_mcore_mamba_model(
-        tensor_model_parallel_size=1,
-        pipeline_model_parallel_size=size,
-        initialize_megatron=True,
-        num_layers=num_layers,
-        hidden_size=hidden_size,
-        num_attention_heads=num_attention_heads,
-        num_query_groups=num_query_groups,
-        mamba_state_dim=mamba_state_dim,
-        mamba_head_dim=mamba_head_dim,
-        mamba_num_groups=mamba_num_groups,
-    )
+    def _get_model(initialize_megatron=True):
+        model = get_mcore_mamba_model(
+            tensor_model_parallel_size=1,
+            pipeline_model_parallel_size=size,
+            initialize_megatron=initialize_megatron,
+            num_layers=num_layers,
+            hidden_size=hidden_size,
+            num_attention_heads=num_attention_heads,
+            num_query_groups=num_query_groups,
+            mamba_state_dim=mamba_state_dim,
+            mamba_head_dim=mamba_head_dim,
+            mamba_num_groups=mamba_num_groups,
+        )
+        return model
+
+    model = _get_model()
 
     mamba_layer = None
     for layer in model.decoder.layers:
@@ -89,7 +95,7 @@ def _test_mcore_mamba_pruning(rank, size):
         mode="mcore_minitron",
         constraints={"export_config": export_config},
         dummy_input=None,  # Not used
-        config={"forward_loop": forward_loop},
+        config={"forward_loop": forward_loop, "scores_path": ckpt_path},
     )
 
     # Assert weights are pruned correctly
@@ -115,8 +121,20 @@ def _test_mcore_mamba_pruning(rank, size):
     # Assert forward pass works on the pruned model
     run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
 
+    # Assert re-pruning from scores_path works without running the forward loop again
+    model = _get_model(initialize_megatron=False)
+    mtp.prune(
+        model,
+        mode="mcore_minitron",
+        constraints={"export_config": export_config},
+        dummy_input=None,  # Not used
+        config={"scores_path": ckpt_path},
+    )
 
-def test_mcore_mamba_pruning():
+
+def test_mcore_mamba_pruning(tmp_path):
     spawn_multiprocess_job(
-        size=torch.cuda.device_count(), job=_test_mcore_mamba_pruning, backend="nccl"
+        size=torch.cuda.device_count(),
+        job=partial(_test_mcore_mamba_pruning, tmp_path / "modelopt_minitron_scores.pth"),
+        backend="nccl",
     )

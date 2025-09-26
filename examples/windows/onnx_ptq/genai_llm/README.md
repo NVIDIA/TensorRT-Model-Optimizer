@@ -56,6 +56,8 @@ The table below lists key command-line arguments of the ONNX PTQ example script.
 | `--awqclip_bsz_col` | 1024 (default) | Chunk size in columns during weight clipping, user-defined |
 | `--calibration_eps` | dml, cuda, cpu, NvTensorRtRtx (default: [dml,cpu]) | List of execution-providers to use for session run during calibration |
 | `--no_position_ids` | Default: position_ids input enabled | Use this option to disable position_ids input in calibration data|
+| `--enable_mixed_quant` | Default: disabled mixed quant | Use this option to enable mixed precsion quantization|
+| `--layers_8bit` | Default: None | Use this option to Overrides default mixed quant strategy|
 
 Run the following command to view all available parameters in the script:
 

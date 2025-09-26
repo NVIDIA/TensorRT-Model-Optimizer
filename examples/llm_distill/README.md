@@ -21,14 +21,22 @@ This section focuses on demonstrating how to apply Model Optimizer to perform kn
 
 ## Pre-Requisites
 
+### Docker
+
+For Hugging Face models, please use the PyTorch docker image (e.g., `nvcr.io/nvidia/pytorch:25.06-py3`).
+For NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.07`) which has all the dependencies installed.
+Visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
+
+Also follow the installation steps below to upgrade to the latest version of Model Optimizer and install example-specific dependencies.
+
+### Local Installation
+
 For Hugging Face models, install Model Optimizer with `hf` dependencies using `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/) and install the requirements for the example:
 
 ```bash
-pip install nvidia-modelopt[hf]
+pip install -U nvidia-modelopt[hf]
 pip install -r requirements.txt
 ```
-
-For NeMo models, use the NeMo container `nvcr.io/nvidia/nemo:25.07` or later which has all the dependencies installed.
 
 ## Getting Started
 
@@ -136,7 +144,7 @@ Loss balancers:
 
 Checkout the stand-alone distillation script in the [NVIDIA NeMo repository](https://docs.nvidia.com/nemo-framework/user-guide/latest/model-optimization/distillation/distillation.html).
 
-You can also look at the tutorial notebooks [here](https://github.com/NVIDIA-NeMo/NeMo/tree/main/tutorials/llm/llama/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Llama 3.1 8B step-by-step in NeMo framework.
+You can also look at the NeMo tutorial notebooks [here](https://github.com/NVIDIA-NeMo/NeMo/tree/main/tutorials/llm/qwen/pruning-distillation) which showcase the usage of Minitron pruning followed by distillation for Qwen 3 8B step-by-step in NeMo framework. Hugging Face models can also be converted to NeMo format and used subsequently as shown in the tutorial.
 
 ## Knowledge Distillation (KD) for HuggingFace Models
 

@@ -56,7 +56,7 @@ Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#current-out-of-the-
 
 Please refer to the [llm_ptq/README.md](../llm_ptq/README.md) about the details of model quantization.
 
-The following scripts provide an all-in-one and step-by-step model quantization example for Llava, VILA, Phi-3-vision and Qwen2.5-VL models. The quantization format and the number of GPUs will be supplied as inputs to these scripts. By default, we build the engine for the fp8 format and 1 GPU.
+The following scripts provide an all-in-one and step-by-step model quantization example for the supported Hugging Face multi-modal models. The quantization format and the number of GPUs will be supplied as inputs to these scripts.
 
 ### Hugging Face Example [Script](./scripts/huggingface_example.sh)
 

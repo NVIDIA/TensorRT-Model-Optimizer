@@ -31,8 +31,7 @@ from modelopt.torch.opt.utils import forward_with_reshard
 from modelopt.torch.quantization.config import QuantizeConfig
 from modelopt.torch.quantization.conversion import set_quantizer_by_cfg
 
-from . import config
-from .algorithms import AutoQuantizeSearcher
+from .algorithms import AutoQuantizeSearcher, QuantRecipe
 from .config import QuantizeAlgoCfgType
 from .conversion import set_quantizer_attribute
 from .mode import QuantizeModeRegistry, get_modelike_from_algo_cfg
@@ -105,6 +104,11 @@ def calibrate(
             mode=get_modelike_from_algo_cfg(algorithm),
             mode_kwargs={"forward_loop": forward_loop},
         )
+
+    for name, module in model.named_modules():
+        if isinstance(module, TensorQuantizer):
+            for attr_name in ["_amax", "_pre_quant_scale"]:
+                module.validate_attr(attr_name=attr_name, warn_error=True, name=name)
 
     # TODO: Re-enable when the CUDA error: unspecified launch failure is fixed.
     # clear_cuda_cache()
@@ -411,14 +415,15 @@ def auto_quantize(
     for i, quant_cfg in enumerate(quantization_formats):
         if quant_cfg is None:
             continue
-        if isinstance(quant_cfg, str):
-            assert quant_cfg in config.choices, f"Invalid quantization format: {quant_cfg}"
-            quant_cfg = getattr(config, quant_cfg)
-        elif not any(quant_cfg is getattr(config, choice) for choice in config.choices):
+
+        name = QuantRecipe.get_auto_name_for_config(quant_cfg)
+        if name is None:
+            name = f"CUSTOM_{i}"
             warnings.warn(
-                "Received custom quantization formats for search, auto_quantize results may not be optimal."
+                f"Received custom quantization formats for search, auto_quantize results may not be optimal. "
+                f"This config will be displayed as {name}"
             )
-        processed_quantization_formats.append(quant_cfg)
+        processed_quantization_formats.append((quant_cfg, name))
 
     assert len(processed_quantization_formats) > 0, "`quantization_formats` should not be empty"
     model = apply_mode(
@@ -435,17 +440,12 @@ def auto_quantize(
         "forward_backward_step": forward_backward_step,
         "num_calib_steps": num_calib_steps,
         "num_score_steps": num_score_steps,
+        "disabled_layers": disabled_layers,
         "verbose": verbose,
     }
     # Disable all quantizers; AutoQuantize will enable the needed ones
     set_quantizer_by_cfg(model, {"*": {"enable": False}})
     searcher.search(model, constraints, config=search_config)  # type: ignore[arg-type]
-
-    if disabled_layers:
-        if isinstance(disabled_layers, str):
-            disabled_layers = [disabled_layers]
-        for layer_pattern in disabled_layers:
-            disable_quantizer(model, layer_pattern)
 
     return model, searcher.state_dict()
 

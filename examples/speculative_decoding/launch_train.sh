@@ -30,6 +30,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       DATA="${1#*=}"
       ;;
+    --offline-data*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      OFFLINE_DATA_PATH="${1#*=}"
+      ;;
     --mode*)
       if [[ "$1" != *=* ]]; then shift; fi
       MODE="${1#*=}"
@@ -104,7 +108,8 @@ REDRAFTER_TOKENS=${REDRAFTER_TOKENS:-1}
 REDRAFTER_NUM_LAYERS=${REDRAFTER_NUM_LAYERS:-1}
 FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaDecoderLayer"}
 NUM_GPU=${NUM_GPU:-1}
-TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-512}
+TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-2048}
+OFFLINE_DATA_PATH=${OFFLINE_DATA_PATH:-""}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
@@ -117,6 +122,17 @@ elif [[ "$MODE" == "eagle1" || "$MODE" == "eagle3" ]]; then
 else
   echo "Only medusa, eagle1, eagle3 supported for now!"
   exit 1
+fi
+
+if [[ "$OFFLINE_DATA_PATH" != "" ]]; then
+  if [[ ! -d "$OFFLINE_DATA_PATH" ]]; then
+    echo "Offline data path $OFFLINE_DATA_PATH does not exist or is not a directory."
+    exit 1
+  else
+    OFFLINE_TRAINING_ARGS="--offline-data-path $OFFLINE_DATA_PATH --ar_validate_steps -1"
+  fi
+else
+  OFFLINE_TRAINING_ARGS=""
 fi
 
 if [[ "$NUM_GPU" == 1 ]]; then
@@ -149,6 +165,7 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --logging_steps 100 \
     --tf32 True \
     --data_path $DATA \
+    $OFFLINE_TRAINING_ARGS \
     $SPECULATIVE_ARGS
 "
 

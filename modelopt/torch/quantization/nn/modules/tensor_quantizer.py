@@ -28,6 +28,11 @@ try:
 except ImportError:
     DTensor = None
 
+if hasattr(torch.onnx, "_globals"):
+    from torch.onnx._globals import GLOBALS
+else:  # torch >= 2.9
+    from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
+
 import torch.nn.functional as F
 from torch import nn
 
@@ -254,6 +259,7 @@ class TensorQuantizer(nn.Module):
         if hasattr(self, "_amax"):
             delattr(self, "_amax")
         self._calibrator.reset()
+        self.reset_bias()
 
     def reset_bias(self):
         """Reset bias to None."""
@@ -419,54 +425,6 @@ class TensorQuantizer(nn.Module):
             and self.block_sizes.get("scale_bits", None) == (8, 0)
         )
 
-    @property
-    def svdquant_lora_a(self):
-        """Lora a weights for svdquant."""
-        if not hasattr(self, "_svdquant_lora_a"):
-            return None
-        return self._svdquant_lora_a
-
-    @svdquant_lora_a.setter
-    def svdquant_lora_a(self, value):
-        """Lora a weights for svdquant."""
-        assert value is not None, "svdquant_lora_a cannot be set to None."
-
-        if not isinstance(value, torch.Tensor):
-            value = torch.tensor(value)
-
-        if not hasattr(self, "_svdquant_lora_a"):
-            self.register_buffer("_svdquant_lora_a", value.clone().detach())
-        else:
-            if self._svdquant_lora_a.shape != value.shape:
-                raise RuntimeError("Changing shape when setting svdquant_lora_a is not allowed.")
-            self._svdquant_lora_a.data.copy_(
-                value.clone().detach().to(self._svdquant_lora_a.device)
-            )
-
-    @property
-    def svdquant_lora_b(self):
-        """Lora b weights for svdquant."""
-        if not hasattr(self, "_svdquant_lora_b"):
-            return None
-        return self._svdquant_lora_b
-
-    @svdquant_lora_b.setter
-    def svdquant_lora_b(self, value):
-        """Lora b weights for svdquant."""
-        assert value is not None, "svdquant_lora_b cannot be set to None."
-
-        if not isinstance(value, torch.Tensor):
-            value = torch.tensor(value)
-
-        if not hasattr(self, "_svdquant_lora_b"):
-            self.register_buffer("_svdquant_lora_b", value.clone().detach())
-        else:
-            if self._svdquant_lora_b.shape != value.shape:
-                raise RuntimeError("Changing shape when setting svdquant_lora_b is not allowed.")
-            self._svdquant_lora_b.data.copy_(
-                value.clone().detach().to(self._svdquant_lora_b.device)
-            )
-
     def disable_calib(self):
         """Disable calibration."""
         self._if_calib = False
@@ -546,12 +504,27 @@ class TensorQuantizer(nn.Module):
         amax = amax.detach() if is_torch_export_mode() else amax.data
         return amax
 
-    def _validate_amax(self, amax):
-        # Dynamic control flow is not supported by torch dynamo
-        if not is_torch_export_mode() and not torch._dynamo.is_compiling():
-            assert torch.all(amax >= 0) and not torch.any(torch.isinf(amax)), (
-                f"Got invalid amax: {amax}"
-            )
+    def validate_attr(
+        self, attr_value=None, attr_name="amax", raise_error=False, warn_error=False, name=""
+    ):
+        """Validate attribute."""
+        attr_value = attr_value if attr_value is not None else getattr(self, attr_name, None)
+        if attr_value is None or (isinstance(attr_value, torch.Tensor) and attr_value.is_meta):
+            return True
+        is_valid = (
+            torch.all(attr_value >= 0)
+            and not torch.any(torch.isinf(attr_value))
+            and not torch.any(torch.isnan(attr_value))
+        )
+        if is_valid:
+            return True
+        name = f"{name}." if name else ""
+        msg = f"{name}{attr_name} contains invalid values: {attr_value}"
+        if warn_error:
+            warnings.warn(msg)
+        if raise_error:
+            raise ValueError(msg)
+        return False
 
     def _get_bias(self, inputs):
         """Get bias from buffer or compute it dynamically."""
@@ -651,14 +624,14 @@ class TensorQuantizer(nn.Module):
         amax = None
         if not self.is_mx_format:
             amax = self._get_amax(inputs)
-            self._validate_amax(amax)
 
         if self.block_sizes is not None and self.block_sizes.get("type", "static") == "dynamic":
             # Block quantization, including dynamic and static block quantization
             block_size = self.block_sizes.get(-1, None) or self.block_sizes.get(
                 inputs.dim() - 1, None
             )
-            assert block_size is not None, "block size for dynamic quantization not found."
+            if block_size is None:
+                raise ValueError("block size for dynamic quantization not found.")
 
             outputs = dynamic_block_quant(
                 inputs,
@@ -800,10 +773,12 @@ class TensorQuantizer(nn.Module):
     def _process_for_blockquant(self, inputs: torch.Tensor):
         if hasattr(self, "_padding"):
             inputs = F.pad(inputs, self._padding, "constant", 0)
-        assert inputs.shape == self._original_shape, (
-            f"Input shape has changed from {self._original_shape} to {inputs.shape}."
-            " Block-quantization requires a fixed input shape."
-        )
+
+        if inputs.shape != self._original_shape:
+            raise ValueError(
+                f"Input shape has changed from {self._original_shape} to {inputs.shape}."
+                " Block-quantization requires a fixed input shape."
+            )
         inputs = inputs.reshape(self._block_reshape_size)
         return inputs
 
@@ -854,7 +829,7 @@ class TensorQuantizer(nn.Module):
         clamp_min, clamp_max = torch.finfo(amax.dtype).tiny, torch.finfo(amax.dtype).max
         amax = amax.clamp(min=clamp_min, max=clamp_max)
 
-        self._validate_amax(amax)
+        self.validate_attr(attr_name="_amax", attr_value=amax)
 
         if self.block_sizes is None:
             # tensorrt_llm assumes the scaling_factor dim >= 1 for per-tensor.
@@ -878,11 +853,6 @@ class TensorQuantizer(nn.Module):
         Returns:
             outputs: A Tensor of type output_dtype
         """
-        if hasattr(torch.onnx, "_globals"):
-            from torch.onnx._globals import GLOBALS
-        else:
-            from torch.onnx._internal.torchscript_exporter._globals import GLOBALS
-
         if DTensor is not None and isinstance(inputs, DTensor):
             # TensorQuantizer only handles regular non-DTensor inputs
             device_mesh, placements = inputs.device_mesh, inputs.placements
@@ -914,7 +884,7 @@ class TensorQuantizer(nn.Module):
 
         if (
             not is_torch_export_mode()
-            and not torch._dynamo.is_compiling()
+            and not torch.compiler.is_compiling()
             and GLOBALS.in_onnx_export
         ):
             # GLOBALS could break TorchDynamo for some Pytorch versions (i.e., 2.3.0)
@@ -949,7 +919,6 @@ class TensorQuantizer(nn.Module):
                 )
                 assert block_size is not None, "block size for dynamic quantization not found."
 
-            # Collect calibration data for bias
             self.collect(inputs)
 
         if self._if_quant:
@@ -1012,7 +981,6 @@ class TensorQuantizer(nn.Module):
             s += f" axis={self._axis}" if self._axis is not None else " per-tensor"
         s += f" amax={self._short_amax()}"
         s += " pre_quant_scale" if self.pre_quant_scale is not None else ""
-        s += " svdquant" if self.svdquant_lora_a is not None else ""
         s += " rotated" if self._rotate else ""
         s += (
             f" calibrator={self._calibrator.__class__.__name__}"
