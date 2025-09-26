@@ -42,7 +42,7 @@ class TRTLLM(TemplateAPI):
     def __init__(
         self,
         tokenizer: str,
-        engine_dir: str,
+        checkpoint_dir: str,
         batch_size: int = 1,
         **kwargs,
     ):
@@ -56,11 +56,11 @@ class TRTLLM(TemplateAPI):
         if self.tokenizer.pad_token_id is None:
             self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
-        assert isinstance(engine_dir, str)
+        assert isinstance(checkpoint_dir, str)
 
-        self.llm = LLM(checkpoint_dir=engine_dir, tokenizer=self.tokenizer)
+        self.llm = LLM(checkpoint_dir=checkpoint_dir, tokenizer=self.tokenizer)
         self.max_length = self.llm.max_seq_len - 1
-        logger.info("Loaded TRT-LLM engine")
+        logger.info("Loaded TRT-LLM")
 
     def model_call(
         self,

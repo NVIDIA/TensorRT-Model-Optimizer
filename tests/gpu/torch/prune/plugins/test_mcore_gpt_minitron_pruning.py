@@ -41,6 +41,8 @@ def _test_mcore_gpt_pruning(
     pruned_hidden_size_div,
     pruned_num_layers_div,
     uneven_pp,
+    skip_sorting,
+    ckpt_path,
     rank,
     size,
 ):
@@ -66,22 +68,26 @@ def _test_mcore_gpt_pruning(
         else:
             raise ValueError(f"Unsupported size {size}")
 
-    model = get_mcore_gpt_model(
-        tensor_model_parallel_size=1,
-        pipeline_model_parallel_size=size,
-        initialize_megatron=True,
-        num_layers=num_layers,
-        hidden_size=hidden_size,
-        num_attention_heads=num_attention_heads,
-        num_query_groups=num_query_groups,
-        ffn_hidden_size=ffn_hidden_size,
-        max_sequence_length=max_sequence_length,
-        vocab_size=vocab_size,
-        activation_func=activation_func,
-        normalization=normalization,
-        num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
-        num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
-    )
+    def _get_model(initialize_megatron=True):
+        model = get_mcore_gpt_model(
+            tensor_model_parallel_size=1,
+            pipeline_model_parallel_size=size,
+            initialize_megatron=initialize_megatron,
+            num_layers=num_layers,
+            hidden_size=hidden_size,
+            num_attention_heads=num_attention_heads,
+            num_query_groups=num_query_groups,
+            ffn_hidden_size=ffn_hidden_size,
+            max_sequence_length=max_sequence_length,
+            vocab_size=vocab_size,
+            activation_func=activation_func,
+            normalization=normalization,
+            num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
+            num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
+        )
+        return model
+
+    model = _get_model()
 
     def forward_loop(m):
         for _ in range(5):
@@ -105,13 +111,24 @@ def _test_mcore_gpt_pruning(
     if pruned_num_layers_div != 1:
         export_config["num_layers"] = pruned_num_layers
 
-    mtp.prune(
+    config = {
+        "scores_path": ckpt_path,
+        "skip_sorting": skip_sorting,
+    }
+    if skip_sorting:
+        assert ckpt_path is None
+    else:
+        config["forward_loop"] = forward_loop
+    model, pruning_scores = mtp.prune(
         model,
         mode="mcore_minitron",
         constraints={"export_config": export_config},
         dummy_input=None,  # Not used
-        config={"forward_loop": forward_loop},
+        config=config,
     )
+    if not skip_sorting:
+        assert pruning_scores["layer_scores"]
+        assert pruning_scores["activations_per_rank"]
 
     # Assert weights are pruned correctly
     for layer in model.decoder.layers:
@@ -139,6 +156,17 @@ def _test_mcore_gpt_pruning(
     # Assert forward pass works on the pruned model
     run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
 
+    # Assert re-pruning from scores_path works without running the forward loop again
+    if ckpt_path:
+        model = _get_model(initialize_megatron=False)
+        mtp.prune(
+            model,
+            mode="mcore_minitron",
+            constraints={"export_config": export_config},
+            dummy_input=None,  # Not used
+            config={"scores_path": ckpt_path},
+        )
+
 
 @pytest.mark.parametrize(
     (
@@ -152,16 +180,24 @@ def _test_mcore_gpt_pruning(
         "hidden_size_div",
         "num_layers_div",
         "uneven_pp",
+        "skip_sorting",
+        "test_ckpt",
     ),
     [
-        (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False),  # MHA - pruned ffn/4
-        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False),  # GQA - pruned attention/2
-        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False),  # GQA - pruned hidden_size/4
-        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False),  # MHA - pruned num_layers/2
-        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True),  # GQA - pruned all/2, uneven pp
+        # MHA - pruned ffn/4
+        (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False, False, False),
+        # GQA - pruned attention/2
+        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, False, False),
+        # GQA - pruned hidden_size/4
+        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, True, False),
+        # MHA - pruned num_layers/2
+        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, False, False),
+        # GQA - pruned all/2, uneven pp
+        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, False, True),
     ],
 )
 def test_mcore_gpt_pruning(
+    tmp_path,
     num_attention_heads,
     num_query_groups,
     activation_func,
@@ -172,6 +208,8 @@ def test_mcore_gpt_pruning(
     hidden_size_div,
     num_layers_div,
     uneven_pp,
+    skip_sorting,
+    test_ckpt,
 ):
     spawn_multiprocess_job(
         size=torch.cuda.device_count(),
@@ -187,6 +225,8 @@ def test_mcore_gpt_pruning(
             hidden_size_div,
             num_layers_div,
             uneven_pp,
+            skip_sorting,
+            tmp_path / "modelopt_minitron_scores.pth" if test_ckpt else None,
         ),
         backend="nccl",
     )

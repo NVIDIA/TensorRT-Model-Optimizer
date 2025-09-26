@@ -73,7 +73,7 @@ if [ -n "$KV_CACHE_QUANT" ]; then
     PTQ_ARGS+=" --kv_cache_qformat=$KV_CACHE_QUANT "
 fi
 
-if [ "${MODEL_TYPE}" = "vila" ]; then
+if [[ "${MODEL_NAME,,}" == *"vila"* ]]; then
     # Install required dependency for VILA
     pip install -r ../vlm_ptq/requirements-vila.txt
     # Clone original VILA repo
