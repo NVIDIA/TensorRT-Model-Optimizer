@@ -38,7 +38,6 @@ def convert_to_peft_model(model: ModelLikeModule, config: PEFTConfig) -> Convert
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
-    # TODO: Replace to LoRA module
     replace_lora_module(model, version=ModeloptStateManager(model).state_version, config=config)
 
     metadata = {}
