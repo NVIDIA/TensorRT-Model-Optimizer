@@ -50,6 +50,7 @@ from .model_config import (
     QUANTIZATION_FP8_PC_PT,
     QUANTIZATION_INT4_AWQ,
     QUANTIZATION_INT8_SQ,
+    QUANTIZATION_INT8_WO,
     QUANTIZATION_MXFP4,
     QUANTIZATION_NONE,
     QUANTIZATION_NVFP4,
@@ -454,7 +455,10 @@ def get_quantization_format(module) -> str | None:
             return QUANTIZATION_INT4_AWQ
 
         if weight_quantizer.num_bits == 8:
-            return QUANTIZATION_INT8_SQ
+            if input_quantizer is not None and input_quantizer.is_enabled:
+                return QUANTIZATION_INT8_SQ
+            else:
+                return QUANTIZATION_INT8_WO
 
         if weight_quantizer.num_bits == (4, 3):
             if weight_quantizer.block_sizes:
@@ -626,6 +630,8 @@ def process_layer_quant_config(layer_config_dict):
                 "has_zero_point": False,
                 "pre_quant_scale": True,
             }
+        elif v == "int8_wo":
+            layer_config = {"quant_algo": "W8A16"}
         elif v == "int8_sq":
             layer_config = {"quant_algo": "W8A8_SQ_PER_CHANNEL"}
         elif v == "nvfp4":
@@ -751,7 +757,7 @@ def to_quantized_weight(
             return (weight / weights_scaling_factor.unsqueeze(-1)).to(torch.float8_e4m3fn)
         return (weight / weights_scaling_factor).to(torch.float8_e4m3fn)
 
-    if quantization == QUANTIZATION_INT8_SQ:
+    if quantization in [QUANTIZATION_INT8_SQ, QUANTIZATION_INT8_WO]:
         return (weight / weights_scaling_factor[:, None]).round().clamp(-128, 127).to(torch.int8)
 
     if quantization == QUANTIZATION_FP8_PB_WO:
@@ -803,7 +809,7 @@ def from_quantized_weight(
             torch_dtype
         )
 
-    if quantization == QUANTIZATION_INT8_SQ:
+    if quantization in [QUANTIZATION_INT8_SQ, QUANTIZATION_INT8_WO]:
         return weight.to(torch_dtype) * weights_scaling_factor[:, None].to(torch_dtype)
 
     raise NotImplementedError(f"quantization format {quantization} not supported")
