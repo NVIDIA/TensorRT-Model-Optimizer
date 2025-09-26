@@ -270,6 +270,15 @@ def get_weight_scaling_factor(module: nn.Module, weight_name: str = "weight") ->
         QUANTIZATION_NVFP4_AWQ,
         QUANTIZATION_W4A8_NVFP4_FP8,
     ]:
+        if hasattr(weight_quantizer, "_scale"):
+            # In this case, weight must be a QTensorWrapper
+            original_shape = weight.metadata["shape"]
+            ws = NVFP4QTensor.get_modelopt_weights_scaling_factor(
+                weight_quantizer._scale, original_shape
+            )
+            print(f"weight_quantizer._scale: {ws.shape}")
+            return ws
+
         return NVFP4QTensor.get_weights_scaling_factor(
             weight,
             weight_quantizer.block_sizes[-1],
@@ -611,8 +620,6 @@ def process_layer_quant_config(layer_config_dict):
 
         # Get the corresponding AWQ block size
         block_size_value = layer_config_dict.get(awq_key, 0)
-
-        # print(f"DEBUG LOG: Processing layer {k} with quantization {v}, block size {block_size_value}")
 
         if v == "fp8":
             layer_config = {"quant_algo": "FP8"}
@@ -1088,6 +1095,9 @@ def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[st
                 block_size = get_weight_block_size(module)
 
             # Construct per layer config dictionary
+            if block_size == 0 and quantization_format != QUANTIZATION_FP8:
+                continue
+
             layer_config_dict[name + ".quantization"] = quantization_format
             layer_config_dict[name + ".awq_block_size"] = block_size
 

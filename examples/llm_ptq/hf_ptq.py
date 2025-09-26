@@ -364,7 +364,9 @@ def main(args):
         )
         mts.export(model)
 
-    if args.auto_quantize_bits or args.qformat in QUANT_CFG_CHOICES:
+    if (
+        args.auto_quantize_bits or args.qformat in QUANT_CFG_CHOICES
+    ) and not model_is_already_quantized:
         if "awq" in args.qformat:
             print(
                 "\n####\nAWQ calibration could take longer than other calibration methods. "
@@ -393,6 +395,9 @@ def main(args):
                 sample_input_single_batch = None
 
             run_auto_quant = args.auto_quantize_bits is not None
+            print("DEBUG LOG: Entereing here")
+            for k, v in model.state_dict().items():
+                print(k, v.shape, v.dtype, v.device)
 
             args.batch_size = get_max_batch_size(
                 model,
@@ -635,7 +640,6 @@ def main(args):
                     "They will be set at deployment time."
                 )
 
-            print("DEBUG LOG: Calling unified export hf checkpoint")
             export_hf_checkpoint(
                 full_model,
                 export_dir=export_path,
