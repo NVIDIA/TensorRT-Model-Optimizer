@@ -23,7 +23,14 @@ from typing import Any
 import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
-from example_utils import apply_kv_cache_quant, get_model, get_processor, get_tokenizer, is_enc_dec
+from example_utils import (
+    apply_kv_cache_quant,
+    copy_custom_model_files,
+    get_model,
+    get_processor,
+    get_tokenizer,
+    is_enc_dec,
+)
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -604,6 +611,9 @@ def main(args):
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
             )
+
+            # Copy custom model files (Python files and JSON configs) for TensorRT-LLM export
+            copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
         else:
             # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
             assert args.sparsity_fmt == "dense", (
@@ -620,6 +630,9 @@ def main(args):
                 full_model,
                 export_dir=export_path,
             )
+
+        # Copy custom model files (Python files and JSON configs) if trust_remote_code is used
+        copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
 
         # Restore default padding and export the tokenizer as well.
         if tokenizer is not None:
