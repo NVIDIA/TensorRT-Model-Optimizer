@@ -1,6 +1,15 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.39 (2025-10-xx)
+^^^^^^^^^^^^^^^^^
+
+**Deprecations**
+
+**New Features**
+
+- Add flag ``op_types_to_exclude_fp16`` in ONNX quantization to exclude ops from being converted to FP16/BF16. Alternatively, for custom TensorRT ops, this can also be done by indicating ``'fp32'`` precision in ``trt_plugins_precision``.
+
 0.37 (2025-09-xx)
 ^^^^^^^^^^^^^^^^^
 
