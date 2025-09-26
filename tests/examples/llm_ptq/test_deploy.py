@@ -37,7 +37,7 @@ def clear_hf_cache():
             print(f"Clearing HF cache at: {HF_CACHE_PATH}")
             for item in os.listdir(HF_CACHE_PATH):
                 item_path = os.path.join(HF_CACHE_PATH, item)
-                if os.path.isdir(item_path):
+                if os.path.isdir(item_path) and "nvidia" in item:
                     shutil.rmtree(item_path, ignore_errors=True)
                     print(f"✓ Removed: {item}")
             print("✓ HF cache cleared successfully")

@@ -177,10 +177,12 @@ class ModelDeployer:
             import sglang as sgl
         except ImportError:
             pytest.skip("sglang package not available")
-
+        quantization_method = "modelopt"
+        if "FP4" in self.model_id:
+            quantization_method = "modelopt_fp4"
         llm = sgl.Engine(
             model_path=self.model_id,
-            quantization="modelopt",
+            quantization=quantization_method,
             tp_size=self.tensor_parallel_size,
             trust_remote_code=True,
         )
