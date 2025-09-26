@@ -622,8 +622,6 @@ def process_layer_quant_config(layer_config_dict):
         # Get the corresponding AWQ block size
         block_size_value = layer_config_dict.get(awq_key, 0)
 
-        # print(f"DEBUG LOG: Processing layer {k} with quantization {v}, block size {block_size_value}")
-
         if v == "fp8":
             layer_config = {"quant_algo": "FP8"}
         elif v == "fp8_pc_pt":
@@ -1106,6 +1104,9 @@ def get_quant_config(
                 block_size = get_weight_block_size(module)
 
             # Construct per layer config dictionary
+            if block_size == 0 and quantization_format != QUANTIZATION_FP8:
+                continue
+
             layer_config_dict[name + ".quantization"] = quantization_format
             layer_config_dict[name + ".awq_block_size"] = block_size
 
