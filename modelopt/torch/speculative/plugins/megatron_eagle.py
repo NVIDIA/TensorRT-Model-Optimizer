@@ -945,7 +945,8 @@ class _DynamicEagleGPTModel(EagleModel):
         )
 
         # Update inference_context.sequence_len_offset after each call of eagle_module
-        inference_context.sequence_len_offset += eagle_inputs["input_ids"].shape[1]
+        if inference_context is not None:
+            inference_context.sequence_len_offset += eagle_inputs["input_ids"].shape[1]
 
         if hasattr(self.eagle_module, "eagle_output_layer"):
             eagle_logits, _ = self.eagle_module.eagle_output_layer(eagle_hidden_states)
