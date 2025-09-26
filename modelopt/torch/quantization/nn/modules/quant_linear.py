@@ -168,11 +168,9 @@ class RealQuantLinear(QuantModule):
         # Check if real-quant GEMM is available
         if self._should_run_real_quant_gemm and input.numel() > 1:
             # If the input is not quantized, we use the default GEMM.
-            self.get_real_quant_gemm_impl(input, *args, **kwargs)
-
             # Note: We cache the real-quant GEMM function to avoid matching overhead.
             # This assumes that the function will not change after the first call.
-            if self._real_quant_gemm_impl:
+            if self.get_real_quant_gemm_impl(input, *args, **kwargs):
                 with torch.cuda.nvtx.range("RealQuantLinear gemm"):
                     output = self._real_quant_gemm_impl(
                         self, input, self.weight, self.bias, *args, **kwargs

@@ -115,7 +115,7 @@ def real_quant_module_set_extra_state(self, state: Any):
     """
     q_tensor_state = state.get("modelopt_q_tensor_state", None)
 
-    if q_tensor_state is not None:
+    if q_tensor_state:
         q_tensor_metadata = q_tensor_state["metadata"]
         q_tensor_metadata["shape"] = self.weight.shape
         q_tensor_data_dtype = q_tensor_state["quantized_data.dtype"]
@@ -418,8 +418,10 @@ class _RealQuantMegatronParallelLinear(RealQuantLinear):
             while the original forward only takes 1 positional argument. We must above the fallback path
             in RealQuantLinear.forward().
         """
-        if self._should_run_real_quant_gemm and self.get_real_quant_gemm_impl(
-            input, *args, **kwargs
+        if (
+            self._should_run_real_quant_gemm
+            and self.get_real_quant_gemm_impl(input, *args, **kwargs)
+            and input.numel() > 1
         ):
             allreduce_dgrad = kwargs.get("allreduce_dgrad", False)
             tp_group = kwargs.get("tp_group")

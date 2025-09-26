@@ -24,6 +24,7 @@ from modelopt.torch.quantization.backends.gemm_registry import gemm_registry
 from modelopt.torch.quantization.config import FP8_DEFAULT_CFG
 from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import FP8QTensor, QTensorWrapper
+from modelopt.torch.quantization.triton.fp8_kernel import fp8_gemm
 from modelopt.torch.quantization.utils import reduce_amax
 
 from .utils import fp8_compatible
@@ -32,62 +33,37 @@ FP8_MIN = torch.finfo(torch.float8_e4m3fn).min
 FP8_MAX = torch.finfo(torch.float8_e4m3fn).max
 
 
+@torch.compile(dynamic=True)
+def _to_fp8(x, amax):
+    return (x.to(torch.float32) / amax * 448.0).clamp(FP8_MIN, FP8_MAX).to(torch.float8_e4m3fn)
+
+
 def fp8_per_tensor_gemm(quant_module, input, bias=None):
     """GEMM function for fp8 per tensor quantization."""
-
-    @torch.compile(dynamic=True)
-    def _to_fp8(x, scale):
-        return (x / scale).clamp(FP8_MIN, FP8_MAX).to(torch.float8_e4m3fn)
-
-    @torch.compile(dynamic=True)
-    def _fp8_gemm_impl(input, weight_fp8, scale_a, scale_b, bias=None):
-        input_shape = input.shape
-        input_fp8 = _to_fp8(input, scale_a).reshape(-1, input_shape[-1])
-        weight_fp8_t = weight_fp8.reshape(-1, weight_fp8.shape[-1]).t()
-        output = torch._scaled_mm(
-            input_fp8,
-            weight_fp8_t,
-            scale_a=scale_a,
-            scale_b=scale_b,
-            bias=bias,
-            out_dtype=input.dtype,
-            use_fast_accum=True,
-        )
-        return output.reshape(*input_shape[:-1], output.shape[-1])
-
-    cached_scale_a = (
-        hasattr(quant_module, "_scale_a") and quant_module.input_quantizer.amax is not None
+    input_amax = (
+        quant_module.input_quantizer.amax
+        if quant_module.input_quantizer.amax is not None
+        else reduce_amax(input)
     )
-
-    if not cached_scale_a:
-        input_amax = quant_module.input_quantizer.amax or reduce_amax(input)
-        assert input_amax != 0
-        quant_module._scale_a = (input_amax.float() / 448.0).to(device=input.device)
-
-    cached_scale_b = (
-        hasattr(quant_module, "_scale_b") and quant_module.weight_quantizer.amax is not None
+    weight_amax = (
+        quant_module.weight_quantizer.amax
+        if quant_module.weight_quantizer.amax is not None
+        else reduce_amax(quant_module.weight)
     )
-
-    if not cached_scale_b:
-        weight_amax = quant_module.weight_quantizer.amax or reduce_amax(quant_module.weight)
-        assert weight_amax != 0
-        quant_module._scale_b = (weight_amax.float() / 448.0).to(device=quant_module.weight.device)
 
     if quant_module.weight.dtype != torch.float8_e4m3fn:
-        weight_fp8 = _to_fp8(quant_module.weight, quant_module._scale_b)
+        with torch.cuda.nvtx.range("compress weight"):
+            weight_fp8 = _to_fp8(quant_module.weight.data, weight_amax)
     else:
         weight_fp8 = quant_module.weight.data
 
-    output = _fp8_gemm_impl(
+    output = fp8_gemm(
         input,
         weight_fp8,
-        scale_a=quant_module._scale_a,
-        scale_b=quant_module._scale_b,
-        bias=bias if input.dtype != torch.float32 else None,
+        input_amax,
+        weight_amax,
+        bias=bias,
     )
-    # _scaled_mm does not support bias for float32 input, so we add it manually
-    if input.dtype == torch.float32 and bias is not None:
-        output += bias
     return output
 
 
@@ -146,16 +122,16 @@ class Fp8PerTensorLinear(Function):
         ctx.save_for_backward(
             input_tensor if weight.requires_grad else None,
             weight if input_tensor.requires_grad else None,
-            torch.empty(0, dtype=torch.uint8) if bias is not None and bias.requires_grad else None,
             getattr(quant_module.weight_quantizer, "_scale", None),
         )
+
+        ctx.compute_bias_grad = bias is not None and bias.requires_grad
         ctx.block_sizes = getattr(quant_module.weight_quantizer, "_block_sizes", None)
 
         ctx.allreduce_dgrad = allreduce_dgrad
         ctx.tp_group = tp_group
 
-        ret = fp8_per_tensor_gemm(quant_module, input_tensor, bias)
-        return ret
+        return fp8_per_tensor_gemm(quant_module, input_tensor, bias)
 
     @staticmethod
     def backward(ctx, grad_outputs):
@@ -166,7 +142,7 @@ class Fp8PerTensorLinear(Function):
         dequantize it to compute the input gradient. If the weight is not compressed, we will save
         the unquantized weight and use it directly to compute the input gradient.
         """
-        input_tensor, weight, compute_bias_grad, scale = ctx.saved_tensors
+        input_tensor, weight, scale = ctx.saved_tensors
         grad_input = grad_weight = grad_bias = None
         if weight is not None:
             if isinstance(weight, QTensorWrapper):
@@ -175,8 +151,10 @@ class Fp8PerTensorLinear(Function):
                 weight = weight.dequantize(scale=scale, block_sizes=ctx.block_sizes)
             grad_input = grad_outputs @ weight
         if input_tensor is not None:
-            grad_weight = grad_outputs.transpose(-2, 1) @ input_tensor
-        if compute_bias_grad is not None:
+            grad_weight = grad_outputs.reshape(-1, grad_outputs.shape[-1]).T @ input_tensor.reshape(
+                -1, input_tensor.shape[-1]
+            )
+        if ctx.compute_bias_grad:
             # Sum all dimensions except the last one
             grad_bias = grad_outputs.sum(dim=list(range(grad_outputs.dim() - 1)))
 
