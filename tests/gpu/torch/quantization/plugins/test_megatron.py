@@ -32,6 +32,7 @@ from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     data_tensor_context_parallel_test_helper,
+    dp_cp_parallel_test_helper,
     tensor_parallel_test_helper,
 )
 
@@ -235,7 +236,7 @@ def _test_data_parallel_helper(config, rank, size):
     initialize_for_megatron(seed=SEED)
     model = MegatronModel().cuda()
 
-    data_parallel_test_helper(model, config, get_data_parallel_group())
+    dp_cp_parallel_test_helper(model, config, get_data_parallel_group())
 
 
 @pytest.mark.parametrize(
@@ -259,7 +260,7 @@ def _test_context_parallel_helper(config, rank, size):
     initialize_for_megatron(context_parallel_size=size, seed=SEED)
     model = MegatronModel(cp_size=size).cuda()
 
-    context_parallel_test_helper(model, config, get_context_parallel_group())
+    dp_cp_parallel_test_helper(model, config, get_context_parallel_group())
 
 
 @pytest.mark.parametrize(
