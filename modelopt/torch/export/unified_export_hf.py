@@ -518,32 +518,40 @@ def export_hf_checkpoint(
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
     """
+    is_lora = hasattr(model, "base_model")
+    base_export_dir: Path | str = f"{export_dir}/base_model" if is_lora else export_dir
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
+    base_export_dir = Path(base_export_dir)
+    base_export_dir.mkdir(parents=True, exist_ok=True)
+
     try:
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
         # NOTE: (hg) Should we save hf_quant_config when there's no quantization applied?
         # Save hf_quant_config.json for backward compatibility
-        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
+        with open(f"{base_export_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
         post_state_dict = rename_and_prune_if_spec_decoding(model, post_state_dict)
 
-        # For QLoRA models we export the base model
-        if hasattr(model, "base_model"):
-            model = model.base_model
+        # In the case of LoRA model, we save the base model
+        if is_lora:
+            model.base_model.save_pretrained(
+                base_export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
+            )
+
         model.save_pretrained(
             export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
         )
 
-        original_config = f"{export_dir}/config.json"
+        original_config = f"{base_export_dir}/config.json"
         config_data = {}
 
-        with open(original_config) as file:
-            config_data = json.load(file)
+        # In the case of LoRA model.save_pretrained does not save the correct config.json
+        config_data = model.config.to_dict()
 
         config_data["quantization_config"] = hf_quant_config
 

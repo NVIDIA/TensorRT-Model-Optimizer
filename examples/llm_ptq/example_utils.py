@@ -25,6 +25,7 @@ import torch
 import transformers
 from accelerate import infer_auto_device_map, init_empty_weights
 from accelerate.utils import get_max_memory
+from safetensors.torch import load_file
 from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 
 try:
@@ -113,6 +114,31 @@ def get_dtype(dtype):
         raise NotImplementedError(f"Unknown dtype {dtype}")
 
     return dtype
+
+
+def get_lora_model(
+    ckpt_path: str,
+    device="cuda",
+):
+    """
+    Loads a QLoRA model that has been trained using modelopt trainer.
+    """
+    device_map = "auto"
+    if device == "cpu":
+        device_map = "cpu"
+
+    # Load model with adapters
+    model = AutoModelForCausalLM.from_pretrained(ckpt_path, device_map=device_map)
+
+    # Restore modelopt state
+    modelopt_state = torch.load(f"{ckpt_path}/modelopt_state.pth", weights_only=False)
+    restore_from_modelopt_state(model, modelopt_state)
+
+    # Load compressed weights
+    state_dict = load_file(f"{ckpt_path}/model.safetensors")
+    model.load_state_dict(state_dict, strict=False)
+
+    return model
 
 
 def get_model(
