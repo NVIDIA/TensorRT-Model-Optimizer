@@ -148,7 +148,7 @@ class RealQuantLinear(QuantModule):
             and self.allow_real_quant_gemm
         )
 
-    def get_real_quant_gemm_impl(self, input, *args, **kwargs) -> bool:
+    def has_real_quant_gemm_impl(self, input, *args, **kwargs) -> bool:
         """Get the real quant GEMM implementation base on input arguments."""
         if not hasattr(self, "_real_quant_gemm_impl"):
             self._real_quant_gemm_impl = backends.gemm_registry.find_match(
@@ -166,20 +166,19 @@ class RealQuantLinear(QuantModule):
             return super().forward(input, *args, **kwargs)
 
         # Check if real-quant GEMM is available
-        if self._should_run_real_quant_gemm and input.numel() > 1:
-            # If the input is not quantized, we use the default GEMM.
-            self.get_real_quant_gemm_impl(input, *args, **kwargs)
-
+        if (
+            self._should_run_real_quant_gemm
+            and input.numel() > 1
+            and self.has_real_quant_gemm_impl(input, *args, **kwargs)
+        ):
             # Note: We cache the real-quant GEMM function to avoid matching overhead.
             # This assumes that the function will not change after the first call.
-            if self._real_quant_gemm_impl:
-                with torch.cuda.nvtx.range("RealQuantLinear gemm"):
-                    output = self._real_quant_gemm_impl(
-                        self, input, self.weight, self.bias, *args, **kwargs
-                    )
-                return (
-                    self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
+            assert self._real_quant_gemm_impl is not None
+            with torch.cuda.nvtx.range("RealQuantLinear gemm"):
+                output = self._real_quant_gemm_impl(
+                    self, input, self.weight, self.bias, *args, **kwargs
                 )
+            return self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
 
         # Otherwise, fallback to the default GEMM
         return super().forward(input, *args, **kwargs)
