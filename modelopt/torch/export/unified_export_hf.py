@@ -301,8 +301,14 @@ def _export_quantized_weight(
         )
 
         if is_expert_weight:
+            # Apply BMM transposition for both Llama4TextExperts and GptOssExperts
+            print(
+                f"DEBUG: Original weight shape for {type(sub_module).__name__}.{weight_name}: {weight.shape}"
+            )
+
             # Transpose from (num_experts, in_dim, out_dim) to (num_experts, out_dim, in_dim)
             transposed_weight = weight.transpose(-2, -1).contiguous()
+            print(f"DEBUG: Transposed weight shape: {transposed_weight.shape}")
 
             # Compute scaling factor from transposed weight
             weight_scale = NVFP4QTensor.get_weights_scaling_factor(
@@ -310,6 +316,14 @@ def _export_quantized_weight(
                 block_size=block_size,
                 weights_scaling_factor_2=weight_scale_2,
             )[0]
+            print(f"DEBUG: Scaling factor shape from transposed weight: {weight_scale.shape}")
+
+            # Test: what would scaling factor be if we transpose it back?
+            if weight_scale.dim() == 3:
+                transposed_back_scale = weight_scale.transpose(-2, -1)
+                print(
+                    f"DEBUG: Scaling factor shape if transposed back: {transposed_back_scale.shape}"
+                )
 
             # Quantize using transposed weight and scaling factor
             quantized_weight = to_quantized_weight(
@@ -320,11 +334,21 @@ def _export_quantized_weight(
                 block_size,
             )
 
-            # Transpose quantized weight back to original format (num_experts, in_dim, out_dim)
+            # Transpose quantized weight back to original format
             quantized_weight = quantized_weight.transpose(-2, -1).contiguous()
+            print(f"DEBUG: Final quantized weight shape: {quantized_weight.shape}")
 
             # Transpose scaling factor back to match original weight dimensions
-            weight_scale = weight_scale.transpose(-2, -1).contiguous()
+            if weight_scale.dim() == 3:
+                weight_scale = weight_scale.transpose(-2, -1).contiguous()
+                print(
+                    f"DEBUG: Final scaling factor shape (after transposing back): {weight_scale.shape}"
+                )
+            else:
+                print(
+                    f"DEBUG: Final scaling factor shape (no transpose needed): {weight_scale.shape}"
+                )
+            print("=" * 80)
         else:
             # Regular weight quantization (non-expert)
             weight_scale = NVFP4QTensor.get_weights_scaling_factor(
@@ -350,6 +374,10 @@ def _export_quantized_weight(
         )
 
     setattr(sub_module, weight_name, nn.Parameter(quantized_weight, requires_grad=False))
+
+    # Register the corrected weight_scale as a buffer
+    if weight_scale is not None:
+        sub_module.register_buffer(quantizer_attrs.weight_scale, weight_scale)
 
 
 def _export_hf_checkpoint(
