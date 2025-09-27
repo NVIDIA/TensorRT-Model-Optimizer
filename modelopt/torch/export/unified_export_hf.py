@@ -62,6 +62,7 @@ from .quant_utils import (
     get_weight_block_size,
     get_weight_scaling_factor,
     get_weight_scaling_factor_2,
+    maybe_transpose_expert_weight_dimensions,
     postprocess_state_dict,
     preprocess_linear_fusion,
     to_quantized_weight,
@@ -292,78 +293,34 @@ def _export_quantized_weight(
     weight_scale: torch.Tensor | None = getattr(sub_module, quantizer_attrs.weight_scale, None)
     weight_scale_2: torch.Tensor | None = getattr(sub_module, quantizer_attrs.weight_scale_2, None)
 
-    # For NVFP4 quantization of expert weights, transpose to (num_experts, out_dim, in_dim)
-    # because ModelOpt assumes in_dim is the last dimension for scaling factor computation
+    # Transpose weight for bmm-style expert quantization (llama4, gpt-oss)
     if quantization_format in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ]:
-        is_expert_weight = weight.dim() == 3 and any(
+        # Transpose weight from (num_experts, input_dim, output_dim) to (num_experts, output_dim, input_dim)
+        # for NVFP4 quantization functions that expect input_dim as the last dimension for block quantization
+        is_bmm_expert_weight = weight.dim() == 3 and any(
             expert_type in type(sub_module).__name__
             for expert_type in ["Llama4TextExperts", "GptOssExperts"]
         )
+        weight, _ = maybe_transpose_expert_weight_dimensions(
+            weight, is_bmm_expert_weight=is_bmm_expert_weight
+        )
+        weight_scale = NVFP4QTensor.get_weights_scaling_factor(
+            weight,
+            block_size=block_size,
+            weights_scaling_factor_2=weight_scale_2,
+        )[0]
 
-        if is_expert_weight:
-            # Apply BMM transposition for both Llama4TextExperts and GptOssExperts
-            print(
-                f"DEBUG: Original weight shape for {type(sub_module).__name__}.{weight_name}: {weight.shape}"
-            )
+        quantized_weight = to_quantized_weight(
+            weight.to(dtype),
+            weight_scale,
+            quantization_format,
+            weight_scale_2,
+            block_size,
+        )
 
-            # Transpose from (num_experts, in_dim, out_dim) to (num_experts, out_dim, in_dim)
-            transposed_weight = weight.transpose(-2, -1).contiguous()
-            print(f"DEBUG: Transposed weight shape: {transposed_weight.shape}")
-
-            # Compute scaling factor from transposed weight
-            weight_scale = NVFP4QTensor.get_weights_scaling_factor(
-                transposed_weight,
-                block_size=block_size,
-                weights_scaling_factor_2=weight_scale_2,
-            )[0]
-            print(f"DEBUG: Scaling factor shape from transposed weight: {weight_scale.shape}")
-
-            # Test: what would scaling factor be if we transpose it back?
-            if weight_scale.dim() == 3:
-                transposed_back_scale = weight_scale.transpose(-2, -1)
-                print(
-                    f"DEBUG: Scaling factor shape if transposed back: {transposed_back_scale.shape}"
-                )
-
-            # Quantize using transposed weight and scaling factor
-            quantized_weight = to_quantized_weight(
-                transposed_weight.to(dtype),
-                weight_scale,
-                quantization_format,
-                weight_scale_2,
-                block_size,
-            )
-
-            # Transpose quantized weight back to original format
-            quantized_weight = quantized_weight.transpose(-2, -1).contiguous()
-            print(f"DEBUG: Final quantized weight shape: {quantized_weight.shape}")
-
-            # Transpose scaling factor back to match original weight dimensions
-            if weight_scale.dim() == 3:
-                weight_scale = weight_scale.transpose(-2, -1).contiguous()
-                print(
-                    f"DEBUG: Final scaling factor shape (after transposing back): {weight_scale.shape}"
-                )
-            else:
-                print(
-                    f"DEBUG: Final scaling factor shape (no transpose needed): {weight_scale.shape}"
-                )
-            print("=" * 80)
-        else:
-            # Regular weight quantization (non-expert)
-            weight_scale = NVFP4QTensor.get_weights_scaling_factor(
-                weight,
-                block_size=block_size,
-                weights_scaling_factor_2=weight_scale_2,
-            )[0]
-
-            quantized_weight = to_quantized_weight(
-                weight.to(dtype),
-                weight_scale,
-                quantization_format,
-                weight_scale_2,
-                block_size,
-            )
+        quantized_weight, weight_scale = maybe_transpose_expert_weight_dimensions(
+            quantized_weight, weight_scale, is_bmm_expert_weight=is_bmm_expert_weight
+        )
     else:
         quantized_weight = to_quantized_weight(
             weight.to(dtype),
