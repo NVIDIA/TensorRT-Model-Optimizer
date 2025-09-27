@@ -26,8 +26,8 @@ import modelopt.torch.opt as mto
 mto.enable_huggingface_checkpointing()
 
 # Hyperparameters for profiling
-EPOCHS = 20
-LOG_INTERVAL = 25
+EPOCHS = 1
+LOG_INTERVAL = 1
 SAVE_INTERVAL = 20000
 # VALIDATE_INTERVAL = 20
 
@@ -48,6 +48,7 @@ class BaseDistillTrainer:
     def __init__(self, rank, args, tokenizer, distill_metadata: DistillMetadata):
         self.rank = rank
         args.teacher_pgroup = dist.new_group(ranks=args.teacher_ranks)
+        args.student_pgroup = dist.new_group(ranks=args.student_ranks)
         self.args = args
         self.tokenizer = tokenizer
         self.distill_metadata = distill_metadata
@@ -57,17 +58,15 @@ class BaseDistillTrainer:
             print(f"(Rank {self.rank}) {name}  --->  {param.device} ")
 
     @property
-    def current_rank_devices(self):
+    def current_rank_device(self):
         pass
 
     def _reset_all_mem_stats(self):
-        for d in self.current_rank_devices:
-            torch.cuda.reset_max_memory_allocated(d)
+        torch.cuda.reset_max_memory_allocated(self.current_rank_device)
 
     def _print_mem_stats(self):
-        for d in self.current_rank_devices:
-            max_mem = torch.cuda.max_memory_allocated(d)
-            print(f"GPU {d}: Max memory allocated: {max_mem / 1024**3:.2f} GB")
+        max_mem = torch.cuda.max_memory_allocated(self.current_rank_device)
+        print(f"GPU {self.current_rank_device}: Max memory allocated: {max_mem / 1024**3:.2f} GB")
 
     @abstractmethod
     def load_teacher_model(self):
@@ -86,7 +85,7 @@ class BaseDistillTrainer:
         pass
 
     def save_pretrained(self, path=None):
-        if self.rank == self.args.student_rank:
+        if self.rank == self.args.student_ranks[0]:
             path = self.args.out_path if path is None else path
             self.model.save_pretrained(path)
             self.tokenizer.save_pretrained(path)
@@ -96,24 +95,24 @@ class BaseDistillTrainer:
         # Check if keys and length match between message and distill_metadata
         if set(message.keys()) != set(self.distill_metadata.keys()):
             raise ValueError(
-                f"Message keys from teacher: {set(message.keys())} \n"
+                f"Message keys: {set(message.keys())} \n"
                 f"do not match expected keys {set(self.distill_metadata.keys())}"
             )
         if len(message) != len(self.distill_metadata):
             raise ValueError(
-                f"Message length from teacher: {len(message)} \n"
+                f"Message length: {len(message)} \n"
                 f"does not match expected {len(self.distill_metadata)}"
             )
         for k, v in message.items():
             if v.shape != self.distill_metadata[k][0] or v.dtype != self.distill_metadata[k][1]:
                 raise ValueError(
-                    f"Invalid message from teacher. {k} has shape {v.shape} and dtype {v.dtype}, \n"
+                    f"Invalid message. {k} has shape {v.shape} and dtype {v.dtype}, \n"
                     f"expected {self.distill_metadata[k]}"
                 )
 
     def _init_student_recv_buffer(self):
         self.student_recv_buffer = {
-            k: torch.empty(v[0], device=self.args.student_device, dtype=v[1])
+            k: torch.empty(v[0], device=self.current_rank_device, dtype=v[1])
             for k, v in self.distill_metadata.items()
         }
 
@@ -131,12 +130,16 @@ class BaseDistillTrainer:
     def _send_to_student(self, teacher_outputs):
         if self.rank != self.args.teacher_ranks[0]:
             return
-        self._check_valid_message(teacher_outputs)
-        reqs = [
-            dist.isend(buffer, dst=self.args.student_rank) for buffer in teacher_outputs.values()
-        ]
-        for req in reqs:
-            req.wait()
+        # TODO: use broadcast
+        assert len(teacher_outputs) == len(self.args.student_ranks), (
+            f"Number of teacher outputs {len(teacher_outputs)} does not \
+            match number of student ranks {len(self.args.student_ranks)}"
+        )
+        for s in self.args.student_ranks:
+            self._check_valid_message(teacher_outputs[s])
+            reqs = [dist.isend(buffer, dst=s) for buffer in teacher_outputs[s].values()]
+            for req in reqs:
+                req.wait()
 
     # def _validate_ar(self, steps=3, osl=20, num_samples=20):
     #     if self.rank != self.args.student_rank:
@@ -161,7 +164,7 @@ class BaseDistillTrainer:
         """Main training entrance of the composed model."""
         self._reset_all_mem_stats()
 
-        if self.rank == self.args.student_rank:
+        if self.rank in self.args.student_ranks:
             import wandb
 
             wandb.login()
