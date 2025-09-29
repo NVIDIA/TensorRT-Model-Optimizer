@@ -617,20 +617,20 @@ def awq_lite(
             and hasattr(module, "awq_lite")
             and module.awq_lite.num_cache_steps > 0
         ):
+            # Hack: MoEs forward all tokens through all experts if _if_calib is True
+            module._if_calib = True
             module.awq_lite.act_scale = module.awq_lite.act_scale / module.awq_lite.num_cache_steps
-            
+
             if torch.any(torch.isnan(module.awq_lite.act_scale)) or torch.any(
                 torch.isnan(module.awq_lite.weight_scale)
             ):
                 module.awq_lite.is_enabled = False
-                
-            sync_act_scale_across_dp_cp(
-                module,
-                module.parallel_state.data_parallel_group,
-                module.parallel_state.context_parallel_group,
-            )
-            # Hack: MoEs forward all tokens through all experts if _if_calib is True
-            module._if_calib = True
+            else:
+                sync_act_scale_across_dp_cp(
+                    module,
+                    module.parallel_state.data_parallel_group,
+                    module.parallel_state.context_parallel_group,
+                )
 
     AWQLiteHelper.cache_mode = False
     print_rank_0("awq_lite: Searching parameters...")

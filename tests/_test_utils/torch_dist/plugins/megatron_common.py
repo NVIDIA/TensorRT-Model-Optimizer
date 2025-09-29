@@ -384,7 +384,10 @@ def run_mcore_inference_with_dummy_input(
 
 
 def initialize_for_megatron(
-    tensor_model_parallel_size=1, pipeline_model_parallel_size=1, context_parallel_size=1, seed=1234
+    tensor_model_parallel_size=1,
+    pipeline_model_parallel_size=1,
+    seed=1234,
+    context_parallel_size=1,
 ):
     """Initialize Megatron model parallelism.
 
