@@ -23,7 +23,14 @@ from typing import Any
 import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
-from example_utils import apply_kv_cache_quant, get_model, get_processor, get_tokenizer, is_enc_dec
+from example_utils import (
+    apply_kv_cache_quant,
+    copy_custom_model_files,
+    get_model,
+    get_processor,
+    get_tokenizer,
+    is_enc_dec,
+)
 from transformers import (
     AutoConfig,
     AutoModelForCausalLM,
@@ -61,6 +68,7 @@ RAND_SEED = 1234
 QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
     "int8": mtq.INT8_DEFAULT_CFG,
     "int8_sq": mtq.INT8_SMOOTHQUANT_CFG,
+    "int8_wo": mtq.INT8_WEIGHT_ONLY_CFG,
     "fp8": mtq.FP8_DEFAULT_CFG,
     "int4_awq": mtq.INT4_AWQ_CFG,
     "w4a8_awq": mtq.W4A8_AWQ_BETA_CFG,
@@ -94,6 +102,7 @@ def auto_quantize(
         in [
             "fp8",
             "int8_sq",
+            "int8_wo",
             "int4_awq",
             "nvfp4",
             "nvfp4_awq",
@@ -216,6 +225,7 @@ def main(args):
         assert (
             args.qformat
             in [
+                "int8_wo",
                 "int4_awq",
                 "fp8",
                 "nvfp4",
@@ -604,6 +614,9 @@ def main(args):
                 inference_tensor_parallel=args.inference_tensor_parallel,
                 inference_pipeline_parallel=args.inference_pipeline_parallel,
             )
+
+            # Copy custom model files (Python files and JSON configs) for TensorRT-LLM export
+            copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
         else:
             # Check arguments for unified_hf export format and set to default if unsupported arguments are provided
             assert args.sparsity_fmt == "dense", (
@@ -620,6 +633,9 @@ def main(args):
                 full_model,
                 export_dir=export_path,
             )
+
+        # Copy custom model files (Python files and JSON configs) if trust_remote_code is used
+        copy_custom_model_files(args.pyt_ckpt_path, export_path, args.trust_remote_code)
 
         # Restore default padding and export the tokenizer as well.
         if tokenizer is not None:

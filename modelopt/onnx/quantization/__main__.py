@@ -90,28 +90,33 @@ def get_parser() -> argparse.ArgumentParser:
     argparser.add_argument(
         "--op_types_to_quantize",
         type=str,
-        default=[],
         nargs="+",
         help="A space-separated list of node types to quantize.",
     )
     argparser.add_argument(
         "--op_types_to_exclude",
         type=str,
-        default=[],
         nargs="+",
         help="A space-separated list of node types to exclude from quantization.",
     )
     argparser.add_argument(
+        "--op_types_to_exclude_fp16",
+        type=str,
+        nargs="+",
+        help=(
+            "A space-separated list of node types to exclude from FP16/BF16 conversion. "
+            "Relevant when --high_precision_dtype is 'fp16' or 'bf16'."
+        ),
+    )
+    argparser.add_argument(
         "--nodes_to_quantize",
         type=str,
-        default=[],
         nargs="+",
         help="A space-separated list of node names to quantize. Regular expressions are supported.",
     )
     argparser.add_argument(
         "--nodes_to_exclude",
         type=str,
-        default=[],
         nargs="+",
         help="A space-separated list of node names to exclude from quantization. Regular expressions are supported.",
     )
@@ -274,6 +279,7 @@ def main():
         override_shapes=args.override_shapes,
         op_types_to_quantize=args.op_types_to_quantize,
         op_types_to_exclude=args.op_types_to_exclude,
+        op_types_to_exclude_fp16=args.op_types_to_exclude_fp16,
         nodes_to_quantize=args.nodes_to_quantize,
         nodes_to_exclude=args.nodes_to_exclude,
         use_external_data_format=args.use_external_data_format,

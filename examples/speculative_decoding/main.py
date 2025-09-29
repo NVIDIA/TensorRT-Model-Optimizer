@@ -227,7 +227,9 @@ def train():
     if training_args.mode == "medusa":
         data_module = make_medusa_supervised_data_module(tokenizer, data_args)
     elif training_args.mode in ["eagle1", "eagle3"]:
-        data_module = make_eagle_supervised_data_module(tokenizer, data_args, use_offline_training)
+        data_module = make_eagle_supervised_data_module(
+            tokenizer, data_args, use_offline_training, max_length=training_args.training_seq_len
+        )
 
     class ARValidationCallback(TrainerCallback):
         def __init__(self, ar_validate_steps: int = 500):

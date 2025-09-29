@@ -25,6 +25,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from modelopt.torch.opt.searcher import ForwardLoop
+from modelopt.torch.utils import print_rank_0
 from modelopt.torch.utils.distributed import ParallelState
 from modelopt.torch.utils.network import bind_forward_method, unpatch_forward_method
 
@@ -369,13 +370,13 @@ def smoothquant(model: nn.Module, forward_loop: ForwardLoop | None = None, alpha
     for name, module in model.named_modules():
         if is_quantized_linear(module):
             if not hasattr(module.input_quantizer, "_amax"):
-                print(f"Warning: {name} is not calibrated, skip smoothing")
+                warnings.warn(f"{name} is not calibrated, skip smoothing")
                 continue
             if module.input_quantizer.num_bits != 8 or module.weight_quantizer.num_bits != 8:
-                print(f"Warning: only int8 smoothing is supported, skip {name}")
+                warnings.warn(f"Only int8 smoothing is supported, skip {name}")
                 continue
             if module.input_quantizer.axis != -1:
-                print(f"Warning: only per-channel smoothing is supported, skip {name}")
+                warnings.warn(f"Only per-channel smoothing is supported, skip {name}")
                 continue
 
             assert module.input_quantizer._amax.numel() > 1, (
@@ -386,52 +387,7 @@ def smoothquant(model: nn.Module, forward_loop: ForwardLoop | None = None, alpha
                 postprocess(module)
 
             smoothed_modules += 1
-    print(f"Smoothed {smoothed_modules} modules")
-
-
-def _smoothquant_fasteval(model: nn.Module):
-    """Hacky implementation of Smooth-Quant. Copied from monkey-quant."""
-    smoothed_modules = 0
-    for name, module in model.named_modules():
-        if is_quantized_linear(module):
-            if not hasattr(module.input_quantizer, "_amax"):
-                print(f"Warning: {name} is not calibrated, skip smoothing")
-                continue
-            if module.input_quantizer.num_bits != 8 or module.weight_quantizer.num_bits != 8:
-                print(f"Warning: only int8 smoothing is supported, skip {name}")
-                continue
-            if module.input_quantizer.axis != -1:
-                print(f"Warning: only per-channel smoothing is supported, skip {name}")
-                continue
-
-            assert module.input_quantizer._amax.numel() > 1
-            delattr(module.weight_quantizer, "_amax")
-
-            # It is important to keep scaling math in fp32 to be numerically safe
-            act_amax = module.input_quantizer.amax.float()
-            if act_amax.shape[0] == 1:
-                act_amax = act_amax.squeeze(0)
-            # If model is split across devices, this tensor may be on wrong one
-            act_amax = act_amax.to(module.weight.device)
-
-            max_bound = module.input_quantizer.maxbound
-            scale_a = max_bound / act_amax
-            # Some channel could have 0 amax which causes scale_a to overflow. Explicitly mask them out here
-            epsilon = 1.0 / (1 << 31)
-            if act_amax.min() <= epsilon:
-                zero_mask = act_amax <= epsilon
-                scale_a[zero_mask] = 1
-            inv_scale_a = act_amax / max_bound
-
-            module.weight.data.copy_(
-                (module.weight_quantizer(inv_scale_a * module.weight.float()) * scale_a).to(
-                    module.weight.dtype
-                )
-            )
-            module.weight_quantizer.disable()
-
-            smoothed_modules += 1
-    print(f"Smoothed {smoothed_modules} modules")
+    print_rank_0(f"Smoothed {smoothed_modules} modules")
 
 
 def awq(
@@ -482,7 +438,9 @@ def awq_lite(
     See :class:`AWQLiteCalibConfig <modelopt.torch.quantization.config.AWQLiteCalibConfig>` for
     details on the remaining arguments.
     """
-    assert forward_loop is not None, "forward_loop must be provided for awq_lite"
+    if forward_loop is None:
+        warnings.warn("forward_loop must be provided for awq_lite; skipping awq_lite")
+        return
 
     class AWQLiteHelper:
         cache_mode: bool = False
@@ -494,11 +452,32 @@ def awq_lite(
             self.num_search_steps = 0
             self.block_size = _get_awq_quantizer_block_size(module.weight, module.weight_quantizer)
             self.weight_scale = get_weight_scale(module.weight, self.block_size)
-            self.loss = {k.item(): 0.0 for k in torch.arange(0, 1.0 + alpha_step, alpha_step)}
+            self.loss = {
+                k.item(): torch.zeros((), device=module.weight.device, dtype=torch.float32)
+                for k in torch.arange(0, 1.0 + alpha_step, alpha_step)
+            }
             self.best_scale = None
             self.best_alpha = None
             self.is_input_quantized = module.input_quantizer.is_enabled
             self.num_tokens = 0
+            self.module = module
+            self.is_enabled = True
+
+        def setup(self):
+            module = self.module
+            bind_forward_method(module, forward, "_forward_no_awq")
+            if module.input_quantizer.is_enabled:
+                module.input_quantizer.disable()
+                if module.input_quantizer.axis not in [None, -1]:
+                    self.is_enabled = False
+                    return
+                module.input_quantizer.axis = -1
+
+        def cleanup(self):
+            module = self.module
+            if hasattr(module, "_if_calib"):
+                delattr(module, "_if_calib")
+            unpatch_forward_method(module, "_forward_no_awq")
 
     def get_weight_scale(weight, block_size=None):
         org_shape = weight.shape
@@ -535,10 +514,13 @@ def awq_lite(
     def update_loss(self, out, out_actual, alpha):
         out_actual = out_actual[0] if isinstance(out_actual, tuple) else out_actual
         out = out[0] if isinstance(out, tuple) else out
-        loss = (out - out_actual).float().pow(2).mean().item()
+        loss = (out - out_actual).float().pow(2).mean()
         self.awq_lite.loss[alpha] += loss
 
     def update_best_params(self):
+        if not self.awq_lite.is_enabled:
+            return
+        self.awq_lite.loss.update({k: float(v) for k, v in self.awq_lite.loss.items()})
         self.awq_lite.best_alpha = min(self.awq_lite.loss, key=self.awq_lite.loss.get)
         self.awq_lite.best_scale = get_scale(
             self.awq_lite.act_scale,
@@ -561,7 +543,8 @@ def awq_lite(
         out_actual = self._forward_no_awq(input, *args, **kwargs)
         self.weight_quantizer.enable()
 
-        if input.numel() == 0:  # For MoEs, some experts might see 0 tokens
+        if input.numel() == 0 or not self.awq_lite.is_enabled:
+            # For MoEs, some experts might see 0 tokens
             return out_actual
 
         if AWQLiteHelper.cache_mode:
@@ -590,7 +573,6 @@ def awq_lite(
             self.input_quantizer.pre_quant_scale = (1 / awq_scale).to(self.weight.dtype)
             self.weight_quantizer.pre_quant_scale = awq_scale.to(self.weight.dtype)
             out = self._forward_no_awq(input, *args, **kwargs)
-
             update_loss(self, out, out_actual, alpha)
 
         self.awq_lite.num_search_steps += 1
@@ -602,19 +584,11 @@ def awq_lite(
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:
             with enable_weight_access_and_writeback(module, model):
                 module.awq_lite = AWQLiteHelper(module, name)
-            bind_forward_method(module, forward, "_forward_no_awq")
-
-            if module.input_quantizer.is_enabled:
-                module.input_quantizer.disable()
-                if module.input_quantizer.axis not in [None, -1]:
-                    raise NotImplementedError(
-                        "input quantization needs to be per-tensor or None for AWQ algorithm"
-                    )
-                module.input_quantizer.axis = -1
+            module.awq_lite.setup()
 
     # Collect activation scale values
     AWQLiteHelper.cache_mode = True
-    print("Caching activation statistics for awq_lite...")
+    print_rank_0("awq_lite: Caching activation statistics...")
 
     # Lets enable stats collection
     # This will collect amax for input_quantizers and KV quantizers during the caching mode forward pass
@@ -644,28 +618,32 @@ def awq_lite(
             and module.awq_lite.num_cache_steps > 0
         ):
             module.awq_lite.act_scale = module.awq_lite.act_scale / module.awq_lite.num_cache_steps
+            
+            if torch.any(torch.isnan(module.awq_lite.act_scale)) or torch.any(
+                torch.isnan(module.awq_lite.weight_scale)
+            ):
+                module.awq_lite.is_enabled = False
+                
             sync_act_scale_across_dp_cp(
                 module,
                 module.parallel_state.data_parallel_group,
                 module.parallel_state.context_parallel_group,
             )
-
             # Hack: MoEs forward all tokens through all experts if _if_calib is True
             module._if_calib = True
 
     AWQLiteHelper.cache_mode = False
-    print("Searching awq_lite parameters...")
+    print_rank_0("awq_lite: Searching parameters...")
     with torch.no_grad():
         forward_loop(model)
 
-    def postprocess(module):
+    def postprocess(module, name):
         update_best_params(module)
         if hasattr(module.weight_quantizer, "_pre_quant_scale"):
             delattr(module.weight_quantizer, "_pre_quant_scale")
         if hasattr(module.input_quantizer, "_pre_quant_scale"):
             delattr(module.input_quantizer, "_pre_quant_scale")
-        if module.awq_lite.is_input_quantized:
-            assert module.input_quantizer.amax is not None
+        if module.awq_lite.is_input_quantized and module.input_quantizer.amax is not None:
             act_amax = module.input_quantizer.amax
             # TODO: make this a buffer after we support only heterogeneous checkpointing for MCore
             module.input_quantizer._amax_for_smoothing = act_amax.cpu()
@@ -674,25 +652,29 @@ def awq_lite(
             module.input_quantizer.amax = act_amax.amax()
             module.input_quantizer.enable()
 
-        apply_pre_quant_scale_and_smooth(module, 1.0 / module.awq_lite.best_scale)
+        if module.awq_lite.is_enabled:
+            apply_pre_quant_scale_and_smooth(module, 1.0 / module.awq_lite.best_scale)
+        else:
+            warnings.warn(f"awq_lite: Disabling for {name}, quantizing with max calibration.")
+            max_calibrate(module, lambda module: module.weight_quantizer(module.weight))
 
     for name, module in model.named_modules():
         if hasattr(module, "awq_lite"):
-            if module.awq_lite.num_cache_steps > 0:
-                assert module.awq_lite.num_search_steps > 0, (
-                    "Calling `forward_loop(model)` the second time did not forward data through the"
-                    " model. Please provide a valid `forward_loop` function that can be used to"
+            if module.awq_lite.num_cache_steps == 0:
+                module.awq_lite.is_enabled = False
+            elif module.awq_lite.num_search_steps == 0:
+                module.awq_lite.is_enabled = False
+                warnings.warn(
+                    "awq_lite: Calling `forward_loop(model)` the second time did not forward data through the"
+                    f" {name}. Please provide a valid `forward_loop` function that can be used to"
                     " forward data through the model many times."
                 )
-                with enable_weight_access_and_writeback(module, model):
-                    postprocess(module)
+            with enable_weight_access_and_writeback(module, model):
+                postprocess(module, name)
 
+            module.awq_lite.cleanup()
             if not debug:
                 delattr(module, "awq_lite")
-            if hasattr(module, "_if_calib"):
-                delattr(module, "_if_calib")
-
-            unpatch_forward_method(module, "_forward_no_awq")
 
 
 @torch.no_grad()
@@ -877,7 +859,7 @@ def awq_clip(
             with enable_weight_access_and_writeback(module, model):
                 module.awq_clip = AWQClipHelper(module)
 
-    print("Estimating awq_clip parameters...")
+    print_rank_0("awq_clip: Estimating parameters...")
     # Lets enable stats collection
     # This will collect amax for input_quantizers and KV quantizers during the caching mode forward pass
     enable_stats_collection(model)
@@ -938,7 +920,7 @@ def svdquant(
     """
 
     def postprocess(module, name):
-        print(f"SVD {name}")
+        print_rank_0(f"SVD {name}")
         u, s, vt = torch.linalg.svd(module.weight.data.double())
         if u.shape[1] < lowrank or vt.shape[0] < lowrank:
             warnings.warn(
