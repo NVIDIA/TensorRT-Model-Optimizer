@@ -54,11 +54,6 @@ def get_tokenizer(ckpt_path, trust_remote_code=False, **kwargs):
         ckpt_path, trust_remote_code=trust_remote_code, **kwargs
     )
 
-    if "qwen" in type(tokenizer).__name__.lower():
-        # qwen use token id 151643 as pad and eos tokens
-        tokenizer.pad_token = tokenizer.convert_ids_to_tokens(151643)
-        tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
-
     # can't set attribute 'pad_token' for "<unk>"
     # We skip this step for Nemo models
     if tokenizer.pad_token != "<unk>" or tokenizer.pad_token is None:
