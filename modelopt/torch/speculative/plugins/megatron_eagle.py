@@ -140,7 +140,7 @@ def dict_to_config(
 
 
 def mcore_version_higher_than(target_version: str):
-    """Check if megatron-core is least this version."""
+    """Check if megatron-core is greater than this version."""
     return Version(megatron.core.__version__) > Version(target_version)
 
 
@@ -239,13 +239,13 @@ def set_multi_step_attention_mask(attn_mask, step):
     =======================================================================================================================
     """  # noqa: E501
     s = attn_mask.shape[-1]
-    for iter in range(2, step + 1):
-        # iter starts from 2nd step
+    for step_idx in range(2, step + 1):
+        # step_idx starts from 2nd step
         mask_0 = attn_mask.clone().detach()
-        mask_0[:, :, iter - 2, :] = True
+        mask_0[:, :, step_idx - 2, :] = True
         mask_0[:, :, :, :-1] = mask_0[:, :, :, 1:]
         mask_1 = attn_mask.new_ones(attn_mask.shape[0], attn_mask.shape[1], s, s).bool()
-        for i in range(iter - 1, s - 1):
+        for i in range(step_idx - 1, s - 1):
             mask_1[:, :, i, i] = False
 
         attn_mask = torch.cat((mask_0, mask_1), dim=-1)
