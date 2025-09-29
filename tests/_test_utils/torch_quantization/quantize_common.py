@@ -253,9 +253,13 @@ def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, 
 
     def reduce_amax(quantizer):
         amax = quantizer.amax.clone()
-        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=tp_group)
-        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=cp_group)
+        print("amax before reduce", amax)
+        print("quantizer.amax before reduce", quantizer.amax)
         dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=dp_group)
+        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=cp_group)
+        dist.all_reduce(amax, op=dist.ReduceOp.MAX, group=tp_group)
+        print("amax after reduce", amax)
+        print("quantizer.amax after reduce", quantizer.amax)
         assert torch.allclose(amax, quantizer.amax)
 
     # Input quantizer amax

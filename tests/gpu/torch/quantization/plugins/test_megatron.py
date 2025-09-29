@@ -232,8 +232,7 @@ def test_data_tensor_context_parallel(need_8_gpus, config):
 
 # 2. Data Parallel Test
 def _test_data_parallel_helper(config, rank, size):
-    # TODO does this model automatically get copied to both DP ranks?
-    initialize_for_megatron(seed=SEED)
+    initialize_for_megatron(seed=SEED + rank)  # modify seed so data is different across ranks
     model = MegatronModel().cuda()
 
     dp_cp_parallel_test_helper(model, config, get_data_parallel_group())
@@ -257,7 +256,9 @@ def test_data_parallel(need_2_gpus, config):
 
 # 3. Context Parallel Test
 def _test_context_parallel_helper(config, rank, size):
-    initialize_for_megatron(context_parallel_size=size, seed=SEED)
+    initialize_for_megatron(
+        context_parallel_size=size, seed=SEED + rank
+    )  # modify seed so data is different across ranks
     model = MegatronModel(cp_size=size).cuda()
 
     dp_cp_parallel_test_helper(model, config, get_context_parallel_group())
