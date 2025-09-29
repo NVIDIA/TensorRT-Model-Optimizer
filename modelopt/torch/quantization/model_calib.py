@@ -582,6 +582,7 @@ def awq_lite(
         return out_actual
 
     for name, module in model.named_modules():
+        print(name, module, module.weight_quantizer.is_enabled)
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:
             with enable_weight_access_and_writeback(module, model):
                 module.awq_lite = AWQLiteHelper(module, name)
