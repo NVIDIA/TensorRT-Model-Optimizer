@@ -369,7 +369,7 @@ def _export_quantized_weight(
 def _export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
-    is_modelopt_trained_lora: bool = False,
+    is_modelopt_qlora: bool = False,
     **kwargs
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
@@ -452,7 +452,7 @@ def _export_hf_checkpoint(
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
     # TODO: Support requantize and resmooth for modelopt-trained LoRA models
-    if not is_modelopt_trained_lora:
+    if not is_modelopt_qlora:
         requantize_resmooth_fused_llm_layers(model)
 
     # Remove all hooks from the model
@@ -525,7 +525,7 @@ def _export_hf_checkpoint(
         quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_trained_lora
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_qlora
     )
 
     # Check if any layers are quantized
@@ -540,7 +540,7 @@ def export_hf_checkpoint(
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
-    is_modelopt_trained_lora: bool = False,
+    is_modelopt_qlora: bool = False,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -550,9 +550,7 @@ def export_hf_checkpoint(
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
     """
-    base_export_dir: Path | str = (
-        f"{export_dir}/base_model" if is_modelopt_trained_lora else export_dir
-    )
+    # Setup directories
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -565,12 +563,10 @@ def export_hf_checkpoint(
         return
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(
-            model, dtype, is_modelopt_trained_lora
-        )
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype, is_modelopt_qlora)
 
         # Save hf_quant_config.json for backward compatibility
-        with open(f"{base_export_dir}/hf_quant_config.json", "w") as file:
+        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)

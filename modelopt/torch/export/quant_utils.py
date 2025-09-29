@@ -838,7 +838,7 @@ def postprocess_state_dict(
     state_dict: dict,
     maxbound: float,
     quantization: str | None,
-    is_modelopt_trained_lora: bool = False,
+    is_modelopt_qlora: bool = False,
 ) -> dict:
     """Filters out keys related to weight quantizers and updates KV cache related keys.
 
@@ -857,9 +857,10 @@ def postprocess_state_dict(
         "v_bmm_quantizer._bias_value": "v_proj.v_bias",
         "input_quantizer._pre_quant_scale": "pre_quant_scale",
     }
+    skip_keys = ["output_quantizer", "_amax", "_bias_value", "input_quantizer._pre_quant_scale"]
 
     # For modelopt-trained LoRA models, we need to remove the base_layer prefix from the keys for deployment
-    if is_modelopt_trained_lora:
+    if is_modelopt_qlora:
         replacements.update(
             {
                 "base_layer.weight": "weight",
@@ -867,6 +868,7 @@ def postprocess_state_dict(
                 "base_layer.weight_scale": "weight_scale",
             }
         )
+        skip_keys.append("base_layer")
 
     post_state_dict = {}
 
@@ -877,13 +879,7 @@ def postprocess_state_dict(
             continue
 
         # Skip keys not related to quantizers
-        if (
-            "output_quantizer" not in key
-            and "_amax" not in key
-            and "_bias_value" not in key
-            and "input_quantizer._pre_quant_scale" not in key
-            and "base_layer" not in key
-        ):
+        if all(skip_key not in key for skip_key in skip_keys):
             post_state_dict[key] = value
             continue
 
@@ -935,8 +931,8 @@ def postprocess_state_dict(
             keys_to_delete.append(key)
 
     # remove LoRA adapters from state dict
-    if is_modelopt_trained_lora:
-        for key, value in post_state_dict.items():
+    if is_modelopt_qlora:
+        for key in post_state_dict:
             if "lora" in key and key not in keys_to_delete:
                 keys_to_delete.append(key)
     # Check for tied weights and remove duplicates
@@ -1118,10 +1114,15 @@ def get_quant_config(
             if block_size == 0:
                 block_size = get_weight_block_size(module)
 
-            # Construct per layer config dictionary
-            if block_size == 0 and quantization_format != QUANTIZATION_FP8:
+            # In  the case of NVFP4, block_size 0 indicates weight_quantizer is not enabled
+            if block_size == 0 and quantization_format in [
+                QUANTIZATION_NVFP4,
+                QUANTIZATION_NVFP4_AWQ,
+                QUANTIZATION_W4A8_NVFP4_FP8,
+            ]:
                 continue
 
+            # Construct per layer config dictionary
             layer_config_dict[name + ".quantization"] = quantization_format
             layer_config_dict[name + ".awq_block_size"] = block_size
 

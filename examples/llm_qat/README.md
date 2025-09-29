@@ -345,10 +345,23 @@ To perform QLoRA training, run:
    --lora True
 ```
 
-After performing QLoRA training the final checkpoint exported is ready for deployment using vLLM. For more details about QLoRA deployment using vLLM refer to the documentation [here](https://docs.vllm.ai/en/latest/features/lora.html). To deploy with vLLM, run:
+After performing QLoRA training the final checkpoint can be exported for deployment with vLLM using the following command.
 
 ```sh
-vllm serve llama3-fp4-qlora/base_model --enable-lora --lora-modules adapter=llama3-fp4-qlora --port 8000 --tokenizer llama3-fp4-qlora
+cd ../llm_ptq
+
+python hf_ptq.py \
+   --pyt_ckpt_path llama3-fp4-qlora \
+   --qformat nvfp4 \
+   --export_dir llama3-fp4-qlora-hf \
+   --qlora 
+
+```
+
+To deploy with vLLM, run the following command. For more details about QLoRA deployment using vLLM refer to the documentation [here](https://docs.vllm.ai/en/latest/features/lora.html).
+
+```sh
+vllm serve llama3-fp4-qlora-hf/base_model --enable-lora --lora-modules adapter=llama3-fp4-qlora-hf --port 8000 --tokenizer llama3-fp4-qlora-hf
 ```
 
 ## Pre-Quantized Checkpoints

@@ -284,7 +284,7 @@ def get_model(
     trust_remote_code=False,
     use_seq_device_map=False,
     attn_implementation=None,
-    is_lora=False,
+    is_modelopt_qlora=False,
 ):
     print(f"Initializing model from {ckpt_path}")
 
