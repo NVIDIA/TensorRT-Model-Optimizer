@@ -294,7 +294,9 @@ class AcceptanceRateValidation:
         """This function checks the data consistency across all ranks in the group.
 
         Use rank 0 data as the golden set to broadcast to all ranks.
-        Each rank will then compare to this data and through error if different.
+        Each rank compares its data against this golden set and either raises
+        (when fail_when_mismatch=True) or emits a warning while forcing every
+        rank to adopt rank 0's data.
         """
         if not torch.distributed.is_initialized():
             return data
