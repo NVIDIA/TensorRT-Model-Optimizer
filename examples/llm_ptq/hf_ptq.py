@@ -238,7 +238,7 @@ def main(args):
             trust_remote_code=args.trust_remote_code,
             use_seq_device_map=args.use_seq_device_map,
             attn_implementation=args.attn_implementation,
-            is_lora=args.lora,
+            is_modelopt_qlora=args.qlora,
         )
     else:
         assert args.qformat in QUANT_CFG_CHOICES, (
@@ -626,7 +626,7 @@ def main(args):
             export_hf_checkpoint(
                 full_model,
                 export_dir=export_path,
-                is_modelopt_trained_lora=args.lora,
+                is_modelopt_qlora=args.qlora,
             )
 
         # Restore default padding and export the tokenizer as well.
@@ -765,8 +765,8 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--lora",
-        help="Specify the model to be exported is a LoRA model trained using modelopt.",
+        "--qlora",
+        help="Specify the model to be exported is a QLoRA model trained using modelopt.",
         default=False,
         action="store_true",
     )
