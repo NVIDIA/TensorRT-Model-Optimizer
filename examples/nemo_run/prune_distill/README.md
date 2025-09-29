@@ -2,10 +2,6 @@
 
 # NeMo Pruning + Knowledge Distillation Simplified Flow Example
 
-[Slurm Examples](ADVANCED.md) |
-[Advanced Topics](ADVANCED.md) |
-[NeMo Integration](https://github.com/NVIDIA-NeMo/NeMo/tree/main/nemo/collections/llm/modelopt)
-
 </div>
 
 ## Overview
@@ -36,14 +32,15 @@ graph TD;
 
 ## Results
 
-Pruning + Knowledge Distillation of Qwen3-8B achieves significant model compression while recovering most of the accuracy through distillation. We depth-prune the model from 32 to 24 layers (reducing from 8B to 6B parameters) and distill for ~14,000 steps with a learning rate of 1e-4 and global batch size of 768 using a 25% subset of the [ClimbMix dataset](https://huggingface.co/datasets/OptimalScale/ClimbMix). (This is about 90 billion tokens and takes a total of ~6k H100 GPU hours)
+Pruning + Knowledge Distillation of Qwen3-8B achieves significant model compression while recovering most of the accuracy through distillation. We depth-prune the model from 32 to 24 layers (reducing from 8B to 6B parameters) and distill for ~28,000 steps (determined by sequence length, default 4096) with a learning rate of 1e-4 and global batch size of 768 using a 25% subset of the [ClimbMix dataset](https://huggingface.co/datasets/OptimalScale/ClimbMix). (This is about 90 billion tokens and takes a total of ~6k H100 GPU hours)
 
-|                           | Tokens per Second | MMLU |
-|---------------------------|-------------------|------|
-| Qwen3-8B Original         | 4420              | 74.9 |
-| Qwen3-6B Pruned+Distilled | 6950              | 72.5 |
+|                                   | Tokens per Second | MMLU |
+|-----------------------------------|-------------------|------|
+| Qwen3-8B Original                 | 4420              | 74.9 |
+| Qwen3-6B Pruned+Distilled from 8B | 6950              | 72.5 |
+| Qwen3-4B Original (comparison)    | 5210              | 70.0 |
 
-The resulting compressed model maintains competitive performance while being significantly faster with a smaller memory footprint.
+The resulting compressed student maintains competitive performance while being significantly faster with a smaller memory footprint than the teacher. It also happens to have both better performance and throughput than the existing Qwen3-4B model!
 
 ## Usage
 
@@ -58,7 +55,7 @@ To run the example locally, launch a [NeMo container](https://catalog.ngc.nvidia
 Example docker command:
 
 ```bash
-docker run -v /home/user/:/home/user/ -v /home/user/NeMo:/opt/NeMo -v /home/user/TensorRT-Model-Optimizer/modelopt/:/usr/local/lib/python3.12/dist-packages/modelopt --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.09 bash
+docker run -v /home/user/:/home/user/ -v /home/user/NeMo:/opt/NeMo -v /home/user/TensorRT-Model-Optimizer:/opt/TensorRT-Model-Optimizer --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.09 bash
 ```
 
 You will also need to set your Huggingface token with `export HF_TOKEN=<your-token>`. You may also need to enable write access to the docker container to the `examples/nemo_run` folder by doing `chmod 777 nemo_run` so that logs can be written.
@@ -84,7 +81,7 @@ From the `nemo_run` folder, launch the example with the `nemo_prune_kd_flow.py` 
 To perform Pruning + Knowledge Distillation, run:
 
 ```bash
-python prune_distill/nemo_prune_kd_flow.py --log-dir /my/log/dir --data-dir /path/to/climbix_proc --use-slurm
+python prune_distill/nemo_prune_kd_flow.py --log-dir /my/log/dir --data-dir /path/to/climbmix_proc --use-slurm
 ```
 
 ## Supported models

@@ -41,9 +41,9 @@ def get_args():
         default="prune_distill_flow",
     )
     parser.add_argument(
-        "--model-name",
+        "--model-id-or-path",
         type=str,
-        help="Name of the HF model",
+        help="ID or path of the HF model",
         default="Qwen/Qwen3-8B",
     )
     parser.add_argument(
@@ -54,12 +54,6 @@ def get_args():
             "Choose NeMo 2.0 recipe. Recipes are named in the format of "
             "<model_name>_<model_size>(_<long_sequence_length> or other special settings)"
         ),
-    )
-    parser.add_argument(
-        "--hf-tokenizer",
-        type=str,
-        help="Name of HF model to use for tokenizer.",
-        default="Qwen/Qwen3-8B",
     )
     parser.add_argument(
         "--prune-target-num-layers",
@@ -119,10 +113,12 @@ def main(args):
             seq_length=SEQUENCE_LENGTH,
         )
     else:
+        if not args.data_dir:
+            raise ValueError("--data-dir must be provided unless --mock-run is enabled.")
         tokenizer = run.Config(
             get_nmt_tokenizer,
             library="huggingface",
-            model_name=args.hf_tokenizer,
+            model_name=args.model_id_or_path,
         )
         data = run.Config(
             PreTrainingDataModule,
@@ -140,7 +136,7 @@ def main(args):
     import_model = run.Partial(
         llm.import_ckpt,
         model=model_module.model(),
-        source=f"hf://{args.model_name}",
+        source=f"hf://{args.model_id_or_path}",
         output_path=initial_model_out,
         overwrite=True,
     )
@@ -154,7 +150,7 @@ def main(args):
         nemo_checkpoint=initial_model_out,
         save_path=pruned_model_out,
     )
-    prune.tokenizer_path = args.hf_tokenizer
+    prune.tokenizer_path = args.model_id_or_path
     prune.pruning_config.target_num_layers = args.prune_target_num_layers
     prune.devices = 1
     prune.pp_size = 1
@@ -304,7 +300,7 @@ if __name__ == "__main__":
 
     # # # # # # # # # # # # # # # # # # # # # #
     # # # # # CONFIGURABLE PARAMETERS # # # # #
-    SEQUENCE_LENGTH = 8192
+    SEQUENCE_LENGTH = 4096
     PRUNE_MBS = 4
     DISTILL_MBS = 2
     VAL_BATCHES = 32
@@ -318,9 +314,9 @@ if __name__ == "__main__":
         DISTILL_STEPS = 20
         VAL_INTERVAL = 10
     else:
-        PRUNE_SAMPLES = 1024
+        PRUNE_SAMPLES = 512
         DISTILL_GBS = 768
-        _NUM_TOKENS = 89694564352
+        _NUM_TOKENS = int(90e9)
         DISTILL_STEPS = int(_NUM_TOKENS / DISTILL_GBS / SEQUENCE_LENGTH)
         VAL_INTERVAL = 1000
     # # # # # # # # # # # # # # # # # # # # # #

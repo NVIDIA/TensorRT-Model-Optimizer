@@ -41,27 +41,19 @@ def get_args():
         default="Qwen/Qwen3-8B",
         help="Tokenizer to use for preprocessing",
     )
-    parser.add_argument(
-        "--subset-indices",
-        help="Comma-separated subset indices to download",
-    )
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = get_args()
-    Path(args.output_dir).mkdir(exist_ok=True)
+    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
     # create raw and processed directories
     raw_dir = Path(args.output_dir) / "climbmix_raw"
     proc_dir = Path(args.output_dir) / "climbmix_proc"
 
     # only download the subset of the data
-    if args.subset_indices:
-        subset_idx = [int(i) for i in args.subset_indices.split(",")]
-    else:
-        subset_idx = SUBSET_IDX
-    subset_filenames = [f"part_{i}.jsonl" for i in subset_idx]
+    subset_filenames = [f"part_{i}.jsonl" for i in SUBSET_IDX]
 
     # download raw data
     snapshot_download(
@@ -72,7 +64,7 @@ if __name__ == "__main__":
     )
 
     # preprocess (tokenize)
-    print("Processing ClimbMix dataset...")
+    print("Tokenizing ClimbMix dataset...")
     input_paths = [raw_dir / name for name in subset_filenames]
     megatron_preprocess_data(
         input_paths,
