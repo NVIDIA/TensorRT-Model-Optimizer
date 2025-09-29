@@ -1066,7 +1066,7 @@ class _DynamicEagleGPTModel(EagleModel):
                     **(extra_block_kwargs or {}),
                 )
 
-                eagle_logits_0.append(eagle_logits_[-input_ids.shape[1] :])
+                eagle_logits_0.append(eagle_logits_)
             eagle_logits_0 = torch.cat(eagle_logits_0, dim=0)
 
         # If labels are not provided, return the original logits. We only return after
@@ -1137,7 +1137,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 inference_context=eagle_inference_context,
                 **(extra_block_kwargs or {}),
             )
-            eagle_logits_1.append(eagle_logits_[-input_ids.shape[1] :])
+            eagle_logits_1.append(eagle_logits_)
         eagle_logits_1 = torch.cat(eagle_logits_1, dim=0)
 
         for i in range(self.eagle_config.parallel_draft_step):
@@ -1187,7 +1187,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 inference_context=eagle_inference_context,
                 **(extra_block_kwargs or {}),
             )
-            eagle_logits_2.append(eagle_logits_[-input_ids.shape[1] :])
+            eagle_logits_2.append(eagle_logits_)
         eagle_logits_2 = torch.cat(eagle_logits_2, dim=0)
 
         for i in range(self.eagle_config.parallel_draft_step):
@@ -1237,7 +1237,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 inference_context=eagle_inference_context,
                 **(extra_block_kwargs or {}),
             )
-            eagle_logits_3.append(eagle_logits_[-input_ids.shape[1] :])
+            eagle_logits_3.append(eagle_logits_)
         eagle_logits_3 = torch.cat(eagle_logits_3, dim=0)
 
         for i in range(self.eagle_config.parallel_draft_step):
