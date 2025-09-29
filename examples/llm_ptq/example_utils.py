@@ -258,15 +258,11 @@ def get_dtype(dtype):
 
 def get_lora_model(
     ckpt_path: str,
-    device="cuda",
+    device_map="cuda",
 ):
     """
     Loads a QLoRA model that has been trained using modelopt trainer.
     """
-    device_map = "auto"
-    if device == "cpu":
-        device_map = "cpu"
-
     # Load model with adapters
     model = AutoModelForCausalLM.from_pretrained(ckpt_path, device_map=device_map)
 
@@ -288,6 +284,7 @@ def get_model(
     trust_remote_code=False,
     use_seq_device_map=False,
     attn_implementation=None,
+    is_lora=False,
 ):
     print(f"Initializing model from {ckpt_path}")
 
@@ -302,7 +299,7 @@ def get_model(
             sys.path.append(vila_path)
         from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
 
-    # Prepare config kwargs for loading
+
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
 
     # Load config once and handle VL model detection

@@ -185,7 +185,6 @@ class QATTrainer(ModelOptHFTrainer):
         # Save base model compressed weights for QLoRA
         if getattr(self.quant_args, "compress", False):
             # Save base model config.json
-            # weight_quantizer = self.quant_cfg["quant_cfg"]["*weight_quantizer"]
             self.model.config.save_pretrained(self.args.output_dir)
 
             # Save base model compressed weights excluding lora weights
@@ -292,14 +291,14 @@ class QATTrainer(ModelOptHFTrainer):
     def _load_best_model(self, *args, **kwargs):
         """Load the best model for final evaluation."""
         is_lora = getattr(self.args, "lora", None)
-        if not is_lora:
-            super()._load_best_model(*args, **kwargs)
-        else:
+        if is_lora and not self.is_fsdp_enabled:
             # Custom logic for loading best model with LoRA
             # TODO: Remove once we migrate to using get_peft_model()
             adapter_name = self.model.active_adapter()
             self.model.delete_adapter(adapter_name)
             self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
+        else:
+            super()._load_best_model(*args, **kwargs)
 
     def _patch_accelerate_for_fsdp2_fix(self):
         """Fixes for accelerate prepare.

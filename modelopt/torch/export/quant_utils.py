@@ -286,9 +286,12 @@ def get_weight_scaling_factor(module: nn.Module, weight_name: str = "weight") ->
         )[0]
 
     if quantization_format in [QUANTIZATION_W4A8_MXFP4_FP8, QUANTIZATION_MXFP4]:
-        return MXFP4QTensor.quantize(weight, block_size=weight_quantizer.block_sizes[-1])[
-            1
-        ].reshape(*weight.shape[:-1], -1)
+        if hasattr(weight_quantizer, "_scale"):
+            return weight_quantizer._scale.reshape(*weight.shape[:-1], -1)
+        else:
+            return MXFP4QTensor.quantize(weight, block_size=weight_quantizer.block_sizes[-1])[
+                1
+            ].reshape(*weight.shape[:-1], -1)
     return get_scaling_factor(weight_quantizer)
 
 
@@ -831,7 +834,12 @@ def from_quantized_weight(
     raise NotImplementedError(f"quantization format {quantization} not supported")
 
 
-def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str | None) -> dict:
+def postprocess_state_dict(
+    state_dict: dict,
+    maxbound: float,
+    quantization: str | None,
+    is_modelopt_trained_lora: bool = False,
+) -> dict:
     """Filters out keys related to weight quantizers and updates KV cache related keys.
 
     Args:
@@ -848,10 +856,17 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
         "k_bmm_quantizer._bias_value": "k_proj.k_bias",
         "v_bmm_quantizer._bias_value": "v_proj.v_bias",
         "input_quantizer._pre_quant_scale": "pre_quant_scale",
-        "base_layer.weight": "weight",
-        "base_layer.input_scale": "input_scale",
-        "base_layer.weight_scale": "weight_scale",
     }
+
+    # For modelopt-trained LoRA models, we need to remove the base_layer prefix from the keys for deployment
+    if is_modelopt_trained_lora:
+        replacements.update(
+            {
+                "base_layer.weight": "weight",
+                "base_layer.input_scale": "input_scale",
+                "base_layer.weight_scale": "weight_scale",
+            }
+        )
 
     post_state_dict = {}
 
@@ -920,10 +935,10 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
             keys_to_delete.append(key)
 
     # remove LoRA adapters from state dict
-    for key, value in post_state_dict.items():
-        if "lora" in key and key not in keys_to_delete:
-            keys_to_delete.append(key)
-
+    if is_modelopt_trained_lora:
+        for key, value in post_state_dict.items():
+            if "lora" in key and key not in keys_to_delete:
+                keys_to_delete.append(key)
     # Check for tied weights and remove duplicates
     seen_tensors = {}
 

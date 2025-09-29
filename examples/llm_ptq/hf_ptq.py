@@ -244,20 +244,15 @@ def main(args):
     # If low memory mode is enabled, we compress the model while loading the HF checkpoint.
     calibration_only = False
     if not args.low_memory_mode:
-        if args.lora:
-            model = get_lora_model(
-                args.pyt_ckpt_path,
-                args.device,
-            )
-        else:
-            model = get_model(
-                args.pyt_ckpt_path,
-                args.device,
-                gpu_mem_percentage=args.gpu_max_mem_percentage,
-                trust_remote_code=args.trust_remote_code,
-                use_seq_device_map=args.use_seq_device_map,
-                attn_implementation=args.attn_implementation,
-            )
+        model = get_model(
+            args.pyt_ckpt_path,
+            args.device,
+            gpu_mem_percentage=args.gpu_max_mem_percentage,
+            trust_remote_code=args.trust_remote_code,
+            use_seq_device_map=args.use_seq_device_map,
+            attn_implementation=args.attn_implementation,
+            is_lora=args.lora,
+        )
     else:
         assert args.qformat in QUANT_CFG_CHOICES, (
             f"Quantization format is not supported for low memory mode. Supported formats: {QUANT_CFG_CHOICES.keys()}"
@@ -401,9 +396,6 @@ def main(args):
                 sample_input_single_batch = None
 
             run_auto_quant = args.auto_quantize_bits is not None
-            print("DEBUG LOG: Entereing here")
-            for k, v in model.state_dict().items():
-                print(k, v.shape, v.dtype, v.device)
 
             args.batch_size = get_max_batch_size(
                 model,
@@ -477,7 +469,7 @@ def main(args):
             quant_cfg["quant_cfg"]["*radio*"] = {"enable": False}
             quant_cfg["quant_cfg"]["*visual*"] = {"enable": False}
 
-        if not model_is_already_quantized or calibration_only:
+        if calibration_only:
             # Only run single sample for preview
             input_ids = next(iter(calib_dataloader))[
                 "input_features" if model_type == "whisper" else "input_ids"
@@ -583,7 +575,12 @@ def main(args):
 
     else:
         assert model_type != "dbrx", f"Does not support export {model_type} without quantizaton"
-        print(f"qformat: {args.qformat}. No quantization applied, export {device} model")
+        if model_is_already_quantized:
+            warnings.warn(
+                "Skipping quantization: Model is already quantized. Exporting the model..."
+            )
+        else:
+            print(f"qformat: {args.qformat}. No quantization applied, export {device} model")
 
     with torch.inference_mode():
         if model_type is None:
@@ -662,6 +659,7 @@ def main(args):
             export_hf_checkpoint(
                 full_model,
                 export_dir=export_path,
+                is_modelopt_trained_lora=args.lora,
             )
 
         # Copy custom model files (Python files and JSON configs) if trust_remote_code is used
