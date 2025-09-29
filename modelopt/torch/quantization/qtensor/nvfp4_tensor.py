@@ -270,20 +270,9 @@ class NVFP4QTensor(BaseQuantizedTensor):
             return unpacked.reshape(unpacked_shape)
 
         # Get scales from kwargs
-        if kwarg["scale"].dtype == torch.uint8 and kwarg["scale"].ndim == 1:
-            # If quantization is done by trtllm, convert cutlass fp4 scale to modelopt fp4 scale
-            try:
-                from tensorrt_llm._torch.auto_deploy.utils.quantization_utils import (
-                    cutlass_fp4_scale_to_modelopt_fp4_scale,
-                )
-
-                kwarg["scale"] = cutlass_fp4_scale_to_modelopt_fp4_scale(
-                    kwarg["scale"], self.metadata["shape"][-2:]
-                )
-            except ImportError as e:
-                raise ImportError(
-                    "This tensor is quantized by trtllm, but tensorrt_llm cannot be imported."
-                ) from e
+        kwarg["scale"] = self.get_modelopt_weights_scaling_factor(
+            kwarg["scale"], self.metadata["shape"]
+        )
 
         if fast:
             from ..triton.fp4_kernel import fp4_dequantize

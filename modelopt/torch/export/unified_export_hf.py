@@ -85,9 +85,6 @@ def _is_enabled_quantizer(quantizer):
 
 def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     """Group modules that take the same input and register shared parameters in module."""
-    # Skip for LoRA finetuned models
-    if hasattr(model, "base_model"):
-        return
     # TODO: Handle DBRX MoE
     input_to_linear = defaultdict(list)
     output_to_layernorm = defaultdict(None)
@@ -339,7 +336,7 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module, dtype: torch.dtype | None = None
+    model: nn.Module, dtype: torch.dtype | None = None, is_modelopt_trained_lora: bool = False
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -431,7 +428,9 @@ def _export_hf_checkpoint(
 
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
-    requantize_resmooth_fused_llm_layers(model)
+    # TODO: Support requantize and resmooth for modelopt-trained LoRA models
+    if not is_modelopt_trained_lora:
+        requantize_resmooth_fused_llm_layers(model)
 
     # Remove all hooks from the model
     try:
@@ -490,7 +489,7 @@ def _export_hf_checkpoint(
     quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_trained_lora
     )
 
     # Check if any layers are quantized
@@ -505,6 +504,7 @@ def export_hf_checkpoint(
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
+    is_modelopt_trained_lora: bool = False,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -514,15 +514,18 @@ def export_hf_checkpoint(
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
     """
-    is_lora = hasattr(model, "base_model")
-    base_export_dir: Path | str = f"{export_dir}/base_model" if is_lora else export_dir
+    base_export_dir: Path | str = (
+        f"{export_dir}/base_model" if is_modelopt_trained_lora else export_dir
+    )
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
     base_export_dir = Path(base_export_dir)
     base_export_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(
+            model, dtype, is_modelopt_trained_lora
+        )
 
         # NOTE: (hg) Should we save hf_quant_config when there's no quantization applied?
         # Save hf_quant_config.json for backward compatibility
@@ -534,11 +537,11 @@ def export_hf_checkpoint(
         post_state_dict = rename_and_prune_if_spec_decoding(model, post_state_dict)
 
         # In the case of LoRA model, we save the base model
-        if is_lora:
+        if is_modelopt_trained_lora:
             model.base_model.save_pretrained(
                 base_export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
             )
-            model.save_pretrained(export_dir, save_modelopt_state=save_modelopt_state)
+            model.save_pretrained(export_dir)
         else:
             model.save_pretrained(
                 export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
