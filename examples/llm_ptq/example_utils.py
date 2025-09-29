@@ -144,7 +144,7 @@ def get_model(
     trust_remote_code=False,
     use_seq_device_map=False,
     attn_implementation=None,
-    is_lora=False,
+    is_modelopt_qlora=False,
 ):
     print(f"Initializing model from {ckpt_path}")
 
@@ -152,7 +152,7 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
-    if is_lora:
+    if is_modelopt_qlora:
         model = get_lora_model(ckpt_path, device_map)
         return model
 
