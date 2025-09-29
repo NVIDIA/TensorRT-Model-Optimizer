@@ -175,7 +175,7 @@ def test_context_parallel(need_2_gpus, config):
 
 # 4. DP=2 + TP=2 + CP=2 Test (on 2*2*2=8 GPUs)
 def _test_data_tensor_context_parallel_helper(config, rank, size):
-    initialize_for_megatron(tensor_model_parallel_size=2, context_parallel_size=2, seed=SEED)
+    initialize_for_megatron(tensor_model_parallel_size=2, context_parallel_size=2, seed=SEED + rank)
     model = MegatronModel(tp_size=2, cp_size=2).cuda()
 
     data_tensor_context_parallel_test_helper(
