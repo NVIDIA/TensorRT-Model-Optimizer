@@ -47,7 +47,7 @@ def test_evaluate_constraints(model_and_input_func):
         # NOTE: using param_num here instead of param_num_from_forward to check
         # correctness of the function.
         "params": param_num(model, unit=1.0),
-        "flops": profile_macs(model, args) / 1.0,
+        "flops": 2 * profile_macs(model, args) / 1.0,
     }
 
     assert actual_results == expected_results
@@ -83,7 +83,7 @@ def test_percent_limits():
     cf = ConstraintsFunc(model, constraints=constraints, dummy_input=args)
 
     remove_bn(model)
-    max_flops = profile_macs(model, args)
+    max_flops = 2 * profile_macs(model, args)
     max_params = param_num(model, unit=1.0)
     expected_results = {
         # NOTE: using trainable_param_num here instead of trainable_param_num_from_forward to check
