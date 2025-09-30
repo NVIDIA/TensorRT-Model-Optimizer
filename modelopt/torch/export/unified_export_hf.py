@@ -311,12 +311,11 @@ def _export_quantized_weight(
         )[0]
 
         quantized_weight = to_quantized_weight(
-            weight,
+            weight.to(dtype),
             weight_scale,
             quantization_format,
             weight_scale_2,
             block_size,
-            dtype,
         )
 
         quantized_weight, weight_scale = maybe_transpose_expert_weight_dimensions(
@@ -324,12 +323,11 @@ def _export_quantized_weight(
         )
     else:
         quantized_weight = to_quantized_weight(
-            weight,
+            weight.to(dtype),
             weight_scale,
             quantization_format,
             weight_scale_2,
             block_size,
-            dtype,
         )
 
     setattr(sub_module, weight_name, nn.Parameter(quantized_weight, requires_grad=False))
@@ -340,7 +338,7 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module, dtype: torch.dtype | None = None, is_modelopt_qlora: bool = False
+    model: nn.Module, dtype: torch.dtype | None = None, is_lora: bool = False
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -433,7 +431,7 @@ def _export_hf_checkpoint(
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
     # TODO: Support requantize and resmooth for modelopt-trained LoRA models
-    if not is_modelopt_qlora:
+    if not is_lora:
         requantize_resmooth_fused_llm_layers(model)
 
     # Remove all hooks from the model
@@ -493,7 +491,7 @@ def _export_hf_checkpoint(
     quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_qlora
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_lora
     )
 
     # Check if any layers are quantized
@@ -508,7 +506,6 @@ def export_hf_checkpoint(
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
-    is_modelopt_qlora: bool = False,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -518,41 +515,30 @@ def export_hf_checkpoint(
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
     """
-    # Setup directories
     export_dir = Path(export_dir)
-    base_export_dir = export_dir / "base_model" if is_modelopt_qlora else export_dir
-
-    for dir_path in [export_dir, base_export_dir]:
-        dir_path.mkdir(parents=True, exist_ok=True)
-
+    export_dir.mkdir(parents=True, exist_ok=True)
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype, is_modelopt_qlora)
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
         # NOTE: (hg) Should we save hf_quant_config when there's no quantization applied?
         # Save hf_quant_config.json for backward compatibility
-        with open(f"{base_export_dir}/hf_quant_config.json", "w") as file:
+        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
         post_state_dict = rename_and_prune_if_spec_decoding(model, post_state_dict)
 
-        if is_modelopt_qlora:
-            # In the case of LoRA model, we save the base model and adapters
-            model.base_model.save_pretrained(
-                base_export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
-            )
-            model.save_pretrained(export_dir)
-        else:
-            model.save_pretrained(
-                export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
-            )
+        # Save model
+        model.save_pretrained(
+            export_dir, state_dict=post_state_dict, save_modelopt_state=save_modelopt_state
+        )
 
-        original_config = f"{base_export_dir}/config.json"
+        original_config = f"{export_dir}/config.json"
         config_data = {}
 
-        # In the case of LoRA model.save_pretrained does not save the correct config.json
-        config_data = model.config.to_dict()
+        with open(original_config) as file:
+            config_data = json.load(file)
 
         config_data["quantization_config"] = hf_quant_config
 
