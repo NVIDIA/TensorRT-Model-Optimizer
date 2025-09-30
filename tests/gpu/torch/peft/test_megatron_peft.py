@@ -13,7 +13,6 @@ skip_if_no_megatron()
 
 
 import modelopt.torch.peft as mtpf
-from modelopt.torch.peft.config import kaiming_init, zero_init
 from modelopt.torch.peft.lora.layer import LoRAModule
 from modelopt.torch.utils.plugins import megatron_prefill
 
@@ -24,8 +23,8 @@ DEFAULT_LORA_CFG_TEST = {
         "*": {
             "rank": 32,
             "scale": 1,
-            "lora_a_init": kaiming_init,
-            "lora_b_init": zero_init,
+            "lora_a_init": "kaiming_init",
+            "lora_b_init": "zero_init",
             "enable": True,
         },
     },
@@ -38,23 +37,22 @@ DEFAULT_LORA_CFG_RANDOM_INIT_TEST = {
         "*": {
             "rank": 32,
             "scale": 1,
-            "lora_a_init": kaiming_init,
-            "lora_b_init": kaiming_init,
+            "lora_a_init": "kaiming_init",
+            "lora_b_init": "kaiming_init",
             "enable": True,
         },
     },
 }
 
-# Additional configurations for comprehensive testing
-SMALL_RANK_LORA_CFG = {
+DEFAULT_LORA_CFG_RANDOM_INIT_SMALL_RANK_TEST = {
     "adapter_type": "lora",
-    "adapter_name": "small_rank",
+    "adapter_name": "small",
     "adapter_cfg": {
         "*": {
-            "rank": 4,
+            "rank": 8,
             "scale": 1,
-            "lora_a_init": kaiming_init,
-            "lora_b_init": zero_init,
+            "lora_a_init": "kaiming_init",
+            "lora_b_init": "kaiming_init",
             "enable": True,
         },
     },
@@ -67,8 +65,8 @@ LARGE_SCALE_LORA_CFG = {
         "*": {
             "rank": 16,
             "scale": 10.0,
-            "lora_a_init": kaiming_init,
-            "lora_b_init": zero_init,
+            "lora_a_init": "kaiming_init",
+            "lora_b_init": "zero_init",
             "enable": True,
         },
     },
@@ -78,12 +76,12 @@ SELECTIVE_LAYER_LORA_CFG = {
     "adapter_type": "lora",
     "adapter_name": "selective",
     "adapter_cfg": {
-        "*": {"enable": False},  # Disable by default
-        "*self_attention*": {  # Enable only for self-attention layers
+        "*": {"enable": False},
+        "*self_attention*": {
             "rank": 16,
             "scale": 1,
-            "lora_a_init": kaiming_init,
-            "lora_b_init": zero_init,
+            "lora_a_init": "kaiming_init",
+            "lora_b_init": "zero_init",
             "enable": True,
         },
     },
@@ -131,12 +129,12 @@ def _test_forward_with_one_lora(lora_config, rank, size):
     mtpf.update_model(model, lora_config)
     lora_output = megatron_prefill(model, prompt_tokens)
     assert lora_output.shape == original_output.shape
-    if lora_config == DEFAULT_LORA_CFG_TEST:
+    if lora_config == DEFAULT_LORA_CFG_RANDOM_INIT_TEST:
+        assert not torch.allclose(lora_output, original_output, rtol=1e-5)
+    else:
         assert torch.allclose(lora_output, original_output, rtol=1e-5), (
             f"{lora_output}, {original_output}"
         )
-    else:
-        assert not torch.allclose(lora_output, original_output, rtol=1e-5)
     mtpf.disable_adapters(model)
     lora_disabled_output = megatron_prefill(model, prompt_tokens)
     assert torch.allclose(lora_disabled_output, original_output, rtol=1e-5)
@@ -144,28 +142,40 @@ def _test_forward_with_one_lora(lora_config, rank, size):
     lora_reenabled_output = megatron_prefill(model, prompt_tokens)
     assert torch.allclose(lora_reenabled_output, lora_output, rtol=1e-5)
     lora_module_count = 0
+    lora_with_adapter_count = 0
     for name, module in model.named_modules():
         if isinstance(module, LoRAModule):
             lora_module_count += 1
-            assert hasattr(module, f"lora_a_{lora_config['adapter_name']}")
-            assert hasattr(module, f"lora_b_{lora_config['adapter_name']}")
 
             if lora_config == SELECTIVE_LAYER_LORA_CFG:
-                if "self_attention" not in name:
-                    # These modules should have LoRA disabled
-                    assert not module._lora_adapters[lora_config["adapter_name"]]["enable"]
+                if "self_attention" in name:
+                    # Only self_attention modules should have the adapter
+                    assert hasattr(module, f"lora_a_{lora_config['adapter_name']}")
+                    assert hasattr(module, f"lora_b_{lora_config['adapter_name']}")
+                    assert lora_config["adapter_name"] in module._lora_adapters
+                    assert module._lora_adapters[lora_config["adapter_name"]]["enable"]
+                    lora_with_adapter_count += 1
+                else:
+                    # Other modules should NOT have the adapter at all
+                    assert not hasattr(module, f"lora_a_{lora_config['adapter_name']}")
+                    assert not hasattr(module, f"lora_b_{lora_config['adapter_name']}")
+                    assert lora_config["adapter_name"] not in module._lora_adapters
+            else:
+                # For non-selective configs, all LoRA modules should have the adapter
+                assert hasattr(module, f"lora_a_{lora_config['adapter_name']}")
+                assert hasattr(module, f"lora_b_{lora_config['adapter_name']}")
+                lora_with_adapter_count += 1
 
     assert lora_module_count > 0
+    assert lora_with_adapter_count > 0
 
 
 @pytest.mark.parametrize(
     "lora_config",
     [
         DEFAULT_LORA_CFG_TEST,
-        # DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
-        # SMALL_RANK_LORA_CFG,
-        # LARGE_SCALE_LORA_CFG,
-        # SELECTIVE_LAYER_LORA_CFG,
+        DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
+        SELECTIVE_LAYER_LORA_CFG,
     ],
 )
 def test_forward_with_one_lora(lora_config):
@@ -174,7 +184,7 @@ def test_forward_with_one_lora(lora_config):
     )
 
 
-def _test_forward_with_two_loras(lora_config_1, lora_config_2):
+def _test_forward_with_two_loras(lora_config_1, lora_config_2, rank, size):
     """Test forward pass with two LoRA adapters and adapter switching."""
     hidden_size = 320
     initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
@@ -183,21 +193,31 @@ def _test_forward_with_two_loras(lora_config_1, lora_config_2):
 
     original_output = megatron_prefill(model, prompt_tokens)
     mtpf.update_model(model, lora_config_1)
+    # output from the first lora only
     lora_1_output = megatron_prefill(model, prompt_tokens)
+
     mtpf.update_model(model, lora_config_2)
+
     mtpf.disable_adapters(model, adapters_to_disable=[lora_config_1["adapter_name"]])
     mtpf.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
+
+    # output from the 2nd lora only
     lora_2_output = megatron_prefill(model, prompt_tokens)
-    if lora_config_1 != DEFAULT_LORA_CFG_TEST or lora_config_2 != DEFAULT_LORA_CFG_TEST:
-        assert not torch.allclose(lora_1_output, lora_2_output, rtol=1e-5)
+
     assert lora_1_output.shape == lora_2_output.shape
+    # Should not be the same
+    assert not torch.allclose(lora_1_output, lora_2_output)
+
     mtpf.enable_adapters(model, adapters_to_enable=[lora_config_1["adapter_name"]])
-    mtpf.disable_adapters(model, adapters_to_disable=[lora_config_2["adapter_name"]])
-    switched_output = megatron_prefill(model, prompt_tokens)
-    assert torch.allclose(switched_output, lora_1_output, rtol=1e-5)
+    mtpf.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
+    lora_all_output = megatron_prefill(model, prompt_tokens)
+
+    assert not torch.allclose(lora_all_output, lora_1_output)
+    assert not torch.allclose(lora_all_output, lora_2_output)
+
     mtpf.disable_adapters(model)
     both_disabled_output = megatron_prefill(model, prompt_tokens)
-    assert torch.allclose(both_disabled_output, original_output, rtol=1e-5)
+    assert torch.allclose(both_disabled_output, original_output)
 
     for _, module in model.named_modules():
         if isinstance(module, LoRAModule):
@@ -208,18 +228,18 @@ def _test_forward_with_two_loras(lora_config_1, lora_config_2):
             assert len(module._lora_adapters) == 2
 
 
-# @pytest.mark.parametrize(
-#     "lora_config_1,lora_config_2",
-#     [
-#         (DEFAULT_LORA_CFG_TEST, DEFAULT_LORA_CFG_RANDOM_INIT_TEST),
-#         (SMALL_RANK_LORA_CFG, LARGE_SCALE_LORA_CFG),
-#         (DEFAULT_LORA_CFG_TEST, SELECTIVE_LAYER_LORA_CFG),
-#     ],
-# )
-# def test_forward_with_two_loras(lora_config_1, lora_config_2):
-#     spawn_multiprocess_job(
-#         size=1, job=partial(_test_forward_with_two_loras, lora_config_1, lora_config_2), backend="nccl"
-#     )
+@pytest.mark.parametrize(
+    ("lora_config_1", "lora_config_2"),
+    [
+        (DEFAULT_LORA_CFG_RANDOM_INIT_TEST, DEFAULT_LORA_CFG_RANDOM_INIT_SMALL_RANK_TEST),
+    ],
+)
+def test_forward_with_two_loras(lora_config_1, lora_config_2):
+    spawn_multiprocess_job(
+        size=1,
+        job=partial(_test_forward_with_two_loras, lora_config_1, lora_config_2),
+        backend="nccl",
+    )
 
 
 # def test_edge_cases_and_error_handling():

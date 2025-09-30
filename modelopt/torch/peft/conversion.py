@@ -106,12 +106,23 @@ def add_adapter(model, config: PEFTConfig):
 
     for name, module in model.named_modules():
         if isinstance(module, LoRAModule):
+            # Collect all matching adapter settings and merge them
+            # Later patterns override earlier ones
+            merged_setting = None
             for wildcard_or_filter_func, adapter_setting in adapter_cfg.items():
                 if _matches(name, wildcard_or_filter_func):
-                    module.update_layer_lora(
-                        adapter_name,
-                        adapter_setting,
-                    )
+                    if merged_setting is None:
+                        merged_setting = adapter_setting.copy()
+                    else:
+                        merged_setting.update(adapter_setting)
+
+            # Only call update_layer_lora if we have settings and enable is not False
+            # If enable=False, skip adding the adapter entirely
+            if merged_setting is not None and merged_setting.get("enable", True):
+                module.update_layer_lora(
+                    adapter_name,
+                    merged_setting,
+                )
 
     return model
 

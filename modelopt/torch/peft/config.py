@@ -15,25 +15,13 @@
 
 """Configuration classes for PEFT methods."""
 
-import math
 from collections.abc import Callable
 
-import torch.nn.init as init
 from pydantic import field_validator
 
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 
 __all__ = ["ExportPEFTConfig", "PEFTAttributeConfig", "PEFTConfig"]
-
-
-def kaiming_init(weight):
-    """Default initialization for LoRA A matrix using Kaiming uniform."""
-    return init.kaiming_uniform_(weight, a=math.sqrt(5))
-
-
-def zero_init(weight):
-    """Default initialization for LoRA B matrix using zeros."""
-    return init.zeros_(weight)
 
 
 class PEFTAttributeConfig(ModeloptBaseConfig):
