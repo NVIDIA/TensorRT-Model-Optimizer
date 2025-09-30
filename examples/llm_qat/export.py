@@ -25,6 +25,7 @@ from modelopt.torch.export.convert_hf_config import convert_hf_quant_config_form
 from modelopt.torch.export.unified_export_hf import _export_hf_checkpoint
 from modelopt.torch.opt.conversion import restore_from_modelopt_state
 from modelopt.torch.quantization.utils import set_quantizer_state_dict
+from modelopt.torch.utils import print_rank_0
 
 RAND_SEED = 1234
 
@@ -46,12 +47,13 @@ def get_lora_model(
     # Restore modelopt state
     modelopt_state = torch.load(f"{ckpt_path}/modelopt_state_calib.pth", weights_only=False)
     restore_from_modelopt_state(model, modelopt_state)
+    print_rank_0("Restored modelopt state")
 
     # Restore modelopt quantizer state dict
     modelopt_weights = modelopt_state.pop("modelopt_state_weights", None)
     if modelopt_weights is not None:
-        print("Restoring modelopt weights")
         set_quantizer_state_dict(model, modelopt_weights)
+        print_rank_0("Restored modelopt quantizer state dict")
 
     return model
 
