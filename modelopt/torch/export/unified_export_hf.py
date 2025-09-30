@@ -338,7 +338,7 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module, dtype: torch.dtype | None = None, is_lora: bool = False
+    model: nn.Module, dtype: torch.dtype | None = None, is_modelopt_qlora: bool = False
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -431,7 +431,7 @@ def _export_hf_checkpoint(
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
     # TODO: Support requantize and resmooth for modelopt-trained LoRA models
-    if not is_lora:
+    if not is_modelopt_qlora:
         requantize_resmooth_fused_llm_layers(model)
 
     # Remove all hooks from the model
@@ -491,7 +491,7 @@ def _export_hf_checkpoint(
     quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_lora
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_qlora
     )
 
     # Check if any layers are quantized

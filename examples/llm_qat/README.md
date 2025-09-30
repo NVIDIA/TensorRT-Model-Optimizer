@@ -348,13 +348,9 @@ To perform QLoRA training, run:
 After performing QLoRA training the final checkpoint can be exported for deployment with vLLM using the following command.
 
 ```sh
-cd ../llm_ptq
-
-python hf_ptq.py \
+python export.py \
    --pyt_ckpt_path llama3-fp4-qlora \
-   --qformat nvfp4 \
    --export_dir llama3-fp4-qlora-hf \
-   --qlora 
 
 ```
 
