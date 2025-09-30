@@ -37,6 +37,7 @@ def get_lora_model(
     """
     Loads a QLoRA model that has been trained using modelopt trainer.
     """
+    # TODO: Add support for merging adapters in BF16 and merging adapters with quantization for deployment
     device_map = "auto"
     if device == "cpu":
         device_map = "cpu"
@@ -72,17 +73,17 @@ def main(args):
     try:
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, is_modelopt_qlora=True)
 
-        with open(f"{export_dir}/base_model/hf_quant_config.json", "w") as file:
+        with open(f"{base_model_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
         # Save base model
-        model.base_model.save_pretrained(f"{export_dir}/base_model", state_dict=post_state_dict)
+        model.base_model.save_pretrained(f"{base_model_dir}", state_dict=post_state_dict)
         # Save adapters
         model.save_pretrained(export_dir)
 
-        config_path = f"{export_dir}/base_model/config.json"
+        config_path = f"{base_model_dir}/config.json"
 
         config_data = model.config.to_dict()
 
@@ -112,7 +113,11 @@ if __name__ == "__main__":
 
     parser.add_argument("--device", default="cuda")
 
-    parser.add_argument("--export_path", default="exported_model")
+    parser.add_argument(
+        "--export_path",
+        default="exported_model",
+        help="Path to save the exported model",
+    )
 
     args = parser.parse_args()
 
