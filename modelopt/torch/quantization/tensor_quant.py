@@ -53,6 +53,7 @@ def _fp8_eager(x, amax=None):
         x = x.to(torch.float32) * scale_inv
     return x.to(dtype)
 
+
 def fp8_eager(x, amax):
     """Eager mode implementation of FP8 quantization."""
     return _fp8_eager(x, amax)
