@@ -210,7 +210,8 @@ def data_tensor_context_parallel_test_helper(
         )
 
 
-def dp_cp_parallel_test_helper(model, config, group):
+@patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
+def dp_cp_parallel_test_helper(model, config, group, mock_awq_lite):
     calib_data = model.get_dummy_input().cuda()
 
     def forward_loop(model):
@@ -238,20 +239,23 @@ def dp_cp_parallel_test_helper(model, config, group):
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
         # Check act scale
         _reduce_quantizer_attr(
-            model.fc1.weight_quantizer.awq_lite.act_scale,
+            model.fc1.weight_quantizer.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=group,
         )
         _reduce_quantizer_attr(
-            model.fc2.weight_quantizer.awq_lite.act_scale,
+            model.fc2.weight_quantizer.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=group,
         )
 
 
-def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, cp_group):
+@patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
+def data_tensor_context_parallel_test_helper(
+    model, config, dp_group, tp_group, cp_group, mock_awq_lite
+):
     calib_data = model.get_dummy_input().cuda()
     # data should be same across each TP rank
     dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
@@ -296,13 +300,13 @@ def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, 
     # Check act scale
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
         _reduce_quantizer_attr(
-            model.fc1.weight_quantizer.awq_lite.act_scale,
+            model.fc1.weight_quantizer.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=tp_group,
         )
         _reduce_quantizer_attr(
-            model.fc2.weight_quantizer.awq_lite.act_scale,
+            model.fc2.weight_quantizer.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=tp_group,
