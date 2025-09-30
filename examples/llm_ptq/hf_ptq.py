@@ -325,6 +325,9 @@ def main(args):
             model = model.language_model
             model_type = get_model_type(model)
 
+    if model_type == "phi4mm":
+        warnings.warn("Please set the default input_mode to InputMode.LANGUAGE before quantizing.")
+
     if args.sparsity_fmt != "dense":
         if args.batch_size == 0:
             # Sparse algorithm takes more GPU memory so we reduce the batch_size by 4.
@@ -475,9 +478,6 @@ def main(args):
                 quant_cfg["quant_cfg"]["*audio*"] = {"enable": False}
                 quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
                 quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
-                warnings.warn(
-                    "Please set the default input_mode to InputMode.LANGUAGE before quantizing."
-                )
 
         if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
