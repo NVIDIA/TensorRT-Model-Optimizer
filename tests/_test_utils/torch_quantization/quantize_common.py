@@ -172,12 +172,12 @@ def tensor_parallel_test_helper(model, config, tp_group, mock_awq_lite):
             dist.ReduceOp.AVG,
             group=tp_group,
         )
-        # TODO fc2 assert is failing
-        """
         _reduce_quantizer_attr(
-            model.fc2.awq_lite, "act_scale", dist.ReduceOp.AVG, group=tp_group,
+            model.fc2.awq_lite,
+            "act_scale",
+            dist.ReduceOp.AVG,
+            group=tp_group,
         )
-        """
 
     dist.destroy_process_group()
 
