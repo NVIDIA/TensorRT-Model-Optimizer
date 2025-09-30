@@ -23,6 +23,7 @@ from packaging.version import Version
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
+import modelopt.torch.quantization.model_calib as model_calib_module  # needed for patching awq_lite
 from modelopt.torch.quantization.backends.gemm_registry import enable_real_quant_gemm
 from modelopt.torch.quantization.nn.modules.tensor_quantizer import SequentialQuantizer
 from modelopt.torch.quantization.utils import is_quantized_linear
@@ -126,9 +127,6 @@ def _reduce_quantizer_attr(quantizer, attr=str, op=dist.ReduceOp.MAX, group=None
     print("quantizer_attr after reduce", quantizer_attr)
     assert torch.allclose(quantizer_attr, getattr(quantizer, attr))
 
-
-# Store the original function before patching
-import modelopt.torch.quantization.model_calib as model_calib_module
 
 original_awq_lite = model_calib_module.awq_lite
 
@@ -252,24 +250,20 @@ def data_tensor_context_parallel_test_helper(
 
     # Input quantizer amax
     if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
-        _reduce_quantizer_attr(model.fc1.input_quantizer, "amax", dist.ReduceOp.MAX, group=dp_group)
-        _reduce_quantizer_attr(model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX, group=dp_group)
+        _reduce_quantizer_attr(model.fc1.input_quantizer, "amax", dist.ReduceOp.MAX)
+        _reduce_quantizer_attr(model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX)
 
     if isinstance(model.fc1.weight_quantizer, SequentialQuantizer):
         for quantizer in model.fc1.weight_quantizer:
-            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX, group=dp_group)
+            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
     else:
-        _reduce_quantizer_attr(
-            model.fc1.weight_quantizer, "amax", dist.ReduceOp.MAX, group=dp_group
-        )
+        _reduce_quantizer_attr(model.fc1.weight_quantizer, "amax", dist.ReduceOp.MAX)
 
     if isinstance(model.fc2.weight_quantizer, SequentialQuantizer):
         for quantizer in model.fc2.weight_quantizer:
-            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX, group=dp_group)
+            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
     else:
-        _reduce_quantizer_attr(
-            model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX, group=dp_group
-        )
+        _reduce_quantizer_attr(model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX)
 
     # Check act scale
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
@@ -277,13 +271,11 @@ def data_tensor_context_parallel_test_helper(
             model.fc1.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
-            group=tp_group,
         )
         _reduce_quantizer_attr(
             model.fc2.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
-            group=tp_group,
         )
 
 
