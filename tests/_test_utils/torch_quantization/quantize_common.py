@@ -213,13 +213,13 @@ def dp_cp_parallel_test_helper(model, config, group, mock_awq_lite):
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
         # Check act scale
         _reduce_quantizer_attr(
-            model.fc1.weight_quantizer.awq_lite,
+            model.fc1.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=group,
         )
         _reduce_quantizer_attr(
-            model.fc2.weight_quantizer.awq_lite,
+            model.fc2.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=group,
@@ -274,13 +274,13 @@ def data_tensor_context_parallel_test_helper(
     # Check act scale
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
         _reduce_quantizer_attr(
-            model.fc1.weight_quantizer.awq_lite,
+            model.fc1.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=tp_group,
         )
         _reduce_quantizer_attr(
-            model.fc2.weight_quantizer.awq_lite,
+            model.fc2.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
             group=tp_group,
