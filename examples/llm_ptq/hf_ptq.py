@@ -466,7 +466,7 @@ def main(args):
             quant_cfg["quant_cfg"]["*radio*"] = {"enable": False}
             quant_cfg["quant_cfg"]["*visual*"] = {"enable": False}
 
-        if not model_is_already_quantized and calibration_only:
+        if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
             input_ids = next(iter(calib_dataloader))[
                 "input_features" if model_type == "whisper" else "input_ids"
@@ -796,12 +796,6 @@ if __name__ == "__main__":
         ),
         default=None,
         type=str,
-    )
-    parser.add_argument(
-        "--qlora",
-        help="Specify the model to be exported is a QLoRA model trained using modelopt.",
-        default=False,
-        action="store_true",
     )
 
     args = parser.parse_args()
