@@ -15,12 +15,8 @@
 
 """Megatron-Core specific PEFT/LoRA plugins."""
 
-import math
-from collections.abc import Callable
-
 import torch
 import torch.nn as nn
-import torch.nn.init as init
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
@@ -35,7 +31,7 @@ from modelopt.torch.quantization.plugins.megatron import (
 
 from ...config import PEFTAttributeConfig
 from ...custom import CUSTOM_MODEL_PLUGINS
-from ..layer import LoRAModule, LoRAModuleRegistry
+from ..layer import LoRAModule, LoRAModuleRegistry, get_init_methods
 
 DEFAULT_LORA_RANK = 64
 DEFAULT_SCALE = 1.0
@@ -72,18 +68,6 @@ class _MegatronParallelLoRABase(LoRAModule):
     This class provides common functionality for both ColumnParallel and RowParallel
     LoRA implementations, reducing code duplication.
     """
-
-    def _get_init_methods(self, lora_a_init, lora_b_init) -> tuple[Callable, Callable]:
-        """Get initialization methods for LoRA A and B matrices.
-
-        Returns:
-            Tuple of (lora_a_init, lora_b_init) initialization functions
-        """
-        if lora_a_init is None:
-            lora_a_init = lambda weight: init.kaiming_uniform_(weight, a=math.sqrt(5))  # noqa: E731  # LoRA A: Kaiming uniform
-        if lora_b_init is None:
-            lora_b_init = lambda weight: init.zeros_(weight)  # noqa: E731  # LoRA B: zeros
-        return lora_a_init, lora_b_init
 
     def _register_adapter_with_device(
         self,
@@ -146,13 +130,15 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition
         """
+        lora_a_init = get_init_methods(attr_config.lora_a_init)
+        lora_b_init = get_init_methods(attr_config.lora_b_init)
         lora_a = nn.Linear(
             in_features=self.input_size,
             out_features=attr_config.rank,
             bias=False,
         )
         with torch.no_grad():
-            attr_config.lora_b_init(lora_a.weight)  # type: ignore[misc]
+            lora_a_init(lora_a.weight)
 
         lora_b = ColumnParallelLinear(
             attr_config.rank,
@@ -160,7 +146,7 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             config=self.config,
             bias=False,
             gather_output=False,
-            init_method=attr_config.lora_a_init,
+            init_method=lora_b_init,
         )
 
         self._register_adapter_with_device(
@@ -218,6 +204,8 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition
         """
+        lora_a_init = get_init_methods(attr_config.lora_a_init)
+        lora_b_init = get_init_methods(attr_config.lora_b_init)
         lora_a = RowParallelLinear(
             self.input_size,
             attr_config.rank,
@@ -225,7 +213,7 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             input_is_parallel=True,
             skip_bias_add=True,
             bias=False,
-            init_method=attr_config.lora_a_init,
+            init_method=lora_a_init,
         )
 
         lora_b = nn.Linear(
@@ -234,7 +222,7 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             bias=False,
         )
         with torch.no_grad():
-            attr_config.lora_b_init(lora_b.weight)  # type: ignore[misc]
+            lora_b_init(lora_b.weight)
 
         self._register_adapter_with_device(
             adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale, attr_config.enable

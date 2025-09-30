@@ -16,11 +16,10 @@
 """Configuration classes for PEFT methods."""
 
 import math
-import pickle  # nosec B403 - Only checking picklability
 from collections.abc import Callable
 
 import torch.nn.init as init
-from pydantic import field_validator, model_validator
+from pydantic import field_validator
 
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 
@@ -61,14 +60,14 @@ class PEFTAttributeConfig(ModeloptBaseConfig):
         description="Scaling factor for the LoRA output. Controls the magnitude of the adaptation.",
     )
 
-    lora_a_init: Callable[[object], None] | None = ModeloptField(
-        default=kaiming_init,
+    lora_a_init: str = ModeloptField(
+        default="kaiming_init",
         title="LoRA A matrix initializer",
         description="Custom initialization function for LoRA A matrix. Default to Kaiming uniform initialization.",
     )
 
-    lora_b_init: Callable[[object], None] | None = ModeloptField(
-        default=zero_init,
+    lora_b_init: str = ModeloptField(
+        default="zero_init",
         title="LoRA B matrix initializer",
         description="Custom initialization function for LoRA B matrix. Default to zero initialization.",
     )
@@ -88,33 +87,6 @@ class PEFTAttributeConfig(ModeloptBaseConfig):
         if v <= 0:
             raise ValueError("scale must be a positive number")
         return v
-
-    @model_validator(mode="after")
-    def validate_init_functions(self):
-        """Validate initialization functions are callable and picklable."""
-        if self.lora_a_init is not None and not callable(self.lora_a_init):
-            raise ValueError("lora_a_init must be callable")
-        if self.lora_b_init is not None and not callable(self.lora_b_init):
-            raise ValueError("lora_b_init must be callable")
-        if self.lora_a_init is not None:
-            try:
-                _del = pickle.dumps(self.lora_a_init)
-                del _del
-            except (pickle.PicklingError, TypeError, AttributeError) as e:
-                raise ValueError(
-                    f"lora_a_init cannot be pickled: {e}. "
-                    "Please use a module-level function instead of a lambda or nested function."
-                )
-        if self.lora_b_init is not None:
-            try:
-                _del = pickle.dumps(self.lora_b_init)
-                del _del
-            except (pickle.PicklingError, TypeError, AttributeError) as e:
-                raise ValueError(
-                    f"lora_b_init cannot be pickled: {e}. "
-                    "Please use a module-level function instead of a lambda or nested function."
-                )
-        return self
 
 
 # Type alias for adapter configuration
