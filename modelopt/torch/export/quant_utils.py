@@ -839,6 +839,7 @@ def postprocess_state_dict(
         state_dict: The full model state_dict.
         maxbound: The maximum bound value for the output quantizer.
         quantization: The KV cache quantization format.
+        is_modelopt_qlora: Whether the model is a modelopt-trained QLoRA model.
 
     Returns:
         The filtered state_dict without unnecessary keys like '_amax' and non KV cache output quantizers.

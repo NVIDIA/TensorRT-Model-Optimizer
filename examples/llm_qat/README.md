@@ -350,7 +350,7 @@ After performing QLoRA training the final checkpoint can be exported for deploym
 ```sh
 python export.py \
    --pyt_ckpt_path llama3-fp4-qlora \
-   --export_dir llama3-fp4-qlora-hf \
+   --export_path llama3-fp4-qlora-hf \
 
 ```
 
