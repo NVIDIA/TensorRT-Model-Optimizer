@@ -58,20 +58,6 @@ DEFAULT_LORA_CFG_RANDOM_INIT_SMALL_RANK_TEST = {
     },
 }
 
-LARGE_SCALE_LORA_CFG = {
-    "adapter_type": "lora",
-    "adapter_name": "large_scale",
-    "adapter_cfg": {
-        "*": {
-            "rank": 16,
-            "scale": 10.0,
-            "lora_a_init": "kaiming_init",
-            "lora_b_init": "zero_init",
-            "enable": True,
-        },
-    },
-}
-
 SELECTIVE_LAYER_LORA_CFG = {
     "adapter_type": "lora",
     "adapter_name": "selective",
@@ -130,16 +116,25 @@ def _test_forward_with_one_lora(lora_config, rank, size):
     lora_output = megatron_prefill(model, prompt_tokens)
     assert lora_output.shape == original_output.shape
     if lora_config == DEFAULT_LORA_CFG_RANDOM_INIT_TEST:
+        # Task: To verify that the LoRA output differs from the original
+        # output since two LoRA layers are initialized randomly.
         assert not torch.allclose(lora_output, original_output, rtol=1e-5)
     else:
+        # Task: The LoRA output should match the original output if two
+        # LoRA layers are initialized in the standard way
+        # (one with random values and one with zeros).
         assert torch.allclose(lora_output, original_output, rtol=1e-5), (
             f"{lora_output}, {original_output}"
         )
     mtpf.disable_adapters(model)
     lora_disabled_output = megatron_prefill(model, prompt_tokens)
+    # Task: Since all LoRA layers are disabled, the output should
+    # be identical to the original output.
     assert torch.allclose(lora_disabled_output, original_output, rtol=1e-5)
     mtpf.enable_adapters(model)
     lora_reenabled_output = megatron_prefill(model, prompt_tokens)
+    # Task: To verify that toggling LoRA layers from disabled
+    # to enabled does not alter the output, the output should remain unchanged.
     assert torch.allclose(lora_reenabled_output, lora_output, rtol=1e-5)
     lora_module_count = 0
     lora_with_adapter_count = 0
@@ -149,19 +144,19 @@ def _test_forward_with_one_lora(lora_config, rank, size):
 
             if lora_config == SELECTIVE_LAYER_LORA_CFG:
                 if "self_attention" in name:
-                    # Only self_attention modules should have the adapter
+                    # Task: Only self_attention modules should have the adapter
                     assert hasattr(module, f"lora_a_{lora_config['adapter_name']}")
                     assert hasattr(module, f"lora_b_{lora_config['adapter_name']}")
                     assert lora_config["adapter_name"] in module._lora_adapters
                     assert module._lora_adapters[lora_config["adapter_name"]]["enable"]
                     lora_with_adapter_count += 1
                 else:
-                    # Other modules should NOT have the adapter at all
+                    # Task: Other modules should NOT have the adapter at all
                     assert not hasattr(module, f"lora_a_{lora_config['adapter_name']}")
                     assert not hasattr(module, f"lora_b_{lora_config['adapter_name']}")
                     assert lora_config["adapter_name"] not in module._lora_adapters
             else:
-                # For non-selective configs, all LoRA modules should have the adapter
+                # Task: For non-selective configs, all LoRA modules should have the adapter
                 assert hasattr(module, f"lora_a_{lora_config['adapter_name']}")
                 assert hasattr(module, f"lora_b_{lora_config['adapter_name']}")
                 lora_with_adapter_count += 1
