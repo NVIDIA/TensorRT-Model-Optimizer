@@ -95,27 +95,6 @@ class NVFP4QTensor(BaseQuantizedTensor):
         return reduce_amax(input).float() / (6.0 * 448.0)
 
     @classmethod
-    def get_modelopt_weights_scaling_factor(cls, weight_scaling_factor: torch.Tensor, weight_shape):
-        """Returns the modelopt weights scaling factor if the quantization is done by trtllm."""
-        if weight_scaling_factor.dtype == torch.float8_e4m3fn:
-            return weight_scaling_factor
-
-        if weight_scaling_factor.dtype == torch.uint8 and weight_scaling_factor.ndim == 1:
-            # If quantization is done by trtllm, convert cutlass fp4 scale to modelopt fp4 scale
-            try:
-                from tensorrt_llm._torch.auto_deploy.utils.quantization_utils import (
-                    cutlass_fp4_scale_to_modelopt_fp4_scale,
-                )
-
-                return cutlass_fp4_scale_to_modelopt_fp4_scale(
-                    weight_scaling_factor, weight_shape[-2:]
-                )
-            except ImportError as e:
-                raise ImportError(
-                    "This tensor is quantized by trtllm, but tensorrt_llm cannot be imported."
-                ) from e
-
-    @classmethod
     def get_activation_scaling_factor(cls, quantizer):
         """Returns the activation scaling factor for export."""
         # TODO: Update to use module and not quantizer
@@ -270,9 +249,20 @@ class NVFP4QTensor(BaseQuantizedTensor):
             return unpacked.reshape(unpacked_shape)
 
         # Get scales from kwargs
-        kwarg["scale"] = self.get_modelopt_weights_scaling_factor(
-            kwarg["scale"], self.metadata["shape"]
-        )
+        if kwarg["scale"].dtype == torch.uint8 and kwarg["scale"].ndim == 1:
+            # If quantization is done by trtllm, convert cutlass fp4 scale to modelopt fp4 scale
+            try:
+                from tensorrt_llm._torch.auto_deploy.utils.quantization_utils import (
+                    cutlass_fp4_scale_to_modelopt_fp4_scale,
+                )
+
+                kwarg["scale"] = cutlass_fp4_scale_to_modelopt_fp4_scale(
+                    kwarg["scale"], self.metadata["shape"][-2:]
+                )
+            except ImportError as e:
+                raise ImportError(
+                    "This tensor is quantized by trtllm, but tensorrt_llm cannot be imported."
+                ) from e
 
         if fast:
             from ..triton.fp4_kernel import fp4_dequantize

@@ -68,7 +68,7 @@ def main(args):
     base_model_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, is_lora=True)
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, is_modelopt_qlora=True)
 
         with open(f"{export_dir}/base_model/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
