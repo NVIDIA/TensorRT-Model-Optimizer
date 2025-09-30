@@ -115,7 +115,7 @@ def quantize(
     calibration_method: str = "entropy",
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str | None = None,
-    calibration_shapes: str | None = None,
+    calibration_shapes: str | dict | None = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] | None = None,
     op_types_to_exclude: list[str] | None = None,
