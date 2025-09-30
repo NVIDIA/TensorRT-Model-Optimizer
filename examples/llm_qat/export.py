@@ -84,7 +84,6 @@ def main(args):
 
         # In the case of LoRA model.save_pretrained does not save the correct config.json
         config_data = model.config.to_dict()
-        print(config_data)
 
         config_data["quantization_config"] = hf_quant_config
 
