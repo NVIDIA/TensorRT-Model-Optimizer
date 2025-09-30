@@ -116,7 +116,7 @@ def inference_flops(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with batch_norm_ignored_flops():
-            flops = profile.profile_macs(network, args=dummy_input)
+            flops = 2 * profile.profile_macs(network, args=dummy_input)
     network.train(is_training)
     if return_str:
         return num2hrb(flops)

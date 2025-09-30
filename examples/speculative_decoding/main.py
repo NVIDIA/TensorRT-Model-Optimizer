@@ -36,23 +36,14 @@ from typing import Literal
 
 import torch
 import transformers
-from ar_validate import validate_ar
-from datasets import load_dataset
-from eagle_utils import make_eagle_supervised_data_module
+from eagle_utils import ARValidationCallback, make_eagle_supervised_data_module
 from medusa_utils import make_medusa_supervised_data_module
-from transformers import Trainer, TrainerCallback
+from transformers import Trainer
 from transformers.trainer_utils import get_last_checkpoint
 
 import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
 from modelopt.torch.utils import print_rank_0
-
-try:
-    import wandb
-
-    wandb.init()
-except ImportError:
-    wandb = None
 
 torch.manual_seed(0)
 mto.enable_huggingface_checkpointing()
@@ -147,9 +138,8 @@ def train():
         model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype="auto")
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
-        model_kwargs = {"num_hidden_layers": 0} if use_offline_training else {}
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path, torch_dtype="auto", **model_kwargs
+            model_args.model_name_or_path, torch_dtype="auto", device_map="cpu"
         )
         if use_offline_training:
             # When doing offline training, we need to set num_hidden_layers
@@ -231,26 +221,6 @@ def train():
             tokenizer, data_args, use_offline_training, max_length=training_args.training_seq_len
         )
 
-    class ARValidationCallback(TrainerCallback):
-        def __init__(self, ar_validate_steps: int = 500):
-            self.ar_validate_steps = ar_validate_steps
-
-        def on_step_end(self, args, state, control, **kwargs):
-            if self.ar_validate_steps <= 0:
-                return control
-            if state.global_step % self.ar_validate_steps == 0 and state.global_step > 0:
-                print_rank_0("Running AR validation...")
-                ars = validate_ar(
-                    model=kwargs["model"],
-                    tokenizer=kwargs["processing_class"],
-                    ds=load_dataset("HuggingFaceH4/mt_bench_prompts")["train"],
-                    device=kwargs["model"].device,
-                )
-                print_rank_0(f"Step {state.global_step} AR: {sum(ars) / len(ars):.4f}")
-                if wandb:
-                    wandb.log({"validate_ar": sum(ars) / len(ars)}, step=state.global_step)
-            return control
-
     trainer = Trainer(
         model=model,
         processing_class=tokenizer,
@@ -258,7 +228,6 @@ def train():
         callbacks=[ARValidationCallback(training_args.ar_validate_steps)],
         **data_module,
     )
-    trainer._move_model_to_device(model, trainer.args.device)
 
     # Manually enable this to return loss in eval
     trainer.can_return_loss = True

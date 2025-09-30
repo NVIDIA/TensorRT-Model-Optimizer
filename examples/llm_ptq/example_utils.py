@@ -204,9 +204,7 @@ def get_model(
                 if auto_model_module != AutoModelForCausalLM:
                     model_kwargs2.pop("trust_remote_code", None)
                 model_kwargs2["torch_dtype"] = torch_dtype
-                # DeciLMForCausalLM does not support max_memory argument
-                if "architectures" in hf_config and "DeciLMForCausalLM" in hf_config.architectures:
-                    model_kwargs2.pop("max_memory", None)
+                model_kwargs2.pop("max_memory", None)
                 model = from_config(hf_config, **model_kwargs2)
 
             max_memory = get_max_memory()
