@@ -72,6 +72,17 @@ class PEFTAttributeConfig(ModeloptBaseConfig):
         description="Custom initialization function for LoRA B matrix. Default to zero initialization.",
     )
 
+    @field_validator("lora_a_init", "lora_b_init")
+    @classmethod
+    def validate_init_method(cls, v):
+        """Validate initialization method is supported."""
+        valid_methods = {"kaiming_init", "zero_init"}
+        if v not in valid_methods:
+            raise ValueError(
+                f"Invalid initialization method: {v}. Supported methods: {', '.join(valid_methods)}"
+            )
+        return v
+
     @field_validator("rank")
     @classmethod
     def validate_rank(cls, v):

@@ -62,7 +62,8 @@ def update_model(
     Returns:
         The updated model with LoRA adapters
     """
-    assert is_megatron_core_model(model), "We only support mcore format for the PEFT mode"
+    if not is_megatron_core_model(model):
+        raise ValueError("PEFT mode currently supports Megatron-Core models only.")
 
     # Check if model is already in PEFT mode by looking for LoRA modules
     if not is_peft_model(model):

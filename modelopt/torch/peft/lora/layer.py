@@ -72,7 +72,7 @@ class LoRAModule(DynamicModule):
 
         # Store in adapter dictionary with explicit rank
         if adapter_name in self._lora_adapters:
-            raise ValueError(f"adapter_name: {adapter_name} is already exist..")
+            raise ValueError(f"Adapter '{adapter_name}' already exists.")
         self._lora_adapters[adapter_name] = {
             "lora_a": lora_a,
             "lora_b": lora_b,
@@ -94,10 +94,7 @@ class LoRAModule(DynamicModule):
 
         Args:
             adapter_name: Name for the new adapter
-            rank: Rank of the LoRA decomposition (default: 64)
-            scale: Scale factor for the LoRA output (default: 1.0)
-            lora_a_init: Optional initialization function for LoRA A matrix
-            lora_b_init: Optional initialization function for LoRA B matrix
+            attr_config: PEFTAttributeConfig containing rank, scale, and initialization settings
         """
         raise NotImplementedError("Subclasses must implement update_layer_lora")
 
