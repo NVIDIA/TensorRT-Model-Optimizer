@@ -98,7 +98,8 @@ def _set_adapter_state(model, enable_state, layer_patterns=None, adapter_pattern
         layer_patterns: Optional list of layer name patterns (wildcards or callables)
         adapter_patterns: Optional list of adapter name patterns (wildcards)
     """
-    assert is_peft_model(model), "It's not a MO-PEFT model"
+    if not is_peft_model(model):
+        raise ValueError("Model must be a PEFT model to set adapter states.")
 
     def matches_any_pattern(name, patterns, allow_callable=True):
         for pattern in patterns:

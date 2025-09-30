@@ -115,7 +115,7 @@ class PEFTConfig(ModeloptBaseConfig):
     )
 
     adapter_cfg: PEFTAdapterCfgType = ModeloptField(
-        default={"default": {"rank": 128}},
+        default={"*": {"rank": 64}},
         title="Adapter configuration",
         description="Configuration for adapters. Maps module patterns to PEFTAttributeConfig or dict.",
         validate_default=True,
