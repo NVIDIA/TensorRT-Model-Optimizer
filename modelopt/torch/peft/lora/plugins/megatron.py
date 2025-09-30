@@ -157,7 +157,7 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
         """Sharding along axis 0 for ColumnParallelLinear, bias not sharded.
 
         For ColumnParallelLinear:
-        - lora_a weight: sharded at dim 0
+        (lora_a is a regular nn.Linear and is not sharded)
         - lora_b weight: sharded at dim 0
         """
         sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
@@ -233,7 +233,7 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
 
         For RowParallelLinear:
         - lora_a weight: sharded at dim 1 (RowParallelLinear)
-        - lora_b weight: sharded at dim 0 (ColumnParallelLinear)
+        (lora_b is a regular nn.Linear and is not sharded)
         """
         sharded_state_dict = super().sharded_state_dict(prefix, sharded_offsets, metadata)
 
