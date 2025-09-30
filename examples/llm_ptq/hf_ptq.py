@@ -251,7 +251,6 @@ def main(args):
             trust_remote_code=args.trust_remote_code,
             use_seq_device_map=args.use_seq_device_map,
             attn_implementation=args.attn_implementation,
-            is_modelopt_qlora=args.qlora,
         )
     else:
         assert args.qformat in QUANT_CFG_CHOICES, (
@@ -365,9 +364,7 @@ def main(args):
         )
         mts.export(model)
 
-    if (
-        args.auto_quantize_bits or args.qformat in QUANT_CFG_CHOICES
-    ) and not model_is_already_quantized:
+    if args.auto_quantize_bits or args.qformat in QUANT_CFG_CHOICES:
         if "awq" in args.qformat:
             print(
                 "\n####\nAWQ calibration could take longer than other calibration methods. "
@@ -469,7 +466,7 @@ def main(args):
             quant_cfg["quant_cfg"]["*radio*"] = {"enable": False}
             quant_cfg["quant_cfg"]["*visual*"] = {"enable": False}
 
-        if calibration_only:
+        if not model_is_already_quantized and calibration_only:
             # Only run single sample for preview
             input_ids = next(iter(calib_dataloader))[
                 "input_features" if model_type == "whisper" else "input_ids"
@@ -575,12 +572,7 @@ def main(args):
 
     else:
         assert model_type != "dbrx", f"Does not support export {model_type} without quantizaton"
-        if model_is_already_quantized:
-            warnings.warn(
-                "Skipping quantization: Model is already quantized. Exporting the model..."
-            )
-        else:
-            print(f"qformat: {args.qformat}. No quantization applied, export {device} model")
+        print(f"qformat: {args.qformat}. No quantization applied, export {device} model")
 
     with torch.inference_mode():
         if model_type is None:
@@ -659,7 +651,6 @@ def main(args):
             export_hf_checkpoint(
                 full_model,
                 export_dir=export_path,
-                is_modelopt_qlora=args.qlora,
             )
 
         # Copy custom model files (Python files and JSON configs) if trust_remote_code is used
