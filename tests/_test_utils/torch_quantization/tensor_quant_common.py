@@ -123,17 +123,6 @@ class TensorQuantCommon:
         assert torch.allclose(quant_x_test, quant_x_ref)
 
 
-class TensorQuantTester(TensorQuantCommon):
-    func = tensor_quant.tensor_quant
-    is_fake = False
-    return_tuple = True
-
-    def test_overflow_fp16(self):
-        x = torch.randn(31).to(self.device).half()
-        with pytest.raises(ValueError, match="scale is too large for FP16"):
-            _ = self.func(x, torch.tensor(1e-4).to(self.device).half(), None, 8, False)
-
-
 class FakeTensorQuantTester(TensorQuantCommon):
     func = tensor_quant.fake_tensor_quant
     is_fake = True
@@ -145,72 +134,3 @@ class FakeTensorQuantTester(TensorQuantCommon):
             x, torch.tensor(1e-4).to(self.device).half(), 8, False
         )
         assert not (torch.isinf(quant_x_test).any() or torch.isnan(quant_x_test).any())
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-    @pytest.mark.parametrize("num_bits", [3, 4, 5, 7, 8, 11])
-    @pytest.mark.parametrize("unsigned", [True, False])
-    def test_against_legacy(self, dtype, num_bits, unsigned):
-        torch.manual_seed(123456)
-        x = torch.randn(3, 4, 5, 6).to(dtype).to(self.device)
-
-        amax_torch = torch.tensor(0.7).to(self.device)
-
-        if unsigned:
-            x = x.abs()
-        legacy_out = tensor_quant.legacy_fake_tensor_quant(x, amax_torch, None, num_bits, unsigned)
-        test_out = tensor_quant.fake_tensor_quant(x, amax_torch, None, num_bits, unsigned)
-        if dtype == torch.float16:
-            assert torch.allclose(legacy_out, test_out, rtol=1e-3, atol=1e-4)
-        else:
-            assert torch.allclose(legacy_out, test_out)
-
-    def test_against_legacy_noncontiguous(self):
-        x = torch.randn(3, 4, 5, 6).to(self.device)
-
-        amax_torch = torch.tensor(0.7).to(self.device)
-
-        x_torch_noncontiguous = x[:, 2, :, 3]
-        assert not x_torch_noncontiguous.is_contiguous()
-
-        legacy_out = tensor_quant.legacy_fake_tensor_quant(x_torch_noncontiguous, amax_torch, None)
-        test_out = tensor_quant.fake_tensor_quant(x_torch_noncontiguous, amax_torch, None)
-        assert torch.allclose(legacy_out, test_out, rtol=0, atol=0)
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
-    @pytest.mark.parametrize("num_bits", [3, 4, 5, 7, 8, 11])
-    @pytest.mark.parametrize("unsigned", [True, False])
-    def test_against_legacy_with_axis(self, dtype, num_bits, unsigned):
-        x = torch.randn(3, 4, 5, 6).to(self.device).to(dtype)
-
-        # amax along axis 1
-        amax_torch = torch.tensor([0.8, 0.9, 0.7, 0.6]).to(self.device).view(1, -1, 1, 1)
-
-        if unsigned:
-            x = x.abs()
-        legacy_out = tensor_quant.legacy_fake_tensor_quant(x, amax_torch, None, num_bits, unsigned)
-        test_out = tensor_quant.fake_tensor_quant(x, amax_torch, None, num_bits, unsigned)
-        assert torch.allclose(
-            legacy_out, test_out, atol=1e-3 if dtype == torch.float16 else 0, rtol=0
-        )
-
-
-class FakeAffineTensorQuantTester:
-    device = None
-
-    def test_simple_run(self):
-        x = torch.tensor([-1.0, -13.0, -101.0, -128.0, 0.0, 2.0, 5.0, 13.0, 93.0, 111.0, 127.0]).to(
-            self.device
-        )
-        quant_x = tensor_quant.fake_affine_tensor_quant(x, torch.min(x), torch.max(x))
-        assert torch.allclose(quant_x, x)
-
-    def test_clip_gradient(self):
-        x = torch.randn(3, 7, requires_grad=True).to(self.device)
-        x.retain_grad()
-        xmin = x.min() / 2
-        xmax = x.max() / 2
-        x_in_range = (xmin <= x) * (x <= xmax)
-        quant_x = tensor_quant.fake_affine_tensor_quant(x, xmin, xmax, 8)
-        loss = torch.sum((quant_x - 0.5) ** 2)
-        loss.backward()
-        assert torch.equal(x.grad != 0, x_in_range)
