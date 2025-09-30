@@ -237,6 +237,9 @@ def test_forward_with_two_loras(lora_config_1, lora_config_2):
     )
 
 
+# TODO: Save and restore with 1 or 2 GPUs
+# TODO: Grad check
+
 # def test_edge_cases_and_error_handling():
 #     """Test edge cases and error scenarios."""
 #     hidden_size = 320
