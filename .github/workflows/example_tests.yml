@@ -69,6 +69,7 @@ jobs:
       image: nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2
       env:
         PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps: &example_steps
       - uses: actions/checkout@v4
       - uses: nv-gha-runners/setup-proxy-cache@main

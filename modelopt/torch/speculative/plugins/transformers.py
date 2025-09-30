@@ -52,7 +52,7 @@ from ..eagle.eagle_model import EagleModel
 from ..eagle.utils import RMSNorm, expand_mask, make_causal_mask
 from ..medusa.conversion import MedusaDMRegistry
 from ..medusa.medusa_model import MedusaModel
-from ..utils import AcceptanceRateValidation, ResBlock
+from ..utils import AcceptanceRateValidation, ResBlock, temporary_set_config_value
 
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
 
@@ -445,11 +445,19 @@ class HFEagleModel(EagleModel):
             param.requires_grad = False
 
         # EAGLE-3 auxiliary hidden_states
-        if self.eagle_config.use_aux_hidden_state:
+        if (not eagle_offline) and self.eagle_config.use_aux_hidden_state:
             self._aux_hidden_states = []
             for layer_idx, layer in enumerate(self.model.layers):
                 if layer_idx in self.eagle_config.eagle_aux_hidden_state_layer_ids:
                     layer.register_forward_hook(self._collect_aux_hidden_states_forward_hook)
+
+        # delete base model layers for offline training
+        if eagle_offline:
+            self.model._modules.pop("layers")
+
+        # NOTE: this is a temporary hack to bypass hf trainer check:
+        # https://github.com/huggingface/transformers/blob/v4.56-release/src/transformers/trainer.py#L566
+        self.is_quantized = False
 
         self.num_ttt_steps = 3  # NOTE: (hg) hardcoded for now. Might add to config later.
         self._cached_attn_blk_masks = []
@@ -907,13 +915,17 @@ class HFEagleModel(EagleModel):
                 eagle_input_hidden_states, eagle_position_ids
             )
 
-            _, eagle_prenorm_h, eagle_logits, _ = self._eagle_forward(
-                eagle_input_hidden_states,
-                self.model.embed_tokens(eagle_ids),
-                eagle_attention_mask,
-                eagle_position_ids,
-                position_embeddings,
-            )
+            # Use SDPA attention during generation for both stability and performance
+            with temporary_set_config_value(
+                self.eagle_module.config, "_attn_implementation", "sdpa"
+            ):
+                _, eagle_prenorm_h, eagle_logits, _ = self._eagle_forward(
+                    eagle_input_hidden_states,
+                    self.model.embed_tokens(eagle_ids),
+                    eagle_attention_mask,
+                    eagle_position_ids,
+                    position_embeddings,
+                )
 
             draft_token = eagle_logits[:, -1:, :].argmax(dim=-1)
             if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
