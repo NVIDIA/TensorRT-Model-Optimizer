@@ -17,13 +17,11 @@
 
 import fnmatch
 from collections.abc import Callable, Iterable
-from typing import Any
 
 import torch.nn as nn
 
-from modelopt.torch.opt.conversion import ApplyModeError, ModelLikeModule, ModeloptStateManager
+from modelopt.torch.opt.conversion import ModelLikeModule, ModeloptStateManager
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
-from modelopt.torch.utils import get_unwrapped_name
 
 from .config import PEFTConfig
 from .lora.layer import LoRAModule, LoRAModuleRegistry
@@ -34,7 +32,6 @@ __all__ = [
     "replace_lora_module",
     "unfreeze_base_weights",
     "unfreeze_lora_weights",
-    "update_peft_metadata_in_model",
 ]
 
 
@@ -48,7 +45,6 @@ def convert_to_peft_model(model: ModelLikeModule, config: PEFTConfig) -> Convert
     metadata = {}
     add_adapter(model, config)
     update_grads(model, config)
-    update_peft_metadata(model, config, metadata)
 
     return model, metadata
 
@@ -56,54 +52,8 @@ def convert_to_peft_model(model: ModelLikeModule, config: PEFTConfig) -> Convert
 def restore_peft_model(
     model: ModelLikeModule, config: PEFTConfig, metadata: MetadataDict
 ) -> nn.Module:
-    convert_to_peft_model(model, config)
-    return restore_peft_state(model, metadata)
-
-
-def restore_peft_state(model: ModelLikeModule, metadata: MetadataDict):
-    """Restore PEFT state from metadata or extra_state.
-
-    For backward compatibility, we check metadata first. For distributed
-    checkpoints (NeMo-MCore), the state will be in extra_state of each LoRAModule
-    and will be restored automatically via set_extra_state() during load_state_dict().
-
-    Args:
-        model: Model with LoRA modules to restore
-        metadata: Metadata dictionary that may contain peft_state
-    Returns:
-        The model with restored PEFT state
-    """
-    if "peft_state" not in metadata:
-        # For distributed checkpoints (NeMo-MCore), peft_state is stored
-        # in each LoRAModule's extra_state and will be restored via
-        # set_extra_state() during load_state_dict()
-        return model
-
-    # Legacy path: restore from metadata
-    peft_state_dict = metadata["peft_state"]
-    for name, module in model.named_modules():
-        if isinstance(module, LoRAModule):
-            unwrapped_name = get_unwrapped_name(name)
-            if unwrapped_name in peft_state_dict:
-                try:
-                    module.set_from_peft_state(peft_state_dict[unwrapped_name])
-                except Exception as e:
-                    raise ApplyModeError(f"Failed to restore PEFT state for module {name}: {e}")
-
+    model, _ = convert_to_peft_model(model, config)
     return model
-
-
-def update_peft_metadata(model: nn.Module, config: PEFTConfig, metadata: MetadataDict) -> None:
-    """Update the PEFT/LoRA state in the metadata dict."""
-    metadata["peft_state"] = peft_state(model)
-
-
-def peft_state(model: nn.Module) -> dict[str, Any]:
-    return {
-        get_unwrapped_name(n): m.get_peft_state()
-        for n, m in model.named_modules()
-        if isinstance(m, LoRAModule)
-    }
 
 
 def replace_lora_module(
@@ -137,32 +87,8 @@ def _replace_lora_module(model: nn.Module, version=None, registry=LoRAModuleRegi
         _replace_lora_module(getattr(model, name), version=version, registry=registry)
 
 
-def update_peft_metadata_in_model(model: nn.Module) -> None:
-    """Update the PEFT metadata in the model's ModeloptStateManager.
-
-    This function should be called after manually modifying LoRA adapters to ensure
-    the metadata stored in the ModeloptStateManager reflects the current state.
-
-    Args:
-        model: Model with LoRA modules whose metadata needs updating
-    Example:
-        >>> # After manually adding/modifying adapters
-        >>> for module in model.modules():
-        ...     if isinstance(module, LoRAModule):
-        ...         module.update_layer_lora("custom_adapter", rank=32)
-        >>> # Update metadata to reflect changes
-        >>> update_peft_metadata_in_model(model)
-    """
-    # Check if model has ModeloptStateManager (has been converted with peft mode)
-    if not ModeloptStateManager.is_converted(model):
-        return
-
-    # Get the state manager
-    manager = ModeloptStateManager(model)
-
-    # Update the metadata with current PEFT state
-    if manager._state and manager._last_metadata is not None:
-        manager._last_metadata["peft_state"] = peft_state(model)
+def update_peft_metadata(model: nn.Module, config: PEFTConfig, metadata: MetadataDict) -> None:
+    """Placeholder for the metadata-related function; not needed in this mode."""
 
 
 def add_adapter(model, config: PEFTConfig):

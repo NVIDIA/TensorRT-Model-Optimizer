@@ -1,7 +1,6 @@
 """LoRA (Low-Rank Adaptation) module implementation."""
 
 import math
-import warnings
 from abc import abstractmethod
 from typing import Any
 
@@ -28,6 +27,11 @@ def get_init_methods(init_method: str = "kaiming_init"):
         )  # LoRA A: Kaiming uniform
     elif init_method == "zero_init":
         return lambda weight: init.zeros_(weight)  # LoRA B: zeros
+    else:
+        raise ValueError(
+            f"Unsupported initialization method: '{init_method}'. "
+            "Supported methods: 'kaiming_init', 'zero_init'"
+        )
 
 
 class LoRAModule(DynamicModule):
@@ -97,108 +101,6 @@ class LoRAModule(DynamicModule):
             attr_config: PEFTAttributeConfig containing rank, scale, and initialization settings
         """
         raise NotImplementedError("Subclasses must implement update_layer_lora")
-
-    def get_peft_state(self) -> dict[str, Any]:
-        """Get PEFT/LoRA state to be saved in checkpoint.
-
-        This method returns the configuration and state of all LoRA adapters
-        without including the actual weight tensors.
-
-        Returns:
-            Dictionary containing:
-            - adapters: Dict mapping adapter names to their configuration
-        """
-        modelopt_state = {}
-
-        # Store adapter configurations
-        adapters_config = {}
-        for adapter_name, adapter_modules in self._lora_adapters.items():
-            lora_a = adapter_modules["lora_a"]
-            lora_b = adapter_modules["lora_b"]
-
-            # Get explicitly stored rank for reliability
-            rank = adapter_modules.get("rank", None)
-
-            # If rank is not stored (legacy case), try to infer it
-            if rank is None:
-                if hasattr(lora_a, "output_size"):
-                    rank = lora_a.output_size
-                elif hasattr(lora_b, "input_size"):
-                    rank = lora_b.input_size
-                elif hasattr(lora_a, "out_features"):
-                    rank = lora_a.out_features
-                elif hasattr(lora_b, "in_features"):
-                    rank = lora_b.in_features
-
-            adapters_config[adapter_name] = {
-                "rank": rank,
-                "enable": adapter_modules.get("enable", True),
-                "scale": adapter_modules.get("scale", 1.0),
-            }
-
-        modelopt_state["adapters"] = adapters_config
-
-        return modelopt_state
-
-    def get_extra_state(self) -> dict[str, Any]:
-        """Get extra state for distributed checkpointing.
-
-        For distributed/sharded checkpoints (like NeMo-MCore), we store the PEFT state
-        as extra_state instead of in metadata. This handles cases where module names
-        change with different parallelism settings (TP, PP, EP).
-
-        Returns:
-            Dictionary containing the PEFT/LoRA adapter state
-        """
-        # Only return state if we have adapters
-        if not self._lora_adapters:
-            return {}
-
-        # Get the current PEFT state
-        peft_state = self.get_peft_state()
-
-        return {"modelopt_peft_state": peft_state}
-
-    def set_from_peft_state(self, peft_state: dict[str, Any]) -> None:
-        """Restore LoRA adapters from saved PEFT state.
-
-        This method recreates LoRA adapters based on their saved configuration.
-        Note: This only restores the adapter structure, not the weights.
-
-        Args:
-            peft_state: Dictionary containing adapter configurations
-        """
-        adapters_config = peft_state.get("adapters", {})
-
-        for adapter_name, config in adapters_config.items():
-            if adapter_name not in self._lora_adapters:
-                self.update_layer_lora(adapter_name, config)
-
-    def set_extra_state(self, state: dict[str, Any]) -> None:
-        """Restore extra state for distributed checkpointing.
-
-        This method is called during load_state_dict() to restore the PEFT/LoRA state
-        from distributed checkpoints. It handles the adapter configuration but not
-        the actual weights (which are restored through the normal state_dict mechanism).
-
-        Args:
-            state: Dictionary containing the extra state to restore
-        """
-        if state is None:
-            return
-
-        peft_state = state.get("modelopt_peft_state")
-        if peft_state is None:
-            return
-
-        # Restore the PEFT state
-        try:
-            self.set_from_peft_state(peft_state)
-        except Exception as e:
-            warnings.warn(
-                f"Failed to restore PEFT state from extra_state: {e}. "
-                "This might happen if the model structure has changed."
-            )
 
     def forward(self, x: torch.Tensor, *args, **kwargs) -> Any:
         """Forward pass with LoRA adaptation.

@@ -39,7 +39,6 @@ MEGATRON_LAYERS = (ColumnParallelLinear, RowParallelLinear)
 __all__ = [
     "disable_adapters",
     "enable_adapters",
-    "get_adapter_states",
     "is_peft_model",
     "update_model",
 ]
@@ -190,46 +189,6 @@ def enable_adapters(model, layers_to_enable=None, adapters_to_enable=None):
         layer_patterns=layers_to_enable,
         adapter_patterns=adapters_to_enable,
     )
-
-
-def get_adapter_states(model):
-    """Get the current state of all adapters in the model.
-
-    Args:
-        model: Model with LoRA adapters
-
-    Returns:
-        Dict mapping module names to their adapter states
-
-    Example:
-        >>> states = get_adapter_states(model)
-        >>> print(states)
-        {
-            'transformer.layers.0.attention': {
-                'default': {'enabled': True, 'rank': 32},
-                'finetuned': {'enabled': False, 'rank': 64}
-            },
-            'transformer.layers.0.mlp': {
-                'default': {'enabled': True, 'rank': 32}
-            }
-        }
-    """
-    assert is_peft_model(model), "It's not a MO-PEFT model"
-
-    adapter_states = {}
-    for module_name, module in model.named_modules():
-        if isinstance(module, LoRAModule):
-            module_adapters = {}
-            for adapter_name, adapter_dict in module._lora_adapters.items():
-                module_adapters[adapter_name] = {
-                    "enabled": adapter_dict.get("enable", True),
-                    "rank": adapter_dict.get("rank", "unknown"),
-                    "scale": adapter_dict.get("scale", 1.0),
-                }
-            if module_adapters:
-                adapter_states[module_name] = module_adapters
-
-    return adapter_states
 
 
 def is_megatron_core_model(model) -> bool:
