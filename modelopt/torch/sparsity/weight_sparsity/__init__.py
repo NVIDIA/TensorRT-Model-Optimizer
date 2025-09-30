@@ -13,12 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""API for sparsification algorithms.
+"""API for weight sparsification algorithms."""
 
-This module provides access to both weight sparsity and attention sparsity algorithms.
-For backward compatibility, weight sparsity APIs are re-exported at the module level.
-"""
+from . import mode, module, plugins
 
-# Import weight sparsity for backward compatibility
-from .weight_sparsity import mode, module, plugins
-from .weight_sparsity.sparsification import *
+# Explicitly expose commonly used items
+from .mode import SparsityModeRegistry
+from .module import SparseModule, SpDMRegistry
+from .sparsification import *
