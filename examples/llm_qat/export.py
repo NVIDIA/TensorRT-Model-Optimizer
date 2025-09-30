@@ -44,7 +44,7 @@ def get_lora_model(
     model = AutoModelForCausalLM.from_pretrained(ckpt_path, device_map=device_map)
 
     # Restore modelopt state
-    modelopt_state = torch.load(f"{ckpt_path}/modelopt_state_calibration.pth", weights_only=False)
+    modelopt_state = torch.load(f"{ckpt_path}/modelopt_state_calib.pth", weights_only=False)
     restore_from_modelopt_state(model, modelopt_state)
 
     # Restore modelopt quantizer state dict
