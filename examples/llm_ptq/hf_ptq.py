@@ -329,9 +329,7 @@ def main(args):
             model_type = get_model_type(model)
 
     if model_type == "phi4mm":
-        warnings.warn(
-            "Please set the default input_mode to InputMode.LANGUAGE before quantizing."
-        )
+        warnings.warn("Please set the default input_mode to InputMode.LANGUAGE before quantizing.")
 
     if args.sparsity_fmt != "dense":
         if args.batch_size == 0:
