@@ -449,9 +449,7 @@ def _export_hf_checkpoint(
 
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
-    # TODO: Support requantize and resmooth for modelopt-trained LoRA models
-    if not is_modelopt_qlora:
-        requantize_resmooth_fused_llm_layers(model)
+    requantize_resmooth_fused_llm_layers(model)
 
     # Remove all hooks from the model
     try:
