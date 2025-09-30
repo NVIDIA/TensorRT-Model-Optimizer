@@ -4,7 +4,7 @@ Pruning
 
 .. tip::
 
-    Checkout `Llama 3.1 NeMo Minitron Pruning <https://github.com/NVIDIA-NeMo/NeMo/tree/main/tutorials/llm/llama/pruning-distillation>`_ and
+    Checkout `Qwen 3 NeMo Minitron Pruning & Distillation <https://github.com/NVIDIA-NeMo/NeMo/tree/main/tutorials/llm/qwen/pruning-distillation>`_ and
     `ResNet20 on CIFAR-10 Notebook <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/examples/pruning/cifar_resnet.ipynb>`_
     for an end-to-end example of pruning.
 
@@ -190,7 +190,7 @@ Following info will be printed before the pruning process is started:
     ┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
     ┃ Constraint   ┃ min          ┃ centroid     ┃ max          ┃ max/min ratio ┃
     ┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
-    │ flops        │ 274.34M      │ 1.28G        │ 4.59G        │ 16.73         │
+    │ flops        │ 548.68M      │ 2.56G        │ 9.18G        │ 16.73         │
     │ params       │ 2.70M        │ 9.75M        │ 25.50M       │ 9.43          │
     └──────────────┴──────────────┴──────────────┴──────────────┴───────────────┘
 
@@ -199,7 +199,7 @@ Following info will be printed before the pruning process is started:
     ┃              ┃              ┃ Satisfiable  ┃
     ┃ Constraint   ┃ Upper Bound  ┃ Upper Bound  ┃
     ┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
-    │ flops        │ 2.75G        │ True         │
+    │ flops        │ 5.50G        │ True         │
     └──────────────┴──────────────┴──────────────┘
 
 

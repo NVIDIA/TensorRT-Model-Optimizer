@@ -105,6 +105,11 @@ def calibrate(
             mode_kwargs={"forward_loop": forward_loop},
         )
 
+    for name, module in model.named_modules():
+        if isinstance(module, TensorQuantizer):
+            for attr_name in ["_amax", "_pre_quant_scale"]:
+                module.validate_attr(attr_name=attr_name, warn_error=True, name=name)
+
     # TODO: Re-enable when the CUDA error: unspecified launch failure is fixed.
     # clear_cuda_cache()
 

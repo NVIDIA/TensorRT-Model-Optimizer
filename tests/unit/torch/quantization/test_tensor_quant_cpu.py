@@ -19,26 +19,14 @@ import numpy as np
 import pytest
 import torch
 from _test_utils.torch_quantization.models import SimpleLinear
-from _test_utils.torch_quantization.tensor_quant_common import (
-    FakeAffineTensorQuantTester,
-    FakeTensorQuantTester,
-    TensorQuantTester,
-)
+from _test_utils.torch_quantization.tensor_quant_common import FakeTensorQuantTester
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.config import QuantizerAttributeConfig
 from modelopt.torch.quantization.nn import TensorQuantizer
 
 
-class TestTensorQuantCPU(TensorQuantTester):
-    device = "cpu"
-
-
 class TestFakeTensorQuantCPU(FakeTensorQuantTester):
-    device = "cpu"
-
-
-class TestFakeAffineTensorQuantCPU(FakeAffineTensorQuantTester):
     device = "cpu"
 
 

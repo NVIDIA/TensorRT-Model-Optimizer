@@ -78,6 +78,7 @@ class TestWhisper(WithRequirements):
     [
         PTQCommand(quant="int8_sq", kv_cache_quant="none"),
         PTQCommand(quant="int8_sq", kv_cache_quant="none", tp=2, pp=2),
+        PTQCommand(quant="int8_wo", kv_cache_quant="none"),
         PTQCommand(quant="int4_awq", kv_cache_quant="none"),
         PTQCommand(quant="w4a8_awq", kv_cache_quant="none"),
         PTQCommand(quant="nvfp4"),

@@ -109,8 +109,8 @@ the search space together with your deployment constraints using
 
     import torch
 
-    # Looking for a subnet with at most 2 GFLOPs
-    constraints = {"flops": 2.0e9}
+    # Looking for a subnet with at most 4 GFLOPs
+    constraints = {"flops": 4.0e9}
 
     # Measure FLOPs against dummy_input
     # Can be provided as a single tensor or tuple of input args to the model.
@@ -129,7 +129,7 @@ Following info will be printed:
     ┏━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━┓
     ┃ Constraint   ┃ min          ┃ centroid     ┃ max          ┃ max/min ratio ┃
     ┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━┩
-    │ flops        │ 487.92M      │ 1.84G        │ 4.59G        │ 9.40          │
+    │ flops        │ 975.84M      │ 3.68G        │ 9.18G        │ 9.40          │
     │ params       │ 4.84M        │ 12.33M       │ 25.50M       │ 5.27          │
     └──────────────┴──────────────┴──────────────┴──────────────┴───────────────┘
 
@@ -138,7 +138,7 @@ Following info will be printed:
     ┃              ┃              ┃ Satisfiable  ┃
     ┃ Constraint   ┃ Upper Bound  ┃ Upper Bound  ┃
     ┡━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
-    │ flops        │ 2.00G        │ True         │
+    │ flops        │ 4.00G        │ True         │
     └──────────────┴──────────────┴──────────────┘
 
     Search Space Summary:
@@ -242,8 +242,8 @@ Below is an example of running search on an AutoNAS converted and trained model.
     # Specify the sample input including target data shape for FLOPs calculation.
     dummy_input = torch.randn(1, 3, 224, 224)
 
-    # Looking for a subnet with at most 2 GFLOPs
-    search_constraints = {"flops": 2.0e9}
+    # Looking for a subnet with at most 4 GFLOPs
+    search_constraints = {"flops": 4.0e9}
 
     # search_res (dict) contains state_dict / stats of the searcher
     searched_model, search_res = mtn.search(

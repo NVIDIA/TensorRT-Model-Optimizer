@@ -15,7 +15,7 @@
 
 ______________________________________________________________________
 
-The **NVIDIA TensorRT Model Optimizer** (referred to as **Model Optimizer**, or **ModelOpt**) is a library comprising state-of-the-art model optimization [techniques](#techniques) including quantization, distillation, pruning, speculative decoding and sparsity to accelerate models.
+**NVIDIA TensorRT Model Optimizer** (referred to as **Model Optimizer**, or **ModelOpt**) is a library comprising state-of-the-art model optimization [techniques](#techniques) including quantization, distillation, pruning, speculative decoding and sparsity to accelerate models.
 
 **[Input]** Model Optimizer currently supports inputs of a [Hugging Face](https://huggingface.co/), [PyTorch](https://github.com/pytorch/pytorch) or [ONNX](https://github.com/onnx/onnx) model.
 
@@ -61,10 +61,10 @@ Model Optimizer is also integrated with [NVIDIA NeMo](https://github.com/NVIDIA-
 To install stable release packages for Model Optimizer with `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/):
 
 ```bash
-pip install nvidia-modelopt[all]
+pip install -U nvidia-modelopt[all]
 ```
 
-To install from source in editable mode with all development dependencies or to test the latest changes, run:
+To install from source in editable mode with all development dependencies or to use the latest features, run:
 
 ```bash
 # Clone the Model Optimizer repository
@@ -74,7 +74,11 @@ cd TensorRT-Model-Optimizer
 pip install -e .[dev]
 ```
 
-Visit our [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more fine-grained control on installed dependencies or view our pre-made [dockerfiles](docker/README.md) for more information.
+You can also directly use the [TensorRT-LLM docker images](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/tensorrt-llm/containers/release/tags)
+(e.g., `nvcr.io/nvidia/tensorrt-llm/release:<version>`), which have Model Optimizer pre-installed.
+Make sure to upgrade Model Optimizer to the latest version using ``pip`` as described above.
+Visit our [installation guide](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for
+more fine-grained control on installed dependencies or for alternative docker images and environment variables to setup.
 
 ## Techniques
 

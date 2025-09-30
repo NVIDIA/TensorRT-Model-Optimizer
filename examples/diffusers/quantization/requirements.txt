@@ -1,4 +1,4 @@
-cuda-python
+cuda-python<13
 diffusers<=0.34.0
 nvtx
 onnx_graphsurgeon
