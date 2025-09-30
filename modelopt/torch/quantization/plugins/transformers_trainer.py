@@ -21,7 +21,6 @@ import types
 from dataclasses import dataclass, field
 
 import torch
-from safetensors.torch import save_file
 from tqdm import tqdm
 
 import modelopt.torch.opt as mto
@@ -182,18 +181,6 @@ class QATTrainer(ModelOptHFTrainer):
 
         print_rank_0(f"Saved modelopt state to {self._modelopt_state_path}")
 
-        # Save base model compressed weights for QLoRA
-        if getattr(self.quant_args, "compress", False):
-            # Save base model config.json
-            self.model.config.save_pretrained(self.args.output_dir)
-
-            # Save base model compressed weights excluding lora weights
-            state_dict = self.model.state_dict()
-            for k in [key for key in state_dict if "lora" in key]:
-                del state_dict[k]
-
-            save_file(state_dict, f"{self.args.output_dir}/model.safetensors")
-
     def _restore_modelopt_state_with_weights(self):
         modelopt_state = torch.load(self._modelopt_state_path, weights_only=False)
         modelopt_weights = modelopt_state.pop("modelopt_state_weights", None)
@@ -221,6 +208,15 @@ class QATTrainer(ModelOptHFTrainer):
         with calibrate_with_adapters(self.model, self.args):
             print_rank_0("Quantizing the model...")
             mtq.quantize(self.model, self.quant_cfg, forward_loop)  # type: ignore [arg-type]
+
+        # Save modelopt state before compression
+        modelopt_state = mto.modelopt_state(self.model)
+        modelopt_state["modelopt_state_weights"] = get_quantizer_state_dict(self.model)
+        torch.save(modelopt_state, f"{self.args.output_dir}/modelopt_state_calibration.pth")
+
+        print_rank_0(
+            f"Saved modelopt state before compression to {f'{self.args.output_dir}/modelopt_state_calibration.pth'}"
+        )
 
         if getattr(self.quant_args, "compress", False):
             print_rank_0("Compressing model after calibration")

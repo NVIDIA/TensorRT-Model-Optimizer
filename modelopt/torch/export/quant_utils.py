@@ -269,28 +269,18 @@ def get_weight_scaling_factor(module: nn.Module, weight_name: str = "weight") ->
         QUANTIZATION_NVFP4_AWQ,
         QUANTIZATION_W4A8_NVFP4_FP8,
     ]:
-        # If scale is already registered, indicates weights are already compressed.
-        # We convert to modelopt scale if necessary and return
-        if hasattr(weight_quantizer, "_scale"):
-            return NVFP4QTensor.get_modelopt_weights_scaling_factor(
-                weight_quantizer._scale, weight.metadata["shape"]
-            )
-        else:
-            return NVFP4QTensor.get_weights_scaling_factor(
-                weight,
-                weight_quantizer.block_sizes[-1],
-                NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(weight_quantizer).to(
-                    weight.device
-                ),
-            )[0]
+        return NVFP4QTensor.get_weights_scaling_factor(
+            weight,
+            weight_quantizer.block_sizes[-1],
+            NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(weight_quantizer).to(
+                weight.device
+            ),
+        )[0]
 
     if quantization_format in [QUANTIZATION_W4A8_MXFP4_FP8, QUANTIZATION_MXFP4]:
-        if hasattr(weight_quantizer, "_scale"):
-            return weight_quantizer._scale.reshape(*weight.shape[:-1], -1)
-        else:
-            return MXFP4QTensor.quantize(weight, block_size=weight_quantizer.block_sizes[-1])[
-                1
-            ].reshape(*weight.shape[:-1], -1)
+        return MXFP4QTensor.quantize(weight, block_size=weight_quantizer.block_sizes[-1])[
+            1
+        ].reshape(*weight.shape[:-1], -1)
     return get_scaling_factor(weight_quantizer)
 
 
@@ -306,10 +296,7 @@ def get_weight_scaling_factor_2(module: nn.Module, weight_name: str = "weight") 
         QUANTIZATION_NVFP4_AWQ,
         QUANTIZATION_W4A8_NVFP4_FP8,
     ]:
-        if hasattr(weight_quantizer, "_double_scale"):
-            return weight_quantizer._double_scale
-        else:
-            return NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(weight_quantizer)
+        return NVFP4QTensor.get_weights_scaling_factor_2_from_quantizer(weight_quantizer)
 
     # SequentialQuantizer is required
     if not isinstance(weight_quantizer, SequentialQuantizer) or not weight_quantizer[-1].is_enabled:
@@ -740,7 +727,6 @@ def to_quantized_weight(
     quantization: str,
     weights_scaling_factor2: torch.Tensor | None = None,
     block_size: int | None = None,
-    dtype: torch.dtype | None = None,
 ):
     """Converts the weight to the quantized (packed) format."""
     if weights_scaling_factor is not None:
@@ -752,9 +738,6 @@ def to_quantized_weight(
     # For compressed weights, we directly return the data from wrapper
     if isinstance(weight, QTensorWrapper):
         return weight.data
-
-    if dtype:
-        weight = weight.to(dtype)
 
     if quantization == QUANTIZATION_FP8:
         # Fix RuntimeError: Promotion for Float8 Types is not supported, attempted to promote Float8_e4m3fn and Float
