@@ -266,6 +266,9 @@ def load_onnx_model(
     custom_ops = []
     has_custom_op = False
 
+    # Infer shapes
+    onnx.shape_inference.infer_shapes_path(onnx_path)
+
     # Load the model and weights
     onnx_model = onnx.load(onnx_path, load_external_data=True)
     size_threshold = 2 * (1024**3)  # 2GB
