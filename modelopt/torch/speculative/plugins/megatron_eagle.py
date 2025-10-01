@@ -197,6 +197,7 @@ def set_multi_step_attention_mask(attn_mask, step):
 
     ttt_step=2
     parallel_draft_step=2
+    ->step=3
 
                   | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- |
     (out)         | h0 h1 h2 h3 h4 h5 h6 h7 | h0 h1 h2 h3 h4 h5 h6 h7 | -- -- G2 G3 G4 G5 G6 G7 | -- -- G2 G3 G4 G5 G6 G7 |
@@ -239,13 +240,12 @@ def set_multi_step_attention_mask(attn_mask, step):
     =======================================================================================================================
     """  # noqa: E501
     s = attn_mask.shape[-1]
-    for step_idx in range(2, step + 1):
-        # step_idx starts from 2nd step
+    for step_idx in range(step):
         mask_0 = attn_mask.clone().detach()
-        mask_0[:, :, step_idx - 2, :] = True
+        mask_0[:, :, step_idx, :] = True
         mask_0[:, :, :, :-1] = mask_0[:, :, :, 1:]
         mask_1 = attn_mask.new_ones(attn_mask.shape[0], attn_mask.shape[1], s, s).bool()
-        for i in range(step_idx - 1, s - 1):
+        for i in range(step_idx + 1, s - 1):
             mask_1[:, :, i, i] = False
 
         attn_mask = torch.cat((mask_0, mask_1), dim=-1)
@@ -759,8 +759,8 @@ class _DynamicEagleGPTModel(EagleModel):
         attention_mask: torch.Tensor,
         position_ids: torch.Tensor,
         features: torch.Tensor | None = None,
-        ttt_step: int = 1,
-        parallel_draft_step: int = 1,
+        ttt_step: int = 0,
+        parallel_draft_step: int = 0,
     ):
         """Getting EAGLE module inputs."""
         b = hidden_states.shape[1]
@@ -784,10 +784,10 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs["input_ids"] = (
             padded_input_ids
-            if parallel_draft_step == 1
+            if parallel_draft_step == 0
             else torch.full(
                 padded_input_ids.shape,
-                getattr(self, f"mask_token_{parallel_draft_step - 2}"),
+                getattr(self, f"mask_token_{parallel_draft_step - 1}"),
                 device=padded_input_ids.device,
                 dtype=padded_input_ids.dtype,
             )
@@ -805,7 +805,7 @@ class _DynamicEagleGPTModel(EagleModel):
             feature = gathered_features[-s:]
         eagle_inputs["hidden_states"] = (
             gathered_hidden_states
-            if ttt_step == 1
+            if ttt_step == 0
             else torch.cat(
                 (
                     torch.zeros(
@@ -824,12 +824,12 @@ class _DynamicEagleGPTModel(EagleModel):
             )
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
-            attn_mask, (ttt_step - 1) * self.eagle_config.parallel_draft_step + parallel_draft_step
+            attn_mask, ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_step
         )
 
         eagle_inputs["rotary_pos_emb"] = torch.cat(
             [rotary_pos_emb]
-            * ((ttt_step - 1) * self.eagle_config.parallel_draft_step + parallel_draft_step),
+            * (ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_step + 1),
             dim=0,
         )
 
@@ -970,6 +970,7 @@ class _DynamicEagleGPTModel(EagleModel):
         packed_seq_params: PackedSeqParams = None,
         extra_block_kwargs: dict | None = None,
         return_eagle_inputs: bool = False,
+        ttt_steps=4,
         **kwargs,
     ) -> torch.Tensor:
         if position_ids is None or attention_mask is None:
@@ -1013,7 +1014,8 @@ class _DynamicEagleGPTModel(EagleModel):
 
         # EAGLE kv cache
         eagle_inference_context = StaticInferenceContext(
-            input_ids.shape[0], input_ids.shape[1] * self.eagle_config.parallel_draft_step * 4
+            input_ids.shape[0],
+            input_ids.shape[1] * self.eagle_config.parallel_draft_step * ttt_steps,
         )
 
         if self.eagle_offline:
@@ -1043,22 +1045,41 @@ class _DynamicEagleGPTModel(EagleModel):
                 hidden_states, apply_fc=True
             )
 
-        # In calibration mode, we want to make sure all weights have been exercised.
-        # This makes sure all quantized weights have amax calibrated
-        if inference_params is None or self.calibration_mode:
-            eagle_logits_0 = []
+        if labels is not None:
+            if labels.shape[1] == input_ids.shape[1] - 1:
+                # For offline training, labels may be 1 token shorter than input_ids.
+                # We will just pad a 0 to the labels to make the seq_len the same as
+                # input_ids. This will introduce a small error in training if logit_distillation
+                # is False, and testing accuracy is wrong for the last token.
+                right_token_pad = torch.zeros(
+                    (labels.shape[0], 1),
+                    dtype=labels.dtype,
+                    device=labels.device,
+                )
+                labels = torch.cat((labels, right_token_pad), dim=-1)
+
+            # If eagle_freeze_base_model is set to True,
+            # the base model is frozen .
+            loss = self.compute_language_model_loss(labels, logits_sbh)
+            if self.eagle_freeze_base_model:
+                loss = 0.0 * loss
+
+        eagle_hidden_states_pre_norm = None
+        for ttt_step in range(ttt_steps):
+            eagle_logits = []
             for i in range(self.eagle_config.parallel_draft_step):
-                eagle_inputs_0 = self._get_eagle_module_inputs(
+                eagle_inputs = self._get_eagle_module_inputs(
                     input_ids=input_ids,
                     hidden_states=eagle_module_input_hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
-                    ttt_step=1,
-                    parallel_draft_step=i + 1,
+                    features=eagle_hidden_states_pre_norm,
+                    ttt_step=ttt_step,
+                    parallel_draft_step=i,
                 )
 
-                _, eagle_logits_, eagle_hidden_states_0_pre_norm = self._eagle_forward(
-                    eagle_inputs_0,
+                _, eagle_logits_, eagle_hidden_states_pre_norm_ = self._eagle_forward(
+                    eagle_inputs,
                     output_weight,
                     inference_params=inference_params,
                     packed_seq_params=packed_seq_params,
@@ -1066,205 +1087,46 @@ class _DynamicEagleGPTModel(EagleModel):
                     **(extra_block_kwargs or {}),
                 )
 
-                eagle_logits_0.append(eagle_logits_)
-            eagle_logits_0 = torch.cat(eagle_logits_0, dim=0)
+                eagle_logits.append(eagle_logits_)
+            eagle_logits = torch.cat(eagle_logits, dim=0)
+            eagle_hidden_states_pre_norm = eagle_hidden_states_pre_norm_
 
-        # If labels are not provided, return the original logits. We only return after
-        # all eagle weights have been exercised for quantization calibration purpose.
-        if labels is None:
-            return logits_sbh.transpose(0, 1).contiguous()
-        elif labels.shape[1] == input_ids.shape[1] - 1:
-            # For offline training, labels may be 1 token shorter than input_ids.
-            # We will just pad a 0 to the labels to make the seq_len the same as
-            # input_ids. This will introduce a small error in training if logit_distillation
-            # is False, and testing accuracy is wrong for the last token.
-            right_token_pad = torch.zeros(
-                (labels.shape[0], 1),
-                dtype=labels.dtype,
-                device=labels.device,
-            )
-            labels = torch.cat((labels, right_token_pad), dim=-1)
+            # If labels are not provided, return the original logits. We only return after
+            # all eagle weights have been exercised for quantization calibration purpose.
+            if labels is None:
+                return logits_sbh.transpose(0, 1).contiguous()
 
-        # If eagle_freeze_base_model is set to True,
-        # the base model is frozen .
-        loss = self.compute_language_model_loss(labels, logits_sbh)
-        loss = 0.0 * loss
-
-        for i in range(self.eagle_config.parallel_draft_step):
-            eagle_logits = eagle_logits_0[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
-            loss_ = loss_[:, i:]
-            loss[:, i + 1 :] += self.eagle_loss_decay_factor * loss_
-
-        if self.eagle_report_acc and not self.training:
-            acc = []
-            with torch.no_grad():
-                for i in range(self.eagle_config.parallel_draft_step):
-                    gathered_logits = gather_from_tensor_model_parallel_region(
-                        eagle_logits_0[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-                    )
-                    gathered_logits = gathered_logits[i:-1]
-                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                    top1_p = torch.eq(labels[:, i + 1 :], eagle_top1).sum() / eagle_top1.numel()
-                    acc.append(top1_p)
-
-            if get_tensor_model_parallel_rank() == 0:
-                print(
-                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 1st Top-1: {acc}",
-                    flush=True,
+            for i in range(self.eagle_config.parallel_draft_step):
+                eagle_logit = eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
+                loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
+                loss_ = loss_[:, i + ttt_step :]
+                loss[:, i + ttt_step + 1 :] += (
+                    self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
                 )
 
-        # Second round of EAGLE loss
-        eagle_logits_1 = []
-        for i in range(self.eagle_config.parallel_draft_step):
-            eagle_inputs_1 = self._get_eagle_module_inputs(
-                input_ids=input_ids,
-                hidden_states=eagle_module_input_hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                features=eagle_hidden_states_0_pre_norm,
-                ttt_step=2,
-                parallel_draft_step=i + 1,
-            )
+            if self.eagle_report_acc and not self.training:
+                acc = []
+                with torch.no_grad():
+                    for i in range(self.eagle_config.parallel_draft_step):
+                        gathered_logits = gather_from_tensor_model_parallel_region(
+                            eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
+                        )
+                        gathered_logits = gathered_logits[i + ttt_step : -1]
+                        eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                        if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                            eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                        top1_p = (
+                            torch.eq(labels[:, i + ttt_step + 1 :], eagle_top1).sum()
+                            / eagle_top1.numel()
+                        )
+                        acc.append(top1_p)
 
-            _, eagle_logits_, eagle_hidden_states_2x_pre_norm = self._eagle_forward(
-                eagle_inputs_1,
-                output_weight,
-                inference_params=inference_params,
-                packed_seq_params=packed_seq_params,
-                inference_context=eagle_inference_context,
-                **(extra_block_kwargs or {}),
-            )
-            eagle_logits_1.append(eagle_logits_)
-        eagle_logits_1 = torch.cat(eagle_logits_1, dim=0)
-
-        for i in range(self.eagle_config.parallel_draft_step):
-            eagle_logits = eagle_logits_1[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
-            loss_ = loss_[:, i + 1 :]
-            loss[:, i + 2 :] += self.eagle_loss_decay_factor**2 * loss_
-
-        if self.eagle_report_acc and not self.training:
-            acc = []
-            with torch.no_grad():
-                for i in range(self.eagle_config.parallel_draft_step):
-                    gathered_logits = gather_from_tensor_model_parallel_region(
-                        eagle_logits_1[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
+                if get_tensor_model_parallel_rank() == 0:
+                    print(
+                        f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3}"
+                        f"EAGLE 1st Top-1: {acc}",
+                        flush=True,
                     )
-                    gathered_logits = gathered_logits[i + 1 : -1]
-                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                    top1_p = torch.eq(labels[:, i + 2 :], eagle_top1).sum() / eagle_top1.numel()
-                    acc.append(top1_p)
-
-            if get_tensor_model_parallel_rank() == 0:
-                print(
-                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 2nd Top-1: {acc}",
-                    flush=True,
-                )
-
-        # Third EAGLE loss
-        eagle_logits_2 = []
-        for i in range(self.eagle_config.parallel_draft_step):
-            eagle_inputs_2 = self._get_eagle_module_inputs(
-                input_ids=input_ids,
-                hidden_states=eagle_module_input_hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                features=eagle_hidden_states_2x_pre_norm,
-                ttt_step=3,
-                parallel_draft_step=i + 1,
-            )
-
-            _, eagle_logits_, eagle_hidden_states_3x_pre_norm = self._eagle_forward(
-                eagle_inputs_2,
-                output_weight,
-                inference_params=inference_params,
-                packed_seq_params=packed_seq_params,
-                inference_context=eagle_inference_context,
-                **(extra_block_kwargs or {}),
-            )
-            eagle_logits_2.append(eagle_logits_)
-        eagle_logits_2 = torch.cat(eagle_logits_2, dim=0)
-
-        for i in range(self.eagle_config.parallel_draft_step):
-            eagle_logits = eagle_logits_2[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
-            loss_ = loss_[:, i + 2 :]
-            loss[:, i + 3 :] += self.eagle_loss_decay_factor**3 * loss_
-
-        if self.eagle_report_acc and not self.training:
-            acc = []
-            with torch.no_grad():
-                for i in range(self.eagle_config.parallel_draft_step):
-                    gathered_logits = gather_from_tensor_model_parallel_region(
-                        eagle_logits_2[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-                    )
-                    gathered_logits = gathered_logits[i + 2 : -1]
-                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                    top1_p = torch.eq(labels[:, i + 3 :], eagle_top1).sum() / eagle_top1.numel()
-                    acc.append(top1_p)
-
-            if get_tensor_model_parallel_rank() == 0:
-                print(
-                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 3rd Top-1: {acc}",
-                    flush=True,
-                )
-
-        # Forth EAGLE loss
-        eagle_logits_3 = []
-        for i in range(self.eagle_config.parallel_draft_step):
-            eagle_inputs_3 = self._get_eagle_module_inputs(
-                input_ids=input_ids,
-                hidden_states=eagle_module_input_hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                features=eagle_hidden_states_3x_pre_norm,
-                ttt_step=4,
-                parallel_draft_step=i + 1,
-            )
-
-            _, eagle_logits_, eagle_hidden_states_4x_pre_norm = self._eagle_forward(
-                eagle_inputs_3,
-                output_weight,
-                inference_params=inference_params,
-                packed_seq_params=packed_seq_params,
-                inference_context=eagle_inference_context,
-                **(extra_block_kwargs or {}),
-            )
-            eagle_logits_3.append(eagle_logits_)
-        eagle_logits_3 = torch.cat(eagle_logits_3, dim=0)
-
-        for i in range(self.eagle_config.parallel_draft_step):
-            eagle_logits = eagle_logits_3[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logits)
-            loss_ = loss_[:, i + 3 :]
-            loss[:, i + 4 :] += self.eagle_loss_decay_factor**4 * loss_
-
-        if self.eagle_report_acc and not self.training:
-            acc = []
-            with torch.no_grad():
-                for i in range(self.eagle_config.parallel_draft_step):
-                    gathered_logits = gather_from_tensor_model_parallel_region(
-                        eagle_logits_3[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-                    )
-                    gathered_logits = gathered_logits[i + 3 : -1]
-                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                    top1_p = torch.eq(labels[:, i + 4 :], eagle_top1).sum() / eagle_top1.numel()
-                    acc.append(top1_p)
-
-            if get_tensor_model_parallel_rank() == 0:
-                print(
-                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3} EAGLE 4th Top-1: {acc}",
-                    flush=True,
-                )
 
         return loss
 
