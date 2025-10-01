@@ -42,7 +42,6 @@ skip_if_no_megatron()
 import megatron.core
 from megatron.core.parallel_state import (
     destroy_model_parallel,
-    get_context_parallel_group,
     get_data_parallel_group,
     get_tensor_model_parallel_group,
 )
@@ -152,7 +151,7 @@ def _test_context_parallel_helper(config, rank, size):
     )  # modify seed so data is different across ranks
     model = MegatronModel(cp_size=size).cuda()
 
-    dp_cp_parallel_test_helper(model, config, get_context_parallel_group())
+    dp_cp_parallel_test_helper(model, config, get_data_parallel_group(with_context_parallel=True))
 
 
 @pytest.mark.parametrize(
@@ -181,9 +180,8 @@ def _test_data_tensor_context_parallel_helper(config, rank, size):
     data_tensor_context_parallel_test_helper(
         model,
         config,
-        get_data_parallel_group(),
+        get_data_parallel_group(with_context_parallel=True),
         get_tensor_model_parallel_group(),
-        get_context_parallel_group(),
     )
 
 
