@@ -1085,6 +1085,7 @@ class _DynamicEagleGPTModel(EagleModel):
             if self.eagle_freeze_base_model:
                 loss = 0.0 * loss
 
+        acc = []
         eagle_hidden_states_pre_norm = None
         for ttt_step in range(ttt_steps):
             eagle_logits = []
@@ -1136,7 +1137,6 @@ class _DynamicEagleGPTModel(EagleModel):
                 )
 
             if self.eagle_report_acc and not self.training:
-                acc = []
                 with torch.no_grad():
                     for i in range(self.eagle_config.parallel_draft_step):
                         gathered_logits = gather_from_tensor_model_parallel_region(
@@ -1152,12 +1152,12 @@ class _DynamicEagleGPTModel(EagleModel):
                         )
                         acc.append(top1_p)
 
-                if get_tensor_model_parallel_rank() == 0:
-                    print(
-                        f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3}"
-                        f"EAGLE 1st Top-1: {acc}",
-                        flush=True,
-                    )
+        if self.eagle_report_acc and not self.training and get_tensor_model_parallel_rank() == 0:
+            print(
+                f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3}"
+                f"EAGLE Top-1: {acc}",
+                flush=True,
+            )
 
         return loss
 
