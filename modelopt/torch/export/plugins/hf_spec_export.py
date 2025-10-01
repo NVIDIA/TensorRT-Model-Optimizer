@@ -48,17 +48,18 @@ def _check_state_dict_keys_match(draft_model: nn.Module, required_items: dict):
             raise ValueError(f"State dict keys mismatch!\nMissing in draft model: {required_key}")
 
 
-def rename_and_prune_if_spec_decoding(model: nn.Module, post_state_dict: dict):
+def spec_opt_only(model: nn.Module):
+    """Check if the model have only speculative decoding optimization."""
+    opt_modes = getattr(model, "_modelopt_state", None)
+    return (
+        isinstance(opt_modes, (list, tuple)) and len(opt_modes) == 1 and opt_modes[0][0] == "eagle"
+    )
+
+
+def export_spec_ckpt_state_dict(model: nn.Module):
     """Only return the state dict of the draft model in official format and ignore the base model."""
     # check the model has only speculative decoding
-    opt_modes = getattr(model, "_modelopt_state", None)
-    if (
-        not isinstance(opt_modes, (list, tuple))
-        or len(opt_modes) != 1
-        or opt_modes[0][0] != "eagle"
-    ):
-        # if there's other opts, return as is
-        return post_state_dict
+    assert spec_opt_only(model), "Not purely eagle model."
 
     # Check if the state dict keys match
     _check_state_dict_keys_match(model.eagle_module, EAGLE_MODELOPT_TO_OFFICIAL["required"])
@@ -80,16 +81,9 @@ def rename_and_prune_if_spec_decoding(model: nn.Module, post_state_dict: dict):
     return export_state_dict
 
 
-def set_config_if_spec_decoding(model: nn.Module, config_data: dict):
+def export_spec_ckpt_config(model: nn.Module):
     """Return the config of draft model in official format."""
-    opt_modes = getattr(model, "_modelopt_state", None)
-    if (
-        not isinstance(opt_modes, (list, tuple))
-        or len(opt_modes) != 1
-        or opt_modes[0][0] != "eagle"
-    ):
-        # return as is
-        return config_data
+    assert spec_opt_only(model), "Not purely eagle model."
 
     # This is the config keys in official checkpoint.
     template_config = {
