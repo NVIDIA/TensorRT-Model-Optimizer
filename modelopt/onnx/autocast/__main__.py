@@ -86,6 +86,24 @@ def get_parser() -> argparse.ArgumentParser:
         help="List of op types that should remain in FP32",
     )
     parser.add_argument(
+        "--nodes_to_include",
+        "-ni",
+        type=str,
+        nargs="*",
+        default=[],
+        help="List of regex patterns to match node names that should be force-included in low precision, even if they "
+        "would otherwise be excluded",
+    )
+    parser.add_argument(
+        "--op_types_to_include",
+        "-opi",
+        type=str,
+        nargs="*",
+        default=[],
+        help="List of op types that should be force-included in low precision, even if they would otherwise be "
+        "excluded",
+    )
+    parser.add_argument(
         "--data_max",
         type=float,
         default=DEFAULT_DATA_MAX,
@@ -112,7 +130,8 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--keep_io_types",
         action="store_true",
-        help="Keep the input and output types of the model, otherwise they will be converted to FP16",
+        help="Keep the input and output types of the model; otherwise they will be converted to reduced precision "
+        "(FP16/BF16)",
     )
     parser.add_argument(
         "--log_level",
@@ -164,6 +183,8 @@ def main(argv=None):
         low_precision_type=args.low_precision_type,
         nodes_to_exclude=args.nodes_to_exclude,
         op_types_to_exclude=args.op_types_to_exclude,
+        nodes_to_include=args.nodes_to_include,
+        op_types_to_include=args.op_types_to_include,
         data_max=args.data_max,
         init_max=args.init_max,
         keep_io_types=args.keep_io_types,
