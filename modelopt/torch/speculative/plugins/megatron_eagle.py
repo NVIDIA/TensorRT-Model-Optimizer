@@ -1408,6 +1408,11 @@ class _DynamicEagleGPTModel(EagleModel):
 
             draft_tokens.append(draft_token)
 
+            # Remove mask tokens from eagle_ids before adding draft_token
+            # Remove added hidden_states before
+            eagle_ids = eagle_ids[:, : -self.eagle_config.parallel_draft_step + 1]
+            hidden_states = hidden_states[: -self.eagle_config.parallel_draft_step + 1]
+
             eagle_ids = torch.cat((eagle_ids, draft_token), dim=-1)
             hidden_states = torch.cat(
                 (
