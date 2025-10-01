@@ -130,7 +130,7 @@ For online training checkpoints, we can run in-framework evaluation on MT-bench:
 python ar_validate.py --model_path $ONLINE_CKPT
 ```
 
-Offline checkpoints does not support this evaluation due to missing of base model modules. To evaluate offline checkpoint, please export first and evaluate with serving frameworks.
+**Note**: In-framework evaluation is supported only for online training. For offline training checkpoints, please export the model and evaluate it using serving frameworks.
 
 ## Export
 
