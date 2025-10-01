@@ -760,7 +760,7 @@ class _DynamicEagleGPTModel(EagleModel):
         position_ids: torch.Tensor,
         features: torch.Tensor | None = None,
         ttt_step: int = 0,
-        parallel_draft_step: int = 0,
+        parallel_draft_index: int = 0,
     ):
         """Getting EAGLE module inputs."""
         b = hidden_states.shape[1]
@@ -784,10 +784,10 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs["input_ids"] = (
             padded_input_ids
-            if parallel_draft_step == 0
+            if parallel_draft_index == 0
             else torch.full(
                 padded_input_ids.shape,
-                getattr(self, f"mask_token_{parallel_draft_step - 1}"),
+                getattr(self, f"mask_token_{parallel_draft_index - 1}"),
                 device=padded_input_ids.device,
                 dtype=padded_input_ids.dtype,
             )
@@ -824,12 +824,12 @@ class _DynamicEagleGPTModel(EagleModel):
             )
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
-            attn_mask, ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_step
+            attn_mask, ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_index
         )
 
         eagle_inputs["rotary_pos_emb"] = torch.cat(
             [rotary_pos_emb]
-            * (ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_step + 1),
+            * (ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_index + 1),
             dim=0,
         )
 
@@ -1075,7 +1075,7 @@ class _DynamicEagleGPTModel(EagleModel):
                     position_ids=position_ids,
                     features=eagle_hidden_states_pre_norm,
                     ttt_step=ttt_step,
-                    parallel_draft_step=i,
+                    parallel_draft_index=i,
                 )
 
                 _, eagle_logits_, eagle_hidden_states_pre_norm_ = self._eagle_forward(
