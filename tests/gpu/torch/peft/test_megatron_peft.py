@@ -19,8 +19,30 @@ skip_if_no_megatron()
 
 
 import modelopt.torch.peft as mtpf
+import modelopt.torch.quantization as mtq
 from modelopt.torch.peft.lora.layer import LoRAModule
 from modelopt.torch.utils.plugins import megatron_prefill
+
+NVFP4_DEFAULT_CONFIG = {
+    "quant_cfg": {
+        "*weight_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*input_quantizer": {
+            "num_bits": (2, 1),
+            "block_sizes": {-1: 16, "type": "dynamic", "scale_bits": (4, 3)},
+            "axis": None,
+            "enable": True,
+        },
+        "*output_quantizer": {"enable": False},
+        "*output_layer*": {"enable": False},  # Note: only output_layer is disabled.
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
 
 DEFAULT_LORA_CFG_TEST = {
     "adapter_type": "lora",
@@ -333,7 +355,7 @@ def test_attr_changes_with_one_lora(lora_config):
 
 
 def _test_mcore_save_restore(lora_config, tmp_path, rank, size):
-    hidden_size = 1280
+    hidden_size = 512
     initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
     model_ref = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     model_test = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
@@ -375,11 +397,8 @@ def test_mcore_save_restore(device_count, lora_config, tmp_path):
     )
 
 
-# TODO: Save and restore 2 loras
-
-
 def _test_adapter_gradient_flow_freeze_base_model(lora_config, tmp_path, rank, size):
-    hidden_size = 1280
+    hidden_size = 512
     initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
     model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
@@ -441,7 +460,7 @@ def test_adapter_gradient_flow_freeze_base_model(device_count, lora_config, tmp_
 
 
 def _test_adapter_gradient_flow_freeze_lora_model(lora_config, tmp_path, rank, size):
-    hidden_size = 1280
+    hidden_size = 512
     lora_config["freeze_lora_weights"] = True
     lora_config["freeze_base_model"] = False
 
@@ -502,7 +521,7 @@ def test_adapter_gradient_flow_freeze_lora_model(device_count, lora_config, tmp_
 
 
 def _test_adapter_gradient_flow(lora_config, tmp_path, rank, size):
-    hidden_size = 1280
+    hidden_size = 512
     lora_config["freeze_lora_weights"] = False
     lora_config["freeze_base_model"] = False
 
@@ -564,5 +583,251 @@ def test_adapter_gradient_flow(device_count, lora_config, tmp_path):
     spawn_multiprocess_job(
         size=device_count,
         job=partial(_test_adapter_gradient_flow, lora_config, str(tmp_path)),
+        backend="nccl",
+    )
+
+
+def _test_quantize_then_lora(lora_config, tmp_path, rank, size):
+    hidden_size = 512
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    def forward_func(mod):
+        _ = megatron_prefill(model, prompt_tokens)
+
+    mtq.quantize(model, NVFP4_DEFAULT_CONFIG, forward_func)
+
+    # Then add the lora
+    mtpf.update_model(model, lora_config)
+
+    # Bypass the output layer
+    for name, module in model.named_modules():
+        if isinstance(module, LoRAModule) and "output_layer" not in name:
+            assert hasattr(module, "input_quantizer")
+            assert hasattr(module, "weight_quantizer")
+            assert hasattr(module.input_quantizer, "amax")
+            assert hasattr(module.weight_quantizer, "amax")
+            assert getattr(module.input_quantizer, "amax") is not None
+            assert getattr(module.weight_quantizer, "amax") is not None
+            # Check if the lora have teh quantizer, they should not have them.
+            for adapter_name in module._lora_adapters:
+                lora_a = module._lora_adapters[adapter_name]["lora_a"]
+                lora_b = module._lora_adapters[adapter_name]["lora_b"]
+                assert not hasattr(lora_a, "input_quantizer")
+                assert not hasattr(lora_b, "weight_quantizer")
+
+    quantized_lora_output = megatron_prefill(model, prompt_tokens)
+    mtq.disable_quantizer(model, "*")
+    unquantized_lora_output = megatron_prefill(model, prompt_tokens)
+    # Task: Quantize and unquantize should produce different tensor values
+    assert not torch.allclose(quantized_lora_output, unquantized_lora_output)
+
+
+@pytest.mark.parametrize("device_count", get_device_counts())
+@pytest.mark.parametrize(
+    "lora_config",
+    [
+        LARGE_LORA_CFG_RANDOM_INIT_TEST,  # Use random init so gradients flow to both lora_a and lora_b
+    ],
+)
+def test_quantize_then_lora(device_count, lora_config, tmp_path):
+    spawn_multiprocess_job(
+        size=device_count,
+        job=partial(_test_quantize_then_lora, lora_config, str(tmp_path)),
+        backend="nccl",
+    )
+
+
+def _test_lora_then_quantize(lora_config, tmp_path, rank, size):
+    hidden_size = 512
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    mtpf.update_model(model, lora_config)
+    lora_output = megatron_prefill(model, prompt_tokens)
+
+    def forward_func(mod):
+        _ = megatron_prefill(model, prompt_tokens)
+
+    mtq.quantize(model, NVFP4_DEFAULT_CONFIG, forward_func)
+    quantized_output = megatron_prefill(model, prompt_tokens)
+    # Bypass the output layer
+    for name, module in model.named_modules():
+        if isinstance(module, LoRAModule) and "output_layer" not in name:
+            assert hasattr(module, "input_quantizer")
+            assert hasattr(module, "weight_quantizer")
+            assert hasattr(module.input_quantizer, "amax")
+            assert hasattr(module.weight_quantizer, "amax")
+            assert getattr(module.input_quantizer, "amax") is not None
+            assert getattr(module.weight_quantizer, "amax") is not None
+            # Check if the lora have teh quantizer, they should not have them.
+            for adapter_name in module._lora_adapters:
+                lora_a = module._lora_adapters[adapter_name]["lora_a"]
+                lora_b = module._lora_adapters[adapter_name]["lora_b"]
+                assert hasattr(lora_a, "input_quantizer")
+                assert hasattr(lora_b, "weight_quantizer")
+                assert hasattr(lora_a.input_quantizer, "amax")
+                assert hasattr(lora_b.weight_quantizer, "amax")
+                assert getattr(lora_a.input_quantizer, "amax") is not None
+                assert getattr(lora_b.weight_quantizer, "amax") is not None
+
+    assert not torch.allclose(lora_output, quantized_output)
+
+    mtq.disable_quantizer(model, "*lora_a*")
+    disabled_lora_a_quantized_output = megatron_prefill(model, prompt_tokens)
+    # Should not be the same since we disable the lora_a quantizers
+    assert not torch.allclose(disabled_lora_a_quantized_output, quantized_output)
+
+    mtq.disable_quantizer(model, "*lora_b*")
+    disabled_lora_ab_quantized_output = megatron_prefill(model, prompt_tokens)
+    assert not torch.allclose(disabled_lora_a_quantized_output, disabled_lora_ab_quantized_output)
+    assert not torch.allclose(quantized_output, disabled_lora_ab_quantized_output)
+
+
+@pytest.mark.parametrize("device_count", get_device_counts())
+@pytest.mark.parametrize(
+    "lora_config",
+    [
+        LARGE_LORA_CFG_RANDOM_INIT_TEST,  # Use random init so gradients flow to both lora_a and lora_b
+    ],
+)
+def test_lora_then_quantize(device_count, lora_config, tmp_path):
+    spawn_multiprocess_job(
+        size=device_count,
+        job=partial(_test_lora_then_quantize, lora_config, str(tmp_path)),
+        backend="nccl",
+    )
+
+
+def _test_mcore_quantize_then_lora_save_restore(lora_config, tmp_path, rank, size):
+    hidden_size = 512
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model_ref = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
+    model_test = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
+    prompt_tokens = torch.randint(
+        0, model_ref.vocab_size, (2, model_ref.max_sequence_length)
+    ).cuda()
+    original_output_test = megatron_prefill(model_test, prompt_tokens)
+
+    def forward_func(mod):
+        _ = megatron_prefill(model_ref, prompt_tokens)
+
+    mtq.quantize(model_ref, NVFP4_DEFAULT_CONFIG, forward_func)
+    mtpf.update_model(model_ref, lora_config)
+
+    quantize_lora_output_ref = megatron_prefill(model_ref, prompt_tokens)
+
+    save_distributed_checkpoint(tmp_path, model_ref)
+    save_sharded_modelopt_state([model_ref], tmp_path)
+
+    restore_sharded_modelopt_state([model_test], tmp_path)
+    model_test = load_distributed_checkpoint(tmp_path, model_test)
+
+    quantize_lora_output_test = megatron_prefill(model_test, prompt_tokens)
+
+    # Task: If the save and restore functions work correctly, they should produce the same output.
+    assert torch.allclose(quantize_lora_output_test, quantize_lora_output_ref)
+
+    assert not torch.allclose(original_output_test, quantize_lora_output_test)
+
+    # Check the quantizer and lora layers after restore
+    for name, module in model_test.named_modules():
+        if isinstance(module, LoRAModule) and "output_layer" not in name:
+            # print(f"{name} {module}")
+            assert hasattr(module, "input_quantizer")
+            assert hasattr(module, "weight_quantizer")
+            assert hasattr(module.input_quantizer, "amax")
+            assert hasattr(module.weight_quantizer, "amax")
+            assert getattr(module.input_quantizer, "amax") is not None
+            assert getattr(module.weight_quantizer, "amax") is not None
+            # Check if the lora have teh quantizer, they should not have them.
+            for adapter_name in module._lora_adapters:
+                lora_a = module._lora_adapters[adapter_name]["lora_a"]
+                lora_b = module._lora_adapters[adapter_name]["lora_b"]
+                assert not hasattr(lora_a, "input_quantizer")
+                assert not hasattr(lora_b, "weight_quantizer")
+
+
+@pytest.mark.parametrize("device_count", get_device_counts())
+@pytest.mark.parametrize(
+    "lora_config",
+    [
+        DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
+    ],
+)
+def test_mcore_quantize_then_lora_save_restore(device_count, lora_config, tmp_path):
+    spawn_multiprocess_job(
+        size=device_count,
+        job=partial(_test_mcore_quantize_then_lora_save_restore, lora_config, str(tmp_path)),
+        backend="nccl",
+    )
+
+
+def _test_mcore_lora_then_quantize_save_restore(lora_config, tmp_path, rank, size):
+    hidden_size = 512
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model_ref = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
+    model_test = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
+    prompt_tokens = torch.randint(
+        0, model_ref.vocab_size, (2, model_ref.max_sequence_length)
+    ).cuda()
+    original_output_test = megatron_prefill(model_test, prompt_tokens)
+
+    mtpf.update_model(model_ref, lora_config)
+
+    def forward_func(mod):
+        _ = megatron_prefill(model_ref, prompt_tokens)
+
+    mtq.quantize(model_ref, NVFP4_DEFAULT_CONFIG, forward_func)
+
+    lora_quantize_output_ref = megatron_prefill(model_ref, prompt_tokens)
+
+    save_distributed_checkpoint(tmp_path, model_ref)
+    save_sharded_modelopt_state([model_ref], tmp_path)
+
+    restore_sharded_modelopt_state([model_test], tmp_path)
+    model_test = load_distributed_checkpoint(tmp_path, model_test)
+
+    lora_quantize_output_test = megatron_prefill(model_test, prompt_tokens)
+
+    # Task: If the save and restore functions work correctly, they should produce the same output.
+    assert torch.allclose(lora_quantize_output_test, lora_quantize_output_ref)
+
+    assert not torch.allclose(original_output_test, lora_quantize_output_test)
+
+    # Check the lora and quantize layers after restore
+    for name, module in model_test.named_modules():
+        if isinstance(module, LoRAModule) and "output_layer" not in name:
+            assert hasattr(module, "input_quantizer")
+            assert hasattr(module, "weight_quantizer")
+            assert hasattr(module.input_quantizer, "amax")
+            assert hasattr(module.weight_quantizer, "amax")
+            assert getattr(module.input_quantizer, "amax") is not None
+            assert getattr(module.weight_quantizer, "amax") is not None
+            # Check if the lora have teh quantizer, they should not have them.
+            for adapter_name in module._lora_adapters:
+                lora_a = module._lora_adapters[adapter_name]["lora_a"]
+                lora_b = module._lora_adapters[adapter_name]["lora_b"]
+                assert hasattr(lora_a, "input_quantizer")
+                assert hasattr(lora_b, "weight_quantizer")
+                assert hasattr(lora_a.input_quantizer, "amax")
+                assert hasattr(lora_b.weight_quantizer, "amax")
+                assert getattr(lora_a.input_quantizer, "amax") is not None
+                assert getattr(lora_b.weight_quantizer, "amax") is not None
+
+
+@pytest.mark.parametrize("device_count", get_device_counts())
+@pytest.mark.parametrize(
+    "lora_config",
+    [
+        DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
+    ],
+)
+def test_mcore_lora_quantize_save_restore(device_count, lora_config, tmp_path):
+    spawn_multiprocess_job(
+        size=device_count,
+        job=partial(_test_mcore_lora_then_quantize_save_restore, lora_config, str(tmp_path)),
         backend="nccl",
     )
