@@ -115,7 +115,7 @@ After training draft model, we can evaluate the saved modelopt checkpoint on MT-
 python ar_validate.py --model_path $OUTPUT_DIR
 ```
 
-Alternatively, we can export the checkpoint and run evaluation on serving frameworks. See sections below.
+**Note**: In-framework evaluation is supported only for online training. For offline training checkpoints, please export the model and evaluate it using serving frameworks.
 
 ## Export
 
