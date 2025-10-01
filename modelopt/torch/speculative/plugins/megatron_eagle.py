@@ -195,48 +195,72 @@ def set_multi_step_attention_mask(attn_mask, step):
     h0 h1 h2 h3 h4 h5 h6 h7  (base hidden_states)
     l0 l1 l2 l3 l4 l5 l6 l7  (base labels)
 
-    ttt_step=2
-    parallel_draft_step=2
-    ->step=3
+    ttt_steps=2
+    parallel_draft_step=3
 
-                  | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- |
-    (out)         | h0 h1 h2 h3 h4 h5 h6 h7 | h0 h1 h2 h3 h4 h5 h6 h7 | -- -- G2 G3 G4 G5 G6 G7 | -- -- G2 G3 G4 G5 G6 G7 |
-    =======================================================================================================================
-    F1 l1 | i1 h0 |  x                      |                         |                         |                         |
-    F2 l2 | i2 h1 |  x  x                   |                         |                         |                         |
-    F3 l3 | i3 h2 |  x  x  x                |                         |                         |                         |
-    F4 l4 | i4 h3 |  x  x  x  x             |                         |                         |                         |
-    F5 l5 | i5 h4 |  x  x  x  x  x          |                         |                         |                         |
-    F6 l6 | i6 h5 |  x  x  x  x  x  x       |                         |                         |                         |
-    F7 l7 | i7 h6 |  x  x  x  x  x  x  x    |                         |                         |                         |
-    -- -- | -- h7 |  o  o  o  o  o  o  o  o |                         |                         |                         |
+
+    ttt_step=0
+                  | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- | m1 m1 m1 m1 m1 m1 m1 -- |
+                  | h0 h1 h2 h3 h4 h5 h6 h7 | h0 h1 h2 h3 h4 h5 h6 h7 | h0 h1 h2 h3 h4 h5 h6 h7 |
+    =============================================================================================
+    F1 l1 | i1 h0 |  x                      |                         |                         |
+    F2 l2 | i2 h1 |  x  x                   |                         |                         |
+    F3 l3 | i3 h2 |  x  x  x                |                         |                         |
+    F4 l4 | i4 h3 |  x  x  x  x             |                         |                         |
+    F5 l5 | i5 h4 |  x  x  x  x  x          |                         |                         |
+    F6 l6 | i6 h5 |  x  x  x  x  x  x       |                         |                         |
+    F7 l7 | i7 h6 |  x  x  x  x  x  x  x    |                         |                         |
+    -- -- | -- h7 |  o  o  o  o  o  o  o  o |                         |                         |
+    =============================================================================================
+    -- -- | m0 -- |                         |                         |                         |
+    G2 l2 | m0 h1 |  x  o                   |     x                   |                         |
+    G3 l3 | m0 h2 |  x  x  o                |        x                |                         |
+    G4 l4 | m0 h3 |  x  x  x  o             |           x             |                         |
+    G5 l5 | m0 h4 |  x  x  x  x  o          |              x          |                         |
+    G6 l6 | m0 h5 |  x  x  x  x  x  o       |                 x       |                         |
+    G7 l7 | m0 h6 |  x  x  x  x  x  x  o    |                    x    |                         |
+    -- -- | -- h7 |                         |                         |                         |
+    =============================================================================================
+    -- -- | m1 -- |                         |                         |                         |
+    -- -- | m1 h1 |                         |                         |                         |
+    H3 l3 | m1 h2 |  x  o  o                |     x  o                |        x                |
+    H4 l4 | m1 h3 |  x  x  o  o             |        x  o             |           x             |
+    H5 l5 | m1 h4 |  x  x  x  o  o          |           x  o          |              x          |
+    H6 l6 | m1 h5 |  x  x  x  x  o  o       |              x  o       |                 x       |
+    H7 l7 | m1 h6 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |
+    -- -- | -- h7 |                         |                         |                         |
+
+
+    ttt_step=1
+                  | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- | m1 m1 m1 m1 m1 m1 m1 -- |
+                  | h0 h1 h2 h3 h4 h5 h6 h7 | -- F1 F2 F3 F4 F5 F6 F7 | -- F1 F2 F3 F4 F5 F6 F7 | -- F1 F2 F3 F4 F5 F6 F7 |
     =======================================================================================================================
     -- -- | i1 -- |                         |                         |                         |                         |
-    G2 l2 | i2 h1 |  x  o                   |     x                   |                         |                         |
-    G3 l3 | i3 h2 |  x  x  o                |        x                |                         |                         |
-    G4 l4 | i4 h3 |  x  x  x  o             |           x             |                         |                         |
-    G5 l5 | i5 h4 |  x  x  x  x  o          |              x          |                         |                         |
-    G6 l6 | i6 h5 |  x  x  x  x  x  o       |                 x       |                         |                         |
-    G7 l7 | i7 h6 |  x  x  x  x  x  x  o    |                    x    |                         |                         |
-    -- -- | -- h7 |                         |                         |                         |                         |
-    =======================================================================================================================
-    -- -- | i1 -- |                         |                         |                         |                         |
-    -- -- | i2 -- |                         |                         |                         |                         |
-    H3 l3 | i3 G2 |  x  o  o                |     x  o                |        x                |                         |
-    H4 l4 | i4 G3 |  x  x  o  o             |        x  o             |           x             |                         |
-    H5 l5 | i5 G4 |  x  x  x  o  o          |           x  o          |              x          |                         |
-    H6 l6 | i6 G5 |  x  x  x  x  o  o       |              x  o       |                 x       |                         |
-    H7 l7 | i7 G6 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |                         |
-    -- -- | -- G7 |                         |                         |                         |                         |
+    J2 l2 | i2 F1 |  x  o                   |     x                   |                         |                         |
+    J3 l3 | i3 F2 |  x  x  o                |        x                |                         |                         |
+    J4 l4 | i4 F3 |  x  x  x  o             |           x             |                         |                         |
+    J5 l5 | i5 F4 |  x  x  x  x  o          |              x          |                         |                         |
+    J6 l6 | i6 F5 |  x  x  x  x  x  o       |                 x       |                         |                         |
+    J7 l7 | i7 F6 |  x  x  x  x  x  x  o    |                    x    |                         |                         |
+    -- -- | -- F7 |                         |                         |                         |                         |
     =======================================================================================================================
     -- -- | m0 -- |                         |                         |                         |                         |
     -- -- | m0 -- |                         |                         |                         |                         |
-    -- -- | m0 -- |                         |                         |                         |                         |
-    K4 l4 | m0 G3 |  x                      |     x                   |        x                |          x              |
-    K5 l5 | m0 G4 |  x  x                   |        x                |           x             |             x           |
-    K6 l6 | m0 G5 |  x  x  x                |           x             |              x          |                x        |
-    K7 l7 | m0 G6 |  x  x  x  x             |              x          |                 x       |                   x     |
-    -- -- | -- G7 |                         |                         |                         |                         |
+    K3 l3 | m0 F2 |  x  o  o                |     x  o                |        x                |                         |                         |
+    K4 l4 | m0 F3 |  x  x  o  o             |        x  o             |           x             |                         |
+    K5 l5 | m0 F4 |  x  x  x  o  o          |           x  o          |              x          |                         |
+    K6 l6 | m0 F5 |  x  x  x  x  o  o       |              x  o       |                 x       |                         |
+    K7 l7 | m0 F6 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |                         |
+    -- -- | -- F7 |                         |                         |                         |                         |
+    =======================================================================================================================
+    -- -- | m1 -- |                         |                         |                         |                         |
+    -- -- | m1 -- |                         |                         |                         |                         |
+    -- -- | m1 -- |                         |                         |                         |                         |
+    N4 l4 | m1 F3 |  x                      |     x                   |        x                |          x              |
+    N5 l5 | m1 F4 |  x  x                   |        x                |           x             |             x           |
+    N6 l6 | m1 F5 |  x  x  x                |           x             |              x          |                x        |
+    N7 l7 | m1 F6 |  x  x  x  x             |              x          |                 x       |                   x     |
+    -- -- | -- F7 |                         |                         |                         |                         |
     =======================================================================================================================
     """  # noqa: E501
     s = attn_mask.shape[-1]
@@ -765,7 +789,6 @@ class _DynamicEagleGPTModel(EagleModel):
         """Getting EAGLE module inputs."""
         b = hidden_states.shape[1]
         h = hidden_states.shape[2]
-        s = input_ids.shape[1]
 
         # [b, 1]
         id_padding = torch.zeros((b, 1), dtype=input_ids.dtype, device=input_ids.device)
@@ -801,8 +824,7 @@ class _DynamicEagleGPTModel(EagleModel):
         else:
             gathered_hidden_states = hidden_states
             gathered_features = features
-        if gathered_features is not None:
-            feature = gathered_features[-s:]
+
         eagle_inputs["hidden_states"] = (
             gathered_hidden_states
             if ttt_step == 0
@@ -813,7 +835,7 @@ class _DynamicEagleGPTModel(EagleModel):
                         dtype=hidden_states.dtype,
                         device=hidden_states.device,
                     ),
-                    feature[:-1, :, :],
+                    gathered_features[:-1, :, :],
                 )
             )
         )
@@ -824,12 +846,11 @@ class _DynamicEagleGPTModel(EagleModel):
             )
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
-            attn_mask, ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_index
+            attn_mask, ttt_step + parallel_draft_index
         )
 
         eagle_inputs["rotary_pos_emb"] = torch.cat(
-            [rotary_pos_emb]
-            * (ttt_step * self.eagle_config.parallel_draft_step + parallel_draft_index + 1),
+            [rotary_pos_emb] * (ttt_step + parallel_draft_index + 1),
             dim=0,
         )
 
@@ -1015,7 +1036,7 @@ class _DynamicEagleGPTModel(EagleModel):
         # EAGLE kv cache
         eagle_inference_context = StaticInferenceContext(
             input_ids.shape[0],
-            input_ids.shape[1] * self.eagle_config.parallel_draft_step * ttt_steps,
+            input_ids.shape[1] * (self.eagle_config.parallel_draft_step + ttt_steps - 1),
         )
 
         if self.eagle_offline:
@@ -1087,9 +1108,19 @@ class _DynamicEagleGPTModel(EagleModel):
                     **(extra_block_kwargs or {}),
                 )
 
+                if i == 0:
+                    next_eagle_hidden_states_pre_norm = eagle_hidden_states_pre_norm_
+
                 eagle_logits.append(eagle_logits_)
             eagle_logits = torch.cat(eagle_logits, dim=0)
-            eagle_hidden_states_pre_norm = eagle_hidden_states_pre_norm_
+            eagle_hidden_states_pre_norm = next_eagle_hidden_states_pre_norm
+
+            # Discard kv cache for the last parallel_draft_step - 1 tokens
+            # as the next ttt_step will only base on the first token in the
+            # current ttt_step
+            eagle_inference_context.sequence_len_offset -= input_ids.shape[1] * (
+                self.eagle_config.parallel_draft_step - 1
+            )
 
             # If labels are not provided, return the original logits. We only return after
             # all eagle weights have been exercised for quantization calibration purpose.
