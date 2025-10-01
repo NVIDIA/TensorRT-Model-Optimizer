@@ -118,6 +118,7 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
         # Syncing amax across TP for sequential quantizer
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
+                "Syncing amax across TP for sequential quantizer"
                 sync_quantizer_amax_across_tp(
                     _q, linear_name, quantizer_type, axes_for_sync, parallel_state
                 )
