@@ -125,6 +125,12 @@ def main():
         default=1,
         help="Batch size for calibration and ONNX model export.",
     )
+    parser.add_argument(
+        "--dynamo_export",
+        action="store_true",
+        default=False,
+        help="If True, the model will be exported using the torch dynamo exporter.",
+    )
 
     args = parser.parse_args()
 
@@ -158,6 +164,7 @@ def main():
         args.onnx_save_path,
         device,
         weights_dtype="fp16",
+        dynamo_export=args.dynamo_export,
     )
 
     print(f"Quantized ONNX model is saved to {args.onnx_save_path}")

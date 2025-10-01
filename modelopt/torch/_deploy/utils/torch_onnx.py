@@ -432,8 +432,9 @@ def get_onnx_bytes_and_metadata(
     )
     with torch.inference_mode(), autocast, quantizer_context:
         additional_kwargs = {}
-        if not dynamo_export and Version(torch.__version__) >= Version("2.8"):
+        if dynamic_axes and Version(torch.__version__) >= Version("2.8"):
             additional_kwargs["dynamic_axes"] = dynamic_axes
+
         torch.onnx.export(
             model,
             dummy_input,
