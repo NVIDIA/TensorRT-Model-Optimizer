@@ -72,6 +72,15 @@ def has_const_input(node: Node) -> bool:
     return any(is_const_input(tensor) for tensor in node.inputs)
 
 
+def get_input_shapes(onnx_path: str) -> dict[str, list[int]]:
+    """Returns the input shapes of the given ONNX model."""
+    onnx_model = onnx.load(onnx_path)
+    input_shape_dict = {}
+    for input in onnx_model.graph.input:
+        input_shape_dict[input.name] = [x.dim_value for x in input.type.tensor_type.shape.dim]
+    return input_shape_dict
+
+
 def has_path_type(
     node: Node,
     graph: Graph,
@@ -923,7 +932,7 @@ def find_nodes_from_matmul_to_exclude(
     intermediate_generated_files: list[str] | None = None,
     calibration_data_reader: CalibrationDataReader = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
-    calibration_shapes: str | None = None,
+    calibration_shapes: str | dict | None = None,
 ) -> list[str]:
     """Find MatMul nodes that meets gemv condition to exclude.
 
@@ -1050,7 +1059,7 @@ def find_nodes_from_convs_to_exclude(graph: Graph, quantize_mode: str = "int8"):
 
 
 def _exclude_matmuls_by_symbolic_inference(
-    model: onnx.ModelProto, matmul_nodes: list, calibration_shapes: str | None = None
+    model: onnx.ModelProto, matmul_nodes: list, calibration_shapes: str | dict | None = None
 ) -> list[str]:
     """Use symbolic shape inference to find MatMuls with dimension 1."""
     # Prepare model for symbolic inference
@@ -1061,7 +1070,11 @@ def _exclude_matmuls_by_symbolic_inference(
                 dim.dim_value = 1
 
     # Apply calibration shapes if provided
-    input_shapes = parse_shapes_spec(calibration_shapes) if calibration_shapes else {}
+    input_shapes = (
+        parse_shapes_spec(calibration_shapes)
+        if (calibration_shapes and isinstance(calibration_shapes, str))
+        else {}
+    )
     for graph_input in model.graph.input:
         if graph_input.name in input_shapes:
             input_shape = input_shapes[graph_input.name]

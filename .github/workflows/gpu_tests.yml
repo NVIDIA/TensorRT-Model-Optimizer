@@ -67,6 +67,7 @@ jobs:
       env:
         GIT_DEPTH: 1000 # For correct version for tests/gpu/torch/quantization/plugins/test_megatron.py
         PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps: &gpu_steps
       - uses: actions/checkout@v4
       - uses: nv-gha-runners/setup-proxy-cache@main

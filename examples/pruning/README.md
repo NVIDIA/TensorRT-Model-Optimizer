@@ -55,8 +55,8 @@ model = GPTModel(
 # For Megatron-LM framework, you can use the following utility function
 from megatron.training.training import evaluate_and_print_results
 
-def forward_loop(model):
-    evaluate_and_print_results(model, ...)
+def forward_loop(_):
+    evaluate_and_print_results(prefix, forward_step, train_iterator, model, ...)
 
 
 # Specify the pruning constraints (Check Support Matrix for available pruning dimensions)
@@ -66,7 +66,7 @@ export_config = {
 }
 
 
-# Run the pruning process
+# Run the pruning process (if model is a list then pass model[0] to the prune API)
 # Save minitron scores at scores_path so we can re-run pruning with different export configs without running the forward loop again
 # NOTE: Skip scores_path on re-running if you want to change the dataset and re-calibrate
 model, pruning_scores = mtp.prune(
@@ -81,7 +81,7 @@ model, pruning_scores = mtp.prune(
 If your model parameters are already sorted, you can skip the sorting step by setting `"skip_sorting": True` in `config` instead of passing `forward_loop`.
 
 > [!Note]
-> Fine-tuning / distillation is required after pruning to recover the accuracy. Please refer to pruning [fine-tuning](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/3_pruning.html#pruning-fine-tuning) for more details.
+> Fine-tuning / distillation is required after pruning to recover the accuracy. Please refer to [end-to-end pruning and distillation tutorial](https://github.com/NVIDIA-NeMo/NeMo/tree/main/tutorials/llm/qwen/pruning-distillation) for more details.
 
 ## Support Matrix
 

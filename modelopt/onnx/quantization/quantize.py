@@ -53,6 +53,7 @@ from modelopt.onnx.quantization.fp8 import quantize as quantize_fp8
 from modelopt.onnx.quantization.graph_utils import (
     cast_custom_ops,
     find_nodes_from_mha_to_exclude,
+    get_input_shapes,
     print_stat,
     remove_redundant_cast_nodes,
     validate_op_types_spelling,
@@ -255,6 +256,8 @@ def quantize(
             Path to pre-calculated activation tensor ranges, also known as calibration cache.
         calibration_shapes:
             Input shapes used for calibration process.
+            It should be provided as a string representing the shape of each input tensors for one calibration step.
+            Example input shapes spec: input0:1x3x256x256,input1:1x3x128x128
         calibration_eps:
             Priority order for the execution providers (EP) to calibrate the model.
             Any subset of ['NvTensorRtRtx', 'trt', 'cuda:x', 'dml:x', 'cpu'], where 'x' is the device id.
@@ -466,6 +469,9 @@ def quantize(
         calibration_data_reader,
         calibration_eps,
     )
+
+    if not calibration_shapes:
+        calibration_shapes = get_input_shapes(onnx_path)
 
     if quantize_mode in ["fp8", "int8"]:
         quantize_func = quantize_int8 if quantize_mode == "int8" else quantize_fp8
