@@ -73,7 +73,14 @@ def get_args():
     parser.add_argument(
         "--data-dir",
         type=str,
-        help="Path the preprocessed dataset",
+        help="Path to the preprocessed dataset",
+    )
+    parser.add_argument(
+        "--data-prefixes",
+        type=str,
+        nargs="*",
+        help="Prefixes of the .bin and .idx files in the data directory",
+        default=[f"part_{i}_text_document" for i in SUBSET_IDX],
     )
     parser.add_argument(
         "--train-gpus",
@@ -122,7 +129,7 @@ def main(args):
         )
         data = run.Config(
             PreTrainingDataModule,
-            paths=[f"{args.data_dir}/part_{i}_text_document" for i in SUBSET_IDX],
+            paths=[f"{args.data_dir}/{prefix}" for prefix in args.data_prefixes],
             seq_length=SEQUENCE_LENGTH,
             tokenizer=tokenizer,
             global_batch_size=DISTILL_GBS,
@@ -236,11 +243,18 @@ def main(args):
             tail_logs=True,
             name="01_import",
         )
+        _ = exp.add(
+            eval_teacher,
+            executor=multi_gpu_executor,
+            tail_logs=True,
+            name="02a_eval_teacher",
+            dependencies=[s1],
+        )
         s2 = exp.add(
             prune,
             executor=gpu_executor,
             tail_logs=True,
-            name="02_prune",
+            name="02b_prune",
             dependencies=[s1],
         )
         s3 = exp.add(
@@ -251,17 +265,10 @@ def main(args):
             dependencies=[s2],
         )
         _ = exp.add(
-            eval_teacher,
-            executor=multi_gpu_executor,
-            tail_logs=True,
-            name="eval_teacher",
-            dependencies=[s1],
-        )
-        _ = exp.add(
             eval_student,
             executor=multi_gpu_executor,
             tail_logs=True,
-            name="eval_student",
+            name="04a_eval_student",
             dependencies=[s3],
         )
         # WAR: Export needs access to all GPUs but only 1 task due to bug in NeMo
@@ -270,7 +277,7 @@ def main(args):
             export_model,
             executor=multi_gpu_executor,
             tail_logs=True,
-            name="04_export",
+            name="04b_export",
             dependencies=[s3],
         )
         exp.run(detach=True)
@@ -316,8 +323,8 @@ if __name__ == "__main__":
     else:
         PRUNE_SAMPLES = 512
         DISTILL_GBS = 768
-        _NUM_TOKENS = int(90e9)
-        DISTILL_STEPS = int(_NUM_TOKENS / DISTILL_GBS / SEQUENCE_LENGTH)
+        NUM_TOKENS = int(90e9)
+        DISTILL_STEPS = int(NUM_TOKENS / DISTILL_GBS / SEQUENCE_LENGTH)
         VAL_INTERVAL = 1000
     # # # # # # # # # # # # # # # # # # # # # #
 
