@@ -835,7 +835,7 @@ class _DynamicEagleGPTModel(EagleModel):
                         dtype=hidden_states.dtype,
                         device=hidden_states.device,
                     ),
-                    gathered_features[:-1, :, :],
+                    gathered_features[:-1, :, :],  # type: ignore[index]
                 )
             )
         )
