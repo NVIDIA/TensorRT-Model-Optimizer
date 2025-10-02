@@ -40,11 +40,17 @@ def convert_to_peft_model(model: ModelLikeModule, config: PEFTConfig) -> Convert
     # initialize the true module if necessary
     model = model.init_modellike() if isinstance(model, ModelLikeModule) else model
 
+    # Freeze all base model weights before replacing modules if freeze_base_model is True
+    if config.freeze_base_model:
+        for param in model.parameters():
+            param.requires_grad = False
+
     replace_lora_module(model, version=ModeloptStateManager(model).state_version, config=config)
 
     metadata = {}
     add_adapter(model, config)
-    update_grads(model, config)
+    # Update gradient settings for LoRA parameters only
+    _update_lora_grads(model, config)
 
     return model, metadata
 
@@ -169,17 +175,25 @@ def _iter_lora_modules(model, layer_patterns=None):
 
 
 def _set_base_requires_grad(model, *, requires_grad: bool, layer_patterns=None):
-    for _, module in _iter_lora_modules(model, layer_patterns):
-        lora_param_ids = {
-            id(param)
-            for adapter in module._lora_adapters.values()
-            for submodule in ("lora_a", "lora_b")
-            for _, param in adapter[submodule].named_parameters()
-        }
-        for _, param in module.named_parameters():
-            if id(param) in lora_param_ids:
+    # Collect all LoRA parameter IDs across the entire model
+    lora_param_ids = set()
+    for _, module in _iter_lora_modules(model, layer_patterns=None):
+        for adapter in module._lora_adapters.values():
+            for submodule in ("lora_a", "lora_b"):
+                for _, param in adapter[submodule].named_parameters():
+                    lora_param_ids.add(id(param))
+
+    # Set requires_grad for all parameters in the model (excluding LoRA parameters)
+    for name, param in model.named_parameters():
+        # Skip LoRA parameters
+        if id(param) in lora_param_ids:
+            continue
+        # If layer_patterns is specified, only affect matching layers
+        if layer_patterns is not None:
+            module_name = ".".join(name.split(".")[:-1])  # Get module name without param name
+            if not _matches(module_name, layer_patterns):
                 continue
-            param.requires_grad = requires_grad
+        param.requires_grad = requires_grad
 
 
 def _iter_adapter_names(module, adapter_patterns=None):
@@ -202,7 +216,8 @@ def _set_lora_requires_grad(
 def freeze_base_weights(model, *, layer_patterns=None):
     """Freeze base model weights to prevent gradient updates during training.
 
-    This function sets requires_grad=False for all base model parameters in LoRA modules,
+    This function sets requires_grad=False for all base model parameters (including
+    linear weights, embeddings, layer norms, etc.) across the entire model,
     while keeping LoRA adapter parameters trainable. Useful for LoRA fine-tuning where
     only adapter weights should be updated.
 
@@ -218,8 +233,10 @@ def freeze_base_weights(model, *, layer_patterns=None):
 def unfreeze_base_weights(model, *, layer_patterns=None):
     """Unfreeze base model weights to allow gradient updates during training.
 
-    This function sets requires_grad=True for all base model parameters in LoRA modules.
-    Useful when you want to fine-tune both base model and LoRA adapter weights together.
+    This function sets requires_grad=True for all base model parameters (including
+    linear weights, embeddings, layer norms, etc.) across the entire model,
+    while keeping LoRA adapter parameters unchanged. Useful when you want to fine-tune
+    both base model and LoRA adapter weights together.
 
     Args:
         model: Model containing LoRA modules whose base weights should be unfrozen
@@ -277,18 +294,20 @@ def unfreeze_lora_weights(model, *, layer_patterns=None, adapter_patterns=None):
     )
 
 
-def update_grads(model, config: PEFTConfig):
-    """Update gradient computation settings based on PEFTConfig.
+def _update_lora_grads(model, config: PEFTConfig):
+    """Update gradient computation settings for LoRA parameters only (internal function).
 
-    This function configures which model parameters should have gradients computed
-    based on the freeze settings in the PEFTConfig. It's typically called during
-    model initialization or when switching training configurations.
+    This internal function configures which LoRA adapter parameters should have gradients
+    computed based on the freeze_lora_weights setting in the PEFTConfig. It's typically
+    called during model initialization after LoRA adapters have been added.
+
+    Note: This function only affects LoRA parameters. Base model parameter gradients
+    should be set separately (e.g., in convert_to_peft_model before LoRA module replacement).
 
     Args:
         model: Model containing LoRA modules to configure
-        config: PEFTConfig instance with freeze_base_model and freeze_lora_weights settings
-            - If config.freeze_base_model is True, base weights will have requires_grad=False
+        config: PEFTConfig instance with freeze_lora_weights setting
             - If config.freeze_lora_weights is True, LoRA weights will have requires_grad=False
+            - If config.freeze_lora_weights is False, LoRA weights will have requires_grad=True
     """
-    _set_base_requires_grad(model, requires_grad=not config.freeze_base_model)
     _set_lora_requires_grad(model, requires_grad=not config.freeze_lora_weights)

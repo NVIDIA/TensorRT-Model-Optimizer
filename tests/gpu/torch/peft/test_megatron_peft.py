@@ -313,6 +313,8 @@ def test_forward_with_two_loras(lora_config_1, lora_config_2):
 
 
 # TODO: Rank check
+
+
 def _test_attr_changes_with_one_lora(lora_config, rank, size):
     """Test forward pass with a single LoRA adapter with various configurations."""
     hidden_size = 320
@@ -422,26 +424,12 @@ def _test_adapter_gradient_flow_freeze_base_model(lora_config, tmp_path, rank, s
     loss = output.sum()
     loss.backward()
 
-    for name, module in model.named_modules():
-        if isinstance(module, LoRAModule):
-            if len(module._lora_adapters) == 0:
-                continue
-            for adapter_name in module._lora_adapters:
-                lora_a_module = module._lora_adapters[adapter_name]["lora_a"]
-                lora_b_module = module._lora_adapters[adapter_name]["lora_b"]
-
-                for param_name, param in lora_a_module.named_parameters():
-                    assert param.grad is not None, f"lora_a.{param_name} in {name} has no gradient"
-                    assert torch.any(param.grad != 0), (
-                        f"lora_a.{param_name} gradient is all zeros in {name}"
-                    )
-
-                for param_name, param in lora_b_module.named_parameters():
-                    assert param.grad is not None, f"lora_b.{param_name} in {name} has no gradient"
-                    assert torch.any(param.grad != 0), (
-                        f"lora_b.{param_name} gradient is all zeros in {name}"
-                    )
-                assert module.weight.grad is None
+    for name, param in model.named_parameters():
+        if "lora" in name:
+            assert param.grad is not None
+            assert torch.any(param.grad != 0)
+        else:
+            assert param.grad is None
 
 
 @pytest.mark.parametrize("device_count", get_device_counts())
@@ -487,22 +475,12 @@ def _test_adapter_gradient_flow_freeze_lora_model(lora_config, tmp_path, rank, s
     loss = output.sum()
     loss.backward()
 
-    for name, module in model.named_modules():
-        if isinstance(module, LoRAModule):
-            if len(module._lora_adapters) == 0:
-                continue
-            for adapter_name in module._lora_adapters:
-                lora_a_module = module._lora_adapters[adapter_name]["lora_a"]
-                lora_b_module = module._lora_adapters[adapter_name]["lora_b"]
-
-                for param_name, param in lora_a_module.named_parameters():
-                    assert param.grad is None, f"lora_a.{param_name} in {name} has gradient"
-
-                for param_name, param in lora_b_module.named_parameters():
-                    assert param.grad is None, f"lora_b.{param_name} in {name} has gradient"
-
-                assert module.weight.grad is not None
-                assert torch.any(module.weight.grad != 0), "weight gradient is all zeros"
+    for name, param in model.named_parameters():
+        if "lora" in name:
+            assert param.grad is None
+        else:
+            assert param.grad is not None
+            assert torch.any(param.grad != 0)
 
 
 @pytest.mark.parametrize("device_count", get_device_counts())
@@ -548,28 +526,9 @@ def _test_adapter_gradient_flow(lora_config, tmp_path, rank, size):
     loss = output.sum()
     loss.backward()
 
-    for name, module in model.named_modules():
-        if isinstance(module, LoRAModule):
-            if len(module._lora_adapters) == 0:
-                continue
-            for adapter_name in module._lora_adapters:
-                lora_a_module = module._lora_adapters[adapter_name]["lora_a"]
-                lora_b_module = module._lora_adapters[adapter_name]["lora_b"]
-
-                for param_name, param in lora_a_module.named_parameters():
-                    assert param.grad is not None, f"lora_a.{param_name} in {name} has gradient"
-                    assert torch.any(param.grad != 0), (
-                        f"lora_a.{param_name} gradient is all zeros in {name}"
-                    )
-
-                for param_name, param in lora_b_module.named_parameters():
-                    assert param.grad is not None, f"lora_b.{param_name} in {name} has gradient"
-                    assert torch.any(param.grad != 0), (
-                        f"lora_b.{param_name} gradient is all zeros in {name}"
-                    )
-
-                assert module.weight.grad is not None
-                assert torch.any(module.weight.grad != 0), "weight gradient is all zeros"
+    for name, param in model.named_parameters():
+        assert param.grad is not None
+        assert torch.any(param.grad != 0), "weight gradient is all zeros"
 
 
 @pytest.mark.parametrize("device_count", get_device_counts())
