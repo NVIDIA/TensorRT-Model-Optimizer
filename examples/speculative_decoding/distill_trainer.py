@@ -26,8 +26,8 @@ import modelopt.torch.opt as mto
 mto.enable_huggingface_checkpointing()
 
 # Hyperparameters for profiling
-EPOCHS = 1
-LOG_INTERVAL = 1
+EPOCHS = 10
+LOG_INTERVAL = 100
 SAVE_INTERVAL = 20000
 # VALIDATE_INTERVAL = 20
 
@@ -125,6 +125,7 @@ class BaseDistillTrainer:
             req.wait()
 
     def _get_distill_kwargs(self):
+        """Return a copy of received buffer for student training."""
         return {k: v.clone().detach() for k, v in self.student_recv_buffer.items()}
 
     def _send_to_student(self, teacher_outputs):
@@ -141,25 +142,6 @@ class BaseDistillTrainer:
             for req in reqs:
                 req.wait()
 
-    # def _validate_ar(self, steps=3, osl=20, num_samples=20):
-    #     if self.rank != self.args.student_rank:
-    #         return
-    #     # Load MT-Bench prompts from HuggingFace
-    #     ds = load_dataset("HuggingFaceH4/mt_bench_prompts")["train"]
-    #     self.model.eval()
-    #     self.model.to(self.args.student_device)
-    #     ars = validate_ar(
-    #         self.model, self.tokenizer, ds, steps, osl, num_samples, self.args.student_device
-    #     )
-    #     # Print results
-    #     avg_ar = sum(ars) / len(ars)
-    #     print("\n==== AR Validation Results on MT-Bench ====")
-    #     print(f"Number of samples: {len(ars)}")
-    #     print(f"Output Sequence Length: {osl}")
-    #     print(f"Steps: {steps}")
-    #     print(f"Average AR: {avg_ar:.4f}")
-    #     self.model.train()
-
     def train(self, dataloader):
         """Main training entrance of the composed model."""
         self._reset_all_mem_stats()
@@ -174,19 +156,24 @@ class BaseDistillTrainer:
                 project=os.environ["WANDB_PROJECT"],
                 config={"epochs": EPOCHS, "lr": self.args.lr, "batch_size": self.args.batch_size},
             ) as run:
-                self.model, self.optimizer = self.load_student_model()
+                self.model, self.optimizer, self.scheduler = self.load_student_model()
                 self._init_student_recv_buffer()
                 wandb.watch(self.model, log="all")
 
                 for epoch in range(EPOCHS):
-                    pbar = tqdm(dataloader)
+                    pbar = (
+                        tqdm(dataloader) if self.rank == self.args.student_ranks[0] else dataloader
+                    )
                     for i, batch in enumerate(pbar):
                         global_step = epoch * len(dataloader) + i
                         inputs = {k: v.to(self.model.device) for k, v in batch.items()}
                         self._recv_from_teacher()
                         loss, train_acc = self.student_step(inputs, **self._get_distill_kwargs())
-                        pbar.set_description(f"Epoch {epoch} Loss:{loss} Acc:{train_acc}")
 
+                        if self.rank != self.args.student_ranks[0]:
+                            continue
+
+                        pbar.set_description(f"Epoch {epoch} Loss:{loss} Acc:{train_acc}")
                         if global_step % LOG_INTERVAL == 0:
                             run.log(
                                 {
@@ -195,14 +182,10 @@ class BaseDistillTrainer:
                                     "train_acc_step1": train_acc[1],
                                     "train_acc_step2": train_acc[2],
                                     "train_acc_step3": train_acc[3],
+                                    "lr": self.optimizer.param_groups[0]["lr"],
                                 },
                                 step=global_step,
                             )
-
-                        # This is not working for some reason.
-                        # if global_step > 0 and global_step % VALIDATE_INTERVAL == 0:
-                        #     self._validate_ar()
-
                         if global_step > 0 and global_step % SAVE_INTERVAL == 0:
                             self.save_pretrained(
                                 f"{self.args.out_path}/epoch_{epoch}_step_{global_step}"

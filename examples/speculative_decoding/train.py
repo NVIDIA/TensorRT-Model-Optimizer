@@ -23,17 +23,19 @@ from distill_trainer import BaseDistillTrainer
 from eagle_utils import DataCollatorWithPadding, make_eagle_supervised_data_module
 from torch.distributed.device_mesh import DeviceMesh
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.optimization import get_linear_schedule_with_warmup
 
 import modelopt.torch.speculative as mtsp
 from modelopt.torch.speculative.config import EAGLE3_DEFAULT_CFG
 
 # Hyperparameters for profiling
 torch.manual_seed(0)
-INPUT_LENGTH = 512
-DRAFT_VOCAB_SIZE = 128256
-# DRAFT_VOCAB_SIZE = 32000
+INPUT_LENGTH = 1024
+# DRAFT_VOCAB_SIZE = 128256
+DRAFT_VOCAB_SIZE = 32000
 # MODEL_PATH = "/home/scratch.omniml_data_1/models_ci/meta-llama/Llama-3.1-8B-Instruct"
-MODEL_PATH = "/home/scratch.omniml_data_1/models_ci/meta-llama/Llama-3.2-1B-Instruct"
+# MODEL_PATH = "/lustre/fsw/portfolios/coreai/projects/coreai_dlalgo_modelopt/hf-local/meta-llama/Llama-3.2-1B-Instruct"
+MODEL_PATH = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
 # MODEL_PATH = "openai/gpt-oss-20b"
 # MODEL_PATH = "/home/scratch.omniml_data_1/models_ci/meta-llama/Llama-3.3-70B-Instruct"
 
@@ -121,9 +123,12 @@ class EagleTPTrainer(BaseDistillTrainer):
             process_group=self.args.student_pgroup,
             find_unused_parameters=True,
         )
-        optimizer = torch.optim.Adam(model.parameters(), lr=self.args.lr)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=self.args.lr)
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=0, num_training_steps=117380
+        )
         self._print_model_placement(model)
-        return model, optimizer
+        return model, optimizer, scheduler
 
     def teacher_step(self, model, inputs):
         base_model_hidden_states, base_model_logits, _, _ = model._base_model_forward(
@@ -168,12 +173,13 @@ class EagleTPTrainer(BaseDistillTrainer):
             },
         )
         loss = output.loss
-        print(f"Rank {self.rank} loss: {loss.item()}")
+        # print(f"Rank {self.rank} loss: {loss.item()}")
         train_acc = output.train_acc
 
         # Backward
         loss.backward()
         self.optimizer.step()
+        self.scheduler.step()
         return round(loss.item(), 3), train_acc
 
 
