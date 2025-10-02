@@ -19,19 +19,25 @@ from abc import abstractmethod
 
 import torch
 import torch.distributed as dist
+from torch.distributed.device_mesh import DeviceMesh
 from tqdm import tqdm
+from transformers import AutoModelForCausalLM
+from transformers.optimization import get_linear_schedule_with_warmup
 
 import modelopt.torch.opt as mto
+import modelopt.torch.speculative as mtsp
 
 mto.enable_huggingface_checkpointing()
 
 # Hyperparameters for profiling
-EPOCHS = 10
+EPOCHS = 1
 LOG_INTERVAL = 100
 SAVE_INTERVAL = 20000
+MODEL_PATH = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+DRAFT_VOCAB_SIZE = 32000
 # VALIDATE_INTERVAL = 20
 
-# We define the distill signal from teacher as the map of variable name to its shape and dtype.
+# Shape and dtype description of the distillation signal
 DistillMetadata = dict[str, tuple[torch.Size, torch.dtype]]
 
 
@@ -208,3 +214,172 @@ class BaseDistillTrainer:
         dist.barrier()
         # clean up processess
         dist.destroy_process_group()
+
+
+class EagleTPTrainer(BaseDistillTrainer):
+    @property
+    def current_rank_device(self):
+        if self.rank in self.args.student_ranks:
+            return self.args.student_devices[self.rank]
+        else:
+            return self.args.teacher_devices[self.rank - len(self.args.student_ranks)]
+
+    def load_teacher_model(self):
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_PATH,
+            torch_dtype="auto",
+            tp_plan="auto",
+            device_mesh=DeviceMesh.from_group(self.args.teacher_pgroup, "cuda"),
+        )
+        self.args.eagle_config["eagle_architecture_config"].update(
+            {
+                "hidden_size": model.config.hidden_size,
+                "vocab_size": model.config.vocab_size,
+                "draft_vocab_size": DRAFT_VOCAB_SIZE,
+            }
+        )
+        mtsp.convert(model, [("eagle", self.args.eagle_config)])
+        model.eval()
+        self._print_model_placement(model)
+        return model
+
+    def load_student_model(self):
+        """Load student model on a single device and keep needed modules from teacher."""
+        # Load to CPU first to avoid OOM
+        model = AutoModelForCausalLM.from_pretrained(
+            MODEL_PATH, torch_dtype="auto", device_map="cpu"
+        )
+        # Hidden size and vocab size must match base model
+        self.args.eagle_config["eagle_architecture_config"].update(
+            {
+                "hidden_size": model.config.hidden_size,
+                "vocab_size": model.config.vocab_size,
+                "draft_vocab_size": DRAFT_VOCAB_SIZE,
+            }
+        )
+        mtsp.convert(
+            model,
+            [("eagle", self.args.eagle_config)],
+        )
+        if model.config.vocab_size > DRAFT_VOCAB_SIZE:
+            model_name = os.path.basename(os.path.normpath(MODEL_PATH))
+            vocab_cache_path = os.path.join("draft_vocab_cache", model_name, "d2t.pt")
+            try:
+                vocab_cache = torch.load(vocab_cache_path)
+                assert len(vocab_cache) == DRAFT_VOCAB_SIZE
+                model.eagle_module.d2t = vocab_cache
+                print(f"Loaded draft vocab cache from {vocab_cache_path}.")
+            except Exception as e:
+                raise e
+
+        # TODO:copy needed modules and del the rest
+        model.model._modules.pop("layers")
+        model.to(self.current_rank_device)
+
+        model.train()
+        model = torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[self.current_rank_device],
+            process_group=self.args.student_pgroup,
+            find_unused_parameters=True,
+        )
+        optimizer = torch.optim.AdamW(model.parameters(), lr=self.args.lr)
+        scheduler = get_linear_schedule_with_warmup(
+            optimizer, num_warmup_steps=0, num_training_steps=117380
+        )
+        self._print_model_placement(model)
+        return model, optimizer, scheduler
+
+    def teacher_step(self, model, inputs):
+        base_model_hidden_states, base_model_logits, _, _ = model._base_model_forward(
+            **inputs,
+            freeze_base_model=True,
+            past_key_values=None,
+        )
+        # aux_hidden_states could be on multiple devices. Gather them and cat.
+        aux_hidden_states = torch.cat(
+            [t.to(base_model_logits.device) for t in model.pop_aux_hidden_states()], dim=-1
+        )
+        base_model_hidden_states = base_model_hidden_states.chunk(len(self.args.student_ranks))
+        base_model_logits = base_model_logits.chunk(len(self.args.student_ranks))
+        aux_hidden_states = aux_hidden_states.chunk(len(self.args.student_ranks))
+
+        return [
+            {
+                "base_model_hidden_states": base_model_hidden_states[i],
+                "aux_hidden_states": aux_hidden_states[i],
+                "base_model_logits": base_model_logits[i],
+            }
+            for i in range(len(self.args.student_ranks))
+        ]
+
+    def student_step(
+        self,
+        inputs,
+        base_model_hidden_states,
+        aux_hidden_states,
+        base_model_logits,
+    ):
+        self.optimizer.zero_grad()
+        # Second stage forward using the unified model
+        inputs = {k: v.chunk(len(self.args.student_ranks))[self.rank] for k, v in inputs.items()}
+        output = self.model(
+            **inputs,
+            # providing base model outputs to bypass the base model forward.
+            base_model_outputs={
+                "base_model_hidden_states": base_model_hidden_states,
+                "aux_hidden_states": aux_hidden_states.clone().detach(),
+                "base_model_logits": base_model_logits.clone().detach(),
+            },
+        )
+        loss = output.loss
+        # print(f"Rank {self.rank} loss: {loss.item()}")
+        train_acc = output.train_acc
+
+        # Backward
+        loss.backward()
+        self.optimizer.step()
+        self.scheduler.step()
+        return round(loss.item(), 3), train_acc
+
+
+# class EagleMPTrainer(EagleTPTrainer, BaseDistillTrainer):
+#     @property
+#     def current_rank_devices(self):
+#         if self.rank == self.args.student_rank:
+#             return [self.args.student_device]
+#         else:
+#             return self.args.teacher_devices
+
+#     def load_teacher_model(self):
+#         model = AutoModelForCausalLM.from_pretrained(
+#             MODEL_PATH,
+#             torch_dtype="auto",
+#             device_map="sequential",
+#             max_memory=dict.fromkeys(
+#                 self.args.teacher_devices, "999GiB"
+#             ),  # To use only given devices
+#         )
+#         self.args.eagle_config["eagle_architecture_config"].update(
+#             {
+#                 "hidden_size": model.config.hidden_size,
+#                 "vocab_size": model.config.vocab_size,
+#                 "draft_vocab_size": DRAFT_VOCAB_SIZE,
+#             }
+#         )
+#         mtsp.convert(model, [("eagle", self.args.eagle_config)])
+
+#         if model.config.vocab_size > DRAFT_VOCAB_SIZE:
+#             model_name = os.path.basename(os.path.normpath(MODEL_PATH))
+#             vocab_cache_path = os.path.join("draft_vocab_cache", model_name, "d2t.pt")
+#             try:
+#                 vocab_cache = torch.load(vocab_cache_path)
+#                 assert len(vocab_cache) == DRAFT_VOCAB_SIZE
+#                 model.eagle_module.d2t = vocab_cache
+#                 print(f"Loaded draft vocab cache from {vocab_cache_path}.")
+#             except Exception as e:
+#                 raise e
+
+#         model.eval()
+#         self._print_model_placement(model)
+#         return model
