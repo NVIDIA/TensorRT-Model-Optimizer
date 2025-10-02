@@ -63,6 +63,7 @@ class GraphSanitizer:
         self.ensure_graph_name_exists()
         onnx_utils.name_onnx_nodes(self.model.graph)
         self.replace_custom_domain_nodes()
+        self.sanitize_io_casts()
         self.cleanup_model()
         self.set_ir_version(self.max_ir_version)
         self.convert_fp64_to_fp32()
@@ -342,6 +343,43 @@ class GraphSanitizer:
         except Exception as e:
             logger.debug(f"Failed to match LayerNorm pattern at {mean_node.name}: {e!s}")
             return None
+
+    def sanitize_io_casts(self) -> None:
+        """Handle the special case where an input is casted directly to an output.
+
+        Inject an identity node after the cast node.
+        """
+        model_input_names = {input.name for input in self.model.graph.input}
+        model_output_names = {output.name for output in self.model.graph.output}
+        nodes_to_add = []
+        for node in self.model.graph.node:
+            if (
+                node.op_type == "Cast"
+                and node.input
+                and node.output
+                and node.input[0] in model_input_names
+                and node.output[0] in model_output_names
+            ):
+                # Unique per graph output to avoid collisions when multiple outputs are cast from the same input
+                cast_output_name = node.output[0]
+                cast_new_output_name = f"{cast_output_name}__io_cast_src"
+                nodes_to_add.append(
+                    helper.make_node(
+                        "Identity",
+                        inputs=[cast_new_output_name],
+                        outputs=[cast_output_name],
+                        name=f"{node.name}__io_cast_identity",
+                    )
+                )
+                # Rewire Cast to produce the new intermediate
+                node.output[0] = cast_new_output_name
+
+        for node in nodes_to_add:
+            self.model.graph.node.append(node)
+
+        # Make sure the graph is topologically sorted
+        gs_graph = gs.import_onnx(self.model).cleanup().toposort()
+        self.model = gs.export_onnx(gs_graph)
 
     def _create_layernorm_node(self, pattern: dict) -> onnx.NodeProto:
         """Create a LayerNormalization node with optional bias."""
