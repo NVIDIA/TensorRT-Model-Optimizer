@@ -345,7 +345,20 @@ To perform QLoRA training, run:
    --lora True
 ```
 
-> **_NOTE:_** QLoRA is currently an experimental feature designed to reduce the memory footprint during training. Deployment functionality is not yet available.
+After performing QLoRA training the final checkpoint can be exported for deployment with vLLM using the following command.
+
+```sh
+python export.py \
+   --pyt_ckpt_path llama3-fp4-qlora \
+   --export_path llama3-fp4-qlora-hf \
+
+```
+
+To deploy with vLLM, run the following command. For more details about QLoRA deployment using vLLM refer to the documentation [here](https://docs.vllm.ai/en/latest/features/lora.html).
+
+```sh
+vllm serve llama3-fp4-qlora-hf/base_model --enable-lora --lora-modules adapter=llama3-fp4-qlora-hf --port 8000 --tokenizer llama3-fp4-qlora-hf
+```
 
 ## Pre-Quantized Checkpoints
 
