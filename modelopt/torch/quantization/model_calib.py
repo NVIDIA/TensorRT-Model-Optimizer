@@ -81,6 +81,7 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
         return
 
     def sync_quantizer_amax_across_dp(quantizer, parallel_state):
+        """Synchronize the amax across all ranks in the data parallel group."""
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
                 sync_quantizer_amax_across_dp(_q, parallel_state)
@@ -94,7 +95,6 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
             for child in module.children():
                 if isinstance(child, (TensorQuantizer, SequentialQuantizer)):
                     sync_quantizer_amax_across_dp(child, module.parallel_state)
-
     # TP sync:
     # Objective: the quantization parameters when TP = 8 then changed to TP=4 then back to TP=8 should be the same
 
@@ -116,6 +116,7 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
     ):
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
+                "Syncing amax across TP for sequential quantizer"
                 sync_quantizer_amax_across_tp(
                     _q, linear_name, quantizer_type, axes_for_sync, parallel_state
                 )
@@ -598,19 +599,32 @@ def awq_lite(
     # This will also perform distributed amax sync for input_quantizers
     max_calibrate(model, lambda model: None)
 
+    def sync_act_scale_across_dp(module, data_parallel_group):
+        """Sync activation scale across Data Parallel (DP)."""
+        if data_parallel_group.is_initialized():
+            dist.all_reduce(
+                module.awq_lite.act_scale, op=dist.ReduceOp.AVG, group=data_parallel_group.group
+            )
+
     for name, module in model.named_modules():
         if (
             is_quantized_linear(module)
             and hasattr(module, "awq_lite")
             and module.awq_lite.num_cache_steps > 0
         ):
+            # Hack: MoEs forward all tokens through all experts if _if_calib is True
+            module._if_calib = True
             module.awq_lite.act_scale = module.awq_lite.act_scale / module.awq_lite.num_cache_steps
+
             if torch.any(torch.isnan(module.awq_lite.act_scale)) or torch.any(
                 torch.isnan(module.awq_lite.weight_scale)
             ):
                 module.awq_lite.is_enabled = False
-            # Hack: MoEs forward all tokens through all experts if _if_calib is True
-            module._if_calib = True
+            else:
+                sync_act_scale_across_dp(
+                    module,
+                    module.parallel_state.data_parallel_group,
+                )
 
     AWQLiteHelper.cache_mode = False
     print_rank_0("awq_lite: Searching parameters...")

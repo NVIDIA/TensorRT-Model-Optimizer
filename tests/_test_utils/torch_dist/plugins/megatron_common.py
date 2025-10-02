@@ -83,9 +83,10 @@ except ImportError as e:
 
 
 class MegatronModel(MegatronModule):
-    def __init__(self, tp_size: int = 1, use_te_norm: bool = False):
+    def __init__(self, tp_size: int = 1, cp_size: int = 1, use_te_norm: bool = False):
         config = TransformerConfig(
             tensor_model_parallel_size=tp_size,
+            context_parallel_size=cp_size,
             pipeline_model_parallel_size=1,
             normalization="LayerNorm",
             # Unused parameters below are set to avoid ZeroDivisionError in __post_init__
@@ -126,7 +127,11 @@ class MegatronModel(MegatronModule):
                 x = x[0]
         return x
 
-    def get_dummy_input(self) -> torch.Tensor:
+    def get_dummy_input(self, seed: int | None = None) -> torch.Tensor:
+        if seed is not None:
+            gen = torch.Generator()
+            gen.manual_seed(seed)
+            return torch.randn(1, 4, 32, generator=gen)
         return torch.randn(1, 4, 32)
 
 
@@ -383,13 +388,20 @@ def run_mcore_inference_with_dummy_input(
 
 
 def initialize_for_megatron(
-    tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=1234
+    tensor_model_parallel_size=1,
+    pipeline_model_parallel_size=1,
+    seed=1234,
+    context_parallel_size=1,
 ):
     """Initialize Megatron model parallelism.
 
     NOTE: If used in a non-spawned process, make sure to call `megatron.core.parallel_state.destroy_model_parallel()`.
     """
-    initialize_model_parallel(tensor_model_parallel_size, pipeline_model_parallel_size)
+    initialize_model_parallel(
+        tensor_model_parallel_size,
+        pipeline_model_parallel_size,
+        context_parallel_size=context_parallel_size,
+    )
     model_parallel_cuda_manual_seed(seed)
 
 
