@@ -199,7 +199,7 @@ def _test_data_tensor_context_parallel_helper(config, rank, size):
 )
 def test_data_tensor_context_parallel(need_8_gpus, config):
     spawn_multiprocess_job(
-        size=8, job=partial(_test_data_tensor_context_parallel_helper, config), backend="nccl"
+        size=4, job=partial(_test_data_tensor_context_parallel_helper, config), backend="nccl"
     )
 
 

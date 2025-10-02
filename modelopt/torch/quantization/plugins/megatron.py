@@ -15,6 +15,7 @@
 
 """Support quantization for megatron linear layers."""
 
+import logging
 import warnings
 from typing import Any
 
@@ -38,6 +39,8 @@ from ..nn import QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
+
+logger = logging.getLogger(__name__)
 
 __all__ = []
 
@@ -222,11 +225,11 @@ class _MegatronParallelLinear(_ParallelLinear):
         try:
             data_parallel_group = get_data_parallel_group(with_context_parallel=True)
         except AssertionError:
+            logger.warning("Context parallel group is not initialized, using data parallel group")
             data_parallel_group = get_data_parallel_group()
         self.parallel_state = ParallelState(
             data_parallel_group,
             mcore_parallel.get_tensor_model_parallel_group(),
-            mcore_parallel.get_context_parallel_group(),
         )
         super()._setup()
 

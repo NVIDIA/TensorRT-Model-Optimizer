@@ -127,7 +127,11 @@ class MegatronModel(MegatronModule):
                 x = x[0]
         return x
 
-    def get_dummy_input(self) -> torch.Tensor:
+    def get_dummy_input(self, seed: int | None = None) -> torch.Tensor:
+        if seed is not None:
+            gen = torch.Generator()
+            gen.manual_seed(seed)
+            return torch.randn(1, 4, 32, generator=gen)
         return torch.randn(1, 4, 32)
 
 

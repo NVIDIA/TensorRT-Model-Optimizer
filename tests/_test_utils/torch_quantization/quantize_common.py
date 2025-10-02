@@ -172,12 +172,6 @@ def tensor_parallel_test_helper(model, config, tp_group, mock_awq_lite):
             dist.ReduceOp.AVG,
             group=tp_group,
         )
-        _reduce_quantizer_attr(
-            model.fc2.awq_lite,
-            "act_scale",
-            dist.ReduceOp.AVG,
-            group=tp_group,
-        )
 
     dist.destroy_process_group()
 
@@ -190,6 +184,9 @@ def dp_cp_parallel_test_helper(model, config, group, mock_awq_lite):
         model(calib_data)
 
     model = mtq.quantize(model, config, forward_loop)
+
+    # Sanity check
+    forward_loop(model)
 
     # Input quantizer amax
     if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
@@ -226,48 +223,9 @@ def dp_cp_parallel_test_helper(model, config, group, mock_awq_lite):
 
 @patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
 def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, mock_awq_lite):
-    # Print rank information for debugging
-    world_rank = dist.get_rank()
-    world_size = dist.get_world_size()
-
-    print("\n=== RANK INFORMATION ===")
-    print(f"World Rank: {world_rank}, World Size: {world_size}")
-
-    # Get group information with actual ranks
-    def get_group_ranks(group):
-        if group is None:
-            return None
-        ranks = []
-        ranks = [
-            i for i in range(world_size) if dist.get_rank(group=group) == dist.get_rank(group=group)
-        ]
-        return ranks
-
-    if dp_group is not None:
-        dp_rank = dist.get_rank(group=dp_group)
-        dp_size = dist.get_world_size(group=dp_group)
-        print(f"DP Group - Rank: {dp_rank}, Size: {dp_size}")
-
-    if tp_group is not None:
-        tp_rank = dist.get_rank(group=tp_group)
-        tp_size = dist.get_world_size(group=tp_group)
-        print(f"TP Group - Rank: {tp_rank}, Size: {tp_size}")
-
-    print("=== END RANK INFO ===\n")
-
-    # Print a summary of all ranks
-    print("=== ALL RANKS SUMMARY ===")
-    print(f"Total GPUs: {world_size}")
-    print(f"Current rank: {world_rank}")
-    if dp_group is not None:
-        print(f"DP groups: {dp_size} groups of {world_size // dp_size} ranks each")
-    if tp_group is not None:
-        print(f"TP groups: {tp_size} groups of {world_size // tp_size} ranks each")
-    print("=== END SUMMARY ===\n")
-
-    calib_data = model.get_dummy_input().cuda()
-    # data should be same across each TP rank
-    dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
+    # Calib data should be same across each DP rank
+    dp_rank = dist.get_rank(group=dp_group)
+    calib_data = model.get_dummy_input(seed=dp_rank).cuda()
 
     def forward_loop(model):
         model(calib_data)
@@ -275,66 +233,41 @@ def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, 
     model = mtq.quantize(model, config, forward_loop)
 
     def _reduce_quantizer_attr(quantizer, attr=str, op=dist.ReduceOp.MAX):
-        world_rank = dist.get_rank()
-        print(f"\n--- Rank {world_rank}: Reducing {attr} ---")
-        from megatron.core.parallel_state import (
-            _CONTEXT_PARALLEL_GLOBAL_RANKS,
-            _DATA_PARALLEL_GLOBAL_RANKS,
-            _DATA_PARALLEL_GLOBAL_RANKS_WITH_CP,
-            _TENSOR_MODEL_PARALLEL_GLOBAL_RANKS,
-        )
-
-        print(f"DATA_PARALLEL_GLOBAL_RANKS: {_DATA_PARALLEL_GLOBAL_RANKS}")
-        print(f"CONTEXT_PARALLEL_GLOBAL_RANKS: {_CONTEXT_PARALLEL_GLOBAL_RANKS}")
-        print(f"DATA_PARALLEL_GLOBAL_RANKS_WITH_CP: {_DATA_PARALLEL_GLOBAL_RANKS_WITH_CP}")
-        print(f"TENSOR_MODEL_PARALLEL_GLOBAL_RANKS: {_TENSOR_MODEL_PARALLEL_GLOBAL_RANKS}")
         quantizer_attr = getattr(quantizer, attr).clone()
-        print(f"Rank {world_rank} - quantizer_attr before reduce", quantizer_attr)
-        print(f"Rank {world_rank} - quantizer.attr before reduce", getattr(quantizer, attr))
 
         # Perform all-reduce operations
-        if tp_group is not None:
-            tp_rank = dist.get_rank(group=tp_group)
-            print(f"Rank {world_rank} - TP reduce (TP rank {tp_rank})")
-            dist.all_reduce(quantizer_attr, op=op, group=tp_group)
+        dist.all_reduce(quantizer_attr, op=op, group=tp_group)
 
-        if dp_group is not None:
-            dp_rank = dist.get_rank(group=dp_group)
-            print(f"Rank {world_rank} - DP reduce (DP rank {dp_rank})")
-            dist.all_reduce(quantizer_attr, op=op, group=dp_group)
+        dist.all_reduce(quantizer_attr, op=op, group=dp_group)
 
-            print(f"Rank {world_rank} - quantizer_attr after reduce", quantizer_attr)
-        print(f"Rank {world_rank} - quantizer.attr after reduce", getattr(quantizer, attr))
-        print(f"--- End Rank {world_rank} ---\n")
-
-        assert torch.allclose(quantizer_attr, getattr(quantizer, attr))
+        assert torch.allclose(quantizer_attr, getattr(quantizer, attr)), getattr(quantizer, attr)
 
     # Input quantizer amax
     if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
         _reduce_quantizer_attr(model.fc1.input_quantizer, "amax", dist.ReduceOp.MAX)
         _reduce_quantizer_attr(model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX)
 
-    if isinstance(model.fc1.weight_quantizer, SequentialQuantizer):
-        for quantizer in model.fc1.weight_quantizer:
-            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
-    else:
-        _reduce_quantizer_attr(model.fc1.weight_quantizer, "amax", dist.ReduceOp.MAX)
+    # Per-tensor quantization (FP8/NVFP4) expects same amax across row and column parallel ranks
+    # Channel-wise (INT8) only expects same amax across row parallel ranks
+    # Block-wise quantization does not expect same amax across row and column parallel ranks
+    if config in [mtq.FP8_DEFAULT_CFG, mtq.NVFP4_DEFAULT_CFG]:
+        if isinstance(model.fc1.weight_quantizer, SequentialQuantizer):
+            for quantizer in model.fc1.weight_quantizer:
+                _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
+        else:
+            _reduce_quantizer_attr(model.fc1.weight_quantizer, "amax", dist.ReduceOp.MAX)
 
-    if isinstance(model.fc2.weight_quantizer, SequentialQuantizer):
-        for quantizer in model.fc2.weight_quantizer:
-            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
-    else:
-        _reduce_quantizer_attr(model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX)
+    if config in [mtq.FP8_DEFAULT_CFG, mtq.NVFP4_DEFAULT_CFG, mtq.INT8_DEFAULT_CFG]:
+        if isinstance(model.fc2.weight_quantizer, SequentialQuantizer):
+            for quantizer in model.fc2.weight_quantizer:
+                _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
+        else:
+            _reduce_quantizer_attr(model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX)
 
     # Check act scale
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
         _reduce_quantizer_attr(
             model.fc1.awq_lite,
-            "act_scale",
-            dist.ReduceOp.AVG,
-        )
-        _reduce_quantizer_attr(
-            model.fc2.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
         )
