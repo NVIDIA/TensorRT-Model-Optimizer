@@ -232,7 +232,6 @@ class _MegatronParallelLinear(_ParallelLinear):
         self.parallel_state = ParallelState(
             data_parallel_group,
             mcore_parallel.get_tensor_model_parallel_group(),
-            mcore_parallel.get_context_parallel_group(),
         )
         super()._setup()
 
