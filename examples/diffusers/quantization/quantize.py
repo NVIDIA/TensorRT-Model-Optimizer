@@ -939,7 +939,7 @@ def main() -> None:
             backbone,
             model_config.model_type,
             quant_config.format,
-            quantize_mha=QuantizationConfig.quantize_mha,
+            quantize_mha=quant_config.quantize_mha,
         )
         logger.info("Quantization process completed successfully!")
 

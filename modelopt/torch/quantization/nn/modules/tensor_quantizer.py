@@ -619,6 +619,29 @@ class TensorQuantizer(nn.Module):
         self._dequantize = True
         return outputs
 
+    def _get_block_sizes_list(self, shape):
+        """Convert block_sizes dict to list format based on tensor shape.
+
+        Args:
+            shape: The tensor shape to use for conversion (can be tuple or torch.Size)
+
+        Returns:
+            List of block sizes for each dimension, or None if block_sizes is None
+
+        Example:
+            block_sizes = {-2: 32} with shape [2, 24, 4608, 128] -> [1, 1, 32, 1]
+        """
+        if self.block_sizes is None:
+            return None
+
+        block_sizes_list = []
+        for dim in range(len(shape)):
+            # Check both positive and negative dimension indices
+            dim_negative = dim - len(shape)
+            block_size = self.block_sizes.get(dim, None) or self.block_sizes.get(dim_negative, None)
+            block_sizes_list.append(block_size if block_size is not None else 1)
+        return block_sizes_list
+
     def _fake_quantize(self, inputs):
         """Fake quantization."""
         amax = None
@@ -626,7 +649,7 @@ class TensorQuantizer(nn.Module):
             amax = self._get_amax(inputs)
 
         if self.block_sizes is not None and self.block_sizes.get("type", "static") == "dynamic":
-            # Block quantization, including dynamic and static block quantization
+            # Double scale Block quantization, including dynamic and static block quantization
             block_size = self.block_sizes.get(-1, None) or self.block_sizes.get(
                 inputs.dim() - 1, None
             )
@@ -648,6 +671,10 @@ class TensorQuantizer(nn.Module):
             # Float-point quantization, e.g., FP8
             E, M = self._num_bits  # noqa: N806
 
+            # Convert block_sizes dict to list format
+            # Use original input shape if available (before reshaping), otherwise use current shape
+            shape_for_block_sizes = getattr(self, "_original_input_shape", inputs.shape)
+            block_sizes_list = self._get_block_sizes_list(shape_for_block_sizes)
             outputs = scaled_e4m3(
                 inputs,
                 amax,
@@ -656,6 +683,7 @@ class TensorQuantizer(nn.Module):
                 M,
                 self._trt_high_precision_dtype,
                 self._pass_through_bwd,
+                block_sizes_list,
             )
 
         else:
@@ -901,9 +929,10 @@ class TensorQuantizer(nn.Module):
             and self.block_sizes.get("type", None) != "dynamic"
             and self._fake_quant
         ):
-            # Tensor reshaping is required for static block quantization
-            # Tensor shapes are handled separately by the quantization kernels for dynamic block quantization
+            # Reshape is required if the logic is not handled in the simulation kernel
+            # Only MX format and NVFP4 reshape are currently supported by the kernel.
             self._setup_for_blockquant(inputs)
+            setattr(self, "_original_input_shape", inputs.shape)
             inputs = self._process_for_blockquant(inputs)
 
         outputs = inputs
@@ -943,6 +972,8 @@ class TensorQuantizer(nn.Module):
         ):
             outputs = self._reset_to_original_shape(outputs)
 
+        if hasattr(self, "_original_input_shape"):
+            delattr(self, "_original_input_shape")
         return outputs
 
     def _short_amax(self, fmt=".4f"):
