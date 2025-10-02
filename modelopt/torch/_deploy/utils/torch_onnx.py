@@ -48,6 +48,7 @@ from modelopt.onnx.utils import (
     remove_node_training_mode,
 )
 from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
+from modelopt.torch.quantization.tensor_quant import DynamicBlockQuantizationFunction
 from modelopt.torch.utils import flatten_tree, standardize_named_model_args
 from modelopt.torch.utils._pytree import TreeSpec
 
@@ -430,8 +431,16 @@ def get_onnx_bytes_and_metadata(
         if is_fp4_quantized(model) or is_mxfp8_quantized(model)
         else nullcontext()
     )
+
     with torch.inference_mode(), autocast, quantizer_context:
         additional_kwargs = {}
+        if dynamo_export:
+            dynamic_block_quantize_export = (
+                DynamicBlockQuantizationFunction.dynamic_block_quantize_export
+            )
+            additional_kwargs["custom_translation_table"] = {
+                torch.ops.tensorrt.dynamic_block_quantize_op.default: dynamic_block_quantize_export,
+            }
         if dynamic_axes and Version(torch.__version__) >= Version("2.8"):
             additional_kwargs["dynamic_axes"] = dynamic_axes
 

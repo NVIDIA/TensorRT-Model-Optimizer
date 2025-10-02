@@ -501,6 +501,35 @@ class DynamicBlockQuantizationFunction(Function):
     """Dynamic block quantization functional."""
 
     @staticmethod
+    def dynamic_block_quantize_export(
+        g,  # To be removed
+        inputs,
+        block_size,
+        amax,
+        num_bits,
+        exponent_bits,
+        scale_num_bits,
+        scale_exponent_bits,
+    ):
+        """ONNX translation for dynamic_block_quantize_op for dynamo export."""
+        from .export_onnx import export_fp4, export_mxfp8
+
+        # Convert to tuple format expected by export functions
+        scale_bits = (scale_exponent_bits, scale_num_bits - scale_exponent_bits - 1)
+        if exponent_bits != 0:
+            num_bits_tuple = (exponent_bits, num_bits - exponent_bits - 1)
+        else:
+            num_bits_tuple = num_bits
+        if num_bits_tuple == (2, 1) and scale_bits == (4, 3):
+            return export_fp4(g, inputs, block_size, amax, num_bits_tuple, None, "dynamic")
+        elif num_bits_tuple == (4, 3) and scale_bits == (8, 0):
+            return export_mxfp8(g, inputs, "dynamic", block_size)
+        else:
+            raise NotImplementedError(
+                f"Unsupported num_bits: {num_bits_tuple} and scale_bits: {scale_bits} for ONNX export."
+            )
+
+    @staticmethod
     @symbolic_helper.parse_args("v", "i", "v", "t", "is", "is", "s", "s", "b")
     def symbolic(
         g,
