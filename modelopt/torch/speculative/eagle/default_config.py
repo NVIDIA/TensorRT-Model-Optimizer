@@ -47,5 +47,5 @@ default_eagle_config = {
     "use_mtp_layernorm": False,
     "parallel_draft_step": 1,
     "has_lm_head": False,
-    "head_dim": 64,
+    "head_dim": 128,
 }
