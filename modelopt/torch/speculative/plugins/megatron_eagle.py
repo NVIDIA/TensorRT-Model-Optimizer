@@ -1404,6 +1404,8 @@ class _DynamicEagleGPTModel(EagleModel):
             )
             if self.config.sequence_parallel:
                 gathered_embedding = gather_from_sequence_parallel_region(eagle_inputs["embedding"])
+            else:
+                gathered_embedding = eagle_inputs["embedding"]
             if self.eagle_config.parallel_draft_step > 1:
                 # Replace dummy hidden_states with embedding for mask tokens
                 padded_hidden_states[
