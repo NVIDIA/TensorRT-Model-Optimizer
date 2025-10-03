@@ -66,13 +66,13 @@ class BaseDistillTrainer:
 
         # Prepare models
         if rank in args.student_ranks:
-            self.model = self.prepare_student_model()
+            self.model = self._prepare_student_model()
             self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.lr)
             self.scheduler = get_linear_schedule_with_warmup(
                 self.optimizer, num_warmup_steps=0, num_training_steps=117380
             )
         else:
-            self.model = self.prepare_teacher_model()
+            self.model = self._prepare_teacher_model()
         self._print_model_placement(self.model)
 
     def _print_model_placement(self, module):
@@ -95,11 +95,11 @@ class BaseDistillTrainer:
         """Return a DistillMetadata that describe the distillation message received by student."""
 
     @abstractmethod
-    def prepare_teacher_model(self):
+    def _prepare_teacher_model(self):
         """Return coverted teacher model with correct parallelization."""
 
     @abstractmethod
-    def prepare_student_model(self):
+    def _prepare_student_model(self):
         """Return coverted student model with correct parallelization."""
 
     @abstractmethod
@@ -272,43 +272,7 @@ class EagleTPTrainer(BaseDistillTrainer):
         else:
             return self.args.teacher_devices[self.rank - len(self.args.student_ranks)]
 
-    @property
-    def distill_metadata(self) -> DistillMetadata:
-        """Description of the distillation signal received by student."""
-        return {
-            "base_model_hidden_states": (
-                torch.Size(
-                    [
-                        int(self.args.batch_size / len(self.args.student_ranks)),
-                        self.args.training_seq_len,
-                        2048,
-                    ]
-                ),
-                torch.bfloat16,
-            ),
-            "aux_hidden_states": (
-                torch.Size(
-                    [
-                        int(self.args.batch_size / len(self.args.student_ranks)),
-                        self.args.training_seq_len,
-                        2048 * 3,
-                    ]
-                ),
-                torch.bfloat16,
-            ),
-            "base_model_logits": (
-                torch.Size(
-                    [
-                        int(self.args.batch_size / len(self.args.student_ranks)),
-                        self.args.training_seq_len,
-                        self.args.draft_vocab_size,
-                    ]
-                ),
-                torch.bfloat16,
-            ),
-        }
-
-    def prepare_teacher_model(self):
+    def _prepare_teacher_model(self):
         # Load model with TP among teacher ranks.
         model = AutoModelForCausalLM.from_pretrained(
             self.args.model_path,
@@ -324,12 +288,11 @@ class EagleTPTrainer(BaseDistillTrainer):
                 "draft_vocab_size": model.config.vocab_size,
             }
         )
-        self.args.draft_vocab_size = model.config.vocab_size
         mtsp.convert(model, [("eagle", self.args.eagle_config)])
         model.eval()
         return model
 
-    def prepare_student_model(self):
+    def _prepare_student_model(self):
         # Load to CPU first to avoid OOM
         model = AutoModelForCausalLM.from_pretrained(
             self.args.model_path, torch_dtype="auto", device_map="cpu"
@@ -342,7 +305,6 @@ class EagleTPTrainer(BaseDistillTrainer):
                 "draft_vocab_size": model.config.vocab_size,
             }
         )
-        self.args.draft_vocab_size = model.config.vocab_size
         mtsp.convert(
             model,
             [("eagle", self.args.eagle_config)],
@@ -360,6 +322,42 @@ class EagleTPTrainer(BaseDistillTrainer):
             find_unused_parameters=True,
         )
         return model
+
+    @property
+    def distill_metadata(self) -> DistillMetadata:
+        """Description of the distillation signal received by student."""
+        return {
+            "base_model_hidden_states": (
+                torch.Size(
+                    [
+                        int(self.args.batch_size / len(self.args.student_ranks)),
+                        self.args.training_seq_len,
+                        self.args.eagle_config["eagle_architecture_config"]["hidden_size"],
+                    ]
+                ),
+                torch.bfloat16,
+            ),
+            "aux_hidden_states": (
+                torch.Size(
+                    [
+                        int(self.args.batch_size / len(self.args.student_ranks)),
+                        self.args.training_seq_len,
+                        self.args.eagle_config["eagle_architecture_config"]["hidden_size"] * 3,
+                    ]
+                ),
+                torch.bfloat16,
+            ),
+            "base_model_logits": (
+                torch.Size(
+                    [
+                        int(self.args.batch_size / len(self.args.student_ranks)),
+                        self.args.training_seq_len,
+                        self.args.eagle_config["eagle_architecture_config"]["draft_vocab_size"],
+                    ]
+                ),
+                torch.bfloat16,
+            ),
+        }
 
     def teacher_step(self, model, inputs):
         # Collect base model outputs.
