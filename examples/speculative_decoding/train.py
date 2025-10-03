@@ -92,7 +92,7 @@ def main():
     # TODO: add sanity check for args
 
     def set_ranks(args):
-        # TODO(hg): add "no-parallel", "MP", "FSDP".
+        # TODO(hg): This is for TP-DDP setting only. Add "no-parallel", "MP", "FSDP".
         args.world_size = len(args.teacher_devices) + len(args.student_devices)
         args.student_ranks = list(range(len(args.student_devices)))
         args.teacher_ranks = list(

@@ -49,7 +49,8 @@ DistillMetadata = dict[str, tuple[torch.Size, torch.dtype]]
 
 class BaseDistillTrainer:
     """
-    Base class for distillation trainer. Initalized and called on every rank.
+    Base distill trainer with basic training loop and overlapped teacher and student steps.
+    Initalized and called on every rank.
     Args:
         rank: rank of the current process
         args: arguments
@@ -252,6 +253,8 @@ class BaseDistillTrainer:
 
 
 class EagleTPTrainer(BaseDistillTrainer):
+    """A subclass of BaseDistillTrainer for online eagle training, with base model TP and student DDP."""
+
     def __init__(self, rank, args, tokenizer, dataloader):
         # Load eagle config
         args.eagle_config = EAGLE3_DEFAULT_CFG["config"]
