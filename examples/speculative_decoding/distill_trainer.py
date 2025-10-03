@@ -17,6 +17,7 @@ import os
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from abc import abstractmethod
+from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
@@ -24,10 +25,17 @@ from torch.distributed.device_mesh import DeviceMesh
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 from transformers.optimization import get_linear_schedule_with_warmup
+from transformers.utils import ModelOutput
 
 import modelopt.torch.opt as mto
 import modelopt.torch.speculative as mtsp
 from modelopt.torch.speculative.config import EAGLE3_DEFAULT_CFG
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 
 mto.enable_huggingface_checkpointing()
 
@@ -51,12 +59,13 @@ class BaseDistillTrainer:
         student_step: student step function.
     """
 
-    def __init__(self, rank, args, tokenizer):
+    def __init__(self, rank, args, tokenizer, dataloader):
         self.rank = rank
         args.teacher_pgroup = dist.new_group(ranks=args.teacher_ranks)
         args.student_pgroup = dist.new_group(ranks=args.student_ranks)
         self.args = args
         self.tokenizer = tokenizer
+        self.dataloader = dataloader
         if rank in args.student_ranks:
             self.model = self.prepare_student_model()
             self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.lr)
@@ -71,14 +80,6 @@ class BaseDistillTrainer:
         for name, param in module.named_parameters():
             print(f"(Rank {self.rank}) {name}  --->  {param.device} ")
 
-    @property
-    def current_rank_device(self):
-        pass
-
-    @property
-    def distill_metadata(self):
-        pass
-
     def _reset_all_mem_stats(self):
         torch.cuda.reset_max_memory_allocated(self.current_rank_device)
 
@@ -86,31 +87,42 @@ class BaseDistillTrainer:
         max_mem = torch.cuda.max_memory_allocated(self.current_rank_device)
         print(f"GPU {self.current_rank_device}: Max memory allocated: {max_mem / 1024**3:.2f} GB")
 
-    @abstractmethod
-    def load_teacher_model(self):
-        pass
+    @property
+    def current_rank_device(self):
+        """Return device of the current rank."""
+
+    @property
+    def distill_metadata(self):
+        """Return a DistillMetadata that describe the distillation message received by student."""
 
     @abstractmethod
-    def load_student_model(self):
-        pass
+    def prepare_teacher_model(self):
+        """Return coverted teacher model with correct parallelization."""
 
     @abstractmethod
-    def teacher_step(self, *args, **kwargs) -> dict[str, torch.Tensor]:
-        pass
+    def prepare_student_model(self):
+        """Return coverted student model with correct parallelization."""
 
     @abstractmethod
-    def student_step(self, *args, **kwargs):
-        pass
+    def teacher_step(self, *args, **kwargs) -> list[dict[str, torch.Tensor]]:
+        """Run one student step and return distillation messages for each student rank."""
 
-    def save_pretrained(self, path=None):
+    @abstractmethod
+    def student_step(self, *args, **kwargs) -> ModelOutput:
+        """Run forward of student step, return a modeloutput object."""
+
+    def save_pretrained(self, save_path):
+        """Save the model and tokenizer."""
         if self.rank == self.args.student_ranks[0]:
-            path = self.args.out_path if path is None else path
-            self.model.save_pretrained(path)
-            self.tokenizer.save_pretrained(path)
-            print(f"Pretrained model saved to {path}")
+            if isinstance(self.model, torch.nn.parallel.DistributedDataParallel):
+                self.model.module.save_pretrained(save_path)
+            else:
+                self.model.save_pretrained(save_path)
+            self.tokenizer.save_pretrained(save_path)
+            print(f"Pretrained model saved to {save_path}")
 
     def _check_valid_message(self, message: dict[str, torch.Tensor]):
-        # Check if keys and length match between message and distill_metadata
+        """Check if message in the format of distill_metadata."""
         if set(message.keys()) != set(self.distill_metadata.keys()):
             raise ValueError(
                 f"Message keys: {set(message.keys())} \n"
@@ -142,8 +154,8 @@ class BaseDistillTrainer:
         for req in reqs:
             req.wait()
 
-    def _get_distill_kwargs(self):
-        """Return a copy of received buffer for student training."""
+    def _clone_recv_buffer(self):
+        """Return a copy of received tensors for student step input."""
         return {k: v.clone().detach() for k, v in self.student_recv_buffer.items()}
 
     def _send_to_student(self, teacher_outputs):
@@ -160,49 +172,63 @@ class BaseDistillTrainer:
             for req in reqs:
                 req.wait()
 
-    def train(self, dataloader):
+    def _get_logging_context(self):
+        print(
+            f"Rank {self.rank} is logging: {wandb is not None and self.rank == self.args.student_ranks[0]}"
+        )
+        if wandb is not None and self.rank == self.args.student_ranks[0]:
+            return wandb.init(
+                entity=os.environ["WANDB_ENTITY"],
+                project=os.environ["WANDB_PROJECT"],
+                config={"epochs": EPOCHS, "lr": self.args.lr, "batch_size": self.args.batch_size},
+            )
+        return nullcontext()
+
+    def train(self):
         """Main training entrance of the composed model."""
         self._reset_all_mem_stats()
 
         if self.rank in self.args.student_ranks:
-            import wandb
-
-            wandb.login()
-
-            with wandb.init(
-                entity=os.environ["WANDB_ENTITY"],
-                project=os.environ["WANDB_PROJECT"],
-                config={"epochs": EPOCHS, "lr": self.args.lr, "batch_size": self.args.batch_size},
-            ) as run:
+            with self._get_logging_context() as run:
                 self._init_student_recv_buffer()
-                wandb.watch(self.model, log="all")
 
+                # Student training loop
                 for epoch in range(EPOCHS):
                     pbar = (
-                        tqdm(dataloader) if self.rank == self.args.student_ranks[0] else dataloader
+                        tqdm(self.dataloader)
+                        if self.rank == self.args.student_ranks[0]
+                        else self.dataloader
                     )
                     for i, batch in enumerate(pbar):
-                        global_step = epoch * len(dataloader) + i
+                        global_step = epoch * len(self.dataloader) + i
                         inputs = {k: v.to(self.model.device) for k, v in batch.items()}
-                        self._recv_from_teacher()
-                        loss, train_acc = self.student_step(inputs, **self._get_distill_kwargs())
 
+                        # Receive distill messages from teacher
+                        self._recv_from_teacher()
+
+                        # Run forward of student step
+                        output = self.student_step(inputs, **self._clone_recv_buffer())
+                        loss = output.loss
+
+                        # Run backward step
+                        loss.backward()
+                        self.optimizer.step()
+                        self.scheduler.step()
+
+                        # Log and save only on student rank 0
                         if self.rank != self.args.student_ranks[0]:
                             continue
 
-                        pbar.set_description(f"Epoch {epoch} Loss:{loss} Acc:{train_acc}")
+                        train_metrics = {
+                            "loss": round(loss.item(), 3),
+                            "lr": self.optimizer.param_groups[0]["lr"],
+                            # Attach all float metrics
+                            **{k: round(v, 3) for k, v in output.items() if isinstance(v, float)},
+                        }
+
+                        pbar.set_description(f"Epoch {epoch} Loss {train_metrics['loss']}")
                         if global_step % LOG_INTERVAL == 0:
-                            run.log(
-                                {
-                                    "loss": loss,
-                                    "train_acc_step0": train_acc[0],
-                                    "train_acc_step1": train_acc[1],
-                                    "train_acc_step2": train_acc[2],
-                                    "train_acc_step3": train_acc[3],
-                                    "lr": self.optimizer.param_groups[0]["lr"],
-                                },
-                                step=global_step,
-                            )
+                            run.log(train_metrics, step=global_step)
                         if global_step > 0 and global_step % SAVE_INTERVAL == 0:
                             self.save_pretrained(
                                 f"{self.args.out_path}/epoch_{epoch}_step_{global_step}"
@@ -211,13 +237,10 @@ class BaseDistillTrainer:
         else:
             # Inference Loop
             for epoch in range(EPOCHS):
-                for i, batch in enumerate(dataloader):
-                    global_step = epoch * len(dataloader) + i
+                for i, batch in enumerate(self.dataloader):
                     inputs = {k: v.to(self.model.device) for k, v in batch.items()}
-                    inputs["position_ids"] = None
                     with torch.inference_mode():
-                        teacher_outputs = self.teacher_step(self.model, inputs)
-                        self._send_to_student(teacher_outputs)
+                        self._send_to_student(self.teacher_step(self.model, inputs))
 
         self._print_mem_stats()
         # Makesure all processes finished before destroy.
@@ -227,14 +250,15 @@ class BaseDistillTrainer:
 
 
 class EagleTPTrainer(BaseDistillTrainer):
-    def __init__(self, rank, args, tokenizer):
+    def __init__(self, rank, args, tokenizer, dataloader):
+        # Load eagle config
         args.eagle_config = EAGLE3_DEFAULT_CFG["config"]
         if args.eagle_config_path:
             with open(args.eagle_config_path) as f:
                 custom_config = json.load(f)
             args.eagle_config["eagle_architecture_config"].update(custom_config)
 
-        super().__init__(rank, args, tokenizer)
+        super().__init__(rank, args, tokenizer, dataloader)
 
     @property
     def current_rank_device(self):
@@ -245,6 +269,7 @@ class EagleTPTrainer(BaseDistillTrainer):
 
     @property
     def distill_metadata(self) -> DistillMetadata:
+        """Description of the distillation signal received by student."""
         return {
             "base_model_hidden_states": (
                 torch.Size(
@@ -279,12 +304,14 @@ class EagleTPTrainer(BaseDistillTrainer):
         }
 
     def prepare_teacher_model(self):
+        # Load model with TP among teacher ranks.
         model = AutoModelForCausalLM.from_pretrained(
             self.args.model_path,
             torch_dtype="auto",
             tp_plan="auto",
             device_mesh=DeviceMesh.from_group(self.args.teacher_pgroup, "cuda"),
         )
+        # load eagle config and convert.
         self.args.eagle_config["eagle_architecture_config"].update(
             {
                 "hidden_size": model.config.hidden_size,
@@ -298,7 +325,6 @@ class EagleTPTrainer(BaseDistillTrainer):
         return model
 
     def prepare_student_model(self):
-        """Load student model on a single device and keep needed modules from teacher."""
         # Load to CPU first to avoid OOM
         model = AutoModelForCausalLM.from_pretrained(
             self.args.model_path, torch_dtype="auto", device_map="cpu"
@@ -331,15 +357,19 @@ class EagleTPTrainer(BaseDistillTrainer):
         return model
 
     def teacher_step(self, model, inputs):
+        # Collect base model outputs.
         base_model_hidden_states, base_model_logits, _, _ = model._base_model_forward(
             **inputs,
             freeze_base_model=True,
             past_key_values=None,
         )
-        # aux_hidden_states could be on multiple devices. Gather them and cat.
+
+        # Aux_hidden_states could be on multiple devices. Gather before cat.
         aux_hidden_states = torch.cat(
             [t.to(base_model_logits.device) for t in model.pop_aux_hidden_states()], dim=-1
         )
+
+        # Chunk the tensors for each student rank.
         base_model_hidden_states = base_model_hidden_states.chunk(len(self.args.student_ranks))
         base_model_logits = base_model_logits.chunk(len(self.args.student_ranks))
         aux_hidden_states = aux_hidden_states.chunk(len(self.args.student_ranks))
@@ -356,28 +386,12 @@ class EagleTPTrainer(BaseDistillTrainer):
     def student_step(
         self,
         inputs,
-        base_model_hidden_states,
-        aux_hidden_states,
-        base_model_logits,
-    ):
+        **distill_msgs,
+    ) -> ModelOutput:
         self.optimizer.zero_grad()
-        # Second stage forward using the unified model
-        inputs = {k: v.chunk(len(self.args.student_ranks))[self.rank] for k, v in inputs.items()}
-        output = self.model(
-            **inputs,
-            # providing base model outputs to bypass the base model forward.
-            base_model_outputs={
-                "base_model_hidden_states": base_model_hidden_states,
-                "aux_hidden_states": aux_hidden_states.clone().detach(),
-                "base_model_logits": base_model_logits.clone().detach(),
-            },
-        )
-        loss = output.loss
-        # print(f"Rank {self.rank} loss: {loss.item()}")
-        train_acc = output.train_acc
 
-        # Backward
-        loss.backward()
-        self.optimizer.step()
-        self.scheduler.step()
-        return round(loss.item(), 3), train_acc
+        # Chunk inputs for each student rank.
+        inputs = {k: v.chunk(len(self.args.student_ranks))[self.rank] for k, v in inputs.items()}
+
+        # Second stage forward with provided base model outputs.
+        return self.model(**inputs, base_model_outputs=distill_msgs)

@@ -60,9 +60,9 @@ def train(rank, args):
         drop_last=True,
     )
 
-    trainer = EagleTPTrainer(rank, args, tokenizer)
-    trainer.train(train_dataloader)
-    # trainer.save_pretrained("ckpts/fast-trained")
+    trainer = EagleTPTrainer(rank, args, tokenizer, train_dataloader)
+    trainer.train()
+    trainer.save_pretrained(args.out_path)
 
 
 def main():
@@ -104,7 +104,9 @@ def main():
         "--out_path", type=str, default="ckpts/fast-trained", help="Path to save the model."
     )
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
-    parser.add_argument("--batch_size", type=int, default=4, help="Batch size.")
+    parser.add_argument(
+        "--batch_size", type=int, default=4, help="Total batch size across all parallel ranks."
+    )
     parser.add_argument("--master_port", type=str, default="12357", help="Master port.")
 
     args = parser.parse_args()
