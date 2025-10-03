@@ -32,11 +32,7 @@ SparseAttentionCfgType = dict[
 
 
 class SparseAttentionAttributeConfig(ModeloptBaseConfig):
-    """Sparse attention attribute configuration.
-
-    Similar to QuantizerAttributeConfig, this defines the attributes for
-    sparse attention modules.
-    """
+    """Sparse attention attribute configuration for pattern-based module config."""
 
     enable: bool = ModeloptField(
         default=True,
@@ -82,37 +78,48 @@ class SparseAttentionAttributeConfig(ModeloptBaseConfig):
         title="Backend implementation.",
         description=(
             "Backend to use for sparse attention computation. "
-            "'pytorch' uses mask-based approach with softmax patching (compatible everywhere). "
-            "'triton' uses fused skip kernel (faster, requires GPU and Triton)."
+            "Only 'pytorch' is supported, which uses softmax patching with F.softmax. "
+            "Requires model to be loaded with attn_implementation='eager'."
+        ),
+    )
+
+    is_causal: bool = ModeloptField(
+        default=True,
+        title="Causal attention flag.",
+        description=(
+            "Whether the model uses causal (autoregressive) attention. "
+            "If True, sparsity statistics are calculated over the lower triangle only. "
+            "Defaults to True for decoder-only models like GPT, LLaMA, etc."
         ),
     )
 
     calibration: dict | None = ModeloptField(
         default=None,
-        title="Calibration configuration.",
+        title="Calibration configuration",
         description=(
-            "Optional calibration configuration for this pattern. "
-            "If provided, enables automatic threshold calibration."
+            "Calibration settings for this pattern. "
+            "If provided, enables automatic threshold calibration. "
+            "Only one pattern should have calibration enabled."
         ),
     )
 
     @field_validator("method")
     @classmethod
     def validate_method(cls, v):
-        """Validate that method is a registered sparse attention method."""
+        """Validate method is a string."""
         if not isinstance(v, str):
             raise ValueError("method must be a string")
-        # Note: We don't validate against the registry here because it's populated
-        # at import time. Runtime validation happens via get_sparse_method().
         return v
 
     @field_validator("backend")
     @classmethod
     def validate_backend(cls, v):
-        """Validate backend is a supported option."""
-        valid_backends = {"pytorch", "triton"}
-        if v not in valid_backends:
-            raise ValueError(f"Invalid backend: {v}. Valid backends: {valid_backends}")
+        """Validate backend is pytorch."""
+        if v != "pytorch":
+            raise ValueError(
+                f"Invalid backend: {v}. Only 'pytorch' backend is supported. "
+                f"Model must be loaded with attn_implementation='eager'."
+            )
         return v
 
     @field_validator("br", "bc")
@@ -121,20 +128,12 @@ class SparseAttentionAttributeConfig(ModeloptBaseConfig):
         """Validate block sizes are positive integers."""
         if v <= 0:
             raise ValueError(f"Block size must be positive, got {v}")
-        # Block sizes should typically be reasonable (not too large)
-        if v > 1024:
-            import warnings
-
-            warnings.warn(
-                f"Block size {v} is unusually large. "
-                f"Typical Flash Attention block sizes are 64, 128, or 256."
-            )
         return v
 
     @field_validator("threshold")
     @classmethod
     def validate_threshold(cls, v):
-        """Validate threshold is positive number or dict with valid phases."""
+        """Validate threshold is in valid range (0, 1) or dict with valid phases."""
         if isinstance(v, dict):
             # Validate phase keys
             valid_phases = {"prefill", "decode", "default"}
@@ -143,36 +142,25 @@ class SparseAttentionAttributeConfig(ModeloptBaseConfig):
                 raise ValueError(
                     f"Invalid threshold phases: {invalid_keys}. Valid phases: {valid_phases}"
                 )
-            # Validate all values are positive floats
+            # Validate all values are in range (0, 1)
             for phase, threshold in v.items():
-                if not isinstance(threshold, (int, float)) or threshold <= 0:
+                if not isinstance(threshold, (int, float)) or threshold <= 0 or threshold >= 1:
                     raise ValueError(
-                        f"Threshold for phase '{phase}' must be positive, got {threshold}"
+                        f"Threshold for phase '{phase}' must be in range (0, 1), got {threshold}"
                     )
         elif isinstance(v, (int, float)):
-            if v <= 0:
-                raise ValueError(f"Threshold must be positive, got {v}")
+            if v <= 0 or v >= 1:
+                raise ValueError(f"Threshold must be in range (0, 1), got {v}")
         else:
-            raise ValueError(f"Threshold must be a positive number or dict, got {type(v)}")
+            raise ValueError(f"Threshold must be a number in range (0, 1) or dict, got {type(v)}")
         return v
 
 
 class CalibrationConfig(ModeloptBaseConfig):
-    """Configuration for sparse attention calibration.
+    """Configuration for automatic threshold calibration using RULER dataset.
 
-    Simplified configuration for automatic threshold calibration using RULER dataset.
-    Calibration is enabled by the presence of this config in sparse_cfg patterns.
-
-    Examples:
-        # Use all defaults
-        calibration = {}
-
-        # Override specific values
-        calibration = {
-            "target_sparse_ratio": 0.7,
-            "samples": 96,
-            "max_seqlen": 65536,
-        }
+    Calibration learns a dynamic threshold λ = scale_factor / sequence_length that
+    achieves target sparsity. Only supports prefill phase (seq_len > 1).
     """
 
     target_sparse_ratio: float = ModeloptField(
@@ -182,7 +170,7 @@ class CalibrationConfig(ModeloptBaseConfig):
     )
 
     samples: int = ModeloptField(
-        default=48,
+        default=24,
         title="Calibration samples",
         description="Total number of RULER samples for calibration (distributed across length bins).",
     )
@@ -193,17 +181,38 @@ class CalibrationConfig(ModeloptBaseConfig):
         description="Maximum sequence length for calibration (length bins auto-generated as powers of 2).",
     )
 
-    phase: str | None = ModeloptField(
-        default=None,
-        title="Calibration phase",
-        description="Phase to calibrate for: None (both), 'prefill', or 'decode'.",
-    )
-
     num_length_bins: int = ModeloptField(
         default=4,
         title="Number of length bins",
         description="Number of length bins to generate (hidden parameter, default: 4).",
     )
+
+    threshold_trials: list[float] | None = ModeloptField(
+        default=None,
+        title="Threshold trials",
+        description=(
+            "List of threshold values to test during calibration. "
+            "If None, uses default: [1e-6, 5e-6, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1, 5e-1]"
+        ),
+    )
+
+    @field_validator("threshold_trials")
+    @classmethod
+    def validate_threshold_trials(cls, v):
+        """Validate threshold_trials are in valid range."""
+        if v is not None:
+            if not isinstance(v, list):
+                raise ValueError(f"threshold_trials must be a list, got {type(v)}")
+            if len(v) == 0:
+                raise ValueError("threshold_trials must not be empty")
+            for threshold in v:
+                if not isinstance(threshold, (int, float)):
+                    raise ValueError(f"All threshold_trials must be numbers, got {type(threshold)}")
+                if threshold <= 0 or threshold >= 1:
+                    raise ValueError(
+                        f"All threshold_trials must be in range (0, 1), got {threshold}"
+                    )
+        return v
 
     @field_validator("target_sparse_ratio")
     @classmethod
@@ -229,14 +238,6 @@ class CalibrationConfig(ModeloptBaseConfig):
             raise ValueError(f"max_seqlen must be >= 1024, got {v}")
         return v
 
-    @field_validator("phase")
-    @classmethod
-    def validate_phase(cls, v):
-        """Validate phase is supported."""
-        if v is not None and v not in {"prefill", "decode"}:
-            raise ValueError(f"Invalid phase: {v}. Valid phases: None, 'prefill', 'decode'")
-        return v
-
     @field_validator("num_length_bins")
     @classmethod
     def validate_num_length_bins(cls, v):
@@ -258,7 +259,7 @@ SKIP_SOFTMAX_DEFAULT = {
             },
             "br": 128,  # Flash Attention block rows
             "bc": 128,  # Flash Attention block columns
-            "backend": "pytorch",
+            "backend": "pytorch",  # Only pytorch backend supported
             "enable": True,
         },
         "default": {"enable": False},
@@ -267,21 +268,19 @@ SKIP_SOFTMAX_DEFAULT = {
 
 
 # Configuration with RULER calibration
+# Note: threshold field is omitted - calibration determines dynamic threshold λ = a / length
+# The calibrated threshold adapts to sequence length for optimal sparsity
 SKIP_SOFTMAX_CALIB = {
     "method": "flash_softmax_skip",
     "sparse_cfg": {
         "*attn*": {
-            "threshold": {
-                "prefill": 1e-3,  # More aggressive during prefill
-                "decode": 1e-4,  # Conservative during decode
-            },
             "br": 128,
             "bc": 128,
-            "backend": "pytorch",
+            "backend": "pytorch",  # Only pytorch backend supported
             "enable": True,
             "calibration": {
                 "target_sparse_ratio": 0.5,
-                "samples": 24,
+                "samples": 120,
                 "max_seqlen": 8192,
             },
         },
@@ -310,7 +309,7 @@ class SparseAttentionConfig(ModeloptBaseConfig):
         default={"*attention*": {"enable": True}, "default": {"enable": False}},
         title="Sparse attention configuration",
         description="Pattern-based configuration for sparse attention. Keys are patterns to match module names, "
-        "values are configuration dicts with parameters like 'threshold' and 'enable'.",
+        "values are configuration dicts with parameters like 'threshold', 'enable', and 'calibration'.",
         validate_default=True,
     )
 
@@ -321,11 +320,7 @@ class SparseAttentionConfig(ModeloptBaseConfig):
 
 
 class FlashSoftmaxSkipConfig(SparseAttentionConfig):
-    """Configuration for Flash Attention-aware softmax skip sparse attention.
-
-    This configuration uses flash_softmax_skip as the default method and includes
-    Flash Attention specific parameters like block sizes and correction factor.
-    """
+    """Configuration for Flash Attention-aware softmax skip sparse attention."""
 
     # Override method to default to flash_softmax_skip
     method: str = Field(
@@ -337,9 +332,9 @@ class FlashSoftmaxSkipConfig(SparseAttentionConfig):
         default={
             "*attention*": {
                 "threshold": {"prefill": 1e-3, "decode": 1e-5},
-                "br": 64,  # Flash Attention block rows
-                "bc": 64,  # Flash Attention block columns
-                "backend": "pytorch",
+                "br": 128,  # Flash Attention block rows
+                "bc": 128,  # Flash Attention block columns
+                "backend": "pytorch",  # Only pytorch backend supported
                 "enable": True,
             },
             "default": {"enable": False},

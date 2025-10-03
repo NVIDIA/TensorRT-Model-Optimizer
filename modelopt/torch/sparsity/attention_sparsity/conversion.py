@@ -144,8 +144,15 @@ def set_sparse_attention_attribute(
         attribute_cfg: Attributes to apply
         global_config: Global sparse attention configuration
     """
-    # Merge global method with pattern config
-    full_cfg = {"method": global_config.method, **attribute_cfg}
+    # Merge global config fields with pattern config
+    # Filter out model-level configs that shouldn't be passed to modules
+    module_cfg = {k: v for k, v in attribute_cfg.items() if k != "calibration"}
+
+    full_cfg = {
+        "method": global_config.method,
+        "collect_stats": global_config.collect_stats,
+        **module_cfg,
+    }
 
     for name, module in model.named_modules():
         if not isinstance(module, SparseAttentionModule):
@@ -212,14 +219,6 @@ def restore_sparse_attention_state(model: nn.Module, state_dict: dict[str, Any])
                 # Re-setup with restored config
                 module._setup()
 
-                # Restore any additional state
-                if "stats" in module_state:
-                    # Restore statistics if available
-                    if hasattr(module, "_sparse_method_instance") and hasattr(
-                        module._sparse_method_instance, "stats"
-                    ):
-                        module._sparse_method_instance.stats = module_state["stats"]
-
 
 def update_sparse_attention_metadata(
     model: nn.Module, config: SparseAttentionConfig, metadata: MetadataDict
@@ -248,14 +247,6 @@ def update_sparse_attention_metadata(
                 "method": module._sparse_method_instance.name,
                 "method_config": method_config,
             }
-
-            # Save statistics if available
-            if hasattr(module, "_sparse_method_instance") and hasattr(
-                module._sparse_method_instance, "stats"
-            ):
-                stats = module._sparse_method_instance.stats
-                if stats:
-                    module_state["stats"] = stats
 
             sparse_state[module_name] = module_state
 

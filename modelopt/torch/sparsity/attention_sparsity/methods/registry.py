@@ -21,11 +21,7 @@ import torch
 
 
 class SparseAttentionMethod(ABC):
-    """Base class for sparse attention methods.
-
-    All sparse attention methods should inherit from this class and
-    implement the required abstract methods.
-    """
+    """Base class for sparse attention methods."""
 
     @abstractmethod
     def apply_sparsity(
@@ -53,44 +49,72 @@ class SparseAttentionMethod(ABC):
         """Method name identifier."""
 
 
-# Method Registry
-_SPARSE_ATTENTION_METHODS: dict[str, type[SparseAttentionMethod]] = {}
+# Method Registry with versioning support
+_SPARSE_ATTENTION_METHODS: dict[str, dict[str, type[SparseAttentionMethod]]] = {}
 
 
-def register_sparse_method(name: str):
-    """Decorator to register sparse attention methods.
+def register_sparse_method(name: str, version: str = "v1"):
+    """Decorator to register sparse attention methods with version support.
 
     Args:
         name: Method name to register
+        version: Version string (default: "v1")
 
     Example:
-        @register_sparse_method("my_method")
-        class MyMethod(SparseAttentionMethod):
+        @register_sparse_method("my_method", version="v3")
+        class MyMethodV3(SparseAttentionMethod):
             ...
     """
 
     def decorator(cls: type[SparseAttentionMethod]):
-        if name in _SPARSE_ATTENTION_METHODS:
-            print(f"Warning: Overriding existing sparse attention method: {name}")
-        _SPARSE_ATTENTION_METHODS[name] = cls
+        if name not in _SPARSE_ATTENTION_METHODS:
+            _SPARSE_ATTENTION_METHODS[name] = {}
+
+        if version in _SPARSE_ATTENTION_METHODS[name]:
+            import warnings
+
+            warnings.warn(
+                f"Overriding existing sparse attention method: {name}@{version}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+        _SPARSE_ATTENTION_METHODS[name][version] = cls
         return cls
 
     return decorator
 
 
-def get_sparse_method(name: str) -> type[SparseAttentionMethod]:
-    """Get sparse attention method by name.
+def get_sparse_method(name: str, version: str | None = None) -> type[SparseAttentionMethod]:
+    """Get sparse attention method by name and optional version.
 
     Args:
         name: Method name to retrieve
+        version: Optional version string. If None, uses latest version.
 
     Returns:
         Method class
 
     Raises:
-        ValueError: If method name is not registered
+        ValueError: If method name or version is not registered
+
+    Example:
+        >>> get_sparse_method("flash_softmax_skip")  # Latest version
+        >>> get_sparse_method("flash_softmax_skip", "v1")  # Specific version
     """
     if name not in _SPARSE_ATTENTION_METHODS:
         available = list(_SPARSE_ATTENTION_METHODS.keys())
-        raise ValueError(f"Unknown sparse attention method: {name}. Available methods: {available}")
-    return _SPARSE_ATTENTION_METHODS[name]
+        raise ValueError(f"Unknown sparse attention method: {name}. Available: {available}")
+
+    method_versions = _SPARSE_ATTENTION_METHODS[name]
+
+    if not version:
+        version = sorted(method_versions.keys())[-1]
+
+    if version not in method_versions:
+        available_versions = list(method_versions.keys())
+        raise ValueError(
+            f"Unknown version {version} for method {name}. Available: {available_versions}"
+        )
+
+    return method_versions[version]

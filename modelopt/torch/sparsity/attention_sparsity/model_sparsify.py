@@ -68,11 +68,12 @@ def sparsify(
                         # Phase-aware thresholds with backend selection and calibration
                         "*attention*": {
                             "threshold": {"prefill": 1e-3, "decode": 1e-5},
-                            "backend": "pytorch",  # or "triton" for fused kernel
+                            "backend": "pytorch",  # Only pytorch backend supported
                             "enable": True,
-                            "calibration": {  # Optional calibration config
-                                "enabled": True,
+                            "calibration": {  # Optional: enables automatic threshold calibration
                                 "target_sparse_ratio": 0.5,
+                                "samples": 48,
+                                "max_seqlen": 8192,
                             },
                         },
                         # Disable for specific layers
@@ -82,10 +83,11 @@ def sparsify(
                     },
                 }
 
-            The ``"backend"`` parameter selects the implementation:
+            The ``"backend"`` parameter must be set to ``"pytorch"``:
 
-            - ``"pytorch"``: Mask-based approach (default, works everywhere)
-            - ``"triton"``: Fused Flash Attention kernel (faster, requires GPU + Triton)
+            - ``"pytorch"``: Softmax patching approach (only supported backend)
+
+            This requires the model to be loaded with ``attn_implementation="eager"``.
 
         forward_loop: A callable that forwards all calibration data through the model. This is used
             to gather statistics for calibration. It should take model as the argument. It does not need
@@ -119,8 +121,8 @@ def sparsify(
 
             .. important::
 
-                When calibration is enabled, the model must be loaded with
-                ``attn_implementation="eager"`` to ensure proper stats collection:
+                The model must always be loaded with ``attn_implementation="eager"``
+                for sparse attention to work correctly:
 
                 .. code-block:: python
 
@@ -128,12 +130,12 @@ def sparsify(
 
                     model = AutoModelForCausalLM.from_pretrained(
                         model_path,
-                        attn_implementation="eager",  # Required for calibration
+                        attn_implementation="eager",  # Required for sparse attention
                         torch_dtype=torch.bfloat16,
                     )
 
-                The calibration will automatically use pytorch backend regardless of config.
-                Original backend will be restored after calibration completes.
+                This is because sparse attention works by patching torch.nn.functional.softmax,
+                which is only called in the eager attention implementation.
 
     Returns:
         A pytorch model which has sparse attention applied and optionally calibrated.
@@ -167,38 +169,29 @@ def calibrate(
     """
     # Get the sparse attention config from the model's state
     if not ModeloptStateManager.is_converted(model):
-        return model  # No sparse attention applied, skip calibration
+        return model
 
     manager = ModeloptStateManager(model)
 
-    # Find the sparse attention mode in the state
-    sparse_attn_config = None
-    for mode_name, mode_state in manager._state:
-        if mode_name == "sparse_attention":
-            sparse_attn_config = mode_state["config"]
-            break
-
-    if sparse_attn_config is None:
-        return model  # No sparse attention applied, skip calibration
-
-    # Check if calibration is configured
-    sparse_cfg = (
-        sparse_attn_config.get("sparse_cfg", {})
-        if isinstance(sparse_attn_config, dict)
-        else sparse_attn_config.sparse_cfg
-        if hasattr(sparse_attn_config, "sparse_cfg")
-        else {}
+    sparse_attn_config = next(
+        (state["config"] for name, state in manager._state if name == "sparse_attention"), None
     )
 
-    # Check if any pattern has calibration configured
+    if sparse_attn_config is None:
+        return model
+
+    # Check if calibration is configured in any sparse_cfg pattern
+    # Note: sparse_attn_config is always a dict (stored via config.model_dump())
+    sparse_cfg = sparse_attn_config.get("sparse_cfg", {})
+
     has_calibration = any(
         isinstance(cfg, dict) and "calibration" in cfg for cfg in sparse_cfg.values()
     )
 
     if not has_calibration:
-        return model  # No calibration configured, skip
+        return model
 
-    # Run calibration
+    # Run calibration (handles stats collection internally)
     calibrate_sparse_attention(model, sparse_attn_config, forward_loop=forward_loop)
 
     return model

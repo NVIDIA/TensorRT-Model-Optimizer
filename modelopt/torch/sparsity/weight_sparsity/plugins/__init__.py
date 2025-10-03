@@ -17,7 +17,7 @@
 
 Currently, we support plugins for
 
-- :meth:`megatron<modelopt.torch.sparsity.plugins.megatron>`
+- :meth:`megatron<modelopt.torch.sparsity.weight_sparsity.plugins.megatron>`
 
 """
 

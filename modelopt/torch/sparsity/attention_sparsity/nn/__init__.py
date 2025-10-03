@@ -16,5 +16,10 @@
 """Neural network modules for sparse attention."""
 
 from .sparse_attention import SparseAttentionModule, SparseAttentionRegistry
+from .stats_manager import SparseAttentionStatsManager
 
-__all__ = ["SparseAttentionModule", "SparseAttentionRegistry"]
+__all__ = [
+    "SparseAttentionModule",
+    "SparseAttentionRegistry",
+    "SparseAttentionStatsManager",
+]

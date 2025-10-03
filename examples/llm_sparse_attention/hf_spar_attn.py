@@ -137,6 +137,17 @@ def truncate_text(text: str, tokenizer, max_length: int):
 
 def verify_outputs(model, tokenizer, args):
     """Compare outputs between baseline and sparse attention models."""
+    # Update seq_len to match calibration max_seqlen if calibration was used
+    base_config = SPARSE_ATTN_CFG_CHOICES.get(args.sparse_attn, {})
+    if "calibration" in base_config and "max_seqlen" in base_config["calibration"]:
+        calib_max_seqlen = base_config["calibration"]["max_seqlen"]
+        if args.seq_len != calib_max_seqlen:
+            print(
+                f"\nNote: Updating test seq_len from {args.seq_len} to {calib_max_seqlen} "
+                f"to match calibration config"
+            )
+            args.seq_len = calib_max_seqlen
+
     # Load and prepare a single test prompt
     print(f"\nLoading test sample (will be tokenized up to {args.seq_len} tokens)")
     prompts = get_narrativeqa_samples(num_samples=1)
@@ -225,36 +236,13 @@ def sparsify_model(model, args):
 
     # Create new config with modified settings
     sparse_config = SparseAttentionConfig(
-        method=base_config["method"], sparse_cfg=modified_sparse_cfg
+        method=base_config["method"],
+        sparse_cfg=modified_sparse_cfg,
+        collect_stats=True,  # Enable stats collection for monitoring
     )
 
-    # Check if calibration is present in config
-    has_calibration = any(
-        "calibration" in cfg for cfg in modified_sparse_cfg.values() if isinstance(cfg, dict)
-    )
-
-    if has_calibration:
-        print("\n" + "=" * 60)
-        print("CALIBRATION")
-        print("=" * 60)
-        print("Config includes calibration - running automatic threshold calibration...")
-
-        # Display calibration settings
-        for cfg in modified_sparse_cfg.values():
-            if isinstance(cfg, dict) and "calibration" in cfg:
-                calib = cfg["calibration"]
-                print(f"  Target sparsity: {calib.get('target_sparse_ratio', 0.5)}")
-                print(f"  Samples: {calib.get('samples', 48)}")
-                print(f"  Max sequence length: {calib.get('max_seqlen', 32768)}")
-                print("  Tokenizer: Auto-extracted from model")
-                print("  Dataset: RULER (6 default tasks)")
-                break
-
-        # Sparsify with calibration - framework will auto-generate RULER dataset
-        model = mtsa.sparsify(model, config=sparse_config)
-        print("\nCalibration complete! Model now uses dynamic threshold: λ = a / context_length")
-    else:
-        model = mtsa.sparsify(model, config=sparse_config)
+    # Sparsify with optional calibration - framework handles calibration automatically
+    model = mtsa.sparsify(model, config=sparse_config)
 
     print("Sparse attention applied successfully!")
 

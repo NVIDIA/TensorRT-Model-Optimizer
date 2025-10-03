@@ -16,29 +16,15 @@ from . import SparseAttentionMethod, register_sparse_method
 class FlashSoftmaxSkipMethod(SparseAttentionMethod):
     """Flash Attention-aware softmax skip sparse attention method.
 
-    This method implements block-wise sparsity that aligns with Flash Attention's
-    tiling pattern. It applies threshold-based masking at the block level rather
-    than element-wise, which is more efficient for Flash Attention implementations.
-
-    The method supports:
-    - Block-wise sparsity aligned with Flash Attention tiles
-    - Correction factor tracking for accurate softmax computation
-    - Phase-aware thresholds (different for prefill vs decode)
-    - Statistics collection for sparsity analysis
+    Implements row-level block-wise sparsity aligned with Flash Attention's
+    processing pattern for optimal performance and accuracy.
     """
 
-    def __init__(self, method_config: dict = None):
+    def __init__(self, method_config: dict | None = None):
         """Initialize Flash softmax skip method.
 
         Args:
-            method_config: Configuration dictionary containing:
-                - threshold: Sparsity threshold (float or dict with prefill/decode)
-                - br: Block row size (default: 128)
-                - bc: Block column size (default: 128)
-                - enable_correction_factor: Whether to track correction factor
-                - collect_stats: Whether to collect statistics
-                - phase: Force specific phase ('prefill' or 'decode', default: auto)
-                - backend: Backend to use ('pytorch' or 'triton', default: 'pytorch')
+            method_config: Configuration dict with threshold, br, bc, is_causal, etc.
         """
         config = method_config or {}
 
@@ -50,67 +36,32 @@ class FlashSoftmaxSkipMethod(SparseAttentionMethod):
         self.collect_stats = config.get("collect_stats", True)
         self.phase = config.get("phase", None)
         self.backend = config.get("backend", "pytorch")
+        self.is_causal = config.get("is_causal", True)
+        # Calibration mode: when True, prevent threshold updates to preserve calibrator's test threshold
+        self._calibration_mode = False
 
-        # Initialize current threshold
+        # Initialize threshold
         if isinstance(self.threshold_config, dict):
-            # Use default threshold initially, will be updated based on phase
             self.threshold = self.threshold_config.get(
                 "default", self.threshold_config.get("prefill", 1e-4)
             )
         else:
             self.threshold = self.threshold_config
 
-        # Statistics collection
-        self.stats = {}
-
-        # Calibration mode for collecting per-sample statistics
-        self.calibration_mode = False
-        self.stats_history = []  # List to store per-sample stats during calibration
-
     def _update_threshold(self, phase: str):
-        """Update threshold based on phase.
-
-        Args:
-            phase: Current phase ('prefill' or 'decode')
-        """
+        """Update threshold based on phase."""
         if isinstance(self.threshold_config, dict):
-            if phase in self.threshold_config:
-                self.threshold = self.threshold_config[phase]
-            elif "default" in self.threshold_config:
-                self.threshold = self.threshold_config["default"]
+            self.threshold = self.threshold_config.get(
+                phase, self.threshold_config.get("default", self.threshold)
+            )
 
-    def set_calibration_mode(self, enabled: bool, reset_history: bool = True):
-        """Enable or disable calibration mode for per-sample stats collection.
-
-        Args:
-            enabled: Whether to enable calibration mode
-            reset_history: Whether to reset stats_history when enabling
-        """
-        self.calibration_mode = enabled
-        self.collect_stats = enabled  # Ensure stats collection is on during calibration
-        if enabled and reset_history:
-            self.stats_history = []
-
-    def get_calibration_stats(self) -> list[dict]:
-        """Get accumulated calibration statistics.
-
-        Returns:
-            List of per-sample statistics dictionaries
-        """
-        return self.stats_history
+    def set_calibration_mode(self, enabled: bool):
+        """Set calibration mode to prevent _update_threshold from modifying the threshold."""
+        self._calibration_mode = enabled
 
     def _infer_phase(self, attention_scores: torch.Tensor) -> str:
-        """Infer whether we're in prefill or decode phase based on tensor shape.
-
-        Args:
-            attention_scores: Attention score tensor with shape [batch, heads, seq_q, seq_k]
-
-        Returns:
-            'prefill' if seq_len > 1, 'decode' if seq_len == 1
-        """
-        # Attention scores are always 4D: [batch, heads, seq_q, seq_k]
-        seq_q = attention_scores.shape[2]
-        return "decode" if seq_q == 1 else "prefill"
+        """Infer phase from attention scores shape."""
+        return "decode" if attention_scores.shape[2] == 1 else "prefill"
 
     def _reshape_to_blocks(
         self, tensor: torch.Tensor, br: int, bc: int
@@ -135,157 +86,155 @@ class FlashSoftmaxSkipMethod(SparseAttentionMethod):
         if padded_seq_q != seq_q or padded_seq_k != seq_k:
             pad_q = padded_seq_q - seq_q
             pad_k = padded_seq_k - seq_k
-            tensor = torch.nn.functional.pad(tensor, (0, pad_k, 0, pad_q), value=float("-inf"))
+            # Use dtype min instead of -inf for numerical stability
+            pad_value = torch.finfo(tensor.dtype).min
+            tensor = torch.nn.functional.pad(tensor, (0, pad_k, 0, pad_q), value=pad_value)
 
         # Reshape to blocks
         num_block_rows = padded_seq_q // br
         num_block_cols = padded_seq_k // bc
 
-        blocked = tensor.view(
-            batch_size, num_heads, num_block_rows, br, num_block_cols, bc
-        ).permute(0, 1, 2, 4, 3, 5)  # [batch, heads, block_rows, block_cols, br, bc]
+        # Keep natural order for row-level processing: [batch, heads, block_rows, br, block_cols, bc]
+        blocked = tensor.view(batch_size, num_heads, num_block_rows, br, num_block_cols, bc)
 
         return blocked, num_block_rows, num_block_cols, padded_seq_q, padded_seq_k
 
-    def calc_correction_factor_and_P(
+    def calc_correction_factor_and_p(
         self, attn_weights: torch.Tensor, phase: str
     ) -> tuple[torch.Tensor, dict]:
-        """Calculate correction factor and apply block-wise sparsity.
+        """Calculate sparse mask and statistics for Flash Attention.
 
-        This is the core Flash Attention-aware sparsity logic that:
-        1. Reshapes attention into blocks matching Flash Attention tiles
-        2. Computes block-wise maximums and tracks cumulative maximums
-        3. Applies threshold-based masking at the block level
-        4. Tracks correction factor for accurate softmax computation
+        Implements block-wise sparsity compatible with Flash Attention's online softmax:
+        1. Reshape attention scores into 128x128 blocks
+        2. Track block-wise maximum values (simulating Flash Attention's row processing)
+        3. Compute cumulative maximum across blocks (for online normalization)
+        4. Apply threshold: mask blocks where p = score - cummax < log(threshold)
+        5. Calculate correction factor and sparsity statistics
 
         Args:
-            attn_weights: Attention weights tensor
-            phase: "prefill" or "decode"
+            attn_weights: Pre-softmax attention scores [batch, heads, seq_q, seq_k]
+            phase: "prefill" (seq_q > 1) or "decode" (seq_q = 1)
 
         Returns:
-            Tuple of (sparse_mask, stats_dict)
+            element_mask: Boolean mask [batch, heads, seq_q, seq_k]
+            stats: Dict with sparsity, correction_factor, total_blocks, etc.
         """
         batch_size, num_heads, seq_q, seq_k = attn_weights.shape
 
-        # Use log threshold for numerical stability
-        log_threshold = np.log(self.threshold)
+        # Calculate threshold
+        threshold_scale_factor = getattr(self, "threshold_scale_factor", None)
+        if threshold_scale_factor:
+            # Use calibrated dynamic threshold: λ = scale_factor / length
+            log_threshold = np.log(threshold_scale_factor / seq_k)
+        else:
+            # Use static threshold from config
+            log_threshold = np.log(self.threshold)
 
-        if phase == "decode":
-            # Decode: Process single query against key sequence
-            blocked_attn, _, num_block_cols, _, padded_seq_k = self._reshape_to_blocks(
-                attn_weights, 1, self.bc
-            )
-
-            # Compute block-wise maximum and cumulative maximum
-            # Shape: [batch, heads, 1, num_block_cols]
-            block_max = blocked_attn.max(dim=-1)[0].max(dim=-1)[0]
-            block_max_cummax = block_max.cummax(dim=-1)[0]
-
-            # Track when maximum changes (for correction factor)
-            block_max_larger = torch.ones_like(block_max)
-            block_max_larger[..., 1:] = block_max[..., 1:] > block_max_cummax[..., :-1]
-            correction_factor = float(torch.sum(block_max_larger) / torch.numel(block_max_larger))
-
-            # Normalize blocks relative to cumulative maximum
-            # P represents how much each value differs from the running maximum
-            P = blocked_attn - block_max_cummax.unsqueeze(-1).unsqueeze(-1)
-
-            # Apply threshold: keep blocks where max value > threshold
-            block_mask = P.max(dim=-1)[0].max(dim=-1)[0] > log_threshold
-
-            # Expand block mask to element level
-            element_mask = block_mask.unsqueeze(-1).unsqueeze(-1).expand_as(blocked_attn)
-
-            # Reshape back to original dimensions
-            element_mask = element_mask.permute(0, 1, 2, 4, 3, 5).contiguous()
-            element_mask = element_mask.view(batch_size, num_heads, 1, padded_seq_k)
-
-            # Remove padding
-            element_mask = element_mask[:, :, :seq_q, :seq_k]
-
-            # Collect statistics
-            if self.collect_stats:
-                total_blocks = num_block_cols
-                kept_blocks = block_mask.sum().item() / (batch_size * num_heads)
-                sparsity = 1 - (kept_blocks / total_blocks)
-            else:
-                sparsity = 0.0
-
-        else:  # prefill
-            # Prefill: Process multiple queries against key sequence
+        if phase == "prefill":
             blocked_attn, num_block_rows, num_block_cols, padded_seq_q, padded_seq_k = (
                 self._reshape_to_blocks(attn_weights, self.br, self.bc)
             )
 
-            # Compute block-wise statistics
-            # For each block, compute maximum value
-            block_max = blocked_attn.max(dim=-1)[0].max(dim=-1)[
-                0
-            ]  # [batch, heads, block_rows, block_cols]
+            # Step 1: Compute maximum value in each block
+            # For each 128x128 block, find max across the 128 columns
+            # blocked_attn: [batch, heads, block_rows, br=128, block_cols, bc=128]
+            # block_max: [batch, heads, block_rows, br=128, block_cols]
+            block_max = blocked_attn.max(dim=-1)[0]
 
-            # For Flash Attention compatibility, track row-wise cumulative maximum
-            # This simulates the online softmax computation in Flash Attention
-            if num_block_cols > 1:
-                block_max_cummax = block_max.cummax(dim=-1)[0]
+            # Step 2: Track cumulative maximum across blocks (left to right)
+            # This simulates Flash Attention's online softmax normalization
+            # block_max_cummax: [batch, heads, block_rows, br=128, block_cols]
+            block_max_cummax = block_max.cummax(dim=-1)[0]
 
-                # Track correction factor (how often maximum changes)
-                block_max_larger = torch.ones_like(block_max)
-                block_max_larger[..., 1:] = block_max[..., 1:] > block_max_cummax[..., :-1]
-                correction_factor = float(
-                    torch.sum(block_max_larger) / torch.numel(block_max_larger)
-                )
+            # Step 3: Calculate correction factor (how often max changes)
+            # Used by Flash Attention to adjust running sum when max increases
+            block_max_larger = torch.ones_like(block_max)
+            block_max_larger[..., 1:] = block_max[..., 1:] > block_max_cummax[..., :-1]
+            correction_factor = float(torch.sum(block_max_larger) / torch.numel(block_max_larger))
 
-                # Compute P (normalized difference from cumulative max)
-                P = blocked_attn - block_max_cummax.unsqueeze(-1).unsqueeze(-1)
-            else:
-                # Single block column, no cumulative max needed
-                correction_factor = 1.0
-                P = blocked_attn - block_max.unsqueeze(-1).unsqueeze(-1)
+            # Step 4: Normalize attention scores by cumulative max
+            # p represents log-space difference: log(score) - log(cummax)
+            p = blocked_attn - block_max_cummax[..., None]
 
-            # Apply threshold at block level
-            block_mask = P.max(dim=-1)[0].max(dim=-1)[0] > log_threshold
+            # Step 5: Apply threshold and create block-level mask
+            # Keep blocks where at least one element exceeds log(threshold)
+            p_larger_than_thresh = p > log_threshold
+            # Reduce over bc (128 cols), then br (128 rows) to get block-level decision
+            # Result: [batch, heads, block_rows, block_cols]
+            block_mask = p_larger_than_thresh.any(dim=-1).any(dim=-2)
 
-            # Expand to element level
-            element_mask = block_mask.unsqueeze(-1).unsqueeze(-1).expand_as(blocked_attn)
+            # Step 6: Expand block mask back to element level
+            # All 128x128 elements in a block share the same mask value
+            # [batch, heads, block_rows, block_cols] -> [batch, heads, block_rows, br=128, block_cols, bc=128]
+            element_mask = block_mask.unsqueeze(-2).unsqueeze(-1).expand_as(blocked_attn)
 
-            # Reshape back
-            element_mask = element_mask.permute(0, 1, 2, 4, 3, 5).contiguous()
-            element_mask = element_mask.view(batch_size, num_heads, padded_seq_q, padded_seq_k)
-
-            # Remove padding
+            # Step 7: Reshape to original attention shape and remove padding
+            element_mask = element_mask.reshape(batch_size, num_heads, padded_seq_q, padded_seq_k)
             element_mask = element_mask[:, :, :seq_q, :seq_k]
 
-            # Statistics
-            if self.collect_stats:
-                total_blocks = num_block_rows * num_block_cols
-                kept_blocks = block_mask.sum().item() / (batch_size * num_heads)
-                sparsity = 1 - (kept_blocks / total_blocks)
-            else:
-                sparsity = 0.0
+            # Step 8: Calculate sparsity statistics
+            # Count kept blocks (averaged across batch and heads)
+            kept_blocks = block_mask.sum().item() / (batch_size * num_heads)
 
-        # Store statistics
+            # Total valid blocks (lower triangle only for causal attention)
+            # Note: Causal mask pre-applied by attention module, so block_mask naturally
+            # has zeros in upper triangle. We only count lower triangle for denominator.
+            total_blocks = (
+                num_block_rows * (num_block_rows + 1) // 2  # Causal: N(N+1)/2
+                if self.is_causal
+                else num_block_rows * num_block_cols  # Non-causal: N*N
+            )
+            sparsity = 1 - (kept_blocks / total_blocks)
+        else:  # decode
+            blocked_attn, _, num_block_cols, _, padded_seq_k = self._reshape_to_blocks(
+                attn_weights, 1, self.bc
+            )
+
+            # Decode: Single query row attends to all past key blocks
+            # blocked_attn: [batch, heads, 1, 1, num_block_cols, bc=128]
+
+            # Step 1: Find maximum in each key block
+            # block_max: [batch, heads, 1, 1, num_block_cols]
+            block_max = blocked_attn.max(dim=-1)[0]
+
+            # Step 2: Track cumulative maximum across key blocks (left to right)
+            # Simulates Flash Attention's online softmax normalization
+            block_max_cummax = block_max.cummax(dim=-1)[0]
+
+            # Step 3: Calculate correction factor
+            # Tracks how often the maximum increases (needed for Flash Attention rescaling)
+            block_max_larger = torch.ones_like(block_max)
+            block_max_larger[..., 1:] = block_max[..., 1:] > block_max_cummax[..., :-1]
+            correction_factor = float(torch.sum(block_max_larger) / torch.numel(block_max_larger))
+
+            # Step 4: Normalize scores by cumulative max
+            # p = log(score) - log(cummax) in log-space
+            p = blocked_attn - block_max_cummax[..., None]
+
+            # Step 5: Apply threshold and create block mask
+            # Keep blocks where at least one element exceeds threshold
+            p_larger_than_thresh = p > log_threshold
+            block_mask = p_larger_than_thresh.any(dim=-1, keepdim=False)
+
+            # Step 6: Expand to element level and remove padding
+            element_mask = block_mask[..., None].expand_as(blocked_attn)
+            element_mask = element_mask.reshape(batch_size, num_heads, 1, padded_seq_k)
+            element_mask = element_mask[:, :, :seq_q, :seq_k]
+
+            # Step 7: Calculate statistics
+            kept_blocks = block_mask.sum().item() / (batch_size * num_heads)
+            total_blocks = num_block_cols
+            sparsity = 1 - (kept_blocks / total_blocks)
+
+        # Create stats dictionary
         stats = {
             "correction_factor": correction_factor if self.enable_correction_factor else 1.0,
             "sparsity": sparsity,
             "phase": phase,
-            "total_blocks": num_block_cols
-            if phase == "decode"
-            else num_block_rows * num_block_cols,
-            "sparse_blocks": int(
-                sparsity
-                * (num_block_cols if phase == "decode" else num_block_rows * num_block_cols)
-            ),
+            "total_blocks": total_blocks,
+            "sparse_blocks": int(sparsity * total_blocks),
             "sample_length": seq_k,
         }
-
-        if self.collect_stats:
-            self.stats = stats
-
-        # During calibration, also append to history for per-sample tracking
-        if self.calibration_mode:
-            # Add sample length information from input shape
-            sample_stats = stats.copy()
-            self.stats_history.append(sample_stats)
 
         return element_mask, stats
 
@@ -318,16 +267,19 @@ class FlashSoftmaxSkipMethod(SparseAttentionMethod):
         # Infer phase from tensor shape
         phase = self._infer_phase(attention_scores)
 
-        # Update threshold for the detected phase (skip during calibration to preserve set threshold)
-
-        if not self.calibration_mode:
+        # Update threshold for the detected phase (skip during calibration)
+        if not self._calibration_mode:
             self._update_threshold(phase)
 
         # Apply block-wise sparsity
-        sparse_mask, stats = self.calc_correction_factor_and_P(attention_scores, phase)
+        sparse_mask, stats = self.calc_correction_factor_and_p(attention_scores, phase)
+
+        # Store stats for module to collect (doesn't persist across calls)
+        self._last_stats = stats
 
         # Apply mask to create sparse scores
-        sparse_scores = attention_scores.masked_fill(~sparse_mask, float("-inf"))
+        mask_value = torch.finfo(attention_scores.dtype).min
+        sparse_scores = attention_scores.masked_fill(~sparse_mask, mask_value)
 
         return query, key, value, sparse_scores
 
