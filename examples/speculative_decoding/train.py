@@ -41,6 +41,8 @@ def _setup_distributed(rank, args, backend="nccl"):
     print(
         f"Starting process rank={rank}, device={torch.cuda.current_device()}, world_size={args.world_size}"
     )
+    args.teacher_pgroup = dist.new_group(ranks=args.teacher_ranks)
+    args.student_pgroup = dist.new_group(ranks=args.student_ranks)
 
 
 def train(rank, args):
@@ -67,47 +69,24 @@ def train(rank, args):
 
 def main():
     parser = argparse.ArgumentParser(description="Multi-GPU distributed two-stage forward example")
+    parser.add_argument("--model_path", type=str, default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
+    parser.add_argument("--student_devices", type=list, default=[0, 1, 2, 3])
+    parser.add_argument("--teacher_devices", type=list, default=[4, 5])
     parser.add_argument(
-        "--model_path",
-        type=str,
-        default="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-        help="Path to the model.",
+        "--data_path", type=str, default="data/magpie_llama3.2_1b_generated/data.cleaned.jsonl"
     )
-    parser.add_argument(
-        "--student_devices", type=list, default=[0, 1, 2, 3], help="Devices for student model"
-    )
-    parser.add_argument(
-        "--teacher_devices", type=list, default=[4, 5], help="Devices for teacher model"
-    )
-    parser.add_argument(
-        "--data_path",
-        type=str,
-        default="data/magpie_llama3.2_1b_generated/data.cleaned.jsonl",
-        help="Path to the training data.",
-    )
-    parser.add_argument(
-        "--training_seq_len",
-        type=str,
-        default=1024,
-        help="Training sequence length.",
-    )
-    parser.add_argument(
-        "--eagle_config_path",
-        type=str,
-        default="eagle_config.json",
-        help="Path to the eagle config.",
-    )
+    parser.add_argument("--training_seq_len", type=str, default=1024)
+    parser.add_argument("--eagle_config_path", type=str, default="eagle_config.json")
     parser.add_argument(
         "--lazy_preprocess", type=bool, default=True, help="Whether to use lazy preprocessing."
     )
-    parser.add_argument(
-        "--out_path", type=str, default="ckpts/fast-trained", help="Path to save the model."
-    )
-    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
+    parser.add_argument("--out_path", type=str, default="ckpts/fast-trained")
+    parser.add_argument("--lr", type=float, default=1e-5)
+    parser.add_argument("--epoch", type=int, default=1)
     parser.add_argument(
         "--batch_size", type=int, default=4, help="Total batch size across all parallel ranks."
     )
-    parser.add_argument("--master_port", type=str, default="12357", help="Master port.")
+    parser.add_argument("--master_port", type=str, default="12357")
 
     args = parser.parse_args()
     # TODO: add sanity check for args

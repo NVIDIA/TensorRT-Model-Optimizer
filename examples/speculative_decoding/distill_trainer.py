@@ -40,10 +40,8 @@ except ImportError:
 mto.enable_huggingface_checkpointing()
 
 # Hyperparameters for profiling
-EPOCHS = 1
 LOG_INTERVAL = 100
 SAVE_INTERVAL = 20000
-# VALIDATE_INTERVAL = 20
 
 # Shape and dtype description of the distillation signal
 DistillMetadata = dict[str, tuple[torch.Size, torch.dtype]]
@@ -61,11 +59,11 @@ class BaseDistillTrainer:
 
     def __init__(self, rank, args, tokenizer, dataloader):
         self.rank = rank
-        args.teacher_pgroup = dist.new_group(ranks=args.teacher_ranks)
-        args.student_pgroup = dist.new_group(ranks=args.student_ranks)
         self.args = args
         self.tokenizer = tokenizer
         self.dataloader = dataloader
+
+        # Prepare models
         if rank in args.student_ranks:
             self.model = self.prepare_student_model()
             self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.lr)
@@ -180,7 +178,11 @@ class BaseDistillTrainer:
             return wandb.init(
                 entity=os.environ["WANDB_ENTITY"],
                 project=os.environ["WANDB_PROJECT"],
-                config={"epochs": EPOCHS, "lr": self.args.lr, "batch_size": self.args.batch_size},
+                config={
+                    "epochs": self.args.epoch,
+                    "lr": self.args.lr,
+                    "batch_size": self.args.batch_size,
+                },
             )
         return nullcontext()
 
@@ -193,7 +195,7 @@ class BaseDistillTrainer:
                 self._init_student_recv_buffer()
 
                 # Student training loop
-                for epoch in range(EPOCHS):
+                for epoch in range(self.args.epoch):
                     pbar = (
                         tqdm(self.dataloader)
                         if self.rank == self.args.student_ranks[0]
@@ -236,7 +238,7 @@ class BaseDistillTrainer:
 
         else:
             # Inference Loop
-            for epoch in range(EPOCHS):
+            for epoch in range(self.args.epoch):
                 for i, batch in enumerate(self.dataloader):
                     inputs = {k: v.to(self.model.device) for k, v in batch.items()}
                     with torch.inference_mode():
@@ -390,8 +392,10 @@ class EagleTPTrainer(BaseDistillTrainer):
     ) -> ModelOutput:
         self.optimizer.zero_grad()
 
-        # Chunk inputs for each student rank.
+        # Chunk input_ids and attention_mask for each student rank.
         inputs = {k: v.chunk(len(self.args.student_ranks))[self.rank] for k, v in inputs.items()}
 
         # Second stage forward with provided base model outputs.
-        return self.model(**inputs, base_model_outputs=distill_msgs)
+        output = self.model(**inputs, base_model_outputs=distill_msgs)
+
+        return output
