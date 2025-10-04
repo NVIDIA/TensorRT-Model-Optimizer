@@ -253,14 +253,6 @@ def main(
     model_path = kwargs["model_path"]
     tokenizer = get_tokenizer(model_path, trust_remote_code=kwargs.get("trust_remote_code", False))
     if kwargs.get("checkpoint_dir"):
-        # get model type
-        last_part = os.path.basename(kwargs["checkpoint_dir"])
-        model_type = last_part.split("_")[0]
-        # Some models require to set pad_token and eos_token based on external config (e.g., qwen)
-        if model_type == "qwen":
-            tokenizer.pad_token = tokenizer.convert_ids_to_tokens(151643)
-            tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
-
         assert LLM is not None, "tensorrt_llm APIs could not be imported."
         medusa_choices = kwargs.get("medusa_choices")
         model = LLM(
