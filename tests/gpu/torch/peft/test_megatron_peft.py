@@ -1,7 +1,9 @@
+import copy
 from functools import partial
 
 import pytest
 import torch
+import torch.nn.init as init
 from _test_utils.import_helper import skip_if_no_megatron
 from _test_utils.torch_dist.dist_utils import get_device_counts, spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
@@ -51,8 +53,6 @@ DEFAULT_LORA_CFG_TEST = {
         "*": {
             "rank": 32,
             "scale": 1,
-            "lora_a_init": "kaiming_init",
-            "lora_b_init": "zero_init",
             "enable": True,
         },
         "*output_layer*": {"enable": False},
@@ -66,8 +66,6 @@ LARGE_LORA_CFG_TEST = {
         "*": {
             "rank": 128,
             "scale": 1,
-            "lora_a_init": "kaiming_init",
-            "lora_b_init": "zero_init",
             "enable": True,
         },
         "*output_layer*": {"enable": False},
@@ -81,8 +79,8 @@ DEFAULT_LORA_CFG_RANDOM_INIT_TEST = {
         "*": {
             "rank": 32,
             "scale": 1,
-            "lora_a_init": "kaiming_init",
-            "lora_b_init": "kaiming_init",
+            "lora_a_init": init.kaiming_uniform_,
+            "lora_b_init": init.kaiming_uniform_,
             "enable": True,
         },
         "*output_layer*": {"enable": False},
@@ -96,8 +94,8 @@ LARGE_LORA_CFG_RANDOM_INIT_TEST = {
         "*": {
             "rank": 128,
             "scale": 1,
-            "lora_a_init": "kaiming_init",
-            "lora_b_init": "kaiming_init",
+            "lora_a_init": init.kaiming_uniform_,
+            "lora_b_init": init.kaiming_uniform_,
             "enable": True,
         },
         "*output_layer*": {"enable": False},
@@ -111,8 +109,8 @@ DEFAULT_LORA_CFG_RANDOM_INIT_SMALL_RANK_TEST = {
         "*": {
             "rank": 8,
             "scale": 1,
-            "lora_a_init": "kaiming_init",
-            "lora_b_init": "kaiming_init",
+            "lora_a_init": init.kaiming_uniform_,
+            "lora_b_init": init.kaiming_uniform_,
             "enable": True,
         },
         "*output_layer*": {"enable": False},
@@ -127,8 +125,6 @@ SELECTIVE_LAYER_LORA_CFG = {
         "*self_attention*": {
             "rank": 16,
             "scale": 1,
-            "lora_a_init": "kaiming_init",
-            "lora_b_init": "zero_init",
             "enable": True,
         },
         "*output_layer*": {"enable": False},
@@ -449,14 +445,15 @@ def test_adapter_gradient_flow_freeze_base_model(device_count, lora_config, tmp_
 
 def _test_adapter_gradient_flow_freeze_lora_model(lora_config, tmp_path, rank, size):
     hidden_size = 512
-    lora_config["freeze_lora_weights"] = True
-    lora_config["freeze_base_model"] = False
+    local_cfg = copy.deepcopy(lora_config)
+    local_cfg["freeze_lora_weights"] = True
+    local_cfg["freeze_base_model"] = False
 
     initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
     model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
-    mtpf.update_model(model, lora_config)
+    mtpf.update_model(model, local_cfg)
     model.train()
 
     # Use a simple forward pass instead for grad check
@@ -569,7 +566,7 @@ def _test_quantize_then_lora(lora_config, tmp_path, rank, size):
             assert hasattr(module.weight_quantizer, "amax")
             assert getattr(module.input_quantizer, "amax") is not None
             assert getattr(module.weight_quantizer, "amax") is not None
-            # Check if the lora have teh quantizer, they should not have them.
+            # Check if the lora have the quantizer, they should not have them.
             for adapter_name in module._lora_adapters:
                 lora_a = module._lora_adapters[adapter_name]["lora_a"]
                 lora_b = module._lora_adapters[adapter_name]["lora_b"]
@@ -621,7 +618,7 @@ def _test_lora_then_quantize(lora_config, tmp_path, rank, size):
             assert hasattr(module.weight_quantizer, "amax")
             assert getattr(module.input_quantizer, "amax") is not None
             assert getattr(module.weight_quantizer, "amax") is not None
-            # Check if the lora have teh quantizer, they should not have them.
+            # Check if the lora have the quantizer, they should not have them.
             for adapter_name in module._lora_adapters:
                 lora_a = module._lora_adapters[adapter_name]["lora_a"]
                 lora_b = module._lora_adapters[adapter_name]["lora_b"]
@@ -701,7 +698,7 @@ def _test_mcore_quantize_then_lora_save_restore(lora_config, tmp_path, rank, siz
             assert hasattr(module.weight_quantizer, "amax")
             assert getattr(module.input_quantizer, "amax") is not None
             assert getattr(module.weight_quantizer, "amax") is not None
-            # Check if the lora have teh quantizer, they should not have them.
+            # Check if the lora have the quantizer, they should not have them.
             for adapter_name in module._lora_adapters:
                 lora_a = module._lora_adapters[adapter_name]["lora_a"]
                 lora_b = module._lora_adapters[adapter_name]["lora_b"]
@@ -765,7 +762,7 @@ def _test_mcore_lora_then_quantize_save_restore(lora_config, tmp_path, rank, siz
             assert hasattr(module.weight_quantizer, "amax")
             assert getattr(module.input_quantizer, "amax") is not None
             assert getattr(module.weight_quantizer, "amax") is not None
-            # Check if the lora have teh quantizer, they should not have them.
+            # Check if the lora have the quantizer, they should not have them.
             for adapter_name in module._lora_adapters:
                 lora_a = module._lora_adapters[adapter_name]["lora_a"]
                 lora_b = module._lora_adapters[adapter_name]["lora_b"]
@@ -784,7 +781,7 @@ def _test_mcore_lora_then_quantize_save_restore(lora_config, tmp_path, rank, siz
         DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
     ],
 )
-def test_mcore_lora_quantize_save_restore(device_count, lora_config, tmp_path):
+def test_mcore_lora_then_quantize_save_restore(device_count, lora_config, tmp_path):
     spawn_multiprocess_job(
         size=device_count,
         job=partial(_test_mcore_lora_then_quantize_save_restore, lora_config, str(tmp_path)),

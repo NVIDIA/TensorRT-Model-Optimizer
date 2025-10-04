@@ -31,7 +31,7 @@ from modelopt.torch.quantization.plugins.megatron import (
 
 from ...config import PEFTAttributeConfig
 from ...custom import CUSTOM_MODEL_PLUGINS
-from ..layer import LoRAModule, LoRAModuleRegistry, get_init_methods
+from ..layer import LoRAModule, LoRAModuleRegistry
 
 DEFAULT_LORA_RANK = 64
 DEFAULT_SCALE = 1.0
@@ -130,15 +130,13 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition
         """
-        lora_a_init = get_init_methods(attr_config.lora_a_init)
-        lora_b_init = get_init_methods(attr_config.lora_b_init)
         lora_a = nn.Linear(
             in_features=self.input_size,
             out_features=attr_config.rank,
             bias=False,
         )
         with torch.no_grad():
-            lora_a_init(lora_a.weight)
+            attr_config.lora_a_init(lora_a.weight)
 
         lora_b = ColumnParallelLinear(
             attr_config.rank,
@@ -146,7 +144,7 @@ class _LoRAMegatronColumnParallelLinear(_MegatronParallelLoRABase):
             config=self.config,
             bias=False,
             gather_output=False,
-            init_method=lora_b_init,
+            init_method=attr_config.lora_b_init,
         )
 
         self._register_adapter_with_device(
@@ -204,8 +202,6 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             adapter_name: Name for the new adapter
             rank: Rank of the LoRA decomposition
         """
-        lora_a_init = get_init_methods(attr_config.lora_a_init)
-        lora_b_init = get_init_methods(attr_config.lora_b_init)
         lora_a = RowParallelLinear(
             self.input_size,
             attr_config.rank,
@@ -213,7 +209,7 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             input_is_parallel=True,
             skip_bias_add=True,
             bias=False,
-            init_method=lora_a_init,
+            init_method=attr_config.lora_a_init,
         )
 
         lora_b = nn.Linear(
@@ -222,7 +218,7 @@ class _LoRAMegatronRowParallelLinear(_MegatronParallelLoRABase):
             bias=False,
         )
         with torch.no_grad():
-            lora_b_init(lora_b.weight)
+            attr_config.lora_b_init(lora_b.weight)
 
         self._register_adapter_with_device(
             adapter_name, lora_a, lora_b, attr_config.rank, attr_config.scale, attr_config.enable

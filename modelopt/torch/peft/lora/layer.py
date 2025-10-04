@@ -1,37 +1,16 @@
 """LoRA (Low-Rank Adaptation) module implementation."""
 
-import math
 from abc import abstractmethod
 from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.init as init
 
 from modelopt.torch.opt.dynamic import DynamicModule, _DMRegistryCls
 
 from ..config import PEFTAttributeConfig
 
-__all__ = ["LoRAModule", "LoRAModuleRegistry", "get_init_methods"]
-
-
-def get_init_methods(init_method: str = "kaiming_init"):
-    """Get the target init method for the lora a and lora b weights.
-
-    Args:
-        init_method: the init method you want for the lora layer
-    """
-    if init_method == "kaiming_init":
-        return lambda weight: init.kaiming_uniform_(
-            weight, a=math.sqrt(5)
-        )  # LoRA A: Kaiming uniform
-    elif init_method == "zero_init":
-        return lambda weight: init.zeros_(weight)  # LoRA B: zeros
-    else:
-        raise ValueError(
-            f"Unsupported initialization method: '{init_method}'. "
-            "Supported methods: 'kaiming_init', 'zero_init'"
-        )
+__all__ = ["LoRAModule", "LoRAModuleRegistry"]
 
 
 class LoRAModule(DynamicModule):

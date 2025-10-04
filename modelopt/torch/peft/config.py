@@ -15,13 +15,18 @@
 
 """Configuration classes for PEFT methods."""
 
+import inspect
 from collections.abc import Callable
 
+import torch.nn.init
 from pydantic import field_validator
+from torch import Tensor
 
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 
 __all__ = ["ExportPEFTConfig", "PEFTAttributeConfig", "PEFTConfig"]
+
+InitFn = Callable[..., Tensor]
 
 
 class PEFTAttributeConfig(ModeloptBaseConfig):
@@ -48,26 +53,43 @@ class PEFTAttributeConfig(ModeloptBaseConfig):
         description="Scaling factor for the LoRA output. Controls the magnitude of the adaptation.",
     )
 
-    lora_a_init: str = ModeloptField(
-        default="kaiming_init",
+    lora_a_init: InitFn = ModeloptField(
+        default=torch.nn.init.kaiming_uniform_,
         title="LoRA A matrix initializer",
-        description="Custom initialization function for LoRA A matrix. Default to Kaiming uniform initialization.",
+        description="Custom initialization function for LoRA A matrix. \
+            Default to Kaiming uniform initialization. For more init methods \
+                you can refer to https://docs.pytorch.org/docs/stable/nn.init.html",
     )
 
-    lora_b_init: str = ModeloptField(
-        default="zero_init",
+    lora_b_init: InitFn = ModeloptField(
+        default=torch.nn.init.zeros_,
         title="LoRA B matrix initializer",
-        description="Custom initialization function for LoRA B matrix. Default to zero initialization.",
+        description="Custom initialization function for LoRA B matrix. Default to zero initialization. \
+            For more init methods you can refer to https://docs.pytorch.org/docs/stable/nn.init.html",
     )
 
     @field_validator("lora_a_init", "lora_b_init")
     @classmethod
     def validate_init_method(cls, v):
         """Validate initialization method is supported."""
-        valid_methods = {"kaiming_init", "zero_init"}
-        if v not in valid_methods:
+        if callable(v):
+            # Check if this is a function from torch.nn.init
+            module = inspect.getmodule(v)
+            if module is not torch.nn.init:
+                raise ValueError(
+                    f"Callable initialization method must be from torch.nn.init module, "
+                    f"got function from {module.__name__ if module else 'unknown module'}"
+                )
+            func_name = getattr(v, "__name__", "")
+            if not func_name.endswith("_"):
+                raise ValueError(
+                    f"Initialization method must be an in-place function (name should end with '_'), "
+                    f"got '{func_name}'. For example,"
+                    f" use torch.nn.init.kaiming_uniform_ instead of torch.nn.init.kaiming_uniform"
+                )
+        else:
             raise ValueError(
-                f"Invalid initialization method: {v}. Supported methods: {', '.join(valid_methods)}"
+                f"Initialization method must be a callable function from torch.nn.init, got {type(v)}"
             )
         return v
 

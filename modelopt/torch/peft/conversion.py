@@ -26,6 +26,7 @@ from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
 from .config import PEFTConfig
 from .lora.layer import LoRAModule, LoRAModuleRegistry
 
+# TODO: Add test cases to cover these functions
 __all__ = [
     "freeze_base_weights",
     "freeze_lora_weights",
