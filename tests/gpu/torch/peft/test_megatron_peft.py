@@ -20,7 +20,7 @@ from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
 skip_if_no_megatron()
 
 
-import modelopt.torch.peft as mtpf
+import modelopt.torch.peft as mtpeft
 import modelopt.torch.quantization as mtq
 from modelopt.torch.peft.lora.layer import LoRAModule
 from modelopt.torch.utils.plugins import megatron_prefill
@@ -184,7 +184,7 @@ def _test_forward_with_one_lora(lora_config, rank, size):
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     original_output = megatron_prefill(model, prompt_tokens)
-    mtpf.update_model(model, lora_config)
+    mtpeft.update_model(model, lora_config)
     lora_output = megatron_prefill(model, prompt_tokens)
     assert lora_output.shape == original_output.shape
     if lora_config == DEFAULT_LORA_CFG_RANDOM_INIT_TEST:
@@ -198,12 +198,12 @@ def _test_forward_with_one_lora(lora_config, rank, size):
         assert torch.allclose(lora_output, original_output, rtol=1e-5), (
             f"{lora_output}, {original_output}"
         )
-    mtpf.disable_adapters(model)
+    mtpeft.disable_adapters(model)
     lora_disabled_output = megatron_prefill(model, prompt_tokens)
     # Task: Since all LoRA layers are disabled, the output should
     # be identical to the original output.
     assert torch.allclose(lora_disabled_output, original_output, rtol=1e-5)
-    mtpf.enable_adapters(model)
+    mtpeft.enable_adapters(model)
     lora_reenabled_output = megatron_prefill(model, prompt_tokens)
     # Task: To verify that toggling LoRA layers from disabled
     # to enabled does not alter the output, the output should remain unchanged.
@@ -260,14 +260,14 @@ def _test_forward_with_two_loras(lora_config_1, lora_config_2, rank, size):
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     original_output = megatron_prefill(model, prompt_tokens)
-    mtpf.update_model(model, lora_config_1)
+    mtpeft.update_model(model, lora_config_1)
     # output from the first lora only
     lora_1_output = megatron_prefill(model, prompt_tokens)
 
-    mtpf.update_model(model, lora_config_2)
+    mtpeft.update_model(model, lora_config_2)
 
-    mtpf.disable_adapters(model, adapters_to_disable=[lora_config_1["adapter_name"]])
-    mtpf.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
+    mtpeft.disable_adapters(model, adapters_to_disable=[lora_config_1["adapter_name"]])
+    mtpeft.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
 
     # output from the 2nd lora only
     lora_2_output = megatron_prefill(model, prompt_tokens)
@@ -276,14 +276,14 @@ def _test_forward_with_two_loras(lora_config_1, lora_config_2, rank, size):
     # Should not be the same
     assert not torch.allclose(lora_1_output, lora_2_output)
 
-    mtpf.enable_adapters(model, adapters_to_enable=[lora_config_1["adapter_name"]])
-    mtpf.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
+    mtpeft.enable_adapters(model, adapters_to_enable=[lora_config_1["adapter_name"]])
+    mtpeft.enable_adapters(model, adapters_to_enable=[lora_config_2["adapter_name"]])
     lora_all_output = megatron_prefill(model, prompt_tokens)
 
     assert not torch.allclose(lora_all_output, lora_1_output)
     assert not torch.allclose(lora_all_output, lora_2_output)
 
-    mtpf.disable_adapters(model)
+    mtpeft.disable_adapters(model)
     both_disabled_output = megatron_prefill(model, prompt_tokens)
     assert torch.allclose(both_disabled_output, original_output)
 
@@ -318,7 +318,7 @@ def _test_attr_changes_with_one_lora(lora_config, rank, size):
     model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
-    mtpf.update_model(model, lora_config)
+    mtpeft.update_model(model, lora_config)
     lora_1_output = megatron_prefill(model, prompt_tokens)
 
     for _, module in model.named_modules():
@@ -362,7 +362,7 @@ def _test_mcore_save_restore(lora_config, tmp_path, rank, size):
     ).cuda()
     original_output_test = megatron_prefill(model_test, prompt_tokens)
 
-    mtpf.update_model(model_ref, lora_config)
+    mtpeft.update_model(model_ref, lora_config)
 
     lora_output_ref = megatron_prefill(model_ref, prompt_tokens)
 
@@ -401,7 +401,7 @@ def _test_adapter_gradient_flow_freeze_base_model(lora_config, tmp_path, rank, s
     model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
-    mtpf.update_model(model, lora_config)
+    mtpeft.update_model(model, lora_config)
     model.train()
 
     # Use a simple forward pass instead for grad check
@@ -453,7 +453,7 @@ def _test_adapter_gradient_flow_freeze_lora_model(lora_config, tmp_path, rank, s
     model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
-    mtpf.update_model(model, local_cfg)
+    mtpeft.update_model(model, local_cfg)
     model.train()
 
     # Use a simple forward pass instead for grad check
@@ -504,7 +504,7 @@ def _test_adapter_gradient_flow(lora_config, tmp_path, rank, size):
     model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
-    mtpf.update_model(model, lora_config)
+    mtpeft.update_model(model, lora_config)
     model.train()
 
     # Use a simple forward pass instead for grad check
@@ -555,7 +555,7 @@ def _test_quantize_then_lora(lora_config, tmp_path, rank, size):
     mtq.quantize(model, NVFP4_DEFAULT_CONFIG, forward_func)
 
     # Then add the lora
-    mtpf.update_model(model, lora_config)
+    mtpeft.update_model(model, lora_config)
 
     # Bypass the output layer
     for name, module in model.named_modules():
@@ -601,7 +601,7 @@ def _test_lora_then_quantize(lora_config, tmp_path, rank, size):
     model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
-    mtpf.update_model(model, lora_config)
+    mtpeft.update_model(model, lora_config)
     lora_output = megatron_prefill(model, prompt_tokens)
 
     def forward_func(mod):
@@ -671,7 +671,7 @@ def _test_mcore_quantize_then_lora_save_restore(lora_config, tmp_path, rank, siz
         _ = megatron_prefill(model_ref, prompt_tokens)
 
     mtq.quantize(model_ref, NVFP4_DEFAULT_CONFIG, forward_func)
-    mtpf.update_model(model_ref, lora_config)
+    mtpeft.update_model(model_ref, lora_config)
 
     quantize_lora_output_ref = megatron_prefill(model_ref, prompt_tokens)
 
@@ -731,7 +731,7 @@ def _test_mcore_lora_then_quantize_save_restore(lora_config, tmp_path, rank, siz
     ).cuda()
     original_output_test = megatron_prefill(model_test, prompt_tokens)
 
-    mtpf.update_model(model_ref, lora_config)
+    mtpeft.update_model(model_ref, lora_config)
 
     def forward_func(mod):
         _ = megatron_prefill(model_ref, prompt_tokens)
