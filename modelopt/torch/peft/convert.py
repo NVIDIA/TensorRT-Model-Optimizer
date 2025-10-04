@@ -15,7 +15,6 @@
 
 """User-facing PEFT API for LoRA module conversion and adapter management."""
 
-import fnmatch
 from typing import Any
 
 import torch.nn as nn
@@ -23,6 +22,7 @@ import torch.nn as nn
 from modelopt.torch.opt import apply_mode
 from modelopt.torch.peft.config import PEFTConfig
 from modelopt.torch.peft.conversion import add_adapter
+from modelopt.torch.utils.network import matches_pattern
 
 try:
     from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
@@ -101,30 +101,15 @@ def _set_adapter_state(model, enable_state, layer_patterns=None, adapter_pattern
     if not is_peft_model(model):
         raise ValueError("Model must be a PEFT model to set adapter states.")
 
-    def matches_any_pattern(name, patterns, allow_callable=True):
-        for pattern in patterns:
-            if isinstance(pattern, str):
-                if fnmatch.fnmatch(name, pattern):
-                    return True
-            elif allow_callable and callable(pattern):
-                if pattern(name):
-                    return True
-            else:
-                pattern_type = "pattern" if allow_callable else "adapter pattern"
-                raise TypeError(f"Unsupported {pattern_type} type: {type(pattern)}")
-        return False
-
     for module_name, module in model.named_modules():
         if isinstance(module, LoRAModule):
             if layer_patterns is not None:
-                if not matches_any_pattern(module_name, layer_patterns, allow_callable=True):
+                if not matches_pattern(module_name, layer_patterns, allow_callable=True):
                     continue
 
             for adapter_name, adapter_dict in module._lora_adapters.items():
                 if adapter_patterns is not None:
-                    if not matches_any_pattern(
-                        adapter_name, adapter_patterns, allow_callable=False
-                    ):
+                    if not matches_pattern(adapter_name, adapter_patterns, allow_callable=False):
                         continue
 
                 adapter_dict["enable"] = enable_state

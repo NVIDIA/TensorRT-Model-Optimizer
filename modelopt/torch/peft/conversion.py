@@ -15,13 +15,11 @@
 
 """PEFT conversion and restore utilities for LoRA modules."""
 
-import fnmatch
-from collections.abc import Callable, Iterable
-
 import torch.nn as nn
 
 from modelopt.torch.opt.conversion import ModelLikeModule, ModeloptStateManager
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
+from modelopt.torch.utils.network import matches_pattern
 
 from .config import PEFTConfig
 from .lora.layer import LoRAModule, LoRAModuleRegistry
@@ -117,7 +115,7 @@ def add_adapter(model, config: PEFTConfig):
             # Later patterns override earlier ones
             merged_setting = None
             for wildcard_or_filter_func, adapter_setting in adapter_cfg.items():
-                if _matches(name, wildcard_or_filter_func):
+                if matches_pattern(name, wildcard_or_filter_func):
                     if merged_setting is None:
                         merged_setting = adapter_setting.copy()
                     else:
@@ -134,44 +132,9 @@ def add_adapter(model, config: PEFTConfig):
     return model
 
 
-def _matches(
-    name: str,
-    patterns: str | Callable[[str], bool] | Iterable[str | Callable[[str], bool]] | None,
-    *,
-    allow_callable: bool = True,
-) -> bool:
-    if patterns is None:
-        return True
-
-    if isinstance(patterns, (str, bytes)):
-        patterns_iter: Iterable[str | Callable[[str], bool]] = (patterns,)
-    elif callable(patterns):
-        if not allow_callable:
-            raise TypeError("Callable patterns are not supported in this context.")
-        patterns_iter = (patterns,)
-    elif isinstance(patterns, Iterable):
-        patterns_iter = tuple(patterns)
-    else:
-        raise TypeError(f"Unsupported pattern type: {type(patterns)}")
-
-    for pattern in patterns_iter:
-        if isinstance(pattern, (str, bytes)):
-            if fnmatch.fnmatch(name, pattern):
-                return True
-        elif callable(pattern):
-            if not allow_callable:
-                raise TypeError("Callable patterns are not supported in this context.")
-            if pattern(name):
-                return True
-        else:
-            raise TypeError(f"Unsupported pattern type: {type(pattern)}")
-
-    return False
-
-
 def _iter_lora_modules(model, layer_patterns=None):
     for module_name, module in model.named_modules():
-        if isinstance(module, LoRAModule) and _matches(module_name, layer_patterns):
+        if isinstance(module, LoRAModule) and matches_pattern(module_name, layer_patterns):
             yield module_name, module
 
 
@@ -192,14 +155,14 @@ def _set_base_requires_grad(model, *, requires_grad: bool, layer_patterns=None):
         # If layer_patterns is specified, only affect matching layers
         if layer_patterns is not None:
             module_name = ".".join(name.split(".")[:-1])  # Get module name without param name
-            if not _matches(module_name, layer_patterns):
+            if not matches_pattern(module_name, layer_patterns):
                 continue
         param.requires_grad = requires_grad
 
 
 def _iter_adapter_names(module, adapter_patterns=None):
     for adapter_name in module._lora_adapters:
-        if _matches(adapter_name, adapter_patterns, allow_callable=False):
+        if matches_pattern(adapter_name, adapter_patterns, allow_callable=False):
             yield adapter_name
 
 
