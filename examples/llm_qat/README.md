@@ -303,12 +303,10 @@ See more details on running LLM evaluation benchmarks [here](../llm_eval/README.
 
 The final model after QAT is similar in architecture to that of PTQ model. QAT model simply have updated weights as compared to the PTQ model. It can be deployed to TensorRT-LLM (TRTLLM) or to TensorRT just like a regular **ModelOpt** PTQ model if the quantization format is supported for deployment.
 
-To run QAT model with TRTLLM, run:
+To run QAT model with vLLM/TRTLLM, run:
 
 ```sh
-cd ../llm_ptq
-
-./scripts/huggingface_example.sh --model ../llm_qat/llama3-qat --quant w4a8_awq
+python export.py --pyt_ckpt_path llama3-qat --export_path llama3-qat-deploy
 ```
 
 Note: The QAT checkpoint for `w4a8_awq` config can be created by using `--quant_cfg W4A8_AWQ_BETA_CFG` in [QAT example](#end-to-end-qat-example).
@@ -344,6 +342,8 @@ To perform QLoRA training, run:
    --compress True \
    --lora True
 ```
+
+## QLoRA deployment
 
 After performing QLoRA training the final checkpoint can be exported for deployment with vLLM using the following command.
 
