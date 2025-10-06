@@ -674,6 +674,15 @@ class _DynamicEagleGPTModel(EagleModel):
                 "Only logit distillation is supported when draft_vocab_size != vocab_size!"
             )
 
+        # Set up learnable parallel draft embeddings and hidden_states
+        if self.eagle_config.parallel_draft_step > 1:
+            self.parallel_draft_embeddings = torch.nn.Parameter(
+                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
+            )
+            self.parallel_draft_hidden_states = torch.nn.Parameter(
+                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_siz)
+            )
+
         # Use default aux_hidden_state layers if use_aux_hidden_state is True
         # but no layer id is given
         # layer ids are not used in offline eagle, but we need to set this to have correct fc_input_size_multiplier
@@ -801,27 +810,22 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs = {}
 
+        eagle_inputs["input_ids"] = padded_input_ids
         eagle_inputs["position_ids"] = position_ids
 
-        eagle_inputs["input_ids"] = (
-            padded_input_ids
-            if parallel_draft_index == 0
-            else torch.full(
-                padded_input_ids.shape,
-                getattr(self, f"mask_token_{parallel_draft_index - 1}"),
-                device=padded_input_ids.device,
-                dtype=padded_input_ids.dtype,
+        if parallel_draft_index == 0:
+            eagle_inputs["embedding"] = self.embedding(
+                input_ids=eagle_inputs["input_ids"],
+                position_ids=eagle_inputs["position_ids"],
             )
-        )
-
-        eagle_inputs["embedding"] = self.embedding(
-            input_ids=eagle_inputs["input_ids"],
-            position_ids=eagle_inputs["position_ids"],
-        )
-
-        eagle_inputs["hidden_states"] = (
-            hidden_states if parallel_draft_index == 0 else eagle_inputs["embedding"]
-        )
+            eagle_inputs["hidden_states"] = hidden_states
+        else:
+            eagle_inputs["embedding"] = self.parallel_draft_embeddings[
+                parallel_draft_index - 1
+            ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
+            eagle_inputs["hidden_states"] = self.parallel_draft_hidden_states[
+                parallel_draft_index - 1
+            ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
             attn_mask, ttt_step + parallel_draft_index
@@ -1382,12 +1386,10 @@ class _DynamicEagleGPTModel(EagleModel):
 
         draft_tokens = []
         for _ in range(steps):
-            for i in range(self.eagle_config.parallel_draft_step - 1):
-                eagle_ids = torch.cat(
-                    (eagle_ids, getattr(self, f"mask_token_{i}").view((1, 1))), dim=-1
-                )
-                # Pad dummy hidden_states for mask tokens
-                # They will be replaced by embeddings after padding
+            for _ in range(self.eagle_config.parallel_draft_step - 1):
+                # Pad dummy eagle_ids and hidden_states for parallel draft
+                # They will be replaced by parallel draft embeddings and hidden_states after padding
+                eagle_ids = torch.cat((eagle_ids, torch.zeros(1, 1)), dim=-1)
                 hidden_states = torch.cat((hidden_states, hidden_states[-1:]), dim=0)
             padded_eagle_ids, seq_len, padded_hidden_states = right_padding(
                 eagle_ids, hidden_states
@@ -1398,23 +1400,27 @@ class _DynamicEagleGPTModel(EagleModel):
 
             eagle_inputs = {}
             eagle_inputs["input_ids"] = padded_eagle_ids
-            eagle_inputs["embedding"] = self.embedding(
+            embeddings = self.embedding(
                 input_ids=padded_eagle_ids,
                 position_ids=eagle_position_ids,
             )
             if self.config.sequence_parallel:
-                gathered_embedding = gather_from_sequence_parallel_region(eagle_inputs["embedding"])
+                gathered_embedding = gather_from_sequence_parallel_region(embeddings)
             else:
-                gathered_embedding = eagle_inputs["embedding"]
+                gathered_embedding = embeddings
             if self.eagle_config.parallel_draft_step > 1:
-                # Replace dummy hidden_states with embedding for mask tokens
+                # Replace dummy embeddings and hidden_states with
+                # parallel_draft_embeddings and parallel_draft_hidden_states
+                gathered_embedding[
+                    seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
+                ] = self.parallel_draft_embeddings.unsqueeze(1)
                 padded_hidden_states[
                     seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
-                ] = gathered_embedding[
-                    seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
-                ]
+                ] = self.parallel_draft_hidden_states.unsqueeze(1)
             if self.config.sequence_parallel:
                 padded_hidden_states = scatter_to_sequence_parallel_region(padded_hidden_states)
+                embeddings = scatter_to_sequence_parallel_region(gathered_embedding)
+            eagle_inputs["embedding"] = embeddings
             eagle_inputs["hidden_states"] = padded_hidden_states
             eagle_inputs["attention_mask"] = eagle_attention_mask
 
@@ -1445,8 +1451,8 @@ class _DynamicEagleGPTModel(EagleModel):
 
             draft_tokens.append(draft_token)
 
-            # Remove mask tokens from eagle_ids before adding draft_token
-            # Remove added hidden_states before
+            # Remove dummy tokens from eagle_ids before adding draft_token
+            # Remove added hidden_states
             if self.eagle_config.parallel_draft_step > 1:
                 eagle_ids = eagle_ids[:, : -self.eagle_config.parallel_draft_step + 1]
                 hidden_states = hidden_states[: -self.eagle_config.parallel_draft_step + 1]
