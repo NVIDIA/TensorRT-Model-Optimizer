@@ -1389,7 +1389,9 @@ class _DynamicEagleGPTModel(EagleModel):
             for _ in range(self.eagle_config.parallel_draft_step - 1):
                 # Pad dummy eagle_ids and hidden_states for parallel draft
                 # They will be replaced by parallel draft embeddings and hidden_states after padding
-                eagle_ids = torch.cat((eagle_ids, torch.zeros(1, 1).to(eagle_ids.device)), dim=-1)
+                eagle_ids = torch.cat(
+                    (eagle_ids, torch.zeros(1, 1).to(eagle_ids.dtype).to(eagle_ids.device)), dim=-1
+                )
                 hidden_states = torch.cat((hidden_states, hidden_states[-1:]), dim=0)
             padded_eagle_ids, seq_len, padded_hidden_states = right_padding(
                 eagle_ids, hidden_states
