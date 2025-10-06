@@ -94,8 +94,8 @@ def test_int4_awq(tmp_path):
         scale_awq_lite = find_init(onnx_model_awq_lite, scale_names[i])
 
         if int4.has_cupy:
-            wq_onnx_awq_lite = int4.convert_ml_dtypes_int4_to_int8_format(wq_onnx_awq_lite)
-            scale_awq_lite = int4.convert_ml_dtypes_int4_to_int8_format(scale_awq_lite)
+            wq_onnx_awq_lite = int4.safe_cupy_array(wq_onnx_awq_lite)
+            scale_awq_lite = int4.safe_cupy_array(scale_awq_lite)
 
         wq_onnx_awq_lite = dq_tensor(wq_onnx_awq_lite, scale_awq_lite, block_size)
         wq_torch_awq_clip = model_torch_copy.net[i * 2].weight_quantizer(
@@ -103,10 +103,10 @@ def test_int4_awq(tmp_path):
         )
         wq_onnx_awq_clip = find_init(onnx_model_awq_clip, wq_names[i])
         scale_awq_clip = find_init(onnx_model_awq_clip, scale_names[i])
-        
+
         if int4.has_cupy:
-            wq_onnx_awq_clip = int4.convert_ml_dtypes_int4_to_int8_format(wq_onnx_awq_clip)
-            scale_awq_clip = int4.convert_ml_dtypes_int4_to_int8_format(scale_awq_clip)
+            wq_onnx_awq_clip = int4.safe_cupy_array(wq_onnx_awq_clip)
+            scale_awq_clip = int4.safe_cupy_array(scale_awq_clip)
 
         wq_onnx_awq_clip = dq_tensor(wq_onnx_awq_clip, scale_awq_clip, block_size)
 

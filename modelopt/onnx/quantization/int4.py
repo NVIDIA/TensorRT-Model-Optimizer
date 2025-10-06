@@ -98,7 +98,7 @@ UINT4_MAX = 15
 # supported and working
 CLIP_MIN = 1e-5
 
-def convert_ml_dtypes_int4_to_int8_format(tensor):
+def safe_cupy_array(tensor):
     """
     Convert ml_dtypes.int4 tensor to numpy.int8 for CuPy compatibility.
     
