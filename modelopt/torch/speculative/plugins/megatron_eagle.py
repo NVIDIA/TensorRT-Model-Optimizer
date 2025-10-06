@@ -680,7 +680,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
             )
             self.parallel_draft_hidden_states = torch.nn.Parameter(
-                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_siz)
+                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
             )
 
         # Use default aux_hidden_state layers if use_aux_hidden_state is True
