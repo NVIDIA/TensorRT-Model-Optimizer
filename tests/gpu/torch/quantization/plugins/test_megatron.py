@@ -33,11 +33,9 @@ from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     tensor_parallel_test_helper,
 )
-from packaging.version import Version
 
 skip_if_no_megatron()
 
-import megatron.core
 from megatron.core.parallel_state import (
     destroy_model_parallel,
     get_data_parallel_group,
@@ -255,10 +253,6 @@ def test_homogeneous_sharded_state_dict(tmp_path, config, compress, meta_device)
         mixed_precision_config,
         mixed_block_size_config,
     ],
-)
-@pytest.mark.skipif(
-    Version(megatron.core.__version__) <= Version("0.13.0rc1"),
-    reason="This unittest need megatron.core>=0.13 with default heterogenous ckpt support.",
 )
 def test_heterogenous_sharded_state_dict(need_2_gpus, tmp_path, config):
     spawn_multiprocess_job(
