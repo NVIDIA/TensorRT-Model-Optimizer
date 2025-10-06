@@ -209,14 +209,8 @@ class QATTrainer(ModelOptHFTrainer):
             print_rank_0("Quantizing the model...")
             mtq.quantize(self.model, self.quant_cfg, forward_loop)  # type: ignore [arg-type]
 
-        # Save modelopt state before compression. This is used to later export the model for deployment.
-        modelopt_state = mto.modelopt_state(self.model)
-        modelopt_state["modelopt_state_weights"] = get_quantizer_state_dict(self.model)
-        torch.save(modelopt_state, f"{self.args.output_dir}/modelopt_state_calib.pth")
-
-        print_rank_0(
-            f"Saved modelopt state before compression to {f'{self.args.output_dir}/modelopt_state_calib.pth'}"
-        )
+        # Save modelopt state
+        self._save_modelopt_state_with_weights()
 
         if getattr(self.quant_args, "compress", False):
             print_rank_0("Compressing model after calibration")
@@ -225,7 +219,6 @@ class QATTrainer(ModelOptHFTrainer):
         # Force garbage collection to free up memory
         gc.collect()
 
-        self._save_modelopt_state_with_weights()
         torch.cuda.empty_cache()
 
         if self.accelerator.is_main_process:
