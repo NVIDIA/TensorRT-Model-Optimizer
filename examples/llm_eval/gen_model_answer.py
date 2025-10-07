@@ -118,7 +118,7 @@ def run_eval(
     max_gpu_memory,
     dtype,
     revision,
-    engine_dir,
+    checkpoint_dir,
     nim_model,
     args,
 ):
@@ -150,7 +150,7 @@ def run_eval(
             revision=revision,
             top_p=top_p,
             temperature=temperature,
-            engine_dir=engine_dir,
+            checkpoint_dir=checkpoint_dir,
             nim_model=nim_model,
         )
         for i in range(0, len(questions), chunk_size)
@@ -174,25 +174,14 @@ def get_model_answers(
     revision,
     top_p=None,
     temperature=None,
-    engine_dir=None,
+    checkpoint_dir=None,
     nim_model=None,
 ):
     # Model Optimizer modification
-    if engine_dir:
-        tokenizer = get_tokenizer(model_path, trust_remote_code=args.trust_remote_code)
-        if engine_dir:
-            # get model type
-            last_part = os.path.basename(engine_dir)
-            model_type = last_part.split("_")[0]
-            # Some models require to set pad_token and eos_token based on external config (e.g., qwen)
-            if model_type == "qwen":
-                tokenizer.pad_token = tokenizer.convert_ids_to_tokens(151643)
-                tokenizer.eos_token = tokenizer.convert_ids_to_tokens(151643)
-
-            assert LLM is not None, "tensorrt_llm APIs could not be imported."
-            model = LLM(engine_dir, tokenizer=tokenizer)
-        else:
-            raise ValueError("engine_dir is required for TensorRT LLM inference.")
+    tokenizer = get_tokenizer(model_path, trust_remote_code=args.trust_remote_code)
+    if checkpoint_dir:
+        assert LLM is not None, "tensorrt_llm APIs could not be imported."
+        model = LLM(checkpoint_dir, tokenizer=tokenizer)
     elif not nim_model:
         model, _ = load_model(
             model_path,
@@ -205,7 +194,6 @@ def get_model_answers(
             cpu_offloading=False,
             debug=False,
         )
-        tokenizer = get_tokenizer(model_path, trust_remote_code=args.trust_remote_code)
         if args.quant_cfg:
             quantize_model(
                 model,
@@ -259,7 +247,7 @@ def get_model_answers(
 
                 # some models may error out when generating long outputs
                 try:
-                    if not engine_dir:
+                    if not checkpoint_dir:
                         output_ids = model.generate(
                             torch.as_tensor(input_ids).cuda(),
                             do_sample=do_sample,
@@ -427,9 +415,9 @@ if __name__ == "__main__":
         help="The model revision to load.",
     )
     parser.add_argument(
-        "--engine-dir",
+        "--checkpoint-dir",
         type=str,
-        help="The path to the TensorRT LLM engine directory.",
+        help="The path to the model checkpoint directory.",
     )
     parser.add_argument(
         "--nim-model",
@@ -502,7 +490,7 @@ if __name__ == "__main__":
         max_gpu_memory=args.max_gpu_memory,
         dtype=str_to_torch_dtype(args.dtype),
         revision=args.revision,
-        engine_dir=args.engine_dir,
+        checkpoint_dir=args.checkpoint_dir,
         nim_model=args.nim_model,
         args=args,
     )

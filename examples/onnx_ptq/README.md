@@ -24,26 +24,23 @@ Model Optimizer enables highly performant quantization formats including NVFP4, 
 
 ### Docker
 
-Build from this [Dockerfile](./docker/Dockerfile) which includes the latest publicly available TensorRT version, providing access to cutting-edge features and superior performance compared to the `modelopt_examples` [Docker image](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/docker/Dockerfile).
+Please use the TensorRT docker image (e.g., `nvcr.io/nvidia/tensorrt:25.08-py3`) or visit our [installation docs](https://nvidia.github.io/TensorRT-Model-Optimizer/getting_started/2_installation.html) for more information.
 
-Build the Docker image (will be tagged `docker.io/library/onnx_ptq_examples:latest`)
-
-```bash
-./docker/build.sh
-```
-
-Run the docker image
+Set the following environment variables inside the TensorRT docker.
 
 ```bash
-docker run --user 0:0 -it --gpus all --shm-size=2g -v /path/to/ImageNet/dataset:/workspace/imagenet docker.io/library/onnx_ptq_examples:latest
+export CUDNN_LIB_DIR=/usr/lib/x86_64-linux-gnu/
+export LD_LIBRARY_PATH="${CUDNN_LIB_DIR}:${LD_LIBRARY_PATH}"
 ```
+
+Also follow the installation steps below to upgrade to the latest version of Model Optimizer and install example-specific dependencies.
 
 ### Local Installation
 
 Install Model Optimizer with `onnx` dependencies using `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/) and install the requirements for the example:
 
 ```bash
-pip install nvidia-modelopt[onnx]
+pip install -U nvidia-modelopt[onnx]
 pip install -r requirements.txt
 ```
 
@@ -218,8 +215,7 @@ python -m modelopt.onnx.quantization \
     --quantize_mode=<int8/fp8> \
     --calibration_data=calib.npy \
     --calibrate_per_node \
-    --output_path=vit_base_patch16_224.quant.onnx \
-    --calibration_shapes=input:1x3x224x224
+    --output_path=vit_base_patch16_224.quant.onnx
 ```
 
 > **Note**: Per node calibration is not available for INT4 quantization methods (`awq_clip`, `rtn_dq`)

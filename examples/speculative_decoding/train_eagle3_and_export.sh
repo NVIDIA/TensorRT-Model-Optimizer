@@ -38,6 +38,10 @@ while [[ $# -gt 0 ]]; do
       DATA="$2"
       shift; shift
       ;;
+    --offline_data)
+      OFFLINE_DATA_PATH="$2"
+      shift; shift
+      ;;
     *)
       echo "Unknown argument: $1"
       exit 1
@@ -54,6 +58,12 @@ else
   export CUDA_VISIBLE_DEVICES="$devs"
 fi
 
+if [[ "$OFFLINE_DATA_PATH" != "" ]]; then
+  OFFLINE_DATA_ARGS="--offline-data $OFFLINE_DATA_PATH"
+else
+  OFFLINE_DATA_ARGS=""
+fi
+
 MODEL_BASENAME=$(basename "$BASE_MODEL")
 
 echo "==== [1/3] Training draft model ===="
@@ -61,6 +71,7 @@ OUTPUT_DIR=ckpts/${MODEL_BASENAME}-$(date +%Y%m%d_%H%M)
 mkdir -p "$(dirname "$OUTPUT_DIR")"
 ./launch_train.sh --model $BASE_MODEL \
             --output_dir $OUTPUT_DIR \
+            $OFFLINE_DATA_ARGS \
             --data $DATA \
             --num_gpu $NUM_GPU \
             --num_epochs 2 \

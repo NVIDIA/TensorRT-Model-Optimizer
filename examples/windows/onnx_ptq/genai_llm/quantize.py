@@ -361,11 +361,15 @@ def main(args):
     # device = torch.device(f"cuda:{device_id}")
     device = torch.device(args.device)
 
+    if args.layers_8bit:
+        args.enable_mixed_quant = True
+
     print(
         f"\n--Quantize-Script-- algo={args.algo}, dataset={args.dataset}, calib_size={args.calib_size}, "
         f"batch_size={args.batch_size}, block_size={args.block_size}, add-position-ids={args.add_position_ids}, "
         f"past-kv={args.add_past_kv_inputs}, rcalib={args.use_random_calib}, device={args.device}, "
-        f"use_zero_point={args.use_zero_point}, use_fp32={args.use_fp32}\n"
+        f"use_zero_point={args.use_zero_point}, use_fp32={args.use_fp32} enable_mixed_quant={args.enable_mixed_quant}, "
+        f"layers_8bit={args.layers_8bit}\n"
     )
 
     print(
@@ -435,6 +439,8 @@ def main(args):
         awqclip_alpha_step=args.awqclip_alpha_step,
         awqclip_alpha_min=args.awqclip_alpha_min,
         awqclip_bsz_col=args.awqclip_bsz_col,
+        enable_mixed_quant=args.enable_mixed_quant,
+        layers_8bit=args.layers_8bit,
     )
     logging.info(f"\nQuantization process took {time.time() - t} seconds")
 
@@ -594,6 +600,20 @@ if __name__ == "__main__":
         default=False,
         action="store_true",
     )
-
+    parser.add_argument(
+        "--enable_mixed_quant",
+        default=False,
+        action="store_true",
+        help=(
+            "Use default mixed quantization strategy: first 1/8, last 1/8, and every 3rd attn, "
+            "mlp layers quantized to 8 bits; others to 4 bits."
+        ),
+    )
+    parser.add_argument(
+        "--layers_8bit",
+        type=str,
+        default="",
+        help=("Overrides default mixed quant strategy. Example: 'layers.0,lm_head'"),
+    )
     args = parser.parse_args()
     main(args)

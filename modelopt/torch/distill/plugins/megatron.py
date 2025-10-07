@@ -59,7 +59,7 @@ class DistillationConfig:
         logit_kl_temperature: Temperature for the logit KL-divergence loss.
     """
 
-    intermediate_layer_pairs: list[tuple[str, str]] = field(default_factory=list)
+    intermediate_layer_pairs: list[tuple[str, ...]] = field(default_factory=list)
     logit_layers: tuple[str, str] = ("output_layer", "output_layer")
     skip_lm_loss: bool = True
     kd_loss_scale: float = 1.0
@@ -69,33 +69,53 @@ class DistillationConfig:
 
     def __post_init__(self):
         assert len(self.logit_layers) == 2, f"{self.logit_layers=}"
-        assert all(len(pair) == 2 for pair in self.intermediate_layer_pairs), (
+        assert all(len(pair) in (2, 3) for pair in self.intermediate_layer_pairs), (
             f"{self.intermediate_layer_pairs=}"
         )
         assert self.kd_loss_scale > 0, f"{self.kd_loss_scale=}"
         assert self.logit_kl_temperature > 0, f"{self.logit_kl_temperature=}"
 
+    @staticmethod
+    def parse_intermediate_entry(entry: tuple[str, ...]) -> tuple[str, str, Callable]:
+        """Parse an intermediate entry into a student layer, teacher layer, and loss function."""
+        if len(entry) == 3:
+            student_layer, teacher_layer, loss_fn_name = entry
+            if loss_fn_name == "cosine":
+                loss_fn = HiddenStateCosineLoss
+            elif loss_fn_name == "mse":
+                loss_fn = MSELoss
+            else:
+                raise ValueError(f"Unknown intermediate loss function: {loss_fn_name}")
+        else:
+            student_layer, teacher_layer = entry
+            loss_fn = HiddenStateCosineLoss  # default to cosine loss
+        return student_layer, teacher_layer, loss_fn
 
-def load_distillation_config(
-    config_path: str | None, student_cfg: "TransformerConfig", teacher_cfg: "TransformerConfig"
+
+def setup_distillation_config(
+    config_or_path: str | DistillationConfig | None,
+    student_cfg: "TransformerConfig",
+    teacher_cfg: "TransformerConfig",
 ) -> DistillationConfig:
     """Read the distillation yaml config file specified by ``args.export_kd_cfg``.
 
     Args:
-        config_path: Path to user-defined distillation settings yaml file.
+        config_or_path: Path to user-defined distillation settings yaml file, or the incomplete config itself.
             If `None`, uses default logits-only distillation mode for GPT models.
         student_cfg: Model config for student model.
         teacher_cfg: Model config for teacher model.
 
     WARNING: Assumes intermediate hidden sizes are always that found in the model config's ``hidden_size`` attribute.
     """
-    if config_path:
-        with open(config_path) as f:
-            cfg = yaml.safe_load(f)
-        cfg = DistillationConfig(**cfg)
-    else:
+    if config_or_path is None:
         logger.warning("Distillation config not provided. Using default.")
         cfg = DistillationConfig()
+    elif isinstance(config_or_path, DistillationConfig):
+        cfg = config_or_path
+    else:
+        with open(config_or_path) as f:
+            cfg = yaml.safe_load(f)
+        cfg = DistillationConfig(**cfg)
 
     criterion = {}
     if student_cfg.pipeline_model_parallel_size == 1 or parallel_state.is_pipeline_last_stage():
@@ -105,7 +125,8 @@ def load_distillation_config(
         # NOTE: Projection layer shared among intermediate layer pairs.
         projection_layer = ProjectionLayer(student_cfg, teacher_cfg)
 
-        for student_layer, teacher_layer in cfg.intermediate_layer_pairs:
+        for entry in cfg.intermediate_layer_pairs:
+            student_layer, teacher_layer, loss_fn = cfg.parse_intermediate_entry(entry)
             if parallel_state.get_tensor_and_context_parallel_rank() == 0:
                 logger.info(
                     "Distillation: Adding intermediate loss between"
@@ -114,7 +135,7 @@ def load_distillation_config(
                 )
             student_layer = _adjust_layer_index_for_pp(student_layer, student_cfg)
             teacher_layer = _adjust_layer_index_for_pp(teacher_layer, teacher_cfg)
-            criterion[(student_layer, teacher_layer)] = HiddenStateCosineLoss(
+            criterion[(student_layer, teacher_layer)] = loss_fn(
                 student_cfg, projection_layer=projection_layer
             )
 
@@ -202,9 +223,9 @@ class MSELoss(BaseLoss):
         predictions, targets = self.pre_forward(predictions, targets)
 
         loss = F.mse_loss(predictions, targets, reduction="none")
-        loss = loss.sum(dim=-1)
+        loss = loss.mean(dim=-1)
 
-        return self.post_forward(loss)
+        return self.post_forward(loss, is_sequence_parallel=self._config.sequence_parallel)
 
 
 class HiddenStateCosineLoss(BaseLoss):

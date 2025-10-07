@@ -11,6 +11,7 @@ Quantization Aware Training (QAT) helps to improve the model accuracy beyond pos
 | Support Matrix | View the support matrix to see quantization compatibility and feature availability across different models | \[[Link](#support-matrix)\] | |
 | End to End QAT | Example scripts demonstrating quantization techniques for optimizing Hugging Face models | \[[Link](#end-to-end-qat-example)\] | \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html)\] |
 | End to End QAD | Example scripts demonstrating quantization aware distillation techniques for optimizing Hugging Face models | \[[Link](#end-to-end-qad-example)\] | \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/1_quantization.html)\] |
+| NeMo QAT/QAD Simplified Flow | Example script demonstrating end-to-end QAT/QAD in NeMo | \[[Link](../nemo_run/qat/README.md)\] | |
 | Evaluate Accuracy | Evaluating model accuracy after QAT/QAD (with fake quantization) | \[[Link](#testing-qat-model-with-llm-benchmarks-for-accuracy-evaluation)\] | |
 | Deployment | Deploying the model after QAT/QAD | \[[Link](#deployment)\] | |
 | QLoRA | Model training with reduced GPU memory | \[[Link](#end-to-end-qlora-with-real-quantization)\] | |
@@ -21,16 +22,7 @@ Quantization Aware Training (QAT) helps to improve the model accuracy beyond pos
 
 ## Pre-Requisites
 
-For Hugging Face models, install Model Optimizer with `hf` dependencies using `pip` from [PyPI](https://pypi.org/project/nvidia-modelopt/) and install the requirements for the example:
-
-```bash
-pip install nvidia-modelopt[hf]
-pip install -r requirements.txt
-```
-
-If you want to deploy the quantized model on TRT-LLM, you will also need to install the TRT-LLM dependencies as per the [TRT-LLM documentation](https://nvidia.github.io/TensorRT-LLM/quick-start-guide.html#installation). Alternatively you can use the ModelOpt docker image built from the [ModelOpt docker build step](../../docker/Dockerfile) which has all the dependencies including TRT-LLM installed.
-
-For NeMo models, use the NeMo container `nvcr.io/nvidia/nemo:25.04` or later which has all the dependencies including TRT-LLM installed.
+Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#pre-requisites) for the pre-requisites.
 
 ## Getting Started
 

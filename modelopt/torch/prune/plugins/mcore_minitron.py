@@ -24,7 +24,7 @@ Supports both GPT (attention-based) and Mamba (state-space) models, as well as h
 Actual dynamic module implementations are at :mod:`modelopt.torch.nas.plugins.megatron`.
 """
 
-from warnings import warn
+import copy
 
 import torch
 from pydantic import create_model
@@ -32,7 +32,7 @@ from pydantic import create_model
 # isort: off
 # import nas plugin to check if it is enabled else raises an Exception
 from modelopt.torch.nas.plugins.megatron import *  # noqa: F403
-from modelopt.torch.nas.plugins.megatron import HAS_MAMBA
+from modelopt.torch.nas.plugins.megatron import HAS_MAMBA, _DynamicMCoreLanguageModel
 # isort: on
 
 from modelopt.torch.nas.conversion import NASModeRegistry
@@ -62,22 +62,29 @@ SUPPORTED_HPARAMS = {
 class MCoreMinitronSearcher(BaseSearcher):
     """Searcher for Minitron pruning algorithm."""
 
+    activations_per_rank: list[dict[str, torch.Tensor]]
+    layer_scores: dict[int, torch.Tensor]
+
     @property
     def default_search_config(self) -> SearchConfig:
         """Get the default config for the searcher."""
-        return {**super().default_search_config, "max_iter_data_loader": 1024}
+        return {
+            **super().default_search_config,
+            "max_iter_data_loader": 1024,
+            "skip_sorting": False,
+            "scores_path": None,
+        }
 
     @property
     def default_state_dict(self) -> SearchStateDict:
-        """Return default state dict."""
-        return {}  # Not used
+        """Return default state dict for importance scores and activations from forward loop."""
+        return {"activations_per_rank": [], "layer_scores": {}}
 
     def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
         """Sanitize the search config dict."""
         config = super().sanitize_search_config(config)
-        assert config["data_loader"] or config["forward_loop"], (
-            "Data loader or forward loop must be provided for importance estimation!"
-        )
+        config["checkpoint"] = config["scores_path"]
+        config["verbose"] = True  # Print for all ranks
         return config
 
     def before_search(self) -> None:
@@ -89,10 +96,11 @@ class MCoreMinitronSearcher(BaseSearcher):
             "Only `export_config` constraint is supported for pruning!"
         )
 
+        self.constraints["export_config"] = copy.deepcopy(self.constraints["export_config"])
         export_config = self.constraints["export_config"]
         assert isinstance(export_config, dict)  # to keep mypy happy
         assert export_config.keys() <= SUPPORTED_HPARAMS, (
-            f"Only {SUPPORTED_HPARAMS} are supported for pruning!"
+            f"Only {SUPPORTED_HPARAMS} are supported for pruning! Received: {export_config.keys()}"
         )
 
         assert ("num_attention_heads" in export_config and "num_query_groups" in export_config) or (
@@ -126,14 +134,37 @@ class MCoreMinitronSearcher(BaseSearcher):
     def run_search(self) -> None:
         """Run actual search."""
         # Run forward loop to collect activations and sort parameters
-        assert self.forward_loop is not None
-        is_training = self.model.training
-        self.model.eval()
-        print_rank_0("Running forward loop...")
-        with torch.no_grad():
-            self.forward_loop(self.model)
-        sort_parameters(self.model, self.hps_to_sort, verbose=True)
-        self.model.train(is_training)
+        unwrapped_model = self.model
+        for m in self.model.modules():
+            if isinstance(m, _DynamicMCoreLanguageModel):
+                unwrapped_model = m
+                break
+        assert isinstance(unwrapped_model, _DynamicMCoreLanguageModel), "Model not supported!"
+
+        if self.layer_scores and self.activations_per_rank:  # Available from checkpoint
+            print_rank_0("Loading activations and scores per rank from checkpoint...")
+            unwrapped_model.set_activations_and_layer_scores(
+                self.activations_per_rank, self.layer_scores
+            )
+        elif not self.config["skip_sorting"]:
+            print_rank_0("Running forward loop...")
+            assert self.forward_loop is not None
+            is_training = self.model.training
+            self.model.eval()
+            with torch.no_grad():
+                self.forward_loop(self.model)
+            self.model.train(is_training)
+
+            # Store activations and layer scores for re-pruning with different export configs
+            self.activations_per_rank, self.layer_scores = (
+                unwrapped_model.get_activations_and_layer_scores()
+            )
+            self.save_search_checkpoint(verbose=True)
+
+        if self.config["skip_sorting"]:
+            print_rank_0("Skipping sorting parameters...")
+        else:
+            sort_parameters(self.model, self.hps_to_sort, verbose=True)
 
         # Prune homogeneously
         export_config = self.constraints["export_config"]
@@ -209,22 +240,3 @@ class MCoreMinitronModeDescriptor(FastNASModeDescriptor):
     def search_algorithm(self) -> type[BaseSearcher]:
         """Specifies the search algorithm to use for this mode (if any)."""
         return MCoreMinitronSearcher
-
-
-@NASModeRegistry.register_mode
-@PruneModeRegistry.register_mode
-class MCoreGPTMinitronModeDescriptor(MCoreMinitronModeDescriptor):
-    """[Deprecated] Class to describe the ``"mcore_gpt_minitron"`` mode.
-
-    The properties of this mode can be inspected via the source code.
-    """
-
-    @property
-    def name(self) -> str:
-        """Returns the value (str representation) of the mode."""
-        warn(
-            "`mcore_gpt_minitron` mode is deprecated will be removed in a later release. "
-            "Please use `mcore_minitron` instead.",
-            DeprecationWarning,
-        )
-        return "mcore_gpt_minitron"

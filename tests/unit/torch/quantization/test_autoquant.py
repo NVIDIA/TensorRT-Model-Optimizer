@@ -92,11 +92,10 @@ def test_quant_recipe_hparam():
     ]
     hparam = QuantRecipeHparam(
         search_recipes,
-        original=search_recipes[0],
         nn_modules=[model_test],
     )
     model_test._register_hparam("quant_recipe", hparam)
-    assert model_test.quant_recipe == QuantRecipe(mtq.INT8_DEFAULT_CFG)
+    assert model_test.quant_recipe == QuantRecipe(mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG)
     assert model_test.get_hparam("quant_recipe").choices == sorted(
         [*search_recipes, QuantRecipe(quant_cfg=None)]
     )
@@ -125,14 +124,16 @@ INT8_CUSTOM_QUANT_TEST_CFG = {
     [SimpleConv, SimpleConvLinear, SimpleLinear, TransformerBlock],
 )
 @pytest.mark.parametrize(
-    "search_formats",
+    ("search_formats", "min_bits", "search_bits"),
     [
-        [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT8_DEFAULT_CFG],
-        [mtq.INT4_AWQ_CFG, mtq.INT8_SMOOTHQUANT_CFG],
-        [mtq.INT4_AWQ_CFG, INT8_CUSTOM_QUANT_TEST_CFG],
+        ([mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT8_DEFAULT_CFG], 4.0, 6.0),
+        ([mtq.INT4_AWQ_CFG, mtq.INT8_SMOOTHQUANT_CFG], 4.0, 6.0),
+        ([mtq.INT4_AWQ_CFG, INT8_CUSTOM_QUANT_TEST_CFG], 4.0, 6.0),
+        ([mtq.INT8_SMOOTHQUANT_CFG], 8.0, 11.0),
+        ([None, mtq.INT8_SMOOTHQUANT_CFG], 8.0, 11.0),
     ],
 )
-def test_auto_quantize(model_cls, search_formats):
+def test_auto_quantize(model_cls, search_formats, min_bits, search_bits):
     model = model_cls()
 
     def loss_func(output):
@@ -140,7 +141,7 @@ def test_auto_quantize(model_cls, search_formats):
 
     best_model, search_history = mtq.auto_quantize(
         model,
-        constraints={"effective_bits": 11.0},
+        constraints={"effective_bits": search_bits},
         quantization_formats=search_formats,
         data_loader=[model.get_input() for _ in range(2)],
         forward_step=lambda model, batch: model(batch),
@@ -151,6 +152,10 @@ def test_auto_quantize(model_cls, search_formats):
     )
     assert isinstance(search_history, dict)
     assert search_history["best"]["is_satisfied"]
+    effective_bits_from_search = search_history["best"]["constraints"]["effective_bits"]
+    assert effective_bits_from_search <= search_bits and effective_bits_from_search >= min_bits, (
+        "Search failed!"
+    )
 
     if model_cls == TransformerBlock:
         hparam = model.attn.q_proj.get_hparam("quant_recipe")
@@ -196,35 +201,6 @@ def test_auto_quantize_disable():
     )
 
     assert not best_model.mlp.input_quantizer.is_enabled
-
-
-def test_auto_quantize_vs_quantize():
-    model_ref = SimpleLinear()
-    state_dict = copy.deepcopy(model_ref.state_dict())
-    dataloader = [model_ref.get_input() for _ in range(2)]
-
-    def calibrate(model):
-        for input in dataloader:
-            model(input)
-
-    mtq.quantize(model_ref, mtq.INT8_SMOOTHQUANT_CFG, calibrate)
-
-    model_test = SimpleLinear()
-    model_test.load_state_dict(state_dict)
-
-    best_model, search_history = mtq.auto_quantize(
-        model_test,
-        constraints={"effective_bits": 11.0},
-        quantization_formats=[mtq.INT8_SMOOTHQUANT_CFG],
-        data_loader=dataloader,
-        forward_step=lambda model, batch: model(batch),
-        loss_func=lambda output, data: output.sum(),
-        num_calib_steps=2,
-        num_score_steps=2,
-        verbose=True,
-    )
-
-    assert torch.allclose(best_model(dataloader[0]), model_ref(dataloader[0]))
 
 
 INT4INT8_AWQ_CFG = {

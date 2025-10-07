@@ -1,0 +1,103 @@
+# NOTE: Make sure this file is consistent with .gitlab/tests.yml
+name: E2E Example tests
+
+on:
+  push:
+    branches: ["pull-request/[0-9]+"]
+    # NOTE: paths cannot be used since push happens to copied PR and only latest commit to PR is used
+  schedule:
+    - cron: "0 0 * * *" # Nightly
+  workflow_dispatch: # On-demand
+
+# Cancel previous runs if new commit is pushed to the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ startsWith(github.ref, 'refs/heads/pull-request/') && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  check-file-changes:
+    if: startsWith(github.ref, 'refs/heads/pull-request/')
+    runs-on: ubuntu-latest
+    outputs:
+      any_changed: ${{ steps.changed-tests.outputs.any_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: get-pr-info
+        uses: nv-gha-runners/get-pr-info@main
+      # Get commit from main branch that is present in the PR to use as base for changed files
+      - id: calculate-merge-base
+        env:
+          PR_SHA: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).head.sha }}
+          BASE_SHA: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).base.sha }}
+        run: |
+          (echo -n "merge-base="; git merge-base "$BASE_SHA" "$PR_SHA") | tee --append "${GITHUB_OUTPUT}"
+      - name: Check for changes in test-relevant directories
+        id: changed-tests
+        uses: step-security/changed-files@v46.0.5
+        with:
+          base_sha: ${{ steps.calculate-merge-base.outputs.merge-base }}
+          sha: ${{ fromJSON(steps.get-pr-info.outputs.pr-info).head.sha }}
+          files: |
+            .github/workflows/example_tests.yml
+            examples/llm_ptq/**
+            modelopt/torch/**
+            tests/examples/llm_ptq/**
+            setup.py
+          fail_on_initial_diff_error: true
+  wait-checks:
+    needs: [check-file-changes]
+    if: needs.check-file-changes.outputs.any_changed == 'true'
+    uses: ./.github/workflows/_wait_for_checks.yml
+    permissions:
+      checks: read
+    secrets: inherit
+    with:
+      match_pattern: '^DCO$|^linux$' # Wait for DCO and Unit tests / linux to pass
+      delay: 300s
+  example-tests-pr:
+    needs: [check-file-changes, wait-checks]
+    if: needs.check-file-changes.outputs.any_changed == 'true'
+    # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
+    runs-on: linux-amd64-gpu-h100-latest-1
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        EXAMPLE: [llm_ptq]
+    container: &example_container
+      image: nvcr.io/nvidia/tensorrt-llm/release:1.1.0rc2.post2
+      env:
+        PIP_CONSTRAINT: "" # Disable pip constraint for upgrading packages
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps: &example_steps
+      - uses: actions/checkout@v4
+      - uses: nv-gha-runners/setup-proxy-cache@main
+      - name: Setup environment variables
+        run: |
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib" >> $GITHUB_ENV
+          echo "PATH=${PATH}:/usr/local/tensorrt/targets/x86_64-linux-gnu/bin" >> $GITHUB_ENV
+      - name: Run example tests
+        run: |
+          pip install ".[hf,dev-test]"
+          find examples/${{ matrix.EXAMPLE }} -name "requirements.txt" | while read req_file; do pip install -r "$req_file" || exit 1; done
+          pytest -s tests/examples/${{ matrix.EXAMPLE }}
+  example-tests-non-pr:
+    if: ${{ !startsWith(github.ref, 'refs/heads/pull-request/') }}
+    # Runner list at https://github.com/nv-gha-runners/enterprise-runner-configuration/blob/main/docs/runner-groups.md
+    runs-on: linux-amd64-gpu-h100-latest-1
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        EXAMPLE: [llm_ptq]
+    container: *example_container
+    steps: *example_steps
+  example-pr-required-check:
+    # Run even if example-tests-pr is skipped
+    if: ${{ startsWith(github.ref, 'refs/heads/pull-request/') && always() }}
+    needs: [check-file-changes, example-tests-pr]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Required GPU tests did not succeed
+        if: ${{ needs.check-file-changes.result != 'success' || (needs.check-file-changes.outputs.any_changed == 'true' && needs.example-tests-pr.result != 'success') }}
+        run: exit 1

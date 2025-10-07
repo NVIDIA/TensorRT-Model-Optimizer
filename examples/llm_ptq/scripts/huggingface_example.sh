@@ -53,9 +53,9 @@ esac
 IFS=","
 for qformat in $QFORMAT; do
     case $qformat in
-    fp8 | fp8_pc_pt | fp8_pb_wo | int8_sq | int4_awq | w4a8_awq | fp16 | bf16 | nvfp4 | nvfp4_awq | w4a8_nvfp4_fp8 | w4a8_mxfp4_fp8) ;;
+    fp8 | fp8_pc_pt | fp8_pb_wo | int8_wo | int8_sq | int4_awq | w4a8_awq | fp16 | bf16 | nvfp4 | nvfp4_awq | w4a8_nvfp4_fp8 | w4a8_mxfp4_fp8) ;;
     *)
-        echo "Unknown quant argument: Expected one of: [fp8, fp8_pc_pt, fp8_pb_wo, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq, w4a8_nvfp4_fp8, w4a8_mxfp4_fp8]" >&2
+        echo "Unknown quant argument: Expected one of: [fp8, fp8_pc_pt, fp8_pb_wo, int8_wo, int8_sq, int4_awq, w4a8_awq, fp16, bf16, nvfp4, nvfp4_awq, w4a8_nvfp4_fp8, w4a8_mxfp4_fp8]" >&2
         exit 1
         ;;
     esac
@@ -158,7 +158,7 @@ if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH
         echo "Quantized model config $MODEL_CONFIG exists, skipping the quantization stage"
     fi
 
-    # for enc-dec model, users need to refer TRT-LLM example to build engines and deployment
+    # for enc-dec model, users need to refer TRT-LLM example for deployment
     if [[ -f "$SAVE_PATH/encoder/config.json" && -f "$SAVE_PATH/decoder/config.json" && ! -f $MODEL_CONFIG ]]; then
         echo "Please continue to deployment with the TRT-LLM enc_dec example, https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/models/core/enc_dec. Checkpoint export_path: $SAVE_PATH"
         exit 0
@@ -187,7 +187,7 @@ if [[ $TASKS =~ "quant" ]] || [[ ! -d "$SAVE_PATH" ]] || [[ ! $(ls -A $SAVE_PATH
         RUN_ARGS+=" --trust_remote_code "
     fi
 
-    python run_tensorrt_llm.py --engine_dir=$SAVE_PATH $RUN_ARGS
+    python run_tensorrt_llm.py --checkpoint_dir=$SAVE_PATH $RUN_ARGS
 fi
 
 if [[ -d "${MODEL_PATH}" ]]; then
@@ -229,7 +229,7 @@ if [[ $TASKS =~ "lm_eval" ]]; then
 
     python lm_eval_tensorrt_llm.py \
         --model trt-llm \
-        --model_args tokenizer=$MODEL_PATH,engine_dir=$SAVE_PATH,max_gen_toks=$BUILD_MAX_OUTPUT_LEN \
+        --model_args tokenizer=$MODEL_PATH,checkpoint_dir=$SAVE_PATH,max_gen_toks=$BUILD_MAX_OUTPUT_LEN \
         --tasks $LM_EVAL_TASKS \
         --batch_size $BUILD_MAX_BATCH_SIZE $lm_eval_flags | tee $LM_EVAL_RESULT
 
@@ -259,7 +259,7 @@ if [[ $TASKS =~ "mmlu" ]]; then
     python mmlu.py \
         --model_name causal \
         --model_path $MODEL_ABS_PATH \
-        --engine_dir $SAVE_PATH \
+        --checkpoint_dir $SAVE_PATH \
         --data_dir $MMLU_DATA_PATH | tee $MMLU_RESULT
     popd
 

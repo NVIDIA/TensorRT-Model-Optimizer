@@ -8,7 +8,7 @@ This guide demonstrates how to deploy mixed-precision models using ModelOpt's Au
 
 ## Prerequisites
 
-AutoDeploy is currently available on the main branch of TRT-LLM. Follow the [docker setup instructions](https://github.com/NVIDIA/TensorRT-LLM/blob/main/docs/source/installation/build-from-source-linux.md#option-1-build-tensorrt-llm-in-one-step) to get started.
+AutoDeploy is available in TensorRT-LLM docker images. Please refer to our [Installation Guide](../../README.md#installation) for more details.
 
 ### 1. Quantize and Deploy Model
 

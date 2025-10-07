@@ -266,6 +266,9 @@ def load_onnx_model(
     custom_ops = []
     has_custom_op = False
 
+    # Infer shapes
+    onnx.shape_inference.infer_shapes_path(onnx_path)
+
     # Load the model and weights
     onnx_model = onnx.load(onnx_path, load_external_data=True)
     size_threshold = 2 * (1024**3)  # 2GB
@@ -367,10 +370,12 @@ def interpret_trt_plugins_precision_flag(
         if trt_plugin_precision.count(":") == 1:
             if precision not in supported_precisions:
                 logger.warning(f"Precision {precision} is not supported. Skipping.")
-            if precision == "fp16":
-                custom_ops_to_cast[op_type] = {
-                    "inp": list(range(num_inps)),
-                    "out": list(range(num_outs)),
+            if precision in ["fp16", "fp32"]:
+                custom_ops_to_cast[precision] = {
+                    op_type: {
+                        "inp": list(range(num_inps)),
+                        "out": list(range(num_outs)),
+                    }
                 }
             if precision in ["int8", "fp8"]:
                 if precision != quantize_mode:
@@ -408,10 +413,14 @@ def interpret_trt_plugins_precision_flag(
                     f"Setting the custom op precision to be the same as quantize mode."
                 )
 
-            # Will cast the inputs to FP16 and the outputs back to FP32
-            inp_precision_cast = [i for i, p in enumerate(inp_precision) if p == "fp16"]
-            out_precision_cast = [i for i, p in enumerate(out_precision) if p in ["fp16", "fp32"]]
-            custom_ops_to_cast[op_type] = {"inp": inp_precision_cast, "out": out_precision_cast}
+            # Will cast the inputs to FP16/FP32 and the outputs back to FP32
+            for precision in ["fp16", "fp32"]:
+                inp_precision_cast = [i for i, p in enumerate(inp_precision) if p == precision]
+                out_precision_cast = [i for i, p in enumerate(out_precision) if p == precision]
+                if inp_precision_cast:
+                    custom_ops_to_cast[precision] = {
+                        op_type: {"inp": inp_precision_cast, "out": out_precision_cast}
+                    }
 
             # Will add Q/DQ nodes in the requested I/O indices
             inp_precision_quant = [i for i, p in enumerate(inp_precision) if p in ["int8", "fp8"]]

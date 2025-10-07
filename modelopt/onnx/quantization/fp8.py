@@ -164,10 +164,11 @@ def quantize(
     calibration_method: str = "entropy",
     calibration_data_reader: CalibrationDataReader = None,
     calibration_cache_path: str | None = None,
-    calibration_shapes: str | None = None,
+    calibration_shapes: str | dict | None = None,
     calibration_eps: list[str] = ["cpu", "cuda:0", "trt"],
     op_types_to_quantize: list[str] | None = None,
     op_types_to_exclude: list[str] | None = None,
+    op_types_to_exclude_fp16: list[str] | None = None,
     nodes_to_quantize: list[str] | None = None,
     nodes_to_exclude: list[str] | None = None,
     use_external_data_format: bool = False,
@@ -318,7 +319,7 @@ def quantize(
         onnx_model = convert_to_f16(
             onnx_model,
             keep_io_types=not direct_io_types,
-            op_block_list=["Resize"],
+            op_block_list=op_types_to_exclude_fp16 or [],
             low_precision_type=high_precision_dtype,
             trt_plugins=trt_extra_plugin_lib_paths,
         )
