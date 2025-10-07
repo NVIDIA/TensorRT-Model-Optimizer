@@ -213,11 +213,22 @@ def restore_sparse_attention_state(model: nn.Module, state_dict: dict[str, Any])
                     module._method = module_state["method"]
                 if "method_config" in module_state:
                     # Restore config attributes
+                    # Separate method instance attributes from module attributes
+                    method_instance_attrs = {"threshold_scale_factor", "target_sparsity"}
+
                     for key, val in module_state["method_config"].items():
-                        setattr(module, f"_{key}", val)
+                        if key not in method_instance_attrs:
+                            # Set on module
+                            setattr(module, f"_{key}", val)
 
                 # Re-setup with restored config
                 module._setup()
+
+                # Restore method instance attributes after _setup
+                if "method_config" in module_state:
+                    for key, val in module_state["method_config"].items():
+                        if key in {"threshold_scale_factor", "target_sparsity"}:
+                            setattr(module._sparse_method_instance, key, val)
 
 
 def update_sparse_attention_metadata(
@@ -243,8 +254,16 @@ def update_sparse_attention_metadata(
                 if k.startswith("_") and k not in ("_method", "_enabled", "_sparse_method_instance")
             }
 
+            # Also collect calibration-related attributes from method instance
+            method_instance = module._sparse_method_instance
+            for attr in ["threshold_scale_factor", "target_sparsity"]:
+                if hasattr(method_instance, attr):
+                    val = getattr(method_instance, attr)
+                    if val is not None:
+                        method_config[attr] = val
+
             module_state = {
-                "method": module._sparse_method_instance.name,
+                "method": method_instance.name,
                 "method_config": method_config,
             }
 

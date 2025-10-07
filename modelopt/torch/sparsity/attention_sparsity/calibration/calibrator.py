@@ -140,9 +140,9 @@ class DynamicThresholdCalibrator:
 
         print(f"Collected statistics for {len(self.sparsity_results)} samples")
 
-        # Stage 2: Find optimal threshold for each sample and compute 'a'
+        # Stage 2: Find optimal threshold for each sample and compute scale factor
         print(
-            f"\nStage 2: Finding 'a' parameter for target sparsity {self.target_sparse_ratio:.2f}"
+            f"\nStage 2: Finding threshold scale factor for target sparsity {self.target_sparse_ratio:.2f}"
         )
 
         # Find optimal threshold for each sample

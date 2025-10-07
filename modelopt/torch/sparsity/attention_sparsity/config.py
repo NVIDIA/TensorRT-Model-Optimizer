@@ -279,9 +279,9 @@ SKIP_SOFTMAX_CALIB = {
             "backend": "pytorch",  # Only pytorch backend supported
             "enable": True,
             "calibration": {
-                "target_sparse_ratio": 0.5,
-                "samples": 120,
-                "max_seqlen": 8192,
+                "target_sparse_ratio": 0.3,
+                "samples": 12,
+                "max_seqlen": 1024,
             },
         },
         "default": {"enable": False},

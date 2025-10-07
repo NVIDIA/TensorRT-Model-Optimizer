@@ -93,13 +93,13 @@ class SimpleTransformerEncoder(nn.Module):
 # Test configurations
 FLASH_SOFTMAX_SKIP_DEFAULT_CFG = {
     "method": "flash_softmax_skip",
-    "sparse_cfg": {"*attention*": {"threshold": 1e-4, "br": 128, "bc": 128, "enable": True}},
+    "sparse_cfg": {"*attn*": {"threshold": 1e-4, "br": 128, "bc": 128, "enable": True}},
 }
 
 FLASH_SOFTMAX_SKIP_PHASE_AWARE_CFG = {
     "method": "flash_softmax_skip",
     "sparse_cfg": {
-        "*attention*": {
+        "*attn*": {
             "threshold": {"prefill": 1e-3, "decode": 1e-5},
             "br": 128,
             "bc": 128,
@@ -112,7 +112,7 @@ FLASH_SOFTMAX_SKIP_STATS_CFG = {
     "method": "flash_softmax_skip",
     "collect_stats": True,
     "sparse_cfg": {
-        "*attention*": {
+        "*attn*": {
             "threshold": 1e-4,
             "br": 128,
             "bc": 128,
@@ -125,7 +125,7 @@ FLASH_SOFTMAX_SKIP_STATS_CFG = {
 FLASH_SOFTMAX_SKIP_CALIBRATION_CFG = {
     "method": "flash_softmax_skip",
     "sparse_cfg": {
-        "*attention*": {
+        "*attn*": {
             "br": 128,
             "bc": 128,
             "enable": True,

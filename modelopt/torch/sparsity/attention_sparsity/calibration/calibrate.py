@@ -172,5 +172,6 @@ def calibrate_sparse_attention(
 
     for module_name, module in sparse_modules:
         module._sparse_method_instance.threshold_scale_factor = scale_factor
+        module._sparse_method_instance.target_sparsity = calib_config.target_sparse_ratio
 
     return {"calibration_results": {name: calibration_result for name, _ in sparse_modules}}
