@@ -69,8 +69,8 @@ def _export_tensor_proto(tensor: gs.Constant) -> onnx.TensorProto:
 
         vals = tensor.values
         if _onnx_supports_int4() and dtype in [onnx.TensorProto.INT4, onnx.TensorProto.UINT4]:
-            signed = dtype == onnx.TensorProto.INT4      
-            if(signed):
+            signed = dtype == onnx.TensorProto.INT4
+            if signed:
                 vals = pack_float32_to_4bit_cpp_based(tensor.values, signed=signed).astype(np.int8)
             else:
                 vals = pack_float32_to_4bit_cpp_based(tensor.values, signed=signed).astype(np.uint8)
