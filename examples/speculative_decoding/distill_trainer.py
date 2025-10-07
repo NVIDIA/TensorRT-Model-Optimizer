@@ -14,6 +14,7 @@
 # limitations under the License.
 import json
 import os
+import time
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from abc import abstractmethod
@@ -42,6 +43,7 @@ mto.enable_huggingface_checkpointing()
 # Hyperparameters for profiling
 LOG_INTERVAL = 100
 SAVE_INTERVAL = 20000
+TOTAL_STEPS = 500
 
 # Shape and dtype description of the distillation signal
 DistillMetadata = dict[str, tuple[torch.Size, torch.dtype]]
@@ -204,6 +206,10 @@ class BaseDistillTrainer:
                     )
                     for i, batch in enumerate(pbar):
                         global_step = epoch * len(self.dataloader) + i
+                        if global_step >= TOTAL_STEPS:
+                            break
+                        if global_step == 50:
+                            self.start_time = time.time()
                         inputs = {k: v.to(self.model.device) for k, v in batch.items()}
 
                         # Receive distill messages from teacher
@@ -241,9 +247,17 @@ class BaseDistillTrainer:
             # Inference Loop
             for epoch in range(self.args.epoch):
                 for i, batch in enumerate(self.dataloader):
+                    global_step = epoch * len(self.dataloader) + i
+                    if global_step >= TOTAL_STEPS:
+                        break
+                    if global_step == 50:
+                        self.start_time = time.time()
                     inputs = {k: v.to(self.model.device) for k, v in batch.items()}
                     with torch.inference_mode():
                         self._send_to_student(self.teacher_step(self.model, inputs))
+
+        self.average_step_time = (time.time() - self.start_time) / (TOTAL_STEPS-50)
+        print(f"Rank {self.rank} average step time: {self.average_step_time}")
 
         self._print_mem_stats()
         # Makesure all processes finished before destroy.
@@ -321,6 +335,7 @@ class EagleTPTrainer(BaseDistillTrainer):
             process_group=self.args.student_pgroup,
             find_unused_parameters=True,
         )
+        self._print_mem_stats()
         return model
 
     @property

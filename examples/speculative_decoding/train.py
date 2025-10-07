@@ -71,7 +71,7 @@ def main():
     parser = argparse.ArgumentParser(description="Multi-GPU distributed two-stage forward example")
     parser.add_argument("--model_path", type=str, default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
     parser.add_argument("--student_devices", type=list, default=[0, 1, 2, 3])
-    parser.add_argument("--teacher_devices", type=list, default=[4, 5])
+    parser.add_argument("--teacher_devices", type=list, default=[4, 5, 6, 7])
     parser.add_argument(
         "--data_path", type=str, default="data/magpie_llama3.2_1b_generated/data.cleaned.jsonl"
     )
