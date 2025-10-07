@@ -80,6 +80,15 @@ class QuantizationArguments:
             )
         },
     )
+    fold_weight: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "Whether to fold the weight of the model after quantization for QLoRA. "
+                "This is useful for reducing the model size."
+            )
+        },
+    )
 
 
 class QuantizationArgumentsWithConfig(QuantizationArguments):
@@ -165,6 +174,15 @@ class QATTrainer(ModelOptHFTrainer):
         self._modelopt_state_path = os.path.join(self.args.output_dir, "modelopt_state_train.pth")
         if os.path.exists(self._modelopt_state_path):
             self._restore_modelopt_state_with_weights()
+            if self.accelerator.is_main_process:
+                mtq.print_quant_summary(self.model)
+                for name, module in self.model.named_modules():
+                    if "layers.0." in name:
+                        print(name)
+                        print(module)
+            if self.quant_args.fold_weight:
+                print("Folding weight")
+                mtq.fold_weight(self.model)
         elif is_quantized(self.model):
             self._save_modelopt_state_with_weights()
 
@@ -227,6 +245,13 @@ class QATTrainer(ModelOptHFTrainer):
 
         if self.accelerator.is_main_process:
             mtq.print_quant_summary(self.model)
+            for name, module in self.model.named_modules():
+                if "layers.0." in name:
+                    print(name)
+                    print(module)
+        if self.quant_args.fold_weight:
+            print("Folding weight")
+            mtq.fold_weight(self.model)
 
     def training_step(self, *args, **kwargs):
         """Training step."""
