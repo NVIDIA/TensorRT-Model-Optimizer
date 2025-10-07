@@ -98,15 +98,15 @@ UINT4_MAX = 15
 # supported and working
 CLIP_MIN = 1e-5
 
-def safe_cupy_array(tensor): 
+def safe_cupy_array(tensor):
     """Convert ml_dtypes.int4 tensor to numpy.int8 for CuPy compatibility.
-    
+
     In ONNX 1.19, int4 tensors use ml_dtypes.int4 which CuPy doesn't support.
     This function converts them to regular numpy.int8 while preserving values.
     Args:
-        tensor: numpy array that may have ml_dtypes.int4 dtype 
+        tensor: numpy array that may have ml_dtypes.int4 dtype
     Returns:
-        cupy or numpy array (if cupy is not supported) with numpy.int8 dtype if input was ml_dtypes.int4, 
+        cupy or numpy array (if cupy is not supported) with numpy.int8 dtype if input was ml_dtypes.int4,
         otherwise unchanged
     """
     try:
