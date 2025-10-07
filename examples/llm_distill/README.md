@@ -16,6 +16,7 @@ This section focuses on demonstrating how to apply Model Optimizer to perform kn
 | Distillation with NeMo | Learn how to distill your models with NeMo Framework | \[[Link](#knowledge-distillation-kd-for-nvidia-nemo-models)\] | \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/4_distillation.html)\] |
 | Distillation with Huggingface | Learn how to distill your models with Hugging Face | \[[Link](#knowledge-distillation-kd-for-huggingface-models)\] | \[[docs](https://nvidia.github.io/TensorRT-Model-Optimizer/guides/4_distillation.html)\] |
 | Resources | Extra links to relevant resources | \[[Link](#resources)\] | |
+| NeMo Prune + Distill Simplified Flow | Example script demonstrating end-to-end pruning plus distillation in NeMo | \[[Link](../nemo_run/prune_distill/README.md)\] | |
 
 </div>
 
