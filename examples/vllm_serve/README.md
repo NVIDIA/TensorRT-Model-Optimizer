@@ -54,3 +54,7 @@ python convert_amax_hf2vllm.py -i <amax.pth> -o <vllm_amax.pth>
 ```
 
 Step 2: add `<vllm_amax.pth>` to `quant_config` in `vllm_serve_fakequant.py`
+
+## Know Problems
+
+1. AWQ is not yet supported in vLLM.

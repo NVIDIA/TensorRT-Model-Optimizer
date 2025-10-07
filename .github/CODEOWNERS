@@ -51,3 +51,4 @@ modelopt/torch/utils @NVIDIA/modelopt-torch-utils-codeowners
 /examples/speculative_decoding @NVIDIA/modelopt-torch-speculative-codeowners
 /examples/vlm_ptq @NVIDIA/modelopt-examples-vlm-codeowners
 /examples/windows @NVIDIA/modelopt-windows-codeowners
+/examples/windows @NVIDIA/modelopt-examples-llm_ptq-codeowners
