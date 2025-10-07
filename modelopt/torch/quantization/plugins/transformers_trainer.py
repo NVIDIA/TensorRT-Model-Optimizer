@@ -283,6 +283,10 @@ class QATTrainer(ModelOptHFTrainer):
         if is_lora and not self.is_fsdp_enabled:
             # Custom logic for loading best model with LoRA
             # TODO: Remove once we migrate to using get_peft_model()
+            # This custom logic only loads best adapters. Ensure base model is frozen
+            assert all(
+                param.requires_grad is False for param in self.model.base_model.parameters()
+            ), "Base model must be frozen for lora"
             adapter_name = self.model.active_adapter()
             self.model.delete_adapter(adapter_name)
             self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
