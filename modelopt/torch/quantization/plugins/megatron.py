@@ -23,6 +23,8 @@ import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import torch
+import transformer_engine.pytorch.module.grouped_linear as te_grouped_linear
+from megatron.core.extensions import transformer_engine as megatron_te
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.parallel_state import get_data_parallel_group
@@ -37,8 +39,8 @@ from modelopt.torch.opt.plugins.megatron import (
 )
 from modelopt.torch.utils.distributed import ParallelState
 
-from ..nn import QuantModuleRegistry, TensorQuantizer
-from ..nn.modules.quant_linear import RealQuantLinear
+from ..nn import QuantModuleRegistry, SequentialQuantizer, TensorQuantizer
+from ..nn.modules.quant_linear import RealQuantLinear, _QuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
 
@@ -229,9 +231,17 @@ class _MegatronParallelLinear(_ParallelLinear):
         except AssertionError:
             logger.warning("Context parallel group is not initialized, using data parallel group")
             data_parallel_group = get_data_parallel_group()
+
+        try:
+            expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
+        except AssertionError:
+            expert_tensor_parallel_group = None
+
         self.parallel_state = ParallelState(
             data_parallel_group,
             mcore_parallel.get_tensor_model_parallel_group(),
+            mcore_parallel.get_expert_model_parallel_group(),
+            expert_tensor_parallel_group,
         )
         super()._setup()
 
@@ -474,3 +484,161 @@ class _RealQuantMegatronRowParallelLinear(
 
     def forward(self, input, *args, **kwargs):
         return _MegatronRowParallelLinear.forward(self, input, *args, **kwargs)
+
+
+# Register the public te.pytorch.GroupedLinear class
+@QuantModuleRegistry.register({te_grouped_linear.GroupedLinear: "te_GroupedLinear_public"})
+class _QuantTEGroupedLinear(_MegatronParallelLinear):
+    def _setup(self):
+        data_parallel_group = None
+        try:
+            data_parallel_group = get_data_parallel_group(with_context_parallel=True)
+        except AssertionError:
+            data_parallel_group = get_data_parallel_group()
+
+        try:
+            expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
+        except AssertionError:
+            expert_tensor_parallel_group = None
+        self.parallel_state = ParallelState(
+            data_parallel_group,
+            mcore_parallel.get_tensor_model_parallel_group(),
+            mcore_parallel.get_context_parallel_group(),
+            mcore_parallel.get_expert_model_parallel_group(),
+            expert_tensor_parallel_group,
+        )
+        self.input_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_input)
+        self.weight_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_weight)
+        self.output_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_output)
+        self.output_quantizer.disable()
+
+        # Memorize the original weight.dtype for modelopt_post_restore given that
+        # the dtype can change later.
+        self.original_weight_dtype = None if self.weight0 is None else self.weight0.dtype
+
+    @property
+    def functionals_to_replace(self):
+        original_forward = te_grouped_linear._GroupedLinear.forward
+
+        def te_grouped_quantized_linear_fn(ctx, inp, m_splits, *args):
+            num_gemms = len(m_splits)
+            weights_and_biases = args[-2 * num_gemms :]
+            weights, biases = weights_and_biases[:num_gemms], weights_and_biases[num_gemms:]
+            quantized_inputs = self.input_quantizer(inp)
+            quantized_weights = [self.weight_quantizer(weight) for weight in weights]
+
+            output = original_forward(
+                ctx,
+                quantized_inputs,
+                m_splits,
+                *args[: -2 * num_gemms],
+                *quantized_weights,
+                *biases,
+            )
+            return self.output_quantizer(output)
+
+        return [
+            (
+                te_grouped_linear._GroupedLinear,
+                "forward",
+                te_grouped_quantized_linear_fn,
+            ),
+        ]
+
+    def modelopt_post_restore(self, prefix: str = ""):
+        """Post restore to correctly configure the TensorQuantizer states for MCore/distributed frameworks.
+
+        ModelOpt restores the TensorQuantizer states such as `_amax` and `_pre_quant_scale` to their
+        shape before saving. However this is not enough for MCore/distributed frameworks since the tensor parallelism
+        could change between saving and restoring. If the tensor parallelism changes, the shape of the quantizer
+        states also changes. So we need to re-calculate the quantizer states.
+        """
+        from modelopt.torch.quantization.model_calib import max_calibrate
+
+        def _check_unsupported_states(quantizer: TensorQuantizer):
+            for k in quantizer.state_dict():
+                if k not in ["_amax", "_pre_quant_scale"]:
+                    warnings.warn(
+                        f"Restore of {k} for {prefix} is not supported. The restore of this layer might be "
+                        f"incorrect. Please implement a custom restore for {k}."
+                    )
+
+        def _has_state(quantizer, name):
+            # Handling for SequentialQuantizer
+            quantizer = quantizer[0] if isinstance(quantizer, SequentialQuantizer) else quantizer
+            return hasattr(quantizer, name)
+
+        # weights for TEGroupedLinear are stored in weight0, weight1, etc.
+        if self.weight0 is None:
+            return
+        for quantizer in [self.weight_quantizer, self.input_quantizer, self.output_quantizer]:
+            _check_unsupported_states(
+                quantizer if isinstance(quantizer, TensorQuantizer) else quantizer[0]
+            )
+            if _has_state(self.weight_quantizer, "_amax"):
+                self.weight_quantizer.reset_amax()
+            for i in range(self.num_gemms):
+                weight = getattr(self, f"weight{i}")
+                assert weight is not None, "weight is None"
+
+                max_calibrate(self.weight_quantizer, lambda wq: wq(weight), distributed_sync=False)
+            if _has_state(self.input_quantizer, "_pre_quant_scale"):
+                if hasattr(self.input_quantizer, "_pre_quant_scale"):
+                    delattr(self.input_quantizer, "_pre_quant_scale")
+                pqs = torch.zeros(
+                    (weight.shape[1]), device=weight.device, dtype=self.original_weight_dtype
+                )
+                self.input_quantizer.register_buffer("_pre_quant_scale", pqs)
+
+        if _has_state(self.input_quantizer, "_amax"):
+            self.input_quantizer.reset_amax()
+            dummy_input = torch.ones(
+                (1, 1, self.weight0.shape[1]),
+                device=self.weight0.device,
+                dtype=self.original_weight_dtype,
+            )
+            max_calibrate(self.input_quantizer, lambda iq: iq(dummy_input), distributed_sync=False)
+        if _has_state(self.output_quantizer, "_amax"):
+            self.output_quantizer.reset_amax()
+            dummy_input = torch.ones(
+                (1, 1, self.weight0.shape[0]),
+                device=self.weight0.device,
+                dtype=self.original_weight_dtype,
+            )
+            max_calibrate(self.output_quantizer, lambda oq: oq(dummy_input), distributed_sync=False)
+            # If there are any other states, lets move them to the correct device
+
+        self.weight = None
+        super().modelopt_post_restore(prefix=prefix)
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        # _sharded_state_dict_grouped adds _extra_state{gemm_idx} for gemm_idx:[1, num_gemms] in
+        # sharded_state_dict which is same as _extra_state. The _extra_state{gemm_idx} is used for
+        # TE Fp8 checkpoint, we need to remove the _extra_state{gemm_idx} for gemm_idx:[1, num_gemms]
+        # for modelopt checkpoint restore
+        filtered_state_dict = {
+            k: v
+            for k, v in state_dict.items()
+            if not any(k.endswith(f"_extra_state{num}") for num in range(1, self.num_gemms))
+        }
+        return super()._load_from_state_dict(filtered_state_dict, prefix, *args, **kwargs)
+
+    def _process_quantizer_amax(self, k, v, quantizer_state_dict):
+        if v.ndim == 4:
+            quantizer_state_dict[k] = v.squeeze(1).squeeze(-1)
+        else:
+            quantizer_state_dict[k] = v.view(-1, 1) if v.numel() > 1 else v.view(-1)
+
+
+@QuantModuleRegistry.register(
+    {megatron_te.TEColumnParallelGroupedLinear: "megatron_TEColumnParallelGroupedLinear"}
+)
+class _QuantTEGroupedColumnParallelLinear(_QuantTEGroupedLinear, _MegatronColumnParallelLinear):
+    _is_column_parallel = True
+
+
+@QuantModuleRegistry.register(
+    {megatron_te.TERowParallelGroupedLinear: "megatron_TERowParallelGroupedLinear"}
+)
+class _QuantTEGroupedRowParallelLinear(_QuantTEGroupedLinear, _MegatronColumnParallelLinear):
+    _is_row_parallel = True

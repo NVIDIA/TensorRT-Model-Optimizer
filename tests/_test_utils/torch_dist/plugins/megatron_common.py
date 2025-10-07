@@ -38,6 +38,8 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 )
 from megatron.core.models.mamba import MambaModel
 from megatron.core.parallel_state import (
+    get_expert_model_parallel_group,
+    get_expert_tensor_parallel_group,
     initialize_model_parallel,
     is_pipeline_first_stage,
     is_pipeline_last_stage,
@@ -49,12 +51,14 @@ from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_config import TransformerConfig
 
+import modelopt.torch.quantization as mtq
 from modelopt.torch.export.unified_export_megatron import import_mcore_gpt_from_hf
 from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
     restore_sharded_modelopt_state,
     save_sharded_modelopt_state,
 )
 from modelopt.torch.utils import to_empty_if_meta_device
+from modelopt.torch.utils.distributed import DistributedProcessGroup
 
 try:
     from megatron.core.extensions.transformer_engine import TENorm
@@ -143,6 +147,8 @@ class MegatronModel(MegatronModule):
 def get_mcore_gpt_model(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
+    expert_model_parallel_size: int = 1,
+    expert_tensor_parallel_size: int = 1,
     initialize_megatron: bool = False,
     *,
     num_layers: int = 2,
@@ -158,7 +164,10 @@ def get_mcore_gpt_model(
     normalization: str = "LayerNorm",
     transformer_impl: str = "modelopt" if HAS_TE else "local",
     use_cpu_initialization: bool = False,
+    num_moe_experts: int | None = None,
+    moe_grouped_gemm: bool = False,
     bf16: bool = True,
+    use_te: bool = False,
 ) -> GPTModel:
     assert activation_func in ["swiglu", "squared_relu"]
     assert normalization in ["LayerNorm", "RMSNorm"]
@@ -166,7 +175,12 @@ def get_mcore_gpt_model(
     print(f"Using `{transformer_impl=}` model spec for building GPT Model.")
 
     if initialize_megatron:
-        initialize_for_megatron(tensor_model_parallel_size, pipeline_model_parallel_size)
+        initialize_for_megatron(
+            tensor_model_parallel_size,
+            pipeline_model_parallel_size,
+            expert_model_parallel_size=expert_model_parallel_size,
+            expert_tensor_parallel_size=expert_tensor_parallel_size,
+        )
 
     def squared_relu(x):
         return torch.pow(F.relu(x), 2)
@@ -174,7 +188,10 @@ def get_mcore_gpt_model(
     config = TransformerConfig(
         tensor_model_parallel_size=tensor_model_parallel_size,
         pipeline_model_parallel_size=pipeline_model_parallel_size,
+        expert_model_parallel_size=expert_model_parallel_size,
+        expert_tensor_parallel_size=expert_tensor_parallel_size,
         sequence_parallel=False,
+        moe_grouped_gemm=moe_grouped_gemm,
         num_layers=num_layers,
         num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
         num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
@@ -182,6 +199,7 @@ def get_mcore_gpt_model(
         num_attention_heads=num_attention_heads,
         num_query_groups=num_query_groups,
         ffn_hidden_size=ffn_hidden_size,
+        num_moe_experts=num_moe_experts,
         activation_func=squared_relu if activation_func == "squared_relu" else F.silu,
         normalization=normalization,
         gated_linear_unit=(activation_func == "swiglu"),
@@ -193,7 +211,12 @@ def get_mcore_gpt_model(
 
     if transformer_impl == "local":
         assert HAS_APEX, "Apex not installed"
-        transformer_layer_spec = get_gpt_layer_local_spec(normalization=normalization)
+        transformer_layer_spec = get_gpt_layer_local_spec(
+            num_experts=num_moe_experts,
+            normalization=normalization,
+            moe_grouped_gemm=moe_grouped_gemm,
+            use_te=use_te,
+        )
     else:
         assert HAS_TE, "Transformer Engine not installed"
         transformer_layer_spec = (
@@ -212,6 +235,7 @@ def get_mcore_gpt_model(
         share_embeddings_and_output_weights=False,
         position_embedding_type="rope",
     )
+
     if bf16:
         model = model.to(torch.bfloat16)
 
@@ -403,6 +427,8 @@ def initialize_for_megatron(
     pipeline_model_parallel_size=1,
     seed=1234,
     context_parallel_size=1,
+    expert_model_parallel_size=1,
+    expert_tensor_parallel_size=None,
 ):
     """Initialize Megatron model parallelism.
 
@@ -412,6 +438,9 @@ def initialize_for_megatron(
         tensor_model_parallel_size,
         pipeline_model_parallel_size,
         context_parallel_size=context_parallel_size,
+        expert_tensor_parallel_size=expert_tensor_parallel_size,
+        expert_model_parallel_size=expert_model_parallel_size,
+        order="tp-ep-dp-pp",
     )
     model_parallel_cuda_manual_seed(seed)
 
@@ -478,3 +507,196 @@ def sharded_state_dict_test_helper(
     assert torch.allclose(logits_ref, logits_test), (
         f"diff: {logits_diff.max()} ref: {logits_ref}, test: {logits_test}"
     )
+
+
+def compare_model_outputs(grouped_model, non_grouped_model, forward_fn, tolerance=1e-6):
+    """Compare outputs of grouped and non-grouped models."""
+    # Set both models to eval mode
+    grouped_model.eval()
+    non_grouped_model.eval()
+
+    with torch.no_grad():
+        # Get outputs from both models
+        grouped_output = forward_fn(grouped_model)
+        non_grouped_output = forward_fn(non_grouped_model)
+
+        # Compare outputs
+        if isinstance(grouped_output, tuple):
+            grouped_output = grouped_output[0]
+        if isinstance(non_grouped_output, tuple):
+            non_grouped_output = non_grouped_output[0]
+
+    output_close = torch.allclose(
+        grouped_output, non_grouped_output, atol=tolerance, rtol=tolerance
+    )
+    return output_close
+
+
+def sync_amax(model):
+    amax_dict = {
+        "linear_fc1.input_quantizer": {},
+        "linear_fc1.weight_quantizer": {},
+        "linear_fc2.input_quantizer": {},
+        "linear_fc2.weight_quantizer": {},
+    }
+    for name, module in model.named_modules():
+        if not isinstance(module, mtq.nn.TensorQuantizer):
+            continue
+        if not hasattr(module, "_amax"):
+            continue
+        if "local_experts" not in name:
+            continue
+        expert_name, local_expert_name = name.split("local_experts")
+        for key in amax_dict:
+            if key in local_expert_name:
+                amax_dict[key][expert_name] = max(amax_dict[key].get(expert_name, 0), module.amax)
+
+    for name, module in model.named_modules():
+        if not isinstance(module, mtq.nn.TensorQuantizer):
+            continue
+        if not hasattr(module, "_amax"):
+            continue
+        if "local_experts" not in name:
+            continue
+        expert_name, local_expert_name = name.split("local_experts")
+        for key in amax_dict:
+            if key in local_expert_name:
+                module.amax = amax_dict[key][expert_name]
+
+
+def copy_weights_from_grouped_to_non_grouped(grouped_model, non_grouped_model):
+    """Copy weights from grouped MoE model to non-grouped MoE model."""
+    grouped_state = grouped_model.state_dict()
+    non_grouped_state = non_grouped_model.state_dict()
+
+    # Map grouped weights to non-grouped weights
+    weight_mapping = {}
+    non_grouped_key_template = "decoder.layers.{}.mlp.experts.local_experts.{}.linear_fc{}.weight"
+    for key, value in grouped_state.items():
+        if "experts.linear_fc" in key and "weight" in key:
+            # Extract expert index from grouped weight name
+            # Format: decoder.layers.X.mlp.experts.linear_fcY.weightZ
+            parts = key.split(".")
+            layer_idx = parts[2]  # X
+            fc_idx = parts[5]  # Y (linear_fc1 or linear_fc2)
+            weight_idx = parts[6]  # Z (weight0, weight1, etc.)
+
+            # Map to non-grouped format: decoder.layers.X.mlp.experts.local_experts.Y.linear_fcZ.weight
+            expert_idx = weight_idx.replace("weight", "")
+            non_grouped_key = non_grouped_key_template.format(layer_idx, expert_idx, fc_idx[-1])
+            weight_mapping[non_grouped_key] = value
+        elif isinstance(value, torch.Tensor):
+            weight_mapping[key] = value
+
+    # Copy weights to non-grouped model
+    for non_grouped_key in non_grouped_state:
+        if non_grouped_key in weight_mapping:
+            non_grouped_state[non_grouped_key] = weight_mapping[non_grouped_key].clone()
+
+    non_grouped_model.load_state_dict(non_grouped_state)
+
+
+def compare_amax_sync_across_expert_parallel(model):
+    """
+    Test if amax values are synchronized across expert parallel groups.
+
+    Returns True if synchronized, False otherwise.
+    """
+
+    ep_group = get_expert_model_parallel_group(check_initialized=False)
+    etp_group = get_expert_tensor_parallel_group(check_initialized=False)
+
+    # Check if we have either expert model parallel or expert tensor parallel
+    has_expert_parallel = (ep_group is not None and ep_group.size() > 1) or (
+        etp_group is not None and etp_group.size() > 1
+    )
+
+    assert has_expert_parallel, "No expert parallelism detected"
+    # Collect amax values from expert quantizers only
+    expert_amax_values = {}
+    for name, module in model.named_modules():
+        if isinstance(module, mtq.nn.TensorQuantizer) and hasattr(module, "_amax"):
+            # Check for both grouped and non-grouped MoE patterns
+            if "local_experts" in name or ("experts" in name and "linear_fc" in name):
+                expert_amax_values[name] = (
+                    module.amax.item() if hasattr(module.amax, "item") else module.amax
+                )
+
+    # Early return if no expert quantizers found
+    assert expert_amax_values, "No expert quantizers found"
+
+    # Gather amax values from all ranks
+    world_size = torch.distributed.get_world_size()
+    all_amax_values = [None] * world_size
+    torch.distributed.all_gather_object(all_amax_values, expert_amax_values)
+
+    # Group quantizers by type (ignoring specific expert indices) and check sync
+    expert_quantizers = {}
+    for rank_idx, rank_amax in enumerate(all_amax_values):
+        for name, amax_val in rank_amax.items():
+            # Create quantizer type key by normalizing the name
+            if "local_experts" in name:
+                # Non-grouped MoE: replace expert index with wildcard
+                import re
+
+                quantizer_type = re.sub(r"local_experts\.\d+", "local_experts.*", name)
+            else:
+                # Grouped MoE: use the name as-is since experts are grouped
+                quantizer_type = name
+
+            if quantizer_type not in expert_quantizers:
+                expert_quantizers[quantizer_type] = {}
+            expert_quantizers[quantizer_type][rank_idx] = amax_val
+
+    # Check synchronization - fail fast on first inconsistency
+    for quantizer_type, rank_values in expert_quantizers.items():
+        if len(rank_values) > 1:  # Only check if we have multiple ranks
+            values = list(rank_values.values())
+            max_diff = max(values) - min(values)
+
+            if max_diff > 1e-6:  # Allow for small floating point differences
+                return False
+
+    return True
+
+
+def disable_distributed_parallel_sync(model, expert_parallel_type: str = "tensor"):
+    """Disable distributed parallel synchronization groups."""
+    module_parallel_groups = {}
+
+    for name, module in model.named_modules():
+        if isinstance(module, mtq.nn.QuantModule):
+            # Store original groups
+            module_parallel_groups[name] = {
+                "data_parallel_group": module.parallel_state.data_parallel_group,
+                "expert_tensor_parallel_group": module.parallel_state.expert_tensor_parallel_group,
+                "expert_model_parallel_group": module.parallel_state.expert_model_parallel_group,
+            }
+
+            # Disable groups
+            module.parallel_state.data_parallel_group = DistributedProcessGroup(-1)
+
+            if expert_parallel_type in ["tensor", "both"]:
+                module.parallel_state.expert_tensor_parallel_group = DistributedProcessGroup(-1)
+            if expert_parallel_type in ["model", "both"]:
+                module.parallel_state.expert_model_parallel_group = DistributedProcessGroup(-1)
+
+    return module_parallel_groups
+
+
+def enable_distributed_parallel_sync(
+    model, module_parallel_groups, expert_parallel_type: str = "tensor"
+):
+    """Re-enable distributed parallel synchronization groups."""
+    for name, module in model.named_modules():
+        if isinstance(module, mtq.nn.QuantModule) and name in module_parallel_groups:
+            groups = module_parallel_groups[name]
+
+            if expert_parallel_type in ["tensor", "both"]:
+                module.parallel_state.expert_tensor_parallel_group = groups[
+                    "expert_tensor_parallel_group"
+                ]
+            if expert_parallel_type in ["model", "both"]:
+                module.parallel_state.expert_model_parallel_group = groups[
+                    "expert_model_parallel_group"
+                ]
