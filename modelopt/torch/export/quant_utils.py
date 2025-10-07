@@ -1102,23 +1102,24 @@ def get_quant_config(
                 weight_block_size = get_weight_block_size(module, weight_name)
                 if weight_block_size > 0:
                     block_size = weight_block_size
+                    weight_quantizer_enabled = True
                     break
 
             # Fallback to default weight quantizer if no specific weight quantizer found
             if block_size == 0:
                 block_size = get_weight_block_size(module)
+                weight_quantizer = getattr(
+                    module, quantizer_attr_names("weight").weight_quantizer, None
+                )
+                # Check if weight_quantizer is enabled
+                weight_quantizer_enabled = block_size > 0 or (
+                    weight_quantizer is not None and weight_quantizer.is_enabled
+                )
 
-            # In  the case of NVFP4, block_size 0 indicates weight_quantizer is not enabled
-            if block_size == 0 and quantization_format in [
-                QUANTIZATION_NVFP4,
-                QUANTIZATION_NVFP4_AWQ,
-                QUANTIZATION_W4A8_NVFP4_FP8,
-            ]:
-                continue
-
-            # Construct per layer config dictionary
-            layer_config_dict[name + ".quantization"] = quantization_format
-            layer_config_dict[name + ".awq_block_size"] = block_size
+            if weight_quantizer_enabled:
+                # Construct per layer config dictionary
+                layer_config_dict[name + ".quantization"] = quantization_format
+                layer_config_dict[name + ".awq_block_size"] = block_size
 
         # Find kv cache quant format
         if (
