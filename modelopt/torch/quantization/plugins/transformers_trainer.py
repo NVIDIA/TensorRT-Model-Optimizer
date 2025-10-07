@@ -285,8 +285,11 @@ class QATTrainer(ModelOptHFTrainer):
             # TODO: Remove once we migrate to using get_peft_model()
             # This custom logic only loads best adapters. Ensure base model is frozen
             assert all(
-                param.requires_grad is False for param in self.model.base_model.parameters()
-            ), "Base model must be frozen for lora"
+                not param.requires_grad
+                for name, param in self.model.base_model.named_parameters()
+                if "base_layer" in name
+            ), "Some base_layer parameters are not frozen"
+
             adapter_name = self.model.active_adapter()
             self.model.delete_adapter(adapter_name)
             self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
