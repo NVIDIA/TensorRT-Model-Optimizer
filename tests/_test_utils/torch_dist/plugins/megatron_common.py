@@ -440,7 +440,6 @@ def initialize_for_megatron(
         context_parallel_size=context_parallel_size,
         expert_tensor_parallel_size=expert_tensor_parallel_size,
         expert_model_parallel_size=expert_model_parallel_size,
-        order="tp-ep-dp-pp",
     )
     model_parallel_cuda_manual_seed(seed)
 

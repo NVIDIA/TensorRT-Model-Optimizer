@@ -39,7 +39,7 @@ from modelopt.torch.opt.plugins.megatron import (
 )
 from modelopt.torch.utils.distributed import ParallelState
 
-from ..nn import QuantModuleRegistry, SequentialQuantizer, TensorQuantizer
+from ..nn import QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear, _QuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
@@ -503,7 +503,6 @@ class _QuantTEGroupedLinear(_MegatronParallelLinear):
         self.parallel_state = ParallelState(
             data_parallel_group,
             mcore_parallel.get_tensor_model_parallel_group(),
-            mcore_parallel.get_context_parallel_group(),
             mcore_parallel.get_expert_model_parallel_group(),
             expert_tensor_parallel_group,
         )
@@ -546,70 +545,13 @@ class _QuantTEGroupedLinear(_MegatronParallelLinear):
         ]
 
     def modelopt_post_restore(self, prefix: str = ""):
-        """Post restore to correctly configure the TensorQuantizer states for MCore/distributed frameworks.
-
-        ModelOpt restores the TensorQuantizer states such as `_amax` and `_pre_quant_scale` to their
-        shape before saving. However this is not enough for MCore/distributed frameworks since the tensor parallelism
-        could change between saving and restoring. If the tensor parallelism changes, the shape of the quantizer
-        states also changes. So we need to re-calculate the quantizer states.
-        """
-        from modelopt.torch.quantization.model_calib import max_calibrate
-
-        def _check_unsupported_states(quantizer: TensorQuantizer):
-            for k in quantizer.state_dict():
-                if k not in ["_amax", "_pre_quant_scale"]:
-                    warnings.warn(
-                        f"Restore of {k} for {prefix} is not supported. The restore of this layer might be "
-                        f"incorrect. Please implement a custom restore for {k}."
-                    )
-
-        def _has_state(quantizer, name):
-            # Handling for SequentialQuantizer
-            quantizer = quantizer[0] if isinstance(quantizer, SequentialQuantizer) else quantizer
-            return hasattr(quantizer, name)
-
-        # weights for TEGroupedLinear are stored in weight0, weight1, etc.
-        if self.weight0 is None:
-            return
-        for quantizer in [self.weight_quantizer, self.input_quantizer, self.output_quantizer]:
-            _check_unsupported_states(
-                quantizer if isinstance(quantizer, TensorQuantizer) else quantizer[0]
-            )
-            if _has_state(self.weight_quantizer, "_amax"):
-                self.weight_quantizer.reset_amax()
-            for i in range(self.num_gemms):
-                weight = getattr(self, f"weight{i}")
-                assert weight is not None, "weight is None"
-
-                max_calibrate(self.weight_quantizer, lambda wq: wq(weight), distributed_sync=False)
-            if _has_state(self.input_quantizer, "_pre_quant_scale"):
-                if hasattr(self.input_quantizer, "_pre_quant_scale"):
-                    delattr(self.input_quantizer, "_pre_quant_scale")
-                pqs = torch.zeros(
-                    (weight.shape[1]), device=weight.device, dtype=self.original_weight_dtype
-                )
-                self.input_quantizer.register_buffer("_pre_quant_scale", pqs)
-
-        if _has_state(self.input_quantizer, "_amax"):
-            self.input_quantizer.reset_amax()
-            dummy_input = torch.ones(
-                (1, 1, self.weight0.shape[1]),
-                device=self.weight0.device,
-                dtype=self.original_weight_dtype,
-            )
-            max_calibrate(self.input_quantizer, lambda iq: iq(dummy_input), distributed_sync=False)
-        if _has_state(self.output_quantizer, "_amax"):
-            self.output_quantizer.reset_amax()
-            dummy_input = torch.ones(
-                (1, 1, self.weight0.shape[0]),
-                device=self.weight0.device,
-                dtype=self.original_weight_dtype,
-            )
-            max_calibrate(self.output_quantizer, lambda oq: oq(dummy_input), distributed_sync=False)
-            # If there are any other states, lets move them to the correct device
-
-        self.weight = None
+        # GroupedMLP stores the weights as weight0, weight1, etc. To run post_restore in order to
+        # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
+        # self.weight0 to self.weight to run the quantizer states initialization.
+        self.weight = self.weight0
         super().modelopt_post_restore(prefix=prefix)
+        # Revert the weight to None after post_restore to avoid the weight being None during forward pass.
+        self.weight = None
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         # _sharded_state_dict_grouped adds _extra_state{gemm_idx} for gemm_idx:[1, num_gemms] in

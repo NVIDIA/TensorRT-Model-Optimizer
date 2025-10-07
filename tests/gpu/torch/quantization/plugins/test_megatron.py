@@ -654,7 +654,7 @@ def test_moe_sharded_state_dict(need_8_gpus, tmp_path, config):
     )
 
 
-def _test_grouped_vs_non_grouped_amax_helper(tp_size, ep_size, etp_size, rank, size):
+def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, rank, size):
     """Test that grouped and non-grouped MoE models produce similar amax values."""
     initialize_for_megatron(
         tensor_model_parallel_size=tp_size,
@@ -720,8 +720,8 @@ def _test_grouped_vs_non_grouped_amax_helper(tp_size, ep_size, etp_size, rank, s
     assert output_comparison_after, "Outputs are not close after quantization"
 
 
-def test_grouped_vs_non_grouped_amax():
-    """Test that grouped and non-grouped MoE models produce similar amax values."""
+def test_grouped_vs_non_grouped_quantize():
+    """Test that grouped and non-grouped MoE models produce similar quantized models."""
     import time
 
     size = torch.cuda.device_count()
@@ -732,14 +732,22 @@ def test_grouped_vs_non_grouped_amax():
     time.sleep(0.1)
 
     spawn_multiprocess_job(
-        size=size, job=partial(_test_grouped_vs_non_grouped_amax_helper, 1, 2, 2), backend="nccl"
+        size=size,
+        job=partial(_test_grouped_vs_non_grouped_quantize_helper, 1, 2, 2),
+        backend="nccl",
     )
 
 
-def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm):
-    """
-    Test that demonstrates the requirement for expert parallel sync in model_calib.py
-    """
+def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, rank, size):
+    """Test expert parallel synchronization with different configurations."""
+    initialize_for_megatron(
+        tensor_model_parallel_size=1,
+        pipeline_model_parallel_size=1,
+        expert_model_parallel_size=ep_size,
+        expert_tensor_parallel_size=etp_size,
+        seed=SEED,
+    )
+
     # Create model with expert parallelism
     model = _gpt_model_provider(
         tp_size=1,
@@ -769,7 +777,7 @@ def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm):
     )
 
     # Create inconsistent amax values
-    rank = torch.distributed.get_rank()
+    cur_rank = torch.distributed.get_rank()
     for name, module in model.named_modules():
         if isinstance(module, mtq.nn.TensorQuantizer):
             # Check if this is an expert quantizer
@@ -780,7 +788,7 @@ def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm):
 
             if is_expert_quantizer and hasattr(module, "_amax"):
                 # Create rank-specific amax values to simulate missing sync
-                rank_offset = rank * 0.1
+                rank_offset = cur_rank * 0.1
                 module.amax = module.amax + rank_offset
 
     # Determine expert parallel type
@@ -808,21 +816,6 @@ def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm):
     )
 
 
-def _test_expert_parallel_sync_helper(ep_size, etp_size, moe_grouped_gemm, rank, size):
-    """Test expert parallel synchronization with different configurations."""
-    initialize_for_megatron(
-        tensor_model_parallel_size=1,
-        pipeline_model_parallel_size=1,
-        context_parallel_size=1,
-        expert_model_parallel_size=ep_size,
-        expert_tensor_parallel_size=etp_size,
-        seed=42 + rank,
-    )
-
-    # Run the actual test
-    _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm)
-
-
 @pytest.mark.parametrize(("ep_size", "etp_size"), [(1, 2), (2, 1), (2, 2)])
 @pytest.mark.parametrize("moe_grouped_gemm", [True, False])
 def test_expert_parallel_sync(need_4_gpus, ep_size, etp_size, moe_grouped_gemm):
@@ -839,6 +832,6 @@ def test_expert_parallel_sync(need_4_gpus, ep_size, etp_size, moe_grouped_gemm):
 
     spawn_multiprocess_job(
         size=total_size,
-        job=partial(_test_expert_parallel_sync_helper, ep_size, etp_size, moe_grouped_gemm),
+        job=partial(_test_expert_model_parallel_amax_sync, ep_size, etp_size, moe_grouped_gemm),
         backend="nccl",
     )
