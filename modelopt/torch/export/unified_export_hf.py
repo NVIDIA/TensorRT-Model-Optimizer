@@ -513,8 +513,8 @@ def export_hf_checkpoint(
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    # Early exit for speculative decoding models
-    # We do this since some spec models get error in convert_hf_quant_config_format
+    # NOTE: (hg) Early exit for speculative decoding models
+    # This is a temp workaround to avoid error with offline spec ckpt during _export_hf_checkpoint
     if spec_opt_only(model):
         save_file(export_spec_ckpt_state_dict(model), f"{export_dir}/model.safetensors")
         with open(f"{export_dir}/config.json", "w") as file:
