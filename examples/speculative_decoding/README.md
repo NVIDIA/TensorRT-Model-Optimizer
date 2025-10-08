@@ -82,9 +82,22 @@ The saved modelopt checkpoint is similar in architecture to HF models. It can be
 
 ## Training Draft Model with Offline Base Model
 
-For large models, you can export intermediate hidden states to disk and train only the draft model. This significantly reduces GPU memory requirements, but requires several to tens of terabytes of storage depending on dataset size.
+For large models, you can export intermediate hidden states to disk and train only the draft model. This significantly reduces GPU memory requirements, but requires several to tens of terabytes of disk storage depending on dataset size.
 
-First, dump the base model's hidden states with the following command:
+### Dumpping Hidden States to Disk
+
+We support two backends for generating base model hidden states. For better effciency, it is recommended to use TRT-LLM:
+
+```bash
+python collect_hidden_states/compute_hidden_states_trtllm.py \
+            --model $BASE_MODEL \ 
+            --input-file Daring-Anteater/train.jsonl \
+            --output-dir $HIDDEN_STATES_DIR
+```
+
+**NOTE**: TRT-LLM installation needed for the above command.
+
+Alternatively, you can generate the same hidden states with HF:
 
 ```bash
 python collect_hidden_states/compute_hidden_states_hf.py \
@@ -93,9 +106,11 @@ python collect_hidden_states/compute_hidden_states_hf.py \
             --output-dir $HIDDEN_STATES_DIR
 ```
 
-See [`run_hf_compute_hiddens_dp.sh`](./collect_hidden_states/run_hf_compute_hiddens_dp.sh) for a simple example using data parallelism (DP) to accelerate hidden state generation.
+**NOTE**: See [`run_hf_compute_hiddens_dp.sh`](./collect_hidden_states/run_hf_compute_hiddens_dp.sh) and [`run_trtllm_compute_hiddens_dp.sh`](./collect_hidden_states/run_trtllm_compute_hiddens_dp.sh) for a simple example using data parallelism (DP) to accelerate hidden state generation.
 
-Then, train draft model with `--offline-data` argument:
+### Train Draft Model with Dumped Hidden States
+
+Once we finish dumping hidden states, launch offline training with an extra `--offline-data` argument:
 
 ```bash
 ./launch_train.sh --model $BASE_MODEL \
@@ -109,13 +124,13 @@ Then, train draft model with `--offline-data` argument:
 
 ## Model Validation
 
-After training draft model, we can evaluate the saved modelopt checkpoint on MT-bench by:
+For online training checkpoints, we can run in-framework evaluation on MT-bench:
 
 ```bash
-python ar_validate.py --model_path $OUTPUT_DIR
+python ar_validate.py --model_path $ONLINE_CKPT
 ```
 
-Alternatively, we can export the checkpoint and run evaluation on serving frameworks. See sections below.
+Offline checkpoints does not support this evaluation due to missing of base model modules. To evaluate offline checkpoint, please export first and evaluate with serving frameworks.
 
 ## Export
 
