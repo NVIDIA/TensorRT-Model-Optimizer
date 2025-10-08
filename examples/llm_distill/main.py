@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 import os
 from dataclasses import dataclass
 
@@ -29,10 +28,8 @@ import modelopt.torch.distill as mtd
 import modelopt.torch.opt as mto
 from modelopt.torch.distill.plugins.huggingface import KDTrainer, LMLogitsLoss
 
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
-
-logger = get_logger(__name__)
-logging.basicConfig(level=logging.INFO)
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+logger = get_logger(__name__, log_level="INFO")
 
 
 @dataclass
@@ -69,6 +66,29 @@ class KDSFTTrainer(SFTTrainer, KDTrainer):
     pass
 
 
+def _save_model_fsdp_compat(
+    self,
+    output_dir: str | None = None,
+    _internal_call: bool = False,
+    *args,
+    **kwargs,
+):
+    output_dir = output_dir or self.args.output_dir
+    model = self.accelerator.unwrap_model(self.model)
+    if not _internal_call and self.is_fsdp_enabled:
+        state_dict = self.accelerator.get_state_dict(self.model)
+        if self.accelerator.is_main_process:
+            model.save_pretrained(
+                output_dir,
+                is_main_process=self.accelerator.is_main_process,
+                save_function=self.accelerator.save,
+                state_dict=state_dict,
+            )
+            self.processing_class.save_pretrained(output_dir)
+    else:
+        super(SFTTrainer, self).save_model(output_dir, _internal_call, *args, **kwargs)
+
+
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, TrainingArguments))
     model_args, training_args = parser.parse_args_into_dataclasses()
@@ -76,6 +96,9 @@ def train():
     # Enable automatic save/load of modelopt state huggingface checkpointing
     # modelopt state will be saved automatically to "modelopt_state.pth"
     mto.enable_huggingface_checkpointing()
+
+    # HACK: Fix FSDP2-incompatible save_model() function for SFTTrainer
+    SFTTrainer.save_model = _save_model_fsdp_compat
 
     # Set total batch size across all ranks to equal 64
     total_batch_size = 64
@@ -91,12 +114,14 @@ def train():
         f"Using {int(num_accum_steps)} grad accumulation steps for effective batchsize of {total_batch_size}."
     )
 
+    # Dataset
     logger.info("Loading dataset...")
     dset = datasets.load_dataset("Open-Orca/OpenOrca", split="train")
     dset_splits = dset.train_test_split(train_size=25600, test_size=1700, seed=420)
     dset_train, dset_eval = dset_splits["train"], dset_splits["test"]
     logger.info("Dataset loaded.")
 
+    # Tokenizer
     logger.info("Loading tokenizer...")
     model_path = model_args.teacher_name_or_path or model_args.student_name_or_path
     tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
@@ -104,6 +129,7 @@ def train():
     tokenizer.padding_side = "right"
     logger.info("Tokenizer loaded.")
 
+    # Model
     if model_args.single_model:
         logger.info("Loading single model only...")
         model = transformers.AutoModelForCausalLM.from_pretrained(
