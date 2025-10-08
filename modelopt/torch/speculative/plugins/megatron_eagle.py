@@ -679,9 +679,6 @@ class _DynamicEagleGPTModel(EagleModel):
             self.parallel_draft_embeddings = torch.nn.Parameter(
                 torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
             )
-            self.parallel_draft_hidden_states = torch.nn.Parameter(
-                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
-            )
 
         # Use default aux_hidden_state layers if use_aux_hidden_state is True
         # but no layer id is given
@@ -804,13 +801,17 @@ class _DynamicEagleGPTModel(EagleModel):
         rotary_pos_emb = self.eagle_module.rotary_pos_emb(padded_input_ids.shape[-1])
 
         attn_mask = attention_mask.clone().detach()
-        attn_mask[:, :, :-1, :-1] = attention_mask[:, :, 1:, 1:]
-        attn_mask[:, :, -1, :] = True
-        attn_mask[:, :, :, -1] = True
+        if self.eagle_config.parallel_draft_step == 1:
+            attn_mask[:, :, :-1, :-1] = attention_mask[:, :, 1:, 1:]
+            attn_mask[:, :, -1, :] = True
+            attn_mask[:, :, :, -1] = True
 
         eagle_inputs = {}
 
-        eagle_inputs["input_ids"] = padded_input_ids
+        if self.eagle_config.parallel_draft_step == 1:
+            eagle_inputs["input_ids"] = padded_input_ids
+        else:
+            eagle_inputs["input_ids"] = input_ids
         eagle_inputs["position_ids"] = position_ids
 
         if parallel_draft_index == 0:
@@ -818,14 +819,15 @@ class _DynamicEagleGPTModel(EagleModel):
                 input_ids=eagle_inputs["input_ids"],
                 position_ids=eagle_inputs["position_ids"],
             )
-            eagle_inputs["hidden_states"] = hidden_states
+            if self.eagle_config.parallel_draft_step == 1:
+                eagle_inputs["hidden_states"] = hidden_states
+            else:
+                eagle_inputs["hidden_states"] = eagle_inputs["embedding"]
         else:
             eagle_inputs["embedding"] = self.parallel_draft_embeddings[
                 parallel_draft_index - 1
             ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
-            eagle_inputs["hidden_states"] = self.parallel_draft_hidden_states[
-                parallel_draft_index - 1
-            ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
+            eagle_inputs["hidden_states"] = eagle_inputs["embedding"]
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
             attn_mask, ttt_step + parallel_draft_index
@@ -848,7 +850,12 @@ class _DynamicEagleGPTModel(EagleModel):
         # Compute lm loss (classification loss) or KLDivergence
         if self.eagle_self_logit_distillation:
             mapping = self.eagle_module.d2t if hasattr(self.eagle_module, "d2t") else None
-            token_loss = self.kld(eagle_logits[:-1, :, :], logits[1:, :, :], mapping)
+            if self.eagle_config.parallel_draft_step > 1:
+                token_loss = self.kld(eagle_logits, logits, mapping)
+            else:
+                token_loss = self.kld(eagle_logits[:-1, :, :], logits[1:, :, :], mapping)
+        elif self.eagle_config.parallel_draft_step > 1:
+            token_loss = self.compute_language_model_loss(labels, eagle_logits)
         else:
             token_loss = self.compute_language_model_loss(labels[:, 1:], eagle_logits[:-1, :, :])
 
@@ -1063,6 +1070,8 @@ class _DynamicEagleGPTModel(EagleModel):
                 loss = 0.0 * loss
 
         acc = []
+        if self.eagle_config.parallel_draft_step > 1:
+            ttt_steps = 1
         for ttt_step in range(ttt_steps):
             eagle_logits = []
             for i in range(self.eagle_config.parallel_draft_step):
@@ -1129,9 +1138,14 @@ class _DynamicEagleGPTModel(EagleModel):
                 eagle_logit = eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
                 loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
                 loss_ = loss_[:, i + ttt_step :]
-                loss[:, i + ttt_step + 1 :] += (
-                    self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
-                )
+                if self.eagle_config.parallel_draft_step == 1:
+                    loss[:, i + ttt_step + 1 :] += (
+                        self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
+                    )
+                else:
+                    loss[:, i + ttt_step :] += (
+                        self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
+                    )
 
             if self.eagle_report_acc and not self.training:
                 with torch.no_grad():
@@ -1139,14 +1153,23 @@ class _DynamicEagleGPTModel(EagleModel):
                         gathered_logits = gather_from_tensor_model_parallel_region(
                             eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
                         )
-                        gathered_logits = gathered_logits[i + ttt_step : -1]
+                        if self.eagle_config.parallel_draft_step == 1:
+                            gathered_logits = gathered_logits[i + ttt_step : -1]
+                        else:
+                            gathered_logits = gathered_logits[i + ttt_step :]
                         eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                             eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                        top1_p = (
-                            torch.eq(labels[:, i + ttt_step + 1 :], eagle_top1).sum()
-                            / eagle_top1.numel()
-                        )
+                        if self.eagle_config.parallel_draft_step == 1:
+                            top1_p = (
+                                torch.eq(labels[:, i + ttt_step + 1 :], eagle_top1).sum()
+                                / eagle_top1.numel()
+                            )
+                        else:
+                            top1_p = (
+                                torch.eq(labels[:, i + ttt_step :], eagle_top1).sum()
+                                / eagle_top1.numel()
+                            )
                         acc.append(top1_p)
 
         if self.eagle_report_acc and not self.training and get_tensor_model_parallel_rank() == 0:
