@@ -36,7 +36,7 @@ FP8_SAGE_DEFAULT_CONFIG = {
         "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
         "*input_quantizer": {"num_bits": (4, 3), "axis": None},
         "*output_quantizer": {"enable": False},
-        "*[qkv]_bmm_quantizer": {"type": "dynamic", "num_bits": (4, 3), "block_sizes": {-2: 32}},
+        "*[qkv]_bmm_quantizer": {"type": "dynamic", "num_bits": (4, 3), "block_sizes": {-2: 128}},
         "*softmax_quantizer": {
             "num_bits": (4, 3),
             "axis": None,
