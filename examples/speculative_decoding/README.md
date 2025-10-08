@@ -51,7 +51,7 @@ We use [Daring-Anteater](https://huggingface.co/datasets/nvidia/Daring-Anteater)
 python prepare_input_conversations/add_daring_anteater.py
 ```
 
-See [custom dataset](#custom-datasets) section for other dataset options and instruction for user-provided data.
+See [other-datasets](#other-datasets) section for other dataset options and instruction for user-provided data.
 
 ## Getting Started: Simplified Workflow
 
@@ -185,7 +185,7 @@ See more details on deployment of quantized model to TRTLLM [here](../llm_ptq/RE
 
 ## Advanced Usage
 
-### Custom Datasets
+### Other Datasets
 
 In addition to `daring-anteater`, we provide scripts for adding several other commonly used datasets in `prepare_input_conversations`:
 
@@ -198,7 +198,7 @@ prepare_input_conversations/
     └── example_make_prompt_dataset.sh
 ```
 
-To use custom datasets, please preprocess your data into a `.jsonl` file with each line in the format:
+To use your own datasets, please preprocess your data into a `.jsonl` file with each line in the format:
 
 ```json
 {
