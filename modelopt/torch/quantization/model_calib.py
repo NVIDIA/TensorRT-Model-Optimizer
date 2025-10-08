@@ -89,10 +89,6 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
         if getattr(quantizer, "_amax", None) is not None:
             quantizer.sync_amax_across_distributed_group(parallel_state.data_parallel_group)
             quantizer.sync_amax_across_distributed_group(parallel_state.expert_model_parallel_group)
-            if parallel_state.expert_tensor_parallel_group is not None:
-                quantizer.sync_amax_across_distributed_group(
-                    parallel_state.expert_tensor_parallel_group
-                )
         # TODO: create sync_bias_across_distributed_group
 
     for name, module in model.named_modules():

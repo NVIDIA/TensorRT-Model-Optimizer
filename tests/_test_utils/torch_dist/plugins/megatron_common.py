@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import re
 from warnings import warn
 
 import torch
@@ -58,7 +59,6 @@ from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
     save_sharded_modelopt_state,
 )
 from modelopt.torch.utils import to_empty_if_meta_device
-from modelopt.torch.utils.distributed import DistributedProcessGroup
 
 try:
     from megatron.core.extensions.transformer_engine import TENorm
@@ -148,7 +148,7 @@ def get_mcore_gpt_model(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
     expert_model_parallel_size: int = 1,
-    expert_tensor_parallel_size: int = 1,
+    expert_tensor_parallel_size: int | None = None,
     initialize_megatron: bool = False,
     *,
     num_layers: int = 2,
@@ -508,61 +508,6 @@ def sharded_state_dict_test_helper(
     )
 
 
-def compare_model_outputs(grouped_model, non_grouped_model, forward_fn, tolerance=1e-6):
-    """Compare outputs of grouped and non-grouped models."""
-    # Set both models to eval mode
-    grouped_model.eval()
-    non_grouped_model.eval()
-
-    with torch.no_grad():
-        # Get outputs from both models
-        grouped_output = forward_fn(grouped_model)
-        non_grouped_output = forward_fn(non_grouped_model)
-
-        # Compare outputs
-        if isinstance(grouped_output, tuple):
-            grouped_output = grouped_output[0]
-        if isinstance(non_grouped_output, tuple):
-            non_grouped_output = non_grouped_output[0]
-
-    output_close = torch.allclose(
-        grouped_output, non_grouped_output, atol=tolerance, rtol=tolerance
-    )
-    return output_close
-
-
-def sync_amax(model):
-    amax_dict = {
-        "linear_fc1.input_quantizer": {},
-        "linear_fc1.weight_quantizer": {},
-        "linear_fc2.input_quantizer": {},
-        "linear_fc2.weight_quantizer": {},
-    }
-    for name, module in model.named_modules():
-        if not isinstance(module, mtq.nn.TensorQuantizer):
-            continue
-        if not hasattr(module, "_amax"):
-            continue
-        if "local_experts" not in name:
-            continue
-        expert_name, local_expert_name = name.split("local_experts")
-        for key in amax_dict:
-            if key in local_expert_name:
-                amax_dict[key][expert_name] = max(amax_dict[key].get(expert_name, 0), module.amax)
-
-    for name, module in model.named_modules():
-        if not isinstance(module, mtq.nn.TensorQuantizer):
-            continue
-        if not hasattr(module, "_amax"):
-            continue
-        if "local_experts" not in name:
-            continue
-        expert_name, local_expert_name = name.split("local_experts")
-        for key in amax_dict:
-            if key in local_expert_name:
-                module.amax = amax_dict[key][expert_name]
-
-
 def copy_weights_from_grouped_to_non_grouped(grouped_model, non_grouped_model):
     """Copy weights from grouped MoE model to non-grouped MoE model."""
     grouped_state = grouped_model.state_dict()
@@ -636,8 +581,6 @@ def compare_amax_sync_across_expert_parallel(model):
             # Create quantizer type key by normalizing the name
             if "local_experts" in name:
                 # Non-grouped MoE: replace expert index with wildcard
-                import re
-
                 quantizer_type = re.sub(r"local_experts\.\d+", "local_experts.*", name)
             else:
                 # Grouped MoE: use the name as-is since experts are grouped
@@ -652,50 +595,7 @@ def compare_amax_sync_across_expert_parallel(model):
         if len(rank_values) > 1:  # Only check if we have multiple ranks
             values = list(rank_values.values())
             max_diff = max(values) - min(values)
-
             if max_diff > 1e-6:  # Allow for small floating point differences
-                return False
+                return False, quantizer_type, rank_values
 
-    return True
-
-
-def disable_distributed_parallel_sync(model, expert_parallel_type: str = "tensor"):
-    """Disable distributed parallel synchronization groups."""
-    module_parallel_groups = {}
-
-    for name, module in model.named_modules():
-        if isinstance(module, mtq.nn.QuantModule):
-            # Store original groups
-            module_parallel_groups[name] = {
-                "data_parallel_group": module.parallel_state.data_parallel_group,
-                "expert_tensor_parallel_group": module.parallel_state.expert_tensor_parallel_group,
-                "expert_model_parallel_group": module.parallel_state.expert_model_parallel_group,
-            }
-
-            # Disable groups
-            module.parallel_state.data_parallel_group = DistributedProcessGroup(-1)
-
-            if expert_parallel_type in ["tensor", "both"]:
-                module.parallel_state.expert_tensor_parallel_group = DistributedProcessGroup(-1)
-            if expert_parallel_type in ["model", "both"]:
-                module.parallel_state.expert_model_parallel_group = DistributedProcessGroup(-1)
-
-    return module_parallel_groups
-
-
-def enable_distributed_parallel_sync(
-    model, module_parallel_groups, expert_parallel_type: str = "tensor"
-):
-    """Re-enable distributed parallel synchronization groups."""
-    for name, module in model.named_modules():
-        if isinstance(module, mtq.nn.QuantModule) and name in module_parallel_groups:
-            groups = module_parallel_groups[name]
-
-            if expert_parallel_type in ["tensor", "both"]:
-                module.parallel_state.expert_tensor_parallel_group = groups[
-                    "expert_tensor_parallel_group"
-                ]
-            if expert_parallel_type in ["model", "both"]:
-                module.parallel_state.expert_model_parallel_group = groups[
-                    "expert_model_parallel_group"
-                ]
+    return True, None, None

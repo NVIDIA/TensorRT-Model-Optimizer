@@ -208,6 +208,8 @@ def wrapped_calib_func(
     forward_loop and the relevant kwargs and are independent of the ModelOpt framework.
     So lets wrap them to be compatible with the ModelOpt convert entrypoint.
     """
+    from .plugins.custom import register_custom_post_calibration_plugins
+
     kwargs = config.model_dump()
     method = kwargs.pop("method")
     if method is not None and "awq" in method:
@@ -218,6 +220,7 @@ def wrapped_calib_func(
         # Call the function with forward_loop as a separate argument
         func(model, forward_loop=forward_loop, **kwargs)
 
+    register_custom_post_calibration_plugins(model)
     # Lets get the latest metadata for the quantizer states
     metadata = {}
     update_quantize_metadata(model, config, metadata)
@@ -290,7 +293,10 @@ class BaseCalibrateModeDescriptor(ModeDescriptor):
         def wrapped_func(model, config, forward_loop=None):
             # Access _calib_func as a class attribute to avoid binding
             # Check if _calib_func is defined as a class attribute
-            return wrapped_calib_func(model, config, forward_loop, func=self.__class__._calib_func)
+            calib_results = wrapped_calib_func(
+                model, config, forward_loop, func=self.__class__._calib_func
+            )
+            return calib_results
 
         return wrapped_func
 

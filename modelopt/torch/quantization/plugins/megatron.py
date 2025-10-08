@@ -42,11 +42,49 @@ from modelopt.torch.utils.distributed import ParallelState
 from ..nn import QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear, _QuantLinear
 from ..qtensor import QTensorWrapper
-from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
+from .custom import CUSTOM_MODEL_PLUGINS, CUSTOM_POST_CALIBRATION_PLUGINS, _ParallelLinear
 
 logger = logging.getLogger(__name__)
 
 __all__ = []
+
+
+def sync_amax_across_sequential_mlp(model: torch.nn.Module):
+    """Sync amax across experts in a SequentialMLP."""
+    amax_dict = {
+        "linear_fc1.input_quantizer": {},
+        "linear_fc1.weight_quantizer": {},
+        "linear_fc2.input_quantizer": {},
+        "linear_fc2.weight_quantizer": {},
+    }
+    # gather amax values from SequentialMLP experts
+    for name, module in model.named_modules():
+        if (
+            not isinstance(module, TensorQuantizer)
+            or not hasattr(module, "_amax")
+            or "local_experts" not in name
+        ):
+            continue
+        expert_name, local_expert_name = name.split("local_experts")
+        for key in amax_dict:
+            if key in local_expert_name:
+                amax_dict[key][expert_name] = max(amax_dict[key].get(expert_name, 0), module.amax)
+
+    # sync amax values across experts in SequentialMLP
+    for name, module in model.named_modules():
+        if (
+            not isinstance(module, TensorQuantizer)
+            or not hasattr(module, "_amax")
+            or "local_experts" not in name
+        ):
+            continue
+        expert_name, local_expert_name = name.split("local_experts")
+        for key in amax_dict:
+            if key in local_expert_name:
+                module.amax = amax_dict[key][expert_name]
+
+
+CUSTOM_POST_CALIBRATION_PLUGINS.add(sync_amax_across_sequential_mlp)
 
 
 def real_quant_module_get_extra_state(self) -> dict:
@@ -225,24 +263,19 @@ class _MegatronParallelLinear(_ParallelLinear):
     ]
 
     def _setup(self):
-        data_parallel_group = None
-        try:
-            data_parallel_group = get_data_parallel_group(with_context_parallel=True)
-        except AssertionError:
-            logger.warning("Context parallel group is not initialized, using data parallel group")
-            data_parallel_group = get_data_parallel_group()
-
-        try:
-            expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
-        except AssertionError:
-            expert_tensor_parallel_group = None
-
-        self.parallel_state = ParallelState(
-            data_parallel_group,
-            mcore_parallel.get_tensor_model_parallel_group(),
-            mcore_parallel.get_expert_model_parallel_group(),
-            expert_tensor_parallel_group,
-        )
+        if not hasattr(self, "parallel_state") or self.parallel_state is None:
+            data_parallel_group = None
+            try:
+                data_parallel_group = get_data_parallel_group(with_context_parallel=True)
+            except AssertionError:
+                logger.warning(
+                    "Context parallel group is not initialized, using data parallel group"
+                )
+                data_parallel_group = get_data_parallel_group()
+            self.parallel_state = ParallelState(
+                data_parallel_group,
+                mcore_parallel.get_tensor_model_parallel_group(),
+            )
         super()._setup()
 
     def _process_quantizer_amax(self, k, v, quantizer_state_dict):
@@ -490,26 +523,22 @@ class _RealQuantMegatronRowParallelLinear(
 @QuantModuleRegistry.register({te_grouped_linear.GroupedLinear: "te_GroupedLinear_public"})
 class _QuantTEGroupedLinear(_MegatronParallelLinear):
     def _setup(self):
-        data_parallel_group = None
-        try:
-            data_parallel_group = get_data_parallel_group(with_context_parallel=True)
-        except AssertionError:
-            data_parallel_group = get_data_parallel_group()
+        if not hasattr(self, "parallel_state") or self.parallel_state is None:
+            data_parallel_group = None
+            try:
+                data_parallel_group = get_data_parallel_group(with_context_parallel=True)
+            except AssertionError:
+                data_parallel_group = get_data_parallel_group()
 
-        try:
-            expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
-        except AssertionError:
-            expert_tensor_parallel_group = None
-        self.parallel_state = ParallelState(
-            data_parallel_group,
-            mcore_parallel.get_tensor_model_parallel_group(),
-            mcore_parallel.get_expert_model_parallel_group(),
-            expert_tensor_parallel_group,
-        )
-        self.input_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_input)
-        self.weight_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_weight)
-        self.output_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_output)
-        self.output_quantizer.disable()
+            self.parallel_state = ParallelState(
+                data_parallel_group,
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
+            )
+            self.input_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_input)
+            self.weight_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_weight)
+            self.output_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_output)
+            self.output_quantizer.disable()
 
         # Memorize the original weight.dtype for modelopt_post_restore given that
         # the dtype can change later.
@@ -582,5 +611,5 @@ class _QuantTEGroupedColumnParallelLinear(_QuantTEGroupedLinear, _MegatronColumn
 @QuantModuleRegistry.register(
     {megatron_te.TERowParallelGroupedLinear: "megatron_TERowParallelGroupedLinear"}
 )
-class _QuantTEGroupedRowParallelLinear(_QuantTEGroupedLinear, _MegatronColumnParallelLinear):
+class _QuantTEGroupedRowParallelLinear(_QuantTEGroupedLinear, _MegatronRowParallelLinear):
     _is_row_parallel = True

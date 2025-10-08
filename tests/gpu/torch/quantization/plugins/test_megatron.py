@@ -22,15 +22,11 @@ from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
     MegatronModel,
     compare_amax_sync_across_expert_parallel,
-    compare_model_outputs,
     copy_weights_from_grouped_to_non_grouped,
-    disable_distributed_parallel_sync,
-    enable_distributed_parallel_sync,
     get_mcore_gpt_model,
     initialize_for_megatron,
     run_mcore_inference,
     sharded_state_dict_test_helper,
-    sync_amax,
 )
 from _test_utils.torch_misc import set_seed
 from _test_utils.torch_quantization.models import RegularQuantModelForTP
@@ -401,7 +397,6 @@ def _test_sharded_state_dict(
         num_moe_experts=num_moe_experts,
         moe_grouped_gemm=moe_grouped_gemm,
         use_te=use_te,
-        meta_device=meta_device,
         ep_size=ep_size,
         etp_size=etp_size,
     )
@@ -670,7 +665,7 @@ def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, ran
         return megatron_prefill(model, prompt_tokens)
 
     # Create grouped MoE model
-    grouped_model = _gpt_model_provider(
+    grouped_moe_model = _gpt_model_provider(
         tp_size=tp_size,
         ep_size=ep_size,
         etp_size=etp_size,
@@ -679,13 +674,15 @@ def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, ran
         use_te=True,
         num_moe_experts=4,
     )
-    num_grouped_mlp = sum(isinstance(module, TEGroupedMLP) for module in grouped_model.modules())
+    num_grouped_mlp = sum(
+        isinstance(module, TEGroupedMLP) for module in grouped_moe_model.modules()
+    )
     assert num_grouped_mlp == 4, (
         f"TEGrupedMoEModel has {num_grouped_mlp} TEGroupedMLP modules, it should have 4"
     )
 
     # Create non-grouped MoE model
-    non_grouped_model = _gpt_model_provider(
+    sequential_moe_model = _gpt_model_provider(
         tp_size=tp_size,
         ep_size=ep_size,
         etp_size=etp_size,
@@ -694,42 +691,39 @@ def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, ran
         num_moe_experts=4,
     )
     num_sequential_mlp = sum(
-        isinstance(module, SequentialMLP) for module in non_grouped_model.modules()
+        isinstance(module, SequentialMLP) for module in sequential_moe_model.modules()
     )
     assert num_sequential_mlp == 4, (
         f"SequentialMoEModel has {num_sequential_mlp} SequentialMLP modules, it should have 4"
     )
     # Copy weights from grouped to non-grouped model
-    copy_weights_from_grouped_to_non_grouped(grouped_model, non_grouped_model)
+    copy_weights_from_grouped_to_non_grouped(grouped_moe_model, sequential_moe_model)
 
-    output_comparison_before = compare_model_outputs(grouped_model, non_grouped_model, forward_fn)
-    assert output_comparison_before, "Outputs are not close before quantization"
+    # Compare model outputs before quantization
+    grouped_moe_output = forward_fn(grouped_moe_model)
+    non_grouped_moe_output = forward_fn(sequential_moe_model)
+    assert torch.allclose(grouped_moe_output, non_grouped_moe_output, atol=1e-6, rtol=1e-6)
 
     # Quantize grouped model
-    mtq.quantize(grouped_model, mtq.FP8_DEFAULT_CFG, forward_fn)
+    mtq.quantize(grouped_moe_model, mtq.FP8_DEFAULT_CFG, forward_fn)
 
     # Quantize non-grouped model
-    mtq.quantize(non_grouped_model, mtq.FP8_DEFAULT_CFG, forward_fn)
-
-    # sync amax across expert parallel
-    # TODO: Remove once amax sync is enabled by default for SequentialGroupedMLP
-    sync_amax(non_grouped_model)
+    mtq.quantize(sequential_moe_model, mtq.FP8_DEFAULT_CFG, forward_fn)
 
     # Compare model outputs after quantization
-    output_comparison_after = compare_model_outputs(grouped_model, non_grouped_model, forward_fn)
-    assert output_comparison_after, "Outputs are not close after quantization"
+    grouped_moe_quant_output = forward_fn(grouped_moe_model)
+    non_grouped_moe_quant_output = forward_fn(sequential_moe_model)
+    assert torch.allclose(
+        grouped_moe_quant_output, non_grouped_moe_quant_output, atol=1e-6, rtol=1e-6
+    )
 
 
 def test_grouped_vs_non_grouped_quantize():
     """Test that grouped and non-grouped MoE models produce similar quantized models."""
-    import time
 
     size = torch.cuda.device_count()
     if size < 4:
         pytest.skip("Requires at least 4 GPUs for expert parallel test")
-
-    # Add small delay to avoid port conflicts
-    time.sleep(0.1)
 
     spawn_multiprocess_job(
         size=size,
@@ -738,7 +732,7 @@ def test_grouped_vs_non_grouped_quantize():
     )
 
 
-def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, rank, size):
+def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, config, rank, size):
     """Test expert parallel synchronization with different configurations."""
     initialize_for_megatron(
         tensor_model_parallel_size=1,
@@ -758,24 +752,19 @@ def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, r
         use_te=moe_grouped_gemm,
         num_moe_experts=4,
     )
-
-    # Create input and forward function
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     def forward_fn(model):
         return megatron_prefill(model, prompt_tokens)
 
-    # Run forward pass and quantize
-    forward_fn(model)
-    config = mtq.FP8_DEFAULT_CFG
+    # quantize the model
     model = mtq.quantize(model, config, forward_fn)
 
     # Check initial sync status
-    initial_sync = compare_amax_sync_across_expert_parallel(model)
+    initial_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
     assert initial_sync, (
-        "Inconsistent amax across expert parallel ranks, Amax should be synchronized across expert parallel ranks"
+        f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
     )
-
     # Create inconsistent amax values
     cur_rank = torch.distributed.get_rank()
     for name, module in model.named_modules():
@@ -791,47 +780,35 @@ def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, r
                 rank_offset = cur_rank * 0.1
                 module.amax = module.amax + rank_offset
 
-    # Determine expert parallel type
-    expert_parallel_type = (
-        "both" if ep_size > 1 and etp_size > 1 else ("model" if ep_size > 1 else "tensor")
-    )
-
-    # Disable parallel groups and test inconsistency
-    module_parallel_groups = disable_distributed_parallel_sync(model, expert_parallel_type)
-    mtq.model_calib.max_calibrate(model, forward_fn)
-
-    inconsistent_sync = compare_amax_sync_across_expert_parallel(model)
-    assert not inconsistent_sync, (
+    # Test if the amax values are inconsistent
+    inconsistent_amax, _, _ = compare_amax_sync_across_expert_parallel(model)
+    assert not inconsistent_amax, (
         "Consistent amax across expert parallel ranks, "
         "Amax should not be synchronized across expert parallel ranks since expert parallel is disabled"
     )
-
     # Re-enable parallel groups and test synchronization
-    enable_distributed_parallel_sync(model, module_parallel_groups, expert_parallel_type)
     mtq.model_calib.max_calibrate(model, forward_fn)
 
-    final_sync = compare_amax_sync_across_expert_parallel(model)
-    assert final_sync, (
-        "Inconsistent amax across expert parallel ranks, Amax should be synchronized across expert parallel ranks"
-    )
+    final_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
+    assert final_sync, f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
 
 
 @pytest.mark.parametrize(("ep_size", "etp_size"), [(1, 2), (2, 1), (2, 2)])
 @pytest.mark.parametrize("moe_grouped_gemm", [True, False])
-def test_expert_parallel_sync(need_4_gpus, ep_size, etp_size, moe_grouped_gemm):
+def test_expert_parallel_sync(ep_size, etp_size, moe_grouped_gemm):
     """Test expert model parallel synchronization."""
-    import time
-
     size = torch.cuda.device_count()
-    total_size = ep_size * etp_size
-    if size < total_size:
-        pytest.skip(f"Requires at least {total_size} GPUs for expert model parallel test")
-
-    # Add small delay to avoid port conflicts
-    time.sleep(0.1)
+    if size < ep_size * etp_size:
+        pytest.skip(f"Requires at least {ep_size * etp_size} GPUs for expert model parallel test")
 
     spawn_multiprocess_job(
-        size=total_size,
-        job=partial(_test_expert_model_parallel_amax_sync, ep_size, etp_size, moe_grouped_gemm),
+        size=size,
+        job=partial(
+            _test_expert_model_parallel_amax_sync,
+            ep_size,
+            etp_size,
+            moe_grouped_gemm,
+            mtq.FP8_DEFAULT_CFG,
+        ),
         backend="nccl",
     )
