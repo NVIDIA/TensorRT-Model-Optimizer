@@ -215,8 +215,7 @@ python -m modelopt.onnx.quantization \
     --quantize_mode=<int8/fp8> \
     --calibration_data=calib.npy \
     --calibrate_per_node \
-    --output_path=vit_base_patch16_224.quant.onnx \
-    --calibration_shapes=input:1x3x224x224
+    --output_path=vit_base_patch16_224.quant.onnx
 ```
 
 > **Note**: Per node calibration is not available for INT4 quantization methods (`awq_clip`, `rtn_dq`)

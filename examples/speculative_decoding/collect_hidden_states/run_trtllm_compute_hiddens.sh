@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,23 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Handles plugins for third-party modules."""
+# Example usage of the script to compute the hidden states for a conversation dataset
+# This script computes hidden states using TensorRT-LLM and saves them to
+# the specified output directory.
 
-from modelopt.torch.utils import import_plugin
-
-from .huggingface import *
-
-with import_plugin("megatron core dist checkpointing"):
-    from .mcore_dist_checkpointing import *
-
-with import_plugin("transformers"):
-    from .transformers import *
-
-with import_plugin("diffusers"):
-    from .diffusers import *
-
-with import_plugin("peft"):
-    from .peft import *
-
-with import_plugin("megatron"):
-    from .megatron import *
+export TLLM_LOG_LEVEL="error";
+python3 collect_hidden_states/compute_hidden_states_trtllm.py \
+  --model meta-llama/Llama-3.2-1B-Instruct \
+  --input-file synthetic_conversations/daring-anteater.jsonl \
+  --output-dir /mnt/md0/eagle-hidden-states/llama1b/daring_anteater/
+  

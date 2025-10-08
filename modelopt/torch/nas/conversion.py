@@ -26,7 +26,9 @@ __all__ = ["convert", "export"]
 NASModeRegistry = _ModeRegistryCls("nas")
 
 
-def convert(model: ModelLike, mode: ModeLike) -> nn.Module:
+def convert(
+    model: ModelLike, mode: ModeLike, registry: _ModeRegistryCls = NASModeRegistry
+) -> nn.Module:
     """Convert a regular PyTorch model into a model that supports design space optimization.
 
     Args:
@@ -84,7 +86,7 @@ def convert(model: ModelLike, mode: ModeLike) -> nn.Module:
         #. Use ``*`` as a wildcard matching any layer.
     """
     # apply mode and handle model-like object with wrapper
-    return apply_mode(model, mode, registry=NASModeRegistry)
+    return apply_mode(model, mode, registry=registry)
 
 
 def export(model: nn.Module, strict: bool = True, calib: bool = False) -> nn.Module:
