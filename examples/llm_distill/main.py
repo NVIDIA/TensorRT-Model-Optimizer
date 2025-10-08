@@ -16,6 +16,8 @@
 import os
 from dataclasses import dataclass
 
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 import datasets
 import torch
 import torch.distributed
@@ -28,7 +30,6 @@ import modelopt.torch.distill as mtd
 import modelopt.torch.opt as mto
 from modelopt.torch.distill.plugins.huggingface import KDTrainer, LMLogitsLoss
 
-os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 logger = get_logger(__name__, log_level="INFO")
 
 
