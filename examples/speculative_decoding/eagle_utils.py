@@ -29,8 +29,6 @@ from modelopt.torch.utils import print_rank_0
 
 try:
     import wandb
-
-    wandb.init()
 except ImportError:
     wandb = None
 
