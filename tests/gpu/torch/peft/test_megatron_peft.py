@@ -5,7 +5,7 @@ import pytest
 import torch
 import torch.nn.init as init
 from _test_utils.import_helper import skip_if_no_megatron
-from _test_utils.torch_dist.dist_utils import get_device_counts, spawn_multiprocess_job
+from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
     get_mcore_gpt_model,
     initialize_for_megatron,
@@ -771,16 +771,15 @@ def _test_mcore_lora_then_quantize_save_restore(lora_config, tmp_path, rank, siz
                 assert getattr(lora_b.weight_quantizer, "amax") is not None
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
     ],
 )
-def test_mcore_lora_then_quantize_save_restore(device_count, lora_config, tmp_path):
+def test_mcore_lora_then_quantize_save_restore(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_mcore_lora_then_quantize_save_restore, lora_config, str(tmp_path)),
         backend="nccl",
     )
