@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Example usage of the script to compute the hidden states for a conversation dataset
-# This script computes hidden states using a Hugging Face model and saves them to
+# This script computes hidden states using TensorRT-LLM and saves them to
 # the specified output directory. It does so in a data-parallel manner across 8 GPUs, by splitting
 # the input file into 8 parts and running 8 processes in parallel, one on each GPU.
 
