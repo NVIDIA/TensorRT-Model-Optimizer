@@ -1,0 +1,16 @@
+coloredlogs
+datasets
+flatbuffers
+huggingface_hub[cli]
+numpy
+onnx
+onnxruntime-genai
+packaging
+pandas
+protobuf>=5.28.2
+pytest
+sentencepiece
+sympy
+torch
+transformers
+
