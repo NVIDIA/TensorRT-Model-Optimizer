@@ -238,7 +238,6 @@ def _test_forward_with_one_lora(lora_config, rank, size):
     assert lora_with_adapter_count > 0
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
@@ -247,9 +246,11 @@ def _test_forward_with_one_lora(lora_config, rank, size):
         SELECTIVE_LAYER_LORA_CFG,
     ],
 )
-def test_forward_with_one_lora(device_count, lora_config):
+def test_forward_with_one_lora(lora_config):
     spawn_multiprocess_job(
-        size=device_count, job=partial(_test_forward_with_one_lora, lora_config), backend="nccl"
+        size=torch.cuda.device_count(),
+        job=partial(_test_forward_with_one_lora, lora_config),
+        backend="nccl",
     )
 
 
@@ -295,16 +296,15 @@ def _test_forward_with_two_loras(lora_config_1, lora_config_2, rank, size):
                 assert hasattr(module, f"lora_b_{adapter_name}")
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     ("lora_config_1", "lora_config_2"),
     [
         (DEFAULT_LORA_CFG_RANDOM_INIT_TEST, DEFAULT_LORA_CFG_RANDOM_INIT_SMALL_RANK_TEST),
     ],
 )
-def test_forward_with_two_loras(device_count, lora_config_1, lora_config_2):
+def test_forward_with_two_loras(lora_config_1, lora_config_2):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_forward_with_two_loras, lora_config_1, lora_config_2),
         backend="nccl",
     )
@@ -342,16 +342,15 @@ def _test_attr_changes_with_one_lora(lora_config, rank, size):
     assert torch.allclose(lora_1_output, lora_back_output)
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
     ],
 )
-def test_attr_changes_with_one_lora(device_count, lora_config):
+def test_attr_changes_with_one_lora(lora_config):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_attr_changes_with_one_lora, lora_config),
         backend="nccl",
     )
@@ -385,16 +384,15 @@ def _test_mcore_save_restore(lora_config, tmp_path, rank, size):
     assert not torch.allclose(original_output_test, lora_output_test)
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
     ],
 )
-def test_mcore_save_restore(device_count, lora_config, tmp_path):
+def test_mcore_save_restore(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_mcore_save_restore, lora_config, str(tmp_path)),
         backend="nccl",
     )
@@ -433,16 +431,15 @@ def _test_adapter_gradient_flow_freeze_base_model(lora_config, tmp_path, rank, s
             assert param.grad is None
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         LARGE_LORA_CFG_RANDOM_INIT_TEST,  # Use random init so gradients flow to both lora_a and lora_b
     ],
 )
-def test_adapter_gradient_flow_freeze_base_model(device_count, lora_config, tmp_path):
+def test_adapter_gradient_flow_freeze_base_model(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_adapter_gradient_flow_freeze_base_model, lora_config, str(tmp_path)),
         backend="nccl",
     )
@@ -485,16 +482,15 @@ def _test_adapter_gradient_flow_freeze_lora_model(lora_config, tmp_path, rank, s
             assert torch.any(param.grad != 0)
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         LARGE_LORA_CFG_RANDOM_INIT_TEST,  # Use random init so gradients flow to both lora_a and lora_b
     ],
 )
-def test_adapter_gradient_flow_freeze_lora_model(device_count, lora_config, tmp_path):
+def test_adapter_gradient_flow_freeze_lora_model(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_adapter_gradient_flow_freeze_lora_model, lora_config, str(tmp_path)),
         backend="nccl",
     )
@@ -533,16 +529,15 @@ def _test_adapter_gradient_flow(lora_config, tmp_path, rank, size):
         assert torch.any(param.grad != 0), "weight gradient is all zeros"
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         LARGE_LORA_CFG_RANDOM_INIT_TEST,  # Use random init so gradients flow to both lora_a and lora_b
     ],
 )
-def test_adapter_gradient_flow(device_count, lora_config, tmp_path):
+def test_adapter_gradient_flow(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_adapter_gradient_flow, lora_config, str(tmp_path)),
         backend="nccl",
     )
@@ -585,16 +580,15 @@ def _test_quantize_then_lora(lora_config, tmp_path, rank, size):
     assert not torch.allclose(quantized_lora_output, unquantized_lora_output)
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         LARGE_LORA_CFG_RANDOM_INIT_TEST,  # Use random init so gradients flow to both lora_a and lora_b
     ],
 )
-def test_quantize_then_lora(device_count, lora_config, tmp_path):
+def test_quantize_then_lora(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_quantize_then_lora, lora_config, str(tmp_path)),
         backend="nccl",
     )
@@ -647,16 +641,15 @@ def _test_lora_then_quantize(lora_config, tmp_path, rank, size):
     assert not torch.allclose(quantized_output, disabled_lora_ab_quantized_output)
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         LARGE_LORA_CFG_RANDOM_INIT_TEST,  # Use random init so gradients flow to both lora_a and lora_b
     ],
 )
-def test_lora_then_quantize(device_count, lora_config, tmp_path):
+def test_lora_then_quantize(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_lora_then_quantize, lora_config, str(tmp_path)),
         backend="nccl",
     )
@@ -711,16 +704,15 @@ def _test_mcore_quantize_then_lora_save_restore(lora_config, tmp_path, rank, siz
                 assert not hasattr(lora_b, "weight_quantizer")
 
 
-@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
     ],
 )
-def test_mcore_quantize_then_lora_save_restore(device_count, lora_config, tmp_path):
+def test_mcore_quantize_then_lora_save_restore(lora_config, tmp_path):
     spawn_multiprocess_job(
-        size=device_count,
+        size=torch.cuda.device_count(),
         job=partial(_test_mcore_quantize_then_lora_save_restore, lora_config, str(tmp_path)),
         backend="nccl",
     )
