@@ -1439,9 +1439,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 gathered_embedding[
                     seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
                 ] = self.parallel_draft_embeddings.unsqueeze(1)
-                padded_hidden_states[
-                    seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
-                ] = self.parallel_draft_hidden_states.unsqueeze(1)
+                padded_hidden_states = gathered_embedding
             if self.config.sequence_parallel:
                 padded_hidden_states = scatter_to_sequence_parallel_region(padded_hidden_states)
                 embeddings = scatter_to_sequence_parallel_region(gathered_embedding)
