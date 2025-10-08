@@ -93,10 +93,30 @@ def parse_args() -> argparse.Namespace:
         help="""Whether to use CUDA graph.""",
     )
     parser.add_argument(
-        "--tp-size-per-dp",
+        "--tp",
         type=int,
-        default=2,
-        help="""Tensor parallel size per data parallel.""",
+        default=1,
+        help="""tensor_parallel_size for TRTLLM.""",
+    )
+    # moe_ep * moe_tp * moe_cp should be equal to tp
+    # REF: https://nvidia.github.io/TensorRT-LLM/advanced/expert-parallelism.html
+    parser.add_argument(
+        "--moe_ep",
+        type=int,
+        default=1,
+        help="""moe_expert_parallel_size for TRTLLM.""",
+    )
+    parser.add_argument(
+        "--moe_tp",
+        type=int,
+        default=1,
+        help="""moe_tensor_parallel_size for TRTLLM.""",
+    )
+    parser.add_argument(
+        "--moe_cp",
+        type=int,
+        default=1,
+        help="""moe_cluster_parallel_size for TRTLLM.""",
     )
 
     return parser.parse_args()
@@ -108,6 +128,24 @@ def main(args: argparse.Namespace) -> None:
     with args.input_file.open("r", encoding="utf-8") as f:
         all_conversations.extend([json.loads(line) for line in f if line.strip()])
     print("Loaded", len(all_conversations), "conversations from", args.input_file)
+
+    # Remove conversations whose output file already exists
+    filtered_conversations = []
+    for entry in all_conversations:
+        conversation_id = entry.get("conversation_id", None)
+        if conversation_id is None:
+            filtered_conversations.append(entry)
+            continue
+        output_file = args.output_dir / f"{conversation_id}.pt"
+        if output_file.exists():
+            continue
+        filtered_conversations.append(entry)
+    print(
+        "Removed",
+        len(all_conversations) - len(filtered_conversations),
+        "conversations due to existing output files",
+    )
+    all_conversations = filtered_conversations
 
     # Get model config and tokenizer
     model_config = AutoConfig.from_pretrained(args.model)
@@ -128,7 +166,10 @@ def main(args: argparse.Namespace) -> None:
         "max_batch_size": 16,
         "kv_cache_config": KvCacheConfig(enable_block_reuse=False, free_gpu_memory_fraction=0.5),
         "enable_chunked_prefill": False,
-        "tensor_parallel_size": args.tp_size_per_dp,
+        "tensor_parallel_size": args.tp,
+        "moe_expert_parallel_size": args.moe_ep,
+        "moe_tensor_parallel_size": args.moe_tp,
+        "moe_cluster_parallel_size": args.moe_cp,
     }
     spec_config = {
         "output_directory": str(args.output_dir),
