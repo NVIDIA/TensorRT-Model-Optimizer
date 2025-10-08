@@ -1,2 +1,3 @@
 pyarrow
+transformers<4.57
 trl>=0.23.0
