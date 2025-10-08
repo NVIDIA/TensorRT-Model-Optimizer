@@ -153,7 +153,7 @@ def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64, meta_devic
         with torch.device("meta"):
             gpt_model = get_mcore_gpt_model(
                 tensor_model_parallel_size=tp_size,
-                num_layers=4,
+                num_layers=2,
                 ffn_hidden_size=None,
                 num_attention_heads=4,
                 activation_func="squared_relu",
@@ -165,7 +165,7 @@ def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64, meta_devic
     else:
         gpt_model = get_mcore_gpt_model(
             tensor_model_parallel_size=tp_size,
-            num_layers=4,
+            num_layers=2,
             ffn_hidden_size=None,
             num_attention_heads=4,
             activation_func="squared_relu",
@@ -179,8 +179,8 @@ def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64, meta_devic
 def _test_forward_with_one_lora(lora_config, rank, size):
     """Test forward pass with a single LoRA adapter with various configurations."""
     hidden_size = 320
-    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
-    model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     original_output = megatron_prefill(model, prompt_tokens)
@@ -238,6 +238,7 @@ def _test_forward_with_one_lora(lora_config, rank, size):
     assert lora_with_adapter_count > 0
 
 
+@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
@@ -246,17 +247,17 @@ def _test_forward_with_one_lora(lora_config, rank, size):
         SELECTIVE_LAYER_LORA_CFG,
     ],
 )
-def test_forward_with_one_lora(lora_config):
+def test_forward_with_one_lora(device_count, lora_config):
     spawn_multiprocess_job(
-        size=1, job=partial(_test_forward_with_one_lora, lora_config), backend="nccl"
+        size=device_count, job=partial(_test_forward_with_one_lora, lora_config), backend="nccl"
     )
 
 
 def _test_forward_with_two_loras(lora_config_1, lora_config_2, rank, size):
     """Test forward pass with two LoRA adapters and adapter switching."""
     hidden_size = 320
-    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
-    model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     original_output = megatron_prefill(model, prompt_tokens)
@@ -294,15 +295,16 @@ def _test_forward_with_two_loras(lora_config_1, lora_config_2, rank, size):
                 assert hasattr(module, f"lora_b_{adapter_name}")
 
 
+@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     ("lora_config_1", "lora_config_2"),
     [
         (DEFAULT_LORA_CFG_RANDOM_INIT_TEST, DEFAULT_LORA_CFG_RANDOM_INIT_SMALL_RANK_TEST),
     ],
 )
-def test_forward_with_two_loras(lora_config_1, lora_config_2):
+def test_forward_with_two_loras(device_count, lora_config_1, lora_config_2):
     spawn_multiprocess_job(
-        size=1,
+        size=device_count,
         job=partial(_test_forward_with_two_loras, lora_config_1, lora_config_2),
         backend="nccl",
     )
@@ -314,8 +316,8 @@ def test_forward_with_two_loras(lora_config_1, lora_config_2):
 def _test_attr_changes_with_one_lora(lora_config, rank, size):
     """Test forward pass with a single LoRA adapter with various configurations."""
     hidden_size = 320
-    initialize_for_megatron(tensor_model_parallel_size=1, pipeline_model_parallel_size=1)
-    model = _gpt_model_provider(tp_size=1, hidden_size=hidden_size)
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
 
     mtpeft.update_model(model, lora_config)
@@ -340,15 +342,18 @@ def _test_attr_changes_with_one_lora(lora_config, rank, size):
     assert torch.allclose(lora_1_output, lora_back_output)
 
 
+@pytest.mark.parametrize("device_count", get_device_counts())
 @pytest.mark.parametrize(
     "lora_config",
     [
         DEFAULT_LORA_CFG_RANDOM_INIT_TEST,
     ],
 )
-def test_attr_changes_with_one_lora(lora_config):
+def test_attr_changes_with_one_lora(device_count, lora_config):
     spawn_multiprocess_job(
-        size=1, job=partial(_test_attr_changes_with_one_lora, lora_config), backend="nccl"
+        size=device_count,
+        job=partial(_test_attr_changes_with_one_lora, lora_config),
+        backend="nccl",
     )
 
 
