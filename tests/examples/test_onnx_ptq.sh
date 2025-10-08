@@ -149,7 +149,7 @@ for model_path in "${model_paths[@]}"; do
             --quantize_mode=$quant_mode \
             --calibration_data=$calib_data_path \
             --output_path=$model_dir/$quant_mode/model.quant.onnx \
-            --calibration_eps=cuda:0
+            --calibration_eps=cuda
     done
 
     echo "Completed quantization of all modes for model: $model_name"
@@ -184,7 +184,8 @@ for model_path in "${model_paths[@]}"; do
                 --engine_path=$engine_path \
                 --model_name="${timm_model_name[$model_name]}" \
                 --engine_precision=$precision \
-                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv
+                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
+                --timing_cache_path=build/timing.cache
         else
             python evaluate.py \
                 --onnx_path=$eval_model_path \
@@ -194,7 +195,8 @@ for model_path in "${model_paths[@]}"; do
                 --batch_size $batch_size \
                 --model_name="${timm_model_name[$model_name]}" \
                 --engine_precision=$precision \
-                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv
+                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
+                --timing_cache_path=build/timing.cache
         fi
     done
 
@@ -207,11 +209,10 @@ if [ "$clean_mode" = true ]; then
     echo "Cleaning build artifacts..."
     rm -rf build/
     echo "Build artifacts cleaned successfully."
-    popd
-    exit 0
 fi
 
 popd
 
 
-echo "Total wall time: $(($(date +%s) - start_time)) seconds"
+total_seconds=$(($(date +%s) - start_time))
+printf "Total wall time: %02d:%02d:%02d\n" $((total_seconds/3600)) $(((total_seconds%3600)/60)) $((total_seconds%60))
