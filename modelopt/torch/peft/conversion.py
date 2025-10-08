@@ -19,7 +19,7 @@ import torch.nn as nn
 
 from modelopt.torch.opt.conversion import ModelLikeModule, ModeloptStateManager
 from modelopt.torch.opt.mode import ConvertReturnType, MetadataDict
-from modelopt.torch.utils.network import matches_pattern
+from modelopt.torch.utils.regex import matches_pattern
 
 from .config import PEFTAttributeConfig, PEFTConfig
 from .lora.layer import LoRAModule, LoRAModuleRegistry

@@ -22,7 +22,7 @@ import torch.nn as nn
 from modelopt.torch.opt import apply_mode
 from modelopt.torch.peft.config import PEFTConfig
 from modelopt.torch.peft.conversion import add_adapter
-from modelopt.torch.utils.network import matches_pattern
+from modelopt.torch.utils.regex import matches_pattern
 
 try:
     from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
