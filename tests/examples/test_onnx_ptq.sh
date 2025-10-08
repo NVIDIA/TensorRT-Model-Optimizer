@@ -137,38 +137,20 @@ for model_path in "${model_paths[@]}"; do
     model_name=$(basename "$model_path" .onnx)
     model_dir=build/$model_name
 
-
-    echo "Quantizing model $model_name for all quantization modes in parallel"
-    pids=()
-    for i in "${!quant_modes[@]}"; do
-        quant_mode="${quant_modes[$i]}"
-        gpu_id=$((i % nvidia_gpu_count))
+    echo "Quantizing model $model_name for all quantization modes"
+    for quant_mode in "${quant_modes[@]}"; do
         if [ "$quant_mode" == "int8_iq" ]; then
             continue
         fi
 
-        echo "Starting quantization of $model_name for mode: $quant_mode on GPU $gpu_id"
-        CUDA_VISIBLE_DEVICES=$gpu_id python -m modelopt.onnx.quantization \
+        echo "Starting quantization of $model_name for mode: $quant_mode"
+        python -m modelopt.onnx.quantization \
             --onnx_path=$model_dir/fp16/model.onnx \
             --quantize_mode=$quant_mode \
             --calibration_data=$calib_data_path \
             --output_path=$model_dir/$quant_mode/model.quant.onnx \
-            --calibration_eps=cuda:0 &
-        pids+=($!)
+            --calibration_eps=cuda:0
     done
-
-    # Wait for all quantization processes to complete for this model
-    error_occurred=false
-    for pid in "${pids[@]}"; do
-        if ! wait $pid; then
-            echo "ERROR: Quantization process (PID: $pid) failed"
-            error_occurred=true
-        fi
-    done
-    if [ "$error_occurred" = true ]; then
-        echo "Stopping execution due to quantization failure for model: $model_name"
-        exit 1
-    fi
 
     echo "Completed quantization of all modes for model: $model_name"
 done
@@ -179,12 +161,8 @@ for model_path in "${model_paths[@]}"; do
     model_name=$(basename "$model_path" .onnx)
     model_dir=build/$model_name
 
-    echo "Evaluating model $model_name for all quantization modes in parallel"
-    pids=()
-    for i in "${!all_modes[@]}"; do
-        quant_mode="${all_modes[$i]}"
-        gpu_id=$((i % nvidia_gpu_count))
-
+    echo "Evaluating model $model_name for all quantization modes"
+    for quant_mode in "${all_modes[@]}"; do
         if [ "$quant_mode" == "fp16" ]; then
             eval_model_path=$model_dir/fp16/model.onnx
             engine_path=$model_dir/fp16/model.engine
@@ -199,16 +177,16 @@ for model_path in "${model_paths[@]}"; do
             precision="stronglyTyped"
         fi
 
-        echo "Starting evaluation of $model_name for mode: $quant_mode on GPU $gpu_id"
+        echo "Starting evaluation of $model_name for mode: $quant_mode"
         if [[ " ${latency_models[@]} " =~ " $model_name " ]]; then
-            CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
+            python evaluate.py \
                 --onnx_path=$eval_model_path \
                 --engine_path=$engine_path \
                 --model_name="${timm_model_name[$model_name]}" \
                 --engine_precision=$precision \
-                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv &
+                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv
         else
-            CUDA_VISIBLE_DEVICES=$gpu_id python evaluate.py \
+            python evaluate.py \
                 --onnx_path=$eval_model_path \
                 --engine_path=$engine_path \
                 --imagenet_path=$imagenet_path \
@@ -216,23 +194,9 @@ for model_path in "${model_paths[@]}"; do
                 --batch_size $batch_size \
                 --model_name="${timm_model_name[$model_name]}" \
                 --engine_precision=$precision \
-                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv &
-        fi
-        pids+=($!)
-    done
-
-    # Wait for all evaluation processes to complete for this model
-    error_occurred=false
-    for pid in "${pids[@]}"; do
-        if ! wait $pid; then
-            echo "ERROR: Evaluation process (PID: $pid) failed"
-            error_occurred=true
+                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv
         fi
     done
-    if [ "$error_occurred" = true ]; then
-        echo "Stopping execution due to evaluation failure for model: $model_name"
-        exit 1
-    fi
 
     echo "Completed evaluation of all modes for model: $model_name"
 done
