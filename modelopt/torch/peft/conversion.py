@@ -26,11 +26,8 @@ from .lora.layer import LoRAModule, LoRAModuleRegistry
 
 # TODO: Add test cases to cover these functions
 __all__ = [
-    "freeze_base_weights",
     "freeze_lora_weights",
     "replace_lora_module",
-    "unfreeze_base_weights",
-    "unfreeze_lora_weights",
 ]
 
 
@@ -182,40 +179,6 @@ def _set_lora_requires_grad(
             for submodule in (adapter["lora_a"], adapter["lora_b"]):
                 for _, param in submodule.named_parameters():
                     param.requires_grad = requires_grad
-
-
-def freeze_base_weights(model, *, layer_patterns=None):
-    """Freeze base model weights to prevent gradient updates during training.
-
-    This function sets requires_grad=False for all base model parameters (including
-    linear weights, embeddings, layer norms, etc.) across the entire model,
-    while keeping LoRA adapter parameters trainable. Useful for LoRA fine-tuning where
-    only adapter weights should be updated.
-
-    Args:
-        model: Model containing LoRA modules whose base weights should be frozen
-        layer_patterns: Optional patterns (str, bytes, or Iterable) to match specific
-            layer names. If provided, only layers matching these patterns will be affected.
-            Supports Unix-style wildcards (e.g., "*.linear", "transformer.*")
-    """
-    _set_base_requires_grad(model, requires_grad=False, layer_patterns=layer_patterns)
-
-
-def unfreeze_base_weights(model, *, layer_patterns=None):
-    """Unfreeze base model weights to allow gradient updates during training.
-
-    This function sets requires_grad=True for all base model parameters (including
-    linear weights, embeddings, layer norms, etc.) across the entire model,
-    while keeping LoRA adapter parameters unchanged. Useful when you want to fine-tune
-    both base model and LoRA adapter weights together.
-
-    Args:
-        model: Model containing LoRA modules whose base weights should be unfrozen
-        layer_patterns: Optional patterns (str, bytes, or Iterable) to match specific
-            layer names. If provided, only layers matching these patterns will be affected.
-            Supports Unix-style wildcards (e.g., "*.linear", "transformer.*")
-    """
-    _set_base_requires_grad(model, requires_grad=True, layer_patterns=layer_patterns)
 
 
 def freeze_lora_weights(model, *, layer_patterns=None, adapter_patterns=None):

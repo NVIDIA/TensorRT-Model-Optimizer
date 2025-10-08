@@ -543,6 +543,87 @@ def test_adapter_gradient_flow(lora_config, tmp_path):
     )
 
 
+def _test_adapter_gradient_flow_freeze_lora_with_api(lora_config, tmp_path, rank, size):
+    hidden_size = 256
+
+    initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
+    model = _gpt_model_provider(tp_size=size, hidden_size=hidden_size)
+    prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+    lora_config["freeze_lora_weights"] = False
+    lora_config["freeze_base_model"] = False
+
+    mtpeft.update_model(model, lora_config)
+    # Freeze the self_attention layers only
+    mtpeft.freeze_lora_weights(model, layer_patterns="*self_attention*")
+    model.train()
+
+    # Use a simple forward pass instead for grad check
+    batch_size = prompt_tokens.shape[0]
+    seq_len = prompt_tokens.shape[-1]
+    device = prompt_tokens.device
+
+    attention_mask = (
+        torch.triu(torch.ones((batch_size, seq_len, seq_len), device=device), diagonal=1)
+        .bool()
+        .view(batch_size, 1, seq_len, seq_len)
+    )
+
+    output = model(prompt_tokens, position_ids=None, attention_mask=attention_mask)
+
+    loss = output.sum()
+    loss.backward()
+
+    for name, param in model.named_parameters():
+        if "lora" in name and "self_attention" in name:
+            assert param.grad is None
+        else:
+            assert param.grad is not None
+            assert torch.any(param.grad != 0), "weight gradient is all zeros"
+
+    for p in model.parameters():
+        p.grad = None
+
+    mtpeft.freeze_lora_weights(model)
+    model.train()
+
+    # Use a simple forward pass instead for grad check
+    batch_size = prompt_tokens.shape[0]
+    seq_len = prompt_tokens.shape[-1]
+    device = prompt_tokens.device
+
+    attention_mask = (
+        torch.triu(torch.ones((batch_size, seq_len, seq_len), device=device), diagonal=1)
+        .bool()
+        .view(batch_size, 1, seq_len, seq_len)
+    )
+
+    output = model(prompt_tokens, position_ids=None, attention_mask=attention_mask)
+
+    loss = output.sum()
+    loss.backward()
+
+    for name, param in model.named_parameters():
+        if "lora" in name:
+            assert param.grad is None
+        else:
+            assert param.grad is not None
+            assert torch.any(param.grad != 0), "weight gradient is all zeros"
+
+
+@pytest.mark.parametrize(
+    "lora_config",
+    [
+        LARGE_LORA_CFG_RANDOM_INIT_TEST,
+    ],
+)
+def test_adapter_gradient_flow_freeze_lora_with_api(lora_config, tmp_path):
+    spawn_multiprocess_job(
+        size=torch.cuda.device_count(),
+        job=partial(_test_adapter_gradient_flow_freeze_lora_with_api, lora_config, str(tmp_path)),
+        backend="nccl",
+    )
+
+
 def _test_quantize_then_lora(lora_config, tmp_path, rank, size):
     hidden_size = 512
     initialize_for_megatron(tensor_model_parallel_size=size, pipeline_model_parallel_size=1)
