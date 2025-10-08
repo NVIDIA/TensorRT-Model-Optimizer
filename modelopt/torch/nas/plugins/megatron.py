@@ -13,12 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Plugin to add NAS/Pruning support for megatron-core GPT model."""
+"""Plugin to add NAS/Pruning support for megatron-core Language models like GPT and Mamba."""
 
 import types
 from collections.abc import Callable, Sequence
 from typing import Any
-from warnings import warn
 
 import torch
 import torch.nn as nn
@@ -98,7 +97,7 @@ try:
 except ImportError:
     HAS_MAMBA = False
 
-__all__ = ["drop_mcore_gpt_layers", "drop_mcore_language_model_layers"]
+__all__ = ["drop_mcore_language_model_layers"]
 
 
 class _DynamicParallelLinear(DynamicModule):
@@ -1455,15 +1454,6 @@ def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[i
         del layer
 
     model.config.num_layers = new_num_layers
-
-
-def drop_mcore_gpt_layers(model: nn.Module, *, layers_to_drop: list[int]) -> None:
-    """[DEPRECATED] Remove given layers (1-indexed) of the model (works with TP and/or PP)."""
-    warn(
-        "`drop_mcore_gpt_layers` is deprecated in favor of `drop_mcore_language_model_layers`.",
-        DeprecationWarning,
-    )
-    drop_mcore_language_model_layers(model, layers_to_drop=layers_to_drop)
 
 
 class MegatronConstraintsFunc(ConstraintsFunc):

@@ -48,8 +48,9 @@ from modelopt.torch.nas.plugins.megatron import (
     _DynamicVocabParallelEmbedding,
     expand_head_indices,
 )
-from modelopt.torch.nas.search_space import generate_search_space
+from modelopt.torch.nas.registry import DMRegistry
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
+from modelopt.torch.prune.plugins.mcore_minitron import _convert_model_to_dynamic_space
 from modelopt.torch.utils import flatten_tree
 from modelopt.torch.utils.random import centroid
 
@@ -178,7 +179,7 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
             m.weight.data = torch.randn_like(m.weight)
 
     model.eval()
-    search_space = generate_search_space(model)
+    dynamic_space = _convert_model_to_dynamic_space(model)
 
     # Compute activations for sorting
     for _ in range(5):
@@ -188,18 +189,18 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
     y1 = run_mcore_inference(model, prompt_tokens)
 
-    search_space.sort_parameters()
+    mtn.utils.sort_parameters(model)
 
     # check if all ffn_hidden_size, num_heads_per_group, num_query_groups, hidden_size have been sorted
     sortable_per_pp = [
-        n for n, hp in search_space.named_hparams(configurable=True) if hp.importance is not None
+        n for n, hp in dynamic_space.named_hparams(configurable=True) if hp.importance is not None
     ]
     # 3 hps per layer + 1 for hidden_size (num_layers is not sorted!)
     assert len(sortable_per_pp) == 3 * num_layers // size + 1
 
     # Export since sorting force reassigns SelfAttention weights which we dont want to re-sort!
     # TODO: ideally we shouldn't need this
-    search_space.export()
+    dynamic_space.export(DMRegistry)
 
     # sanity check if the model functionality is preserved after sorting
     y2 = run_mcore_inference(model, prompt_tokens)
