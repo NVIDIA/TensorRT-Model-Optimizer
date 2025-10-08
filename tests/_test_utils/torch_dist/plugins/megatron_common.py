@@ -83,7 +83,9 @@ except ImportError as e:
 
 
 class MegatronModel(MegatronModule):
-    def __init__(self, tp_size: int = 1, cp_size: int = 1, use_te_norm: bool = False):
+    def __init__(
+        self, tp_size: int = 1, cp_size: int = 1, use_te_norm: bool = False, tp_group=None
+    ):
         config = TransformerConfig(
             tensor_model_parallel_size=tp_size,
             context_parallel_size=cp_size,
@@ -104,6 +106,7 @@ class MegatronModel(MegatronModule):
             gather_output=False,
             skip_bias_add=True,
             is_expert=False,
+            tp_group=tp_group,
         )
         self.activation = nn.ReLU()
         if use_te_norm:
@@ -118,6 +121,7 @@ class MegatronModel(MegatronModule):
             skip_bias_add=True,
             input_is_parallel=True,
             is_expert=False,
+            tp_group=tp_group,
         )
 
     def forward(self, x):

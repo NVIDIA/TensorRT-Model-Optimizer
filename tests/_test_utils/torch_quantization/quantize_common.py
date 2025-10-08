@@ -119,21 +119,20 @@ def save_restore_test(model_cls, device, quant_config, compress=False, version=N
         mto.restore_from_modelopt_state(model_ref, state_dict)
 
 
-def _reduce_quantizer_attr(quantizer, attr: str, op=dist.ReduceOp.MAX, group=None):
-    quantizer_attr = getattr(quantizer, attr).clone()
-    print("quantizer.attr before reduce", getattr(quantizer, attr))
-    dist.all_reduce(quantizer_attr, op=op, group=group)
-    print("quantizer.attr after reduce", getattr(quantizer, attr))
-    print("quantizer_attr after reduce", quantizer_attr)
+def _distributed_attr_check(quantizer, attr: str, op=dist.ReduceOp.MAX, groups=[]):
+    for group in groups:
+        if group is not None:
+            quantizer_attr = getattr(quantizer, attr).clone()
+            dist.all_reduce(quantizer_attr, op=op, group=group)
     assert torch.allclose(quantizer_attr, getattr(quantizer, attr))
 
 
 original_awq_lite = model_calib_module.awq_lite
 
 
-def _debug_awq_lite(model, forward_loop, alpha_step=0.1, debug=True):
+def _debug_awq_lite(model, forward_loop, alpha_step=0.1, debug=True, **kwargs):
     """Function to mock awq_lite function to always use debug=True for testing"""
-    return original_awq_lite(model, forward_loop, alpha_step, debug=True)
+    return original_awq_lite(model, forward_loop, alpha_step, debug=True, **kwargs)
 
 
 @patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
@@ -151,101 +150,58 @@ def tensor_parallel_test_helper(model, config, tp_group, mock_awq_lite):
 
     if config in [mtq.INT8_DEFAULT_CFG, mtq.FP8_DEFAULT_CFG, mtq.INT8_SMOOTHQUANT_CFG]:
         # Lets check the amax for row parallel input quantizer; it should be the same across all tp ranks
-        _reduce_quantizer_attr(model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX, group=tp_group)
+        _distributed_attr_check(
+            model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX, groups=[tp_group]
+        )
         # Lets check the row parallel weight amax; it should be the same across all tp ranks
-        _reduce_quantizer_attr(
-            model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX, group=tp_group
+        _distributed_attr_check(
+            model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX, groups=[tp_group]
         )
 
     if config in [mtq.INT8_SMOOTHQUANT_CFG, mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
         # Lets check the column parallel pre_quant_scale; it should be the same across all tp ranks
         input_quantizer = model.fc1.input_quantizer
-        _reduce_quantizer_attr(
-            input_quantizer, "pre_quant_scale", dist.ReduceOp.MAX, group=tp_group
+        _distributed_attr_check(
+            input_quantizer, "pre_quant_scale", dist.ReduceOp.MAX, groups=[tp_group]
         )
 
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
         # Check activation scale for AWQ lite
-        _reduce_quantizer_attr(
+        _distributed_attr_check(
             model.fc1.awq_lite,
             "act_scale",
             dist.ReduceOp.AVG,
-            group=tp_group,
+            groups=[tp_group],
         )
 
     dist.destroy_process_group()
 
 
 @patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
-def dp_cp_parallel_test_helper(model, config, group, mock_awq_lite):
-    calib_data = model.get_dummy_input().cuda()
-
-    def forward_loop(model):
-        model(calib_data)
-
-    model = mtq.quantize(model, config, forward_loop)
-
-    # Sanity check
-    forward_loop(model)
-
-    # Input quantizer amax
-    if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
-        _reduce_quantizer_attr(model.fc1.input_quantizer, "amax", dist.ReduceOp.MAX, group=group)
-        _reduce_quantizer_attr(model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX, group=group)
-
-    # Weight quantizer amax
-    if isinstance(model.fc1.weight_quantizer, SequentialQuantizer):
-        for quantizer in model.fc1.weight_quantizer:
-            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX, group=group)
-    else:
-        _reduce_quantizer_attr(model.fc1.weight_quantizer, "amax", dist.ReduceOp.MAX, group=group)
-    if isinstance(model.fc2.weight_quantizer, SequentialQuantizer):
-        for quantizer in model.fc2.weight_quantizer:
-            _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX, group=group)
-    else:
-        _reduce_quantizer_attr(model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX, group=group)
-
-    if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
-        # Check act scale
-        _reduce_quantizer_attr(
-            model.fc1.awq_lite,
-            "act_scale",
-            dist.ReduceOp.AVG,
-            group=group,
-        )
-        _reduce_quantizer_attr(
-            model.fc2.awq_lite,
-            "act_scale",
-            dist.ReduceOp.AVG,
-            group=group,
-        )
-
-
-@patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
-def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, mock_awq_lite):
-    # Calib data should be same across each DP rank
+def data_tensor_context_parallel_test_helper(
+    model, config, mock_awq_lite, dp_group=None, tp_group=None
+):
+    # Calib data should be different across each DP rank
     dp_rank = dist.get_rank(group=dp_group)
     calib_data = model.get_dummy_input(seed=dp_rank).cuda()
 
+    if tp_group is not None:
+        # The input to first layer, the column parallel should be the same across all tp ranks
+        dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
+
     def forward_loop(model):
         model(calib_data)
 
     model = mtq.quantize(model, config, forward_loop)
 
-    def _reduce_quantizer_attr(quantizer, attr=str, op=dist.ReduceOp.MAX):
-        quantizer_attr = getattr(quantizer, attr).clone()
-
-        # Perform all-reduce operations
-        dist.all_reduce(quantizer_attr, op=op, group=tp_group)
-
-        dist.all_reduce(quantizer_attr, op=op, group=dp_group)
-
-        assert torch.allclose(quantizer_attr, getattr(quantizer, attr)), getattr(quantizer, attr)
-
     # Input quantizer amax
     if config not in [mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG, mtq.INT4_AWQ_CFG]:
-        _reduce_quantizer_attr(model.fc1.input_quantizer, "amax", dist.ReduceOp.MAX)
-        _reduce_quantizer_attr(model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX)
+        _distributed_attr_check(
+            model.fc1.input_quantizer, "amax", dist.ReduceOp.MAX, groups=[dp_group, tp_group]
+        )
+        _distributed_attr_check(
+            model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX, groups=[dp_group, tp_group]
+        )
 
     # Per-tensor quantization (FP8/NVFP4) expects same amax across row and column parallel ranks
     # Channel-wise (INT8) only expects same amax across row parallel ranks
@@ -253,23 +209,42 @@ def data_tensor_context_parallel_test_helper(model, config, dp_group, tp_group, 
     if config in [mtq.FP8_DEFAULT_CFG, mtq.NVFP4_DEFAULT_CFG]:
         if isinstance(model.fc1.weight_quantizer, SequentialQuantizer):
             for quantizer in model.fc1.weight_quantizer:
-                _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
+                _distributed_attr_check(
+                    quantizer, "amax", dist.ReduceOp.MAX, groups=[dp_group, tp_group]
+                )
         else:
-            _reduce_quantizer_attr(model.fc1.weight_quantizer, "amax", dist.ReduceOp.MAX)
+            _distributed_attr_check(
+                model.fc1.weight_quantizer, "amax", dist.ReduceOp.MAX, groups=[dp_group, tp_group]
+            )
 
-    if config in [mtq.FP8_DEFAULT_CFG, mtq.NVFP4_DEFAULT_CFG, mtq.INT8_DEFAULT_CFG]:
+    if config in [
+        mtq.FP8_DEFAULT_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+        mtq.INT8_DEFAULT_CFG,
+        mtq.INT8_SMOOTHQUANT_CFG,
+    ]:
         if isinstance(model.fc2.weight_quantizer, SequentialQuantizer):
             for quantizer in model.fc2.weight_quantizer:
-                _reduce_quantizer_attr(quantizer, "amax", dist.ReduceOp.MAX)
+                _distributed_attr_check(
+                    quantizer, "amax", dist.ReduceOp.MAX, groups=[dp_group, tp_group]
+                )
         else:
-            _reduce_quantizer_attr(model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX)
+            _distributed_attr_check(
+                model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX, groups=[dp_group, tp_group]
+            )
+
+    # Lets check the column parallel pre_quant_scale; it should be the same across all tp ranks
+    # It is different across DP/CP ranks since the input is different
+    if tp_group and config in [mtq.INT8_SMOOTHQUANT_CFG, mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
+        input_quantizer = model.fc1.input_quantizer
+        _distributed_attr_check(
+            input_quantizer, "pre_quant_scale", dist.ReduceOp.MAX, groups=[dp_group, tp_group]
+        )
 
     # Check act scale
     if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
-        _reduce_quantizer_attr(
-            model.fc1.awq_lite,
-            "act_scale",
-            dist.ReduceOp.AVG,
+        _distributed_attr_check(
+            model.fc1.awq_lite, "act_scale", dist.ReduceOp.AVG, groups=[dp_group, tp_group]
         )
 
 

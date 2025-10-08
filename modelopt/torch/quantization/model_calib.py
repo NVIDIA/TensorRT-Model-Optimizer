@@ -114,9 +114,9 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
         axes_for_sync: list,
         parallel_state: ParallelState,
     ):
+        # Syncing amax across TP for sequential quantizer
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
-                "Syncing amax across TP for sequential quantizer"
                 sync_quantizer_amax_across_tp(
                     _q, linear_name, quantizer_type, axes_for_sync, parallel_state
                 )
@@ -616,9 +616,18 @@ def awq_lite(
             module._if_calib = True
             module.awq_lite.act_scale = module.awq_lite.act_scale / module.awq_lite.num_cache_steps
 
-            if torch.any(torch.isnan(module.awq_lite.act_scale)) or torch.any(
+            has_nan_local = torch.any(torch.isnan(module.awq_lite.act_scale)) or torch.any(
                 torch.isnan(module.awq_lite.weight_scale)
-            ):
+            )
+            has_nan = torch.tensor(int(has_nan_local), device=module.weight.device)
+            if module.parallel_state.data_parallel_group.is_initialized():
+                dist.all_reduce(
+                    has_nan,
+                    op=dist.ReduceOp.MAX,
+                    group=module.parallel_state.data_parallel_group.group,
+                )
+
+            if has_nan.item() > 0:
                 module.awq_lite.is_enabled = False
             else:
                 sync_act_scale_across_dp(

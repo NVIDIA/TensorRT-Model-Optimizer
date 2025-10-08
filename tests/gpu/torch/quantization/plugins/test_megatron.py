@@ -32,8 +32,6 @@ from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     data_tensor_context_parallel_test_helper,
-    dp_cp_parallel_test_helper,
-    tensor_parallel_test_helper,
 )
 from packaging.version import Version
 
@@ -97,9 +95,10 @@ def test_convert_megatron_parallel_linear(distributed_setup_size_1):
 # 1. Tensor Parallel Test
 def _test_tensor_parallel_helper(config, rank, size):
     initialize_for_megatron(tensor_model_parallel_size=2, seed=SEED)
-    model = MegatronModel(tp_size=size).cuda()
+    tp_group = get_tensor_model_parallel_group()
+    model = MegatronModel(tp_size=size, tp_group=tp_group).cuda()
 
-    tensor_parallel_test_helper(model, config, get_tensor_model_parallel_group())
+    data_tensor_context_parallel_test_helper(model, config, tp_group=tp_group)
 
 
 @pytest.mark.parametrize(
@@ -125,7 +124,7 @@ def _test_data_parallel_helper(config, rank, size):
     initialize_for_megatron(seed=SEED + rank)  # modify seed so data is different across ranks
     model = MegatronModel().cuda()
 
-    dp_cp_parallel_test_helper(model, config, get_data_parallel_group())
+    data_tensor_context_parallel_test_helper(model, config, dp_group=get_data_parallel_group())
 
 
 @pytest.mark.parametrize(
@@ -151,7 +150,9 @@ def _test_context_parallel_helper(config, rank, size):
     )  # modify seed so data is different across ranks
     model = MegatronModel(cp_size=size).cuda()
 
-    dp_cp_parallel_test_helper(model, config, get_data_parallel_group(with_context_parallel=True))
+    data_tensor_context_parallel_test_helper(
+        model, config, dp_group=get_data_parallel_group(with_context_parallel=True)
+    )
 
 
 @pytest.mark.parametrize(
@@ -175,13 +176,14 @@ def test_context_parallel(need_2_gpus, config):
 # 4. DP=2 + TP=2 + CP=2 Test (on 2*2*2=8 GPUs)
 def _test_data_tensor_context_parallel_helper(config, rank, size):
     initialize_for_megatron(tensor_model_parallel_size=2, context_parallel_size=2, seed=SEED + rank)
-    model = MegatronModel(tp_size=2, cp_size=2).cuda()
+    tp_group = get_tensor_model_parallel_group()
+    model = MegatronModel(tp_size=2, cp_size=2, tp_group=tp_group).cuda()
 
     data_tensor_context_parallel_test_helper(
         model,
         config,
-        get_data_parallel_group(with_context_parallel=True),
-        get_tensor_model_parallel_group(),
+        dp_group=get_data_parallel_group(with_context_parallel=True),
+        tp_group=tp_group,
     )
 
 
