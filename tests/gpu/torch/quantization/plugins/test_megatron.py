@@ -621,17 +621,19 @@ def test_fp8_real_quantize():
         mtq.NVFP4_DEFAULT_CFG,
     ],
 )
-def test_moe_sharded_state_dict(need_8_gpus, tmp_path, config):
+@pytest.mark.parametrize("moe_grouped_gemm", [False, True])
+def test_moe_sharded_state_dict(tmp_path, config, moe_grouped_gemm):
     size = torch.cuda.device_count()
-    # TODO: Meta device doesn't work with TE
     # TODO: Add support for compress=True for TEGroupedMLP
+    if size < 4:
+        pytest.skip("Requires at least 4 GPUs for expert parallel test")
     moe_config = {
-        "tp_size": 2,
+        "tp_size": 1,
         "ep_size": 2,
         "etp_size": 2,
         "num_moe_experts": 4,
-        "moe_grouped_gemm": True,
-        "use_te": True,
+        "moe_grouped_gemm": moe_grouped_gemm,
+        "use_te": moe_grouped_gemm,
     }
     spawn_multiprocess_job(
         size=size,
@@ -732,10 +734,12 @@ def test_te_grouped_vs_sequential_quantize():
     )
 
 
-def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, config, rank, size):
+def _test_expert_model_parallel_amax_sync(
+    tp_size, ep_size, etp_size, moe_grouped_gemm, config, rank, size
+):
     """Test expert parallel synchronization with different configurations."""
     initialize_for_megatron(
-        tensor_model_parallel_size=1,
+        tensor_model_parallel_size=tp_size,
         pipeline_model_parallel_size=1,
         expert_model_parallel_size=ep_size,
         expert_tensor_parallel_size=etp_size,
@@ -744,7 +748,7 @@ def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, c
 
     # Create model with expert parallelism
     model = _gpt_model_provider(
-        tp_size=1,
+        tp_size=tp_size,
         ep_size=ep_size,
         etp_size=etp_size,
         hidden_size=256,
@@ -805,6 +809,7 @@ def test_expert_parallel_sync(ep_size, etp_size, moe_grouped_gemm):
         size=size,
         job=partial(
             _test_expert_model_parallel_amax_sync,
+            1,
             ep_size,
             etp_size,
             moe_grouped_gemm,

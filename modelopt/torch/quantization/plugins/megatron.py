@@ -22,6 +22,7 @@ from typing import Any
 import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
+import megatron.core.transformer.moe.experts as megatron_moe
 import torch
 import transformer_engine.pytorch.module.grouped_linear as te_grouped_linear
 from megatron.core.extensions import transformer_engine as megatron_te
@@ -40,7 +41,7 @@ from modelopt.torch.opt.plugins.megatron import (
 from modelopt.torch.utils.distributed import ParallelState
 
 from ..nn import QuantModuleRegistry, TensorQuantizer
-from ..nn.modules.quant_linear import RealQuantLinear, _QuantLinear
+from ..nn.modules.quant_linear import RealQuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, CUSTOM_POST_CALIBRATION_PLUGINS, _ParallelLinear
 
@@ -520,29 +521,18 @@ class _RealQuantMegatronRowParallelLinear(
 
 
 # Register the public te.pytorch.GroupedLinear class
-@QuantModuleRegistry.register({te_grouped_linear.GroupedLinear: "te_GroupedLinear_public"})
+@QuantModuleRegistry.register({te_grouped_linear.GroupedLinear: "te_GroupedLinear"})
 class _QuantTEGroupedLinear(_MegatronParallelLinear):
     def _setup(self):
-        if not hasattr(self, "parallel_state") or self.parallel_state is None:
-            data_parallel_group = None
-            try:
-                data_parallel_group = get_data_parallel_group(with_context_parallel=True)
-            except AssertionError:
-                data_parallel_group = get_data_parallel_group()
-
-            self.parallel_state = ParallelState(
-                data_parallel_group,
-                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
-                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
-            )
-            self.input_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_input)
-            self.weight_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_weight)
-            self.output_quantizer = TensorQuantizer(_QuantLinear.default_quant_desc_output)
-            self.output_quantizer.disable()
-
+        # GroupedMLP stores the weights as weight0, weight1, etc. To run setup in order to
+        # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
+        # self.weight0 to self.weight to run the quantizer states initialization.
+        self.weight = self.weight0
         # Memorize the original weight.dtype for modelopt_post_restore given that
         # the dtype can change later.
-        self.original_weight_dtype = None if self.weight0 is None else self.weight0.dtype
+        super()._setup()
+        # Revert the weight to None after setup.
+        self.weight = None
 
     @property
     def functionals_to_replace(self):
@@ -579,7 +569,7 @@ class _QuantTEGroupedLinear(_MegatronParallelLinear):
         # self.weight0 to self.weight to run the quantizer states initialization.
         self.weight = self.weight0
         super().modelopt_post_restore(prefix=prefix)
-        # Revert the weight to None after post_restore to avoid the weight being None during forward pass.
+        # Revert the weight to None after post_restore.
         self.weight = None
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
@@ -613,3 +603,41 @@ class _QuantTEGroupedColumnParallelLinear(_QuantTEGroupedLinear, _MegatronColumn
 )
 class _QuantTEGroupedRowParallelLinear(_QuantTEGroupedLinear, _MegatronRowParallelLinear):
     _is_row_parallel = True
+
+
+# Register the public megatron_moe.TEGroupedMLP class
+@QuantModuleRegistry.register({megatron_moe.TEGroupedMLP: "megatron_moe_TEGroupedMLP"})
+class _QuantTEGroupedMLP(_MegatronMLP):
+    def _setup(self):
+        if not hasattr(self, "parallel_state") or self.parallel_state is None:
+            data_parallel_group = None
+            try:
+                data_parallel_group = get_data_parallel_group(with_context_parallel=True)
+            except AssertionError:
+                logger.warning(
+                    "Context parallel group is not initialized, using data parallel group"
+                )
+                data_parallel_group = get_data_parallel_group()
+
+            self.parallel_state = ParallelState(
+                data_parallel_group,
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
+            )
+
+
+# Register the public megatron_moe.SequentialMLP class
+@QuantModuleRegistry.register({megatron_moe.SequentialMLP: "megatron_moe_SequentialMLP"})
+class _QuantSequentialMLP(_MegatronMLP):
+    def _setup(self):
+        if not hasattr(self, "parallel_state") or self.parallel_state is None:
+            try:
+                data_parallel_group = mcore_parallel.get_expert_data_parallel_group()
+            except AssertionError:
+                data_parallel_group = None
+
+            self.parallel_state = ParallelState(
+                data_parallel_group,
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
+            )
