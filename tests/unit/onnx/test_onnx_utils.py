@@ -257,7 +257,7 @@ def test_remove_node_extra_training_outputs():
     assert "saved_inv_std" not in value_info_names
 
 
-def test_ir_version_support(tmp_path="./"):
+def test_ir_version_support(tmp_path):
     model = build_matmul_relu_model_ir_12()
     model_path = os.path.join(tmp_path, "test_matmul_relu.onnx")
     onnx.save(model, model_path)
