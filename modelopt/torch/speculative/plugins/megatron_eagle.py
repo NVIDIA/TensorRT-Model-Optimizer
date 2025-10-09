@@ -674,15 +674,6 @@ class _DynamicEagleGPTModel(EagleModel):
                 "Only logit distillation is supported when draft_vocab_size != vocab_size!"
             )
 
-        # Set up learnable parallel draft embeddings and hidden_states
-        if self.eagle_config.parallel_draft_step > 1:
-            self.parallel_draft_embeddings = torch.nn.Parameter(
-                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
-            )
-            self.parallel_draft_hidden_states = torch.nn.Parameter(
-                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
-            )
-
         # Use default aux_hidden_state layers if use_aux_hidden_state is True
         # but no layer id is given
         # layer ids are not used in offline eagle, but we need to set this to have correct fc_input_size_multiplier
@@ -763,6 +754,19 @@ class _DynamicEagleGPTModel(EagleModel):
 
             # Eagle loss functions
             self.kld = logits_kld_loss
+
+            # Set up learnable parallel draft embeddings and hidden_states
+            if self.eagle_config.parallel_draft_step > 1:
+                self.parallel_draft_embeddings = torch.nn.Parameter(
+                    torch.rand(
+                        self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size
+                    )
+                )
+                self.parallel_draft_hidden_states = torch.nn.Parameter(
+                    torch.rand(
+                        self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size
+                    )
+                )
 
     def _get_eagle_input_hidden_states(self, hidden_states: torch.Tensor, apply_fc: bool = True):
         """When _aux_hidden_states is not empty for online, then this is EAGLE-3.
@@ -1389,9 +1393,7 @@ class _DynamicEagleGPTModel(EagleModel):
             for _ in range(self.eagle_config.parallel_draft_step - 1):
                 # Pad dummy eagle_ids and hidden_states for parallel draft
                 # They will be replaced by parallel draft embeddings and hidden_states after padding
-                eagle_ids = torch.cat(
-                    (eagle_ids, torch.zeros(1, 1).to(eagle_ids.dtype).to(eagle_ids.device)), dim=-1
-                )
+                eagle_ids = torch.cat((eagle_ids, eagle_ids[:, -1:]), dim=-1)
                 hidden_states = torch.cat((hidden_states, hidden_states[-1:]), dim=0)
             padded_eagle_ids, seq_len, padded_hidden_states = right_padding(
                 eagle_ids, hidden_states
