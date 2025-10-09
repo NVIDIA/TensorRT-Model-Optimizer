@@ -557,7 +557,7 @@ def build_convtranspose_conv_residual_model():
     return model_inferred
 
 
-def build_matmul_relu_model_ir_12():
+def build_matmul_relu_model(ir_version=12):
     # Define your model inputs and outputs
     input_names = ["input_0"]
     output_names = ["output_0"]
@@ -600,12 +600,14 @@ def build_matmul_relu_model_ir_12():
     ]
 
     # Create the ONNX graph with the nodes and initializers
-    graph = helper.make_graph(nodes, "matmul_relu", inputs, outputs, initializer=initializers)
+    graph = helper.make_graph(
+        nodes, f"matmul_relu_ir_{ir_version}", inputs, outputs, initializer=initializers
+    )
 
     # Create the ONNX model
     model = helper.make_model(graph)
     model.opset_import[0].version = 13
-    model.ir_version = 12
+    model.ir_version = ir_version
 
     # Check the ONNX model
     model_inferred = onnx.shape_inference.infer_shapes(model)
