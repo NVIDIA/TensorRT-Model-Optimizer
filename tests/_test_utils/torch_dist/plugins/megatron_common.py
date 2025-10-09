@@ -372,7 +372,9 @@ def run_mcore_inference(
     )
 
     # Note: This is returned in all TP ranks or last PP stage in PP models
+    print("inference_input size", inference_input["tokens"].shape)
     logits = wrapped_model.run_one_forward_step(inference_input)
+    print("logits size", logits.shape)
     logits = broadcast_from_last_pipeline_stage(
         [batch_size, model.max_sequence_length, model.vocab_size],
         dtype=torch.bfloat16 if model.config.bf16 else torch.float32,

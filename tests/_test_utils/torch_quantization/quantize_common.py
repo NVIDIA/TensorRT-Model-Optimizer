@@ -136,48 +136,6 @@ def _debug_awq_lite(model, forward_loop, alpha_step=0.1, debug=True, **kwargs):
 
 
 @patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
-def tensor_parallel_test_helper(model, config, tp_group, mock_awq_lite):
-    # The input to first layer, the column parallel should be the same across all tp ranks
-    calib_data = model.get_dummy_input().cuda()
-    dist.all_reduce(calib_data, op=dist.ReduceOp.AVG, group=tp_group)
-
-    def forward_loop(model):
-        model(calib_data)
-
-    model = mtq.quantize(model, config, forward_loop)
-    # Sanity check
-    forward_loop(model)
-
-    if config in [mtq.INT8_DEFAULT_CFG, mtq.FP8_DEFAULT_CFG, mtq.INT8_SMOOTHQUANT_CFG]:
-        # Lets check the amax for row parallel input quantizer; it should be the same across all tp ranks
-        _distributed_attr_check(
-            model.fc2.input_quantizer, "amax", dist.ReduceOp.MAX, groups=[tp_group]
-        )
-        # Lets check the row parallel weight amax; it should be the same across all tp ranks
-        _distributed_attr_check(
-            model.fc2.weight_quantizer, "amax", dist.ReduceOp.MAX, groups=[tp_group]
-        )
-
-    if config in [mtq.INT8_SMOOTHQUANT_CFG, mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
-        # Lets check the column parallel pre_quant_scale; it should be the same across all tp ranks
-        input_quantizer = model.fc1.input_quantizer
-        _distributed_attr_check(
-            input_quantizer, "pre_quant_scale", dist.ReduceOp.MAX, groups=[tp_group]
-        )
-
-    if config in [mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
-        # Check activation scale for AWQ lite
-        _distributed_attr_check(
-            model.fc1.awq_lite,
-            "act_scale",
-            dist.ReduceOp.AVG,
-            groups=[tp_group],
-        )
-
-    dist.destroy_process_group()
-
-
-@patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
 def data_tensor_context_parallel_test_helper(
     model, config, mock_awq_lite, dp_group=None, tp_group=None
 ):

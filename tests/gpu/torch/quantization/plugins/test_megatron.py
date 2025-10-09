@@ -92,13 +92,50 @@ def test_convert_megatron_parallel_linear(distributed_setup_size_1):
     destroy_model_parallel()
 
 
-# 1. Tensor Parallel Test
-def _test_tensor_parallel_helper(config, rank, size):
-    initialize_for_megatron(tensor_model_parallel_size=2, seed=SEED)
-    tp_group = get_tensor_model_parallel_group()
-    model = MegatronModel(tp_size=size, tp_group=tp_group).cuda()
+# Unified parallelism test helper
+def _test_parallelism_helper(
+    config,
+    rank,
+    size,
+    tensor_model_parallel_size=1,
+    context_parallel_size=1,
+    use_rank_in_seed=False,
+):
+    """
+    Unified helper for testing different parallelism configurations.
+    Args:
+        config: Quantization config to test
+        rank: Current rank in distributed setup
+        size: Total number of processes
+        tensor_model_parallel_size: Size of tensor model parallel group (default: 1)
+        context_parallel_size: Size of context parallel group (default: 1)
+        use_rank_in_seed: Whether to add rank to seed for different data across ranks (default: False)
+    """
+    seed = SEED + rank if use_rank_in_seed else SEED
+    initialize_for_megatron(
+        tensor_model_parallel_size=tensor_model_parallel_size,
+        context_parallel_size=context_parallel_size,
+        seed=seed,
+    )
 
-    data_tensor_context_parallel_test_helper(model, config, tp_group=tp_group)
+    # Determine if we need tp_group and dp_group
+    tp_group = get_tensor_model_parallel_group() if tensor_model_parallel_size > 1 else None
+    dp_group = get_data_parallel_group(with_context_parallel=True)
+
+    # Create model with appropriate parallelism settings
+    model = MegatronModel(
+        tp_size=tensor_model_parallel_size,
+        cp_size=context_parallel_size,
+        tp_group=tp_group,
+    ).cuda()
+
+    # Call the test helper with appropriate groups
+    data_tensor_context_parallel_test_helper(
+        model,
+        config,
+        dp_group=dp_group,
+        tp_group=tp_group,
+    )
 
 
 @pytest.mark.parametrize(
@@ -115,16 +152,10 @@ def _test_tensor_parallel_helper(config, rank, size):
 )
 def test_tensor_parallel(need_2_gpus, config):
     spawn_multiprocess_job(
-        size=2, job=partial(_test_tensor_parallel_helper, config), backend="nccl"
+        size=2,
+        job=partial(_test_parallelism_helper, config, tensor_model_parallel_size=2),
+        backend="nccl",
     )
-
-
-# 2. Data Parallel Test
-def _test_data_parallel_helper(config, rank, size):
-    initialize_for_megatron(seed=SEED + rank)  # modify seed so data is different across ranks
-    model = MegatronModel().cuda()
-
-    data_tensor_context_parallel_test_helper(model, config, dp_group=get_data_parallel_group())
 
 
 @pytest.mark.parametrize(
@@ -140,18 +171,10 @@ def _test_data_parallel_helper(config, rank, size):
     ],
 )
 def test_data_parallel(need_2_gpus, config):
-    spawn_multiprocess_job(size=2, job=partial(_test_data_parallel_helper, config), backend="nccl")
-
-
-# 3. Context Parallel Test
-def _test_context_parallel_helper(config, rank, size):
-    initialize_for_megatron(
-        context_parallel_size=size, seed=SEED + rank
-    )  # modify seed so data is different across ranks
-    model = MegatronModel(cp_size=size).cuda()
-
-    data_tensor_context_parallel_test_helper(
-        model, config, dp_group=get_data_parallel_group(with_context_parallel=True)
+    spawn_multiprocess_job(
+        size=2,
+        job=partial(_test_parallelism_helper, config, use_rank_in_seed=True),
+        backend="nccl",
     )
 
 
@@ -169,21 +192,11 @@ def _test_context_parallel_helper(config, rank, size):
 )
 def test_context_parallel(need_2_gpus, config):
     spawn_multiprocess_job(
-        size=2, job=partial(_test_context_parallel_helper, config), backend="nccl"
-    )
-
-
-# 4. DP=2 + TP=2 + CP=2 Test (on 2*2*2=8 GPUs)
-def _test_data_tensor_context_parallel_helper(config, rank, size):
-    initialize_for_megatron(tensor_model_parallel_size=2, context_parallel_size=2, seed=SEED + rank)
-    tp_group = get_tensor_model_parallel_group()
-    model = MegatronModel(tp_size=2, cp_size=2, tp_group=tp_group).cuda()
-
-    data_tensor_context_parallel_test_helper(
-        model,
-        config,
-        dp_group=get_data_parallel_group(with_context_parallel=True),
-        tp_group=tp_group,
+        size=2,
+        job=partial(
+            _test_parallelism_helper, config, context_parallel_size=2, use_rank_in_seed=True
+        ),
+        backend="nccl",
     )
 
 
@@ -201,7 +214,15 @@ def _test_data_tensor_context_parallel_helper(config, rank, size):
 )
 def test_data_tensor_context_parallel(need_8_gpus, config):
     spawn_multiprocess_job(
-        size=8, job=partial(_test_data_tensor_context_parallel_helper, config), backend="nccl"
+        size=8,
+        job=partial(
+            _test_parallelism_helper,
+            config,
+            tensor_model_parallel_size=2,
+            context_parallel_size=2,
+            use_rank_in_seed=True,
+        ),
+        backend="nccl",
     )
 
 
