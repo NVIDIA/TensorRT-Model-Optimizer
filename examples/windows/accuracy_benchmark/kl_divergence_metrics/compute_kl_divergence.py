@@ -4,7 +4,7 @@ Generic model comparison script that compares a Hugging Face baseline model
 against multiple ONNX Runtime GenAI models with different execution providers.
 
 Usage:
-python compare_models_generic.py --hf_model "F:\shared\Llama-3.1-8B-Instruct"
+python compute_kl_divergence.py --hf_model "F:\shared\Llama-3.1-8B-Instruct"
     --ep cuda --path "G:\models\cuda_model"
     --ep directml --path "G:\models\directml_model"
     --output "comparison_results.json"
@@ -36,24 +36,40 @@ DEBUG = False  # Global debug flag
 
 
 def debug_print(message):
-    """Print debug message only if DEBUG is True"""
+    """
+    Print debug message only if DEBUG flag is enabled.
+
+    Args:
+        message (str): Debug message to print.
+    """
     if DEBUG:
         print(f"[DEBUG] {message}")
 
 
 def run_command(cmd, description="", capture_output=True):
-    """Run a command and handle errors"""
+    """
+    Execute a subprocess command with error handling.
+
+    Args:
+        cmd (list[str]): Command and arguments to execute.
+        description (str, optional): Description of the command for logging. Defaults to "".
+        capture_output (bool, optional): Whether to capture stdout/stderr or show in real-time.
+                                        Defaults to True.
+
+    Returns:
+        bool: True if command succeeded, False otherwise.
+    """
     debug_print(f"[INFO] {description}")
     debug_print(f"Running: {' '.join(cmd)}")
 
     try:
         if capture_output:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, shell=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True, shell=False)
             if result.stdout and DEBUG:
                 print(f"[OUT] {result.stdout}")
         else:
             # Real-time output - shows prints as they happen
-            result = subprocess.run(cmd, check=True, shell=True)
+            result = subprocess.run(cmd, check=True, shell=False)
         return True
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Command failed: {e}")
@@ -70,7 +86,12 @@ def get_python_executable():
 
 
 def uninstall_onnxruntime_packages():
-    """Uninstall all ONNX Runtime packages"""
+    """
+    Uninstall all ONNX Runtime and ONNX Runtime GenAI packages.
+
+    This ensures a clean environment before installing provider-specific packages
+    to avoid version conflicts.
+    """
     packages_to_remove = [
         "onnxruntime",
         "onnxruntime-genai",
@@ -88,7 +109,15 @@ def uninstall_onnxruntime_packages():
 
 
 def install_package(package_name):
-    """Install a specific package"""
+    """
+    Install a specific Python package using pip.
+
+    Args:
+        package_name (str): Name of the package to install.
+
+    Returns:
+        bool: True if installation succeeded, False otherwise.
+    """
     debug_print(f"Installing package: {package_name}")
     python_exe = get_python_executable()
     debug_print(f"Python executable: {python_exe}")
@@ -101,19 +130,33 @@ def install_package(package_name):
 
 
 def extract_hf_logits_subprocess(model_path, device="cuda"):
-    """Extract logits from Hugging Face model using subprocess"""
+    """
+    Extract logits from a Hugging Face transformer model using a subprocess.
+
+    Runs extract_logits_hf.py in a separate process to avoid package conflicts.
+    Uses temporary file for data transfer between processes.
+
+    Args:
+        model_path (str): Path to the Hugging Face model directory.
+        device (str, optional): Device for inference ('cuda' or 'cpu'). Defaults to "cuda".
+
+    """
     print("[INFO] Extracting logits from Hugging Face baseline model...")
     debug_print(f"Model path: {model_path}, Device: {device}")
 
     # Create temporary output file
-    output_file = f"temp_logits_hf_{int(time.time())}.pkl"
+    import tempfile
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    with tempfile.NamedTemporaryFile(prefix="temp_logits_hf_", suffix=".pkl", delete=False) as tmp:
+        output_file = tmp.name
     debug_print(f"Temporary output file: {output_file}")
 
     try:
         python_exe = get_python_executable()
         cmd = [
             python_exe,
-            "extract_logits_hf.py",
+            os.path.join(script_dir, "extract_logits_hf.py"),
             "--model_path",
             model_path,
             "--output_file",
@@ -158,19 +201,33 @@ def extract_hf_logits_subprocess(model_path, device="cuda"):
 
 
 def extract_onnx_logits_subprocess(model_path, provider):
-    """Extract logits from ONNX Runtime GenAI model using subprocess"""
+    """
+    Extract logits from an ONNX Runtime GenAI model using a subprocess.
+
+    Runs extract_logits.py in a separate process with the appropriate ONNX Runtime
+    package for the specified execution provider. Uses temporary file for data transfer.
+
+    Args:
+        model_path (str): Path to the ONNX Runtime GenAI model directory.
+        provider (str): Execution provider ('cuda', 'directml', or 'cpu').
+
+    """
     print(f"[INFO] Extracting logits from {provider.upper()} model...")
     debug_print(f"Model path: {model_path}, Provider: {provider}")
 
     # Create temporary output file
-    output_file = f"temp_logits_{provider}_{int(time.time())}.pkl"
+    import tempfile
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    with tempfile.NamedTemporaryFile(prefix="temp_logits_", suffix=".pkl", delete=False) as tmp:
+        output_file = tmp.name
     debug_print(f"Temporary output file: {output_file}")
 
     try:
         python_exe = get_python_executable()
         cmd = [
             python_exe,
-            "extract_logits.py",
+            os.path.join(script_dir, "extract_logits.py"),
             "--model_path",
             model_path,
             "--output_file",
@@ -220,8 +277,20 @@ def extract_onnx_logits_subprocess(model_path, provider):
 
 def compute_kl_divergence_from_logits(log_probs_ref, log_probs_tar):
     """
-    Compute KL divergence between two log probability distributions.
-    Same logic as in compute_kl_divergence.py
+    Compute Kullback-Leibler divergence between two log probability distributions.
+
+    KL divergence measures how one probability distribution diverges from a reference
+    distribution. Lower values indicate more similar distributions.
+
+    Args:
+        log_probs_ref (np.ndarray): Reference log probabilities with shape (seq_len, vocab_size).
+        log_probs_tar (np.ndarray): Target log probabilities with shape (seq_len, vocab_size).
+
+    Returns:
+        float: Average KL divergence across all positions.
+
+    Note:
+        Formula: KL(P||Q) = sum(P(x) * |log(P(x)) - log(Q(x))|) averaged over sequence length
     """
     debug_print(
         f"Computing KL divergence - log_probs shapes: ref={log_probs_ref.shape}, tar={log_probs_tar.shape}"
@@ -239,7 +308,13 @@ def compute_kl_divergence_from_logits(log_probs_ref, log_probs_tar):
 
 def to_serializable(obj):
     """
-    Recursively convert numpy types and torch types to native Python types for JSON serialization.
+    Recursively convert numpy and torch types to native Python types for JSON serialization.
+
+    Args:
+        obj: Object to convert (dict, list, tuple, np.ndarray, torch.Tensor, etc.).
+
+    Returns:
+        Converted object with native Python types (int, float, list, dict, tuple).
     """
     if isinstance(obj, dict):
         return {k: to_serializable(v) for k, v in obj.items()}
@@ -261,8 +336,23 @@ def to_serializable(obj):
 
 def compute_unified_comparison(model_logits_list, output_file):
     """
-    Compute KL divergence comparison between all models in a unified way
-    model_logits_list: List of tuples (model_name, model_data)
+    Compute pairwise KL divergence between all models and save results to JSON.
+
+    This function performs an all-vs-all comparison of the provided models by computing
+    KL divergence for each chunk and averaging across all chunks. Results are saved
+    in a structured JSON format.
+
+    Args:
+        model_logits_list (list): List of tuples (model_name, model_data) where:
+            - model_name (str): Identifier for the model (e.g., "hf_baseline", "cuda_1")
+            - model_data (dict): Dictionary containing:
+                - 'logits': List of numpy arrays (one per chunk)
+                - 'total_chunks': Number of chunks
+                - 'seq_len': Sequence length
+                - 'model_path': Path to model
+                - 'chunk_info': Chunk position info
+        output_file (str): Path to save the JSON results file.
+
     """
     print("\n[INFO] Computing unified KL divergence comparison...")
     debug_print(f"Number of models to compare: {len(model_logits_list)}")
@@ -325,7 +415,7 @@ def compute_unified_comparison(model_logits_list, output_file):
         # Find minimum sequence length for this chunk
         min_seq_len = min(getattr(logits, "shape", [None, 0])[1] for _, logits in chunk_logits)
         # Assume all have same vocab size
-        vocab_size = getattr(chunk_logits[0][1], "shape", [None, None, 0])[2]
+        vocab_size = min(getattr(logits, "shape", [None, None, 0])[2] for _, logits in chunk_logits)
         debug_print(f"  Min seq len: {min_seq_len}, Vocab size: {vocab_size}")
 
         # Trim all logits to matching dimensions
@@ -396,7 +486,16 @@ def compute_unified_comparison(model_logits_list, output_file):
 
 
 def validate_inputs(hf_model, ep_path_pairs):
-    """Validate that all input paths exist and EPs are supported"""
+    """
+    Validate that all model paths exist and execution providers are supported.
+
+    Args:
+        hf_model (str or None): Path to Hugging Face model (optional).
+        ep_path_pairs (list): List of (execution_provider, model_path) tuples.
+
+    Returns:
+        bool: True if all inputs are valid, False otherwise.
+    """
     # Check HF model path (only if provided)
     if hf_model and not os.path.exists(hf_model):
         print(f"[ERROR] Hugging Face model path does not exist: {hf_model}")
@@ -556,7 +655,7 @@ Note: If no HF model is provided and exactly 2 models with same EP are given,
         ]
 
         print("\n[INFO] Running KL_divergence_metrics_same_ep.py...")
-        result = subprocess.run(cmd, shell=True)
+        result = subprocess.run(cmd, shell=False)
 
         if result.returncode == 0:
             print("\n[SUCCESS] KL divergence computation completed successfully")

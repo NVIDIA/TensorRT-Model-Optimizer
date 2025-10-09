@@ -20,13 +20,26 @@ DEBUG = False
 
 
 def debug_print(message):
-    """Print debug message only if DEBUG is True"""
+    """
+    Print debug message only if DEBUG flag is enabled.
+
+    Args:
+        message (str): Debug message to print.
+    """
     if DEBUG:
         print(f"[DEBUG] {message}")
 
 
 def get_wikitext2():
-    """Load the Wikitext-2 test split using HuggingFace datasets"""
+    """
+    Load and concatenate the WikiText-2 test dataset.
+
+    Returns:
+        str: Concatenated text from all samples, separated by double newlines.
+
+    Note:
+        Requires HuggingFace CLI authentication.
+    """
     print("\n[INFO] Loading Wikitext-2 'test' split ...")
     test = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
     print(f"[DATASET] Number of raw samples: {len(test)}")
@@ -39,7 +52,17 @@ def get_wikitext2():
 
 def extract_logits_from_model(model_path, provider="cuda"):
     """
-    Extract logits from model following KL_divergence_metrics.py logic
+    Extract logits from an ONNX Runtime GenAI model on WikiText-2 dataset.
+
+    Uses a sliding window approach to process the dataset in chunks and extract
+    model logits for each chunk.
+
+    Args:
+        model_path (str): Path to the ONNX Runtime GenAI model directory.
+        provider (str, optional): Execution provider hint ('cuda', 'directml', 'cpu').
+                                 The actual provider is determined by the installed package.
+                                 Defaults to "cuda".
+
     """
     print(f"\n[INFO] Loading model from: {model_path}")
     print(f"[INFO] Using provider: {provider}")
@@ -124,7 +147,6 @@ def extract_logits_from_model(model_path, provider="cuda"):
     seq_len = int(input_ids.shape[1])
 
     print(f"[INFO] Input sequence length: {seq_len}")
-    print(f"[INFO] Will process {(seq_len - 1) // max_context_length + 1} chunks")
 
     # Store all logits
     all_logits = []
@@ -132,7 +154,7 @@ def extract_logits_from_model(model_path, provider="cuda"):
 
     # Process chunks following the same logic as KL_divergence_metrics.py
     for chunk_count, begin_loc in enumerate(
-        range(0, 50 * max_context_length, max_context_length), 1
+        range(0, min(50 * max_context_length, seq_len), max_context_length), 1
     ):
         if DEBUG:
             print(f"[PROGRESS] Processing chunk {chunk_count}...")
@@ -165,6 +187,8 @@ def extract_logits_from_model(model_path, provider="cuda"):
 
             # Get logits output from the model
             logits = generator.get_output("logits")
+            if hasattr(logits, "as_numpy"):
+                logits = logits.as_numpy()
             if DEBUG:
                 print(f"  Logits shape: {logits.shape}")
 
@@ -196,6 +220,13 @@ def extract_logits_from_model(model_path, provider="cuda"):
 
 
 def main():
+    """
+    Command-line entry point for extracting logits from ONNX Runtime GenAI models.
+
+    Extracts model logits on WikiText-2 dataset and saves them to a pickle file
+    for later KL divergence comparison.
+
+    """
     parser = argparse.ArgumentParser(description="Extract logits from ONNX Runtime GenAI model")
     parser.add_argument("--model_path", required=True, help="Path to model directory")
     parser.add_argument("--output_file", required=True, help="Output pickle file path")

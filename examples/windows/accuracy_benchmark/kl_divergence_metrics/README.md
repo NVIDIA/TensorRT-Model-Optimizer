@@ -35,7 +35,8 @@ The toolkit includes several Python scripts for:
    pip install -r requirements.txt
    ```
 
-   Note: Install torch with cuda for faster inference "pip install torch torchvision torchaudio --index-url <https://download.pytorch.org/whl/cu129>"
+   Note: Install torch with CUDA for faster inference:
+   "pip install torch torchvision torchaudio --index-url <https://download.pytorch.org/whl/cu129>"
 
 2. **Install execution provider-specific packages** (as needed):
 
@@ -273,6 +274,8 @@ JSON files containing:
 - Minimizes package switching by reusing environments when possible
 - Handles CUDA, DirectML, and CPU providers seamlessly
 
+Warning: This mutates your Python environment (pip uninstall/install). Run inside an isolated virtualenv/conda env to avoid impacting other projects.
+
 ## Notes
 
 - The comparison uses the Wikitext-2 dataset for evaluation
@@ -280,4 +283,4 @@ JSON files containing:
 - The script automatically handles package installation/uninstallation for different providers
 - Results are deterministic (no sampling) for consistent comparisons
 - All pairwise comparisons are computed for multi-model scenarios
-- HF model is  optional - you can compare ONNX models directly
+- HF model is optional - you can compare ONNX models directly
