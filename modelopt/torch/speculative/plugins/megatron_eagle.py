@@ -674,12 +674,6 @@ class _DynamicEagleGPTModel(EagleModel):
                 "Only logit distillation is supported when draft_vocab_size != vocab_size!"
             )
 
-        # Set up learnable parallel draft embeddings and hidden_states
-        if self.eagle_config.parallel_draft_step > 1:
-            self.parallel_draft_embeddings = torch.nn.Parameter(
-                torch.rand(self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size)
-            )
-
         # Use default aux_hidden_state layers if use_aux_hidden_state is True
         # but no layer id is given
         # layer ids are not used in offline eagle, but we need to set this to have correct fc_input_size_multiplier
@@ -760,6 +754,14 @@ class _DynamicEagleGPTModel(EagleModel):
 
             # Eagle loss functions
             self.kld = logits_kld_loss
+
+            # Set up learnable parallel draft embeddings and hidden_states
+            if self.eagle_config.parallel_draft_step > 1:
+                self.parallel_draft_embeddings = torch.nn.Parameter(
+                    torch.rand(
+                        self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size
+                    )
+                )
 
     def _get_eagle_input_hidden_states(self, hidden_states: torch.Tensor, apply_fc: bool = True):
         """When _aux_hidden_states is not empty for online, then this is EAGLE-3.
