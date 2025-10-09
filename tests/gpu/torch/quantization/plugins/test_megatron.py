@@ -649,8 +649,8 @@ def test_moe_sharded_state_dict(need_8_gpus, tmp_path, config):
     )
 
 
-def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, rank, size):
-    """Test that grouped and non-grouped MoE models produce similar amax values."""
+def _test_te_grouped_vs_sequential_quantize_helper(tp_size, ep_size, etp_size, rank, size):
+    """Test that TEGrouped and sequential MoE models produce similar amax values."""
     initialize_for_megatron(
         tensor_model_parallel_size=tp_size,
         expert_model_parallel_size=ep_size,
@@ -664,8 +664,8 @@ def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, ran
     def forward_fn(model):
         return megatron_prefill(model, prompt_tokens)
 
-    # Create grouped MoE model
-    grouped_moe_model = _gpt_model_provider(
+    # Create TEGrouped MoE model
+    te_grouped_moe_model = _gpt_model_provider(
         tp_size=tp_size,
         ep_size=ep_size,
         etp_size=etp_size,
@@ -674,14 +674,14 @@ def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, ran
         use_te=True,
         num_moe_experts=4,
     )
-    num_grouped_mlp = sum(
-        isinstance(module, TEGroupedMLP) for module in grouped_moe_model.modules()
+    num_te_grouped_mlp = sum(
+        isinstance(module, TEGroupedMLP) for module in te_grouped_moe_model.modules()
     )
-    assert num_grouped_mlp == 4, (
-        f"TEGrupedMoEModel has {num_grouped_mlp} TEGroupedMLP modules, it should have 4"
+    assert num_te_grouped_mlp == 4, (
+        f"TEGrupedMoEModel has {num_te_grouped_mlp} TEGroupedMLP modules, it should have 4"
     )
 
-    # Create non-grouped MoE model
+    # Create sequential MoE model
     sequential_moe_model = _gpt_model_provider(
         tp_size=tp_size,
         ep_size=ep_size,
@@ -697,29 +697,29 @@ def _test_grouped_vs_non_grouped_quantize_helper(tp_size, ep_size, etp_size, ran
         f"SequentialMoEModel has {num_sequential_mlp} SequentialMLP modules, it should have 4"
     )
     # Copy weights from grouped to non-grouped model
-    copy_weights_from_grouped_to_non_grouped(grouped_moe_model, sequential_moe_model)
+    copy_weights_from_grouped_to_non_grouped(te_grouped_moe_model, sequential_moe_model)
 
     # Compare model outputs before quantization
-    grouped_moe_output = forward_fn(grouped_moe_model)
-    non_grouped_moe_output = forward_fn(sequential_moe_model)
-    assert torch.allclose(grouped_moe_output, non_grouped_moe_output, atol=1e-6, rtol=1e-6)
+    te_grouped_moe_output = forward_fn(te_grouped_moe_model)
+    sequential_moe_output = forward_fn(sequential_moe_model)
+    assert torch.allclose(te_grouped_moe_output, sequential_moe_output, atol=1e-6, rtol=1e-6)
 
     # Quantize grouped model
-    mtq.quantize(grouped_moe_model, mtq.FP8_DEFAULT_CFG, forward_fn)
+    mtq.quantize(te_grouped_moe_model, mtq.FP8_DEFAULT_CFG, forward_fn)
 
     # Quantize non-grouped model
     mtq.quantize(sequential_moe_model, mtq.FP8_DEFAULT_CFG, forward_fn)
 
     # Compare model outputs after quantization
-    grouped_moe_quant_output = forward_fn(grouped_moe_model)
-    non_grouped_moe_quant_output = forward_fn(sequential_moe_model)
+    te_grouped_moe_quant_output = forward_fn(te_grouped_moe_model)
+    sequential_moe_quant_output = forward_fn(sequential_moe_model)
     assert torch.allclose(
-        grouped_moe_quant_output, non_grouped_moe_quant_output, atol=1e-6, rtol=1e-6
+        te_grouped_moe_quant_output, sequential_moe_quant_output, atol=1e-6, rtol=1e-6
     )
 
 
-def test_grouped_vs_non_grouped_quantize():
-    """Test that grouped and non-grouped MoE models produce similar quantized models."""
+def test_te_grouped_vs_sequential_quantize():
+    """Test that TEGrouped and sequential MoE models produce similar quantized models."""
 
     size = torch.cuda.device_count()
     if size < 4:
@@ -727,7 +727,7 @@ def test_grouped_vs_non_grouped_quantize():
 
     spawn_multiprocess_job(
         size=size,
-        job=partial(_test_grouped_vs_non_grouped_quantize_helper, 1, 2, 2),
+        job=partial(_test_te_grouped_vs_sequential_quantize_helper, 1, 2, 2),
         backend="nccl",
     )
 
@@ -771,8 +771,8 @@ def _test_expert_model_parallel_amax_sync(ep_size, etp_size, moe_grouped_gemm, c
         if isinstance(module, mtq.nn.TensorQuantizer):
             # Check if this is an expert quantizer
             is_expert_quantizer = (
-                "local_experts" in name  # Non-grouped MoE
-                or ("experts" in name and "linear_fc" in name)  # Grouped MoE
+                "local_experts" in name  # sequential MoE
+                or ("experts" in name and "linear_fc" in name)  # TEGrouped MoE
             )
 
             if is_expert_quantizer and hasattr(module, "_amax"):

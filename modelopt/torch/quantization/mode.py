@@ -293,10 +293,7 @@ class BaseCalibrateModeDescriptor(ModeDescriptor):
         def wrapped_func(model, config, forward_loop=None):
             # Access _calib_func as a class attribute to avoid binding
             # Check if _calib_func is defined as a class attribute
-            calib_results = wrapped_calib_func(
-                model, config, forward_loop, func=self.__class__._calib_func
-            )
-            return calib_results
+            return wrapped_calib_func(model, config, forward_loop, func=self.__class__._calib_func)
 
         return wrapped_func
 

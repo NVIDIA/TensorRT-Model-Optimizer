@@ -508,15 +508,15 @@ def sharded_state_dict_test_helper(
     )
 
 
-def copy_weights_from_grouped_to_non_grouped(grouped_model, non_grouped_model):
-    """Copy weights from grouped MoE model to non-grouped MoE model."""
-    grouped_state = grouped_model.state_dict()
-    non_grouped_state = non_grouped_model.state_dict()
+def copy_weights_from_grouped_to_non_grouped(te_grouped_moe_model, sequential_moe_model):
+    """Copy weights from TEGrouped MoE model to sequential MoE model."""
+    te_grouped_state = te_grouped_moe_model.state_dict()
+    sequential_state = sequential_moe_model.state_dict()
 
-    # Map grouped weights to non-grouped weights
+    # Map grouped weights to sequential weights
     weight_mapping = {}
-    non_grouped_key_template = "decoder.layers.{}.mlp.experts.local_experts.{}.linear_fc{}.weight"
-    for key, value in grouped_state.items():
+    sequential_key_template = "decoder.layers.{}.mlp.experts.local_experts.{}.linear_fc{}.weight"
+    for key, value in te_grouped_state.items():
         if "experts.linear_fc" in key and "weight" in key:
             # Extract expert index from grouped weight name
             # Format: decoder.layers.X.mlp.experts.linear_fcY.weightZ
@@ -525,19 +525,19 @@ def copy_weights_from_grouped_to_non_grouped(grouped_model, non_grouped_model):
             fc_idx = parts[5]  # Y (linear_fc1 or linear_fc2)
             weight_idx = parts[6]  # Z (weight0, weight1, etc.)
 
-            # Map to non-grouped format: decoder.layers.X.mlp.experts.local_experts.Y.linear_fcZ.weight
+            # Map to sequential format: decoder.layers.X.mlp.experts.local_experts.Y.linear_fcZ.weight
             expert_idx = weight_idx.replace("weight", "")
-            non_grouped_key = non_grouped_key_template.format(layer_idx, expert_idx, fc_idx[-1])
-            weight_mapping[non_grouped_key] = value
+            sequential_key = sequential_key_template.format(layer_idx, expert_idx, fc_idx[-1])
+            weight_mapping[sequential_key] = value
         elif isinstance(value, torch.Tensor):
             weight_mapping[key] = value
 
-    # Copy weights to non-grouped model
-    for non_grouped_key in non_grouped_state:
-        if non_grouped_key in weight_mapping:
-            non_grouped_state[non_grouped_key] = weight_mapping[non_grouped_key].clone()
+    # Copy weights to sequential model
+    for sequential_key in sequential_state:
+        if sequential_key in weight_mapping:
+            sequential_state[sequential_key] = weight_mapping[sequential_key].clone()
 
-    non_grouped_model.load_state_dict(non_grouped_state)
+    sequential_moe_model.load_state_dict(sequential_state)
 
 
 def compare_amax_sync_across_expert_parallel(model):
@@ -560,7 +560,7 @@ def compare_amax_sync_across_expert_parallel(model):
     expert_amax_values = {}
     for name, module in model.named_modules():
         if isinstance(module, mtq.nn.TensorQuantizer) and hasattr(module, "_amax"):
-            # Check for both grouped and non-grouped MoE patterns
+            # Check for both TEGrouped and sequential MoE patterns
             if "local_experts" in name or ("experts" in name and "linear_fc" in name):
                 expert_amax_values[name] = (
                     module.amax.item() if hasattr(module.amax, "item") else module.amax
@@ -580,10 +580,10 @@ def compare_amax_sync_across_expert_parallel(model):
         for name, amax_val in rank_amax.items():
             # Create quantizer type key by normalizing the name
             if "local_experts" in name:
-                # Non-grouped MoE: replace expert index with wildcard
+                # sequential MoE: replace expert index with wildcard
                 quantizer_type = re.sub(r"local_experts\.\d+", "local_experts.*", name)
             else:
-                # Grouped MoE: use the name as-is since experts are grouped
+                # TEGrouped MoE: use the name as-is since experts are grouped
                 quantizer_type = name
 
             if quantizer_type not in expert_quantizers:
