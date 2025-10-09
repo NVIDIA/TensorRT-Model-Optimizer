@@ -67,6 +67,7 @@ from .quant_utils import (
     get_weight_scaling_factor,
     get_weight_scaling_factor_2,
     maybe_transpose_expert_weight_dimensions,
+    pattern_fuse_prequant,
     postprocess_state_dict,
     preprocess_linear_fusion,
     to_quantized_weight,
@@ -198,6 +199,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
                 fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+
+    pattern_fuse_prequant(model)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.
