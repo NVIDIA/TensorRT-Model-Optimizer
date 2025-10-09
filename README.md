@@ -26,6 +26,7 @@ Model Optimizer is also integrated with [NVIDIA NeMo](https://github.com/NVIDIA-
 
 ## Latest News
 
+- [2025/10/07] [Pruning and Distilling LLMs Using NVIDIA TensorRT Model Optimizer](https://developer.nvidia.com/blog/pruning-and-distilling-llms-using-nvidia-tensorrt-model-optimizer/)
 - [2025/09/17] [An Introduction to Speculative Decoding for Reducing Latency in AI Inference](https://developer.nvidia.com/blog/an-introduction-to-speculative-decoding-for-reducing-latency-in-ai-inference/)
 - [2025/09/11] [How Quantization Aware Training Enables Low-Precision Accuracy Recovery](https://developer.nvidia.com/blog/how-quantization-aware-training-enables-low-precision-accuracy-recovery/)
 - [2025/08/29] [Fine-Tuning gpt-oss for Accuracy and Performance with Quantization Aware Training](https://developer.nvidia.com/blog/fine-tuning-gpt-oss-for-accuracy-and-performance-with-quantization-aware-training/)

@@ -13,17 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility functions."""
+"""PEFT/LoRA plugins for various frameworks."""
 
-from ._pytree import *
-from .cpp_extension import *
-from .dataset_utils import *
-from .graph import *
-from .import_utils import *
-from .list import *
-from .logging import *
-from .network import *
-from .perf import *
-from .regex import *
-from .tensor import *
-from .vlm_dataset_utils import *
+from modelopt.torch.utils import import_plugin
+
+with import_plugin("megatron"):
+    from .megatron import *

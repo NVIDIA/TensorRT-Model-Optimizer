@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,17 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility functions."""
+# Example usage of the script to compute the hidden states for a conversation dataset
+# This script computes hidden states using TensorRT-LLM and saves them to
+# the specified output directory.
 
-from ._pytree import *
-from .cpp_extension import *
-from .dataset_utils import *
-from .graph import *
-from .import_utils import *
-from .list import *
-from .logging import *
-from .network import *
-from .perf import *
-from .regex import *
-from .tensor import *
-from .vlm_dataset_utils import *
+export TLLM_LOG_LEVEL="error";
+python3 collect_hidden_states/compute_hidden_states_trtllm.py \
+  --model meta-llama/Llama-3.2-1B-Instruct \
+  --input-file synthetic_conversations/daring-anteater.jsonl \
+  --output-dir /mnt/md0/eagle-hidden-states/llama1b/daring_anteater/
+  
