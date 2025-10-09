@@ -441,6 +441,8 @@ def main(args):
         awqclip_bsz_col=args.awqclip_bsz_col,
         enable_mixed_quant=args.enable_mixed_quant,
         layers_8bit=args.layers_8bit,
+        gather_block_size=args.gather_block_size,
+        gather_quantize_axis=args.gather_quantize_axis,
     )
     logging.info(f"\nQuantization process took {time.time() - t} seconds")
 
@@ -553,7 +555,19 @@ if __name__ == "__main__":
         "--block_size",
         type=int,
         default=128,
-        help="Block size for AWQ quantization",
+        help="Block size for INT4 quantization of MatMul/Gemm nodes",
+    )
+    parser.add_argument(
+        "--gather_block_size",
+        type=int,
+        default=32,
+        help="Block size for INT4 quantization of Gather nodes",
+    )
+    parser.add_argument(
+        "--gather_quantize_axis",
+        type=int,
+        default=None,
+        help="Quantization axis for INT4 quantization of Gather nodes",
     )
     parser.add_argument(
         "--use_zero_point",
