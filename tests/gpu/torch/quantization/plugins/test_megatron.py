@@ -628,7 +628,7 @@ def test_moe_sharded_state_dict(tmp_path, config, moe_grouped_gemm):
     if size < 4:
         pytest.skip("Requires at least 4 GPUs for expert parallel test")
     moe_config = {
-        "tp_size": 1,
+        "tp_size": 2,
         "ep_size": 2,
         "etp_size": 2,
         "num_moe_experts": 4,
@@ -809,7 +809,7 @@ def test_expert_parallel_sync(ep_size, etp_size, moe_grouped_gemm):
         size=size,
         job=partial(
             _test_expert_model_parallel_amax_sync,
-            1,
+            2,
             ep_size,
             etp_size,
             moe_grouped_gemm,

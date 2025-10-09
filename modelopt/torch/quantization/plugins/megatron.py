@@ -522,7 +522,7 @@ class _RealQuantMegatronRowParallelLinear(
 
 # Register the public te.pytorch.GroupedLinear class
 @QuantModuleRegistry.register({te_grouped_linear.GroupedLinear: "te_GroupedLinear"})
-class _QuantTEGroupedLinear(_MegatronParallelLinear):
+class _QuantMegatronTEGroupedLinear(_MegatronParallelLinear):
     def _setup(self):
         # GroupedMLP stores the weights as weight0, weight1, etc. To run setup in order to
         # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
@@ -594,20 +594,24 @@ class _QuantTEGroupedLinear(_MegatronParallelLinear):
 @QuantModuleRegistry.register(
     {megatron_te.TEColumnParallelGroupedLinear: "megatron_TEColumnParallelGroupedLinear"}
 )
-class _QuantTEGroupedColumnParallelLinear(_QuantTEGroupedLinear, _MegatronColumnParallelLinear):
+class _MegatronTEGroupedColumnParallelLinear(
+    _QuantMegatronTEGroupedLinear, _MegatronColumnParallelLinear
+):
     _is_column_parallel = True
 
 
 @QuantModuleRegistry.register(
     {megatron_te.TERowParallelGroupedLinear: "megatron_TERowParallelGroupedLinear"}
 )
-class _QuantTEGroupedRowParallelLinear(_QuantTEGroupedLinear, _MegatronRowParallelLinear):
+class _MegatronTEGroupedRowParallelLinear(
+    _QuantMegatronTEGroupedLinear, _MegatronRowParallelLinear
+):
     _is_row_parallel = True
 
 
 # Register the public megatron_moe.TEGroupedMLP class
 @QuantModuleRegistry.register({megatron_moe.TEGroupedMLP: "megatron_moe_TEGroupedMLP"})
-class _QuantTEGroupedMLP(_MegatronMLP):
+class _MegatronTEGroupedMLP(_MegatronMLP):
     def _setup(self):
         if not hasattr(self, "parallel_state") or self.parallel_state is None:
             data_parallel_group = None
@@ -619,16 +623,20 @@ class _QuantTEGroupedMLP(_MegatronMLP):
                 )
                 data_parallel_group = get_data_parallel_group()
 
+            try:
+                expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
+            except AssertionError:
+                expert_tensor_parallel_group = None
             self.parallel_state = ParallelState(
                 data_parallel_group,
-                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                tensor_parallel_group=expert_tensor_parallel_group,
                 expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
             )
 
 
 # Register the public megatron_moe.SequentialMLP class
 @QuantModuleRegistry.register({megatron_moe.SequentialMLP: "megatron_moe_SequentialMLP"})
-class _QuantSequentialMLP(_MegatronMLP):
+class _MegatronSequentialMLP(_MegatronMLP):
     def _setup(self):
         if not hasattr(self, "parallel_state") or self.parallel_state is None:
             try:
@@ -636,8 +644,12 @@ class _QuantSequentialMLP(_MegatronMLP):
             except AssertionError:
                 data_parallel_group = None
 
+            try:
+                expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
+            except AssertionError:
+                expert_tensor_parallel_group = None
             self.parallel_state = ParallelState(
                 data_parallel_group,
-                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                tensor_parallel_group=expert_tensor_parallel_group,
                 expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
             )
