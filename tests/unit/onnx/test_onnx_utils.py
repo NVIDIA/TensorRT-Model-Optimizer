@@ -18,7 +18,7 @@ import os
 import numpy as np
 import onnx
 import pytest
-from _test_utils.onnx_quantization.lib_test_models import build_matmul_relu_model_ir_12
+from _test_utils.onnx_quantization.lib_test_models import build_matmul_relu_model
 from _test_utils.torch_model.vision_models import get_tiny_resnet_and_input
 from onnx.helper import (
     make_graph,
@@ -258,7 +258,7 @@ def test_remove_node_extra_training_outputs():
 
 
 def test_ir_version_support(tmp_path):
-    model = build_matmul_relu_model_ir_12()
+    model = build_matmul_relu_model(ir_version=12)
     model_path = os.path.join(tmp_path, "test_matmul_relu.onnx")
     onnx.save(model, model_path)
     model_reload, _, _, _, _ = load_onnx_model(model_path, intermediate_generated_files=[])
