@@ -21,7 +21,7 @@
 # It is recommended to execute this script inside the Model Optimization Toolkit TensorRT Docker container.
 # Please ensure that the ImageNet dataset is available in the container at the specified path.
 
-# Usage: ./test_onnx_ptq.sh [--no-clean] [/path/to/imagenet] [/path/to/models]
+# Usage: ./test_onnx_ptq.sh [--no-clean] [--eval] [/path/to/imagenet] [/path/to/models]
 
 set -exo pipefail
 
@@ -37,6 +37,7 @@ pushd $public_example_dir
 
 # Parse arguments
 clean_mode=true
+eval_mode=false
 imagenet_path=""
 models_folder=""
 
@@ -44,6 +45,10 @@ for arg in "$@"; do
     case $arg in
         --no-clean)
             clean_mode=false
+            shift
+            ;;
+        --eval)
+            eval_mode=true
             shift
             ;;
         *)
@@ -63,7 +68,8 @@ export TQDM_DISABLE=1
 # Setting image and model paths (contains 8 models)
 imagenet_path=${imagenet_path:-/data/imagenet/}
 models_folder=${models_folder:-/models/onnx}
-calib_size=64
+calib_size=1
+eval_size=100
 batch_size=1
 
 
@@ -157,53 +163,55 @@ done
 
 
 # Evaluate the quantized models for each mode
-for model_path in "${model_paths[@]}"; do
-    model_name=$(basename "$model_path" .onnx)
-    model_dir=build/$model_name
+if [ "$eval_mode" = true ]; then
+    for model_path in "${model_paths[@]}"; do
+        model_name=$(basename "$model_path" .onnx)
+        model_dir=build/$model_name
 
-    echo "Evaluating model $model_name for all quantization modes"
-    for quant_mode in "${all_modes[@]}"; do
-        if [ "$quant_mode" == "fp16" ]; then
-            eval_model_path=$model_dir/fp16/model.onnx
-            engine_path=$model_dir/fp16/model.engine
-            precision="fp16"
-        elif [ "$quant_mode" == "int8_iq" ]; then
-            eval_model_path=$model_dir/fp16/model.onnx
-            engine_path=$model_dir/int8_iq/model.engine
-            precision="best"
-        else
-            eval_model_path=$model_dir/$quant_mode/model.quant.onnx
-            engine_path=$model_dir/$quant_mode/model.quant.engine
-            precision="stronglyTyped"
-        fi
+        echo "Evaluating model $model_name for all quantization modes"
+        for quant_mode in "${all_modes[@]}"; do
+            if [ "$quant_mode" == "fp16" ]; then
+                eval_model_path=$model_dir/fp16/model.onnx
+                engine_path=$model_dir/fp16/model.engine
+                precision="fp16"
+            elif [ "$quant_mode" == "int8_iq" ]; then
+                eval_model_path=$model_dir/fp16/model.onnx
+                engine_path=$model_dir/int8_iq/model.engine
+                precision="best"
+            else
+                eval_model_path=$model_dir/$quant_mode/model.quant.onnx
+                engine_path=$model_dir/$quant_mode/model.quant.engine
+                precision="stronglyTyped"
+            fi
 
-        echo "Starting evaluation of $model_name for mode: $quant_mode"
-        if [[ " ${latency_models[@]} " =~ " $model_name " ]]; then
-            python evaluate.py \
-                --onnx_path=$eval_model_path \
-                --engine_path=$engine_path \
-                --model_name="${timm_model_name[$model_name]}" \
-                --engine_precision=$precision \
-                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
-                --timing_cache_path=build/timing.cache
-        else
-            python evaluate.py \
-                --onnx_path=$eval_model_path \
-                --engine_path=$engine_path \
-                --imagenet_path=$imagenet_path \
-                --eval_data_size=$calib_size \
-                --batch_size $batch_size \
-                --model_name="${timm_model_name[$model_name]}" \
-                --engine_precision=$precision \
-                --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
-                --timing_cache_path=build/timing.cache
-        fi
+            echo "Starting evaluation of $model_name for mode: $quant_mode"
+            if [[ " ${latency_models[@]} " =~ " $model_name " ]]; then
+                python evaluate.py \
+                    --onnx_path=$eval_model_path \
+                    --engine_path=$engine_path \
+                    --model_name="${timm_model_name[$model_name]}" \
+                    --engine_precision=$precision \
+                    --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
+                    --timing_cache_path=build/timing.cache
+            else
+                python evaluate.py \
+                    --onnx_path=$eval_model_path \
+                    --engine_path=$engine_path \
+                    --imagenet_path=$imagenet_path \
+                    --eval_data_size=$eval_size \
+                    --batch_size $batch_size \
+                    --model_name="${timm_model_name[$model_name]}" \
+                    --engine_precision=$precision \
+                    --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
+                    --timing_cache_path=build/timing.cache
+            fi
+        done
+
+        echo "Completed evaluation of all modes for model: $model_name"
     done
 
-    echo "Completed evaluation of all modes for model: $model_name"
-done
-
-python $test_utils_dir/aggregate_results.py --results_dir=build
+    python $test_utils_dir/aggregate_results.py --results_dir=build
+fi
 
 if [ "$clean_mode" = true ]; then
     echo "Cleaning build artifacts..."
