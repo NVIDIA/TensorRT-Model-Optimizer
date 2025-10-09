@@ -27,6 +27,7 @@ def test_llama_eagle3(tiny_llama_path, num_gpus, tiny_daring_anteater_path, tmp_
         "intermediate_size": 64,
         "num_attention_heads": 2,
         "num_key_value_heads": 2,
+        "head_dim": 64,
     }
 
     # Write the tiny config to a temporary file
