@@ -18,6 +18,7 @@ import os
 import numpy as np
 import onnx
 import pytest
+from _test_utils.onnx_quantization.lib_test_models import build_matmul_relu_model_ir_12
 from _test_utils.torch_model.vision_models import get_tiny_resnet_and_input
 from onnx.helper import (
     make_graph,
@@ -28,6 +29,7 @@ from onnx.helper import (
     make_tensor_value_info,
 )
 
+from modelopt.onnx.trt_utils import load_onnx_model
 from modelopt.onnx.utils import (
     get_input_names_from_bytes,
     get_output_names_from_bytes,
@@ -253,3 +255,13 @@ def test_remove_node_extra_training_outputs():
     value_info_names = [vi.name for vi in result_model.graph.value_info]
     assert "saved_mean" not in value_info_names
     assert "saved_inv_std" not in value_info_names
+
+
+def test_ir_version_support(tmp_path="./"):
+    model = build_matmul_relu_model_ir_12()
+    model_path = os.path.join(tmp_path, "test_matmul_relu.onnx")
+    onnx.save(model, model_path)
+    model_reload, _, _, _, _ = load_onnx_model(model_path, intermediate_generated_files=[])
+    assert model_reload.ir_version == 10, (
+        f"The maximum supported IR version is 10, but version {model_reload.ir_version} was detected."
+    )
