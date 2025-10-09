@@ -61,7 +61,13 @@ class FakeQuantMethod:
         x = layer.input_quantizer(x)
         if layer.weight_quantizer.is_enabled:
             original_weight = layer.weight
-            layer.weight = layer.weight_quantizer(layer.weight)
+            quantized_tensor = layer.weight_quantizer(layer.weight)
+            # parameterize the quantized weight
+            if isinstance(original_weight, torch.nn.Parameter):
+                quantized_tensor = torch.nn.Parameter(
+                    quantized_tensor, requires_grad=original_weight.requires_grad
+                )
+            layer.weight = quantized_tensor
             output = self.quant_method.apply(layer, x, bias)
             layer.weight = original_weight
         else:
