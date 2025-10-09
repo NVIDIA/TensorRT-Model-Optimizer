@@ -1,3 +1,15 @@
+"""
+Optimized KL divergence comparison for ONNX Runtime GenAI models with the same execution provider.
+
+This script efficiently compares two ONNX Runtime GenAI models by computing KL divergence
+between their output distributions without package switching overhead.
+
+Usage:
+    python KL_divergence_metrics_same_ep.py \\
+        --reference_model "path/to/reference/model" \\
+        --target_model "path/to/target/model"
+"""
+
 import argparse
 import os
 
@@ -10,6 +22,22 @@ DEBUG = False
 
 
 def get_kl_divergence(log_probs_ref, log_probs_tar):
+    """
+    Compute Kullback-Leibler divergence between two log probability distributions.
+
+    KL divergence measures how one probability distribution diverges from a reference
+    distribution. Lower values indicate more similar distributions.
+
+    Args:
+        log_probs_ref (np.ndarray): Reference log probabilities with shape (seq_len, vocab_size).
+        log_probs_tar (np.ndarray): Target log probabilities with shape (seq_len, vocab_size).
+
+    Returns:
+        float: Average KL divergence across all positions.
+
+    Note:
+        Formula: KL(P||Q) = sum(P(x) * |log(P(x)) - log(Q(x))|) averaged over sequence length
+    """
     kl_divergence = 0.0
     for i in range(log_probs_ref.shape[0]):
         log_probs_ref[i] = np.array(log_probs_ref[i])
@@ -21,6 +49,16 @@ def get_kl_divergence(log_probs_ref, log_probs_tar):
 
 
 def get_wikitext2():
+    """
+    Load and concatenate the WikiText-2 test dataset.
+
+    Returns:
+        str: Concatenated text from all samples in the WikiText-2 test split,
+             with samples separated by double newlines.
+
+    Note:
+        Requires HuggingFace CLI authentication to access the dataset.
+    """
     # Load the Wikitext-2 test split using HuggingFace datasets
     print("\n[INFO] Loading Wikitext-2 'test' split ...")
     test = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
@@ -38,6 +76,18 @@ def get_wikitext2():
 
 
 def run_kl_divergence_on_models(reference_model, target_model):
+    """
+    Compute KL divergence between two ONNX Runtime GenAI models on WikiText-2 dataset.
+
+    This function loads both models, processes the WikiText-2 dataset in chunks, and
+    computes the KL divergence between their output distributions for each chunk.
+    The results are averaged across all chunks.
+
+    Args:
+        reference_model (str): Path to the reference ONNX Runtime GenAI model directory.
+        target_model (str): Path to the target ONNX Runtime GenAI model directory.
+
+    """
     ref_model = og.Model(reference_model)
     tar_model = og.Model(target_model)
     tokenizer_ref = og.Tokenizer(ref_model)
@@ -79,8 +129,8 @@ def run_kl_divergence_on_models(reference_model, target_model):
     seq_len_ref = int(input_ids_ref.shape[1])
     seq_len_tar = int(input_ids_tar.shape[1])
     if DEBUG:
-        print(f"[INFO] Full input length: {seq_len_ref}")
-        print(f"[INFO] Full input length: {seq_len_tar}")
+        print(f"[INFO] Ref input length: {seq_len_ref}")
+        print(f"[INFO] Tar input length: {seq_len_tar}")
 
     if seq_len_ref != seq_len_tar:
         print(
@@ -166,6 +216,22 @@ def run_kl_divergence_on_models(reference_model, target_model):
 
 
 def main():
+    """
+    Command-line entry point for optimized KL divergence comparison of same-EP models.
+
+    This script is optimized for comparing two ONNX Runtime GenAI models that use
+    the same execution provider, avoiding package switching overhead. It computes
+    KL divergence between model outputs on the WikiText-2 dataset.
+
+    Command-line Arguments:
+        --reference_model: Path to reference model directory (required)
+        --target_model: Path to target model directory (required)
+
+    Example:
+        $ python KL_divergence_metrics_same_ep.py \\
+              --reference_model "G:\\models\\cuda_fp16" \\
+              --target_model "G:\\models\\cuda_int4"
+    """
     parser = argparse.ArgumentParser(
         description="Run KL divergence evaluation on ONNX Runtime GenAI models"
     )

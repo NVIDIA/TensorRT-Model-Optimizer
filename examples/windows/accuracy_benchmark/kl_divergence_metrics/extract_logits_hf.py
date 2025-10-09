@@ -17,13 +17,26 @@ DEBUG = False
 
 
 def debug_print(message):
-    """Print debug message only if DEBUG is True"""
+    """
+    Print debug message only if DEBUG flag is enabled.
+
+    Args:
+        message (str): Debug message to print.
+    """
     if DEBUG:
         print(f"[DEBUG] {message}")
 
 
 def get_wikitext2():
-    """Load the Wikitext-2 test split using HuggingFace datasets"""
+    """
+    Load and concatenate the WikiText-2 test dataset.
+
+    Returns:
+        str: Concatenated text from all samples, separated by double newlines.
+
+    Note:
+        Requires HuggingFace CLI authentication.
+    """
     print("Loading Wikitext-2 dataset...")
     test = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
     debug_print(f"Number of raw samples: {len(test)}")
@@ -37,7 +50,15 @@ def get_wikitext2():
 
 def extract_logits_from_hf_model(model_path, device="cuda"):
     """
-    Extract logits from Hugging Face model following the same logic as extract_logits.py
+    Extract logits from a Hugging Face transformer model on WikiText-2 dataset.
+
+    Uses a sliding window approach to process the dataset in chunks and extract
+    model logits for each chunk using the transformers library.
+
+    Args:
+        model_path (str): Path to the Hugging Face model directory or model name.
+        device (str, optional): Device for inference ('cuda' or 'cpu'). Defaults to "cuda".
+
     """
     print("Loading Hugging Face model...")
     debug_print(f"Model path: {model_path}")
@@ -51,14 +72,16 @@ def extract_logits_from_hf_model(model_path, device="cuda"):
         device_map="auto" if device == "cuda" else None,
     )
 
-    model = model.to(device)
+    if device == "cpu":
+        model = model.to("cpu")
 
     model.eval()
 
     # Add padding token if it doesn't exist
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-
+    if getattr(getattr(model, "config", None), "pad_token_id", None) is None:
+        model.config.pad_token_id = tokenizer.pad_token_id
     # Parameters (same as extract_logits.py)
     max_context_length = 1024
 
@@ -82,7 +105,7 @@ def extract_logits_from_hf_model(model_path, device="cuda"):
 
     # Process chunks following the same logic as extract_logits.py
     for chunk_count, begin_loc in enumerate(
-        range(0, 50 * max_context_length, max_context_length), 1
+        range(0, min(50 * max_context_length, seq_len), max_context_length), 1
     ):
         if DEBUG:
             print(f"[PROGRESS] Processing chunk {chunk_count}...")
@@ -115,7 +138,7 @@ def extract_logits_from_hf_model(model_path, device="cuda"):
                         "chunk_id": chunk_count,
                         "begin_loc": begin_loc,
                         "end_loc": end_loc,
-                        "shape": logits.shape,
+                        "shape": logits_numpy.shape,
                     }
                 )
 
@@ -138,6 +161,13 @@ def extract_logits_from_hf_model(model_path, device="cuda"):
 
 
 def main():
+    """
+    Command-line entry point for extracting logits from Hugging Face models.
+
+    Extracts model logits on WikiText-2 dataset and saves them to a pickle file
+    for later KL divergence comparison with ONNX Runtime GenAI models.
+
+    """
     parser = argparse.ArgumentParser(description="Extract logits from Hugging Face model")
     parser.add_argument("--model_path", required=True, help="Path to Hugging Face model directory")
     parser.add_argument("--output_file", required=True, help="Output pickle file path")

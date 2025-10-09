@@ -1,3 +1,35 @@
+# SPDX-License-Identifier: MIT
+#
+# Copyright (c) Microsoft Corporation. All rights reserved.
+#
+# This file is based on perplexity_metrics.py from the ONNX Runtime GenAI project:
+# https://github.com/microsoft/onnxruntime-genai/blob/main/tools/python/model_validation/perplexity_metrics.py
+#
+# Modifications Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Modifications made:
+# - Added support for multiple context lengths
+# - Added configurable chunk sizes
+# - Enhanced prefill chunking handling
+
 import json
 import time
 
@@ -11,6 +43,16 @@ DEBUG = False
 
 
 def get_wikitext2():
+    """
+    Load and concatenate the WikiText-2 test dataset.
+
+    Returns:
+        str: Concatenated text from all samples in the WikiText-2 test split,
+             with samples separated by double newlines.
+
+    Note:
+        Requires HuggingFace CLI authentication to access the dataset.
+    """
     # Load the Wikitext-2 test split using HuggingFace datasets
     print("\n[INFO] Loading Wikitext-2 'test' split ...")
     test = load_dataset("wikitext", "wikitext-2-raw-v1", split="test")
@@ -28,6 +70,28 @@ def get_wikitext2():
 
 
 def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
+    """
+    Evaluate perplexity of an ONNX Runtime GenAI model on the WikiText-2 dataset.
+
+    This function computes perplexity using a sliding window approach. It supports
+    both standard evaluation and prefill chunking for longer context lengths.
+
+    Args:
+        model_dir (str): Path to the ONNX Runtime GenAI model directory.
+                        Must contain genai_config.json and tokenizer files.
+        input_len (int, optional): Maximum input sequence length for evaluation.
+                                   Used as context length when KV chunking is enabled.
+                                   Defaults to 1024.
+        chunk_size (int, optional): Prefill chunk size for prefill chunking.
+                                   If provided, overrides the chunk_size in genai_config.json.
+                                   When set, enables evaluation with longer context lengths.
+                                   Defaults to None.
+
+    Returns:
+        float: Computed perplexity score. Lower values indicate better model performance.
+               Typical ranges: 2-20 (excellent), 20-40 (good), 40-80 (ok), 100+ (poor).
+
+    """
     time_start = time.time()
     print(f"\n[RUN] === BEGIN perplexity_eval('{model_dir}') ===")
     print(f"[RUN] Loading ONNX model from: {model_dir}")
@@ -48,11 +112,17 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
         print("[RUN] Creating tokenizer ...")
     # Create the tokenizer for the model
     tokenizer = og.Tokenizer(model)
-    # Load model configuration from JSON file
-    with open(f"{model_dir}/genai_config.json") as file:
-        config = json.load(file)
-    if DEBUG:
-        print(f"[CONFIG] Model config loaded: {json.dumps(config['model'], indent=2)}")
+    # Load model configuration from JSON file (optional)
+    model_cfg_json = None
+    try:
+        with open(f"{model_dir}/genai_config.json") as file:
+            model_cfg_json = json.load(file)
+        if DEBUG:
+            print(
+                f"[CONFIG] Model config loaded: {json.dumps(model_cfg_json.get('model', {}), indent=2)}"
+            )
+    except Exception as e:
+        print(f"[WARNING] Could not read genai_config.json: {e}. Falling back to defaults.")
 
     max_context_length = 1024
     stride = 512
@@ -66,7 +136,7 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
         kv_chunking_enabled = True
         if DEBUG:
             print(f"[CONFIG] Using provided chunk_size: {effective_chunk_size}")
-    elif "search" in config and "chunk_size" in config["search"]:
+    elif model_cfg_json and "search" in model_cfg_json and "chunk_size" in model_cfg_json["search"]:
         # Use chunk_size from existing config file
         effective_chunk_size = config["search"]["chunk_size"]
         kv_chunking_enabled = True
@@ -74,7 +144,9 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
             print(f"[CONFIG] Using config file chunk_size: {effective_chunk_size}")
 
     if DEBUG:
-        print(f"config['search']['chunk_size']: {og.Config(model_dir)}")
+        print(
+            f"[CONFIG] Effective chunk_size: {effective_chunk_size if kv_chunking_enabled else 'disabled'}"
+        )
 
     if kv_chunking_enabled and effective_chunk_size:
         if DEBUG:
@@ -90,7 +162,14 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
         print(f"[CONFIG] KV chunking disabled, using default stride: {stride}")
 
     # Set chunk and stride lengths for evaluation
-    max_length = min(max_context_length, config["model"]["context_length"])
+    model_context_len = (
+        int(model_cfg_json["model"]["context_length"])
+        if model_cfg_json
+        and "model" in model_cfg_json
+        and "context_length" in model_cfg_json["model"]
+        else max_context_length
+    )
+    max_length = min(max_context_length, model_context_len)
     if DEBUG:
         print(f"[INFO] max_length for chunk: {max_length}, stride for sliding window: {stride}")
 
@@ -219,12 +298,12 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
             mask_flat = np.array([], dtype=bool)
 
         # Accumulate log probabilities and token count
-        total_log_probs += np.sum(valid_log_probs)
-        total_token_count += np.sum(mask_flat)
+        total_log_probs += float(np.sum(valid_log_probs))
+        total_token_count += int(valid_log_probs.size)
 
         if DEBUG:
             print(
-                f"[LOOP] This chunk: valid tokens={np.sum(mask_flat)}, sum={np.sum(valid_log_probs)}"
+                f"[LOOP] This chunk: valid tokens={valid_log_probs.size}, sum={np.sum(valid_log_probs)}"
             )
             print(f"[TALLY] total_log_probs: {total_log_probs}")
             print(f"[TALLY] total_token_count: {total_token_count}")

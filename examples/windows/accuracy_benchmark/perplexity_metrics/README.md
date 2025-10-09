@@ -46,7 +46,7 @@ This script is originally based on [perplexity_metrics.py](https://github.com/mi
 python run_perplexity.py --models /path/to/model
 ```
 
-### Multiple models
+### Evaluate multiple models
 
 ```bash
 python run_perplexity.py --models /path/to/model1 /path/to/model2
@@ -56,7 +56,6 @@ python run_perplexity.py --models /path/to/model1 /path/to/model2
 
 You can specify the input sequence length(s) to evaluate using the `--i` argument.  
 For example, to evaluate with input lengths:
-Note: higher isl is only supported when model has Kv chunking enabled in genai config
 
 ```bash
 python run_perplexity.py --models /path/to/model --i 1024,2048,4096,8192,12288
@@ -66,7 +65,6 @@ python run_perplexity.py --models /path/to/model --i 1024,2048,4096,8192,12288
 
 You can specify the prefill chunk size to evaluate using the `--chunk_size` argument.  
 For example:
-Note: higher isl is only supported when model has Kv chunking enabled in genai config
 
 ```bash
 python run_perplexity.py --models /path/to/model --i 1024,2048,4096,8192,12288 --chunk_size=1024
@@ -80,7 +78,7 @@ python run_perplexity.py --models /path/to/model --output results.csv
 
 ## Expected output
 
-The expected score is between 2 to 1000 , lower score means better model performance
+Expected scores often fall between 2 and 1000; lower is better. See ranges below.
 
 ### Perplexity configuration setting
 
@@ -120,7 +118,7 @@ Set `DEBUG = True` in `perplexity_metrics.py` for detailed logs.
 
 ## Typical perplexity ranges
 
-- Excellent : 2-20
+- Excellent: 2-20
 - Good: 20-40
-- Ok: 40-80  
+- OK: 40-80
 - Poor: 100+

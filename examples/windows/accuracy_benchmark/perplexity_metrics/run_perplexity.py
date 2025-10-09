@@ -1,21 +1,49 @@
 import argparse
 import os
+import sys
 
 import pandas as pd
-from perplexity_metrics import perplexity_eval
+
+# Ensure this directory is on sys.path for local imports
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
+from perplexity_metrics import perplexity_eval  # noqa: E402
 
 
 def run_perplexity_on_models(
     model_dirs, output_file="perplexity_results.csv", i="1024", chunk_size=None
 ):
     """
-    Run perplexity evaluation on multiple model directories
+    Run perplexity evaluation on multiple ONNX Runtime GenAI models.
+
+    This function evaluates one or more models at different input sequence lengths,
+    saves results to a CSV file, and prints a summary report. Each model-length
+    combination is evaluated independently, with errors handled gracefully.
 
     Args:
-        model_dirs: List of model directory paths
-        output_file: Output CSV file name
-        i: Comma-separated input sequence lengths to evaluate
-        chunk_size: Optional chunk size for KV caching optimization
+        model_dirs (list[str]): List of model directory paths to evaluate.
+                               Each directory must contain a valid ONNX Runtime GenAI model.
+        output_file (str, optional): Path for the output CSV file containing results.
+                                    Defaults to "perplexity_results.csv".
+        i (str or list, optional): Input sequence lengths to evaluate. Can be:
+                                  - String: comma-separated values (e.g., "1024,2048,4096")
+                                  - List/tuple: sequence of integers
+                                  - Single int: one length to evaluate
+                                  Defaults to "1024".
+        chunk_size (int, optional): Prefill chunk size for KV cache chunking.
+                                   Required for input lengths > 1024.
+                                   Overrides chunk_size in model config if provided.
+                                   Defaults to None.
+
+    Returns:
+        pd.DataFrame: DataFrame containing evaluation results with columns:
+                     - Model Path: Full path to model directory
+                     - Input Length: Sequence length used for evaluation
+                     - Perplexity: Computed perplexity score (or "N/A" if failed)
+                     - Status: "Success" or "Failed"
+                     - Error: Error message if failed, "None" if successful
+
     """
     results = []
 
@@ -60,21 +88,38 @@ def run_perplexity_on_models(
                 i_list = [int(i)]
             # For each input length, run perplexity_eval and record results
             for input_len in i_list:
-                print(f"  Evaluating with input length: {input_len}")
-                if chunk_size is not None:
-                    print(f"  Using chunk_size: {chunk_size}")
-                    perplexity = perplexity_eval(model_dir, str(input_len), chunk_size)
-                else:
-                    perplexity = perplexity_eval(model_dir, str(input_len))
-                results.append(
-                    {
-                        "Model Path": model_dir,
-                        "Input Length": input_len,
-                        "Perplexity": f"{perplexity:.4f}",
-                        "Status": "Success",
-                        "Error": "None",
-                    }
-                )
+                try:
+                    print(f"  Evaluating with input length: {input_len}")
+                    if chunk_size is None:
+                        print(
+                            "  Note: input length is ignored unless chunk_size is set or "
+                            "config.search.chunk_size is present."
+                        )
+                    if chunk_size is not None:
+                        print(f"  Using chunk_size: {chunk_size}")
+                        perplexity = perplexity_eval(model_dir, str(input_len), chunk_size)
+                    else:
+                        perplexity = perplexity_eval(model_dir, str(input_len))
+                    results.append(
+                        {
+                            "Model Path": model_dir,
+                            "Input Length": int(input_len),
+                            "Perplexity": float(perplexity),
+                            "Status": "Success",
+                            "Error": "None",
+                        }
+                    )
+                except Exception as e:  # noqa: PERF203
+                    print(f"  Error for input length {input_len}: {e!s}")
+                    results.append(
+                        {
+                            "Model Path": model_dir,
+                            "Input Length": int(input_len),
+                            "Perplexity": "N/A",
+                            "Status": "Failed",
+                            "Error": str(e),
+                        }
+                    )
 
             print(" Perplexity evaluation completed successfully")
 
@@ -103,12 +148,34 @@ def run_perplexity_on_models(
     if len(successful) > 0:
         print("\nPerplexity Results:")
         for _, row in successful.iterrows():
-            print(f"  {os.path.basename(row['Model Path'])}: {row['Perplexity']}")
+            print(
+                f"  {os.path.basename(row['Model Path'])} [i={row.get('Input Length', '?')}]: "
+                f"{row['Perplexity']:.4f}"
+                if isinstance(row["Perplexity"], (int, float))
+                else row["Perplexity"]
+            )
 
     return df
 
 
 def main():
+    """
+    Command-line entry point for perplexity evaluation.
+
+    Parses command-line arguments and runs perplexity evaluation on specified
+    ONNX Runtime GenAI models. Results are saved to a CSV file.
+
+    Command-line Arguments:
+        --models: One or more model directory paths (required)
+        --i: Comma-separated input sequence lengths (default: "1024")
+        --output: Output CSV file path (default: "perplexity_results.csv")
+        --chunk_size: Prefill chunk size for prefill chunking (optional)
+
+    Example:
+        $ python run_perplexity.py --models /path/to/model
+        $ python run_perplexity.py --models /path/to/model1 /path/to/model2 \\
+              --i 1024,2048,4096 --chunk_size 1024 --output results.csv
+    """
     parser = argparse.ArgumentParser(
         description="Run perplexity evaluation on multiple ONNX Runtime GenAI models"
     )
