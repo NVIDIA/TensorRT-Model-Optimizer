@@ -20,7 +20,7 @@ import warnings as _warnings
 from packaging.version import Version as _Version
 from torch import __version__ as _torch_version
 
-from . import distill, nas, opt, prune, quantization, sparsity, speculative, utils
+from . import distill, nas, opt, peft, prune, quantization, sparsity, speculative, utils
 
 if _Version(_torch_version) < _Version("2.7"):
     _warnings.warn(
