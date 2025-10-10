@@ -26,7 +26,6 @@ if [ ! -d "$DUMP_DIR" ]; then
 fi
 
 MOUNTS=$INPUT_DIR:/input,$DUMP_DIR:/output,$MODELOPT_DIR:/modelopt,$TEACHER_MODEL:/model
-rm -rf $DUMP_DIR/*
 
 #By default: TP inside node, and DP across slurm array
 #EP optionally available by setting --moe-ep-size and --moe-tp-size. See compute_hidden_states_trtllm.py.
