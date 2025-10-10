@@ -31,6 +31,7 @@ from safetensors.torch import save_file
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
+from modelopt.torch.quantization.qtensor.base_qtensor import fsdp2_aware_weight_update
 from modelopt.torch.quantization.utils import quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
@@ -114,7 +115,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             # update_experts_avg_prequant_scale(module)
             grouped_experts = get_experts_list(module, model_type)
             for modules in grouped_experts:
-                preprocess_linear_fusion(modules, resmooth_only=True)
+                with fsdp2_aware_weight_update(model, modules):
+                    preprocess_linear_fusion(modules, resmooth_only=True)
 
         # Attach hook to layernorm modules that need to be fused
         if is_layernorm(module):
@@ -148,10 +150,13 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                 # For encoder-decoder models, we need to pass both the encoder and decoder input ids
                 model(fake_input, decoder_input_ids=decoder_fake_input)
             else:
+                print("DEBUG LOG: Calling model(fake_input)")
                 model(fake_input)
 
         for handle in handles:
             handle.remove()
+
+    print(f"DEBUG LOG: input_to_linear: {input_to_linear}")
 
     for tensor, modules in input_to_linear.items():
         quantization_format = get_quantization_format(modules[0])
@@ -161,7 +166,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             QUANTIZATION_FP8_PB_REAL,
         ]:
             # Fuse modules that have the same input
-            preprocess_linear_fusion(modules)
+            with fsdp2_aware_weight_update(model, modules):
+                preprocess_linear_fusion(modules)
             fused_linears[modules[0].name] = [module.name for module in modules]
 
         # Fuse layernorms
@@ -192,7 +198,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                     assert new_expert_name in module_names
                     new_expert_modules.append(model.get_submodule(new_expert_name))
 
-                preprocess_linear_fusion(new_expert_modules)
+                with fsdp2_aware_weight_update(model, new_expert_modules):
+                    preprocess_linear_fusion(new_expert_modules)
 
                 expert_id += 1
 
