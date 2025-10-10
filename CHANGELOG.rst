@@ -1,6 +1,14 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.41 (2025-12-xx)
+^^^^^^^^^^^^^^^^^
+
+**Deprecations**
+
+**New Features**
+- Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
+
 0.39 (2025-11-xx)
 ^^^^^^^^^^^^^^^^^
 
