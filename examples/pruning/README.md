@@ -161,7 +161,7 @@ For optimal results, combine depth and width pruning. This will require more tun
 After pruning, distillation is required to recover model accuracy. Below are recommended starting hyperparameters for distillation:
 
 | **Hyperparameter** | **Recommendation** |
-| :--- | :--- |
+| :---: | :---: |
 | **Sequence Length** | 8192 (or 4096 if dataset has smaller sequences) |
 | **Global Batch Size (GBS)** | 768 |
 | **Micro Batch Size (MBS)** | As large as your GPU memory can accommodate |
@@ -192,8 +192,8 @@ Check out the FastNAS pruning example usage in the [documentation](https://nvidi
 
 You can also take a look at FastNAS pruning interactive notebook [cifar_resnet](./cifar_resnet.ipynb) in this directory
 which showcases the usage of FastNAS for pruning a ResNet 20 model for the CIFAR-10 dataset. The notebook
-also how to profiling the model to understand the search space of possible pruning options and demonstrates
-the usage saving and restoring pruned models.
+also shows how to profile the model to understand the search space of possible pruning options and demonstrates
+how to save and restore pruned models.
 
 ### GradNAS Pruning for HuggingFace Language Models (e.g. BERT)
 
