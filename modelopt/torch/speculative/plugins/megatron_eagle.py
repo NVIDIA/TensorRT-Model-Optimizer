@@ -480,6 +480,15 @@ class EagleModule(MegatronModule):
                 skip_weight_param_allocation=False,
             )
 
+        # Set up learnable parallel draft embeddings and hidden_states
+        if config.parallel_draft_step > 1:
+            self.parallel_draft_embeddings = torch.nn.Parameter(
+                torch.rand(config.parallel_draft_step - 1, config.hidden_size)
+            )
+            self.parallel_draft_hidden_states = torch.nn.Parameter(
+                torch.rand(config.parallel_draft_step - 1, config.hidden_size)
+            )
+
     def _get_eagle_transformer_layer_spec(self, config):
         """Get the TransformerLayer implementation spec.
 
@@ -755,19 +764,6 @@ class _DynamicEagleGPTModel(EagleModel):
             # Eagle loss functions
             self.kld = logits_kld_loss
 
-            # Set up learnable parallel draft embeddings and hidden_states
-            if self.eagle_config.parallel_draft_step > 1:
-                self.parallel_draft_embeddings = torch.nn.Parameter(
-                    torch.rand(
-                        self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size
-                    )
-                )
-                self.parallel_draft_hidden_states = torch.nn.Parameter(
-                    torch.rand(
-                        self.eagle_config.parallel_draft_step - 1, self.eagle_config.hidden_size
-                    )
-                )
-
     def _get_eagle_input_hidden_states(self, hidden_states: torch.Tensor, apply_fc: bool = True):
         """When _aux_hidden_states is not empty for online, then this is EAGLE-3.
 
@@ -824,10 +820,10 @@ class _DynamicEagleGPTModel(EagleModel):
             )
             eagle_inputs["hidden_states"] = hidden_states
         else:
-            eagle_inputs["embedding"] = self.parallel_draft_embeddings[
+            eagle_inputs["embedding"] = self.eagle_module.parallel_draft_embeddings[
                 parallel_draft_index - 1
             ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
-            eagle_inputs["hidden_states"] = self.parallel_draft_hidden_states[
+            eagle_inputs["hidden_states"] = self.eagle_module.parallel_draft_hidden_states[
                 parallel_draft_index - 1
             ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
 
@@ -1417,10 +1413,10 @@ class _DynamicEagleGPTModel(EagleModel):
                 # parallel_draft_embeddings and parallel_draft_hidden_states
                 gathered_embedding[
                     seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
-                ] = self.parallel_draft_embeddings.unsqueeze(1)
+                ] = self.eagle_module.parallel_draft_embeddings.unsqueeze(1)
                 padded_hidden_states[
                     seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
-                ] = self.parallel_draft_hidden_states.unsqueeze(1)
+                ] = self.eagle_module.parallel_draft_hidden_states.unsqueeze(1)
             if self.config.sequence_parallel:
                 padded_hidden_states = scatter_to_sequence_parallel_region(padded_hidden_states)
                 embeddings = scatter_to_sequence_parallel_region(gathered_embedding)
