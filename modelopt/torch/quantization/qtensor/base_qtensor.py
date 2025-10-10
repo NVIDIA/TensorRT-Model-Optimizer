@@ -250,6 +250,102 @@ def enable_fake_quant(module):
             m.weight_quantizer._fake_quant = original_fake_quant.pop(0)
 
 
+def _create_fsdp_param_mapping(fsdp_param_list, model):
+    """Builds a mapping from module name to their corresponding FSDPParam.
+
+    Args:
+        fsdp_param_list (list): List of FSDPParam.
+        model (nn.Module): FSDP root module.
+
+    Returns:
+        dict: Full parameter name → FSDP parameter.
+    """
+    return {
+        get_prefixed_param_names(model, param._module_info.module): param
+        for param in fsdp_param_list
+    }
+
+
+@contextmanager
+def fsdp2_aware_weight_update(root_model, modules_to_update):
+    """Context manager to update the FSDPParam list if an update is made to a submodule of an FSDPModule."""
+    try:
+        from torch.distributed.fsdp import fully_shard
+
+        from modelopt.torch.quantization.utils import _get_enclosing_fsdp_module, _get_module_name
+
+        breakpoint()
+        # Get FSDP root module, if none is returned, then the update is not made to a submodule of an FSDPModule
+        if not isinstance(modules_to_update, list):
+            modules_to_update = [modules_to_update]
+
+        root_modules = set()
+        for module in modules_to_update:
+            root_module = _get_enclosing_fsdp_module(module, root_model)
+            root_modules.add(root_module)
+
+        # Ensure all modules in root_modules are the same
+        assert len(root_modules) == 1, "All modules must be in the same root FSDPModule"
+        root_module = next(iter(root_modules))
+
+        # Check if root module state is sharded and unshard if needed
+        if fully_shard.state(root_module)._fsdp_param_group.is_sharded:
+            with enable_fake_quant(root_module):
+                root_module.unshard()
+
+        # Get FSDPParam list
+        fsdp_param_group = fully_shard.state(root_module)._fsdp_param_group
+        fsdp_param_mapping = _create_fsdp_param_mapping(fsdp_param_group.fsdp_params, root_module)
+
+        # Assert that all the modules in the module list are present in this fsdp_param_group
+        for module in modules_to_update:
+            name = _get_module_name(module, root_module)
+            assert name in fsdp_param_mapping, f"Module {module} not found in fsdp_param_mapping"
+
+        # Yields for necessary weight updates/processing
+        yield
+    finally:
+        # Update FSDPParam list
+        for module in modules_to_update:
+            name = _get_module_name(module, root_module)
+            old_fsdp_param = fsdp_param_mapping[name]
+
+            # Update mp policy to reflect the new dtype
+            new_mp_policy = MixedPrecisionPolicy(
+                param_dtype=module.weight.dtype,
+                reduce_dtype=None,
+                output_dtype=None,
+                cast_forward_inputs=False,
+            )
+
+            with no_requires_grad():
+                # Create a new QFSDPParam or FSDPParam based on weight type
+                param_class = QFSDPParam if isinstance(module.weight, QTensorWrapper) else FSDPParam
+                new_param = param_class(
+                    module.weight,
+                    old_fsdp_param._module_info,
+                    old_fsdp_param.mesh_info,
+                    old_fsdp_param.post_forward_mesh_info,
+                    old_fsdp_param.device,
+                    None,
+                    new_mp_policy,
+                    None,
+                )
+
+                # Update the FSDPParam mapping to keep track of the new FSDPParam
+                fsdp_param_mapping[name] = new_param
+
+                # Remove the post_load_hook_handle to allow gc to collect the old FSDPParam
+                old_fsdp_param._post_load_hook_handle.remove()
+
+        # Update FSDPParam list with new compressed weights
+        fsdp_param_group.fsdp_params = list(fsdp_param_mapping.values())
+
+        # Reshard FSDP root module
+        # TODO: Check if reshard is needed or not
+        root_module.reshard()
+
+
 def pack_real_quantize_weight(module, force_quantize: bool = False):
     """Pack real quantized tensors to a compressed format and set proper load_state_dict function."""
     # Import SequentialQuantizer here to avoid circular import
