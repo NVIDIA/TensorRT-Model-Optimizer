@@ -37,6 +37,7 @@ from modelopt.torch.nas.plugins.megatron import (
     HAS_MAMBA,
     _DynamicMCoreLanguageModel,
     SUPPORTED_MODELS,
+    drop_mcore_language_model_layers,
 )
 # isort: on
 
@@ -70,7 +71,13 @@ SUPPORTED_HPARAMS = {
     "num_layers",
 }
 
-__all__ = ["MCoreMinitronConfig", "MCoreMinitronModeDescriptor", "MCoreMinitronSearcher"]
+__all__ = [
+    "SUPPORTED_HPARAMS",
+    "MCoreMinitronConfig",
+    "MCoreMinitronModeDescriptor",
+    "MCoreMinitronSearcher",
+    "drop_mcore_language_model_layers",
+]
 
 
 class MCoreMinitronSearcher(BaseSearcher):
