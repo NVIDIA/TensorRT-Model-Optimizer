@@ -629,7 +629,7 @@ class TensorQuantizer(nn.Module):
             List of block sizes for each dimension, or None if block_sizes is None
 
         Example:
-            block_sizes = {-2: 32} with shape [2, 24, 4608, 128] -> [1, 1, 32, 1]
+            block_sizes = {-2: 32} with shape [2, 24, 4608, 128] -> [1, 1, 32, -1]
         """
         if self.block_sizes is None:
             return None
@@ -639,7 +639,9 @@ class TensorQuantizer(nn.Module):
             # Check both positive and negative dimension indices
             dim_negative = dim - len(shape)
             block_size = self.block_sizes.get(dim, None) or self.block_sizes.get(dim_negative, None)
-            block_sizes_list.append(block_size if block_size is not None else 1)
+            # Use -1 for the last dimension if not specified, otherwise use 1
+            default_value = -1 if dim == len(shape) - 1 else 1
+            block_sizes_list.append(block_size if block_size is not None else default_value)
         return block_sizes_list
 
     def _fake_quantize(self, inputs):
