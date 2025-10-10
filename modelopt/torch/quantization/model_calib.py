@@ -26,7 +26,7 @@ import torch.nn.functional as F
 
 from modelopt.torch.opt.searcher import ForwardLoop
 from modelopt.torch.utils import print_rank_0
-from modelopt.torch.utils.distributed import ParallelState
+from modelopt.torch.utils.distributed import DistributedProcessGroup, ParallelState
 from modelopt.torch.utils.network import bind_forward_method, unpatch_forward_method
 
 from .conversion import create_and_replace_svdquant_linear_on_the_fly, set_quantizer_by_cfg_context
@@ -619,15 +619,11 @@ def awq_lite(
             has_nan_local = torch.any(torch.isnan(module.awq_lite.act_scale)) or torch.any(
                 torch.isnan(module.awq_lite.weight_scale)
             )
-            has_nan = torch.tensor(int(has_nan_local), device=module.awq_lite.act_scale.device)
-            if module.parallel_state.data_parallel_group.is_initialized():
-                dist.all_reduce(
-                    has_nan,
-                    op=dist.ReduceOp.MAX,
-                    group=module.parallel_state.data_parallel_group.group,
-                )
+            has_nan = DistributedProcessGroup.get_dist_syncd_obj(
+                has_nan_local, module.parallel_state.data_parallel_group, lambda objs: any(objs)
+            )
 
-            if has_nan.item() > 0:
+            if has_nan:
                 module.awq_lite.is_enabled = False
             else:
                 sync_act_scale_across_dp(

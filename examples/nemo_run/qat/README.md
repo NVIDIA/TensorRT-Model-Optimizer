@@ -61,12 +61,11 @@ To run the example locally, first clone the `TensorRT-Model-Optimizer` repositor
 Set up repo:
 
 - `git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer.git`
-- `git clone https://github.com/NVIDIA-NeMo/NeMo.git`
 
 Run docker command (modify with your paths) and export the HuggingFace token:
 
 ```bash
-docker run -v  /home/user/:/home/user/ -v /home/user/NeMo:/opt/NeMo -v /home/user/TensorRT-Model-Optimizer/:/opt/TensorRT-Model-Optimizer/ --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.09 bash
+docker run -v  /home/user/:/home/user/ -v /home/user/TensorRT-Model-Optimizer/:/opt/TensorRT-Model-Optimizer/ --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.09 bash
 
 export HF_TOKEN=<your-token>
 ```
