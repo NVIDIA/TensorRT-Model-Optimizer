@@ -91,8 +91,8 @@ CMD="accelerate launch --multi_gpu --mixed_precision bf16 finetune.py \
     --warmup_ratio 0.0 \
     --lr_scheduler_type cosine \
     --logging_steps 1 \
-    --fsdp 'full_shard auto_wrap' \
-    --fsdp_transformer_layer_cls_to_wrap 'LlamaDecoderLayer' \
+    --fsdp full_shard auto_wrap \
+    --fsdp_transformer_layer_cls_to_wrap LlamaDecoderLayer \
     --tf32 True \
     --modelopt_restore_path $MODELOPT_RESTORE_PATH \
     --report_to tensorboard \
