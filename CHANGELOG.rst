@@ -1,7 +1,7 @@
 Model Optimizer Changelog (Linux)
 =================================
 
-0.39 (2025-10-xx)
+0.39 (2025-11-xx)
 ^^^^^^^^^^^^^^^^^
 
 **Deprecations**
@@ -9,9 +9,14 @@ Model Optimizer Changelog (Linux)
 **New Features**
 
 - Add flag ``op_types_to_exclude_fp16`` in ONNX quantization to exclude ops from being converted to FP16/BF16. Alternatively, for custom TensorRT ops, this can also be done by indicating ``'fp32'`` precision in ``trt_plugins_precision``.
+- Add LoRA mode support for MCore in a new peft submodule: ``modelopt.torch.peft.update_model(model, LORA_CFG)``.
 - Support PTQ and fakequant in vLLM for fast evaluation of arbitrary quantization formats. See ``examples/vllm_serve`` for more details.
 
-0.37 (2025-09-xx)
+**Documentation**
+
+- Add general guidelines for Minitron pruning and distillation. See `examples/pruning/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/pruning#pruning-guidelines>`_ for more details.
+
+0.37 (2025-10-08)
 ^^^^^^^^^^^^^^^^^
 
 **Deprecations**

@@ -13,17 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Utility functions."""
+"""Custom PEFT/LoRA plugins registry."""
 
-from ._pytree import *
-from .cpp_extension import *
-from .dataset_utils import *
-from .graph import *
-from .import_utils import *
-from .list import *
-from .logging import *
-from .network import *
-from .perf import *
-from .regex import *
-from .tensor import *
-from .vlm_dataset_utils import *
+# Registry for custom model plugins
+CUSTOM_MODEL_PLUGINS = set()
+
+
+def register_custom_model_plugins_on_the_fly(model):
+    """Registers custom PEFT/LoRA plugins on the fly.
+
+    This is called before LoRAModule replacement to allow plugins
+    to configure the model (e.g., for distributed checkpointing).
+    """
+    for callback in CUSTOM_MODEL_PLUGINS:
+        callback(model)

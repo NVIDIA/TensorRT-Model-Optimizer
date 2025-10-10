@@ -29,8 +29,6 @@ from modelopt.torch.utils import print_rank_0
 
 try:
     import wandb
-
-    wandb.init()
 except ImportError:
     wandb = None
 
@@ -397,6 +395,8 @@ class DataCollatorForOffline(DataCollatorWithPadding):
 class ARValidationCallback(TrainerCallback):
     def __init__(self, ar_validate_steps: int = 1000):
         self.ar_validate_steps = ar_validate_steps
+        if wandb:
+            wandb.init()
 
     def on_step_end(self, args, state, control, **kwargs):
         if self.ar_validate_steps <= 0:
