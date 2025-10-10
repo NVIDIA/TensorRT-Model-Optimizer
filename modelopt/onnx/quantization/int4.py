@@ -98,6 +98,7 @@ UINT4_MAX = 15
 # supported and working
 CLIP_MIN = 1e-5
 
+
 def safe_cupy_array(tensor):
     """Convert ml_dtypes.int4 tensor to numpy.int8 for CuPy compatibility.
 
@@ -304,7 +305,10 @@ def quantize_rtn(
 
         if gather_w_map is not None:
             assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
-            gather_dq_node_attributes = {"axis": gather_quantize_axis, "block_size": gather_block_size}
+            gather_dq_node_attributes = {
+                "axis": gather_quantize_axis,
+                "block_size": gather_block_size,
+            }
             qdq.insert_dq_nodes(
                 graph,
                 gather_s_map,
@@ -329,6 +333,7 @@ def quantize_rtn(
     model.ir_version = 10
 
     return model
+
 
 class AWQClipHelper:
     """AWQ calibration helper class."""
