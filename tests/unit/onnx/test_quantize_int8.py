@@ -62,7 +62,7 @@ def test_int8(tmp_path, high_precision_dtype):
     assert _assert_nodes_are_quantized(mm_nodes)
 
 
-def test_convtranspose_conv_residual_int8(tmp_path="./"):
+def test_convtranspose_conv_residual_int8(tmp_path):
     onnx_model = build_convtranspose_conv_residual_model()
     onnx_path = os.path.join(tmp_path, "convtranspose_conv_residual_model.onnx")
     save_onnx(onnx_model, onnx_path)
