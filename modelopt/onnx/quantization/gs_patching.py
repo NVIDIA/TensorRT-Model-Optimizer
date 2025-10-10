@@ -48,7 +48,6 @@ def _make_constant(
     setattr(t, "explicit_dtype", dtype)
     return t
 
-
 def _make_variable(
     name: str, dtype: onnx.TensorProto.DataType, shape: Sequence[int | str]
 ) -> gs.Constant:
