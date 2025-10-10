@@ -6,7 +6,7 @@
 # MANAGEMET, GO WITH `-p backfill -t 00:25:00`.
 
 #SBATCH -A coreai_dlalgo_modelopt
-#SBATCH --job-name=coreai_dlalgo_modelopt-mcore.modelopt
+#SBATCH --job-name=coreai_dlalgo_modelopt-generate_eagle_hidden_states
 #SBATCH --nodes=1 --ntasks-per-node=4 --gpus-per-node=4
 #SBATCH -p batch
 #SBATCH -t 04:00:00
