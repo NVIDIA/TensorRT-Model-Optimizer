@@ -56,17 +56,19 @@ The resulting exported checkpoint also is much smaller in memory at 6.4GB compar
 
 You can run the example either locally  or on a [Slurm cluster](ADVANCED.md).
 
-To run the example locally, first clone the `TensorRT-Model-Optimizer` repository, then mount the repository to a [NeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo) with version 25.09. Make sure to also set your HuggingFace token for dataset/model downloading.
+To run the example locally, first clone the `TensorRT-Model-Optimizer` repository, then mount the repository to a [NeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo) with version 25.09. After launching the Docker container, make sure to also set your HuggingFace token for dataset/model downloading.
 
-Set up repo & HuggingFace token:
+Set up repo:
 
 - `git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer.git`
-- `export HF_TOKEN=<your-token>`
+- `git clone https://github.com/NVIDIA-NeMo/NeMo.git`
 
-Run docker command:
+Run docker command (modify with your paths) and export the HuggingFace token:
 
 ```bash
-docker run -v  /home/user/:/home/user/  -v /home/user/TensorRT-Model-Optimizer/:/opt/TensorRT-Model-Optimizer/ --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.09 bash
+docker run -v  /home/user/:/home/user/ -v /home/user/NeMo:/opt/NeMo -v /home/user/TensorRT-Model-Optimizer/:/opt/TensorRT-Model-Optimizer/ --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.09 bash
+
+export HF_TOKEN=<your-token>
 ```
 
  You may also need to enable write access to the docker container to the `examples/nemo_run` folder by doing `chmod 777 nemo_run` so that logs can be written.
