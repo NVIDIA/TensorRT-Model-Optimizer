@@ -526,6 +526,7 @@ def build_non_residual_input_map(
             # Input in the longest path to LCA is the non-residual input
             lca, d1, d2 = find_lowest_common_ancestor(input1_producer, input2_producer)
 
+            # Generally if both the inputs have a backbone then both backbones are of the same type
             if backbone1 and backbone2:
                 if backbone1 == backbone2:
                     non_residual_inputs[node.name] = None
