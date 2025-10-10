@@ -302,7 +302,7 @@ def _fp8_block_dequantize(
     scales: torch.Value,
     trt_high_precision_dtype: str,
     otype: str | None = None,
-    block_sizes: list = [1, 1, 128, 1],
+    block_sizes: list = [1, 1, 128, -1],
 ):
     """Helper Function for Dequantization."""
     output_shape = sym_help._get_tensor_sizes(inputs)

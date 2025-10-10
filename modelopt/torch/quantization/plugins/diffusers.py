@@ -135,7 +135,7 @@ def _quantized_sdpa(self, *args, **kwargs):
 
     # Get block sizes lists for each quantizer if needed
     q_block_sizes = self.q_bmm_quantizer._get_block_sizes_list(query.shape)  # type: ignore[union-attr]
-    k_block_sizes = self.k_bmm_quantizer._get_block_sizes_list(key.shape)  # type: ignore[union-attr]
+    k_block_sizes = self.k_bmm_quantizer._get_block_sizes_list(key.shape, transpose=True)  # type: ignore[union-attr]
     v_block_sizes = self.v_bmm_quantizer._get_block_sizes_list(value.shape)  # type: ignore[union-attr]
 
     # We don't need to calibrate the output of softmax

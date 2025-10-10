@@ -619,17 +619,20 @@ class TensorQuantizer(nn.Module):
         self._dequantize = True
         return outputs
 
-    def _get_block_sizes_list(self, shape):
+    def _get_block_sizes_list(self, shape, transpose=False):
         """Convert block_sizes dict to list format based on tensor shape.
 
         Args:
             shape: The tensor shape to use for conversion (can be tuple or torch.Size)
+            transpose: If True, swap the last two dimensions' block sizes
 
         Returns:
             List of block sizes for each dimension, or None if block_sizes is None
 
         Example:
-            block_sizes = {-2: 32} with shape [2, 24, 4608, 128] -> [1, 1, 32, -1]
+            block_sizes = {-2: 32} with shape [2, 24, 4608, 128]:
+                - transpose=False -> [1, 1, 32, -1]
+                - transpose=True -> [1, 1, -1, 32]
         """
         if self.block_sizes is None:
             return None
@@ -642,6 +645,11 @@ class TensorQuantizer(nn.Module):
             # Use -1 for the last dimension if not specified, otherwise use 1
             default_value = -1 if dim == len(shape) - 1 else 1
             block_sizes_list.append(block_size if block_size is not None else default_value)
+
+        # If transpose is True, swap the last two dimensions
+        if transpose and len(block_sizes_list) >= 2:
+            block_sizes_list[-2], block_sizes_list[-1] = block_sizes_list[-1], block_sizes_list[-2]
+
         return block_sizes_list
 
     def _fake_quantize(self, inputs):
