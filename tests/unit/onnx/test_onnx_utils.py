@@ -28,6 +28,7 @@ from onnx.helper import (
     make_tensor_value_info,
 )
 
+from modelopt.onnx.trt_utils import load_onnx_model
 from modelopt.onnx.utils import (
     get_input_names_from_bytes,
     get_output_names_from_bytes,
@@ -253,3 +254,72 @@ def test_remove_node_extra_training_outputs():
     value_info_names = [vi.name for vi in result_model.graph.value_info]
     assert "saved_mean" not in value_info_names
     assert "saved_inv_std" not in value_info_names
+
+
+def _make_matmul_relu_model(ir_version=12):
+    # Define your model inputs and outputs
+    input_names = ["input_0"]
+    output_names = ["output_0"]
+    input_shapes = [(1, 1024, 1024)]
+    output_shapes = [(1, 1024, 16)]
+
+    inputs = [
+        make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, input_shape)
+        for input_name, input_shape in zip(input_names, input_shapes)
+    ]
+    outputs = [
+        make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, output_shape)
+        for output_name, output_shape in zip(output_names, output_shapes)
+    ]
+
+    # Create the ONNX graph with the nodes
+    nodes = [
+        make_node(
+            op_type="MatMul",
+            inputs=["input_0", "weights_1"],
+            outputs=["matmul1_matmul/MatMul:0"],
+            name="matmul1_matmul/MatMul",
+        ),
+        make_node(
+            op_type="Relu",
+            inputs=["matmul1_matmul/MatMul:0"],
+            outputs=["output_0"],
+            name="relu1_relu/Relu",
+        ),
+    ]
+
+    # Create the ONNX initializers
+    initializers = [
+        make_tensor(
+            name="weights_1",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(1024, 16),
+            vals=np.random.uniform(low=0.5, high=1.0, size=1024 * 16),
+        ),
+    ]
+
+    # Create the ONNX graph with the nodes and initializers
+    graph = make_graph(
+        nodes, f"matmul_relu_ir_{ir_version}", inputs, outputs, initializer=initializers
+    )
+
+    # Create the ONNX model
+    model = make_model(graph)
+    model.opset_import[0].version = 13
+    model.ir_version = ir_version
+
+    # Check the ONNX model
+    model_inferred = onnx.shape_inference.infer_shapes(model)
+    onnx.checker.check_model(model_inferred)
+
+    return model_inferred
+
+
+def test_ir_version_support(tmp_path):
+    model = _make_matmul_relu_model(ir_version=12)
+    model_path = os.path.join(tmp_path, "test_matmul_relu.onnx")
+    onnx.save(model, model_path)
+    model_reload, _, _, _, _ = load_onnx_model(model_path, intermediate_generated_files=[])
+    assert model_reload.ir_version == 10, (
+        f"The maximum supported IR version is 10, but version {model_reload.ir_version} was detected."
+    )
