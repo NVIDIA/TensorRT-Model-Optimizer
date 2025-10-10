@@ -56,18 +56,21 @@ The resulting exported checkpoint also is much smaller in memory at 6.4GB compar
 
 You can run the example either locally  or on a [Slurm cluster](ADVANCED.md).
 
-To run the example locally, launch a [NeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo) with version 25.07 or higher. Clone the `TensorRT-Model-Optimizer` repository and `NeMo` repository (checkout a specific commit for NeMo), then mount it onto your docker container.
+To run the example locally, first clone the `TensorRT-Model-Optimizer` repository, then mount the repository to a [NeMo container](https://catalog.ngc.nvidia.com/orgs/nvidia/containers/nemo) with version 25.09. After launching the Docker container, make sure to also set your HuggingFace token for dataset/model downloading.
+
+Set up repo:
 
 - `git clone https://github.com/NVIDIA/TensorRT-Model-Optimizer.git`
-- `git clone https://github.com/NVIDIA-NeMo/NeMo.git && cd NeMo && git checkout 676ed1a`
 
-Example docker command:
+Run docker command (modify with your paths) and export the HuggingFace token:
 
 ```bash
-docker run -v  /home/user/:/home/user/ -v /home/user/NeMo:/opt/NeMo -v /home/user/TensorRT-Model-Optimizer/modelopt/:/usr/local/lib/python3.12/dist-packages/modelopt --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.07 bash
+docker run -v  /home/user/:/home/user/ -v /home/user/TensorRT-Model-Optimizer/:/opt/TensorRT-Model-Optimizer/ --gpus all -it --shm-size 20g --rm nvcr.io/nvidia/nemo:25.09 bash
+
+export HF_TOKEN=<your-token>
 ```
 
-You will also need to set your Huggingface token with `export HF_TOKEN=<your-token>`. You may also need to enable write access to the docker container to the `examples/nemo_run` folder by doing `chmod 777 nemo_run` so that logs can be written.
+ You may also need to enable write access to the docker container to the `examples/nemo_run` folder by doing `chmod 777 nemo_run` so that logs can be written.
 
 ### Running the Flow Locally
 
@@ -92,7 +95,7 @@ In order to train using QAD, launch the example with `python qat/nemo_qat_flow.p
 To perform QAD training, run:
 
 ```bash
-python qat/nemo_qat_flow.py --distill --log-dir /my/log/dir --experiment qad_experiment
+python qat/nemo_qat_flow.py --distill --log-dir /my/log/dir --experiment qad_experiment --tensor_parallelism 4
 ```
 
 ## Supported models
