@@ -98,7 +98,6 @@ UINT4_MAX = 15
 # supported and working
 CLIP_MIN = 1e-5
 
-
 def safe_cupy_array(tensor):
     """Convert ml_dtypes.int4 tensor to numpy.int8 for CuPy compatibility.
 
@@ -294,19 +293,23 @@ def quantize_rtn(
                 scales[name] = np.asnumpy(scales[name])
             gemm_weights_quantized[name] = numpy.asarray(qw)
         scales = reshape_scales_for_per_channel_nodes(scales, block_size, precision_info)
+        dq_node_attributes = {"axis": 0, "block_size": block_size}
         qdq.insert_dq_nodes(
             graph,
             scales,
             quantized_weights=gemm_weights_quantized,
+            attributes=dq_node_attributes,
             precision_info=precision_info,
         )
 
         if gather_w_map is not None:
             assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
+            gather_dq_node_attributes = {"axis": gather_quantize_axis, "block_size": gather_block_size}
             qdq.insert_dq_nodes(
                 graph,
                 gather_s_map,
                 quantized_weights=gather_w_map,
+                attributes=gather_dq_node_attributes,
                 precision_info=precision_info,
             )
     else:
@@ -322,8 +325,10 @@ def quantize_rtn(
             )
 
     logger.info(f"RTN quantization completed in {time.time() - t_start:.2f} seconds")
-    return gs.export_onnx(graph)
+    model = gs.export_onnx(graph)
+    model.ir_version = 10
 
+    return model
 
 class AWQClipHelper:
     """AWQ calibration helper class."""
