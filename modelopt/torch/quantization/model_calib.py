@@ -619,7 +619,7 @@ def awq_lite(
             has_nan_local = torch.any(torch.isnan(module.awq_lite.act_scale)) or torch.any(
                 torch.isnan(module.awq_lite.weight_scale)
             )
-            has_nan = torch.tensor(int(has_nan_local), device=module.weight.device)
+            has_nan = torch.tensor(int(has_nan_local), device=module.awq_lite.act_scale.device)
             if module.parallel_state.data_parallel_group.is_initialized():
                 dist.all_reduce(
                     has_nan,

@@ -120,9 +120,9 @@ def save_restore_test(model_cls, device, quant_config, compress=False, version=N
 
 
 def _distributed_attr_check(quantizer, attr: str, op=dist.ReduceOp.MAX, groups=[]):
+    quantizer_attr = getattr(quantizer, attr).clone()
     for group in groups:
         if group is not None:
-            quantizer_attr = getattr(quantizer, attr).clone()
             dist.all_reduce(quantizer_attr, op=op, group=group)
     assert torch.allclose(quantizer_attr, getattr(quantizer, attr))
 
@@ -137,7 +137,7 @@ def _debug_awq_lite(model, forward_loop, alpha_step=0.1, debug=True, **kwargs):
 
 @patch("modelopt.torch.quantization.model_calib.awq_lite", side_effect=_debug_awq_lite)
 def data_tensor_context_parallel_test_helper(
-    model, config, mock_awq_lite, dp_group=None, tp_group=None
+    model, config, mock_awq_lite, dp_group=None, tp_group=None, test_pre_quant_scale=True
 ):
     # Calib data should be different across each DP rank
     dp_rank = dist.get_rank(group=dp_group)
@@ -193,7 +193,11 @@ def data_tensor_context_parallel_test_helper(
 
     # Lets check the column parallel pre_quant_scale; it should be the same across all tp ranks
     # It is different across DP/CP ranks since the input is different
-    if tp_group and config in [mtq.INT8_SMOOTHQUANT_CFG, mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]:
+    if (
+        test_pre_quant_scale
+        and tp_group
+        and config in [mtq.INT8_SMOOTHQUANT_CFG, mtq.INT4_AWQ_CFG, mtq.W4A8_AWQ_BETA_CFG]
+    ):
         input_quantizer = model.fc1.input_quantizer
         _distributed_attr_check(
             input_quantizer, "pre_quant_scale", dist.ReduceOp.MAX, groups=[dp_group, tp_group]

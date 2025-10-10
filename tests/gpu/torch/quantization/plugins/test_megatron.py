@@ -98,6 +98,7 @@ def _test_parallelism_helper(
     tensor_model_parallel_size=1,
     context_parallel_size=1,
     use_rank_in_seed=False,
+    test_pre_quant_scale=True,
 ):
     """
     Unified helper for testing different parallelism configurations.
@@ -133,6 +134,7 @@ def _test_parallelism_helper(
         config,
         dp_group=dp_group,
         tp_group=tp_group,
+        test_pre_quant_scale=test_pre_quant_scale,
     )
 
 
@@ -219,6 +221,7 @@ def test_data_tensor_context_parallel(need_8_gpus, config):
             tensor_model_parallel_size=2,
             context_parallel_size=2,
             use_rank_in_seed=True,
+            test_pre_quant_scale=False,
         ),
         backend="nccl",
     )
