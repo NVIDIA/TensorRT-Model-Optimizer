@@ -478,7 +478,7 @@ def get_quantization_format(module) -> str | None:
 
             if input_quantizer is not None and hasattr(input_quantizer, "_pre_quant_scale"):
                 return QUANTIZATION_NVFP4_AWQ
-            if getattr(layer, "fused_with_layernorm", False):
+            if getattr(layer, "fused_with_prequant", False):
                 return QUANTIZATION_NVFP4_AWQ
             assert input_quantizer is not None, (
                 f"input_quantizer is None for {quantizer_attr_names}"
@@ -923,18 +923,77 @@ def all_items_same(item_list):
     return all(x == item_list[0] for x in item_list)
 
 
+PQS_FUSE_MODULE_MAPPING = [
+    # format: (list of target modules, tuple of (linear_pqs_fuse_to, linear_pqs_from), dim to fuse)
+    (["LlamaAttention", "Qwen3Attention", "Qwen3MoeAttention"], ("v_proj", "o_proj"), "input"),
+    (["LlamaMLP", "Qwen3MLP", "Qwen3MoeMLP"], ("up_proj", "down_proj"), "output"),
+]
+
+
+# TODO: make this more general instead of rule based
+def pattern_fuse_prequant(model: torch.nn.Module):
+    """Fuse pre_quant_scale to the linear weights.
+
+    For example, we can fuse the pre_quant_scale of o_proj to the output_dimension of v_proj, such that
+    The results are mathematically equivalent to the following:
+
+    out_proj.input = (attn_weights @ v_proj.output)
+    out_proj.output = (out_proj.input * pre_quant_scale) * out_proj.weight
+                    = attn_weights @ (v_proj.output * pre_quant_scale) * out_proj.weight
+
+    Note: This is an experimental feature, and it might mess up the quantization errors of fused linear modules.
+    """
+    for _, module in model.named_modules():
+        for module_map in PQS_FUSE_MODULE_MAPPING:
+            target_module_list = module_map[0]
+            linear_pair = module_map[1]
+            dim_to_fuse = module_map[2]
+            if any(module_name in type(module).__name__ for module_name in target_module_list):
+                linear_to = module.get_submodule(linear_pair[0])
+                linear_from = module.get_submodule(linear_pair[1])
+                if hasattr(linear_from, "input_quantizer") and hasattr(
+                    linear_from.input_quantizer, "_pre_quant_scale"
+                ):
+                    pre_quant_scale = linear_from.input_quantizer._pre_quant_scale
+                    # check if we need to apply to the last dimension or the first dimension
+                    pre_quant_scale = (
+                        pre_quant_scale.view(-1, 1)
+                        if dim_to_fuse == "output"
+                        else pre_quant_scale.view(1, -1)
+                    )
+                    linear_to.weight = torch.nn.Parameter(linear_to.weight * pre_quant_scale)
+                    if hasattr(linear_to, "bias") and linear_to.bias is not None:
+                        linear_to.bias = torch.nn.Parameter(linear_to.bias * pre_quant_scale)
+                    delattr(linear_from.input_quantizer, "_pre_quant_scale")
+                    setattr(linear_from, "fused_with_prequant", True)
+
+
 def fuse_prequant_layernorm(
     layernorm_module: torch.nn.Module,
     modules: list[torch.Tensor],
 ):
-    """Scales layernorm weights with avg_pre_quant_scale of the modules list and sets pre_quant_scales to be deleted."""
+    """Scales layernorm weights with avg_pre_quant_scale of the modules list and sets pre_quant_scales to be deleted.
+
+    original:
+        layernorm_output = (normalization(input) * weight) + bias
+        layernorm_output_scaled = layernorm_output * pre_quant_scale
+
+    fused:
+        fused_weight = weight * avg_pre_quant_scale
+        fused_bias = bias * avg_pre_quant_scale
+        layernorm_output_scaled = (normalization(input) * fused_weight) + fused_bias
+    """
     layernorm_module.weight = torch.nn.Parameter(
         layernorm_module.weight * getattr(modules[0].input_quantizer, "_pre_quant_scale")
     )
+    if hasattr(layernorm_module, "bias"):
+        layernorm_module.bias = torch.nn.Parameter(
+            layernorm_module.bias * getattr(modules[0].input_quantizer, "_pre_quant_scale")
+        )
     # Pre_quant_scales of modules must not be exported, since they have been fused with layernorm
     for module in modules:
         delattr(module.input_quantizer, "_pre_quant_scale")
-        setattr(module, "fused_with_layernorm", True)
+        setattr(module, "fused_with_prequant", True)
 
 
 def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False):
