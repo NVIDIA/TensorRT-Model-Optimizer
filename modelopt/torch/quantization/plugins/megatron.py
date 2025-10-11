@@ -52,37 +52,34 @@ __all__ = []
 
 def sync_amax_across_sequential_mlp(model: torch.nn.Module):
     """Sync amax across experts in a SequentialMLP."""
-    amax_dict = {
-        "linear_fc1.input_quantizer": {},
-        "linear_fc1.weight_quantizer": {},
-        "linear_fc2.input_quantizer": {},
-        "linear_fc2.weight_quantizer": {},
-    }
+    amax_dict = {}
+
+    def get_sequential_mlp_expert_names(name: str, module: torch.nn.Module):
+        if (
+            isinstance(module, TensorQuantizer)
+            and hasattr(module, "_amax")
+            and ".local_experts." in name
+        ):
+            expert_name, local_expert_name = name.split(".local_experts.")
+            # extract quantizer name by removing local_expert number from the name
+            local_expert_name = ".".join(local_expert_name.split(".")[1:])
+            return expert_name, local_expert_name
+        return None, None
+
     # gather amax values from SequentialMLP experts
     for name, module in model.named_modules():
-        if (
-            not isinstance(module, TensorQuantizer)
-            or not hasattr(module, "_amax")
-            or "local_experts" not in name
-        ):
-            continue
-        expert_name, local_expert_name = name.split("local_experts")
-        for key in amax_dict:
-            if key in local_expert_name:
-                amax_dict[key][expert_name] = max(amax_dict[key].get(expert_name, 0), module.amax)
+        expert_name, local_expert_name = get_sequential_mlp_expert_names(name, module)
+        if expert_name and local_expert_name:
+            amax_dict[local_expert_name] = amax_dict.get(local_expert_name, {})
+            amax_dict[local_expert_name][expert_name] = max(
+                amax_dict[local_expert_name].get(expert_name, 0), module.amax
+            )
 
     # sync amax values across experts in SequentialMLP
     for name, module in model.named_modules():
-        if (
-            not isinstance(module, TensorQuantizer)
-            or not hasattr(module, "_amax")
-            or "local_experts" not in name
-        ):
-            continue
-        expert_name, local_expert_name = name.split("local_experts")
-        for key in amax_dict:
-            if key in local_expert_name:
-                module.amax = amax_dict[key][expert_name]
+        expert_name, local_expert_name = get_sequential_mlp_expert_names(name, module)
+        if expert_name and local_expert_name:
+            module.amax = amax_dict[local_expert_name][expert_name]
 
 
 CUSTOM_POST_CALIBRATION_PLUGINS.add(sync_amax_across_sequential_mlp)
@@ -523,6 +520,11 @@ class _RealQuantMegatronRowParallelLinear(
 # Register the public te.pytorch.GroupedLinear class
 @QuantModuleRegistry.register({te_grouped_linear.GroupedLinear: "te_GroupedLinear"})
 class _QuantMegatronTEGroupedLinear(_MegatronParallelLinear):
+    _functionals_to_replace = [
+        (te_grouped_linear._GroupedLinear, "forward"),
+        (te_grouped_linear._GroupedLinear, "apply"),
+    ]
+
     def _setup(self):
         # GroupedMLP stores the weights as weight0, weight1, etc. To run setup in order to
         # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
@@ -531,37 +533,8 @@ class _QuantMegatronTEGroupedLinear(_MegatronParallelLinear):
         # Memorize the original weight.dtype for modelopt_post_restore given that
         # the dtype can change later.
         super()._setup()
-        # Revert the weight to None after setup.
-        self.weight = None
-
-    @property
-    def functionals_to_replace(self):
-        original_forward = te_grouped_linear._GroupedLinear.forward
-
-        def te_grouped_quantized_linear_fn(ctx, inp, m_splits, *args):
-            num_gemms = len(m_splits)
-            weights_and_biases = args[-2 * num_gemms :]
-            weights, biases = weights_and_biases[:num_gemms], weights_and_biases[num_gemms:]
-            quantized_inputs = self.input_quantizer(inp)
-            quantized_weights = [self.weight_quantizer(weight) for weight in weights]
-
-            output = original_forward(
-                ctx,
-                quantized_inputs,
-                m_splits,
-                *args[: -2 * num_gemms],
-                *quantized_weights,
-                *biases,
-            )
-            return self.output_quantizer(output)
-
-        return [
-            (
-                te_grouped_linear._GroupedLinear,
-                "forward",
-                te_grouped_quantized_linear_fn,
-            ),
-        ]
+        # Remove self.weight after setup.
+        delattr(self, "weight")
 
     def modelopt_post_restore(self, prefix: str = ""):
         # GroupedMLP stores the weights as weight0, weight1, etc. To run post_restore in order to
@@ -569,8 +542,8 @@ class _QuantMegatronTEGroupedLinear(_MegatronParallelLinear):
         # self.weight0 to self.weight to run the quantizer states initialization.
         self.weight = self.weight0
         super().modelopt_post_restore(prefix=prefix)
-        # Revert the weight to None after post_restore.
-        self.weight = None
+        # Remove self.weight after post_restore.
+        delattr(self, "weight")
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         # _sharded_state_dict_grouped adds _extra_state{gemm_idx} for gemm_idx:[1, num_gemms] in
@@ -585,10 +558,34 @@ class _QuantMegatronTEGroupedLinear(_MegatronParallelLinear):
         return super()._load_from_state_dict(filtered_state_dict, prefix, *args, **kwargs)
 
     def _process_quantizer_amax(self, k, v, quantizer_state_dict):
-        if v.ndim == 4:
-            quantizer_state_dict[k] = v.squeeze(1).squeeze(-1)
-        else:
-            quantizer_state_dict[k] = v.view(-1, 1) if v.numel() > 1 else v.view(-1)
+        assert v.numel() == 1, "TEGroupedLinear only supports per-tensor quantization"
+        quantizer_state_dict[k] = v.view(-1)
+
+    @staticmethod
+    def te_grouped_quantized_linear_fn(package, func_name, self, *args):
+        idx = 1 if func_name == "_forward" else 0
+        inp = args[idx]
+        num_gemms = len(args[idx + 1])
+        weights_and_biases = args[-2 * num_gemms :]
+        weights, biases = weights_and_biases[:num_gemms], weights_and_biases[num_gemms:]
+        quantized_inputs = self.input_quantizer(inp)
+        quantized_weights = [self.weight_quantizer(weight) for weight in weights]
+
+        output = getattr(package, func_name)(
+            *(
+                args[0],
+                quantized_inputs,
+            )
+            if func_name == "_forward"
+            else (quantized_inputs,),
+            *args[idx + 1 : -2 * num_gemms],
+            *quantized_weights,
+            *biases,
+        )
+        return self.output_quantizer(output)
+
+    # Override the quantized linear function
+    _quantized_linear_fn = te_grouped_quantized_linear_fn
 
 
 @QuantModuleRegistry.register(
@@ -614,24 +611,18 @@ class _MegatronTEGroupedRowParallelLinear(
 class _MegatronTEGroupedMLP(_MegatronMLP):
     def _setup(self):
         if not hasattr(self, "parallel_state") or self.parallel_state is None:
-            data_parallel_group = None
-            try:
-                data_parallel_group = get_data_parallel_group(with_context_parallel=True)
-            except AssertionError:
-                logger.warning(
-                    "Context parallel group is not initialized, using data parallel group"
-                )
-                data_parallel_group = get_data_parallel_group()
-
-            try:
-                expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
-            except AssertionError:
-                expert_tensor_parallel_group = None
             self.parallel_state = ParallelState(
-                data_parallel_group,
-                tensor_parallel_group=expert_tensor_parallel_group,
-                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
+                mcore_parallel.get_expert_data_parallel_group(check_initialized=False),
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(
+                    check_initialized=False
+                ),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(
+                    check_initialized=False
+                ),
             )
+        # initialize parallel state for submodules linear_fc1 and linear_fc2
+        self.linear_fc1.parallel_state = self.parallel_state
+        self.linear_fc2.parallel_state = self.parallel_state
 
 
 # Register the public megatron_moe.SequentialMLP class
@@ -639,17 +630,17 @@ class _MegatronTEGroupedMLP(_MegatronMLP):
 class _MegatronSequentialMLP(_MegatronMLP):
     def _setup(self):
         if not hasattr(self, "parallel_state") or self.parallel_state is None:
-            try:
-                data_parallel_group = mcore_parallel.get_expert_data_parallel_group()
-            except AssertionError:
-                data_parallel_group = None
-
-            try:
-                expert_tensor_parallel_group = mcore_parallel.get_expert_tensor_parallel_group()
-            except AssertionError:
-                expert_tensor_parallel_group = None
             self.parallel_state = ParallelState(
-                data_parallel_group,
-                tensor_parallel_group=expert_tensor_parallel_group,
-                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
+                mcore_parallel.get_expert_data_parallel_group(check_initialized=False),
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(
+                    check_initialized=False
+                ),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(
+                    check_initialized=False
+                ),
             )
+
+        # Initialize parallel state for submodules local_experts.*.linear_fc1 and local_experts.*.linear_fc2
+        for expert in self.local_experts:
+            expert.linear_fc1.parallel_state = self.parallel_state
+            expert.linear_fc2.parallel_state = self.parallel_state

@@ -588,6 +588,15 @@ def compare_amax_sync_across_expert_parallel(model):
 
             if quantizer_type not in expert_quantizers:
                 expert_quantizers[quantizer_type] = {}
+            if (
+                quantizer_type in expert_quantizers
+                and rank_idx in expert_quantizers[quantizer_type]
+            ):
+                # compare expert value across expert for sequential MoE
+                assert expert_quantizers[quantizer_type][rank_idx] == amax_val, (
+                    f"{rank_idx}, {quantizer_type}, expert_quantizers[quantizer_type][rank_idx]: "
+                    f"{expert_quantizers[quantizer_type][rank_idx]}, amax_val: {amax_val}"
+                )
             expert_quantizers[quantizer_type][rank_idx] = amax_val
 
     # Check synchronization - fail fast on first inconsistency

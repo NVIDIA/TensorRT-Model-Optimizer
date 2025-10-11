@@ -81,7 +81,7 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
         return
 
     def sync_quantizer_amax_across_dp_ep(quantizer, parallel_state):
-        """Synchronize the amax across all ranks in the data parallel and context parallel groups."""
+        """Synchronize the amax across all ranks in the data parallel and expert parallel groups."""
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
                 sync_quantizer_amax_across_dp_ep(_q, parallel_state)

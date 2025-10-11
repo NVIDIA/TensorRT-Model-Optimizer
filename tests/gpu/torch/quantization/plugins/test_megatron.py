@@ -35,7 +35,6 @@ from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     data_tensor_context_parallel_test_helper,
     dp_cp_parallel_test_helper,
-    tensor_parallel_test_helper,
 )
 
 skip_if_no_megatron()
@@ -621,12 +620,10 @@ def test_fp8_real_quantize():
         mtq.NVFP4_DEFAULT_CFG,
     ],
 )
-@pytest.mark.parametrize("moe_grouped_gemm", [False, True])
-def test_moe_sharded_state_dict(tmp_path, config, moe_grouped_gemm):
+@pytest.mark.parametrize("moe_grouped_gemm", [True, False])
+def test_moe_sharded_state_dict(need_4_gpus, tmp_path, config, moe_grouped_gemm):
     size = torch.cuda.device_count()
     # TODO: Add support for compress=True for TEGroupedMLP
-    if size < 4:
-        pytest.skip("Requires at least 4 GPUs for expert parallel test")
     moe_config = {
         "tp_size": 2,
         "ep_size": 2,
@@ -720,13 +717,9 @@ def _test_te_grouped_vs_sequential_quantize_helper(tp_size, ep_size, etp_size, r
     )
 
 
-def test_te_grouped_vs_sequential_quantize():
+def test_te_grouped_vs_sequential_quantize(need_4_gpus):
     """Test that TEGrouped and sequential MoE models produce similar quantized models."""
-
     size = torch.cuda.device_count()
-    if size < 4:
-        pytest.skip("Requires at least 4 GPUs for expert parallel test")
-
     spawn_multiprocess_job(
         size=size,
         job=partial(_test_te_grouped_vs_sequential_quantize_helper, 1, 2, 2),
@@ -763,7 +756,6 @@ def _test_expert_model_parallel_amax_sync(
 
     # quantize the model
     model = mtq.quantize(model, config, forward_fn)
-
     # Check initial sync status
     initial_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
     assert initial_sync, (
@@ -790,8 +782,10 @@ def _test_expert_model_parallel_amax_sync(
         "Consistent amax across expert parallel ranks, "
         "Amax should not be synchronized across expert parallel ranks since expert parallel is disabled"
     )
-    # Re-enable parallel groups and test synchronization
-    mtq.model_calib.max_calibrate(model, forward_fn)
+    # Re-calibrate the model and test synchronization
+    mtq.mode.wrapped_calib_func(
+        model, mtq.config.MaxCalibConfig(), forward_fn, mtq.model_calib.max_calibrate
+    )
 
     final_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
     assert final_sync, f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
