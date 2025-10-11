@@ -562,9 +562,8 @@ def compare_amax_sync_across_expert_parallel(model):
         if isinstance(module, mtq.nn.TensorQuantizer) and hasattr(module, "_amax"):
             # Check for both TEGrouped and sequential MoE patterns
             if "local_experts" in name or ("experts" in name and "linear_fc" in name):
-                expert_amax_values[name] = (
-                    module.amax.item() if hasattr(module.amax, "item") else module.amax
-                )
+                amax_val = module.amax.item() if hasattr(module.amax, "item") else module.amax
+                expert_amax_values[name] = amax_val
 
     # Early return if no expert quantizers found
     assert expert_amax_values, "No expert quantizers found"

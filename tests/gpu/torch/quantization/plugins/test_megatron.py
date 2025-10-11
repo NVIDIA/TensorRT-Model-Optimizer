@@ -34,7 +34,6 @@ from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
     data_tensor_context_parallel_test_helper,
-    dp_cp_parallel_test_helper,
 )
 
 skip_if_no_megatron()

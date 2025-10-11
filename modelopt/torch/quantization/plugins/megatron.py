@@ -28,8 +28,6 @@ import transformer_engine.pytorch.module.grouped_linear as te_grouped_linear
 from megatron.core.extensions import transformer_engine as megatron_te
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
-from megatron.core.parallel_state import get_data_parallel_group
-from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
 from megatron.core.utils import get_tensor_model_parallel_group_if_none
@@ -63,23 +61,24 @@ def sync_amax_across_sequential_mlp(model: torch.nn.Module):
             expert_name, local_expert_name = name.split(".local_experts.")
             # extract quantizer name by removing local_expert number from the name
             local_expert_name = ".".join(local_expert_name.split(".")[1:])
-            return expert_name, local_expert_name
-        return None, None
+            return f"{expert_name}.{local_expert_name}"
+        return None
 
     # gather amax values from SequentialMLP experts
     for name, module in model.named_modules():
-        expert_name, local_expert_name = get_sequential_mlp_expert_names(name, module)
-        if expert_name and local_expert_name:
-            amax_dict[local_expert_name] = amax_dict.get(local_expert_name, {})
-            amax_dict[local_expert_name][expert_name] = max(
-                amax_dict[local_expert_name].get(expert_name, 0), module.amax
+        expert_name = get_sequential_mlp_expert_names(name, module)
+        if expert_name and module.amax is not None:
+            stored_amax = amax_dict.get(expert_name)
+            amax_tensor = module.amax.detach().clone()
+            amax_dict[expert_name] = (
+                amax_tensor if stored_amax is None else torch.maximum(stored_amax, amax_tensor)
             )
 
     # sync amax values across experts in SequentialMLP
     for name, module in model.named_modules():
-        expert_name, local_expert_name = get_sequential_mlp_expert_names(name, module)
-        if expert_name and local_expert_name:
-            module.amax = amax_dict[local_expert_name][expert_name]
+        expert_name = get_sequential_mlp_expert_names(name, module)
+        if expert_name and module.amax is not None:
+            module.amax = amax_dict[expert_name].detach().clone().to(module.amax.device)
 
 
 CUSTOM_POST_CALIBRATION_PLUGINS.add(sync_amax_across_sequential_mlp)
