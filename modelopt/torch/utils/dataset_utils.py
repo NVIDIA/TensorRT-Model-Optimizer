@@ -52,6 +52,20 @@ SUPPORTED_DATASET_CONFIG: dict[str, Any] = {
         + "\n"
         + sample["output"],
     },
+    "nemotron-post-training-dataset-v2": {
+        "config": {
+            "path": "nvidia/Nemotron-Post-Training-Dataset-v2",
+            "split": ["stem", "chat", "math", "code"],
+        },
+        "preprocess": lambda sample: "\n".join(turn["content"] for turn in sample["messages"]),
+    },
+    "nemotron-post-training-dataset-v1": {
+        "config": {
+            "path": "nvidia/Nemotron-Post-Training-Dataset-v1",
+            "split": ["stem", "chat", "math", "code", "tool_calling"],
+        },
+        "preprocess": lambda sample: "\n".join(turn["content"] for turn in sample["messages"]),
+    },
     "magpie": {
         "config": {
             "path": "Magpie-Align/Magpie-Pro-MT-300K-v0.1",
@@ -321,10 +335,10 @@ def get_max_batch_size(
         return 1
     elif target_data_batch < 4:
         return 2
-    elif target_data_batch < 64:
+    elif target_data_batch < 512:
         return target_data_batch // 4 * 4
     else:
-        return 64
+        return 512
 
 
 def _process_batch(batch_data, infer_method, max_working_batch_size=None):
