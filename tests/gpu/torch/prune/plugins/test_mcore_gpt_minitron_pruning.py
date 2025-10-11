@@ -24,6 +24,7 @@ skip_if_no_megatron(apex_or_te_required=True)
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_dist.plugins.megatron_common import (
     get_mcore_gpt_model,
+    run_mcore_inference,
     run_mcore_inference_with_dummy_input,
 )
 
@@ -88,6 +89,7 @@ def _test_mcore_gpt_pruning(
         return model
 
     model = _get_model()
+    sd = model.state_dict()
 
     def forward_loop(m):
         for _ in range(5):
@@ -154,18 +156,23 @@ def _test_mcore_gpt_pruning(
     assert model.config.num_layers == pruned_num_layers
 
     # Assert forward pass works on the pruned model
-    run_mcore_inference_with_dummy_input(model, batch_size, pruned_hidden_size)
+    prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
+    output = run_mcore_inference(model, prompt_tokens, pruned_hidden_size)
 
     # Assert re-pruning from scores_path works without running the forward loop again
     if ckpt_path:
-        model = _get_model(initialize_megatron=False)
+        model_rerun = _get_model(initialize_megatron=False)
+        model_rerun.load_state_dict(sd)
         mtp.prune(
-            model,
+            model_rerun,
             mode="mcore_minitron",
             constraints={"export_config": export_config},
             dummy_input=None,  # Not used
             config={"scores_path": ckpt_path},
         )
+
+        output_rerun = run_mcore_inference(model_rerun, prompt_tokens, pruned_hidden_size)
+        assert torch.allclose(output, output_rerun, atol=1e-5)
 
 
 @pytest.mark.parametrize(
