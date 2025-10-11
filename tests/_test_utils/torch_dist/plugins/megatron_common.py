@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import re
 from warnings import warn
 
 import torch
@@ -38,6 +39,8 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 )
 from megatron.core.models.mamba import MambaModel
 from megatron.core.parallel_state import (
+    get_expert_model_parallel_group,
+    get_expert_tensor_parallel_group,
     initialize_model_parallel,
     is_pipeline_first_stage,
     is_pipeline_last_stage,
@@ -49,6 +52,7 @@ from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_config import TransformerConfig
 
+import modelopt.torch.quantization as mtq
 from modelopt.torch.export.unified_export_megatron import import_mcore_gpt_from_hf
 from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (
     restore_sharded_modelopt_state,
@@ -143,6 +147,8 @@ class MegatronModel(MegatronModule):
 def get_mcore_gpt_model(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
+    expert_model_parallel_size: int = 1,
+    expert_tensor_parallel_size: int | None = None,
     initialize_megatron: bool = False,
     *,
     num_layers: int = 2,
@@ -158,7 +164,10 @@ def get_mcore_gpt_model(
     normalization: str = "LayerNorm",
     transformer_impl: str = "modelopt" if HAS_TE else "local",
     use_cpu_initialization: bool = False,
+    num_moe_experts: int | None = None,
+    moe_grouped_gemm: bool = False,
     bf16: bool = True,
+    use_te: bool = False,
 ) -> GPTModel:
     assert activation_func in ["swiglu", "squared_relu"]
     assert normalization in ["LayerNorm", "RMSNorm"]
@@ -166,7 +175,12 @@ def get_mcore_gpt_model(
     print(f"Using `{transformer_impl=}` model spec for building GPT Model.")
 
     if initialize_megatron:
-        initialize_for_megatron(tensor_model_parallel_size, pipeline_model_parallel_size)
+        initialize_for_megatron(
+            tensor_model_parallel_size,
+            pipeline_model_parallel_size,
+            expert_model_parallel_size=expert_model_parallel_size,
+            expert_tensor_parallel_size=expert_tensor_parallel_size,
+        )
 
     def squared_relu(x):
         return torch.pow(F.relu(x), 2)
@@ -174,7 +188,10 @@ def get_mcore_gpt_model(
     config = TransformerConfig(
         tensor_model_parallel_size=tensor_model_parallel_size,
         pipeline_model_parallel_size=pipeline_model_parallel_size,
+        expert_model_parallel_size=expert_model_parallel_size,
+        expert_tensor_parallel_size=expert_tensor_parallel_size,
         sequence_parallel=False,
+        moe_grouped_gemm=moe_grouped_gemm,
         num_layers=num_layers,
         num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
         num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
@@ -182,6 +199,7 @@ def get_mcore_gpt_model(
         num_attention_heads=num_attention_heads,
         num_query_groups=num_query_groups,
         ffn_hidden_size=ffn_hidden_size,
+        num_moe_experts=num_moe_experts,
         activation_func=squared_relu if activation_func == "squared_relu" else F.silu,
         normalization=normalization,
         gated_linear_unit=(activation_func == "swiglu"),
@@ -193,7 +211,12 @@ def get_mcore_gpt_model(
 
     if transformer_impl == "local":
         assert HAS_APEX, "Apex not installed"
-        transformer_layer_spec = get_gpt_layer_local_spec(normalization=normalization)
+        transformer_layer_spec = get_gpt_layer_local_spec(
+            num_experts=num_moe_experts,
+            normalization=normalization,
+            moe_grouped_gemm=moe_grouped_gemm,
+            use_te=use_te,
+        )
     else:
         assert HAS_TE, "Transformer Engine not installed"
         transformer_layer_spec = (
@@ -212,6 +235,7 @@ def get_mcore_gpt_model(
         share_embeddings_and_output_weights=False,
         position_embedding_type="rope",
     )
+
     if bf16:
         model = model.to(torch.bfloat16)
 
@@ -403,6 +427,8 @@ def initialize_for_megatron(
     pipeline_model_parallel_size=1,
     seed=1234,
     context_parallel_size=1,
+    expert_model_parallel_size=1,
+    expert_tensor_parallel_size=None,
 ):
     """Initialize Megatron model parallelism.
 
@@ -412,6 +438,8 @@ def initialize_for_megatron(
         tensor_model_parallel_size,
         pipeline_model_parallel_size,
         context_parallel_size=context_parallel_size,
+        expert_tensor_parallel_size=expert_tensor_parallel_size,
+        expert_model_parallel_size=expert_model_parallel_size,
     )
     model_parallel_cuda_manual_seed(seed)
 
@@ -478,3 +506,104 @@ def sharded_state_dict_test_helper(
     assert torch.allclose(logits_ref, logits_test), (
         f"diff: {logits_diff.max()} ref: {logits_ref}, test: {logits_test}"
     )
+
+
+def copy_weights_from_grouped_to_non_grouped(te_grouped_moe_model, sequential_moe_model):
+    """Copy weights from TEGrouped MoE model to sequential MoE model."""
+    te_grouped_state = te_grouped_moe_model.state_dict()
+    sequential_state = sequential_moe_model.state_dict()
+
+    # Map grouped weights to sequential weights
+    weight_mapping = {}
+    sequential_key_template = "decoder.layers.{}.mlp.experts.local_experts.{}.linear_fc{}.weight"
+    for key, value in te_grouped_state.items():
+        if "experts.linear_fc" in key and "weight" in key:
+            # Extract expert index from grouped weight name
+            # Format: decoder.layers.X.mlp.experts.linear_fcY.weightZ
+            parts = key.split(".")
+            layer_idx = parts[2]  # X
+            fc_idx = parts[5]  # Y (linear_fc1 or linear_fc2)
+            weight_idx = parts[6]  # Z (weight0, weight1, etc.)
+
+            # Map to sequential format: decoder.layers.X.mlp.experts.local_experts.Y.linear_fcZ.weight
+            expert_idx = weight_idx.replace("weight", "")
+            sequential_key = sequential_key_template.format(layer_idx, expert_idx, fc_idx[-1])
+            weight_mapping[sequential_key] = value
+        elif isinstance(value, torch.Tensor):
+            weight_mapping[key] = value
+
+    # Copy weights to sequential model
+    for sequential_key in sequential_state:
+        if sequential_key in weight_mapping:
+            sequential_state[sequential_key] = weight_mapping[sequential_key].clone()
+
+    sequential_moe_model.load_state_dict(sequential_state)
+
+
+def compare_amax_sync_across_expert_parallel(model):
+    """
+    Test if amax values are synchronized across expert parallel groups.
+
+    Returns True if synchronized, False otherwise.
+    """
+
+    ep_group = get_expert_model_parallel_group(check_initialized=False)
+    etp_group = get_expert_tensor_parallel_group(check_initialized=False)
+
+    # Check if we have either expert model parallel or expert tensor parallel
+    has_expert_parallel = (ep_group is not None and ep_group.size() > 1) or (
+        etp_group is not None and etp_group.size() > 1
+    )
+
+    assert has_expert_parallel, "No expert parallelism detected"
+    # Collect amax values from expert quantizers only
+    expert_amax_values = {}
+    for name, module in model.named_modules():
+        if isinstance(module, mtq.nn.TensorQuantizer) and hasattr(module, "_amax"):
+            # Check for both TEGrouped and sequential MoE patterns
+            if "local_experts" in name or ("experts" in name and "linear_fc" in name):
+                amax_val = module.amax.item() if hasattr(module.amax, "item") else module.amax
+                expert_amax_values[name] = amax_val
+
+    # Early return if no expert quantizers found
+    assert expert_amax_values, "No expert quantizers found"
+
+    # Gather amax values from all ranks
+    world_size = torch.distributed.get_world_size()
+    all_amax_values = [None] * world_size
+    torch.distributed.all_gather_object(all_amax_values, expert_amax_values)
+
+    # Group quantizers by type (ignoring specific expert indices) and check sync
+    expert_quantizers = {}
+    for rank_idx, rank_amax in enumerate(all_amax_values):
+        for name, amax_val in rank_amax.items():
+            # Create quantizer type key by normalizing the name
+            if "local_experts" in name:
+                # sequential MoE: replace expert index with wildcard
+                quantizer_type = re.sub(r"local_experts\.\d+", "local_experts.*", name)
+            else:
+                # TEGrouped MoE: use the name as-is since experts are grouped
+                quantizer_type = name
+
+            if quantizer_type not in expert_quantizers:
+                expert_quantizers[quantizer_type] = {}
+            if (
+                quantizer_type in expert_quantizers
+                and rank_idx in expert_quantizers[quantizer_type]
+            ):
+                # compare expert value across expert for sequential MoE
+                assert expert_quantizers[quantizer_type][rank_idx] == amax_val, (
+                    f"{rank_idx}, {quantizer_type}, expert_quantizers[quantizer_type][rank_idx]: "
+                    f"{expert_quantizers[quantizer_type][rank_idx]}, amax_val: {amax_val}"
+                )
+            expert_quantizers[quantizer_type][rank_idx] = amax_val
+
+    # Check synchronization - fail fast on first inconsistency
+    for quantizer_type, rank_values in expert_quantizers.items():
+        if len(rank_values) > 1:  # Only check if we have multiple ranks
+            values = list(rank_values.values())
+            max_diff = max(values) - min(values)
+            if max_diff > 1e-6:  # Allow for small floating point differences
+                return False, quantizer_type, rank_values
+
+    return True, None, None
