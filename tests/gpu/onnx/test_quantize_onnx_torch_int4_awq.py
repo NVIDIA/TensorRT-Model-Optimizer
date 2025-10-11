@@ -20,7 +20,7 @@ import os
 from functools import partial
 
 import torch
-from _test_utils.import_helper import skip_if_no_libcudnn, skip_if_onnx_version_above_1_18
+from _test_utils.import_helper import skip_if_no_libcudnn
 from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_onnx, find_init
 from _test_utils.torch_quantization.quantize_common import get_awq_config
 
@@ -40,8 +40,6 @@ else:
 
 
 def test_int4_awq(tmp_path):
-    skip_if_onnx_version_above_1_18()
-
     def _forward_loop(model, dataloader):
         """Forward loop for calibration."""
         for data in dataloader:
@@ -94,11 +92,10 @@ def test_int4_awq(tmp_path):
         scale_awq_lite = find_init(onnx_model_awq_lite, scale_names[i])
 
         if int4.has_cupy:
-            wq_onnx_awq_lite = np.array(wq_onnx_awq_lite)
-            scale_awq_lite = np.array(scale_awq_lite)
+            wq_onnx_awq_lite = int4.safe_cupy_array(wq_onnx_awq_lite)
+            scale_awq_lite = int4.safe_cupy_array(scale_awq_lite)
 
         wq_onnx_awq_lite = dq_tensor(wq_onnx_awq_lite, scale_awq_lite, block_size)
-
         wq_torch_awq_clip = model_torch_copy.net[i * 2].weight_quantizer(
             model_torch_copy.net[i * 2].weight
         )
@@ -106,8 +103,8 @@ def test_int4_awq(tmp_path):
         scale_awq_clip = find_init(onnx_model_awq_clip, scale_names[i])
 
         if int4.has_cupy:
-            wq_onnx_awq_clip = np.array(wq_onnx_awq_clip)
-            scale_awq_clip = np.array(scale_awq_clip)
+            wq_onnx_awq_clip = int4.safe_cupy_array(wq_onnx_awq_clip)
+            scale_awq_clip = int4.safe_cupy_array(scale_awq_clip)
 
         wq_onnx_awq_clip = dq_tensor(wq_onnx_awq_clip, scale_awq_clip, block_size)
 
@@ -116,7 +113,6 @@ def test_int4_awq(tmp_path):
 
 
 def test_int4_awq_cuda(tmp_path):
-    skip_if_onnx_version_above_1_18()
     skip_if_no_libcudnn()
     block_size = 128
 
