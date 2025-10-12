@@ -151,7 +151,18 @@ def create_and_replace_svdquant_linear_on_the_fly(model):
 
 def restore_svdquant_model(model: nn.Module, config: QuantizeConfig, metadata: MetadataDict):
     """Restore the svdquant states from the given state dict."""
-    create_and_replace_svdquant_linear_on_the_fly(model)
+    # Import here to avoid circular dependency
+    import modelopt.torch.peft as mtpeft
+    from modelopt.torch.peft.convert import is_megatron_core_model
+    from modelopt.torch.peft.lora.plugins.megatron import (
+        create_and_replace_svdq_parallel_linear_on_the_fly,
+    )
+
+    if is_megatron_core_model(model):
+        create_and_replace_svdq_parallel_linear_on_the_fly(model=model)
+        mtpeft.add_adapter_svdq(model, config.lowrank)
+    else:
+        create_and_replace_svdquant_linear_on_the_fly(model)
     restore_quantizer_state(model, config, metadata)
     return model
 

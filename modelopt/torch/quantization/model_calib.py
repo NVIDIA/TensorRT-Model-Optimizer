@@ -23,8 +23,15 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
+from megatron.core import parallel_state as mpu
 
+import modelopt.torch.peft as mtpeft
 from modelopt.torch.opt.searcher import ForwardLoop
+from modelopt.torch.peft.convert import is_megatron_core_model
+from modelopt.torch.peft.lora.plugins.megatron import (
+    _MegatronParallelLoRABase,
+    create_and_replace_svdq_parallel_linear_on_the_fly,
+)
 from modelopt.torch.utils import print_rank_0
 from modelopt.torch.utils.distributed import DistributedProcessGroup, ParallelState
 from modelopt.torch.utils.network import bind_forward_method, unpatch_forward_method
@@ -920,30 +927,66 @@ def svdquant(
 
     def postprocess(module, name):
         print_rank_0(f"SVD {name}")
-        u, s, vt = torch.linalg.svd(module.weight.data.double())
-        if u.shape[1] < lowrank or vt.shape[0] < lowrank:
-            warnings.warn(
-                "The low-rank dimensions do not match the layer dimensions. "
-                "Please verify your configuration and model settings. "
-                f"SVD will be skipped for this layer {name}."
+        if isinstance(module, _MegatronParallelLoRABase):
+            rank = mpu.get_tensor_model_parallel_rank()
+            world = dist.get_world_size(mpu.get_tensor_model_parallel_group())
+            dtype = module.weight.dtype
+            u, s, vt = torch.linalg.svd(full_weight(module).double())
+            us = (u[:, :lowrank] * s[:lowrank]).to(dtype)
+            vt = vt[:lowrank].to(dtype)
+            if module._is_row_parallel:
+                module.lora_a_svdq.weight.data.copy_(vt.chunk(world, dim=1)[rank].contiguous())
+                module.lora_b_svdq.weight.data.copy_(us.contiguous())
+            else:
+                module.lora_a_svdq.weight.data.copy_(vt.contiguous())
+                module.lora_b_svdq.weight.data.copy_(us.chunk(world, dim=0)[rank].contiguous())
+            delta = module.lora_b_svdq.weight.data @ module.lora_a_svdq.weight.data
+            module.weight.data.sub_(delta)
+        else:
+            u, s, vt = torch.linalg.svd(module.weight.data.double())
+            if u.shape[1] < lowrank or vt.shape[0] < lowrank:
+                warnings.warn(
+                    "The low-rank dimensions do not match the layer dimensions. "
+                    "Please verify your configuration and model settings. "
+                    f"SVD will be skipped for this layer {name}."
+                )
+                return
+            us = u[:, :lowrank] * s[:lowrank]
+            vt = vt[:lowrank]
+            dtype = module.weight.dtype
+            module.weight_quantizer.svdquant_lora_a = vt.to(dtype=dtype)
+            module.weight_quantizer.svdquant_lora_b = us.to(dtype=dtype)
+            module.weight.data.sub_(
+                module.weight_quantizer.svdquant_lora_b @ module.weight_quantizer.svdquant_lora_a
             )
-            return
-        us = u[:, :lowrank] * s[:lowrank]
-        vt = vt[:lowrank]
-        dtype = module.weight.dtype
-        module.weight_quantizer.svdquant_lora_a = vt.to(dtype=dtype)
-        module.weight_quantizer.svdquant_lora_b = us.to(dtype=dtype)
-        module.weight.data.sub_(
-            module.weight_quantizer.svdquant_lora_b @ module.weight_quantizer.svdquant_lora_a
-        )
         module.weight_quantizer.reset_amax()
         module.input_quantizer.reset_amax()
 
-    create_and_replace_svdquant_linear_on_the_fly(model=model)
     awq(model, forward_loop, "awq_lite", **kwargs)
+
+    if is_megatron_core_model(model):
+        create_and_replace_svdq_parallel_linear_on_the_fly(model=model)
+        mtpeft.add_adapter_svdq(model, lowrank)
+    else:
+        create_and_replace_svdquant_linear_on_the_fly(model=model)
 
     for name, module in model.named_modules():
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:
             with enable_weight_access_and_writeback(module, model):
                 postprocess(module, name)
     max_calibrate(model, forward_loop)
+
+
+def full_weight(tp_layer):
+    """Gather the sharded weight of a Megatron‑LM TP linear layer."""
+    group = mpu.get_tensor_model_parallel_group()
+    world = dist.get_world_size(group)
+
+    local = tp_layer.weight.detach().clone()
+    shards = [torch.empty_like(local) for _ in range(world)]
+    dist.all_gather(shards, local, group=group)
+
+    if tp_layer._is_row_parallel:
+        return torch.cat(shards, dim=1).contiguous()
+    else:
+        return torch.cat(shards, dim=0).contiguous()

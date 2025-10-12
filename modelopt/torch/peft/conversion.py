@@ -26,6 +26,7 @@ from .lora.layer import LoRAModule, LoRAModuleRegistry
 
 # TODO: Add test cases to cover these functions
 __all__ = [
+    "add_adapter_svdq",
     "freeze_lora_weights",
     "replace_lora_module",
 ]
@@ -93,6 +94,22 @@ def restore_export_peft_model(model: nn.Module, config, metadata: MetadataDict):
 
 def update_peft_metadata(model: nn.Module, config: PEFTConfig, metadata: MetadataDict) -> None:
     """Placeholder for the metadata-related function; not needed in this mode."""
+
+
+def add_adapter_svdq(model: nn.Module, rank):
+    """LoRA for the SVD Mcore."""
+    adapter_name = "svdq"
+    merged_setting_dict = {
+        "enable": True,
+        "rank": rank,
+        "scale": 1.0,
+    }
+    for _, module in model.named_modules():
+        if isinstance(module, LoRAModule):
+            module.update_layer_lora(
+                adapter_name,
+                PEFTAttributeConfig(**merged_setting_dict),
+            )
 
 
 def add_adapter(model, config: PEFTConfig):

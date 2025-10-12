@@ -38,6 +38,23 @@ DEFAULT_SCALE = 1.0
 __all__ = []
 
 
+def create_and_replace_svdq_parallel_linear_on_the_fly(model: torch.nn.Module):
+    for name, module in list(model.named_modules()):
+        if type(module) in LoRAModuleRegistry:
+            if name == "":
+                model = LoRAModuleRegistry.convert(model)
+            else:
+                *parent_path, attr_name = name.split(".")
+                if parent_path:
+                    parent = model.get_submodule(".".join(parent_path))
+                else:
+                    parent = model
+                if not (module.weight_quantizer.is_enabled and module.input_quantizer.is_enabled):
+                    continue
+                lora_module = LoRAModuleRegistry.convert(module)
+                setattr(parent, attr_name, lora_module)
+
+
 def megatron_replace_lora_module_hook(model: torch.nn.Module):
     """Configure Megatron-Core model PEFT/LoRA support.
 
