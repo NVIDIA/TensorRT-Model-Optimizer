@@ -92,7 +92,12 @@ class LoRAModule(DynamicModule):
         Returns:
             Output from the base layer plus active LoRA adaptations
         """
-        output = super().forward(x, *args, **kwargs)
+        if hasattr(self, "input_quantizer") and hasattr(self.input_quantizer, "pre_quant_scale"):
+            x = x * self.input_quantizer.pre_quant_scale
+            with self.input_quantizer.disable_pre_quant_scale():
+                output = super().forward(x, *args, **kwargs)
+        else:
+            output = super().forward(x, *args, **kwargs)
 
         if isinstance(output, tuple):
             result = output[0]
