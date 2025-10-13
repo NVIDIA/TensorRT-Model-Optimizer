@@ -150,13 +150,10 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                 # For encoder-decoder models, we need to pass both the encoder and decoder input ids
                 model(fake_input, decoder_input_ids=decoder_fake_input)
             else:
-                print("DEBUG LOG: Calling model(fake_input)")
                 model(fake_input)
 
         for handle in handles:
             handle.remove()
-
-    print(f"DEBUG LOG: input_to_linear: {input_to_linear}")
 
     for tensor, modules in input_to_linear.items():
         quantization_format = get_quantization_format(modules[0])
@@ -177,7 +174,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             and tensor in output_to_layernorm
         ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
-            fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+            with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
+                fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.
@@ -470,7 +468,8 @@ def _export_hf_checkpoint(
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
             if is_quantlinear(sub_module):
-                _export_quantized_weight(sub_module, dtype)
+                with fsdp2_aware_weight_update(model, sub_module):
+                    _export_quantized_weight(sub_module, dtype)
             elif (
                 "Llama4TextExperts" in type(sub_module).__name__
                 or "GptOssExperts" in type(sub_module).__name__
@@ -488,7 +487,8 @@ def _export_hf_checkpoint(
                 )
                 # Export the quantized weights
                 for weight_name in ["gate_up_proj", "down_proj"]:
-                    _export_quantized_weight(sub_module, dtype, weight_name)
+                    with fsdp2_aware_weight_update(model, sub_module):
+                        _export_quantized_weight(sub_module, dtype, weight_name)
 
     quantized_state_dict = model.state_dict()
 

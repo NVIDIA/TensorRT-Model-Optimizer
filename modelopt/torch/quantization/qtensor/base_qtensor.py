@@ -274,76 +274,88 @@ def fsdp2_aware_weight_update(root_model, modules_to_update):
 
         from modelopt.torch.quantization.utils import _get_enclosing_fsdp_module, _get_module_name
 
-        breakpoint()
-        # Get FSDP root module, if none is returned, then the update is not made to a submodule of an FSDPModule
-        if not isinstance(modules_to_update, list):
-            modules_to_update = [modules_to_update]
+        if isinstance(root_model, FSDPModule):
+            # Get FSDP root module, if none is returned, then the update is not made to a submodule of an FSDPModule
+            if not isinstance(modules_to_update, list):
+                modules_to_update = [modules_to_update]
 
-        root_modules = set()
-        for module in modules_to_update:
-            root_module = _get_enclosing_fsdp_module(module, root_model)
-            root_modules.add(root_module)
+            root_modules = set()
+            for module in modules_to_update:
+                root_module = _get_enclosing_fsdp_module(module, root_model)
+                root_modules.add(root_module)
 
-        # Ensure all modules in root_modules are the same
-        assert len(root_modules) == 1, "All modules must be in the same root FSDPModule"
-        root_module = next(iter(root_modules))
+            # Ensure all modules in root_modules are the same
+            assert len(root_modules) == 1, "All modules must be in the same root FSDPModule"
+            root_module = next(iter(root_modules))
 
-        # Check if root module state is sharded and unshard if needed
-        if fully_shard.state(root_module)._fsdp_param_group.is_sharded:
-            with enable_fake_quant(root_module):
-                root_module.unshard()
+            # Check if root module state is sharded and unshard if needed
+            if fully_shard.state(root_module)._fsdp_param_group.is_sharded:
+                with enable_fake_quant(root_module):
+                    root_module.unshard()
 
-        # Get FSDPParam list
-        fsdp_param_group = fully_shard.state(root_module)._fsdp_param_group
-        fsdp_param_mapping = _create_fsdp_param_mapping(fsdp_param_group.fsdp_params, root_module)
+            # Get FSDPParam list
+            fsdp_param_group = fully_shard.state(root_module)._fsdp_param_group
+            fsdp_param_mapping = _create_fsdp_param_mapping(
+                fsdp_param_group.fsdp_params, root_model
+            )
 
-        # Assert that all the modules in the module list are present in this fsdp_param_group
-        for module in modules_to_update:
-            name = _get_module_name(module, root_module)
-            assert name in fsdp_param_mapping, f"Module {module} not found in fsdp_param_mapping"
-
+            # Assert that all the modules in the module list are present in this fsdp_param_group
+            for module in modules_to_update:
+                name = _get_module_name(module, root_model)
+                assert name in fsdp_param_mapping, (
+                    f"Module {module} not found in fsdp_param_mapping"
+                )
         # Yields for necessary weight updates/processing
         yield
     finally:
-        # Update FSDPParam list
-        for module in modules_to_update:
-            name = _get_module_name(module, root_module)
-            old_fsdp_param = fsdp_param_mapping[name]
+        from torch.distributed.fsdp import fully_shard
 
-            # Update mp policy to reflect the new dtype
-            new_mp_policy = MixedPrecisionPolicy(
-                param_dtype=module.weight.dtype,
-                reduce_dtype=None,
-                output_dtype=None,
-                cast_forward_inputs=False,
-            )
+        from modelopt.torch.quantization.utils import _get_enclosing_fsdp_module, _get_module_name
 
-            with no_requires_grad():
-                # Create a new QFSDPParam or FSDPParam based on weight type
-                param_class = QFSDPParam if isinstance(module.weight, QTensorWrapper) else FSDPParam
-                new_param = param_class(
-                    module.weight,
-                    old_fsdp_param._module_info,
-                    old_fsdp_param.mesh_info,
-                    old_fsdp_param.post_forward_mesh_info,
-                    old_fsdp_param.device,
-                    None,
-                    new_mp_policy,
-                    None,
+        if isinstance(root_model, FSDPModule):
+            # Update FSDPParam list
+            for module in modules_to_update:
+                name = _get_module_name(module, root_model)
+                old_fsdp_param = fsdp_param_mapping[name]
+
+                # Update mp policy to reflect the new dtype
+                new_mp_policy = MixedPrecisionPolicy(
+                    param_dtype=module.weight.dtype,
+                    reduce_dtype=None,
+                    output_dtype=None,
+                    cast_forward_inputs=False,
                 )
 
-                # Update the FSDPParam mapping to keep track of the new FSDPParam
-                fsdp_param_mapping[name] = new_param
+                with no_requires_grad():
+                    # Create a new QFSDPParam or FSDPParam based on weight type
+                    param_class = (
+                        QFSDPParam if isinstance(module.weight, QTensorWrapper) else FSDPParam
+                    )
+                    new_param = param_class(
+                        module.weight,
+                        old_fsdp_param._module_info,
+                        old_fsdp_param.mesh_info,
+                        old_fsdp_param.post_forward_mesh_info,
+                        old_fsdp_param.device,
+                        None,
+                        new_mp_policy,
+                        None,
+                    )
+                    if not isinstance(new_param, QFSDPParam):
+                        new_param.init_dtype_attrs(new_mp_policy)
 
-                # Remove the post_load_hook_handle to allow gc to collect the old FSDPParam
-                old_fsdp_param._post_load_hook_handle.remove()
+                    # Update the FSDPParam mapping to keep track of the new FSDPParam
+                    fsdp_param_mapping[name] = new_param
 
-        # Update FSDPParam list with new compressed weights
-        fsdp_param_group.fsdp_params = list(fsdp_param_mapping.values())
+                    # Remove the post_load_hook_handle to allow gc to collect the old FSDPParam
+                    old_fsdp_param._post_load_hook_handle.remove()
 
-        # Reshard FSDP root module
-        # TODO: Check if reshard is needed or not
-        root_module.reshard()
+            # Update FSDPParam list with new compressed weights
+            fsdp_param_group.fsdp_params = list(fsdp_param_mapping.values())
+
+            # Reshard FSDP root module
+            # TODO: Check if reshard is needed or not
+            root_module.reshard()
 
 
 def pack_real_quantize_weight(module, force_quantize: bool = False):
@@ -422,39 +434,8 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
             if name not in fsdp_param_mapping:
                 continue
 
-            if _compress_and_update_module_weight(submodule):
-                old_fsdp_param = fsdp_param_mapping[name]
-
-                # Update mp policy to reflect the new dtype
-                new_mp_policy = MixedPrecisionPolicy(
-                    param_dtype=submodule.weight.dtype,
-                    reduce_dtype=None,
-                    output_dtype=None,
-                    cast_forward_inputs=False,
-                )
-                with no_requires_grad():
-                    # Create a new QFSDPParam parameter
-                    new_param = QFSDPParam(
-                        submodule.weight,
-                        old_fsdp_param._module_info,
-                        old_fsdp_param.mesh_info,
-                        old_fsdp_param.post_forward_mesh_info,
-                        old_fsdp_param.device,
-                        None,
-                        new_mp_policy,
-                        None,
-                    )
-
-                    # Update the FSDPParam mapping to keep track of the new FSDPParam
-                    fsdp_param_mapping[name] = new_param
-                    # Remove the post_load_hook_handle to allow gc to collect the old FSDPParam
-                    old_fsdp_param._post_load_hook_handle.remove()
-
-        # Update FSDPParam list with new compressed weights
-        fsdp_param_group.fsdp_params = list(fsdp_param_mapping.values())
-
-        # Reshard FSDP root module
-        fsdp_module.reshard()
+            with fsdp2_aware_weight_update(fsdp_module, submodule):
+                _compress_and_update_module_weight(submodule)
 
     with SequentialQuantizer.convert_to_single_quantizer(module), torch.no_grad():
         for _, m in module.named_modules():
