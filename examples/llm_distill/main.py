@@ -55,12 +55,14 @@ class TrainingArguments(transformers.TrainingArguments):
     tf32: bool = True
 
 
-def llama_text_format_func(sample):
-    p, q, r = sample["system_prompt"], sample["question"], sample["response"]
-    if not p:
-        return f"<s>[INST] {q}[/INST]\n{r}</s>"
-    else:
-        return f"<s>[INST] <<SYS>>{p}<</SYS>>\n{q}[/INST]\n{r}</s>"
+def format_chat_template(sample, tokenizer):
+    # smol-smoltalk-Interaction-SFT dataset has "query" and "answer" fields
+    # Convert them to messages format and use tokenizer's apply_chat_template
+    messages = [
+        {"role": "user", "content": sample["query"]},
+        {"role": "assistant", "content": sample["answer"]},
+    ]
+    return tokenizer.apply_chat_template(messages, tokenize=False)
 
 
 class KDSFTTrainer(SFTTrainer, KDTrainer):
@@ -117,8 +119,8 @@ def train():
 
     # Dataset
     logger.info("Loading dataset...")
-    dset = datasets.load_dataset("Open-Orca/OpenOrca", split="train")
-    dset_splits = dset.train_test_split(train_size=25600, test_size=1700, seed=420)
+    dset = datasets.load_dataset("ReactiveAI/smol-smoltalk-Interaction-SFT", split="train")
+    dset_splits = dset.train_test_split(train_size=12800, test_size=1280, seed=420)
     dset_train, dset_eval = dset_splits["train"], dset_splits["test"]
     logger.info("Dataset loaded.")
 
@@ -166,7 +168,7 @@ def train():
         training_args,
         train_dataset=dset_train,
         eval_dataset=dset_eval,
-        formatting_func=llama_text_format_func,
+        formatting_func=lambda sample: format_chat_template(sample, tokenizer),
         processing_class=tokenizer,
     )
 
