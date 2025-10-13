@@ -303,7 +303,7 @@ See more details on running LLM evaluation benchmarks [here](../llm_eval/README.
 
 The final model after QAT/QAD is similar in architecture to that of PTQ model. QAT model simply have updated weights as compared to the PTQ model. It can be deployed to TensorRT-LLM (TRTLLM)/TensorRT/vLLM/SGLang just like a regular **ModelOpt** PTQ model if the quantization format is supported for deployment.
 
-To export TRTLLM/vLLM/SGLang compatible checkpoint for the model after QAT (or QAD) model with run:
+To export TRTLLM/vLLM/SGLang compatible checkpoint for the model after QAT (or QAD) model, run:
 
 ```sh
 python export.py --pyt_ckpt_path llama3-qat --export_path llama3-qat-deploy
