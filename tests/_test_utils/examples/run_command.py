@@ -32,15 +32,25 @@ def _extend_cmd_parts(cmd_parts: list[str], **kwargs):
     return cmd_parts
 
 
-def run_example_command(cmd_parts: list[str], example_path: str, setup_free_port: bool = False):
-    print(f"[{example_path}] Running command: {cmd_parts}")
-    env = os.environ.copy()
+def run_example_command(
+    cmd_parts: list[str], example_path: str, env_vars: dict = {}, setup_free_port: bool = False
+):
+    example_dir = MODELOPT_ROOT / "examples" / example_path
+    example_abspath = os.path.abspath(example_dir)
+
+    cmd_str = " ".join(str(part) for part in cmd_parts)
+    print(f"Running command: cd {example_abspath} && {cmd_str}")
+
+    if env_vars is not None and len(env_vars) > 0:
+        env = env_vars
+    else:
+        env = os.environ.copy()
 
     if setup_free_port:
         free_port = get_free_port()
         env["MASTER_PORT"] = str(free_port)
 
-    subprocess.run(cmd_parts, cwd=MODELOPT_ROOT / "examples" / example_path, env=env, check=True)
+    subprocess.run(cmd_parts, cwd=example_dir, env=env, check=True)
 
 
 def run_command_in_background(cmd_parts, example_path, stdout=None, stderr=None, text=True):
@@ -93,32 +103,159 @@ def run_llm_autodeploy_command(
             server_handler.terminate()
 
 
-def run_torch_onnx_command(*, quantize_mode: str, onnx_save_path: str, calib_size: str, **kwargs):
+def run_onnx_quantization_trtexec_command(
+    *, onnx_path: str, static_plugins: str | None = None, env_vars: dict | None = None, **kwargs
+):
+    """Run TensorRT execution command for ONNX model.
+
+    Args:
+        onnx_path: Path to the input ONNX model
+        static_plugins: Path to static plugins
+        env_vars: Environment variables to set
+        **kwargs: Additional arguments to pass to the command
+    """
+    base_cmd = ["trtexec", "--stronglyTyped", f"--onnx={onnx_path}"]
+
+    if static_plugins:
+        kwargs.update(
+            {
+                "staticPlugins": static_plugins,
+            }
+        )
+
+    cmd_parts = _extend_cmd_parts(base_cmd, **kwargs)
+    run_example_command(cmd_parts, "onnx_ptq", env_vars=env_vars)
+
+
+def run_onnx_autocast_cli_command(
+    *,
+    onnx_path: str,
+    output_path: str,
+    low_precision_type: str = "fp16",
+    keep_io_types: bool = True,
+    providers: list[str] = ["trt", "cuda", "cpu"],
+    trt_plugins: str | None = None,
+    env_vars: dict | None = None,
+    **kwargs,
+):
+    """Run ONNX autocast CLI command for model precision conversion.
+    Args:
+        onnx_path: Path to the input ONNX model
+        output_path: Path to save the converted ONNX model
+        low_precision_type: Target precision type (fp16, bf16, etc.)
+        keep_io_types: Whether to preserve input/output data types
+        providers: List of execution providers to use
+        trt_plugins: Path to TensorRT plugins
+        env_vars: Environment variables to set
+        **kwargs: Additional arguments to pass to the command
+    """
+    # Update kwargs with required parameters
+    kwargs.update(
+        {
+            "onnx_path": onnx_path,  # Path to input ONNX model
+            "output_path": output_path,  # Path to save converted model
+            "low_precision_type": low_precision_type,  # Target precision (fp16, bf16)
+            "providers": providers,  # Execution providers list
+        }
+    )
+
+    # Add flag to preserve input/output data types if requested
+    if keep_io_types:
+        kwargs.update({"keep_io_types": None})
+
+    # Add TensorRT plugins path if specified
+    if trt_plugins:
+        kwargs.update({"trt_plugins": trt_plugins})
+
+    cmd_parts = _extend_cmd_parts(["python", "-m", "modelopt.onnx.autocast"], **kwargs)
+    run_example_command(cmd_parts, "onnx_ptq", env_vars=env_vars)
+
+
+def run_torch_timm_onnx_command(
+    *,
+    quantize_mode: str,
+    onnx_save_path: str,
+    timm_model_name: str = "vit_base_patch16_224",
+    calib_size: int = 512,
+    env_vars: dict | None = None,
+    **kwargs,
+):
+    """Run torch to ONNX conversion command with quantization.
+    args:
+        quantize_mode: quantization mode to use
+        onnx_save_path: path to save the onnx model
+        timm_model_name: name of the timm model to use
+        calib_size: size of calibration dataset
+        env_vars: environment variables to set
+        **kwargs: additional arguments to pass to the command
+    """
     kwargs.update(
         {
             "quantize_mode": quantize_mode,
+            "timm_model_name": timm_model_name,
             "onnx_save_path": onnx_save_path,
             "calibration_data_size": calib_size,
         }
     )
+
     cmd_parts = _extend_cmd_parts(["python", "torch_quant_to_onnx.py"], **kwargs)
-    run_example_command(cmd_parts, "onnx_ptq")
+    run_example_command(cmd_parts, "onnx_ptq", env_vars=env_vars)
 
 
-def run_llm_export_command(
-    *, torch_dir: str, dtype: str, lm_head: str, output_dir: str, calib_size: str, **kwargs
+def run_llm_export_onnx_command(
+    *,
+    torch_dir: str,
+    dtype: str,
+    lm_head: str,
+    output_dir: str,
+    save_original: bool = False,
+    config_path: str | None = None,
+    dataset_dir: str | None = None,
+    calib_size: int = 512,
+    trust_remote_code: bool = False,
+    env_vars: dict | None = None,
+    **kwargs,
 ):
-    kwargs.update(
-        {
-            "torch_dir": torch_dir,
-            "dtype": dtype,
-            "lm_head": lm_head,
-            "output_dir": output_dir,
-            "calib_size": calib_size,
-        }
-    )
-    cmd_parts = _extend_cmd_parts(["python", "llm_export.py"], **kwargs)
-    run_example_command(cmd_parts, "onnx_ptq")
+    """Run LLM export command for model conversion to ONNX.
+
+    Args:
+        torch_dir: local HF model path or name
+        dtype: Target precision ("fp16", "fp8", "int4_awq", "nvfp4")
+        lm_head: LM head precision (only "fp16" supported)
+        output_dir: Output directory for exported model
+        save_original: Save original ONNX before optimization
+        config_path: Path to config.json (optional)
+        dataset_dir: Calibration dataset path
+        calib_size: Number of calibration samples
+        trust_remote_code: Trust remote code when loading models
+        env_vars: Environment variables
+        **kwargs: Additional command arguments
+    """
+    # prepare command arguments
+    cmd_args = {
+        "torch_dir": torch_dir,
+        "dtype": dtype,
+        "lm_head": lm_head,
+        "output_dir": output_dir,
+        "calib_size": calib_size,
+    }
+
+    # add optional configuration parameters
+    if save_original:
+        cmd_args["save_original"] = None
+    if config_path:
+        cmd_args["config_path"] = config_path
+    if dataset_dir:
+        cmd_args["dataset_dir"] = dataset_dir
+    if trust_remote_code:
+        cmd_args["trust_remote_code"] = None
+
+    # merge any additional keyword arguments
+    cmd_args.update(kwargs)
+
+    # Execute the command
+    cmd_parts = _extend_cmd_parts(["python", "llm_export.py"], **cmd_args)
+    run_example_command(cmd_parts, "onnx_ptq", env_vars=env_vars)
 
 
 def run_llm_ptq_command(*, model: str, quant: str, **kwargs):
