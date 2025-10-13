@@ -18,20 +18,22 @@ import torch
 
 # Models
 class ToyModel(torch.nn.Module):
-    def __init__(self, dims=[10, 10, 10, 10]):
+    def __init__(self, dims=[10, 10, 10, 10], bias=True):
         super().__init__()
         assert len(dims) >= 2
         if len(dims) == 2:
-            self.linears = torch.nn.Linear(dims[0], dims[1])
+            self.linears = torch.nn.Linear(dims[0], dims[1], bias=bias)
         else:
-            linears = [torch.nn.Linear(dims[i], dims[i + 1]) for i in range(len(dims) - 1)]
+            linears = [
+                torch.nn.Linear(dims[i], dims[i + 1], bias=bias) for i in range(len(dims) - 1)
+            ]
             self.linears = torch.nn.Sequential(*linears)
 
     def forward(self, x):
         return self.linears(x)
 
 
-class SmallQKVModel(torch.nn.Module):
+class SmallLinearModelwithCustomWeight(torch.nn.Module):
     def __init__(self, weights):
         super().__init__()
         self.q_proj = torch.nn.Linear(weights[0].shape[1], weights[0].shape[0], bias=False)
@@ -50,6 +52,35 @@ class SmallQKVModel(torch.nn.Module):
         x = self.v_proj(x)
         x = self.o_proj(x)
         return x
+
+
+class SmallQKVModel(torch.nn.Module):
+    def __init__(self, dim=4, device="cuda", apply_embed=False):
+        super().__init__()
+        self.embedding = torch.nn.Embedding(2, dim)
+        self.q_proj = torch.nn.Linear(dim, dim, bias=False)
+        self.k_proj = torch.nn.Linear(dim, dim, bias=False)
+        self.v_proj = torch.nn.Linear(dim, dim, bias=False)
+        self.o_proj = torch.nn.Linear(dim, dim, bias=False)
+        self.device = device
+        self.config = None
+        self.apply_embed = apply_embed
+        # TODO: Debug why fsdp2 modifies bias of layernorm for awq
+        self.input_layernorm = torch.nn.LayerNorm(dim, bias=False)
+
+    def forward(self, x):
+        if self.apply_embed:
+            x = self.embedding(x)
+
+        x = self.input_layernorm(x)
+        q_proj = self.q_proj(x)
+        k_proj = self.k_proj(x)
+        v_proj = self.v_proj(x)
+        scores = torch.matmul(q_proj, k_proj.transpose(-2, -1))
+        attn = torch.nn.functional.softmax(scores, dim=-1)
+        x = torch.matmul(attn, v_proj)
+        o_proj = self.o_proj(x)
+        return o_proj
 
 
 # Quantization configs
