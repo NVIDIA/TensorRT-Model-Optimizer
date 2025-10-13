@@ -37,7 +37,6 @@ logger = get_logger(__name__, log_level="INFO")
 class ModelArguments:
     teacher_name_or_path: str | None = None
     student_name_or_path: str | None = None
-    single_model: bool = False
 
 
 @dataclass
@@ -133,37 +132,29 @@ def train():
     logger.info("Tokenizer loaded.")
 
     # Model
-    if model_args.single_model:
-        logger.info("Loading single model only...")
-        model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_path, dtype=torch.bfloat16 if training_args.bf16 else None
-        )
-        logger.info("Model loaded.")
-    else:
-        logger.info("Loading student model...")
-        model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.student_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
-        )
-        logger.info("Student loaded.")
-        # Load checkpoint
-        logger.info("Loading teacher model and converting to Distillation model...")
-        teacher_model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.teacher_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
-        )
-        kd_config = {
-            "teacher_model": teacher_model,
-            "criterion": LMLogitsLoss(),
-        }
-        model = mtd.convert(model, mode=[("kd_loss", kd_config)])
-        logger.info("Models converted.")
+    logger.info("Loading student model...")
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+        model_args.student_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
+    )
+    logger.info("Student loaded.")
+    # Load checkpoint
+    logger.info("Loading teacher model and converting to Distillation model...")
+    teacher_model = transformers.AutoModelForCausalLM.from_pretrained(
+        model_args.teacher_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
+    )
+    kd_config = {
+        "teacher_model": teacher_model,
+        "criterion": LMLogitsLoss(),
+    }
+    model = mtd.convert(model, mode=[("kd_loss", kd_config)])
+    logger.info("Models converted.")
 
     # Fix problematic settings that logger.info excessive warnings
     model.generation_config.temperature = None
     model.generation_config.top_p = None
 
     # Trainer
-    trainer_cls = SFTTrainer if model_args.single_model else KDSFTTrainer
-    trainer = trainer_cls(
+    trainer = KDSFTTrainer(
         model,
         training_args,
         train_dataset=dset_train,
@@ -188,8 +179,7 @@ def train():
     # Save checkpoint
     logger.info("Saving checkpoint...")
     trainer.save_state()
-    kwargs = {"export_student": True} if not model_args.single_model else {}
-    trainer.save_model(trainer.args.output_dir, **kwargs)
+    trainer.save_model(trainer.args.output_dir, export_student=True)
     logger.info("Checkpoint saved.")
 
 
