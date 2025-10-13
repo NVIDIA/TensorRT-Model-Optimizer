@@ -43,9 +43,9 @@ from modelopt.torch.nas.plugins.megatron import (
     _DynamicRowParallelLinear,
     _DynamicVocabParallelEmbedding,
 )
-from modelopt.torch.nas.search_space import generate_search_space
 from modelopt.torch.nas.traced_hp import TracedHp
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
+from modelopt.torch.prune.plugins.mcore_minitron import _convert_model_to_dynamic_space
 from modelopt.torch.utils import flatten_tree
 from modelopt.torch.utils.random import centroid
 
@@ -163,7 +163,7 @@ def _test_mamba_parameter_sorting(rank, size):
             m.weight.data = torch.randn_like(m.weight)
 
     model.eval()
-    search_space = generate_search_space(model)
+    dynamic_space = _convert_model_to_dynamic_space(model)
 
     # Compute activations for sorting
     for _ in range(5):
@@ -173,11 +173,11 @@ def _test_mamba_parameter_sorting(rank, size):
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
     y1 = run_mcore_inference(model, prompt_tokens)
 
-    search_space.sort_parameters()
+    mtn.utils.sort_parameters(model)
 
     # check if all mamba_num_heads, mamba_head_dim, hidden_size have been sorted
     sortable_per_pp = [
-        n for n, hp in search_space.named_hparams(configurable=True) if hp.importance is not None
+        n for n, hp in dynamic_space.named_hparams(configurable=True) if hp.importance is not None
     ]
     # 2 mamba hps per layer + 1 for hidden_size (num_layers is not sorted!)
     assert len(sortable_per_pp) == 2 * num_layers // size + 1

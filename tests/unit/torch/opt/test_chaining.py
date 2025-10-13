@@ -47,20 +47,28 @@ def get_kd_mode():
     "mode",
     [
         ["autonas"],
-        ["autonas", "export"],
-        ["autonas", "export", "fastnas"],
-        ["autonas", "export", "fastnas", "export"],
-        ["autonas", "export", "fastnas", "export", get_kd_mode()],
-        ["autonas", "export", "fastnas", "export", get_kd_mode(), "export_student"],
-        ["autonas", "export", "fastnas", "export", "quantize", get_kd_mode(), "export_student"],
-        [get_kd_mode(), "export_student", "fastnas", "export", get_kd_mode(), "export_student"],
+        ["autonas", "export_nas"],
+        ["autonas", "export_nas", "fastnas"],
+        ["autonas", "export_nas", "fastnas", "export_nas"],
+        ["autonas", "export_nas", "fastnas", "export_nas", get_kd_mode()],
+        ["autonas", "export_nas", "fastnas", "export_nas", get_kd_mode(), "export_student"],
+        [
+            "autonas",
+            "export_nas",
+            "fastnas",
+            "export_nas",
+            "quantize",
+            get_kd_mode(),
+            "export_student",
+        ],
+        [get_kd_mode(), "export_student", "fastnas", "export_nas", get_kd_mode(), "export_student"],
         ["quantize"],
-        ["fastnas", get_kd_mode(), "export_student", "export"],
+        ["fastnas", get_kd_mode(), "export_student", "export_nas"],
         ["sparse_magnitude", get_kd_mode(), "export_student", "export_sparse"],
         ["sparse_magnitude", "quantize", get_kd_mode(), "export_student"],
-        ["fastnas", "export", "sparse_magnitude", "quantize", get_kd_mode(), "export_student"],
+        ["fastnas", "export_nas", "sparse_magnitude", "quantize", get_kd_mode(), "export_student"],
         ["fastnas", "quantize", get_kd_mode(), "export_student"],
-        ["fastnas", "sparse_magnitude", "export_sparse", "export"],
+        ["fastnas", "sparse_magnitude", "export_sparse", "export_nas"],
     ],
 )
 def test_chained_save_restore(mode):
@@ -95,20 +103,20 @@ def test_chained_save_restore(mode):
     ("mode", "error_msg"),
     [
         (
-            ["export"],
-            [r"Cannot add export according to the current export stack: deque\(\[.*\]\)."],
+            ["export_nas"],
+            [r"Cannot add export_nas according to the current export stack: deque\(\[.*\]\)."],
         ),
         (
             ["autonas", "fastnas"],
             [r"Cannot add fastnas after autonas! Next modes of autonas are \{.*\}."],
         ),
         (
-            ["fastnas", "export", "export_student"],
+            ["fastnas", "export_nas", "export_student"],
             [r"Cannot add export_student according to the current export stack: deque\(\[.*\]\)."],
         ),
         (
-            ["quantize", "export"],
-            [r"Cannot add export according to the current export stack: deque\(\[.*\]\)."],
+            ["quantize", "export_nas"],
+            [r"Cannot add export_nas according to the current export stack: deque\(\[.*\]\)."],
         ),
         (
             ["quantize", "fastnas"],
@@ -117,8 +125,8 @@ def test_chained_save_restore(mode):
             ],
         ),
         (
-            ["fastnas", get_kd_mode(), "export", "export_student"],
-            [r"Cannot add export according to the current export stack: deque\(\[.*\]\)."],
+            ["fastnas", get_kd_mode(), "export_nas", "export_student"],
+            [r"Cannot add export_nas according to the current export stack: deque\(\[.*\]\)."],
         ),
     ],
 )

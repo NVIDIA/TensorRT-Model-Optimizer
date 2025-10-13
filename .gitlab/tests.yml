@@ -54,19 +54,11 @@ example-torch:
   timeout: 30m
   parallel:
     matrix:
-      - EXAMPLE: [llm_distill, llm_sparsity, speculative_decoding]
+      - EXAMPLE: [llm_distill, llm_qat, llm_sparsity, speculative_decoding]
   script:
     - pip install ".[hf,dev-test]"
     - find examples/$EXAMPLE -name "requirements.txt" | while read req_file; do pip install -r "$req_file" || exit 1; done
     - pytest -s tests/examples/$EXAMPLE
-
-# TODO: Fix llm_qat test hang in GitLab CI
-example-failing:
-  extends: example-torch
-  allow_failure: true
-  parallel:
-    matrix:
-      - EXAMPLE: [llm_qat]
 
 example-trtllm:
   extends: example-torch

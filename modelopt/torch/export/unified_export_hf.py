@@ -26,6 +26,7 @@ from typing import Any
 
 import torch
 import torch.nn as nn
+from safetensors.torch import save_file
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
@@ -53,7 +54,7 @@ from .model_config import (
     QUANTIZATION_W4A8_AWQ,
     QUANTIZATION_W4A8_NVFP4_FP8,
 )
-from .plugins import rename_and_prune_if_spec_decoding, set_config_if_spec_decoding
+from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
     fuse_prequant_layernorm,
     get_activation_scaling_factor,
@@ -332,6 +333,10 @@ def _export_quantized_weight(
 
     setattr(sub_module, weight_name, nn.Parameter(quantized_weight, requires_grad=False))
 
+    # Register the corrected weight_scale as a buffer
+    if weight_scale is not None:
+        sub_module.register_buffer(quantizer_attrs.weight_scale, weight_scale)
+
 
 def _export_hf_checkpoint(
     model: nn.Module, dtype: torch.dtype | None = None
@@ -507,17 +512,23 @@ def export_hf_checkpoint(
     """
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
+
+    # NOTE: (hg) Early exit for speculative decoding models
+    # This is a temp workaround to avoid error with offline spec ckpt during _export_hf_checkpoint
+    if spec_opt_only(model):
+        save_file(export_spec_ckpt_state_dict(model), f"{export_dir}/model.safetensors")
+        with open(f"{export_dir}/config.json", "w") as file:
+            json.dump(export_spec_ckpt_config(model), file, indent=4)
+        return
+
     try:
         post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
-        # NOTE: (hg) Should we save hf_quant_config when there's no quantization applied?
         # Save hf_quant_config.json for backward compatibility
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:
             json.dump(hf_quant_config, file, indent=4)
 
         hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
-
-        post_state_dict = rename_and_prune_if_spec_decoding(model, post_state_dict)
 
         # Save model
         model.save_pretrained(
@@ -531,8 +542,6 @@ def export_hf_checkpoint(
             config_data = json.load(file)
 
         config_data["quantization_config"] = hf_quant_config
-
-        config_data = set_config_if_spec_decoding(model, config_data)
 
         with open(original_config, "w") as file:
             json.dump(config_data, file, indent=4)

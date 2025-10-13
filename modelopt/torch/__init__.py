@@ -20,7 +20,7 @@ import warnings as _warnings
 from packaging.version import Version as _Version
 from torch import __version__ as _torch_version
 
-from . import distill, nas, opt, prune, quantization, sparsity, speculative, utils
+from . import distill, nas, opt, peft, prune, quantization, sparsity, speculative, utils
 
 if _Version(_torch_version) < _Version("2.7"):
     _warnings.warn(
@@ -34,7 +34,7 @@ try:
 
     if not (_Version("4.48") <= _Version(_transformers_version) < _Version("5.0")):
         _warnings.warn(
-            f"transformers version {_transformers_version} is incompatible with nvidia-modelopt and may cause issues. "
+            f"transformers version {_transformers_version} is not tested with nvidia-modelopt and may cause issues. "
             "Please install recommended version with `pip install nvidia-modelopt[hf]` if working with HF models.",
         )
 except ImportError:
