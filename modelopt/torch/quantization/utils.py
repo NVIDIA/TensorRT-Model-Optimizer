@@ -15,9 +15,11 @@
 
 """Quantization utilities."""
 
+from __future__ import annotations
+
 from collections import namedtuple
-from collections.abc import Generator
 from contextlib import ExitStack, contextmanager, nullcontext
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -26,6 +28,11 @@ from torch.distributed.fsdp import FSDPModule
 from torch.distributed.tensor import Replicate
 
 from modelopt.torch.utils import get_unwrapped_name, print_rank_0
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    from torch.distributed.fsdp._fully_shard._fsdp_param import FSDPParam
 
 __all__ = [
     "EXPORT_MODE",
@@ -473,3 +480,39 @@ def set_quantizer_state_dict(model: nn.Module, quantizer_state_dict: dict):
         key = get_unwrapped_name(name, model)
         if isinstance(module, TensorQuantizer) and key in quantizer_state_dict:
             module.load_state_dict(quantizer_state_dict[key])
+
+
+def patch_fsdp_mp_dtypes():
+    """Patch FSDP2 to handle mixed dtypes properly during quantization."""
+
+    def _init_mp_dtypes(self) -> None:
+        """This function is directly copied from the latest version of torch FSDP."""
+        for fsdp_param in self.fsdp_params:
+            fsdp_param.init_dtype_attrs(self.mp_policy)
+
+        trainable_params: list[FSDPParam] = [
+            p for p in self.fsdp_params if p.sharded_param.requires_grad
+        ]
+        orig_dtypes = {p.orig_dtype for p in trainable_params}
+        reduce_dtypes = {p.reduce_dtype for p in trainable_params}
+
+        if len(trainable_params) > 0 and len(orig_dtypes) != 1:
+            raise AssertionError(
+                f"FSDP expects uniform original parameter dtype but got {orig_dtypes}"
+            )
+
+        self._orig_dtype = next(iter(orig_dtypes)) if len(trainable_params) else None
+
+        if len(trainable_params) > 0 and len(reduce_dtypes) != 1:
+            raise AssertionError(f"FSDP expects uniform reduce dtype but got {reduce_dtypes}")
+
+        self._reduce_dtype = next(iter(reduce_dtypes)) if len(trainable_params) else None
+
+    # Apply the patch
+    original_init_mp_dtypes = (
+        torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes
+    )
+    torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes = (
+        _init_mp_dtypes
+    )
+    return original_init_mp_dtypes
