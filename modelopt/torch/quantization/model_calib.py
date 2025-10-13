@@ -962,13 +962,15 @@ def svdquant(
         module.weight_quantizer.reset_amax()
         module.input_quantizer.reset_amax()
 
+    if is_megatron_core_model(model):
+        create_and_replace_svdq_parallel_linear_on_the_fly(model=model)
+    else:
+        create_and_replace_svdquant_linear_on_the_fly(model=model)
+
     awq(model, forward_loop, "awq_lite", **kwargs)
 
     if is_megatron_core_model(model):
-        create_and_replace_svdq_parallel_linear_on_the_fly(model=model)
         mtpeft.add_adapter_svdq(model, lowrank)
-    else:
-        create_and_replace_svdquant_linear_on_the_fly(model=model)
 
     for name, module in model.named_modules():
         if is_quantized_linear(module) and module.weight_quantizer.is_enabled:

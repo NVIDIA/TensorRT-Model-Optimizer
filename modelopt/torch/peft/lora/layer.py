@@ -92,7 +92,11 @@ class LoRAModule(DynamicModule):
         Returns:
             Output from the base layer plus active LoRA adaptations
         """
-        if hasattr(self, "input_quantizer") and hasattr(self.input_quantizer, "pre_quant_scale"):
+        if (
+            hasattr(self, "input_quantizer")
+            and hasattr(self.input_quantizer, "pre_quant_scale")
+            and getattr(self.input_quantizer, "pre_quant_scale") is not None
+        ):
             x = x * self.input_quantizer.pre_quant_scale
             with self.input_quantizer.disable_pre_quant_scale():
                 output = super().forward(x, *args, **kwargs)
