@@ -297,8 +297,14 @@ def main(args):
         )
     else:
         if args.dataset is None:
-            args.dataset = ["nemotron-post-training-dataset-v2"]
-            warnings.warn("No dataset specified. Defaulting to nemotron-post-training-dataset-v2.")
+            args.dataset = ["cnn_dailymail", "nemotron-post-training-dataset-v2"]
+            warnings.warn(
+                "No dataset specified. Defaulting to cnn_dailymail and nemotron-post-training-dataset-v2."
+            )
+        # Adjust calib_size to match dataset length by extending or truncating as needed
+        args.calib_size = (args.calib_size + [args.calib_size[-1]] * len(args.dataset))[
+            : len(args.dataset)
+        ]
         tokenizer = get_tokenizer(args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code)
 
         default_padding_side = tokenizer.padding_side
