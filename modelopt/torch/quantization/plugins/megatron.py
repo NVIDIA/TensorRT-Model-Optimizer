@@ -611,13 +611,9 @@ class _MegatronTEGroupedMLP(_MegatronMLP):
     def _setup(self):
         if not hasattr(self, "parallel_state") or self.parallel_state is None:
             self.parallel_state = ParallelState(
-                mcore_parallel.get_expert_data_parallel_group(check_initialized=False),
-                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(
-                    check_initialized=False
-                ),
-                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(
-                    check_initialized=False
-                ),
+                mcore_parallel.get_expert_data_parallel_group(),
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
             )
         # initialize parallel state for submodules linear_fc1 and linear_fc2
         self.linear_fc1.parallel_state = self.parallel_state
@@ -630,13 +626,9 @@ class _MegatronSequentialMLP(_MegatronMLP):
     def _setup(self):
         if not hasattr(self, "parallel_state") or self.parallel_state is None:
             self.parallel_state = ParallelState(
-                mcore_parallel.get_expert_data_parallel_group(check_initialized=False),
-                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(
-                    check_initialized=False
-                ),
-                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(
-                    check_initialized=False
-                ),
+                mcore_parallel.get_expert_data_parallel_group(),
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
             )
 
         # Initialize parallel state for submodules local_experts.*.linear_fc1 and local_experts.*.linear_fc2

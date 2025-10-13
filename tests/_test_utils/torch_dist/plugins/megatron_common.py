@@ -515,20 +515,21 @@ def copy_weights_from_grouped_to_non_grouped(te_grouped_moe_model, sequential_mo
 
     # Map grouped weights to sequential weights
     weight_mapping = {}
-    sequential_key_template = "decoder.layers.{}.mlp.experts.local_experts.{}.linear_fc{}.weight"
+    sequential_key_template = "decoder.layers.{}.mlp.experts.local_experts.{}.linear_fc{}"
     for key, value in te_grouped_state.items():
-        if "experts.linear_fc" in key and "weight" in key:
+        if "experts.linear_fc" in key and any(param in key for param in ("weight", "bias")):
             # Extract expert index from grouped weight name
             # Format: decoder.layers.X.mlp.experts.linear_fcY.weightZ
             parts = key.split(".")
             layer_idx = parts[2]  # X
             fc_idx = parts[5]  # Y (linear_fc1 or linear_fc2)
-            weight_idx = parts[6]  # Z (weight0, weight1, etc.)
-
-            # Map to sequential format: decoder.layers.X.mlp.experts.local_experts.Y.linear_fcZ.weight
-            expert_idx = weight_idx.replace("weight", "")
+            param_idx = parts[6]  # weight0 / bias0 / etc.
+            match = re.search(r"\d+", param_idx)
+            expert_idx = match.group(0) if match else "0"  # Z for expert index
+            # Map to sequential format: decoder.layers.X.mlp.experts.local_experts.Y.linear_fcZ
             sequential_key = sequential_key_template.format(layer_idx, expert_idx, fc_idx[-1])
-            weight_mapping[sequential_key] = value
+            param_name = "weight" if "weight" in param_idx else "bias"
+            weight_mapping[f"{sequential_key}.{param_name}"] = value
         elif isinstance(value, torch.Tensor):
             weight_mapping[key] = value
 
@@ -540,7 +541,7 @@ def copy_weights_from_grouped_to_non_grouped(te_grouped_moe_model, sequential_mo
     sequential_moe_model.load_state_dict(sequential_state)
 
 
-def compare_amax_sync_across_expert_parallel(model):
+def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True):
     """
     Test if amax values are synchronized across expert parallel groups.
 
@@ -591,11 +592,12 @@ def compare_amax_sync_across_expert_parallel(model):
                 quantizer_type in expert_quantizers
                 and rank_idx in expert_quantizers[quantizer_type]
             ):
-                # compare expert value across expert for sequential MoE
-                assert expert_quantizers[quantizer_type][rank_idx] == amax_val, (
-                    f"{rank_idx}, {quantizer_type}, expert_quantizers[quantizer_type][rank_idx]: "
-                    f"{expert_quantizers[quantizer_type][rank_idx]}, amax_val: {amax_val}"
-                )
+                if compare_across_experts:
+                    # compare expert value across expert for sequential MoE
+                    assert expert_quantizers[quantizer_type][rank_idx] == amax_val, (
+                        f"{rank_idx}, {quantizer_type}, expert_quantizers[quantizer_type][rank_idx]: "
+                        f"{expert_quantizers[quantizer_type][rank_idx]}, amax_val: {amax_val}"
+                    )
             expert_quantizers[quantizer_type][rank_idx] = amax_val
 
     # Check synchronization - fail fast on first inconsistency

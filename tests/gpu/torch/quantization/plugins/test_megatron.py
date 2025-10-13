@@ -677,31 +677,20 @@ def _test_expert_model_parallel_amax_sync(
     assert initial_sync, (
         f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
     )
-    # Create inconsistent amax values
-    cur_rank = torch.distributed.get_rank()
-    for name, module in model.named_modules():
-        if isinstance(module, mtq.nn.TensorQuantizer):
-            # Check if this is an expert quantizer
-            is_expert_quantizer = (
-                "local_experts" in name  # sequential MoE
-                or ("experts" in name and "linear_fc" in name)  # TEGrouped MoE
-            )
 
-            if is_expert_quantizer and hasattr(module, "_amax"):
-                # Create rank-specific amax values to simulate missing sync
-                rank_offset = cur_rank * 0.1
-                module.amax = module.amax + rank_offset
+    # Test if the amax values are inconsistent when distributed sync is disabled
+    mtq.model_calib.max_calibrate(model, forward_fn, distributed_sync=False)
+    inconsistent_amax, _, _ = compare_amax_sync_across_expert_parallel(
+        model, compare_across_experts=False
+    )
 
-    # Test if the amax values are inconsistent
-    inconsistent_amax, _, _ = compare_amax_sync_across_expert_parallel(model)
     assert not inconsistent_amax, (
         "Consistent amax across expert parallel ranks, "
         "Amax should not be synchronized across expert parallel ranks since expert parallel is disabled"
     )
-    # Re-calibrate the model and test synchronization
-    mtq.mode.wrapped_calib_func(
-        model, mtq.config.MaxCalibConfig(), forward_fn, mtq.model_calib.max_calibrate
-    )
+    # calibrate the model with distributed sync and test synchronization
+    mtq.model_calib.max_calibrate(model, forward_fn, distributed_sync=True)
+    mtq.plugins.megatron.sync_amax_across_sequential_mlp(model)
 
     final_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
     assert final_sync, f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
