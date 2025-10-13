@@ -165,7 +165,7 @@ accelerate launch --config-file ./accelerate_config/fsdp2.yaml \
     --output_dir ./llama3.2-distill \
     --max_length 2048 \
     --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 16 \
+    --per_device_eval_batch_size 8 \
     --max_steps 200 \
     --logging_steps 5
 ```
