@@ -15,15 +15,11 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import TYPE_CHECKING
 
 import pytest
 import torch
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from _test_utils.torch_export.export_utils import SmallQKVModel, ToyModel
-
-if TYPE_CHECKING:
-    from torch.distributed.fsdp._fully_shard._fsdp_param import FSDPParam
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export.layer_utils import is_quantlinear
@@ -32,35 +28,9 @@ from modelopt.torch.export.unified_export_hf import (
     requantize_resmooth_fused_llm_layers,
 )
 from modelopt.torch.quantization.qtensor.base_qtensor import fsdp2_aware_weight_update
+from modelopt.torch.quantization.utils import patch_fsdp_mp_dtypes
 
-
-# This function is updated in the latest version of torch FSDP
-def _init_mp_dtypes(self) -> None:
-    for fsdp_param in self.fsdp_params:
-        fsdp_param.init_dtype_attrs(self.mp_policy)
-    trainable_params: list[FSDPParam] = [
-        p for p in self.fsdp_params if p.sharded_param.requires_grad
-    ]
-    orig_dtypes = {p.orig_dtype for p in trainable_params}
-    reduce_dtypes = {p.reduce_dtype for p in trainable_params}
-    if len(trainable_params) > 0 and len(orig_dtypes) != 1:
-        # Models may have no grad params
-        raise AssertionError(f"FSDP expects uniform original parameter dtype but got {orig_dtypes}")
-    self._orig_dtype = next(iter(orig_dtypes)) if len(trainable_params) else None
-    if len(trainable_params) > 0 and len(reduce_dtypes) != 1:
-        # This can be relaxed if we issue one reduce-scatter per reduce
-        # dtype (but we would need a way for users to specify multiple
-        # reduce dtypes)
-        raise AssertionError(f"FSDP expects uniform reduce dtype but got {reduce_dtypes}")
-    self._reduce_dtype = next(iter(reduce_dtypes)) if len(trainable_params) else None
-
-
-orig_init_mp_dtypes = (
-    torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes
-)
-torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes = (
-    _init_mp_dtypes
-)
+orig_init_mp_dtypes = patch_fsdp_mp_dtypes()
 
 
 def _update_weight_test(rank, size):
