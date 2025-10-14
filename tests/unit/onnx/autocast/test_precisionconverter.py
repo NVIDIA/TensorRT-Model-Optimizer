@@ -1101,3 +1101,80 @@ def test_multiple_output_node_casted_to_output(
         high_precision_nodes=[], low_precision_nodes=["concat_1", "concat_2"]
     )
     onnx.checker.check_model(converted_model)
+
+
+####################################################################################################
+# Helper function to create model with resize operation
+####################################################################################################
+@pytest.fixture
+def create_model_with_resize_op():
+    """
+    Creates an ONNX model that contains a resize operation in the middle of the computation flow.
+    The resize op is properly connected in the graph but does not directly consume inputs or produce outputs.
+
+    The model structure:
+    X -> Add -> Resize -> Relu -> Y
+
+    Returns:
+        tuple: (model, value_info_map, initializer_map, node_to_init_map)
+    """
+    # Create inputs and outputs
+    x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 3, 32, 32])
+    y = helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 3, 64, 64])
+
+    # Create initializer for add operation
+    add_const = np.ones((1, 3, 32, 32), dtype=np.float32)
+    add_init = numpy_helper.from_array(add_const, name="add_const")
+
+    # Create resize parameters
+    roi_empty = numpy_helper.from_array(np.array([], dtype=np.float32), name="roi")
+    scales = numpy_helper.from_array(
+        np.array([1.0, 1.0, 2.0, 2.0], dtype=np.float32), name="scales"
+    )
+
+    # Create nodes: Add -> Resize -> Relu
+    add_node = helper.make_node("Add", ["X", "add_const"], ["add_out"], name="add")
+    resize_node = helper.make_node(
+        "Resize", ["add_out", "roi", "scales"], ["resize_out"], name="resize", mode="nearest"
+    )
+    relu_node = helper.make_node("Relu", ["resize_out"], ["Y"], name="relu")
+
+    # Build the graph
+    graph = helper.make_graph(
+        [add_node, resize_node, relu_node],
+        "model_with_resize",
+        [x],
+        [y],
+        [add_init, roi_empty, scales],
+    )
+
+    model = helper.make_model(graph, producer_name="model_with_resize")
+    model.opset_import[0].version = 20
+    model.ir_version = 10
+    onnx.checker.check_model(model)
+
+    model = onnx_utils.infer_shapes(model)
+    value_info_map, initializer_map, node_to_init_map = utils.setup_mappings(model)
+
+    return model, value_info_map, initializer_map, node_to_init_map
+
+
+@pytest.mark.parametrize("keep_io_types", [True, False])
+@pytest.mark.parametrize("low_precision_type", ["fp16", "bf16"])
+def test_resize_op_initializer_conversion(
+    create_model_with_resize_op, keep_io_types, low_precision_type
+):
+    model, value_info_map, initializer_map, node_to_init_map = create_model_with_resize_op
+
+    converter = PrecisionConverter(
+        model,
+        value_info_map,
+        initializer_map,
+        node_to_init_map,
+        keep_io_types=keep_io_types,
+        low_precision_type=low_precision_type,
+    )
+    converted_model = converter.convert(
+        high_precision_nodes=[], low_precision_nodes=[node.name for node in model.graph.node]
+    )
+    onnx.checker.check_model(converted_model)

@@ -46,7 +46,7 @@ PRECISION_MAP = {
 
 ONNX_TYPES = [t.onnx_type for t in PRECISION_MAP.values()]
 
-OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Resize", "Upsample", "NonMaxSuppression", "Celu"]
+OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Upsample", "NonMaxSuppression", "Celu"]
 
 # Temporarily block these ops in low precision, as they are not supported yet
 OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop", "LSTM"])
@@ -548,6 +548,8 @@ class PrecisionConverter:
         for node in self.model.graph.node:
             if node.name in low_precision_nodes:
                 for init in self.node_to_init_map[node.name]:
+                    if self._should_skip_low_precision_initializer_conversion(node, init):
+                        continue
                     modified |= convert_initializer(
                         init,
                         node,
@@ -1049,4 +1051,26 @@ class PrecisionConverter:
         if const_producer:
             get_consumer_nodes = utils.get_consumer_nodes(self.model, const_producer.output[0])
             return len(get_consumer_nodes) == 1 and get_consumer_nodes[0] == node
+        return False
+
+    def _should_skip_low_precision_initializer_conversion(
+        self, node: onnx.NodeProto, init: onnx.TensorProto
+    ) -> bool:
+        """Check if the initializer should be skipped for low precision conversion.
+
+        This is used for nodes that have initializers that MUST remain in FP32.
+        """
+        if node.op_type == "Resize":
+            if init.name not in node.input:
+                raise KeyError(
+                    f"Initializer {init.name} not found in node {node.name} input, not expected!"
+                )
+            # Figure out the index of the initializer in the node input
+            inputs_lst = list(node.input)
+            init_index = inputs_lst.index(init.name)
+            # The second input does not suport bfloat16, so leave it in FP32.
+            # The third input of Resize must remain in FP32.
+            # Ref: https://onnx.ai/onnx/operators/onnx__Resize.html#inputs
+            return init_index in {1, 2}
+
         return False
