@@ -295,7 +295,8 @@ def set_quantizer_attribute(
                 setattr(parent_module, name.split(".")[-1], module)
             elif isinstance(attribute, list) and len(attribute) != len(module):
                 warnings.warn(
-                    f"The number of attributes ({len(attribute)}) does not match the number of quantizers of {module}."
+                    f"The number of attributes ({len(attribute)}) does not match the number of "
+                    f"quantizers of {module} leading to partial assignment.",
                 )
             module.set_from_attribute_config(attribute)
 
