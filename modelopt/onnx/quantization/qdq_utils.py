@@ -352,7 +352,7 @@ def insert_dq_nodes(
     quantized_weights: dict[str, np.ndarray],
     attributes: dict[str, Any] | None = None,
     zero_points: dict[str, np.ndarray] | None = None,
-    precision_info: dict[str, int] | None = None,
+    layer_info: dict[str, dict] | None = None,
 ):
     """Insert new initializers and DQ nodes into graph.
 
@@ -361,6 +361,8 @@ def insert_dq_nodes(
         weights: A map from ONNX initializer name to tensor.
         scales: A map from ONNX initializer name to desired scale factor for that initializer.
         dq_only: Whether to only insert dq nodes.
+        layer_info: Optional dictionary mapping tensor names to precision (old format) or
+            to layer configuration dict (new format with precision, block_size, axis).
     """
     logger.debug(f"Inserting DQ nodes for {len(scales)} weights")
 
@@ -397,7 +399,7 @@ def insert_dq_nodes(
             zp = zero_points.get(name)
             assert zp is not None, "zero-point is enabled but zero-point values not found"
 
-        num_bits = get_num_bits(precision_info, name)
+        num_bits = get_num_bits(layer_info, name)
         # Updating the attributes for per-channel nodes.
         attrs = attributes.copy() if attributes is not None else None
         attrs = update_attributes_for_per_channel_nodes(attrs, num_bits)
@@ -423,7 +425,7 @@ def insert_qdq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
     weight_map: dict[str, gs.Tensor],
-    precision_info: dict[str, int] | None = None,
+    layer_info: dict[str, dict] | None = None,
 ):
     """Insert scales and QDQ nodes into graph.
 
@@ -431,6 +433,8 @@ def insert_qdq_nodes(
         graph: The graph to modify.
         scales: A map from ONNX initializer name to desired scale factor for that initializer.
         weight_map: A map from ONNX initializer name to graphsurgeon tensor.
+        layer_info: Optional dictionary mapping tensor names to precision (old format) or
+            to layer configuration dict (new format with precision, block_size, axis).
     """
     logger.debug(f"Inserting QDQ nodes for {len(scales)} weights")
 
@@ -465,7 +469,7 @@ def insert_qdq_nodes(
             scale,
             q_nodes,
             dq_nodes,
-            num_bits=get_num_bits(precision_info, name),
+            num_bits=get_num_bits(layer_info, name),
         )
 
     _postprocess_qdq(
