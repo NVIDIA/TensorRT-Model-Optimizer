@@ -152,7 +152,7 @@ You can also look at the NeMo tutorial notebooks [here](https://github.com/NVIDI
 In this e2e example we finetune Llama-3.2 models on the [smol-smoltalk-Interaction-SFT](https://huggingface.co/datasets/ReactiveAI/smol-smoltalk-Interaction-SFT)
 dataset as a minimal example to demonstrate a simple way of integrating Model Optimizer's KD feature.
 
-We replace normal supervised finetuning (SFT) of a Llama-3.2-1B model by distilling information from Llama-3.2-3B-Instruct.
+We replace normal supervised finetuning (SFT) of a Llama-3.2-1B base model by distilling information from Llama-3.2-3B-Instruct which has already been instruction-finetuned.
 
 > [!NOTE]
 > We can fit the following in memory using [FSDP](https://huggingface.co/docs/accelerate/en/usage_guides/fsdp) enabled on 8x RTX 6000 (total ~400GB VRAM)

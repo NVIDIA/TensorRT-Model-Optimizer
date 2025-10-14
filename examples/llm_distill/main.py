@@ -54,7 +54,7 @@ class TrainingArguments(transformers.TrainingArguments):
     tf32: bool = True
 
 
-def format_chat_template(sample, tokenizer):
+def _format_smoltalk_chat_template(sample, tokenizer):
     # smol-smoltalk-Interaction-SFT dataset has "query" and "answer" fields
     # Convert them to messages format and use tokenizer's apply_chat_template
     messages = [
@@ -68,29 +68,6 @@ class KDSFTTrainer(SFTTrainer, KDTrainer):
     pass
 
 
-def _save_model_fsdp_compat(
-    self,
-    output_dir: str | None = None,
-    _internal_call: bool = False,
-    *args,
-    **kwargs,
-):
-    output_dir = output_dir or self.args.output_dir
-    model = self.accelerator.unwrap_model(self.model)
-    if not _internal_call and self.is_fsdp_enabled:
-        state_dict = self.accelerator.get_state_dict(self.model)
-        if self.accelerator.is_main_process:
-            model.save_pretrained(
-                output_dir,
-                is_main_process=self.accelerator.is_main_process,
-                save_function=self.accelerator.save,
-                state_dict=state_dict,
-            )
-            self.processing_class.save_pretrained(output_dir)
-    else:
-        super(SFTTrainer, self).save_model(output_dir, _internal_call, *args, **kwargs)
-
-
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, TrainingArguments))
     model_args, training_args = parser.parse_args_into_dataclasses()
@@ -98,9 +75,6 @@ def train():
     # Enable automatic save/load of modelopt state huggingface checkpointing
     # modelopt state will be saved automatically to "modelopt_state.pth"
     mto.enable_huggingface_checkpointing()
-
-    # HACK: Fix FSDP2-incompatible save_model() function for SFTTrainer
-    SFTTrainer.save_model = _save_model_fsdp_compat
 
     # Set total batch size across all ranks to equal 64
     total_batch_size = 64
@@ -159,7 +133,7 @@ def train():
         training_args,
         train_dataset=dset_train,
         eval_dataset=dset_eval,
-        formatting_func=lambda sample: format_chat_template(sample, tokenizer),
+        formatting_func=lambda sample: _format_smoltalk_chat_template(sample, tokenizer),
         processing_class=tokenizer,
     )
 
