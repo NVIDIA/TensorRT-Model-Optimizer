@@ -30,7 +30,6 @@ from ..utils import multi_context, replace_function
 
 CUSTOM_MODEL_PLUGINS = set()
 CUSTOM_POST_CONVERSION_PLUGINS = set()
-CUSTOM_POST_CALIBRATION_PLUGINS = set()
 
 
 # TODO: This is a temporary solution
@@ -44,12 +43,6 @@ def register_custom_model_plugins_on_the_fly(model):
 def register_custom_post_conversion_plugins(model):
     """Registers custom modules as QUANT_MODULE after conversion."""
     for callback in CUSTOM_POST_CONVERSION_PLUGINS:
-        callback(model)
-
-
-def register_custom_post_calibration_plugins(model):
-    """Registers custom modules as QUANT_MODULE after calibration."""
-    for callback in CUSTOM_POST_CALIBRATION_PLUGINS:
         callback(model)
 
 
