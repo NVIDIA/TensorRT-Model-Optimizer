@@ -29,7 +29,12 @@ from modelopt.torch.export.unified_export_hf import (
 )
 from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, patch_fsdp_mp_dtypes
 
-orig_init_mp_dtypes = patch_fsdp_mp_dtypes()
+
+@pytest.fixture(autouse=True)
+def patch_fsdp_dtypes():
+    """Automatically patch FSDP mixed precision dtypes for all tests in this module."""
+    with patch_fsdp_mp_dtypes():
+        yield
 
 
 def _update_weight_test(rank, size):

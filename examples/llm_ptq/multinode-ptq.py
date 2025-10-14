@@ -274,7 +274,9 @@ def export_model(
     export_dir = Path(export_path)
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    post_state_dict, hf_quant_config = _export_hf_checkpoint(model, torch.bfloat16)
+    post_state_dict, hf_quant_config = _export_hf_checkpoint(
+        model, torch.bfloat16, is_fsdp2=True, accelerator=accelerator
+    )
 
     if accelerator.is_main_process:
         # Save hf_quant_config.json for backward compatibility
@@ -389,4 +391,6 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    main(args)
+    # This context manager can be removed once the update to FSDP2 function is reflected in torch
+    with patch_fsdp_mp_dtypes():
+        main(args)
