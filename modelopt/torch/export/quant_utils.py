@@ -965,7 +965,6 @@ PQS_FUSE_MODULE_MAPPING = [
     # Mathematical equivalence:
     #   Before: o_proj_out = [attn @ (v_proj_in @ v_proj.W^T)^T * scale] @ o_proj.W^T
     #   After:  o_proj_out = [attn @ (v_proj_in @ (v_proj.W * scale)^T)^T] @ o_proj.W^T
-    # note: for GQA models, TODO:
     (["LlamaAttention", "Qwen3Attention", "Qwen3MoeAttention"], ("v_proj", "o_proj")),
     # MLP: Fuse down_proj's pre_quant_scale into up_proj's output dimension
     # Mathematical equivalence:
