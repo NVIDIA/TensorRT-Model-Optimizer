@@ -332,6 +332,9 @@ def load_onnx_model(
         save_onnx(onnx_model, ir_version_onnx_path, use_external_data_format)
         intermediate_generated_files.append(ir_version_onnx_path)  # type: ignore[union-attr]
 
+    # Check that the model is valid
+    onnx.checker.check_model(onnx_model)
+
     return (
         onnx_model,
         has_custom_op,
