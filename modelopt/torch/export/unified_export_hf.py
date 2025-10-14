@@ -495,6 +495,7 @@ def _export_hf_checkpoint(
 
     if is_fsdp2:
         assert accelerator is not None, "Accelerator is required for FSDP2 export"
+        # Gather state_dict from all ranks
         quantized_state_dict = accelerator.get_state_dict(model)
     else:
         quantized_state_dict = model.state_dict()
@@ -515,8 +516,6 @@ def export_hf_checkpoint(
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
-    is_fsdp2: bool = False,
-    accelerator: Accelerator | None = None,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -538,9 +537,7 @@ def export_hf_checkpoint(
         return
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(
-            model, dtype, is_fsdp2, accelerator
-        )
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
         # Save hf_quant_config.json for backward compatibility
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:
