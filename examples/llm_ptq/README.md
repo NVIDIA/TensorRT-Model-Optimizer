@@ -241,7 +241,7 @@ ModelOpt enables quantization of LLMs across multiple GPU nodes using various qu
 
 ### Usage
 
-For distributed execution across multiple nodes, use the `accelerate` library. A template configuration file (`fsdp2.yaml`) is provided and can be customized based on your specific requirements.
+For distributed execution across multiple nodes, use the `accelerate` library. A template configuration file (`fsdp2.yaml`) is provided and can be customized for user specific requirements.
 
 On each node run the following command:
 

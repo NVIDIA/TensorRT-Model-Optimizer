@@ -21,7 +21,8 @@ from transformers import AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedTo
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export import get_model_type
-from modelopt.torch.export.unified_export_hf import export_hf_checkpoint
+from modelopt.torch.export.convert_hf_config import convert_hf_quant_config_format
+from modelopt.torch.export.unified_export_hf import _export_hf_checkpoint
 from modelopt.torch.quantization.config import need_calibration
 from modelopt.torch.quantization.utils import patch_fsdp_mp_dtypes
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader, get_supported_datasets
@@ -30,18 +31,11 @@ from modelopt.torch.utils.dataset_utils import get_dataset_dataloader, get_suppo
 RAND_SEED = 1234
 
 QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
-    "int8": mtq.INT8_DEFAULT_CFG,
-    "int8_sq": mtq.INT8_SMOOTHQUANT_CFG,
     "int8_wo": mtq.INT8_WEIGHT_ONLY_CFG,
     "fp8": mtq.FP8_DEFAULT_CFG,
     "int4_awq": mtq.INT4_AWQ_CFG,
-    "w4a8_awq": mtq.W4A8_AWQ_BETA_CFG,
     "nvfp4": mtq.NVFP4_DEFAULT_CFG,
     "nvfp4_awq": mtq.NVFP4_AWQ_LITE_CFG,
-    "fp8_pb_wo": mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
-    "fp8_pc_pt": mtq.FP8_PER_CHANNEL_PER_TOKEN_CFG,
-    "w4a8_nvfp4_fp8": mtq.W4A8_NVFP4_FP8_CFG,
-    "w4a8_mxfp4_fp8": mtq.W4A8_MXFP4_FP8_CFG,
     "nvfp4_mlp_only": mtq.NVFP4_MLP_ONLY_CFG,
 }
 
@@ -51,18 +45,6 @@ KV_QUANT_CFG_CHOICES = {
     "nvfp4": "NVFP4_KV_CFG",
     "nvfp4_affine": "NVFP4_AFFINE_KV_CFG",
 }
-
-SUPPORTED_QFORMATS = [
-    "int8_wo",
-    "int4_awq",
-    "fp8",
-    "nvfp4",
-    "nvfp4_awq",
-    "w4a8_awq",
-    "fp8_pb_wo",
-    "w4a8_mxfp4_fp8",
-    "nvfp4_mlp_only",
-]
 
 
 # Enable HuggingFace checkpointing
@@ -83,7 +65,7 @@ def parse_args():
     parser.add_argument(
         "--qformat",
         default="fp8",
-        choices=SUPPORTED_QFORMATS,
+        choices=QUANT_CFG_CHOICES.keys(),
         help="Quantization format",
     )
     parser.add_argument(
@@ -290,27 +272,32 @@ def export_model(
         export_path: Directory to export model to
     """
     export_dir = Path(export_path)
+    export_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get quantization config
-    export_hf_checkpoint(
-        model,
-        dtype=torch.bfloat16,
-        export_dir=export_dir,
-        save_modelopt_state=False,
-        is_fsdp2=True,
-        accelerator=accelerator,
-    )
+    post_state_dict, hf_quant_config = _export_hf_checkpoint(model, torch.bfloat16)
 
-    # Update config with quantization info
-    config_path = export_dir / "config.json"
-    with open(config_path) as f:
-        config_data = json.load(f)
+    if accelerator.is_main_process:
+        # Save hf_quant_config.json for backward compatibility
+        with open(f"{export_dir}/hf_quant_config.json", "w") as file:
+            json.dump(hf_quant_config, file, indent=4)
 
-    # Update architectures with original architecture. FSDP prefix must be removed for FSDP wrapped models.
-    config_data["architectures"] = architectures
+        hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
 
-    with open(config_path, "w") as f:
-        json.dump(config_data, f, indent=4)
+        # Save model
+        model.save_pretrained(export_dir, state_dict=post_state_dict, save_modelopt_state=False)
+
+        original_config = f"{export_dir}/config.json"
+        config_data = {}
+
+        with open(original_config) as file:
+            config_data = json.load(file)
+
+        config_data["quantization_config"] = hf_quant_config
+        # Update config architectures to use original architectures that does not have FSDP prefix
+        config_data["architectures"] = architectures
+
+        with open(original_config, "w") as file:
+            json.dump(config_data, file, indent=4)
 
 
 def main(args):
@@ -320,9 +307,9 @@ def main(args):
         raise OSError("GPU is required for quantization.")
 
     # Validate quantization format
-    if args.qformat not in SUPPORTED_QFORMATS:
+    if args.qformat not in QUANT_CFG_CHOICES:
         raise ValueError(
-            f"Quantization format {args.qformat} not supported. Choose from: {SUPPORTED_QFORMATS}"
+            f"Quantization format {args.qformat} not supported. Choose from: {QUANT_CFG_CHOICES.keys()}"
         )
 
     # Set random seeds
