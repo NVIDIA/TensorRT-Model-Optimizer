@@ -97,7 +97,8 @@ def disable_compilation(model):
 quant_config: dict[str, Any] = {
     "quant_dataset": "cnn_dailymail",
     "quant_num_samples": 512,
-    "quant_format": "NVFP4_DEFAULT_CFG",
+    # "quant_format": "NVFP4_DEFAULT_CFG",
+    "quant_format": "NVFP4_AWQ_LITE_CFG",
     "amax_file_path": None,  # Optional: path to pre-computed amax values (e.g., "/path/to/amax.pt")
 }
 
@@ -176,6 +177,7 @@ def fakequant_run_prolog(self):
 
     quant_cfg = getattr(mtq, quant_config["quant_format"])
 
+    print(f"Quantizing model with {quant_config['quant_format']} format")
     with disable_compilation(self.model):
         mtq.quantize(self.model, quant_cfg, forward_loop=calibrate_loop)
 
