@@ -21,9 +21,7 @@ from transformers import AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedTo
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export import get_model_type
-from modelopt.torch.export.convert_hf_config import convert_hf_quant_config_format
-from modelopt.torch.export.quant_utils import postprocess_state_dict
-from modelopt.torch.export.unified_export_hf import _export_hf_checkpoint
+from modelopt.torch.export.unified_export_hf import export_hf_checkpoint
 from modelopt.torch.quantization.config import need_calibration
 from modelopt.torch.quantization.utils import patch_fsdp_mp_dtypes
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader, get_supported_datasets
@@ -121,11 +119,6 @@ def parse_args():
         action="store_true",
         help="Trust remote code for HuggingFace models",
     )
-    parser.add_argument(
-        "--attn_implementation",
-        type=str,
-        help="Attention implementation to use (passed to HF model loading)",
-    )
     parser.add_argument("--awq_block_size", default=0, type=int)
 
     args = parser.parse_args()
@@ -159,6 +152,8 @@ def load_and_prepare_model(
     )
     model.eval()
     model_type = get_model_type(model)
+    # Need the original architectures for export
+    # FSDP prefix is added to the architectures for FSDP2 wrapped models
     original_architectures = model.config.architectures
 
     # FSDP2 requires an optimizer to be prepared together with the model
@@ -274,6 +269,8 @@ def create_fsdp2_calibration_loop(
                     for k, v in batch.items()
                 }
             # Use outer model (FSDP-wrapped), not the parameter
+            # Important: We should forward pass using the unwrapped model
+            # mtq.quantize will unwrap the model & pass to the forward_loop
             model(**batch)
 
     return calibrate
@@ -293,41 +290,27 @@ def export_model(
         export_path: Directory to export model to
     """
     export_dir = Path(export_path)
-    export_dir.mkdir(parents=True, exist_ok=True)
 
     # Get quantization config
-    _, hf_quant_config = _export_hf_checkpoint(model, dtype=torch.bfloat16)
+    export_hf_checkpoint(
+        model,
+        dtype=torch.bfloat16,
+        export_dir=export_dir,
+        save_modelopt_state=False,
+        is_fsdp2=True,
+        accelerator=accelerator,
+    )
 
-    # Gather and post-process state dict
-    model_state_dict = accelerator.get_state_dict(model)
-    post_state_dict = postprocess_state_dict(model_state_dict, 1.0, None)
+    # Update config with quantization info
+    config_path = export_dir / "config.json"
+    with open(config_path) as f:
+        config_data = json.load(f)
 
-    # Save quantization config
-    if accelerator.is_main_process:
-        with open(export_dir / "hf_quant_config.json", "w") as f:
-            json.dump(hf_quant_config, f, indent=4)
+    # Update architectures with original architecture. FSDP prefix must be removed for FSDP wrapped models.
+    config_data["architectures"] = architectures
 
-        # Convert config format
-        hf_quant_config = convert_hf_quant_config_format(hf_quant_config)
-
-        # Save model
-        model.save_pretrained(
-            export_dir,
-            state_dict=post_state_dict,
-            save_modelopt_state=False,
-        )
-
-        # Update config with quantization info
-        config_path = export_dir / "config.json"
-        with open(config_path) as f:
-            config_data = json.load(f)
-
-        config_data["quantization_config"] = hf_quant_config
-        # Update architectures with original architecture. FSDP prefix must be removed for FSDP wrapped models.
-        config_data["architectures"] = architectures
-
-        with open(config_path, "w") as f:
-            json.dump(config_data, f, indent=4)
+    with open(config_path, "w") as f:
+        json.dump(config_data, f, indent=4)
 
 
 def main(args):
@@ -402,10 +385,13 @@ def main(args):
         print(f"Quantization completed in {elapsed:.2f}s")
         mtq.print_quant_summary(model)
 
+    start_time = time.time()
     export_model(model, accelerator, args.export_path, original_architectures)
+    elapsed = time.time() - start_time
 
     if accelerator.is_main_process:
         # Export the model
+        print(f"Export completed in {elapsed:.2f}s")
         print(f"Model exported to {args.export_path}")
 
     print("Unpatching FSDP2 MP dtypes")
