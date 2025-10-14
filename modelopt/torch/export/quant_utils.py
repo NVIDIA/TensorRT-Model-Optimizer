@@ -959,10 +959,19 @@ def all_items_same(item_list):
     return all(x == item_list[0] for x in item_list)
 
 
+# Format: (list of target modules, tuple of (linear_to_fuse_into, linear_from_with_scale))
 PQS_FUSE_MODULE_MAPPING = [
-    # format: (list of target modules, tuple of (linear_pqs_fuse_to, linear_pqs_from), dim to fuse)
-    (["LlamaAttention", "Qwen3Attention", "Qwen3MoeAttention"], ("v_proj", "o_proj"), "input"),
-    (["LlamaMLP", "Qwen3MLP", "Qwen3MoeMLP"], ("up_proj", "down_proj"), "output"),
+    # Attention: Fuse o_proj's pre_quant_scale into v_proj's output dimension
+    # Mathematical equivalence:
+    #   Before: o_proj_out = [attn @ (v_proj_in @ v_proj.W^T)^T * scale] @ o_proj.W^T
+    #   After:  o_proj_out = [attn @ (v_proj_in @ (v_proj.W * scale)^T)^T] @ o_proj.W^T
+    # note: for GQA models, TODO:
+    (["LlamaAttention", "Qwen3Attention", "Qwen3MoeAttention"], ("v_proj", "o_proj")),
+    # MLP: Fuse down_proj's pre_quant_scale into up_proj's output dimension
+    # Mathematical equivalence:
+    #   Before: down_proj_out = {[act_fn(self.gate_proj(x)) * up_proj(x)] * scale} @ down_proj.W^T
+    #   After:  down_proj_out = {[act_fn(self.gate_proj(x)) * (up_proj(x) * scale)]} @ down_proj.W^T
+    (["LlamaMLP", "Qwen3MLP", "Qwen3MoeMLP"], ("up_proj", "down_proj")),
 ]
 
 
@@ -983,7 +992,6 @@ def pattern_fuse_prequant(model: torch.nn.Module):
         for module_map in PQS_FUSE_MODULE_MAPPING:
             target_module_list = module_map[0]
             linear_pair = module_map[1]
-            dim_to_fuse = module_map[2]
             if any(module_name in type(module).__name__ for module_name in target_module_list):
                 linear_to = module.get_submodule(linear_pair[0])
                 linear_from = module.get_submodule(linear_pair[1])
@@ -991,15 +999,63 @@ def pattern_fuse_prequant(model: torch.nn.Module):
                     linear_from.input_quantizer, "_pre_quant_scale"
                 ):
                     pre_quant_scale = linear_from.input_quantizer._pre_quant_scale
-                    # check if we need to apply to the last dimension or the first dimension
-                    pre_quant_scale = (
-                        pre_quant_scale.view(-1, 1)
-                        if dim_to_fuse == "output"
-                        else pre_quant_scale.view(1, -1)
+
+                    # for GQA/MQA models, we apply averaging to the pre_quant_scale
+                    if pre_quant_scale.numel() != linear_to.weight.shape[0]:
+                        if "attention" not in type(module).__name__.lower():
+                            continue
+                        else:
+                            config = module.config
+                            num_kv_heads = config.num_key_value_heads
+                            kv_head_dim = linear_to.weight.shape[0] // num_kv_heads
+                            n_rep = pre_quant_scale.numel() // num_kv_heads // kv_head_dim
+
+                            # Reshape:(num_kv_heads, n_rep, kv_head_dim)
+                            averaged_scale = pre_quant_scale.view(
+                                num_kv_heads, n_rep, kv_head_dim
+                            ).mean(dim=1)
+
+                            # To update o_proj, we need to repeat back to original shape
+                            repeated_scale = (
+                                averaged_scale.unsqueeze(1)  # (2, 1, 16)
+                                .expand(num_kv_heads, n_rep, kv_head_dim)  # (2, 2, 16)
+                                .reshape(-1)  # (64,)
+                            )
+
+                            def _update_pre_quant_scale(module, new_pre_quant_scale):
+                                old_pre_quant_scale = module.input_quantizer._pre_quant_scale
+                                module.weight = nn.Parameter(
+                                    module.weight
+                                    * old_pre_quant_scale.to(
+                                        dtype=module.weight.dtype, device=module.weight.device
+                                    )
+                                    / new_pre_quant_scale.to(
+                                        dtype=module.weight.dtype, device=module.weight.device
+                                    )
+                                )
+                                module.input_quantizer.pre_quant_scale = new_pre_quant_scale
+
+                                # Redo weights collection
+                                module.weight_quantizer.reset_amax()
+                                enable_stats_collection(module.weight_quantizer)
+                                module.weight_quantizer(module.weight)
+                                finish_stats_collection(module.weight_quantizer)
+
+                            # Update o_proj's pre_quant_scale
+                            _update_pre_quant_scale(linear_from, repeated_scale)
+
+                            # Use averaged scale (flattened) for v_proj fusion
+                            pre_quant_scale = averaged_scale.reshape(-1)
+
+                    # Fuse the pre_quant_scale to v_proj weight (linear_to)
+                    # v_proj.weight shape: (out_features, in_features) = (32, hidden_size)
+                    # We scale the output dimension (first dimension)
+                    linear_to.weight = torch.nn.Parameter(
+                        linear_to.weight * pre_quant_scale.view(-1, 1)
                     )
-                    linear_to.weight = torch.nn.Parameter(linear_to.weight * pre_quant_scale)
                     if hasattr(linear_to, "bias") and linear_to.bias is not None:
                         linear_to.bias = torch.nn.Parameter(linear_to.bias * pre_quant_scale)
+
                     delattr(linear_from.input_quantizer, "_pre_quant_scale")
                     setattr(linear_from, "fused_with_prequant", True)
 
