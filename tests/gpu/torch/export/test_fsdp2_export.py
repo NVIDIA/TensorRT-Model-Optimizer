@@ -27,8 +27,7 @@ from modelopt.torch.export.unified_export_hf import (
     _export_quantized_weight,
     requantize_resmooth_fused_llm_layers,
 )
-from modelopt.torch.quantization.qtensor.base_qtensor import fsdp2_aware_weight_update
-from modelopt.torch.quantization.utils import patch_fsdp_mp_dtypes
+from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, patch_fsdp_mp_dtypes
 
 orig_init_mp_dtypes = patch_fsdp_mp_dtypes()
 
