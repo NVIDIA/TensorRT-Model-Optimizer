@@ -49,8 +49,8 @@ First obtain both a pretrained model to act as the teacher and a (usually smalle
 from transformers import AutoModelForCausalLM
 
 # Define student & teacher
-student_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
-teacher_model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.1-70B-Instruct")
+student_model = AutoModelForCausalLM.from_pretrained("student-model-id-or-path")
+teacher_model = AutoModelForCausalLM.from_pretrained("teacher-model-id-or-path")
 ```
 
 ### Set up the meta model
@@ -149,51 +149,26 @@ You can also look at the NeMo tutorial notebooks [here](https://github.com/NVIDI
 
 ## Knowledge Distillation (KD) for HuggingFace Models
 
-In this e2e example we finetune Llama-2 models on the [OpenOrca](https://huggingface.co/datasets/Open-Orca/OpenOrca)
-question-answer dataset as a minimal example to demonstrate a simple way of integrating Model Optimizer's KD feature.
+In this e2e example we finetune Llama-3.2 models on the [smol-smoltalk-Interaction-SFT](https://huggingface.co/datasets/ReactiveAI/smol-smoltalk-Interaction-SFT)
+dataset as a minimal example to demonstrate a simple way of integrating Model Optimizer's KD feature.
 
-First we do supervised finetuning (SFT) of a Llama-2-7b on OpenOrca dataset as the teacher, then distill it into
-a 1B-parameter model.
-
-Keep in mind the training loss of the distillation run is not directly comparable to the training loss of the teacher run.
+We replace normal supervised finetuning (SFT) of a Llama-3.2-1B base model by distilling information from Llama-3.2-3B-Instruct which has already been instruction-finetuned.
 
 > [!NOTE]
 > We can fit the following in memory using [FSDP](https://huggingface.co/docs/accelerate/en/usage_guides/fsdp) enabled on 8x RTX 6000 (total ~400GB VRAM)
 
-### Train teacher
-
 ```bash
 accelerate launch --config-file ./accelerate_config/fsdp2.yaml \
     main.py \
-    --single_model \
-    --teacher_name_or_path 'meta-llama/Llama-2-7b-hf' \
-    --output_dir ./llama2-7b-sft \
+    --teacher_name_or_path 'meta-llama/Llama-3.2-3B-Instruct' \
+    --student_name_or_path 'meta-llama/Llama-3.2-1B' \
+    --output_dir ./llama3.2-distill \
     --max_length 2048 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 4 \
-    --max_steps 400 \
-    --logging_steps 5
-```
-
-### Distill teacher into student
-
-```bash
-accelerate launch --config-file ./accelerate_config/fsdp2.yaml \
-    --fsdp_cpu_ram_efficient_loading False \
-    --fsdp_activation_checkpointing False \
-    main.py \
-    --teacher_name_or_path ./llama2-7b-sft \
-    --student_name_or_path 'TinyLlama/TinyLlama-1.1B-intermediate-step-1431k-3T' \
-    --output_dir ./llama2-distill \
-    --max_length 2048 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 4 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 8 \
     --max_steps 200 \
     --logging_steps 5
 ```
-
-> [!NOTE]
-> If you receive a `RuntimeError: unable to open file <...> in read-only mode: No such file or directory` simply re-run the command a second time.
 
 ## Resources
 

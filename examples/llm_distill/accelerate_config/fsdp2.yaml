@@ -4,9 +4,9 @@ distributed_type: FSDP
 downcast_bf16: 'no'
 enable_cpu_affinity: false
 fsdp_config:
-  fsdp_activation_checkpointing: true
+  fsdp_activation_checkpointing: false
   fsdp_auto_wrap_policy: TRANSFORMER_BASED_WRAP
-  fsdp_cpu_ram_efficient_loading: true
+  fsdp_cpu_ram_efficient_loading: false
   fsdp_offload_params: false
   fsdp_reshard_after_forward: true
   fsdp_state_dict_type: SHARDED_STATE_DICT
