@@ -50,8 +50,6 @@ KV_QUANT_CFG_CHOICES = {
 # Enable HuggingFace checkpointing
 mto.enable_huggingface_checkpointing()
 
-original_init_mp_dtypes = patch_fsdp_mp_dtypes()
-
 
 def parse_args():
     """Parse command line arguments."""
@@ -275,7 +273,7 @@ def export_model(
     export_dir.mkdir(parents=True, exist_ok=True)
 
     post_state_dict, hf_quant_config = _export_hf_checkpoint(
-        model, torch.bfloat16, is_fsdp2=True, accelerator=accelerator
+        model, torch.bfloat16, accelerator=accelerator
     )
 
     if accelerator.is_main_process:
@@ -384,9 +382,6 @@ def main(args):
         print(f"Model exported to {args.export_path}")
 
     print("Unpatching FSDP2 MP dtypes")
-    torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes = (
-        original_init_mp_dtypes
-    )
 
 
 if __name__ == "__main__":

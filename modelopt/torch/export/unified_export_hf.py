@@ -346,7 +346,6 @@ def _export_quantized_weight(
 def _export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
-    is_fsdp2: bool = False,
     accelerator: Accelerator | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
@@ -356,6 +355,7 @@ def _export_hf_checkpoint(
     Args:
         model: the torch model.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
+        accelerator: the accelerator instance in case of distributed export setup.
 
     Returns:
         post_state_dict: Dict containing quantized weights
@@ -493,8 +493,7 @@ def _export_hf_checkpoint(
                     with fsdp2_aware_weight_update(model, sub_module):
                         _export_quantized_weight(sub_module, dtype, weight_name)
 
-    if is_fsdp2:
-        assert accelerator is not None, "Accelerator is required for FSDP2 export"
+    if accelerator is not None:
         # Gather state_dict from all ranks
         quantized_state_dict = accelerator.get_state_dict(model)
     else:
