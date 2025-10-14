@@ -338,6 +338,129 @@ def _export_quantized_weight(
         sub_module.register_buffer(quantizer_attrs.weight_scale, weight_scale)
 
 
+def _get_sparse_attention_config(model: nn.Module) -> dict[str, Any]:
+    """Extract sparse attention configuration from model for export.
+
+    Args:
+        model: Model with sparse attention modules
+
+    Returns:
+        Dictionary with sparse attention config in format:
+        {
+            "config_groups": {
+                "group_0": {
+                    "sparse_algo": "softmax_skip",
+                    "threshold": 1e-4,  # only if not calibrated
+                    "targets": ["LlamaAttention"]
+                }
+            },
+            "threshold_scale_factor": 0.001234,  # global, if calibrated
+            "target_sparsity": 0.5,  # global, if calibrated
+            "producer": {"name": "modelopt", "version": "..."}
+        }
+    """
+    from modelopt import __version__
+    from modelopt.torch.sparsity.attention_sparsity.nn.sparse_attention import SparseAttentionModule
+
+    # Collect all enabled sparse attention modules
+    sparse_modules = []
+    for name, module in model.named_modules():
+        if isinstance(module, SparseAttentionModule) and module.is_enabled:
+            sparse_modules.append((name, module))
+
+    if not sparse_modules:
+        return {}
+
+    sparse_config = {
+        "config_groups": {},
+        "producer": {
+            "name": "modelopt",
+            "version": __version__,
+        },
+    }
+
+    # Check first module for global calibration parameters
+    # (all modules share the same calibration parameters)
+    first_module = sparse_modules[0][1]
+    method_instance = first_module._sparse_method_instance
+    threshold_scale_factor = getattr(method_instance, "threshold_scale_factor", None)
+
+    if threshold_scale_factor is not None:
+        # Model was calibrated: add global calibration parameters
+        sparse_config["threshold_scale_factor"] = float(threshold_scale_factor)
+
+        target_sparsity = getattr(method_instance, "target_sparsity", None)
+        if target_sparsity is not None:
+            sparse_config["target_sparsity"] = float(target_sparsity)
+
+    # Group modules by configuration
+    # Key: (sparse_algo, threshold_repr), Value: list of module class names
+    config_to_targets = {}
+
+    for name, module in sparse_modules:
+        method_instance = module._sparse_method_instance
+
+        # Extract sparse algorithm name from method name
+        # e.g., "flash_softmax_skip" -> "softmax_skip"
+        method_name = method_instance.name
+        if method_name.startswith("flash_"):
+            sparse_algo = method_name[6:]  # Remove "flash_" prefix
+        else:
+            sparse_algo = method_name
+
+        # Get module's original class name for targets
+        # Get the class name before SparseAttentionModule wrapping
+        original_cls = module.get_original_cls_by_level(level=0)
+        target_class_name = original_cls.__name__
+
+        # Build config key for grouping
+        if threshold_scale_factor is None:
+            # Not calibrated: include threshold in grouping
+            threshold_config = getattr(method_instance, "threshold_config", None)
+            if isinstance(threshold_config, dict):
+                # Convert dict to tuple for hashable key
+                threshold_repr = tuple(sorted(threshold_config.items()))
+            else:
+                threshold_repr = threshold_config
+        else:
+            # Calibrated: no threshold in per-layer config
+            threshold_repr = None
+
+        config_key = (sparse_algo, threshold_repr)
+
+        if config_key not in config_to_targets:
+            config_to_targets[config_key] = {
+                "sparse_algo": sparse_algo,
+                "threshold_config": threshold_config if threshold_scale_factor is None else None,
+                "targets": set(),
+            }
+
+        config_to_targets[config_key]["targets"].add(target_class_name)
+
+    # Convert grouped configs to config_groups format
+    for group_idx, ((sparse_algo, threshold_repr), group_data) in enumerate(
+        config_to_targets.items()
+    ):
+        group_name = f"group_{group_idx}"
+        group_config = {
+            "sparse_algo": group_data["sparse_algo"],
+            "targets": sorted(group_data["targets"]),
+        }
+
+        # Add threshold only if not calibrated
+        if group_data["threshold_config"] is not None:
+            threshold_config = group_data["threshold_config"]
+            if isinstance(threshold_config, dict):
+                # Convert to JSON-serializable format
+                group_config["threshold"] = {k: float(v) for k, v in threshold_config.items()}
+            else:
+                group_config["threshold"] = float(threshold_config)
+
+        sparse_config["config_groups"][group_name] = group_config
+
+    return sparse_config
+
+
 def _export_hf_checkpoint(
     model: nn.Module, dtype: torch.dtype | None = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -542,6 +665,11 @@ def export_hf_checkpoint(
             config_data = json.load(file)
 
         config_data["quantization_config"] = hf_quant_config
+
+        # Add sparse attention config if model has sparse attention
+        sparse_attention_config = _get_sparse_attention_config(model)
+        if sparse_attention_config:
+            config_data["sparse_attention_config"] = sparse_attention_config
 
         with open(original_config, "w") as file:
             json.dump(config_data, file, indent=4)
