@@ -982,7 +982,7 @@ def _quantize_awq_lite(
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
     logger.info("Quantizing model using AWQ lite algorithm")
     t = time.time()
-    layer_info = get_layer_info(onnx_model, nodes_to_exclude, **kwargs)
+    layer_info = get_layer_info(onnx_model, nodes_to_exclude, block_size, **kwargs)
     run_per_subgraph = kwargs.get("awqlite_run_per_subgraph", False)
     fuse_nodes = kwargs.get("awqlite_fuse_nodes", True)
 
