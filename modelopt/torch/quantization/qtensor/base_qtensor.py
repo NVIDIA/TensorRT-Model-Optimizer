@@ -23,8 +23,6 @@ from torch.distributed.fsdp import FSDPModule, fully_shard
 from torch.distributed.fsdp._fully_shard._fsdp_param import FSDPParam
 from torch.distributed.tensor import DTensor
 
-from modelopt.torch.quantization.utils import enable_fake_quant, fsdp2_aware_weight_update
-
 
 class QTensorType(enum.Enum):
     """Enumeration for defining types of quantization."""
@@ -234,6 +232,8 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
         Returns:
             None
         """
+        from modelopt.torch.quantization.utils import enable_fake_quant, fsdp2_aware_weight_update
+
         # Unshard FSDPmodule by temporarily setting _fake_quant to prevent weight compression from being triggered
         with enable_fake_quant(fsdp_module):
             fsdp_module.unshard()
