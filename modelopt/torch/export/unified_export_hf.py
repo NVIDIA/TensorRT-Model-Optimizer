@@ -26,13 +26,13 @@ from typing import Any
 
 import torch
 import torch.nn as nn
+from accelerate import Accelerator
 from safetensors.torch import save_file
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
-from modelopt.torch.quantization.qtensor.base_qtensor import fsdp2_aware_weight_update
-from modelopt.torch.quantization.utils import quantizer_attr_names
+from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
 from .layer_utils import (
@@ -344,7 +344,10 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module, dtype: torch.dtype | None = None
+    model: nn.Module,
+    dtype: torch.dtype | None = None,
+    is_fsdp2: bool = False,
+    accelerator: Accelerator | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -490,7 +493,11 @@ def _export_hf_checkpoint(
                     with fsdp2_aware_weight_update(model, sub_module):
                         _export_quantized_weight(sub_module, dtype, weight_name)
 
-    quantized_state_dict = model.state_dict()
+    if is_fsdp2:
+        assert accelerator is not None, "Accelerator is required for FSDP2 export"
+        quantized_state_dict = accelerator.get_state_dict(model)
+    else:
+        quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
         quantized_state_dict, kv_cache_max_bound, kv_cache_format
@@ -508,6 +515,8 @@ def export_hf_checkpoint(
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
+    is_fsdp2: bool = False,
+    accelerator: Accelerator | None = None,
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -529,7 +538,9 @@ def export_hf_checkpoint(
         return
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(
+            model, dtype, is_fsdp2, accelerator
+        )
 
         # Save hf_quant_config.json for backward compatibility
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:
