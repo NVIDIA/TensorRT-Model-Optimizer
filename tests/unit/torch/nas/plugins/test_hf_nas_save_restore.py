@@ -31,7 +31,7 @@ def test_pruned_transformers_save_restore(tmp_path):
     model_ref = BertForQuestionAnswering.from_pretrained(tiny_bert_dir)
 
     # Export a random subnet (proxy for search / prune)
-    model_ref = apply_mode_with_sampling(model_ref, ["fastnas", "export"])
+    model_ref = apply_mode_with_sampling(model_ref, ["fastnas", "export_nas"])
 
     model_ref.save_pretrained(tiny_bert_dir / "modelopt_model")
     assert os.path.exists(tiny_bert_dir / "modelopt_model/modelopt_state.pth")

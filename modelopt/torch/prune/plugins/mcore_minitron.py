@@ -27,23 +27,36 @@ Actual dynamic module implementations are at :mod:`modelopt.torch.nas.plugins.me
 import copy
 
 import torch
+import torch.nn as nn
 from pydantic import create_model
 
 # isort: off
-# import nas plugin to check if it is enabled else raises an Exception
+# import nas plugin to check if it is enabled else raises an Exception and disables the plugin
 from modelopt.torch.nas.plugins.megatron import *  # noqa: F403
-from modelopt.torch.nas.plugins.megatron import HAS_MAMBA, _DynamicMCoreLanguageModel
+from modelopt.torch.nas.plugins.megatron import (
+    HAS_MAMBA,
+    _DynamicMCoreLanguageModel,
+    SUPPORTED_MODELS,
+    drop_mcore_language_model_layers,
+)
 # isort: on
 
 from modelopt.torch.nas.conversion import NASModeRegistry
 from modelopt.torch.nas.registry import DMRegistry
-from modelopt.torch.nas.utils import sort_parameters
+from modelopt.torch.nas.utils import get_subnet_config, sort_parameters
 from modelopt.torch.opt.config import ModeloptBaseConfig, get_kwargs_for_create_model_with_rules
+from modelopt.torch.opt.conversion import ApplyModeError
+from modelopt.torch.opt.dynamic import DynamicSpace
+from modelopt.torch.opt.mode import (
+    ConvertEntrypoint,
+    ConvertReturnType,
+    ModeDescriptor,
+    RestoreEntrypoint,
+)
 from modelopt.torch.opt.searcher import BaseSearcher, SearchConfig, SearchStateDict
 from modelopt.torch.opt.utils import named_hparams
 from modelopt.torch.utils import print_rank_0
 
-from ..fastnas import FastNASModeDescriptor
 from ..pruning import PruneModeRegistry
 
 SUPPORTED_HPARAMS = {
@@ -57,6 +70,14 @@ SUPPORTED_HPARAMS = {
     # Depth pruning
     "num_layers",
 }
+
+__all__ = [
+    "SUPPORTED_HPARAMS",
+    "MCoreMinitronConfig",
+    "MCoreMinitronModeDescriptor",
+    "MCoreMinitronSearcher",
+    "drop_mcore_language_model_layers",
+]
 
 
 class MCoreMinitronSearcher(BaseSearcher):
@@ -218,9 +239,48 @@ MCoreMinitronConfig: type[ModeloptBaseConfig] = create_model(
 )
 
 
+def _convert_model_to_dynamic_space(
+    model: nn.Module, config: ModeloptBaseConfig | None = None
+) -> DynamicSpace:
+    """Create a dynamic space for the model (in-place)."""
+    dynamic_space = DynamicSpace(model)
+    dynamic_space._should_be_converted = lambda mod: isinstance(mod, tuple(SUPPORTED_MODELS.keys()))
+    dynamic_space.convert_to_dynamic(config.model_dump() if config else None, DMRegistry)
+    if not dynamic_space.is_configurable():
+        raise ApplyModeError(
+            "The model does not contain any configurable hyperparameters! Please check the"
+            " documentation for modules and config and how to get a configurable model."
+        )
+
+    return dynamic_space
+
+
+def convert_mcore_minitron(model: nn.Module, config: ModeloptBaseConfig) -> ConvertReturnType:
+    """Convert the model to the dynamic search space (in-place) and return the converted model and metadata.
+
+    This is a simplified version of convert_fastnas_searchspace that removes the automated recursive tracing
+    and instead directly converts the top-level model to a DynamicModule. Submodules should not need to be explicitly
+    converted as that happens from the top-level model.
+    """
+    _convert_model_to_dynamic_space(model, config)
+
+    # store current config in metadata
+    metadata = {"subnet_config": get_subnet_config(model)}
+
+    # return converted model as well as metadata
+    return model, metadata
+
+
+def restore_mcore_minitron(
+    model: nn.Module, config: ModeloptBaseConfig, metadata: dict
+) -> nn.Module:
+    """Restore the model (no-op since we don't want to convert again which forces TP=1)."""
+    return model
+
+
 @NASModeRegistry.register_mode
 @PruneModeRegistry.register_mode
-class MCoreMinitronModeDescriptor(FastNASModeDescriptor):
+class MCoreMinitronModeDescriptor(ModeDescriptor):
     """Class to describe the ``"mcore_minitron"`` mode.
 
     The properties of this mode can be inspected via the source code.
@@ -237,6 +297,26 @@ class MCoreMinitronModeDescriptor(FastNASModeDescriptor):
         return MCoreMinitronConfig
 
     @property
+    def next_modes(self) -> set[str] | None:
+        """Modes that must immediately follow this mode."""
+        return {"export_nas", "kd_loss", "quantize", "sparse_magnitude", "sparse_gpt"}
+
+    @property
+    def export_mode(self) -> str | None:
+        """The mode that corresponds to the export mode of this mode."""
+        return "export_nas"
+
+    @property
     def search_algorithm(self) -> type[BaseSearcher]:
-        """Specifies the search algorithm to use for this mode (if any)."""
+        """Specifies the search algorithm to use for this mode."""
         return MCoreMinitronSearcher
+
+    @property
+    def convert(self) -> ConvertEntrypoint:
+        """The mode's entrypoint for converting a model to a search space."""
+        return convert_mcore_minitron
+
+    @property
+    def restore(self) -> RestoreEntrypoint:
+        """The mode's entrypoint for restoring a model with the modelopt_state."""
+        return restore_mcore_minitron

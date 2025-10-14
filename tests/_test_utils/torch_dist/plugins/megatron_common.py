@@ -24,6 +24,7 @@ skip_if_no_megatron()
 
 from megatron.core import dist_checkpointing
 from megatron.core.inference.communication_utils import broadcast_from_last_pipeline_stage
+from megatron.core.inference.contexts import StaticInferenceContext
 from megatron.core.inference.model_inference_wrappers.gpt.gpt_inference_wrapper import (
     GPTInferenceWrapper,
 )
@@ -83,9 +84,12 @@ except ImportError as e:
 
 
 class MegatronModel(MegatronModule):
-    def __init__(self, tp_size: int = 1, use_te_norm: bool = False):
+    def __init__(
+        self, tp_size: int = 1, cp_size: int = 1, use_te_norm: bool = False, tp_group=None
+    ):
         config = TransformerConfig(
             tensor_model_parallel_size=tp_size,
+            context_parallel_size=cp_size,
             pipeline_model_parallel_size=1,
             normalization="LayerNorm",
             # Unused parameters below are set to avoid ZeroDivisionError in __post_init__
@@ -103,6 +107,7 @@ class MegatronModel(MegatronModule):
             gather_output=False,
             skip_bias_add=True,
             is_expert=False,
+            tp_group=tp_group,
         )
         self.activation = nn.ReLU()
         if use_te_norm:
@@ -117,6 +122,7 @@ class MegatronModel(MegatronModule):
             skip_bias_add=True,
             input_is_parallel=True,
             is_expert=False,
+            tp_group=tp_group,
         )
 
     def forward(self, x):
@@ -126,7 +132,11 @@ class MegatronModel(MegatronModule):
                 x = x[0]
         return x
 
-    def get_dummy_input(self) -> torch.Tensor:
+    def get_dummy_input(self, seed: int | None = None) -> torch.Tensor:
+        if seed is not None:
+            gen = torch.Generator()
+            gen.manual_seed(seed)
+            return torch.randn(1, 4, 32, generator=gen)
         return torch.randn(1, 4, 32)
 
 
@@ -348,6 +358,7 @@ def run_mcore_inference(
             active_hidden_size = model.decoder.layers[0].mlp.linear_fc1.input_size
         else:
             raise ValueError(f"Cannot infer hidden size from {type(model.decoder.layers[0])=}")
+
     inference_wrapper_config = InferenceWrapperConfig(
         hidden_size=active_hidden_size,
         inference_batch_times_seqlen_threshold=batch_size * model.max_sequence_length,
@@ -355,8 +366,13 @@ def run_mcore_inference(
         params_dtype=torch.bfloat16 if model.config.bf16 else torch.float32,
         padded_vocab_size=model.vocab_size,
     )
-    wrapped_model = GPTInferenceWrapper(model, inference_wrapper_config)
-    wrapped_model.prep_model_for_inference(prompt_tokens)
+    # Get full sequence output instead of only last token logits
+    inference_context = StaticInferenceContext.from_config(inference_wrapper_config)
+    inference_context.materialize_only_last_token_logits = False
+
+    wrapped_model = GPTInferenceWrapper(model, inference_wrapper_config, inference_context)
+    wrapped_model.prep_model_for_inference()
+
     inference_input = wrapped_model.prep_inference_input(prompt_tokens)
     inference_input = wrapped_model.get_batch_for_context_window(
         inference_input, 0, model.max_sequence_length
@@ -375,7 +391,7 @@ def run_mcore_inference(
 def run_mcore_inference_with_dummy_input(
     model: GPTModel | MambaModel, batch_size: int = 2, hidden_size: int | None = None
 ) -> torch.Tensor:
-    """Run inference on a wrapped Megatron GPT or Mamba model."""
+    """Run inference on a Megatron GPT or Mamba model with random dummy input."""
     prompt_tokens = torch.randint(
         0, model.vocab_size, (batch_size, model.max_sequence_length)
     ).cuda()
@@ -383,13 +399,20 @@ def run_mcore_inference_with_dummy_input(
 
 
 def initialize_for_megatron(
-    tensor_model_parallel_size=1, pipeline_model_parallel_size=1, seed=1234
+    tensor_model_parallel_size=1,
+    pipeline_model_parallel_size=1,
+    seed=1234,
+    context_parallel_size=1,
 ):
     """Initialize Megatron model parallelism.
 
     NOTE: If used in a non-spawned process, make sure to call `megatron.core.parallel_state.destroy_model_parallel()`.
     """
-    initialize_model_parallel(tensor_model_parallel_size, pipeline_model_parallel_size)
+    initialize_model_parallel(
+        tensor_model_parallel_size,
+        pipeline_model_parallel_size,
+        context_parallel_size=context_parallel_size,
+    )
     model_parallel_cuda_manual_seed(seed)
 
 

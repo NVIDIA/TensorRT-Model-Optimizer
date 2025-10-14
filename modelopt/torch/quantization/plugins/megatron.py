@@ -15,6 +15,7 @@
 
 """Support quantization for megatron linear layers."""
 
+import logging
 import warnings
 from typing import Any
 
@@ -22,6 +23,7 @@ import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import torch
+from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
@@ -37,6 +39,8 @@ from ..nn import QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
+
+logger = logging.getLogger(__name__)
 
 __all__ = []
 
@@ -217,8 +221,14 @@ class _MegatronParallelLinear(_ParallelLinear):
     ]
 
     def _setup(self):
+        data_parallel_group = None
+        try:
+            data_parallel_group = get_data_parallel_group(with_context_parallel=True)
+        except AssertionError:
+            logger.warning("Context parallel group is not initialized, using data parallel group")
+            data_parallel_group = get_data_parallel_group()
         self.parallel_state = ParallelState(
-            getattr(mcore_parallel, "get_expert_data_parallel_group", "get_data_parallel_group")(),
+            data_parallel_group,
             mcore_parallel.get_tensor_model_parallel_group(),
         )
         super()._setup()

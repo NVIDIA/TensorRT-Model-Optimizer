@@ -31,13 +31,11 @@ from _test_utils.torch_quantization.models import RegularQuantModelForTP
 from _test_utils.torch_quantization.quant_utils import get_model_size
 from _test_utils.torch_quantization.quantize_common import (
     auto_quantize_helper,
-    tensor_parallel_test_helper,
+    data_tensor_context_parallel_test_helper,
 )
-from packaging.version import Version
 
 skip_if_no_megatron()
 
-import megatron.core
 from megatron.core.parallel_state import (
     destroy_model_parallel,
     get_data_parallel_group,
@@ -92,12 +90,51 @@ def test_convert_megatron_parallel_linear(distributed_setup_size_1):
     destroy_model_parallel()
 
 
-def _test_tensor_parallel_helper(config, rank, size):
-    initialize_for_megatron(tensor_model_parallel_size=2, seed=SEED)
-    model = MegatronModel(size).cuda()
+# Unified parallelism test helper
+def _test_parallelism_helper(
+    config,
+    rank,
+    size,
+    tensor_model_parallel_size=1,
+    context_parallel_size=1,
+    use_rank_in_seed=False,
+    test_pre_quant_scale=True,
+):
+    """
+    Unified helper for testing different parallelism configurations.
+    Args:
+        config: Quantization config to test
+        rank: Current rank in distributed setup
+        size: Total number of processes
+        tensor_model_parallel_size: Size of tensor model parallel group (default: 1)
+        context_parallel_size: Size of context parallel group (default: 1)
+        use_rank_in_seed: Whether to add rank to seed for different data across ranks (default: False)
+    """
+    seed = SEED + rank if use_rank_in_seed else SEED
+    initialize_for_megatron(
+        tensor_model_parallel_size=tensor_model_parallel_size,
+        context_parallel_size=context_parallel_size,
+        seed=seed,
+    )
 
-    tensor_parallel_test_helper(
-        model, config, get_tensor_model_parallel_group(), get_data_parallel_group()
+    # Determine if we need tp_group and dp_group
+    tp_group = get_tensor_model_parallel_group() if tensor_model_parallel_size > 1 else None
+    dp_group = get_data_parallel_group(with_context_parallel=True)
+
+    # Create model with appropriate parallelism settings
+    model = MegatronModel(
+        tp_size=tensor_model_parallel_size,
+        cp_size=context_parallel_size,
+        tp_group=tp_group,
+    ).cuda()
+
+    # Call the test helper with appropriate groups
+    data_tensor_context_parallel_test_helper(
+        model,
+        config,
+        dp_group=dp_group,
+        tp_group=tp_group,
+        test_pre_quant_scale=test_pre_quant_scale,
     )
 
 
@@ -115,7 +152,78 @@ def _test_tensor_parallel_helper(config, rank, size):
 )
 def test_tensor_parallel(need_2_gpus, config):
     spawn_multiprocess_job(
-        size=2, job=partial(_test_tensor_parallel_helper, config), backend="nccl"
+        size=2,
+        job=partial(_test_parallelism_helper, config, tensor_model_parallel_size=2),
+        backend="nccl",
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.INT8_DEFAULT_CFG,
+        mtq.FP8_DEFAULT_CFG,
+        mtq.W4A8_AWQ_BETA_CFG,
+        mtq.INT8_SMOOTHQUANT_CFG,
+        mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+        mtq.INT4_AWQ_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+    ],
+)
+def test_data_parallel(need_2_gpus, config):
+    spawn_multiprocess_job(
+        size=2,
+        job=partial(_test_parallelism_helper, config, use_rank_in_seed=True),
+        backend="nccl",
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.INT8_DEFAULT_CFG,
+        mtq.FP8_DEFAULT_CFG,
+        mtq.W4A8_AWQ_BETA_CFG,
+        mtq.INT8_SMOOTHQUANT_CFG,
+        mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+        mtq.INT4_AWQ_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+    ],
+)
+def test_context_parallel(need_2_gpus, config):
+    spawn_multiprocess_job(
+        size=2,
+        job=partial(
+            _test_parallelism_helper, config, context_parallel_size=2, use_rank_in_seed=True
+        ),
+        backend="nccl",
+    )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        mtq.INT8_DEFAULT_CFG,
+        mtq.FP8_DEFAULT_CFG,
+        mtq.W4A8_AWQ_BETA_CFG,
+        mtq.INT8_SMOOTHQUANT_CFG,
+        mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG,
+        mtq.INT4_AWQ_CFG,
+        mtq.NVFP4_DEFAULT_CFG,
+    ],
+)
+def test_data_tensor_context_parallel(need_8_gpus, config):
+    spawn_multiprocess_job(
+        size=8,
+        job=partial(
+            _test_parallelism_helper,
+            config,
+            tensor_model_parallel_size=2,
+            context_parallel_size=2,
+            use_rank_in_seed=True,
+            test_pre_quant_scale=False,
+        ),
+        backend="nccl",
     )
 
 
@@ -128,7 +236,7 @@ def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64, meta_devic
                 tensor_model_parallel_size=tp_size,
                 num_layers=4,
                 ffn_hidden_size=None,
-                num_attention_heads=4,
+                num_attention_heads=8,
                 activation_func="squared_relu",
                 transformer_impl="local",
                 hidden_size=hidden_size,
@@ -140,7 +248,7 @@ def _gpt_model_provider(tp_size: int, hidden_size=256, vocab_size=64, meta_devic
             tensor_model_parallel_size=tp_size,
             num_layers=4,
             ffn_hidden_size=None,
-            num_attention_heads=4,
+            num_attention_heads=8,
             activation_func="squared_relu",
             transformer_impl="local",
             hidden_size=hidden_size,
@@ -255,10 +363,6 @@ def test_homogeneous_sharded_state_dict(tmp_path, config, compress, meta_device)
         mixed_precision_config,
         mixed_block_size_config,
     ],
-)
-@pytest.mark.skipif(
-    Version(megatron.core.__version__) <= Version("0.13.0rc1"),
-    reason="This unittest need megatron.core>=0.13 with default heterogenous ckpt support.",
 )
 def test_heterogenous_sharded_state_dict(need_2_gpus, tmp_path, config):
     spawn_multiprocess_job(

@@ -58,6 +58,8 @@ The table below lists key command-line arguments of the ONNX PTQ example script.
 | `--no_position_ids` | Default: position_ids input enabled | Use this option to disable position_ids input in calibration data|
 | `--enable_mixed_quant` | Default: disabled mixed quant | Use this option to enable mixed precsion quantization|
 | `--layers_8bit` | Default: None | Use this option to Overrides default mixed quant strategy|
+| `--gather_quantize_axis` | Default: None | Use this option to enable INT4 quantization of Gather nodes - choose 0 or 1|
+| `--gather_block_size` | Default: 32 | Block-size for Gather node's INT4 quantization (when its enabled using gather_quantize_axis option)|
 
 Run the following command to view all available parameters in the script:
 

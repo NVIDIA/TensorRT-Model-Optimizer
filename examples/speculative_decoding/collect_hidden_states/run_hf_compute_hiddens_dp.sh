@@ -24,10 +24,11 @@
 
 INPUT_FILE=synthetic_conversations/daring-anteater.jsonl
 OUTPUT_DIR=/mnt/md0/eagle-hidden-states/llama1b/daring_anteater/
+DP_SIZE=8
 
-split -n l/8 --numeric-suffixes=0 -d --additional-suffix=.jsonl $INPUT_FILE /tmp/part-
+split -n l/$DP_SIZE --numeric-suffixes=0 -d --additional-suffix=.jsonl $INPUT_FILE /tmp/part-
 
-for i in $(seq 0 7)
+for i in $(seq 0 $((DP_SIZE-1)))
 do
 CUDA_VISIBLE_DEVICES=$i python3 collect_hidden_states/compute_hidden_states_hf.py --model meta-llama/Llama-3.2-1B-Instruct --input-file /tmp/part-0${i}.jsonl --output-dir $OUTPUT_DIR &
 done
