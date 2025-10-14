@@ -1103,20 +1103,13 @@ def test_multiple_output_node_casted_to_output(
     onnx.checker.check_model(converted_model)
 
 
-####################################################################################################
-# Helper function to create model with resize operation
-####################################################################################################
 @pytest.fixture
 def create_model_with_resize_op():
     """
     Creates an ONNX model that contains a resize operation in the middle of the computation flow.
-    The resize op is properly connected in the graph but does not directly consume inputs or produce outputs.
 
     The model structure:
     X -> Add -> Resize -> Relu -> Y
-
-    Returns:
-        tuple: (model, value_info_map, initializer_map, node_to_init_map)
     """
     # Create inputs and outputs
     x = helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 3, 32, 32])
