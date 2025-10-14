@@ -21,7 +21,7 @@ from _test_utils.examples.run_command import (
     run_example_command,
     run_onnx_quantization_trtexec_command,
 )
-from _test_utils.onnx_path import ONNX_VIT_BASE_PATCH16_224_PATH
+from _test_utils.onnx_path import _ONNX_DEPS_ROOT, ONNX_VIT_BASE_PATCH16_224_PATH
 
 ###################################################################
 # 1. test onnx quantization runner class
@@ -73,6 +73,29 @@ class OnnxQuantizationTestRunner:
             f"{quantize_mode} quantized model not generated at {model_path}"
         )
 
+    def _get_env_vars(self):
+        """get environment variables for onnx quantization"""
+        import os
+
+        # build paths
+        trt_root = os.path.join(_ONNX_DEPS_ROOT, "TensorRT-10.11.0.33")
+        cudnn_root = os.path.join(_ONNX_DEPS_ROOT, "cudnn-linux-x86_64-9.7.1.26_cuda12-archive")
+        cuda_paths = "/usr/local/include:/usr/local/cuda/lib64:/usr/local/cuda/lib:/usr/lib:/usr/lib/x86_64-linux-gnu"
+
+        # get current environment variables
+        env_vars = os.environ.copy()
+
+        # update environment variables
+        env_vars["TRT_ROOT"] = trt_root
+        env_vars["CUDNN_ROOT"] = cudnn_root
+        env_vars["CUDA_ROOT"] = cuda_paths
+        env_vars["PATH"] = f"{trt_root}/bin:{env_vars.get('PATH', '')}"
+        env_vars["LD_LIBRARY_PATH"] = (
+            f"{trt_root}/lib:{cudnn_root}/lib:{cuda_paths}:{env_vars.get('LD_LIBRARY_PATH', '')}"
+        )
+
+        return env_vars
+
     def _run_trtexec_validation(self, model_path: str, static_plugins: str | None = None):
         """run trtexec validation on the quantized model"""
         run_onnx_quantization_trtexec_command(onnx_path=model_path, static_plugins=static_plugins)
@@ -103,9 +126,13 @@ class OnnxQuantizationTestRunner:
         self.calibration_eps = "trt cpu cuda:0"  # TODO: fix split parsing for trt cuda:0 cpu
         self.output_path = os.path.join(os.getcwd(), f"{model_name}.{quantize_mode}.onnx")
 
+        # step 1: prepare model
         self._prepare_model(onnx_path, model_name)
+        # step 2: prepare calibration data
         self._prepare_calibration_data(calibration_data)
-
+        # step 3: get environment variables
+        env_vars = self._get_env_vars()
+        # step 4: run quantization using cli command
         cmd_args = [
             "python",
             "-m",
@@ -124,53 +151,77 @@ class OnnxQuantizationTestRunner:
             str(self.calibration_eps),
         ]
 
-        run_example_command(cmd_args, "onnx_ptq")
+        run_example_command(cmd_args, "onnx_ptq", env_vars=env_vars)
         self._verify_output_model(self.output_path, quantize_mode)
         # TODO: after fix scaleAllPositive issue
         # self._run_trtexec_validation(model_path=self.output_path, staticPlugins=None)
 
     def run_onnx_eval(
-        self, onnx_path=None, model_name=None, quantize_mode=None, imagenet_path=None
+        self,
+        onnx_path: str | None = None,
+        model_name: str | None = None,
+        quantize_mode: str | None = None,
+        imagenet_path: str | None = None,
     ):
+        """Evaluate the quantized ONNX model on ImageNet dataset
+
+        Args:
+            onnx_path: Path to the quantized ONNX model
+            model_name: Name of the model
+            quantize_mode: Quantization mode (fp8, int8, int4)
+            imagenet_path: Path to ImageNet validation dataset
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If any required parameter is missing
+
+        Notes:
+            The evaluation will report:
+            - Top-1 accuracy (0-100%)
+            - Top-5 accuracy (0-100%)
+            - Inference latency in milliseconds
         """
-        Evaluate the quantized onnx model
+        # Resolve parameters (use provided or fall back to instance variables)
+        eval_params = {
+            "onnx_path": onnx_path or self.output_path,
+            "engine_path": f"{model_name}.{quantize_mode}.engine",
+            "model_name": model_name or self.model_name,
+            "quantize_mode": quantize_mode or self.quantize_mode,
+            "imagenet_path": imagenet_path or self.imagenet_path,
+        }
 
-        the evaluation result will be reported as follows:
-            The top1 accuracy of the model is <accuracy score between 0-100%>
-            The top5 accuracy of the model is <accuracy score between 0-100%>
-            Inference latency of the model is <X> ms
-        """
-        # use provided parameters or fall back to stored values
-        eval_onnx_path = onnx_path or self.output_path
-        eval_model_name = model_name or self.model_name
-        eval_quantize_mode = quantize_mode or self.quantize_mode
-        eval_imagenet_path = imagenet_path or self.imagenet_path
+        # Validate all required parameters
+        for param_name, param_value in eval_params.items():
+            if not param_value:
+                raise ValueError(f"{param_name} is required for evaluation")
 
-        # validate required parameters
-        if not eval_onnx_path:
-            raise ValueError("onnx_path is required for evaluation")
-        if not eval_model_name:
-            raise ValueError("model_name is required for evaluation")
-        if not eval_quantize_mode:
-            raise ValueError("quantize_mode is required for evaluation")
-        if not eval_imagenet_path:
-            raise ValueError("imagenet_path is required for evaluation")
+        # Prepare results path
+        results_path = f"{eval_params['model_name']}.{eval_params['quantize_mode']}.results.csv"
 
+        # Build command arguments
         cmd_args = [
             "python",
             "evaluate.py",
             "--onnx_path",
-            eval_onnx_path,
+            eval_params["onnx_path"],
+            "--engine_path",
+            eval_params["engine_path"],
             "--imagenet_path",
-            eval_imagenet_path,
-            "--quantize_mode",
-            eval_quantize_mode,
+            eval_params["imagenet_path"],
             "--model_name",
-            eval_model_name,
+            eval_params["model_name"],
+            "--batch_size",
+            "1",
+            "--engine_precision",
+            "stronglyTyped",
             "--results_path",
-            f"{eval_model_name}.{eval_quantize_mode}.results.csv",
+            results_path,
         ]
-        run_example_command(cmd_args, "onnx_ptq")
+        env_vars = self._get_env_vars()
+        # Run evaluation
+        run_example_command(cmd_args, "onnx_ptq", env_vars=env_vars)
 
 
 ###################################################################

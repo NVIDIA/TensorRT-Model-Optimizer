@@ -71,7 +71,7 @@ python llm_export.py \
 ###################################################################
 class OnnxTorchLLMQuantToOnnxTestRunner:
     """test runner class for onnx torch llm quant to onnx functionality"""
-    
+
     def __init__(self):
         self.quantize_mode = None
         self.torch_dir = None
@@ -80,7 +80,9 @@ class OnnxTorchLLMQuantToOnnxTestRunner:
         self.calibration_data_size = None
         self.run_eval = None
 
-    def run_torch_llm_quant_to_onnx(self, quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size):
+    def run_torch_llm_quant_to_onnx(
+        self, quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size
+    ):
         """run torch llm quant to onnx workflow"""
         run_llm_export_onnx_command(
             dtype=quantize_mode,
@@ -89,6 +91,7 @@ class OnnxTorchLLMQuantToOnnxTestRunner:
             output_dir=output_dir,
             calib_size=calibration_data_size,
         )
+
 
 ###################################################################
 # 2. test case parameters
@@ -107,7 +110,7 @@ def create_testcase_params(
     use dashes between different fields
     all lowercase conversion
     """
-    
+
     # convert torch dir with underscores for multi-word values
     torch_dir_str = torch_dir.replace(".", "_").lower()
 
@@ -120,7 +123,8 @@ def create_testcase_params(
     test_id = f"{torch_dir_str}-{quantize_mode_str}-{calibration_size_str}"
     params = [quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size]
     return pytest.param(*params, id=test_id)
-    
+
+
 # 2.1. test case parameters
 test_torch_llm_quant_to_onnx_params = [
     create_testcase_params(
@@ -262,6 +266,7 @@ test_torch_llm_quant_to_onnx_params = [
 # 3. test cases
 ###################################################################
 
+
 @pytest.mark.parametrize(
     (
         "quantize_mode",
@@ -272,7 +277,10 @@ test_torch_llm_quant_to_onnx_params = [
     ),
     test_torch_llm_quant_to_onnx_params,
 )
-def test_onnx_torch_llm_quant_to_onnx(quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size):
+def test_onnx_torch_llm_quant_to_onnx(
+    quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size
+):
     runner = OnnxTorchLLMQuantToOnnxTestRunner()
-    runner.run_torch_llm_quant_to_onnx(quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size)
-    
+    runner.run_torch_llm_quant_to_onnx(
+        quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size
+    )

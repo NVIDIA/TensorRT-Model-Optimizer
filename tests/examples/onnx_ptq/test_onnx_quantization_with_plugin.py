@@ -182,15 +182,18 @@ class OnnxQuantizationWithPluginTestRunner:
         # step 6: verify output model
         self._verify_output_model(self.output_path, quantize_mode)
         # step 7: run trtexec to validate the quantized onnx model
-        self.run_onnx_trtexec(onnx_path=self.output_path, trt_plugins=trt_plugins)
+        self.run_onnx_trtexec(
+            onnx_path=self.output_path, trt_plugins=trt_plugins, env_vars=env_vars
+        )
 
-    def run_onnx_trtexec(self, onnx_path=None, trt_plugins=None):
+    def run_onnx_trtexec(self, onnx_path=None, trt_plugins=None, env_vars: dict | None = None):
         """
         run trtexec to validate the quantized onnx model
 
         args:
             onnx_path: path to the onnx model file
             trt_plugins: path to the tensorrt plugin library
+            env_vars: environment variables to set
         """
         # use stored output path if onnx_path not provided
         if onnx_path:
@@ -201,18 +204,15 @@ class OnnxQuantizationWithPluginTestRunner:
         if not model_path:
             raise ValueError("onnx_path is required for trtexec validation")
 
-        # construct base command
-        cmd_args = [
-            "trtexec",
-            f"--onnx={model_path}",
-            "--verbose",
-        ]
+        # Construct base command
+        cmd_args = ["trtexec", "--stronglyTyped", f"--onnx={model_path}"]
 
         # add plugin library if provided
         if trt_plugins:
             cmd_args.append(f"--staticPlugins={trt_plugins}")
 
-        run_example_command(cmd_args, "onnx_ptq")
+        # Execute the command
+        run_example_command(cmd_args, "onnx_ptq", env_vars=env_vars)
 
 
 ###################################################################
