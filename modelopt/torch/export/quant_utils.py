@@ -979,13 +979,19 @@ def pattern_fuse_prequant(model: torch.nn.Module):
     """Fuse pre_quant_scale to the linear weights.
 
     For example, we can fuse the pre_quant_scale of o_proj to the output_dimension of v_proj, such that
-    The results are mathematically equivalent to the following:
+    the results are mathematically equivalent to the following::
 
-    out_proj.input = (attn_weights @ v_proj.output)
-    out_proj.output = (out_proj.input * pre_quant_scale) * out_proj.weight
-                    = attn_weights @ (v_proj.output * pre_quant_scale) * out_proj.weight
+        out_proj.input = (attn_weights @ v_proj.output)
+        out_proj.output = (out_proj.input * pre_quant_scale) * out_proj.weight
+                        = attn_weights @ (v_proj.output * pre_quant_scale) * out_proj.weight
 
-    Note: This is an experimental feature, and it might mess up the quantization errors of fused linear modules.
+    For GQA/MQA models where v_proj output dimension < o_proj input dimension,
+    the pre_quant_scale is averaged across the repeated head groups and then the
+    o_proj's pre_quant_scale is updated to maintain mathematical equivalence.
+
+    Note:
+        This is an experimental feature, and it might mess up the quantization errors
+        of fused linear modules.
     """
     for _, module in model.named_modules():
         for module_map in PQS_FUSE_MODULE_MAPPING:
