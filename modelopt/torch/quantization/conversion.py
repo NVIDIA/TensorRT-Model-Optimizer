@@ -14,8 +14,9 @@
 # limitations under the License.
 
 """Quantization conversion/restore utilities."""
-import warnings
+
 import fnmatch
+import warnings
 from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any
@@ -292,8 +293,10 @@ def set_quantizer_attribute(
                 parent_module = quant_model.get_submodule(name.rpartition(".")[0])
                 module = SequentialQuantizer(*(TensorQuantizer() for _ in range(len(attribute))))
                 setattr(parent_module, name.split(".")[-1], module)
-            elif isinstance(attribute, dict) and len(attribute) != len(module):
-                warnings.warn(f"The number of attributes ({len(attribute)}) does not match the number of quantizers of {module}.")
+            elif isinstance(attribute, list) and len(attribute) != len(module):
+                warnings.warn(
+                    f"The number of attributes ({len(attribute)}) does not match the number of quantizers of {module}."
+                )
             module.set_from_attribute_config(attribute)
 
 
