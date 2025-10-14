@@ -1068,7 +1068,7 @@ class PrecisionConverter:
             # Figure out the index of the initializer in the node input
             inputs_lst = list(node.input)
             init_index = inputs_lst.index(init.name)
-            # The second input does not suport bfloat16, so leave it in FP32.
+        # The second input does not support bfloat16, so leave it in FP32.
             # The third input of Resize must remain in FP32.
             # Ref: https://onnx.ai/onnx/operators/onnx__Resize.html#inputs
             return init_index in {1, 2}
