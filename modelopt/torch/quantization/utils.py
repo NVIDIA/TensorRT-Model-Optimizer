@@ -28,7 +28,6 @@ from torch.distributed.fsdp import FSDPModule, MixedPrecisionPolicy, fully_shard
 from torch.distributed.fsdp._fully_shard._fsdp_param import FSDPParam
 from torch.distributed.tensor import Replicate
 
-from modelopt.torch.quantization.qtensor.base_qtensor import QFSDPParam, QTensorWrapper
 from modelopt.torch.utils import get_unwrapped_name, print_rank_0
 
 if TYPE_CHECKING:
@@ -482,6 +481,7 @@ def set_quantizer_state_dict(model: nn.Module, quantizer_state_dict: dict):
             module.load_state_dict(quantizer_state_dict[key])
 
 
+@contextmanager
 def patch_fsdp_mp_dtypes():
     """Patch FSDP2 to handle mixed dtypes properly during quantization."""
 
@@ -512,10 +512,15 @@ def patch_fsdp_mp_dtypes():
     original_init_mp_dtypes = (
         torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes
     )
-    torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes = (
-        _init_mp_dtypes
-    )
-    return original_init_mp_dtypes
+    try:
+        torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes = (
+            _init_mp_dtypes
+        )
+        yield
+    finally:
+        torch.distributed.fsdp._fully_shard._fsdp_param_group.FSDPParamGroup._init_mp_dtypes = (
+            original_init_mp_dtypes
+        )
 
 
 def get_prefixed_param_names(parent_model, target_module):
@@ -626,6 +631,8 @@ def fsdp2_aware_weight_update(root_model, modules_to_update):
         # Yields for necessary weight updates/processing
         yield
     finally:
+        from modelopt.torch.quantization.qtensor.base_qtensor import QFSDPParam, QTensorWrapper
+
         if isinstance(root_model, FSDPModule):
             # Update FSDPParam list
             for module in modules_to_update:
