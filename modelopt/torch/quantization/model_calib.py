@@ -176,6 +176,10 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
                 parallel_state=module.parallel_state,
             )
 
+    for name, module in model.named_modules():
+        if hasattr(module, "sync_moe_local_experts_amax"):
+            module.sync_moe_local_experts_amax()
+
 
 def enable_stats_collection(model: nn.Module):
     """Enable stats collection for all quantizers in the model."""

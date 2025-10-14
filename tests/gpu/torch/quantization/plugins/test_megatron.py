@@ -538,6 +538,8 @@ def test_fp8_real_quantize():
 )
 @pytest.mark.parametrize("moe_grouped_gemm", [True, False])
 def test_moe_sharded_state_dict(need_4_gpus, tmp_path, config, moe_grouped_gemm):
+    if moe_grouped_gemm:
+        pytest.skip("TEGroupedMLP is not enabled in Megatron-LM currently")
     size = torch.cuda.device_count()
     # TODO: Add support for compress=True for TEGroupedMLP
     moe_config = {
@@ -635,6 +637,7 @@ def _test_te_grouped_vs_sequential_quantize_helper(tp_size, ep_size, etp_size, r
 
 def test_te_grouped_vs_sequential_quantize(need_4_gpus):
     """Test that TEGrouped and sequential MoE models produce similar quantized models."""
+    pytest.skip("TEGroupedMLP is not enabled in Megatron-LM currently")
     size = torch.cuda.device_count()
     spawn_multiprocess_job(
         size=size,
@@ -690,7 +693,9 @@ def _test_expert_model_parallel_amax_sync(
     )
     # calibrate the model with distributed sync and test synchronization
     mtq.model_calib.max_calibrate(model, forward_fn, distributed_sync=True)
-    mtq.plugins.megatron.sync_amax_across_sequential_mlp(model)
+    for module in model.modules():
+        if hasattr(module, "sync_moe_local_experts_amax"):
+            module.sync_moe_local_experts_amax()
 
     final_sync, quantizer_type, rank_values = compare_amax_sync_across_expert_parallel(model)
     assert final_sync, f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
@@ -703,6 +708,9 @@ def test_expert_parallel_sync(ep_size, etp_size, moe_grouped_gemm):
     size = torch.cuda.device_count()
     if size < ep_size * etp_size:
         pytest.skip(f"Requires at least {ep_size * etp_size} GPUs for expert model parallel test")
+
+    if moe_grouped_gemm:
+        pytest.skip("TEGroupedMLP is not enabled in Megatron-LM currently")
 
     spawn_multiprocess_job(
         size=size,

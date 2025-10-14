@@ -190,7 +190,7 @@ def get_mcore_gpt_model(
         pipeline_model_parallel_size=pipeline_model_parallel_size,
         expert_model_parallel_size=expert_model_parallel_size,
         expert_tensor_parallel_size=expert_tensor_parallel_size,
-        sequence_parallel=False,
+        sequence_parallel=expert_model_parallel_size > 1,
         moe_grouped_gemm=moe_grouped_gemm,
         num_layers=num_layers,
         num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
@@ -215,7 +215,8 @@ def get_mcore_gpt_model(
             num_experts=num_moe_experts,
             normalization=normalization,
             moe_grouped_gemm=moe_grouped_gemm,
-            use_te=use_te,
+            # TODO: uncomment this when TEGroupedMLP is enabled in Megatron-LM
+            # use_te=use_te,
         )
     else:
         assert HAS_TE, "Transformer Engine not installed"
@@ -563,7 +564,8 @@ def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True)
         if isinstance(module, mtq.nn.TensorQuantizer) and hasattr(module, "_amax"):
             # Check for both TEGrouped and sequential MoE patterns
             if "local_experts" in name or ("experts" in name and "linear_fc" in name):
-                amax_val = module.amax.item() if hasattr(module.amax, "item") else module.amax
+                # Convert to scalar only if tensor has a single element
+                amax_val = module.amax.detach().clone().cpu()
                 expert_amax_values[name] = amax_val
 
     # Early return if no expert quantizers found
@@ -594,7 +596,13 @@ def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True)
             ):
                 if compare_across_experts:
                     # compare expert value across expert for sequential MoE
-                    assert expert_quantizers[quantizer_type][rank_idx] == amax_val, (
+                    prev_val = expert_quantizers[quantizer_type][rank_idx]
+                    # Handle both scalar and tensor comparisons
+                    if isinstance(amax_val, torch.Tensor) and isinstance(prev_val, torch.Tensor):
+                        are_equal = torch.allclose(prev_val, amax_val, rtol=1e-6, atol=1e-6)
+                    else:
+                        are_equal = prev_val == amax_val
+                    assert are_equal, (
                         f"{rank_idx}, {quantizer_type}, expert_quantizers[quantizer_type][rank_idx]: "
                         f"{expert_quantizers[quantizer_type][rank_idx]}, amax_val: {amax_val}"
                     )
@@ -604,8 +612,17 @@ def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True)
     for quantizer_type, rank_values in expert_quantizers.items():
         if len(rank_values) > 1:  # Only check if we have multiple ranks
             values = list(rank_values.values())
-            max_diff = max(values) - min(values)
-            if max_diff > 1e-6:  # Allow for small floating point differences
-                return False, quantizer_type, rank_values
+            # Handle both scalar and tensor comparisons
+            first_val = values[0]
+            if isinstance(first_val, torch.Tensor):
+                # For tensors, check if all values are close to the first one
+                for val in values[1:]:
+                    if not torch.allclose(first_val, val, rtol=1e-6, atol=1e-6):
+                        return False, quantizer_type, rank_values
+            else:
+                # For scalars, use numeric comparison
+                max_diff = max(values) - min(values)
+                if max_diff > 1e-6:  # Allow for small floating point differences
+                    return False, quantizer_type, rank_values
 
     return True, None, None
