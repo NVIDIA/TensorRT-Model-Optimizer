@@ -22,8 +22,6 @@ def test_llama_distill(tiny_llama_path, tmp_path):
     run_example_command(
         [
             "accelerate", "launch", "--config-file", "./accelerate_config/fsdp2.yaml",
-            "--fsdp_cpu_ram_efficient_loading", "False",
-            "--fsdp_activation_checkpointing", "False",
             "main.py",
             "--teacher_name_or_path", tiny_llama_path,
             "--student_name_or_path", tiny_llama_path,
