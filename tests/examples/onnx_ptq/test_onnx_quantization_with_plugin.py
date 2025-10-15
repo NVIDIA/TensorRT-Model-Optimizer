@@ -259,7 +259,7 @@ test_onnx_quantization_with_plugin_params = [
     create_testcase_params(
         onnx_path=ONNX_FAR3D_OPSET17_PATH.model_path,
         model_name="far3d",
-        quantize_mode="int8",
+        quantize_mode="int8_sq",
         calibration_method="entropy",
         calibration_data=ONNX_FAR3D_OPSET17_PATH.calib_data_path,
         trt_plugins=ONNX_FAR3D_OPSET17_PATH.trt_plugin_path,
@@ -267,7 +267,7 @@ test_onnx_quantization_with_plugin_params = [
     create_testcase_params(
         onnx_path=ONNX_FAR3D_OPSET17_PATH.model_path,
         model_name="far3d",
-        quantize_mode="int4",
+        quantize_mode="int4_awq",
         calibration_method="awq_clip",
         calibration_data=ONNX_FAR3D_OPSET17_PATH.calib_data_path,
         trt_plugins=ONNX_FAR3D_OPSET17_PATH.trt_plugin_path,
@@ -275,7 +275,7 @@ test_onnx_quantization_with_plugin_params = [
     create_testcase_params(
         onnx_path=ONNX_FAR3D_OPSET17_PATH.model_path,
         model_name="far3d",
-        quantize_mode="int4",
+        quantize_mode="int4_awq",
         calibration_method="rtn_dq",
         calibration_data=ONNX_FAR3D_OPSET17_PATH.calib_data_path,
         trt_plugins=ONNX_FAR3D_OPSET17_PATH.trt_plugin_path,
@@ -291,7 +291,7 @@ test_onnx_quantization_with_plugin_params = [
     create_testcase_params(
         onnx_path=ONNX_VIT_BASE_OPSET13_SIMPLIFIED_CONV_LN_WITH_PLUGIN_PATH.model_path,
         model_name="vit_base_opset13_simplified_Conv_LN_withPlugin",
-        quantize_mode="int8",
+        quantize_mode="int8_sq",
         calibration_method="max",
         calibration_data=ONNX_VIT_BASE_OPSET13_SIMPLIFIED_CONV_LN_WITH_PLUGIN_PATH.calib_data_path,
         trt_plugins=ONNX_VIT_BASE_OPSET13_SIMPLIFIED_CONV_LN_WITH_PLUGIN_PATH.trt_plugin_path,
@@ -307,7 +307,7 @@ test_onnx_quantization_with_plugin_params = [
     create_testcase_params(
         onnx_path=ONNX_IDENTITY_NEURAL_NETWORK_PATH.model_path,
         model_name="identity_neural_network",
-        quantize_mode="int8",
+        quantize_mode="int8_sq",
         calibration_method="entropy",
         calibration_data=ONNX_IDENTITY_NEURAL_NETWORK_PATH.calib_data_path,
         trt_plugins=ONNX_IDENTITY_NEURAL_NETWORK_PATH.trt_plugin_path,
