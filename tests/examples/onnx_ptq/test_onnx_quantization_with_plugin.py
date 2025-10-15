@@ -18,6 +18,7 @@ import os
 
 import pytest
 from _test_utils.examples.run_command import run_example_command
+from _test_utils.gpu_arch_utils import skip_if_dtype_unsupported_by_arch
 from _test_utils.onnx_path import (
     _ONNX_DEPS_ROOT,
     ONNX_BEVFORMER_BASE_EPOCH_24_CP2_OP13_PATH,
@@ -123,7 +124,13 @@ class OnnxQuantizationWithPluginTestRunner:
         env_vars["LD_LIBRARY_PATH"] = (
             f"{trt_root}/lib:{cudnn_root}/lib:{cuda_paths}:{env_vars.get('LD_LIBRARY_PATH', '')}"
         )
-
+        print(f"export TRT_ROOT={trt_root} \\")
+        print(f"export CUDNN_ROOT={cudnn_root} \\")
+        print(f"export CUDA_ROOT={cuda_paths} \\")
+        print(f"export PATH={trt_root}/bin:$PATH \\")
+        print(
+            f"export LD_LIBRARY_PATH={trt_root}/lib:{cudnn_root}/lib:{cuda_paths}:$LD_LIBRARY_PATH"
+        )
         return env_vars
 
     def run_onnx_quantization_with_plugin(
@@ -145,13 +152,14 @@ class OnnxQuantizationWithPluginTestRunner:
         self.trt_plugins = trt_plugins
         self.output_path = os.path.join(os.getcwd(), f"{model_name}.{quantize_mode}.onnx")
 
-        # step 1: prepare model
+        # step 1: prepare model and data
         self._prepare_model(onnx_path, model_name)
-        # step 2: prepare calibration data
         self._prepare_calibration_data(calibration_data)
-        # step 3: get environment variables
+
+        # step 2: configure environment
         env_vars = self._get_env_vars()
-        # step 4: run onnx quantization with plugin
+
+        # step 3: build command arguments for quantization
         cmd_args = [
             "python",
             "-m",
@@ -166,22 +174,21 @@ class OnnxQuantizationWithPluginTestRunner:
             self.output_path,
         ]
 
-        # add calibration_data if not None to avoid subprocess error
+        # add optional parameters when available
         if calibration_data is not None:
             cmd_args.extend(["--calibration_data", calibration_data])
 
-        # add calibration_eps if not None
         if self.calibration_eps is not None:
             cmd_args.extend(["--calibration_eps", str(self.calibration_eps)])
 
         if trt_plugins:
             cmd_args.extend(["--trt_plugins", trt_plugins])
 
-        # step 5: run onnx quantization with plugin
+        # step 4: execute quantization and validate results
         run_example_command(cmd_args, "onnx_ptq", env_vars=env_vars)
-        # step 6: verify output model
         self._verify_output_model(self.output_path, quantize_mode)
-        # step 7: run trtexec to validate the quantized onnx model
+
+        # step 5: validate with tensorrt
         self.run_onnx_trtexec(
             onnx_path=self.output_path, trt_plugins=trt_plugins, env_vars=env_vars
         )
@@ -375,6 +382,10 @@ def test_onnx_quantization_with_plugin(
     onnx_path, model_name, quantize_mode, calibration_method, calibration_data, trt_plugins
 ):
     """test onnx quantization with plugin"""
+
+    # skip test if dtype is not supported by arch
+    skip_if_dtype_unsupported_by_arch(need_dtype=quantize_mode, need_cpu_arch="x86")
+
     runner = OnnxQuantizationWithPluginTestRunner()
 
     # run quantization with plugin

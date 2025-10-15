@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import os
 
 import pytest
@@ -21,6 +20,7 @@ from _test_utils.examples.run_command import (
     run_example_command,
     run_onnx_quantization_trtexec_command,
 )
+from _test_utils.gpu_arch_utils import skip_if_dtype_unsupported_by_arch
 from _test_utils.onnx_path import _ONNX_DEPS_ROOT, ONNX_VIT_BASE_PATCH16_224_PATH
 
 ###################################################################
@@ -74,7 +74,7 @@ class OnnxQuantizationTestRunner:
         )
 
     def _get_env_vars(self):
-        """get environment variables for onnx quantization"""
+        """get environment variables for onnx quantization with plugin"""
         import os
 
         # build paths
@@ -93,7 +93,13 @@ class OnnxQuantizationTestRunner:
         env_vars["LD_LIBRARY_PATH"] = (
             f"{trt_root}/lib:{cudnn_root}/lib:{cuda_paths}:{env_vars.get('LD_LIBRARY_PATH', '')}"
         )
-
+        print(f"export TRT_ROOT={trt_root} \\")
+        print(f"export CUDNN_ROOT={cudnn_root} \\")
+        print(f"export CUDA_ROOT={cuda_paths} \\")
+        print(f"export PATH={trt_root}/bin:$PATH \\")
+        print(
+            f"export LD_LIBRARY_PATH={trt_root}/lib:{cudnn_root}/lib:{cuda_paths}:$LD_LIBRARY_PATH"
+        )
         return env_vars
 
     def _run_trtexec_validation(self, model_path: str, static_plugins: str | None = None):
@@ -200,7 +206,7 @@ class OnnxQuantizationTestRunner:
         # Prepare results path
         results_path = f"{eval_params['model_name']}.{eval_params['quantize_mode']}.results.csv"
 
-        # Build command arguments
+        # Build command arguments for model evaluation
         cmd_args = [
             "python",
             "evaluate.py",
@@ -344,6 +350,10 @@ def test_onnx_quantization(
     imagenet_path,
 ):
     """test onnx quantization workflow with different quantization modes and calibration methods"""
+
+    # skip test if dtype is not supported by arch
+    skip_if_dtype_unsupported_by_arch(need_dtype=quantize_mode, need_cpu_arch="x86")
+
     runner = OnnxQuantizationTestRunner()
 
     # run quantization using CLI

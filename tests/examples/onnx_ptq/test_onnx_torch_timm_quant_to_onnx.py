@@ -32,6 +32,7 @@
 
 import pytest
 from _test_utils.examples.run_command import run_torch_timm_onnx_command
+from _test_utils.gpu_arch_utils import skip_if_dtype_unsupported_by_arch
 
 
 ###################################################################
@@ -156,6 +157,9 @@ test_torch_quant_to_onnx_params = [
 def test_onnx_torch_quant_to_onnx(
     quantize_mode, timm_model_name, onnx_save_path, calibration_data_size, run_eval
 ):
+    # skip test if dtype is not supported by arch
+    skip_if_dtype_unsupported_by_arch(need_dtype=quantize_mode, need_cpu_arch="x86")
+
     runner = OnnxTorchTimmQuantToOnnxTestRunner()
     runner.run_torch_quant_to_onnx(
         quantize_mode, timm_model_name, onnx_save_path, calibration_data_size

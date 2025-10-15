@@ -13,25 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-ONNX Export Supported LLM Models
-
-| Model                   | FP16 | INT4 | FP8  | NVFP4 |
-|-------------------------|------|------|------|-------|
-| Llama-3-8B-Instruct     | ✅   | ✅   | ✅   | ✅    |
-| Llama3.1-8B             | ✅   | ✅   | ✅   | ✅    |
-| Llama3.2-3B             | ✅   | ✅   | ✅   | ✅    |
-| Qwen2-0.5B-Instruct     | ✅   | ✅   | ✅   | ✅    |
-| Qwen2-1.5B-Instruct     | ✅   | ✅   | ✅   | ✅    |
-| Qwen2-7B-Instruct       | ✅   | ✅   | ✅   | ✅    |
-| Qwen2.5-0.5B-Instruct   | ✅   | ✅   | ✅   | ✅    |
-| Qwen2.5-1.5B-Instruct   | ✅   | ✅   | ✅   | ✅    |
-| Qwen2.5-3B-Instruct     | ✅   | ✅   | ✅   | ✅    |
-| Qwen2.5-7B-Instruct     | ✅   | ✅   | ✅   | ✅    |
-"""
 
 import pytest
 from _test_utils.examples.run_command import run_llm_export_onnx_command
+from _test_utils.gpu_arch_utils import skip_if_dtype_unsupported_by_arch
 from _test_utils.model import (
     # Llama models
     LLAMA30_8B_INST_PATH,
@@ -44,26 +29,6 @@ from _test_utils.model import (
     QWEN25_3B_INST_PATH,
     QWEN25_7B_INST_PATH,
 )
-
-"""_summary_
-
-TORCH_DIR="/models/Qwen2.5-7B-Instruct"
-QUANT_TYPE=${QUANT_TYPE:-"nvfp4"}
-LM_HEAD_TYPE=${LM_HEAD_TYPE:-"fp16"}
-OUTPUT_BASE_DIR=${OUTPUT_BASE_DIR:-"./"}
-
-MODEL_NAME=$(basename "$TORCH_DIR")
-OUTPUT_DIR="${OUTPUT_BASE_DIR}${MODEL_NAME}_onnx_export_${QUANT_TYPE}"
-
-python llm_export.py \
---torch_dir "$TORCH_DIR" \
---dtype "$QUANT_TYPE" \
---lm_head "$LM_HEAD_TYPE" \
---output_dir "$OUTPUT_DIR"
-
-
-
-"""
 
 
 ###################################################################
@@ -280,6 +245,9 @@ test_torch_llm_quant_to_onnx_params = [
 def test_onnx_torch_llm_quant_to_onnx(
     quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size
 ):
+    # skip test if dtype is not supported by arch
+    skip_if_dtype_unsupported_by_arch(need_dtype=quantize_mode, need_cpu_arch="x86")
+
     runner = OnnxTorchLLMQuantToOnnxTestRunner()
     runner.run_torch_llm_quant_to_onnx(
         quantize_mode, torch_dir, lm_head, output_dir, calibration_data_size

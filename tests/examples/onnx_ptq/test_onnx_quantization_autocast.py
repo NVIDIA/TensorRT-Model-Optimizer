@@ -30,6 +30,7 @@ from _test_utils.examples.run_command import (
     run_onnx_autocast_cli_command,
     run_onnx_quantization_trtexec_command,
 )
+from _test_utils.gpu_arch_utils import skip_if_dtype_unsupported_by_arch
 from _test_utils.onnx_path import (
     _ONNX_DEPS_ROOT,
     ONNX_CONVIT_SMALL_OPSET17_PATH,
@@ -97,7 +98,7 @@ class OnnxAutocastTestRunner:
         )
 
     def _get_env_vars(self):
-        """get environment variables for onnx quantization"""
+        """get environment variables for onnx quantization with plugin"""
         import os
 
         # build paths
@@ -116,7 +117,13 @@ class OnnxAutocastTestRunner:
         env_vars["LD_LIBRARY_PATH"] = (
             f"{trt_root}/lib:{cudnn_root}/lib:{cuda_paths}:{env_vars.get('LD_LIBRARY_PATH', '')}"
         )
-
+        print(f"export TRT_ROOT={trt_root} \\")
+        print(f"export CUDNN_ROOT={cudnn_root} \\")
+        print(f"export CUDA_ROOT={cuda_paths} \\")
+        print(f"export PATH={trt_root}/bin:$PATH \\")
+        print(
+            f"export LD_LIBRARY_PATH={trt_root}/lib:{cudnn_root}/lib:{cuda_paths}:$LD_LIBRARY_PATH"
+        )
         return env_vars
 
     def run_cli_test(
@@ -279,14 +286,6 @@ test_onnx_quantization_autocast_cli_params = [
         keep_io_types=True,
         providers=["trt", "cuda", "cpu"],
     ),
-    # create_testcase_params(
-    #     onnx_path=ONNX_CONVIT_SMALL_OPSET17_PATH,
-    #     model_name="convit_small_Opset17",
-    #     low_precision_type="fp16",
-    #     keep_io_types=True,
-    #     providers=["trt", "cuda", "cpu"],
-    #     trt_plugins="",
-    # ),
 ]
 
 
@@ -327,6 +326,9 @@ test_onnx_quantization_autocast_api_params = [
 def test_onnx_quantization_autocast_cli(
     onnx_path, model_name, low_precision_type, keep_io_types, providers
 ):
+    # skip test if dtype is not supported by arch#
+    skip_if_dtype_unsupported_by_arch(need_dtype=low_precision_type, need_cpu_arch="x86")
+
     runner = OnnxAutocastTestRunner()
     runner.run_cli_test(onnx_path, model_name, low_precision_type, keep_io_types, providers)
 
@@ -338,5 +340,8 @@ def test_onnx_quantization_autocast_cli(
 def test_onnx_quantization_autocast_api(
     onnx_path, model_name, low_precision_type, keep_io_types, providers
 ):
+    # skip test if dtype is not supported by arch
+    skip_if_dtype_unsupported_by_arch(need_dtype=low_precision_type, need_cpu_arch="x86")
+
     runner = OnnxAutocastTestRunner()
     runner.run_api_test(onnx_path, model_name, low_precision_type, keep_io_types, providers)
