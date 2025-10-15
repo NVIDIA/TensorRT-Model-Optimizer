@@ -39,22 +39,26 @@ GPU_ARCH_TABLE = [
 
 # Define GPU dtypes with clear names
 GPU_DTYPES = [
-    "int8_sq",  # INT8 sparse quantization
+    "int8",      # INT8 quantization (for onnx_ptq)
+    "int4",      # INT4 quantization (for onnx_ptq)
+    "int8_sq",   # INT8 sparse quantization
     "int4_awq",  # INT4 AWQ quantization
     "w4a8_awq",  # Weight-4bit Activation-8bit AWQ
-    "fp8",  # FP8 format
-    "nvfp4",  # NVIDIA FP4 format
-    "nvfp4_awq",  # NVIDIA FP4 AWQ quantization
+    "fp8",       # FP8 format
+    "nvfp4",     # NVIDIA FP4 format
+    "nvfp4_awq", # NVIDIA FP4 AWQ quantization
+    "bf16",      # BFloat16 format
+    "fp16",      # Float16 format
 ]
 
 # 1 = supported, 0 = not supported (common/mainstream software stack and hardware path)
 GPU_DTYPE_MATRIX = {
-    # Arch:     [fp16, bf16, fp8, int8_sq, int4_awq, w4a8_awq, nvfp4, nvfp4_awq]
-    "Ampere": [1, 1, 0, 1, 1, 0, 0, 0],
-    "Ada": [1, 1, 1, 1, 1, 1, 0, 0],
-    "Hopper": [1, 1, 1, 1, 1, 1, 0, 0],
-    "Blackwell": [1, 1, 1, 1, 1, 1, 1, 1],
-    "Volta": [1, 0, 0, 0, 0, 0, 0, 0],
+    # Arch:     [int8, int4, int8_sq, int4_awq, w4a8_awq, fp8, nvfp4, nvfp4_awq, bf16, fp16]
+    "Ampere":    [1,    1,    1,      1,       0,        0,   0,     0,        1,    1],
+    "Ada":       [1,    1,    1,      1,       1,        1,   0,     0,        1,    1],
+    "Hopper":    [1,    1,    1,      1,       1,        1,   0,     0,        1,    1],
+    "Blackwell": [1,    1,    1,      1,       1,        1,   1,     1,        1,    1],
+    "Volta":     [0,    0,    0,      0,       0,        0,   0,     0,        0,    1],
 }
 
 
