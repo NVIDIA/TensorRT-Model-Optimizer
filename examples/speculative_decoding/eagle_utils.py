@@ -101,8 +101,7 @@ def preprocess(examples, tokenizer):
                 labels[indices] = input_ids[indices]
                 loss_mask[indices] = 1
 
-        # Shift loss_mask and labels to the left by 1 token
-        loss_mask = torch.cat([loss_mask[1:], torch.zeros(1, dtype=loss_mask.dtype)])
+        # Shift labels to the left by 1 token
         labels = torch.cat([labels[1:], torch.tensor([IGNORE_TOKEN_ID], dtype=labels.dtype)])
 
         new_examples["input_ids"].append(input_ids)
