@@ -107,44 +107,33 @@ def _run_vl_preview_generation(model, tokenizer, model_path, stage_name):
     import os
 
     from PIL import Image
-    from transformers import AutoImageProcessor
+    from transformers import AutoImageProcessor, AutoProcessor
 
     try:
         print(f"Loading sample images for {stage_name} preview...")
-
-        # Load image processor
-        image_processor = AutoImageProcessor.from_pretrained(model_path, trust_remote_code=True)
 
         # Load sample images from the images directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
         images_dir = os.path.join(script_dir, "images")
 
+        # Use single image for VL preview to avoid shape mismatch issues
         image_files = ["example1a.jpeg", "example1b.jpeg"]
-        images = []
+        image = None
         for img_file in image_files:
             img_path = os.path.join(images_dir, img_file)
             if os.path.exists(img_path):
-                images.append(Image.open(img_path))
+                image = Image.open(img_path)
                 print(f"  Loaded: {img_file}")
+                break  # Use the first available image
             else:
                 print(f"  Warning: {img_file} not found")
 
-        if not images:
+        if image is None:
             print("No sample images found - skipping VL preview generation")
             return None
 
-        # Process images
-        image_features = image_processor(images)
-
-        # Move image features to the same device as the model
-        model_device = model.device
-        for key, value in image_features.items():
-            if hasattr(value, "to"):  # Check if it's a tensor
-                image_features[key] = value.to(model_device)
-                print(f"  Moved {key} to {model_device}")
-
         # Generate response
-        question = "Describe these images briefly."
+        question = "Describe this image briefly."  # Updated for single image
         generation_config = {
             "max_new_tokens": 50,
             "do_sample": False,
@@ -152,12 +141,85 @@ def _run_vl_preview_generation(model, tokenizer, model_path, stage_name):
         }
 
         print(f"Generating VL response ({stage_name})...")
-        response = model.chat(
-            tokenizer=tokenizer,
-            question=question,
-            generation_config=generation_config,
-            **image_features,
-        )
+
+        # Try to detect if this is a v1 model (has chat method) or v2 model (uses generate)
+        if hasattr(model, "chat"):
+            print("  Using v1 model.chat() method...")
+            # Load image processor for v1 models
+            image_processor = AutoImageProcessor.from_pretrained(model_path, trust_remote_code=True)
+
+            # Process single image for v1 models
+            image_features = image_processor([image])  # Pass as list with single image
+
+            # Move image features to the same device as the model
+            model_device = model.device
+            for key, value in image_features.items():
+                if hasattr(value, "to"):  # Check if it's a tensor
+                    image_features[key] = value.to(model_device)
+                    print(f"    Moved {key} to {model_device}")
+
+            response = model.chat(
+                tokenizer=tokenizer,
+                question=question,
+                generation_config=generation_config,
+                **image_features,
+            )
+        else:
+            print("  Using v2 model.generate() method...")
+            # Load processor for v2 models
+            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+
+            # Create messages in the format expected by v2 models
+            messages = [
+                {"role": "system", "content": "/no_think"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "image": "",
+                        },
+                        {
+                            "type": "text",
+                            "text": question,
+                        },
+                    ],
+                },
+            ]
+
+            # Apply chat template
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+
+            # Process inputs using the processor with single image
+            inputs = processor(
+                text=[prompt],
+                images=[image],  # Pass single image as list
+                return_tensors="pt",
+            )
+
+            # Move inputs to the same device as the model
+            model_device = model.device
+            inputs = inputs.to(model_device)
+            print(f"    Moved inputs to {model_device}")
+
+            # Generate response using model.generate
+            generated_ids = model.generate(
+                pixel_values=inputs.pixel_values,
+                input_ids=inputs.input_ids,
+                attention_mask=inputs.attention_mask,
+                **generation_config,
+            )
+
+            # Decode the response (trim input tokens like in the working example)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )
+            response = output_text[0]
 
         print(f"✅ VL generation {stage_name} successful!")
         print(f"Question: {question}")
@@ -169,6 +231,83 @@ def _run_vl_preview_generation(model, tokenizer, model_path, stage_name):
     except Exception as e:
         print(f"❌ VL preview generation {stage_name} failed: {e}")
         print("This may indicate issues with the quantized model")
+        return None
+
+
+def _run_text_only_generation(model, tokenizer, question, generation_config, model_path):
+    """Run text-only generation for VL models, supporting both v1 (chat) and v2 (generate) models.
+
+    Args:
+        model: The VL model
+        tokenizer: The tokenizer
+        question: The text question to ask
+        generation_config: Generation configuration
+        model_path: Path to the model (for loading processor if needed)
+
+    Returns:
+        Generated response text or None if failed
+    """
+    try:
+        if hasattr(model, "chat"):
+            print("  Using v1 model.chat() method for text-only generation...")
+            # Use model.chat with None for images (text-only mode)
+            response = model.chat(tokenizer, None, question, generation_config, history=None)
+            return response
+        else:
+            print("  Using v2 model.generate() method for text-only generation...")
+            # Load processor for v2 models
+            from transformers import AutoProcessor
+
+            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+
+            # Create text-only messages
+            messages = [
+                {"role": "system", "content": "/no_think"},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": question,
+                        },
+                    ],
+                },
+            ]
+
+            # Apply chat template
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+
+            # Process text-only inputs
+            inputs = processor(
+                text=[prompt],
+                images=None,  # No images for text-only
+                return_tensors="pt",
+            )
+
+            # Move inputs to the same device as the model
+            model_device = model.device
+            inputs = inputs.to(model_device)
+
+            # Generate response using model.generate
+            generated_ids = model.generate(
+                input_ids=inputs.input_ids,
+                attention_mask=inputs.attention_mask,
+                **generation_config,
+            )
+
+            # Decode the response (trim input tokens like in the working example)
+            generated_ids_trimmed = [
+                out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+            ]
+            output_text = processor.batch_decode(
+                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            )
+            return output_text[0]
+
+    except Exception as e:
+        print(f"Text-only generation failed: {e}")
         return None
 
 
@@ -574,7 +713,7 @@ def main(args):
             if is_nemotron_vl:
                 print("Running text-only preview generation for Nemotron VL model...")
                 try:
-                    # Try text-only generation using model.chat with None for images
+                    # Try text-only generation using helper function that supports both v1 and v2
                     if tokenizer is None:
                         raise ValueError("Tokenizer is required for Nemotron VL text generation")
 
@@ -585,12 +724,16 @@ def main(args):
                         "eos_token_id": tokenizer.eos_token_id,
                     }
 
-                    # Use model.chat with None for images (text-only mode)
-                    text_response = full_model.chat(
-                        tokenizer, None, question, generation_config, history=None
+                    # Use helper function that supports both v1 and v2 models
+                    text_response = _run_text_only_generation(
+                        full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
                     )
-                    generated_ids_before_ptq = text_response  # Store text response
-                    print(f"✅ Text-only generation successful: {text_response[:100]}...")
+
+                    if text_response is not None:
+                        generated_ids_before_ptq = text_response  # Store text response
+                        print(f"✅ Text-only generation successful: {text_response[:100]}...")
+                    else:
+                        raise Exception("Text-only generation returned None")
 
                 except Exception as e:
                     print(f"Text-only generation failed: {e}")
@@ -641,7 +784,7 @@ def main(args):
             elif is_nemotron_vl:
                 print("Running text-only preview generation for quantized Nemotron VL model...")
                 try:
-                    # Try text-only generation using model.chat with None for images
+                    # Try text-only generation using helper function that supports both v1 and v2
                     if tokenizer is None:
                         raise ValueError("Tokenizer is required for Nemotron VL text generation")
 
@@ -652,12 +795,16 @@ def main(args):
                         "eos_token_id": tokenizer.eos_token_id,
                     }
 
-                    # Use model.chat with None for images (text-only mode)
-                    text_response = full_model.chat(
-                        tokenizer, None, question, generation_config, history=None
+                    # Use helper function that supports both v1 and v2 models
+                    text_response = _run_text_only_generation(
+                        full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
                     )
-                    generated_ids_after_ptq = text_response  # Store text response
-                    print(f"✅ Text-only generation successful: {text_response[:100]}...")
+
+                    if text_response is not None:
+                        generated_ids_after_ptq = text_response  # Store text response
+                        print(f"✅ Text-only generation successful: {text_response[:100]}...")
+                    else:
+                        generated_ids_after_ptq = None
 
                 except Exception as e:
                     print(f"Text-only generation failed: {e}")
