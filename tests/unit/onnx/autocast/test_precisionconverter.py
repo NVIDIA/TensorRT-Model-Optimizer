@@ -177,7 +177,7 @@ def test_get_tensors_to_cast(simple_model, keep_io_types, low_precision_type):
     )
 
     # Test when relu node is in low precision
-    cast_down, cast_up = converter._get_tensors_to_cast(["relu"])
+    cast_down, cast_up, _ = converter._get_tensors_to_cast(["relu"])
     assert "add_output" in cast_down  # Input to relu should be cast down
     assert "Y" in cast_up  # Output of relu should be cast up
     if not keep_io_types:
@@ -186,7 +186,7 @@ def test_get_tensors_to_cast(simple_model, keep_io_types, low_precision_type):
         )  # Input to gemm should be cast up, because network input are converted to FP16
 
     # Test when add node is in low precision
-    cast_down, cast_up = converter._get_tensors_to_cast(["add"])
+    cast_down, cast_up, _ = converter._get_tensors_to_cast(["add"])
     assert "gemm_output" in cast_down  # Input to add should be cast down
     assert "add_init" not in cast_down  # Initializer should not be in cast list
     assert "add_output" in cast_up  # Output of add should be cast up
@@ -312,13 +312,13 @@ def test_get_tensors_to_cast_multiple_consumers(
     )
 
     # Test when gemm2 and add1 nodes are in low precision
-    cast_down, cast_up = converter._get_tensors_to_cast(["gemm2", "add1"])
+    cast_down, cast_up, _ = converter._get_tensors_to_cast(["gemm2", "add1"])
     assert "X" in cast_down  # Input to gemm2 should be cast down
     assert "gemm2_output" in cast_up  # Output of gemm2 should be cast up
     assert "Y1" in cast_up  # Output of add1 should be cast up
 
     # Test when all nodes except gemm1 are in low precision
-    cast_down, cast_up = converter._get_tensors_to_cast(["gemm2", "add1", "add2"])
+    cast_down, cast_up, _ = converter._get_tensors_to_cast(["gemm2", "add1", "add2"])
     assert "gemm1_output" in cast_down  # Input to gemm2 should be cast down
     assert "Y1" in cast_up  # Output of add1 should be cast up
     assert "Y2" in cast_up  # Output of add2 should be cast up
