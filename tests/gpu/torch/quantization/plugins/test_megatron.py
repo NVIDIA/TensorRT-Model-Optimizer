@@ -53,6 +53,12 @@ import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.nn import QuantModuleRegistry
 from modelopt.torch.utils.plugins import megatron_prefill
 
+try:
+    from modelopt.torch.quantization.plugins.psx_formats import PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG
+except ImportError:
+    PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG = None
+    print("psx_formats is not installed. Skip importing PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG.")
+
 SEED = 1234
 
 
@@ -399,6 +405,7 @@ mixed_block_size_config["quant_cfg"].update(
         mtq.W4A8_AWQ_BETA_CFG,
         mtq.NVFP4_DEFAULT_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
+        PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG,
     ],
 )
 @pytest.mark.parametrize("compress", [False, True])
@@ -406,6 +413,13 @@ mixed_block_size_config["quant_cfg"].update(
 def test_homogeneous_sharded_state_dict(tmp_path, config, compress, meta_device):
     if compress and config is mtq.W4A8_AWQ_BETA_CFG:
         pytest.skip("W4A8_AWQ_BETA_CFG is not supported for compress")
+    if config is PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG:
+        if config is None:
+            pytest.skip("psx_formats is not installed.")
+        if compress:
+            pytest.skip("psx_formats backend is not supported for compress")
+        if meta_device:
+            pytest.skip("psx_formats backend is not supported for meta device")
 
     size = torch.cuda.device_count()
 

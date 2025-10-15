@@ -14,6 +14,8 @@
 # limitations under the License.
 
 
+import warnings
+
 import torch
 from transformers import AutoTokenizer
 
@@ -29,6 +31,14 @@ from modelopt.torch.utils.dataset_utils import (
 MAX_SEQ_LEN = 4096
 MAX_OUTPUT_LEN = 512
 
+try:
+    import modelopt.torch.quantization.plugins.psx_formats as mtq_psx
+except ImportError:
+    mtq_psx = None
+    warnings.warn(
+        "psx_formats is not installed. PSX formats quantization configs will not be available.",
+    )
+
 # This is an example to customize the quantization config.
 # Modify your custom config for debugging or research purposes.
 CUSTOM_CONFIG = {
@@ -42,6 +52,9 @@ CUSTOM_CONFIG = {
         "algorithm": "max",
     },
 }
+
+if mtq_psx is not None:
+    CUSTOM_CONFIG.update({k: getattr(mtq_psx, k) for k in mtq_psx.choices})
 
 
 def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, trust_remote_code=False):

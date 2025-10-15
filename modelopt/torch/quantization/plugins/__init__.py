@@ -71,3 +71,6 @@ with import_plugin("vllm"):
 
 with import_plugin("trl"):
     from .trl import *
+
+with import_plugin("psx_formats"):
+    from .psx_formats import *
