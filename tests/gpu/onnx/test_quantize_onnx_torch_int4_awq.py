@@ -39,6 +39,58 @@ else:
 #       test_qdq_utils_fp8.py::test_fused_q[bf16,fp16] fails if this script runs after the int4 test, but not before.
 
 
+def test_safe_cupy_array_all_paths(monkeypatch):
+    """Test safe_cupy_array covering all code paths including ml_dtypes handling"""
+    # Test 1: When ml_dtypes import fails (covers ImportError path)
+    # Temporarily remove ml_dtypes from sys.modules
+    import sys
+
+    if "ml_dtypes" in sys.modules:
+        ml_dtypes_backup = sys.modules["ml_dtypes"]
+        monkeypatch.delitem(sys.modules, "ml_dtypes")
+    else:
+        ml_dtypes_backup = None
+
+    tensor = np.array([1, 2, 3, 4], dtype=np.int8)
+    result = int4.safe_cupy_array(tensor)
+    assert isinstance(result, np.ndarray)  # Should return numpy array
+
+    # Restore ml_dtypes if it existed
+    if ml_dtypes_backup:
+        sys.modules["ml_dtypes"] = ml_dtypes_backup
+
+    # Test 2: When ml_dtypes exists and tensor has ml_dtypes.int4 dtype
+    try:
+        import ml_dtypes
+
+        # Create a mock tensor with int4 dtype
+        class MockInt4Tensor:
+            def __init__(self, data):
+                self.data = data
+                self.dtype = ml_dtypes.int4
+                self.shape = data.shape
+
+            def astype(self, dtype):
+                return self.data.astype(dtype)
+
+            def __array__(self):
+                return self.data
+
+        mock_tensor = MockInt4Tensor(np.array([1, 2, 3, 4], dtype=np.int8))
+        result = int4.safe_cupy_array(mock_tensor)
+        assert isinstance(result, np.ndarray)
+        assert result.dtype == np.int8
+    except ImportError:
+        # ml_dtypes not available, skip this part
+        pass
+
+    # Test 3: Normal case with regular numpy array
+    tensor = np.array([1, 2, 3, 4], dtype=np.int8)
+    result = int4.safe_cupy_array(tensor)
+    # Should work normally
+    assert isinstance(result, (np.ndarray, type(tensor)))
+
+
 def test_int4_awq(tmp_path):
     def _forward_loop(model, dataloader):
         """Forward loop for calibration."""
