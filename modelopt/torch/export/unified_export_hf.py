@@ -26,7 +26,11 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-from accelerate import Accelerator
+
+try:
+    from accelerate import Accelerator
+except ImportError:  # pragma: no cover
+    Accelerator = None
 from safetensors.torch import save_file
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
