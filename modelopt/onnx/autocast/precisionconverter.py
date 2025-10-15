@@ -408,7 +408,12 @@ class PrecisionConverter:
         for node in self.model.graph.node:
             if node.name in low_precision_nodes:
                 # Cast inputs to FP16 nodes down to FP16
-                cast_to_fp16.extend(node.input)
+                for input in node.input:
+                    if self._should_skip_low_precision_input_conversion(node, input):
+                        cast_to_fp32.append(input)
+                    else:
+                        cast_to_fp16.append(input)
+
                 # Cast outputs from FP16 nodes up to FP32
                 cast_to_fp32.extend(node.output)
 
@@ -548,7 +553,7 @@ class PrecisionConverter:
         for node in self.model.graph.node:
             if node.name in low_precision_nodes:
                 for init in self.node_to_init_map[node.name]:
-                    if self._should_skip_low_precision_initializer_conversion(node, init):
+                    if self._should_skip_low_precision_input_conversion(node, init):
                         continue
                     modified |= convert_initializer(
                         init,
@@ -1053,24 +1058,26 @@ class PrecisionConverter:
             return len(get_consumer_nodes) == 1 and get_consumer_nodes[0] == node
         return False
 
-    def _should_skip_low_precision_initializer_conversion(
-        self, node: onnx.NodeProto, init: onnx.TensorProto
+    def _should_skip_low_precision_input_conversion(
+        self, node: onnx.NodeProto, input_name: str
     ) -> bool:
-        """Check if the initializer should be skipped for low precision conversion.
+        """Check if the input should be skipped for low precision conversion.
 
-        This is used for nodes that have initializers that MUST remain in FP32.
+        This is used for nodes that have inputs that MUST remain in FP32.
         """
+        assert isinstance(node, onnx.NodeProto), f"node must be an onnx.NodeProto, got {type(node)}"
+        assert isinstance(input_name, str), f"input_name must be a string, got {type(input_name)}"
         if node.op_type == "Resize":
-            if init.name not in node.input:
+            if input_name not in node.input:
                 raise KeyError(
-                    f"Initializer {init.name} not found in node {node.name} input, not expected!"
+                    f"Input {input_name} not found in node {node.name} input, not expected!"
                 )
-            # Figure out the index of the initializer in the node input
+            # Figure out the index of the input in the node input
             inputs_lst = list(node.input)
-            init_index = inputs_lst.index(init.name)
-        # The second input does not support bfloat16, so leave it in FP32.
+            input_index = inputs_lst.index(input_name)
+            # The second input does not support bfloat16, so leave it in FP32.
             # The third input of Resize must remain in FP32.
             # Ref: https://onnx.ai/onnx/operators/onnx__Resize.html#inputs
-            return init_index in {1, 2}
+            return input_index in {1, 2}
 
         return False
