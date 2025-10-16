@@ -14,6 +14,7 @@
 # limitations under the License.
 import copy
 import re
+from collections import defaultdict
 from warnings import warn
 
 import torch
@@ -41,6 +42,7 @@ from megatron.core.models.mamba import MambaModel
 from megatron.core.parallel_state import (
     get_expert_model_parallel_group,
     get_expert_tensor_parallel_group,
+    get_expert_tensor_parallel_rank,
     initialize_model_parallel,
     is_pipeline_first_stage,
     is_pipeline_last_stage,
@@ -190,7 +192,7 @@ def get_mcore_gpt_model(
         pipeline_model_parallel_size=pipeline_model_parallel_size,
         expert_model_parallel_size=expert_model_parallel_size,
         expert_tensor_parallel_size=expert_tensor_parallel_size,
-        sequence_parallel=expert_model_parallel_size > 1,
+        sequence_parallel=False,
         moe_grouped_gemm=moe_grouped_gemm,
         num_layers=num_layers,
         num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
@@ -221,7 +223,12 @@ def get_mcore_gpt_model(
     else:
         assert HAS_TE, "Transformer Engine not installed"
         transformer_layer_spec = (
-            get_gpt_modelopt_spec(config, remap_te_layernorm=True)
+            get_gpt_modelopt_spec(
+                config,
+                remap_te_layernorm=True,
+                # TODO: uncomment this when TEGroupedMLP is enabled in Megatron-LM
+                # moe_grouped_gemm=moe_grouped_gemm
+            )
             if transformer_impl == "modelopt"
             else get_gpt_layer_with_transformer_engine_spec()
         )
@@ -565,8 +572,7 @@ def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True)
             # Check for both TEGrouped and sequential MoE patterns
             if "local_experts" in name or ("experts" in name and "linear_fc" in name):
                 # Convert to scalar only if tensor has a single element
-                amax_val = module.amax.detach().clone().cpu()
-                expert_amax_values[name] = amax_val
+                expert_amax_values[name] = module.amax.detach().clone().cpu()
 
     # Early return if no expert quantizers found
     assert expert_amax_values, "No expert quantizers found"
@@ -577,19 +583,16 @@ def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True)
     torch.distributed.all_gather_object(all_amax_values, expert_amax_values)
 
     # Group quantizers by type (ignoring specific expert indices) and check sync
-    expert_quantizers = {}
+    expert_quantizers = defaultdict(dict)
     for rank_idx, rank_amax in enumerate(all_amax_values):
         for name, amax_val in rank_amax.items():
             # Create quantizer type key by normalizing the name
-            if "local_experts" in name:
-                # sequential MoE: replace expert index with wildcard
-                quantizer_type = re.sub(r"local_experts\.\d+", "local_experts.*", name)
-            else:
-                # TEGrouped MoE: use the name as-is since experts are grouped
-                quantizer_type = name
+            quantizer_type = (
+                re.sub(r"local_experts\.\d+", "local_experts.*", name)
+                if "local_experts" in name
+                else name
+            )
 
-            if quantizer_type not in expert_quantizers:
-                expert_quantizers[quantizer_type] = {}
             if (
                 quantizer_type in expert_quantizers
                 and rank_idx in expert_quantizers[quantizer_type]
@@ -608,21 +611,53 @@ def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True)
                     )
             expert_quantizers[quantizer_type][rank_idx] = amax_val
 
-    # Check synchronization - fail fast on first inconsistency
+    rank_info = {
+        "global_rank": torch.distributed.get_rank(),
+        "etp_rank": get_expert_tensor_parallel_rank(),
+    }
+
+    all_rank_info = [None] * world_size
+    torch.distributed.all_gather_object(all_rank_info, rank_info)
+
+    # Group ranks by ETP rank for fc1 (ColumnParallel: same output channels should match)
+    etp_groups = defaultdict(list)
+    for info in all_rank_info:
+        etp_groups[info["etp_rank"] if info["etp_rank"] else 0].append(info["global_rank"])
+
     for quantizer_type, rank_values in expert_quantizers.items():
-        if len(rank_values) > 1:  # Only check if we have multiple ranks
-            values = list(rank_values.values())
-            # Handle both scalar and tensor comparisons
-            first_val = values[0]
-            if isinstance(first_val, torch.Tensor):
-                # For tensors, check if all values are close to the first one
-                for val in values[1:]:
-                    if not torch.allclose(first_val, val, rtol=1e-6, atol=1e-6):
-                        return False, quantizer_type, rank_values
-            else:
-                # For scalars, use numeric comparison
-                max_diff = max(values) - min(values)
-                if max_diff > 1e-6:  # Allow for small floating point differences
-                    return False, quantizer_type, rank_values
+        # Determine which ranks should have same amax
+        # Find which rank should have same amax
+        #
+        # fc1: ColumnParallel: X @ [A_1, A_2] (weights split along Cout)
+        # so amax should be the same across same ETP rank
+        # if EP is 2, ETP is 2, we have 4 ranks, EP1, ETP1: 0, EP1, ETP2: 1, EP2, ETP1: 2, EP2, ETP2: 3
+        # so we need to compare amax across same ETP rank [0, 2] [1, 3] for per-channel quantization
+        #
+        # fc2: RowParallel:    [X_1, X_2] @  [A_1
+        #                                     A_2] (weights split along Cin)
+        # amax should be the same across all ranks
+
+        rank_groups = (
+            list(etp_groups.values())
+            if "linear_fc1" in quantizer_type and rank_values[0].ndim > 0
+            else [list(range(world_size))]
+        )
+
+        # Check each group independently
+        for group in rank_groups:
+            group_values = [rank_values[r] for r in group if r in rank_values]
+            if len(group_values) > 1:
+                # All values in this group should be identical
+                first_val = group_values[0]
+                for val in group_values[1:]:
+                    if isinstance(first_val, torch.Tensor):
+                        if not torch.allclose(first_val, val, rtol=1e-6, atol=1e-6):
+                            group_rank_values = {
+                                r: rank_values[r] for r in group if r in rank_values
+                            }
+                            return False, f"{quantizer_type} (group {group})", group_rank_values
+                    elif abs(first_val - val) > 1e-6:
+                        group_rank_values = {r: rank_values[r] for r in group if r in rank_values}
+                        return False, f"{quantizer_type} (group {group})", group_rank_values
 
     return True, None, None

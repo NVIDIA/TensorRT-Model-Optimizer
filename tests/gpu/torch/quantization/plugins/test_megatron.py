@@ -45,6 +45,7 @@ from megatron.core.parallel_state import (
 )
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.moe.experts import SequentialMLP, TEGroupedMLP
+from megatron.core.transformer.moe.router import TopKRouter
 
 import modelopt
 import modelopt.torch.opt as mto
@@ -240,6 +241,7 @@ def _gpt_model_provider(
     ep_size=1,
     etp_size=None,
     use_te=False,
+    transformer_impl="local",
 ):
     """Build the model."""
 
@@ -253,7 +255,7 @@ def _gpt_model_provider(
                 ffn_hidden_size=None,
                 num_attention_heads=8,
                 activation_func="squared_relu",
-                transformer_impl="local",
+                transformer_impl=transformer_impl,
                 hidden_size=hidden_size,
                 vocab_size=vocab_size,
                 use_cpu_initialization=meta_device,
@@ -270,7 +272,7 @@ def _gpt_model_provider(
             ffn_hidden_size=None,
             num_attention_heads=8,
             activation_func="squared_relu",
-            transformer_impl="local",
+            transformer_impl=transformer_impl,
             hidden_size=hidden_size,
             vocab_size=vocab_size,
             num_moe_experts=num_moe_experts,
@@ -297,6 +299,7 @@ def _test_sharded_state_dict(
     num_moe_experts = moe_config.get("num_moe_experts", None)
     moe_grouped_gemm = moe_config.get("moe_grouped_gemm", False)
     use_te = moe_config.get("use_te", False)
+    transformer_impl = moe_config.get("transformer_impl", "local")
 
     initialize_for_megatron(
         tensor_model_parallel_size=tp_size,
@@ -314,6 +317,7 @@ def _test_sharded_state_dict(
         use_te=use_te,
         ep_size=ep_size,
         etp_size=etp_size,
+        transformer_impl=transformer_impl,
     )
     model_test = _gpt_model_provider(
         tp_size,
@@ -325,6 +329,7 @@ def _test_sharded_state_dict(
         meta_device=meta_device,
         ep_size=ep_size,
         etp_size=etp_size,
+        transformer_impl=transformer_impl,
     )
 
     prompt_tokens = torch.randint(
@@ -531,10 +536,7 @@ def test_fp8_real_quantize():
 
 @pytest.mark.parametrize(
     "config",
-    [
-        mtq.FP8_DEFAULT_CFG,
-        mtq.NVFP4_DEFAULT_CFG,
-    ],
+    [mtq.FP8_DEFAULT_CFG, mtq.NVFP4_DEFAULT_CFG, mtq.INT4_BLOCKWISE_WEIGHT_ONLY_CFG],
 )
 @pytest.mark.parametrize("moe_grouped_gemm", [True, False])
 def test_moe_sharded_state_dict(need_4_gpus, tmp_path, config, moe_grouped_gemm):
@@ -549,6 +551,7 @@ def test_moe_sharded_state_dict(need_4_gpus, tmp_path, config, moe_grouped_gemm)
         "num_moe_experts": 4,
         "moe_grouped_gemm": moe_grouped_gemm,
         "use_te": moe_grouped_gemm,
+        "transformer_impl": "modelopt",
     }
     spawn_multiprocess_job(
         size=size,
@@ -606,6 +609,7 @@ def _test_te_grouped_vs_sequential_quantize_helper(tp_size, ep_size, etp_size, r
         hidden_size=32,
         moe_grouped_gemm=False,
         num_moe_experts=4,
+        transformer_impl="modelopt",
     )
     num_sequential_mlp = sum(
         isinstance(module, SequentialMLP) for module in sequential_moe_model.modules()
@@ -666,9 +670,15 @@ def _test_expert_model_parallel_amax_sync(
         hidden_size=256,
         moe_grouped_gemm=moe_grouped_gemm,
         use_te=moe_grouped_gemm,
-        num_moe_experts=4,
+        num_moe_experts=8,
+        transformer_impl="modelopt",
     )
     prompt_tokens = torch.randint(0, model.vocab_size, (2, model.max_sequence_length)).cuda()
+
+    # force all expert routing
+    for module in model.modules():
+        if isinstance(module, TopKRouter):
+            module.topk = module.num_experts
 
     def forward_fn(model):
         return megatron_prefill(model, prompt_tokens)
@@ -701,9 +711,10 @@ def _test_expert_model_parallel_amax_sync(
     assert final_sync, f"Inconsistent amax for expert {quantizer_type} across ranks: {rank_values}"
 
 
+@pytest.mark.parametrize("config", [mtq.FP8_DEFAULT_CFG, mtq.INT8_DEFAULT_CFG])
 @pytest.mark.parametrize(("ep_size", "etp_size"), [(1, 2), (2, 1), (2, 2)])
 @pytest.mark.parametrize("moe_grouped_gemm", [True, False])
-def test_expert_parallel_sync(ep_size, etp_size, moe_grouped_gemm):
+def test_expert_parallel_sync(config, ep_size, etp_size, moe_grouped_gemm):
     """Test expert model parallel synchronization."""
     size = torch.cuda.device_count()
     if size < ep_size * etp_size:
@@ -716,11 +727,11 @@ def test_expert_parallel_sync(ep_size, etp_size, moe_grouped_gemm):
         size=size,
         job=partial(
             _test_expert_model_parallel_amax_sync,
-            2,
+            etp_size,  # tp_size
             ep_size,
             etp_size,
             moe_grouped_gemm,
-            mtq.FP8_DEFAULT_CFG,
+            config,
         ),
         backend="nccl",
     )

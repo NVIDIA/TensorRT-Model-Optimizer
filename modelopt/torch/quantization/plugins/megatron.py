@@ -506,9 +506,15 @@ class _MegatronSequentialMLP(_MegatronMLP):
             expert.linear_fc2.parallel_state = self.parallel_state
 
     def sync_moe_local_experts_amax(self):
-        """Sync amax across experts in a SequentialMLP."""
+        """Sync amax across local experts in a SequentialMLP.
+
+        amax across EP and ETP (for RowParallel) are synchronized as part of model_calib.max_calibrate().
+        This function is called to synchronize the amax values across local experts s.t. all localexperts will
+        share the same amax.
+        """
+        torch.distributed.barrier()
+        # Collect amax from all local experts
         amax_dict = {}
-        # gather amax values from SequentialMLP experts
         for expert in self.local_experts:
             for name, module in expert.named_modules():
                 if isinstance(module, TensorQuantizer) and module.amax is not None:
@@ -520,7 +526,7 @@ class _MegatronSequentialMLP(_MegatronMLP):
                         else torch.maximum(stored_amax, amax_tensor)
                     )
 
-        # sync amax values across experts in SequentialMLP
+        # Apply synchronized amax values back to all local experts
         for expert in self.local_experts:
             for name, module in expert.named_modules():
                 if isinstance(module, TensorQuantizer) and module.amax is not None:
