@@ -636,10 +636,9 @@ def compare_amax_sync_across_expert_parallel(model, compare_across_experts=True)
         # fc2: RowParallel:    [X_1, X_2] @  [A_1
         #                                     A_2] (weights split along Cin)
         # amax should be the same across all ranks
-
         rank_groups = (
             list(etp_groups.values())
-            if "linear_fc1" in quantizer_type and rank_values[0].ndim > 0
+            if "linear_fc1" in quantizer_type and (next(iter(rank_values.values()))).ndim > 0
             else [list(range(world_size))]
         )
 
