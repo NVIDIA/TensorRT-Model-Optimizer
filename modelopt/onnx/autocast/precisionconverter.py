@@ -51,6 +51,10 @@ OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Upsample", "NonMaxSuppression", "Cel
 # Temporarily block these ops in low precision, as they are not supported yet
 OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop", "LSTM"])
 
+# Mapping of op types to indices of inputs that should not be converted to low precision.
+SKIP_LOW_PRECISION_MAPPING_FP16 = {"Resize": {1}}
+SKIP_LOW_PRECISION_MAPPING_BF16 = {"Resize": {1, 2}}
+
 
 class PrecisionConverter:
     """Precision conversion module for ONNX models.
@@ -1079,19 +1083,18 @@ class PrecisionConverter:
 
         This is used for nodes that have inputs that MUST remain in FP32.
         """
-        assert isinstance(node, onnx.NodeProto), f"node must be an onnx.NodeProto, got {type(node)}"
-        assert isinstance(input_name, str), f"input_name must be a string, got {type(input_name)}"
-        if node.op_type == "Resize":
-            if input_name not in node.input:
-                raise KeyError(
-                    f"Input {input_name} not found in node {node.name} input, not expected!"
-                )
+        match self.low_precision_type:
+            case "fp16":
+                skip_inputs_map = SKIP_LOW_PRECISION_MAPPING_FP16
+            case "bf16":
+                skip_inputs_map = SKIP_LOW_PRECISION_MAPPING_BF16
+            case _:
+                raise ValueError(f"Unsupported low precision type: {self.low_precision_type}")
+
+        if node.op_type in skip_inputs_map:
             # Figure out the index of the input in the node input
             inputs_lst = list(node.input)
             input_index = inputs_lst.index(input_name)
-            # The second input does not support bfloat16, so leave it in FP32.
-            # The third input of Resize must remain in FP32.
-            # Ref: https://onnx.ai/onnx/operators/onnx__Resize.html#inputs
-            return input_index in {1, 2}
-
+            # Check if we should skip this input for low precision conversion
+            return input_index in skip_inputs_map[node.op_type]
         return False
