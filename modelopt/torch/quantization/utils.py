@@ -596,7 +596,7 @@ def enable_fake_quant(module):
 
 
 @contextmanager
-def fsdp2_aware_weight_update(root_model, modules_to_update):
+def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
     """Context manager to update the FSDPParam list if an update is made to a submodule of an FSDPModule."""
     try:
         if isinstance(root_model, FSDPModule):
@@ -675,5 +675,5 @@ def fsdp2_aware_weight_update(root_model, modules_to_update):
             fsdp_param_group.fsdp_params = list(fsdp_param_mapping.values())
 
             # Reshard FSDP root module
-            # TODO: Add a check to reshard only if necessary, can help performance during export
-            root_module.reshard()
+            if reshard:
+                root_module.reshard()

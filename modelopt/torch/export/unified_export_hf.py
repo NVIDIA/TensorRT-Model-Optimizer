@@ -32,6 +32,7 @@ try:
 except ImportError:  # pragma: no cover
     Accelerator = None
 from safetensors.torch import save_file
+from torch.distributed.fsdp import FSDPModule
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
@@ -350,7 +351,7 @@ def _export_quantized_weight(
 def _export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
-    accelerator: Accelerator | None = None,
+    **kwargs,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -372,6 +373,8 @@ def _export_hf_checkpoint(
             f"Model's original dtype ({model.config.torch_dtype}) differs from target dtype "
             f"({dtype}), which may lead to numerical errors."
         )
+
+    accelerator = kwargs.get("accelerator")
 
     # Create a model layer pool
     # If `model.model` exists use that, otherwise use `model` itself, e.g., Nemotron-H
@@ -470,12 +473,21 @@ def _export_hf_checkpoint(
 
     # Track if any layers are quantized to properly set exclude_modules
     has_quantized_layers = False
+    fsdp_module_to_reshard = None
 
     for name, sub_module in layer_pool.items():
+        # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
+        if isinstance(sub_module, FSDPModule):
+            # Every time we encounter a new FSDPModule, we need to reshard the previous one
+            if fsdp_module_to_reshard is not None:
+                fsdp_module_to_reshard.reshard()
+
+            fsdp_module_to_reshard = sub_module
+
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
             if is_quantlinear(sub_module):
-                with fsdp2_aware_weight_update(model, sub_module):
+                with fsdp2_aware_weight_update(model, sub_module, reshard=False):
                     _export_quantized_weight(sub_module, dtype)
             elif (
                 "Llama4TextExperts" in type(sub_module).__name__
@@ -494,7 +506,7 @@ def _export_hf_checkpoint(
                 )
                 # Export the quantized weights
                 for weight_name in ["gate_up_proj", "down_proj"]:
-                    with fsdp2_aware_weight_update(model, sub_module):
+                    with fsdp2_aware_weight_update(model, sub_module, reshard=False):
                         _export_quantized_weight(sub_module, dtype, weight_name)
 
     if accelerator is not None:
