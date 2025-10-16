@@ -122,7 +122,7 @@ def setup_distillation_config(
 
     if cfg.criterion is None:
         criterion = {}
-        if student_cfg.pipeline_model_parallel_size == 1 or parallel_state.is_pipeline_last_stage():
+        if parallel_state.is_pipeline_last_stage():
             criterion[tuple(cfg.logit_layers)] = LogitsKLLoss(
                 student_cfg, temperature=cfg.logit_kl_temperature
             )
