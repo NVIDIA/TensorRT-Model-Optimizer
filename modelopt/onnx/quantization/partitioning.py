@@ -136,7 +136,7 @@ def _build_fusible_partition(
                 and _is_cask_fusible(consumer_node, partition_node_outputs)
             )
             or (
-                consumer_node.op in ["MaxPool", "BatchNormalization", "Relu"]
+                consumer_node.op in ["BatchNormalization", "Relu", "MaxPool"]
                 and get_fusible_backbone(consumer_node, graph)
             )
             or _is_on_non_residual_path(consumer_node)
