@@ -64,9 +64,21 @@ from modelopt.torch.quantization.utils import (
 from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
 from modelopt.torch.utils.distributed import ParallelState
 
-sys.path.append(str(Path(__file__).resolve().parent / "DeepSeek-V3/inference"))
-import model as deekseep_model
-from kernel import act_quant, fp8_gemm, weight_dequant
+DS_V3_PATH = Path(__file__).resolve().parent / "DeepSeek-V3/inference"
+DS_V3_2_PATH = Path(__file__).resolve().parent / "DeepSeek-V3.2-Exp/inference"
+
+if DS_V3_2_PATH.exists():
+    sys.path.append(str(DS_V3_2_PATH))
+elif DS_V3_PATH.exists():
+    sys.path.append(str(DS_V3_PATH))
+else:
+    raise ValueError(
+        f"DeepSeek-V3 or DeepSeek-V3.2-Exp not found in {Path(__file__).resolve().parent}"
+    )
+
+import model as deekseep_model  # noqa: E402
+from ds_kernel import weight_dequant  # noqa: E402
+from kernel import act_quant, fp8_gemm  # noqa: E402
 
 
 def monkey_patch_deepseek_model():
@@ -243,10 +255,10 @@ def ptq(
     ## create dataset
     device = next(model.parameters()).device
     calib_dataset = get_dataset_dataloader(
-        dataset_name="cnn_dailymail",
+        dataset_name=["cnn_dailymail", "nemotron-post-training-dataset-v2"],
         tokenizer=tokenizer,
         batch_size=batch_size,
-        num_samples=calib_size,
+        num_samples=[calib_size, calib_size],
         device=device,
     )
 
