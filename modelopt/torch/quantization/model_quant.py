@@ -228,7 +228,7 @@ def quantize(
     Returns: A pytorch model which has been quantized and calibrated.
     """
     model = apply_mode(model, mode=[("quantize", config)], registry=QuantizeModeRegistry)
-    return calibrate(model, config["algorithm"], forward_loop=forward_loop)
+    return calibrate(model, config.get("algorithm"), forward_loop=forward_loop)
 
 
 def auto_quantize(
