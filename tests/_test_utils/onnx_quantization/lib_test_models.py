@@ -124,6 +124,7 @@ def export_as_onnx(
         output_names=output_names,
         opset_version=opset,
         do_constant_folding=do_constant_folding,
+        dynamo=False,
     )
 
 

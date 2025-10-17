@@ -17,6 +17,7 @@
 
 import torch
 import transformer_engine as te
+import transformer_engine.pytorch.module.grouped_linear as te_grouped_linear
 import transformer_engine.pytorch.module.linear as te_linear
 
 from ..nn import QuantModuleRegistry
@@ -58,3 +59,60 @@ class _QuantTELinear(_ParallelLinear):
 
     # Override the quantized linear function
     _quantized_linear_fn = te_quantized_linear_fn
+
+
+# Register the public te.pytorch.GroupedLinear class
+@QuantModuleRegistry.register({te_grouped_linear.GroupedLinear: "te_GroupedLinear"})
+class _QuantTEGroupedLinear(_ParallelLinear):
+    _functionals_to_replace = [
+        (te_grouped_linear._GroupedLinear, "forward"),
+        (te_grouped_linear._GroupedLinear, "apply"),
+    ]
+
+    def _setup(self):
+        # GroupedMLP stores the weights as weight0, weight1, etc. To run setup in order to
+        # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
+        # self.weight0 to self.weight to run the quantizer states initialization.
+        assert not hasattr(self, "weight"), "self.weight should not exist for TEGroupedLinear"
+        self.weight = self.weight0
+        # Memorize the original weight.dtype for modelopt_post_restore given that
+        # the dtype can change later.
+        super()._setup()
+        # Remove self.weight after setup.
+        delattr(self, "weight")
+
+    def modelopt_post_restore(self, prefix: str = ""):
+        # GroupedMLP stores the weights as weight0, weight1, etc. To run post_restore in order to
+        # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
+        # self.weight0 to self.weight to run the quantizer states initialization.
+        assert not hasattr(self, "weight"), "self.weight should not exist for TEGroupedLinear"
+        self.weight = self.weight0
+        super().modelopt_post_restore(prefix=prefix)
+        # Remove self.weight after post_restore.
+        delattr(self, "weight")
+
+    @staticmethod
+    def te_grouped_quantized_linear_fn(package, func_name, self, *args):
+        idx = 1 if func_name == "_forward" else 0
+        inp = args[idx]
+        num_gemms = len(args[idx + 1])
+        weights_and_biases = args[-2 * num_gemms :]
+        weights, biases = weights_and_biases[:num_gemms], weights_and_biases[num_gemms:]
+        quantized_inputs = self.input_quantizer(inp)
+        quantized_weights = [self.weight_quantizer(weight) for weight in weights]
+
+        output = getattr(package, func_name)(
+            *(
+                args[0],
+                quantized_inputs,
+            )
+            if func_name == "_forward"
+            else (quantized_inputs,),
+            *args[idx + 1 : -2 * num_gemms],
+            *quantized_weights,
+            *biases,
+        )
+        return self.output_quantizer(output)
+
+    # Override the quantized linear function
+    _quantized_linear_fn = te_grouped_quantized_linear_fn

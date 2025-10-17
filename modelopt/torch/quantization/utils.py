@@ -251,8 +251,11 @@ def is_quantized_linear(module):
         isinstance(module, QuantModule)
         and isinstance(getattr(module, "input_quantizer", None), TensorQuantizer)
         and hasattr(module, "weight_quantizer")
-        and getattr(module, "weight", None) is not None
-        and module.weight.dim() == 2
+        and (
+            (getattr(module, "weight", None) is not None and module.weight.dim() == 2)
+            # module.weight0 check is required to support TEGroupedLinear
+            or (getattr(module, "weight0", None) is not None and module.weight0.dim() == 2)
+        )
     )
 
 
