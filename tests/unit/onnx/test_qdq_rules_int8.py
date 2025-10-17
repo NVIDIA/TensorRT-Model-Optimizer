@@ -19,6 +19,7 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 from _test_utils.onnx.quantization.lib_test_models import (
+    build_conv_act_pool_model,
     build_conv_batchnorm_sig_mul_model,
     build_r1a_model,
     build_resnet_block,
@@ -150,3 +151,29 @@ def test_conv_batchnorm_sig_mul_int8(tmp_path):
         assert len(quantized_inputs) == 1, (
             f"More than one input of {node.name} is being quantized, but only one should be quantized!"
         )
+
+
+@pytest.mark.parametrize("include_reshape_node", [False, True])
+def test_conv_act_pool_int8(tmp_path, include_reshape_node):
+    onnx_model = build_conv_act_pool_model(include_reshape_node)
+    onnx_path = os.path.join(tmp_path, f"conv_act_pool_model_{include_reshape_node}.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    quantize.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
+
+    # Check that quantized explicit model is generated
+    assert os.path.isfile(output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    graph = gs.import_onnx(onnx.load(output_onnx_path))
+
+    # Check that Conv is quantized
+    conv_nodes = [n for n in graph.nodes if n.op == "Conv"]
+    assert _assert_nodes_are_quantized(conv_nodes)
+
+    # Check that MaxPool is not quantized
+    pool_nodes = [n for n in graph.nodes if n.op == "MaxPool"]
+    assert _assert_nodes_are_not_quantized(pool_nodes)
