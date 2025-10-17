@@ -21,6 +21,7 @@ import pytest
 import torch
 from _test_utils.onnx.quantization.lib_test_models import (
     SimpleMLP,
+    build_conv_act_pool_model,
     build_convtranspose_conv_residual_model,
     export_as_onnx,
 )
@@ -33,9 +34,14 @@ def assert_nodes_are_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable):
-                assert node.i(inp_idx).op == "DequantizeLinear", (
-                    f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
-                )
+                if should_be_quantized:
+                    assert node.i(inp_idx).op == "DequantizeLinear", (
+                        f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                    )
+                else:
+                    assert node.i(inp_idx).op != "DequantizeLinear", (
+                        f"Input '{inp.name}' of node '{node.name}' is quantized but should not be!"
+                    )
     return True
 
 
@@ -89,3 +95,28 @@ def test_convtranspose_conv_residual_int8(tmp_path):
         assert len(quantized_inputs) == 1, (
             f"More than one input of {node.name} is being quantized, but only one should be quantized!"
         )
+
+
+def test_conv_act_pool_int8(tmp_path):
+    onnx_model = build_conv_act_pool_model()
+    onnx_path = os.path.join(tmp_path, "conv_act_pool_model.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    moq.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
+
+    # Check that quantized explicit model is generated
+    assert os.path.isfile(output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    graph = gs.import_onnx(onnx.load(output_onnx_path))
+
+    # Check that Conv is quantized
+    conv_nodes = [n for n in graph.nodes if n.op == "Conv"]
+    assert _assert_nodes_quantization(conv_nodes)
+
+    # Check that MaxPool is not quantized
+    pool_nodes = [n for n in graph.nodes if n.op == "MaxPool"]
+    assert _assert_nodes_quantization(pool_nodes, should_be_quantized=False)
