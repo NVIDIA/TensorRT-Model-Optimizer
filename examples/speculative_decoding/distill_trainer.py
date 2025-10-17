@@ -14,7 +14,6 @@
 # limitations under the License.
 import json
 import os
-import time
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from abc import abstractmethod
@@ -51,8 +50,11 @@ DistillMetadata = dict[str, tuple[torch.Size, torch.dtype]]
 
 class BaseDistillTrainer:
     """
-    Base distill trainer with basic training loop and overlapped teacher and student steps.
-    Initalized and called on every rank.
+    Base distill trainer.
+    Designed as a placement for HF trainer for several purposes:
+    1. Allow separate placement and parallelism for teacher and student.
+    2. Allow overlapped teacher and student steps.
+    3. Clean, minimal training loop to reduce compatibility issues.
     Args:
         rank: rank of the current process
         args: arguments
@@ -70,8 +72,9 @@ class BaseDistillTrainer:
         if rank in args.student_ranks:
             self.model = self._prepare_student_model()
             self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.args.lr)
+            # Same scheduler as HF trainer default
             self.scheduler = get_linear_schedule_with_warmup(
-                self.optimizer, num_warmup_steps=0, num_training_steps=117380
+                self.optimizer, num_warmup_steps=0, num_training_steps=TOTAL_STEPS
             )
         else:
             self.model = self._prepare_teacher_model()
@@ -208,8 +211,6 @@ class BaseDistillTrainer:
                         global_step = epoch * len(self.dataloader) + i
                         if global_step >= TOTAL_STEPS:
                             break
-                        if global_step == 50:
-                            self.start_time = time.time()
                         inputs = {k: v.to(self.model.device) for k, v in batch.items()}
 
                         # Receive distill messages from teacher
@@ -250,14 +251,9 @@ class BaseDistillTrainer:
                     global_step = epoch * len(self.dataloader) + i
                     if global_step >= TOTAL_STEPS:
                         break
-                    if global_step == 50:
-                        self.start_time = time.time()
                     inputs = {k: v.to(self.model.device) for k, v in batch.items()}
                     with torch.inference_mode():
                         self._send_to_student(self.teacher_step(self.model, inputs))
-
-        self.average_step_time = (time.time() - self.start_time) / (TOTAL_STEPS - 50)
-        print(f"Rank {self.rank} average step time: {self.average_step_time}")
 
         self._print_mem_stats()
         # Makesure all processes finished before destroy.
