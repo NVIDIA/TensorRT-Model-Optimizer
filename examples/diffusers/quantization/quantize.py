@@ -948,7 +948,9 @@ def main() -> None:
             quant_config.format,
             quantize_mha=quant_config.quantize_mha,
         )
-        logger.info(f"Quantization process completed successfully! Time taken = {time.time() - s} seconds")
+        logger.info(
+            f"Quantization process completed successfully! Time taken = {time.time() - s} seconds"
+        )
 
     except Exception as e:
         logger.error(f"Quantization failed: {e}", exc_info=True)

@@ -361,9 +361,7 @@ def get_io_shapes(model_id, onnx_load_path, dynamic_shapes):
 
     if model_id in ["sdxl-1.0", "sdxl-turbo"]:
         io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["sample"]}
-    elif model_id in ["sd3-medium"]:
-        io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["hidden_states"]}
-    elif model_id in ["sd3.5-medium"]:
+    elif model_id in ["sd3-medium", "sd3.5-medium"]:
         io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["hidden_states"]}
     elif model_id in ["flux-dev", "flux-schnell"]:
         io_shapes = {}
