@@ -17,13 +17,17 @@
 """Custom mapping from Nemotron Hugging Face models to Megatron Core models."""
 
 from .mcore_custom import (
+    COL_ETP,
     COL_TP,
+    ROW_ETP,
     REPLICATE,
     ROW_TP,
     CustomModuleMapping,
     NameRemapping,
     QKVMerging,
     QKVSlicing,
+    GatedMLPSlicing,
+    GatedMLPMerging,
 )
 
 # Example on adding a new CausalLM.
@@ -39,7 +43,7 @@ nemotron_causal_lm_export: dict[str, CustomModuleMapping] = {
     "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj."),
     "final_layernorm": NameRemapping("model.norm."),
     "output_layer": NameRemapping("lm_head."),
-}
+    }
 
 
 nemotron_h_causal_lm_import: dict[str, CustomModuleMapping] = {
@@ -63,6 +67,15 @@ nemotron_h_causal_lm_import: dict[str, CustomModuleMapping] = {
     "pre_mlp_layernorm": NameRemapping("backbone.layers.{}.norm.", REPLICATE),
     "linear_fc1": NameRemapping("backbone.layers.{}.mixer.up_proj.", COL_TP),
     "linear_fc2": NameRemapping("backbone.layers.{}.mixer.down_proj.", ROW_TP),
+    # MoE
+    "router": NameRemapping("model.layers.{}.mlp.gate.", REPLICATE),
+    "local_experts.linear_fc1": GatedMLPMerging("model.layers.{}.mlp.experts.{}.", COL_ETP),
+    "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj.", ROW_ETP),
+    "shared_experts.linear_fc1": GatedMLPMerging("model.layers.{}.mlp.shared_experts.", COL_TP),
+    "shared_experts.linear_fc2": NameRemapping(
+        "model.layers.{}.mlp.shared_experts.down_proj.", ROW_TP
+    ),
+    
 }
 
 
@@ -87,4 +100,11 @@ nemotron_h_causal_lm_export: dict[str, CustomModuleMapping] = {
     "pre_mlp_layernorm": NameRemapping("backbone.layers.{}.norm."),
     "linear_fc1": NameRemapping("backbone.layers.{}.mixer.up_proj."),
     "linear_fc2": NameRemapping("backbone.layers.{}.mixer.down_proj."),
+    # MoE
+    "router": NameRemapping("model.layers.{}.mlp.gate."),
+    "local_experts.linear_fc1": GatedMLPSlicing("model.layers.{}.mlp.experts.{}."),
+    "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj."),
+    "shared_experts.linear_fc1": GatedMLPSlicing("model.layers.{}.mlp.shared_experts."),
+    "shared_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.shared_experts.down_proj."),
+
 }
