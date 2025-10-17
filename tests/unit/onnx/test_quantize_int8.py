@@ -33,14 +33,9 @@ def assert_nodes_are_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable):
-                if should_be_quantized:
-                    assert node.i(inp_idx).op == "DequantizeLinear", (
-                        f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
-                    )
-                else:
-                    assert node.i(inp_idx).op != "DequantizeLinear", (
-                        f"Input '{inp.name}' of node '{node.name}' is quantized but should not be!"
-                    )
+                assert node.i(inp_idx).op == "DequantizeLinear", (
+                    f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                )
     return True
 
 
