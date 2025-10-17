@@ -29,7 +29,7 @@ from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
 from modelopt.onnx.logging_config import logger
-from modelopt.onnx.op_types import copy_ops, is_copy_op, is_linear_op
+from modelopt.onnx.op_types import get_copy_ops, is_copy_op, is_linear_op
 from modelopt.onnx.quantization.ort_utils import create_inference_session
 from modelopt.onnx.utils import (
     find_lowest_common_ancestor,
@@ -203,7 +203,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             ["MaxPool", "Relu", "BatchNormalization", "BiasAdd", conv_type],
         ]
     for idx, path_type in enumerate(fusible_linear_path_types):
-        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=copy_ops()):
+        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=get_copy_ops()):
             return _get_backbone(node)
 
     return None
