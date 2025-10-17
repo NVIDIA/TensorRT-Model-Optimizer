@@ -339,7 +339,7 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module, dtype: torch.dtype | None = None
+    model: nn.Module, dtype: torch.dtype | None = None, is_modelopt_qlora: bool = False
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -462,7 +462,11 @@ def _export_hf_checkpoint(
     for name, sub_module in layer_pool.items():
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
-            if is_quantlinear(sub_module):
+            if (
+                is_quantlinear(sub_module)
+                and hasattr(sub_module, "weight_quantizer")
+                and sub_module.weight_quantizer.is_enabled
+            ):
                 _export_quantized_weight(sub_module, dtype)
             elif (
                 "Llama4TextExperts" in type(sub_module).__name__
@@ -486,7 +490,7 @@ def _export_hf_checkpoint(
     quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_qlora
     )
 
     # Check if any layers are quantized

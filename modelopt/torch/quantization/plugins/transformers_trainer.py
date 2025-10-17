@@ -146,7 +146,7 @@ class QATTrainer(ModelOptHFTrainer):
             self.model, "peft_config"
         ):
             # TODO: use get_peft_model here instead of add_adapter
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
 
         if hasattr(self.model, "peft_config") and self.quant_cfg is not None:
@@ -209,6 +209,9 @@ class QATTrainer(ModelOptHFTrainer):
             print_rank_0("Quantizing the model...")
             mtq.quantize(self.model, self.quant_cfg, forward_loop)  # type: ignore [arg-type]
 
+        # Save modelopt state
+        self._save_modelopt_state_with_weights()
+
         if getattr(self.quant_args, "compress", False):
             print_rank_0("Compressing model after calibration")
             mtq.compress(self.model)
@@ -216,7 +219,6 @@ class QATTrainer(ModelOptHFTrainer):
         # Force garbage collection to free up memory
         gc.collect()
 
-        self._save_modelopt_state_with_weights()
         torch.cuda.empty_cache()
 
         if self.accelerator.is_main_process:
@@ -274,6 +276,25 @@ class QATTrainer(ModelOptHFTrainer):
         else:
             outputs = super().save_model(*args, **kwargs)
         return outputs
+
+    def _load_best_model(self, *args, **kwargs):
+        """Load the best model for final evaluation."""
+        is_lora = getattr(self.args, "lora", None)
+        if is_lora and not self.is_fsdp_enabled:
+            # Custom logic for loading best model with LoRA
+            # TODO: Remove once we migrate to using get_peft_model()
+            # This custom logic only loads best adapters. Ensure base model is frozen
+            assert all(
+                not param.requires_grad
+                for name, param in self.model.base_model.named_parameters()
+                if "base_layer" in name
+            ), "Some base_layer parameters are not frozen"
+
+            adapter_name = self.model.active_adapter()
+            self.model.delete_adapter(adapter_name)
+            self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
+        else:
+            super()._load_best_model(*args, **kwargs)
 
     def _patch_accelerate_for_fsdp2_fix(self):
         """Fixes for accelerate prepare.
@@ -337,7 +358,7 @@ class QADTrainer(QATTrainer, KDTrainer):
         if self.quant_cfg is not None and not is_quantized(self.model):
             self._quantize_model()
         if getattr(self.args, "lora_config", None) is not None:
-            self.model.add_adapter(self.args.lora_config, adapter_name="adapter")
+            self.model.add_adapter(self.args.lora_config)
             print_rank_0("Lora adapter added.")
         self._convert_to_distillation_model()
 
