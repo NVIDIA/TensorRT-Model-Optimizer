@@ -132,6 +132,14 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     with torch.no_grad():
         fake_input = torch.ones([1, 2], dtype=torch.long).to(model.device)
         decoder_fake_input = fake_input
+
+        # Check if this is a VL model that needs special input handling
+        is_vl_model = (
+            hasattr(model.config, "vision_config")
+            or hasattr(model, "vision_model")
+            or "nemotron" in getattr(model, "name_or_path", "").lower()
+        )
+
         if model_type.startswith("whisper"):
             # For Whisper models, we need to pass a fake input with the specific sequence length
             from transformers import AutoFeatureExtractor
@@ -140,6 +148,9 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             fake_input = torch.ones(
                 [1, model.config.num_mel_bins, feature_extractor.nb_max_frames], dtype=model.dtype
             ).to(model.device)
+        elif is_vl_model:
+            # For VL models, run optimization on language model component only
+            print("Detected VL model during export - optimizing language model component")
 
         # Run forward pass so that all modules sharing the same input are collected using forward hook.
 
@@ -147,6 +158,35 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             if getattr(model.config, "is_encoder_decoder", False):
                 # For encoder-decoder models, we need to pass both the encoder and decoder input ids
                 model(fake_input, decoder_input_ids=decoder_fake_input)
+            elif is_vl_model:
+                # For VL models, try to run optimization on just the language model part
+                language_model = None
+                if hasattr(model, "language_model"):
+                    language_model = model.language_model
+                    print(
+                        "Found language_model attribute - running optimization on language model only"
+                    )
+                elif hasattr(model, "model") and hasattr(model.model, "language_model"):
+                    language_model = model.model.language_model
+                    print(
+                        "Found language_model in model.model - running optimization on language model only"
+                    )
+
+                if language_model is not None:
+                    # Run optimization on just the language model with the same input format as regular LLMs
+                    # Use the same fake_input tensor that regular LLMs use
+                    print(
+                        f"Running optimization on language model with fake_input shape: {fake_input.shape}"
+                    )
+                    try:
+                        language_model(fake_input)
+                        print("✅ Language model optimization completed successfully")
+                    except Exception as e:
+                        print(f"Language model optimization failed: {e}")
+                        print("Continuing with export...")
+                else:
+                    print("Warning: No language_model found in VL model - skipping optimization")
+                    print("This is unexpected for most VL models")
             else:
                 model(fake_input)
 
