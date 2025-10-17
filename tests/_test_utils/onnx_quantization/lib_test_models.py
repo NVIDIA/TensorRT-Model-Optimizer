@@ -557,7 +557,7 @@ def build_convtranspose_conv_residual_model():
     return model_inferred
 
 
-def build_conv_act_pool_model():
+def build_conv_act_pool_model(include_reshape_node=False):
     # Define your model inputs and outputs
     input_names = ["input_0"]
     output_names = ["output_0"]
@@ -583,7 +583,7 @@ def build_conv_act_pool_model():
             dilations=[1, 1],
             group=1,
             kernel_shape=[3, 3],
-            pads=[0, 0, 0, 0],
+            pads=[1, 1, 1, 1],
             strides=[1, 1],
         ),
         helper.make_node(
@@ -598,28 +598,43 @@ def build_conv_act_pool_model():
             outputs=["relu1_relu/Relu:0"],
             name="relu1_relu/Relu",
         ),
-        helper.make_node(
-            op_type="MaxPool",
-            inputs=["relu1_relu/Relu:0"],
-            outputs=["maxpool1_maxpool/MaxPool2D:0"],
-            name="maxpool1_maxpool/MaxPool2D",
-            ceil_mode=False,
-            kernel_shape=[3, 3],
-            pads=[0, 0, 0, 0],
-            strides=[2, 2],
-        ),
-        helper.make_node(
-            op_type="Conv",
-            inputs=["maxpool1_maxpool/MaxPool2D:0", "weights_2"],
-            outputs=["output_0"],
-            name="conv2_conv/Conv2D",
-            dilations=[1, 1],
-            group=1,
-            kernel_shape=[3, 3],
-            pads=[0, 0, 0, 0],
-            strides=[1, 1],
-        ),
     ]
+    if include_reshape_node:
+        nodes.append(
+            helper.make_node(
+                op_type="Reshape",
+                inputs=["relu1_relu/Relu:0", "shape_1"],
+                outputs=["reshape1_reshape/Reshape:0"],
+                name="reshape1_reshape/Reshape",
+            ),
+        )
+    nodes.extend(
+        [
+            helper.make_node(
+                op_type="MaxPool",
+                inputs=[
+                    "reshape1_reshape/Reshape:0" if include_reshape_node else "relu1_relu/Relu:0"
+                ],
+                outputs=["maxpool1_maxpool/MaxPool2D:0"],
+                name="maxpool1_maxpool/MaxPool2D",
+                ceil_mode=False,
+                kernel_shape=[3, 3],
+                pads=[1, 1, 1, 1],
+                strides=[2, 2],
+            ),
+            helper.make_node(
+                op_type="Conv",
+                inputs=["maxpool1_maxpool/MaxPool2D:0", "weights_2"],
+                outputs=["output_0"],
+                name="conv2_conv/Conv2D",
+                dilations=[1, 1],
+                group=1,
+                kernel_shape=[3, 3],
+                pads=[1, 1, 1, 1],
+                strides=[1, 1],
+            ),
+        ]
+    )
 
     # Create the ONNX initializers
     initializers = [
@@ -666,6 +681,15 @@ def build_conv_act_pool_model():
             vals=np.random.uniform(low=0.5, high=1.0, size=128 * 128 * 3 * 3),
         ),
     ]
+    if include_reshape_node:
+        initializers.append(
+            helper.make_tensor(
+                name="shape_1",
+                data_type=onnx.TensorProto.INT64,
+                dims=(4,),
+                vals=(32, 128, 256, 256),
+            ),
+        )
 
     # Create the ONNX graph with the nodes and initializers
     graph = helper.make_graph(nodes, "conv_act_pool", inputs, outputs, initializer=initializers)
