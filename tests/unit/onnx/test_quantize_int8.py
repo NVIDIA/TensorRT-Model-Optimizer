@@ -29,18 +29,13 @@ import modelopt.onnx.quantization as moq
 from modelopt.onnx.utils import save_onnx
 
 
-def _assert_nodes_quantization(nodes, should_be_quantized=True):
+def _assert_nodes_are_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable):
-                if should_be_quantized:
-                    assert node.i(inp_idx).op == "DequantizeLinear", (
-                        f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
-                    )
-                else:
-                    assert node.i(inp_idx).op != "DequantizeLinear", (
-                        f"Input '{inp.name}' of node '{node.name}' is quantized but should not be!"
-                    )
+                assert node.i(inp_idx).op == "DequantizeLinear", (
+                    f"Input '{inp.name}' of node '{node.name}' is not quantized but should be!"
+                )
     return True
 
 
@@ -64,7 +59,7 @@ def test_int8(tmp_path, high_precision_dtype):
 
     # Check that all MatMul nodes are quantized
     mm_nodes = [n for n in graph.nodes if n.op == "MatMul"]
-    assert _assert_nodes_quantization(mm_nodes)
+    assert _assert_nodes_are_quantized(mm_nodes)
 
 
 def test_convtranspose_conv_residual_int8(tmp_path):
@@ -85,7 +80,7 @@ def test_convtranspose_conv_residual_int8(tmp_path):
 
     # Check that Conv and ConvTransposed are quantized
     conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
-    assert _assert_nodes_quantization(conv_nodes)
+    assert _assert_nodes_are_quantized(conv_nodes)
 
     # Check that only 1 input of Add is quantized
     add_nodes = [n for n in graph.nodes if n.op == "Add"]
