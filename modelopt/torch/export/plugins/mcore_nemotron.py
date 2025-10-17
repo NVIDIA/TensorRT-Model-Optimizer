@@ -43,11 +43,7 @@ nemotron_causal_lm_export: dict[str, CustomModuleMapping] = {
     "linear_fc2": NameRemapping("model.layers.{}.mlp.down_proj."),
     "final_layernorm": NameRemapping("model.norm."),
     "output_layer": NameRemapping("lm_head."),
-    # MoE
-    "router": NameRemapping("model.layers.{}.mlp.gate."),
-    "local_experts.linear_fc1": GatedMLPSlicing("model.layers.{}.mlp.experts.{}."),
-    "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj."),
-}
+    }
 
 
 nemotron_h_causal_lm_import: dict[str, CustomModuleMapping] = {
@@ -101,4 +97,9 @@ nemotron_h_causal_lm_export: dict[str, CustomModuleMapping] = {
     "pre_mlp_layernorm": NameRemapping("backbone.layers.{}.norm."),
     "linear_fc1": NameRemapping("backbone.layers.{}.mixer.up_proj."),
     "linear_fc2": NameRemapping("backbone.layers.{}.mixer.down_proj."),
+    # MoE
+    "router": NameRemapping("model.layers.{}.mlp.gate."),
+    "local_experts.linear_fc1": GatedMLPSlicing("model.layers.{}.mlp.experts.{}."),
+    "local_experts.linear_fc2": NameRemapping("model.layers.{}.mlp.experts.{}.down_proj."),
+
 }
