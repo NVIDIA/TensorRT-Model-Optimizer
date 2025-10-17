@@ -489,8 +489,6 @@ def get_quantization_format(module) -> str | None:
 
             if input_quantizer is not None and hasattr(input_quantizer, "_pre_quant_scale"):
                 return QUANTIZATION_NVFP4_AWQ
-            if getattr(layer, "fused_with_prequant", False):
-                return QUANTIZATION_NVFP4_AWQ
             assert input_quantizer is not None, (
                 f"input_quantizer is None for {quantizer_attr_names}"
             )
@@ -998,21 +996,21 @@ def pattern_fuse_prequant(model: torch.nn.Module):
             target_module_list = module_map[0]
             linear_pair = module_map[1]
             if any(module_name in type(module).__name__ for module_name in target_module_list):
-                linear_to = module.get_submodule(linear_pair[0])
-                linear_from = module.get_submodule(linear_pair[1])
-                if hasattr(linear_from, "input_quantizer") and hasattr(
-                    linear_from.input_quantizer, "_pre_quant_scale"
+                linear_fuse_into = module.get_submodule(linear_pair[0])
+                linear_pqs_from = module.get_submodule(linear_pair[1])
+                if hasattr(linear_pqs_from, "input_quantizer") and hasattr(
+                    linear_pqs_from.input_quantizer, "_pre_quant_scale"
                 ):
-                    pre_quant_scale = linear_from.input_quantizer._pre_quant_scale
+                    pre_quant_scale = linear_pqs_from.input_quantizer._pre_quant_scale
 
                     # for GQA/MQA models, we apply averaging to the pre_quant_scale
-                    if pre_quant_scale.numel() != linear_to.weight.shape[0]:
+                    if pre_quant_scale.numel() != linear_fuse_into.weight.shape[0]:
                         if "attention" not in type(module).__name__.lower():
                             continue
                         else:
                             config = module.config
                             num_kv_heads = config.num_key_value_heads
-                            kv_head_dim = linear_to.weight.shape[0] // num_kv_heads
+                            kv_head_dim = linear_fuse_into.weight.shape[0] // num_kv_heads
                             n_rep = pre_quant_scale.numel() // num_kv_heads // kv_head_dim
 
                             # Reshape:(num_kv_heads, n_rep, kv_head_dim)
@@ -1022,9 +1020,9 @@ def pattern_fuse_prequant(model: torch.nn.Module):
 
                             # To update o_proj, we need to repeat back to original shape
                             repeated_scale = (
-                                averaged_scale.unsqueeze(1)  # (2, 1, 16)
-                                .expand(num_kv_heads, n_rep, kv_head_dim)  # (2, 2, 16)
-                                .reshape(-1)  # (64,)
+                                averaged_scale.unsqueeze(1)
+                                .expand(num_kv_heads, n_rep, kv_head_dim)
+                                .reshape(-1)
                             )
 
                             def _update_pre_quant_scale(module, new_pre_quant_scale):
@@ -1047,22 +1045,22 @@ def pattern_fuse_prequant(model: torch.nn.Module):
                                 finish_stats_collection(module.weight_quantizer)
 
                             # Update o_proj's pre_quant_scale
-                            _update_pre_quant_scale(linear_from, repeated_scale)
+                            _update_pre_quant_scale(linear_pqs_from, repeated_scale)
 
                             # Use averaged scale (flattened) for v_proj fusion
                             pre_quant_scale = averaged_scale.reshape(-1)
 
-                    # Fuse the pre_quant_scale to v_proj weight (linear_to)
-                    # v_proj.weight shape: (out_features, in_features) = (32, hidden_size)
-                    # We scale the output dimension (first dimension)
-                    linear_to.weight = torch.nn.Parameter(
-                        linear_to.weight * pre_quant_scale.view(-1, 1)
+                    # Fuse the pre_quant_scale to v_proj weight
+                    linear_fuse_into.weight = torch.nn.Parameter(
+                        linear_fuse_into.weight * pre_quant_scale.view(-1, 1)
                     )
-                    if hasattr(linear_to, "bias") and linear_to.bias is not None:
-                        linear_to.bias = torch.nn.Parameter(linear_to.bias * pre_quant_scale)
+                    if hasattr(linear_fuse_into, "bias") and linear_fuse_into.bias is not None:
+                        linear_fuse_into.bias = torch.nn.Parameter(
+                            linear_fuse_into.bias * pre_quant_scale
+                        )
 
-                    delattr(linear_from.input_quantizer, "_pre_quant_scale")
-                    setattr(linear_from, "fused_with_prequant", True)
+                    delattr(linear_pqs_from.input_quantizer, "_pre_quant_scale")
+                    setattr(linear_pqs_from, "fused_with_prequant", True)
 
 
 def fuse_prequant_layernorm(
