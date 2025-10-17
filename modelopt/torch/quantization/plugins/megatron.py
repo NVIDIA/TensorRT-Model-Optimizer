@@ -22,6 +22,7 @@ from typing import Any
 import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
+import megatron.core.transformer.moe.experts as megatron_moe
 import torch
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
@@ -39,6 +40,18 @@ from ..nn import QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
+
+try:
+    from megatron.core.extensions.transformer_engine import (
+        TEColumnParallelGroupedLinear,
+        TERowParallelGroupedLinear,
+    )
+
+    from .transformer_engine import _QuantTEGroupedLinear
+
+    HAS_TE = True
+except ImportError:
+    HAS_TE = False
 
 logger = logging.getLogger(__name__)
 
@@ -221,16 +234,19 @@ class _MegatronParallelLinear(_ParallelLinear):
     ]
 
     def _setup(self):
-        data_parallel_group = None
-        try:
-            data_parallel_group = get_data_parallel_group(with_context_parallel=True)
-        except AssertionError:
-            logger.warning("Context parallel group is not initialized, using data parallel group")
-            data_parallel_group = get_data_parallel_group()
-        self.parallel_state = ParallelState(
-            data_parallel_group,
-            mcore_parallel.get_tensor_model_parallel_group(),
-        )
+        if not hasattr(self, "parallel_state") or self.parallel_state is None:
+            data_parallel_group = None
+            try:
+                data_parallel_group = get_data_parallel_group(with_context_parallel=True)
+            except AssertionError:
+                logger.warning(
+                    "Context parallel group is not initialized, using data parallel group"
+                )
+                data_parallel_group = get_data_parallel_group()
+            self.parallel_state = ParallelState(
+                data_parallel_group,
+                mcore_parallel.get_tensor_model_parallel_group(),
+            )
         super()._setup()
 
     def _process_quantizer_amax(self, k, v, quantizer_state_dict):
@@ -472,3 +488,95 @@ class _RealQuantMegatronRowParallelLinear(
 
     def forward(self, input, *args, **kwargs):
         return _MegatronRowParallelLinear.forward(self, input, *args, **kwargs)
+
+
+@QuantModuleRegistry.register({megatron_moe.SequentialMLP: "megatron_moe_SequentialMLP"})
+class _MegatronSequentialMLP(_MegatronMLP):
+    def _setup(self):
+        if not hasattr(self, "parallel_state") or self.parallel_state is None:
+            self.parallel_state = ParallelState(
+                mcore_parallel.get_expert_data_parallel_group(),
+                tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
+            )
+
+        # Initialize parallel state for submodules local_experts.*.linear_fc1 and local_experts.*.linear_fc2
+        for expert in self.local_experts:
+            expert.linear_fc1.parallel_state = self.parallel_state
+            expert.linear_fc2.parallel_state = self.parallel_state
+
+    def sync_moe_local_experts_amax(self):
+        """Sync amax across local experts in a SequentialMLP.
+
+        amax across EP and ETP (for RowParallel) are synchronized as part of model_calib.max_calibrate().
+        This function is called to synchronize the amax values across local experts s.t. all localexperts will
+        share the same amax.
+        """
+        torch.distributed.barrier()
+        # Collect amax from all local experts
+        amax_dict = {}
+        for expert in self.local_experts:
+            for name, module in expert.named_modules():
+                if isinstance(module, TensorQuantizer) and module.amax is not None:
+                    stored_amax = amax_dict.get(name)
+                    amax_tensor = module.amax.detach().clone()
+                    amax_dict[name] = (
+                        amax_tensor
+                        if stored_amax is None
+                        else torch.maximum(stored_amax, amax_tensor)
+                    )
+
+        # Apply synchronized amax values back to all local experts
+        for expert in self.local_experts:
+            for name, module in expert.named_modules():
+                if isinstance(module, TensorQuantizer) and module.amax is not None:
+                    module.amax = amax_dict[name].detach().clone().to(module.amax.device)
+
+
+if HAS_TE:
+    # Quantized subclasses to support TEGroupedMLP quantization
+    class _QuantMegatronTEGroupedLinear(_QuantTEGroupedLinear, _MegatronParallelLinear):
+        def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+            # _sharded_state_dict_grouped adds _extra_state{gemm_idx} for gemm_idx:[1, num_gemms] in
+            # sharded_state_dict which is same as _extra_state. The _extra_state{gemm_idx} is used for
+            # TE Fp8 checkpoint, we need to remove the _extra_state{gemm_idx} for gemm_idx:[1, num_gemms]
+            # for modelopt checkpoint restore
+            filtered_state_dict = {
+                k: v
+                for k, v in state_dict.items()
+                if not any(k.endswith(f"_extra_state{num}") for num in range(1, self.num_gemms))
+            }
+            return super()._load_from_state_dict(filtered_state_dict, prefix, *args, **kwargs)
+
+        def _process_quantizer_amax(self, k, v, quantizer_state_dict):
+            assert v.numel() == 1, "TEGroupedLinear only supports per-tensor quantization"
+            quantizer_state_dict[k] = v.view(-1)
+
+    @QuantModuleRegistry.register(
+        {TEColumnParallelGroupedLinear: "megatron_TEColumnParallelGroupedLinear"}
+    )
+    class _MegatronTEGroupedColumnParallelLinear(
+        _QuantMegatronTEGroupedLinear, _MegatronColumnParallelLinear
+    ):
+        pass
+
+    @QuantModuleRegistry.register(
+        {TERowParallelGroupedLinear: "megatron_TERowParallelGroupedLinear"}
+    )
+    class _MegatronTEGroupedRowParallelLinear(
+        _QuantMegatronTEGroupedLinear, _MegatronRowParallelLinear
+    ):
+        pass
+
+    @QuantModuleRegistry.register({megatron_moe.TEGroupedMLP: "megatron_moe_TEGroupedMLP"})
+    class _MegatronTEGroupedMLP(_MegatronMLP):
+        def _setup(self):
+            if not hasattr(self, "parallel_state") or self.parallel_state is None:
+                self.parallel_state = ParallelState(
+                    mcore_parallel.get_expert_data_parallel_group(),
+                    tensor_parallel_group=mcore_parallel.get_expert_tensor_parallel_group(),
+                    expert_model_parallel_group=mcore_parallel.get_expert_model_parallel_group(),
+                )
+            # initialize parallel state for submodules linear_fc1 and linear_fc2
+            self.linear_fc1.parallel_state = self.parallel_state
+            self.linear_fc2.parallel_state = self.parallel_state

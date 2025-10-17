@@ -80,21 +80,22 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
     if not distributed_sync:
         return
 
-    def sync_quantizer_amax_across_dp(quantizer, parallel_state):
-        """Synchronize the amax across all ranks in the data parallel group."""
+    def sync_quantizer_amax_across_dp_ep(quantizer, parallel_state):
+        """Synchronize the amax across all ranks in the data parallel and expert parallel groups."""
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
-                sync_quantizer_amax_across_dp(_q, parallel_state)
+                sync_quantizer_amax_across_dp_ep(_q, parallel_state)
             return
         if getattr(quantizer, "_amax", None) is not None:
             quantizer.sync_amax_across_distributed_group(parallel_state.data_parallel_group)
+            quantizer.sync_amax_across_distributed_group(parallel_state.expert_model_parallel_group)
         # TODO: create sync_bias_across_distributed_group
 
     for name, module in model.named_modules():
         if isinstance(module, QuantModule):
             for child in module.children():
                 if isinstance(child, (TensorQuantizer, SequentialQuantizer)):
-                    sync_quantizer_amax_across_dp(child, module.parallel_state)
+                    sync_quantizer_amax_across_dp_ep(child, module.parallel_state)
     # TP sync:
     # Objective: the quantization parameters when TP = 8 then changed to TP=4 then back to TP=8 should be the same
 
@@ -117,6 +118,7 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
         # Syncing amax across TP for sequential quantizer
         if isinstance(quantizer, SequentialQuantizer):
             for _q in quantizer:
+                # Syncing amax across TP for sequential quantizer
                 sync_quantizer_amax_across_tp(
                     _q, linear_name, quantizer_type, axes_for_sync, parallel_state
                 )
@@ -173,6 +175,10 @@ def max_calibrate(model: nn.Module, forward_loop: ForwardLoop | None = None, dis
                 axes_for_sync=[None, 0],
                 parallel_state=module.parallel_state,
             )
+
+    for name, module in model.named_modules():
+        if hasattr(module, "sync_moe_local_experts_amax"):
+            module.sync_moe_local_experts_amax()
 
 
 def enable_stats_collection(model: nn.Module):
