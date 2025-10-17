@@ -21,6 +21,7 @@ import pytest
 import torch
 from _test_utils.onnx_quantization.lib_test_models import (
     SimpleMLP,
+    build_conv_batchnorm_sig_mul_model,
     build_convtranspose_conv_residual_model,
     export_as_onnx,
 )
@@ -65,6 +66,35 @@ def test_int8(tmp_path, high_precision_dtype):
 def test_convtranspose_conv_residual_int8(tmp_path):
     onnx_model = build_convtranspose_conv_residual_model()
     onnx_path = os.path.join(tmp_path, "convtranspose_conv_residual_model.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    moq.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
+
+    # Check that quantized explicit model is generated
+    assert os.path.isfile(output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    graph = gs.import_onnx(onnx.load(output_onnx_path))
+
+    # Check that Conv and ConvTransposed are quantized
+    conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
+    assert _assert_nodes_are_quantized(conv_nodes)
+
+    # Check that only 1 input of Add is quantized
+    add_nodes = [n for n in graph.nodes if n.op == "Add"]
+    for node in add_nodes:
+        quantized_inputs = [inp for inp in node.inputs if inp.inputs[0].op == "DequantizeLinear"]
+        assert len(quantized_inputs) == 1, (
+            f"More than one input of {node.name} is being quantized, but only one should be quantized!"
+        )
+
+
+def test_conv_batchnorm_sig_mul_int8(tmp_path="./"):
+    onnx_model = build_conv_batchnorm_sig_mul_model()
+    onnx_path = os.path.join(tmp_path, "conv_batchnorm_sig_mul_model.onnx")
     save_onnx(onnx_model, onnx_path)
 
     moq.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
