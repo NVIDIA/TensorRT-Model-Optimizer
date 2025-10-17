@@ -97,9 +97,10 @@ def test_convtranspose_conv_residual_int8(tmp_path):
         )
 
 
-def test_conv_act_pool_int8(tmp_path):
-    onnx_model = build_conv_act_pool_model()
-    onnx_path = os.path.join(tmp_path, "conv_act_pool_model.onnx")
+@pytest.mark.parametrize("include_reshape_node", [False, True])
+def test_conv_act_pool_int8(tmp_path, include_reshape_node):
+    onnx_model = build_conv_act_pool_model(include_reshape_node)
+    onnx_path = os.path.join(tmp_path, f"conv_act_pool_model_{include_reshape_node}.onnx")
     save_onnx(onnx_model, onnx_path)
 
     moq.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")

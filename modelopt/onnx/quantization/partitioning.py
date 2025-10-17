@@ -44,7 +44,7 @@ def _build_fusible_partition(
     """Traverses the graph starting from cur_node and updates the fusible_partition list.
 
     Add a nodes to the partition if any of these holds:
-    1. The node is a unary or binary pointwise operation and fusible by cask
+    1. The node is a unary or binary pointwise operation or a copy op and fusible by cask
     2. The node is BN and/or Relu and fusible with preceding Conv op (Conv-Act fusion)
     3. The node is MaxPool following a Conv-Act pattern (Conv-Act-Pool fusion)
     4. The node is a residual Add and fusible with current partition
@@ -132,6 +132,10 @@ def _build_fusible_partition(
 
         if (
             (
+                is_copy_op(consumer_node.op)
+                and _is_cask_fusible(consumer_node, partition_node_outputs)
+            )
+            or (
                 is_pointwise_or_elementwise_op(consumer_node.op)
                 and _is_cask_fusible(consumer_node, partition_node_outputs)
             )
