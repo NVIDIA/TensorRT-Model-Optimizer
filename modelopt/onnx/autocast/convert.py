@@ -17,7 +17,7 @@
 """AutoCast module for converting ONNX models to mixed precision.
 
 AutoCast is a tool for converting FP32 ONNX models to mixed precision FP32-FP16 or FP32-BF16 models.
-While casting FP32 to FP6/BF16, some nodes might be more sensitive to effecting accuracy.
+While casting FP32 to FP16/BF16, some nodes might be more sensitive to effecting accuracy.
 AutoCast intelligently selects nodes to keep in FP32 precision to maintain model accuracy while benefiting from
 reduced precision on the rest of the nodes. AutoCast automatically injects cast operations around the selected
 nodes.
@@ -48,6 +48,8 @@ def convert_to_mixed_precision(
     low_precision_type: str = "fp16",
     nodes_to_exclude: list[str] | None = None,
     op_types_to_exclude: list[str] | None = None,
+    nodes_to_include: list[str] | None = None,
+    op_types_to_include: list[str] | None = None,
     data_max: float = DEFAULT_DATA_MAX,
     init_max: float = DEFAULT_INIT_MAX,
     keep_io_types: bool = False,
@@ -65,6 +67,8 @@ def convert_to_mixed_precision(
         low_precision_type: Target precision to reduce to ('fp16' or 'bf16').
         nodes_to_exclude: List of regex patterns to match node names that should remain in FP32.
         op_types_to_exclude: List of operation types that should remain in FP32.
+        nodes_to_include: List of regex patterns to match node names that should be included in low precision.
+        op_types_to_include: List of operation types that should be included in low precision.
         data_max: Maximum absolute value for node input and output values.
         init_max: Maximum absolute value for initializers.
         keep_io_types: Whether to preserve input/output types.
@@ -108,6 +112,8 @@ def convert_to_mixed_precision(
         initializer_map,
         nodes_to_exclude=nodes_to_exclude or [],
         op_types_to_exclude=op_types_to_exclude or [],
+        nodes_to_include=nodes_to_include or [],
+        op_types_to_include=op_types_to_include or [],
         data_max=data_max,
         init_max=init_max,
         custom_rule=custom_rule,

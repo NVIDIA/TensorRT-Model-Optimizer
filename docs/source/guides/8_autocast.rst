@@ -31,6 +31,8 @@ AutoCast can also be used programmatically through its Python API:
       low_precision_type="fp16",            # or "bf16"
       nodes_to_exclude=None,                # optional list of node name patterns to keep in FP32
       op_types_to_exclude=None,             # optional list of op types to keep in FP32
+      nodes_to_include=None,                # optional list of node name patterns to force-include in low precision
+      op_types_to_include=None,             # optional list of op types to force-include in low precision
       data_max=512,                         # threshold for node outputs
       init_max=65504,                       # threshold for initializers
       keep_io_types=False,                  # whether to preserve input/output types
@@ -60,6 +62,19 @@ AutoCast follows these steps to convert a model:
    - Analyzes each node in the graph
    - Determines which nodes should remain in FP32 based on input and output tensors magnitudes, operation types and node name patterns
    - If a calibration dataset is provided, it will be used to generate intermediate tensor magnitudes for more accurate node classification, otherwise random data will be used.
+   - Use ``nodes_to_include`` and ``op_types_to_include`` to force-include nodes in low precision, even if they would otherwise be excluded.
+   
+   - Default classification rules. Nodes that meet any of these rules will be kept in high precision:
+     - Node I/O magnitudes are higher than ``data_max`` (default: 512). Due to precision limitations, compute of high magnitude tensors in low precision might not be accurate. The unit in last place (ULP) for 512 is 0.5, for 1024 it is 1.0, etc.
+     - Initializers magnitudes are higher than ``init_max`` (default: 65504). Initializers are often used for non-compute intensive operations and are more likely to be controlled by the user. However, values above ``init_max`` will cause overflow, therefore they are kept in high precision.
+   
+   Additional classification rules (disabled by default):
+     - ``max_depth_of_reduction``: Require nodes with a high depth of reduction (e.g., large matrix multiplications, convolutions with large kernels) to be kept in high precision.
+     - ``nodes_to_exclude``: List of regex patterns for node names to keep in high precision.
+     - ``op_types_to_exclude``: List of operation types to keep in high precision.
+     - ``nodes_to_include``: List of regex patterns for node names to force-include in low precision.
+     - ``op_types_to_include``: List of operation types to force-include in low precision.
+     - ``custom_rule``: Optional custom rule for node classification (inherits from NodeRuleBase).
 
 #. **Precision Conversion**:
 
