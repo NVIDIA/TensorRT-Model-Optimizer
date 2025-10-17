@@ -73,6 +73,13 @@ MODEL_ID_TO_DYNAMIC_AXES = {
         "pooled_projections": {0: "batch_size"},
         "sample": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
     },
+    "sd3.5-medium": {
+        "hidden_states": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
+        "timestep": {0: "steps"},
+        "encoder_hidden_states": {0: "batch_size", 1: "sequence_length"},
+        "pooled_projections": {0: "batch_size"},
+        "out_hidden_states": {0: "batch_size", 1: "num_channels", 2: "height", 3: "width"},
+    },
     "flux-dev": {
         "hidden_states": {0: "batch_size", 1: "latent_dim"},
         "encoder_hidden_states": {0: "batch_size"},
@@ -290,6 +297,8 @@ def update_dynamic_axes(model_id, dynamic_axes):
         dynamic_axes["out.0"] = dynamic_axes.pop("latent")
     elif model_id == "sd3-medium":
         dynamic_axes["out.0"] = dynamic_axes.pop("sample")
+    elif model_id == "sd3.5-medium":
+        dynamic_axes["out.0"] = dynamic_axes.pop("out_hidden_states")
 
 
 def _create_dynamic_shapes(dynamic_shapes):
@@ -313,7 +322,7 @@ def generate_dummy_inputs_and_dynamic_axes_and_shapes(model_id, backbone):
         dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sdxl(
             backbone, min_bs=2, opt_bs=16
         )
-    elif model_id == "sd3-medium":
+    elif model_id in ["sd3-medium", "sd3.5-medium"]:
         dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sd3(
             backbone, min_bs=2, opt_bs=16
         )
@@ -343,6 +352,8 @@ def get_io_shapes(model_id, onnx_load_path, dynamic_shapes):
             output_name = "latent"
         elif model_id in ["sd3-medium"]:
             output_name = "sample"
+        elif model_id in ["sd3.5-medium"]:
+            output_name = "out_hidden_states"
         elif model_id in ["flux-dev", "flux-schnell"]:
             output_name = "output"
         else:
@@ -350,7 +361,7 @@ def get_io_shapes(model_id, onnx_load_path, dynamic_shapes):
 
     if model_id in ["sdxl-1.0", "sdxl-turbo"]:
         io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["sample"]}
-    elif model_id in ["sd3-medium"]:
+    elif model_id in ["sd3-medium", "sd3.5-medium"]:
         io_shapes = {output_name: dynamic_shapes["dynamic_shapes"]["minShapes"]["hidden_states"]}
     elif model_id in ["flux-dev", "flux-schnell"]:
         io_shapes = {}
@@ -406,6 +417,9 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     elif model_name == "sd3-medium":
         input_names = ["hidden_states", "encoder_hidden_states", "pooled_projections", "timestep"]
         output_names = ["sample"]
+    elif model_name == "sd3.5-medium":
+        input_names = ["hidden_states", "encoder_hidden_states", "pooled_projections", "timestep"]
+        output_names = ["out_hidden_states"]
     elif model_name in ["flux-dev", "flux-schnell"]:
         input_names = [
             "hidden_states",
