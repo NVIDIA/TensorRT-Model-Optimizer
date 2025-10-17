@@ -68,13 +68,6 @@ try:
 except ImportError:
     warnings.warn("Fail to import megatron.core.post_training! EAGLE feature will be disable!")
 
-try:
-    from transformers.trainer_pt_utils import LabelSmoother
-
-    IGNORE_TOKEN_ID = LabelSmoother.ignore_index
-except ImportError:
-    IGNORE_TOKEN_ID = -100
-
 
 def dict_to_config(
     architecture_config,
@@ -1152,7 +1145,7 @@ class _DynamicEagleGPTModel(EagleModel):
                             eagle_top1 += self.eagle_module.d2t[eagle_top1]
                         top1_p = (
                             torch.eq(labels[:, i + ttt_step + 1 :], eagle_top1).sum()
-                            / (labels != IGNORE_TOKEN_ID).sum().item()
+                            / eagle_top1.numel()
                         )
                         acc.append(top1_p)
 
