@@ -170,7 +170,7 @@ def has_path_type(
 def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
     """Returns the linear backbone node for a given node if it matches the pattern.
 
-    TensorRT fuses convolution with BN, Relu etc. when in some specific pattern.
+    TensorRT fuses convolution with BN, Relu, MaxPool etc. when in some specific pattern.
     This rule tries to match some of those patterns.
     Note. BiasAdd and ConstMul are optional in path types.
 
