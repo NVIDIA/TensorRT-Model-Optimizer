@@ -227,6 +227,54 @@ def model_config_from_dict(d: dict) -> ModelConfig:
     return _from_dict(config_type, d)
 
 
+def restore_original_rope_scaling(config_data: dict, original_model_path: str) -> dict:
+    """Restore original rope_scaling configuration if it was modified by transformers.
+
+    Some VLM models like Qwen2.5-VL have their rope_scaling configuration modified
+    by the transformers library during loading (e.g., from "mrope" to "default" with
+    additional fields). This function restores the original configuration.
+
+    Args:
+        config_data: The model configuration dictionary to restore
+        original_model_path: Path to the original model directory
+
+    Returns:
+        The config_data dictionary with restored rope_scaling (modified in-place)
+    """
+    import json
+    import warnings
+    from pathlib import Path
+
+    try:
+        original_config_file = Path(original_model_path) / "config.json"
+        if original_config_file.exists():
+            with open(original_config_file) as f:
+                raw_original_config = json.load(f)
+
+            # Check if rope_scaling was modified from mrope to default
+            if (
+                "rope_scaling" in raw_original_config
+                and "rope_scaling" in config_data
+                and raw_original_config["rope_scaling"].get("type") == "mrope"
+                and config_data["rope_scaling"].get("type") == "default"
+                and "rope_type" in config_data["rope_scaling"]
+            ):
+                print(f"Restoring original rope_scaling configuration from {original_model_path}")
+                config_data["rope_scaling"] = raw_original_config["rope_scaling"]
+
+                # Also restore rope_scaling in text_config if it exists
+                if (
+                    "text_config" in config_data
+                    and "rope_scaling" in config_data["text_config"]
+                    and config_data["text_config"]["rope_scaling"].get("type") == "default"
+                ):
+                    config_data["text_config"]["rope_scaling"] = raw_original_config["rope_scaling"]
+    except Exception as e:
+        warnings.warn(f"Could not restore original rope_scaling configuration: {e}")
+
+    return config_data
+
+
 def pad_weights(weights, tp_size):
     """Returns the padded weights to tp_size."""
     assert len(weights.shape) > 1

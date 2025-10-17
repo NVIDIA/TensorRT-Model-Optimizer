@@ -249,6 +249,8 @@ def main(args):
             use_seq_device_map=args.use_seq_device_map,
             attn_implementation=args.attn_implementation,
         )
+        # Store original model path for config restoration
+        model._original_model_path = args.pyt_ckpt_path
     else:
         assert args.qformat in QUANT_CFG_CHOICES, (
             f"Quantization format is not supported for low memory mode. Supported formats: {QUANT_CFG_CHOICES.keys()}"
@@ -270,6 +272,8 @@ def main(args):
                 args.pyt_ckpt_path,
                 **model_kwargs,
             )
+            # Store original model path for config restoration
+            model._original_model_path = args.pyt_ckpt_path
         calibration_only = True
     model_is_already_quantized = is_quantized(model)
 
