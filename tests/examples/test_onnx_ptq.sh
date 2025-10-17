@@ -21,7 +21,7 @@
 # It is recommended to execute this script inside the Model Optimization Toolkit TensorRT Docker container.
 # Please ensure that the ImageNet dataset is available in the container at the specified path.
 
-# Usage: ./test_onnx_ptq.sh [--no-clean] [--eval] [/path/to/imagenet] [/path/to/models]
+# Usage: ./test_onnx_ptq.sh [--no-clean] [--eval] [/path/to/imagenet] [/path/to/models] [/path/to/timing_cache]
 
 set -exo pipefail
 
@@ -40,6 +40,7 @@ clean_mode=true
 eval_mode=false
 imagenet_path=""
 models_folder=""
+timing_cache_path=""
 
 for arg in "$@"; do
     case $arg in
@@ -56,6 +57,8 @@ for arg in "$@"; do
                 imagenet_path="$arg"
             elif [ -z "$models_folder" ]; then
                 models_folder="$arg"
+            elif [ -z "$timing_cache_path" ]; then
+                timing_cache_path="$arg"
             fi
             shift
             ;;
@@ -68,6 +71,7 @@ export TQDM_DISABLE=1
 # Setting image and model paths (contains 8 models)
 imagenet_path=${imagenet_path:-/data/imagenet/}
 models_folder=${models_folder:-/models/onnx}
+timing_cache_path=${timing_cache_path:-/models/onnx/build/timing.cache}
 calib_size=1
 eval_size=100
 batch_size=1
@@ -192,7 +196,7 @@ if [ "$eval_mode" = true ]; then
                     --model_name="${timm_model_name[$model_name]}" \
                     --engine_precision=$precision \
                     --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
-                    --timing_cache_path=build/timing.cache
+                    --timing_cache_path=$timing_cache_path
             else
                 python evaluate.py \
                     --onnx_path=$eval_model_path \
@@ -203,7 +207,7 @@ if [ "$eval_mode" = true ]; then
                     --model_name="${timm_model_name[$model_name]}" \
                     --engine_precision=$precision \
                     --results_path=$model_dir/$quant_mode/${model_name}_${quant_mode}.csv \
-                    --timing_cache_path=build/timing.cache
+                    --timing_cache_path=$timing_cache_path
             fi
         done
 
