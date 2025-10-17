@@ -1002,7 +1002,6 @@ def find_nodes_from_matmul_to_exclude(
         logger.debug("No MatMul nodes found in the model")
         return []
 
-    nodes_to_exclude = []
     logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
     if calibration_shapes:
