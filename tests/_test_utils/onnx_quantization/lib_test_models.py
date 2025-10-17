@@ -576,8 +576,14 @@ def build_conv_batchnorm_sig_mul_model():
     # Create the ONNX graph with the nodes
     nodes = [
         helper.make_node(
+            op_type="Relu",
+            inputs=["input_0"],
+            outputs=["relu0_relu/Relu:0"],
+            name="relu0_relu/Relu",
+        ),
+        helper.make_node(
             op_type="Conv",
-            inputs=["input_0", "weights_1"],
+            inputs=["relu0_relu/Relu:0", "weights_1"],
             outputs=["conv1_conv/Conv2D:0"],
             name="conv1_conv/Conv2D",
             dilations=[1, 1],
@@ -606,7 +612,7 @@ def build_conv_batchnorm_sig_mul_model():
         ),
         helper.make_node(
             op_type="Add",
-            inputs=["input_0", "mul1_mul/Mul:0"],
+            inputs=["relu0_relu/Relu:0", "mul1_mul/Mul:0"],
             outputs=["add1_add/Add:0"],
             name="add1_add/Add",
         ),
