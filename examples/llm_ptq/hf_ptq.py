@@ -768,12 +768,24 @@ def main(args):
             # quantize the model
             model = quantize_model(model, quant_cfg, args, calib_dataloader, calibration_only)
 
+            # amax_state_dict = torch.load("/home/scratch.omniml_data_2/jingyux/models/llama_nano_nemotron_v2_vlm_fp8_ptq_amax.pt")
+
+            # model_keys = model.load_state_dict(amax_state_dict, strict=False)
+            # print(f"Loaded amax_state_dict with keys: {model_keys}")
+            # mtq.print_quant_summary(model)
+
+
             # For VL models, update full_model to use the quantized language model
             if is_nemotron_vl and hasattr(full_model, "language_model"):
                 print("Updating full_model with quantized language_model...")
                 full_model.language_model = model
+                fullmodel_key = full_model.load_state_dict(torch.load("/home/scratch.omniml_data_2/jingyux/models/llama_nemotron_v2_fp4_ptq_state_dict.pt"), strict=False)
+                print(f"Loaded full_model_state_dict with keys: {fullmodel_key}")
+                mtq.print_quant_summary(full_model.language_model)
+                print("Loaded additional state dict into full_model.")
             if args.verbose:
-                mtq.print_quant_summary(model)
+                pass
+                # mtq.print_quant_summary(model)
 
             # Run some samples
             torch.cuda.empty_cache()
