@@ -68,6 +68,41 @@ QWEN_VL_PATH = _select_path(
     local_id="Qwen2-VL-2B-Instruct",
 )
 
+LLAMA30_8B_INST_PATH = _select_path(
+    remote_id="meta-llama/Meta-Llama-3-8B-Instruct",
+    local_id="Meta-Llama-3-8B-Instruct",
+)
+
+LLAMA31_8B_PATH = _select_path(
+    remote_id="meta-llama/Llama-3.1-8B",
+    local_id="Llama-3.1-8B",
+)
+
+LLAMA32_3B_PATH = _select_path(
+    remote_id="meta-llama/Llama-3.2-3B",
+    local_id="Llama-3.2-3B",
+)
+
+QWEN2_7B_INST_PATH = _select_path(
+    remote_id="Qwen/Qwen2-7B-Instruct",
+    local_id="Qwen2-7B-Instruct",
+)
+
+QWEN25_0_5B_INST_PATH = _select_path(
+    remote_id="Qwen/Qwen2.5-0.5B-Instruct",
+    local_id="Qwen2.5-0.5B-instruct",
+)
+
+QWEN25_3B_INST_PATH = _select_path(
+    remote_id="Qwen/Qwen2.5-3B-Instruct",
+    local_id="Qwen2.5-3B-Instruct",
+)
+
+QWEN25_7B_INST_PATH = _select_path(
+    remote_id="Qwen/Qwen2.5-7B-Instruct",
+    local_id="Qwen2.5-7B-Instruct",
+)
+
 # Diffusers
 FLUX_SCHNELL_PATH = _select_path(
     remote_id="hf-internal-testing/tiny-flux-pipe",
