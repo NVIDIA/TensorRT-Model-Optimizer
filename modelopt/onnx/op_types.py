@@ -96,7 +96,7 @@ def is_fusible_scaling_op(op_type: str):
     ]
 
 
-def copy_ops():
+def get_copy_ops():
     """Returns list of copy operators."""
     return [
         "Flatten",
@@ -120,7 +120,7 @@ def copy_ops():
 
 def is_copy_op(op_type: str):
     """Returns whether the given op is a copy operator or not."""
-    return op_type in copy_ops()
+    return op_type in get_copy_ops()
 
 
 def is_linear_op(op_type: str):
