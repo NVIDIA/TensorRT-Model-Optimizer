@@ -158,39 +158,90 @@ def get_weights_scaling_factor(
 
 
 def update_block_size(
-    num_bits: int, block_size: int, quantize_axis: int = 0, w: np.ndarray = None
+    block_size: int,
+    layer_info: dict[str, dict] | None = None,
+    name: str | None = None,
+    quantize_axis: int = 0,
+    w: np.ndarray = None,
 ) -> int:
     """Update the block size for quantization.
 
     Args:
         num_bits (int): Number of bits for quantization.
-        block_size (int): Current block size. If -1, per-channel quantization is used.
+        layer_info (dict[str, dict] | None): Optional dictionary mapping tensor names
+            to layer configuration dict.
+        name (str | None): Name of the tensor.
+        block_size (int): Current block size.
         quantize_axis (int): Axis along which to quantize.
         w (np.ndarray): Weight tensor to be quantized.
 
     Returns:
         int: Updated block size.
     """
-    if block_size is not None and (block_size == -1 or num_bits == 8):
+    if layer_info and name in layer_info:
+        block_size = layer_info[name]["block_size"]
+        quantize_axis = layer_info[name]["axis"]
+    if block_size is not None and block_size == -1:
         return w.shape[quantize_axis]
     return block_size
 
 
-def get_num_bits(precision_info: dict[str, int] | None = None, name: str | None = None) -> int:
-    """Determine the number of bits for quantization from precision_info.
+def get_num_bits(layer_info: dict[str, dict] | None = None, name: str | None = None) -> int:
+    """Determine the layer configuration for quantization from layer_info.
 
     Args:
-        precision_info (dict[str, int] | None): Optional dictionary mapping tensor names to number of bits.
+        layer_info (dict[str, dict] | None): Optional dictionary mapping tensor names
+            to layer configuration dict.
         name (str | None): Name of the tensor.
 
     Returns:
         int: Number of bits to use for quantization. Defaults to 4 if not specified.
     """
-    if precision_info and name in precision_info:
-        num_bits = precision_info[name]
+    if layer_info and name in layer_info:
+        num_bits = layer_info[name]["precision"]
     else:
         num_bits = 4
     return num_bits
+
+
+def get_layer_block_size(
+    layer_info: dict[str, dict] | None = None,
+    name: str | None = None,
+    default_block_size: int | None = None,
+) -> int | None:
+    """Get the block size for a specific layer from layer_info.
+
+    Args:
+        layer_info (dict[str, dict] | None): Optional dictionary mapping tensor names to layer configuration.
+        name (str | None): Name of the tensor.
+        default_block_size (int | None): Default block size if not specified. Defaults to None.
+
+    Returns:
+        int: Block size to use for quantization.
+    """
+    if layer_info and name in layer_info:
+        return layer_info[name].get("block_size", default_block_size)
+    return default_block_size
+
+
+def get_layer_axis(
+    layer_info: dict[str, dict] | None = None,
+    name: str | None = None,
+    default_axis: int | None = None,
+) -> int | None:
+    """Get the quantization axis for a specific layer from layer_info.
+
+    Args:
+        layer_info (dict[str, dict] | None): Optional dictionary mapping tensor names to layer configuration.
+        name (str | None): Name of the tensor.
+        default_axis (int | None): Default axis if not specified. Defaults to None.
+
+    Returns:
+        int: Quantization axis to use.
+    """
+    if layer_info and name in layer_info:
+        return layer_info[name].get("axis", default_axis)
+    return default_axis
 
 
 def _next_block_size_multiple(x: float, block_size: int) -> float:
@@ -229,12 +280,25 @@ def _depad(w: np.ndarray, orig_shape: tuple, quantize_axis: int = 0) -> np.ndarr
 
 
 def reshape_scales_for_per_channel_nodes(
-    scales_map: dict[str, np.ndarray], block_size: int, precision_info: dict[str, int] | None = None
+    scales_map: dict[str, np.ndarray],
+    block_size: int,
+    layer_info: dict[str, dict] | None = None,
 ):
-    """Update the scale map for per-channel nodes. For per channel quantization the scale needs to be 1D."""
+    """Update the scale map for per-channel nodes. For per channel quantization the scale needs to be 1D.
+
+    Args:
+        scales_map (dict[str, np.ndarray]): Dictionary mapping weight names to scale arrays.
+        layer_info (dict[str, dict] | None): Optional dictionary mapping tensor names
+            to layer configuration dict.
+
+    Returns:
+        dict[str, np.ndarray]: Updated scales map.
+    """
     for name in scales_map:
-        num_bits = get_num_bits(precision_info, name)
-        is_per_channel = (block_size == -1) or (num_bits == 8)
+        layer_block_size = block_size
+        if layer_info and name in layer_info and isinstance(layer_info[name], dict):
+            layer_block_size = layer_info[name].get("block_size", block_size)
+        is_per_channel = layer_block_size == -1
         scales_map[name] = scales_map[name].reshape(-1) if is_per_channel else scales_map[name]
     return scales_map
 
