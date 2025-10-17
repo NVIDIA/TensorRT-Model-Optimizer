@@ -16,6 +16,7 @@
 """Quantization conversion/restore utilities."""
 
 import fnmatch
+import warnings
 from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any
@@ -288,11 +289,15 @@ def set_quantizer_attribute(
             ):
                 continue
 
-            if isinstance(attribute, list):
+            if isinstance(attribute, list) and not isinstance(module, SequentialQuantizer):
                 parent_module = quant_model.get_submodule(name.rpartition(".")[0])
                 module = SequentialQuantizer(*(TensorQuantizer() for _ in range(len(attribute))))
                 setattr(parent_module, name.split(".")[-1], module)
-
+            elif isinstance(attribute, list) and len(attribute) != len(module):
+                warnings.warn(
+                    f"The number of attributes ({len(attribute)}) does not match the number of "
+                    f"quantizers of {module} leading to partial assignment.",
+                )
             module.set_from_attribute_config(attribute)
 
 
