@@ -73,6 +73,7 @@ class _QuantTEGroupedLinear(_ParallelLinear):
         # GroupedMLP stores the weights as weight0, weight1, etc. To run setup in order to
         # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
         # self.weight0 to self.weight to run the quantizer states initialization.
+        assert not hasattr(self, "weight"), "self.weight should not exist for TEGroupedLinear"
         self.weight = self.weight0
         # Memorize the original weight.dtype for modelopt_post_restore given that
         # the dtype can change later.
@@ -84,6 +85,7 @@ class _QuantTEGroupedLinear(_ParallelLinear):
         # GroupedMLP stores the weights as weight0, weight1, etc. To run post_restore in order to
         # initialize the quantizer states, self.weight is used to extract shape, dtype etc. Assigning
         # self.weight0 to self.weight to run the quantizer states initialization.
+        assert not hasattr(self, "weight"), "self.weight should not exist for TEGroupedLinear"
         self.weight = self.weight0
         super().modelopt_post_restore(prefix=prefix)
         # Remove self.weight after post_restore.
