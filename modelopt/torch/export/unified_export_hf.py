@@ -56,6 +56,7 @@ from .model_config import (
     QUANTIZATION_W4A8_AWQ,
     QUANTIZATION_W4A8_NVFP4_FP8,
 )
+from .model_config_utils import restore_original_rope_scaling
 from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
@@ -576,6 +577,11 @@ def export_hf_checkpoint(
 
         with open(original_config) as file:
             config_data = json.load(file)
+
+        # Preserve original rope_scaling configuration if it was modified by transformers
+        original_model_path = getattr(model, "_original_model_path", None)
+        if original_model_path is not None:
+            config_data = restore_original_rope_scaling(config_data, original_model_path)
 
         config_data["quantization_config"] = hf_quant_config
 
