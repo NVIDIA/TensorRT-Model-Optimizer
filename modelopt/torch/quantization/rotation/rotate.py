@@ -4,13 +4,7 @@ import torch
 import yaml
 
 from .online_rotations import OnlineHadamardTransform, create_online_transform_hook
-from .rotate_utils import (
-    RotationMatrixStore,
-    _iter_modules_by_pattern,
-    fuse_layernorms,
-    rotate_bias,
-    rotate_weight,
-)
+from .rotate_utils import RotationMatrixStore, _iter_modules_by_pattern, rotate_bias, rotate_weight
 
 # def _apply_weight_rotation(
 #     weight: torch.Tensor, rin: torch.Tensor | None, rout: torch.Tensor | None
@@ -117,10 +111,13 @@ def register_online_transforms(model: torch.nn.Module, config: dict) -> None:
             module._rotation_hook_handle = handle
 
 
-def apply_rotation(model: torch.nn.Module, config: dict) -> None:
+def apply_rotation(model: torch.nn.Module, config: dict | str) -> None:
     """Apply R1/R2 rotations to model weights and register online transforms."""
+    if isinstance(config, str):
+        config = build_rotation_config_from_yaml(config, model)
     if config.get("norm_fuse_config"):
-        fuse_layernorms(model, config["norm_fuse_config"])
+        print("Fusing layer norms")
+        # fuse_layernorms(model, config["norm_fuse_config"])
 
     # rot_mats =
     rotation_cfg = config["rotation_config"]
@@ -130,8 +127,10 @@ def apply_rotation(model: torch.nn.Module, config: dict) -> None:
         for module_name, module in _iter_modules_by_pattern(model, pattern):
             if not hasattr(module, "weight"):
                 continue
+            print(f"Applying rotation to {module_name}")
             rin = rot_mat_store.get(rin_name, module_name) if rin_name else None
             rout = rot_mat_store.get(rout_name, module_name) if rout_name else None
+            print(f"module.weight: {module.weight}, rin: {rin}, rout: {rout}")
             module.weight.data.copy_(rotate_weight(module.weight, rin, rout))
             if hasattr(module, "bias") and module.bias is not None:
                 module.bias.data.copy_(rotate_bias(module.bias, rout))

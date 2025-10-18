@@ -11,7 +11,7 @@ from .hadamard_utils import matmul_hadU_cuda, random_hadamard_matrix
 
 
 def _iter_modules_by_pattern(
-    model: torch.nn.Module, pattern: str
+    model: torch.nn.Module, pattern: str, regex: bool = False
 ) -> list[tuple[str, torch.nn.Module]]:
     """Find all modules matching the given glob pattern.
 
@@ -22,7 +22,11 @@ def _iter_modules_by_pattern(
 
     for name, module in model.named_modules():
         for p in patterns:
-            if fnmatch.fnmatch(name, p):
+            if regex:
+                if re.search(p, name):
+                    results.append((name, module))
+                    break
+            elif fnmatch.fnmatch(name, p):
                 results.append((name, module))
                 break
     return results
@@ -46,7 +50,7 @@ def fuse_ln_linear(
                 )
             linear.bias.data = linear.bias.data.double() + torch.matmul(w_, layernorm.bias.double())
             linear.bias.data = linear.bias.data.to(linear_dtype)
-            torch.nn.init.zeros_(linear.bias)
+            torch.nn.init.zeros_(layernorm.bias)
     torch.nn.init.ones_(layernorm.weight)
 
 
@@ -198,6 +202,14 @@ def rotate_bias(bias, output_spin, fast_hadamard=False, block_size=None):
     return bias.to(dtype)
 
 
+def get_device(module, model):
+    for param in module.parameters():
+        return param.device
+    for buffer in module.buffers():
+        return buffer.device
+    return model.device
+
+
 class RotationMatrixStore:
     """Store the rotation matrices."""
 
@@ -221,37 +233,50 @@ class RotationMatrixStore:
             per_layer = self.config.get(name).get("per_layer", False)
             if isinstance(per_layer, str):
                 for moudle_name, module in _iter_modules_by_pattern(self.model, per_layer):
+                    print(f"Initializing {name} for {moudle_name}")
+                    dim = self.config.get(name).get("dim")
+                    if isinstance(dim, str):
+                        dim = getattr(self.model.config, dim)
                     setattr(
                         module,
                         name,
                         get_orthogonal_matrix(
-                            self.config.get(name).get("dim"),
+                            dim,
                             self.config.get(name).get("mode", "hadamard"),
-                            module.device,
+                            get_device(module, self.model),
                         ),
                     )
                     self.matrices.append((module, name))
             elif per_layer:
-                for i in range(self._num_decoder_layers):
-                    module = self.model.get_submodule(f"*.layers.{i}")
+                for moduel_name, module in _iter_modules_by_pattern(
+                    self.model, "layers\\.[0-9]+$", regex=True
+                ):
+                    print(f"Initializing {name} for layer {moduel_name}")
+                    dim = self.config.get(name).get("dim")
+                    if isinstance(dim, str):
+                        dim = getattr(self.model.config, dim)
                     setattr(
                         module,
                         name,
                         get_orthogonal_matrix(
-                            self.config.get(name).get("dim"),
+                            dim,
                             self.config.get(name).get("mode", "hadamard"),
-                            module.device,
+                            get_device(module, self.model),
                         ),
                     )
                     self.matrices.append((module, name))
             else:
+                print(f"Initializing {name} for root model")
+                dim = self.config.get(name).get("dim")
+                if isinstance(dim, str):
+                    dim = getattr(self.model.config, dim)
                 setattr(
                     self.model,
                     name,
                     get_orthogonal_matrix(
-                        self.config.get(name).get("dim"),
+                        dim,
                         self.config.get(name).get("mode", "hadamard"),
-                        self.model.device,
+                        get_device(self.model, self.model),
                     ),
                 )
                 self.matrices.append((self.model, name))
@@ -268,11 +293,16 @@ class RotationMatrixStore:
         """
         if module_name is not None:
             module = self.model.get_submodule(module_name)
-            while not hasattr(module, name):
+            while not hasattr(module, name) and "." in module_name:
                 module_name = module_name.rsplit(".", 1)[0]
+                # print(f"Getting {name} for {module_name}")
                 module = self.model.get_submodule(module_name)
-            return getattr(module, name)
-
+            if hasattr(module, name):
+                print(f"Getting {name} for {module_name}")
+                return getattr(module, name)
+            # print(f"Getting {name} for {module_name} failed")
+            # return getattr(module, name)
+        print(f"Getting {name} for root model")
         return getattr(self.model, name)
 
     def clear(self):

@@ -36,7 +36,7 @@ from .config import QuantizeAlgoCfgType
 from .conversion import set_quantizer_attribute
 from .mode import QuantizeModeRegistry, get_modelike_from_algo_cfg
 from .nn import QuantModule, TensorQuantizer
-from .rotation import apply_rotation, build_rotation_config, build_rotation_config_from_yaml
+from .rotation import apply_rotation, build_rotation_config_from_yaml
 
 __all__ = [
     "auto_quantize",
