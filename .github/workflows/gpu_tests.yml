@@ -73,8 +73,7 @@ jobs:
       - uses: nv-gha-runners/setup-proxy-cache@main
       - name: Setup environment variables
         run: |
-          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib" >> $GITHUB_ENV
-          echo "PATH=${PATH}:/usr/local/tensorrt/targets/x86_64-linux-gnu/bin" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
       - name: Run gpu tests
         run: pip install tox-current-env && tox -e py312-cuda12-gpu --current-env
   gpu-tests-non-pr:
