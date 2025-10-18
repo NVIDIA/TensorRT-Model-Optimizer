@@ -18,7 +18,9 @@ import os
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import pytest
 from _test_utils.onnx_quantization.lib_test_models import (
+    build_conv_act_pool_model,
     build_r1a_model,
     build_resnet_block,
     build_resnet_block_with_downsample,
@@ -26,6 +28,7 @@ from _test_utils.onnx_quantization.lib_test_models import (
 )
 
 from modelopt.onnx.quantization.quantize import quantize
+from modelopt.onnx.utils import save_onnx
 
 
 def _assert_nodes_are_quantized(nodes):
@@ -119,3 +122,29 @@ def test_resnet_residual_connection_with_downsample(tmp_path):
     onnx_path = os.path.join(tmp_path, "model.onnx")
     export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
     _check_resnet_residual_connection(onnx_path)
+
+
+@pytest.mark.parametrize("include_reshape_node", [False, True])
+def test_conv_act_pool_int8(tmp_path, include_reshape_node):
+    onnx_model = build_conv_act_pool_model(include_reshape_node)
+    onnx_path = os.path.join(tmp_path, f"conv_act_pool_model_{include_reshape_node}.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    quantize.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
+
+    # Check that quantized explicit model is generated
+    assert os.path.isfile(output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    graph = gs.import_onnx(onnx.load(output_onnx_path))
+
+    # Check that Conv is quantized
+    conv_nodes = [n for n in graph.nodes if n.op == "Conv"]
+    assert _assert_nodes_are_quantized(conv_nodes)
+
+    # Check that MaxPool is not quantized
+    pool_nodes = [n for n in graph.nodes if n.op == "MaxPool"]
+    assert _assert_nodes_are_not_quantized(pool_nodes)

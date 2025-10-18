@@ -27,15 +27,15 @@ from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
 from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 from modelopt.onnx.logging_config import logger
-from modelopt.onnx.op_types import is_copy_op, is_linear_op
+from modelopt.onnx.op_types import get_copy_ops, is_copy_op, is_linear_op
 from modelopt.onnx.quantization.ort_utils import create_inference_session
 from modelopt.onnx.utils import (
     find_lowest_common_ancestor,
     get_child_nodes,
     get_parent_nodes,
+    infer_shapes,
     parse_shapes_spec,
     save_onnx,
 )
@@ -170,7 +170,7 @@ def has_path_type(
 def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
     """Returns the linear backbone node for a given node if it matches the pattern.
 
-    TensorRT fuses convolution with BN, Relu etc. when in some specific pattern.
+    TensorRT fuses convolution with BN, Relu, MaxPool etc. when in some specific pattern.
     This rule tries to match some of those patterns.
     Note. BiasAdd and ConstMul are optional in path types.
 
@@ -203,7 +203,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             ["MaxPool", "Relu", "BatchNormalization", "BiasAdd", conv_type],
         ]
     for idx, path_type in enumerate(fusible_linear_path_types):
-        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=[]):
+        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=get_copy_ops()):
             return _get_backbone(node)
 
     return None
@@ -962,11 +962,10 @@ def find_nodes_from_matmul_to_exclude(
         logger.debug("No MatMul nodes found in the model")
         return []
 
-    nodes_to_exclude = []
     logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
     if calibration_shapes:
-        nodes_to_exclude = _exclude_matmuls_by_symbolic_inference(
+        nodes_to_exclude = _exclude_matmuls_by_shape_inference(
             model, matmul_nodes, calibration_shapes
         )
     else:
@@ -1058,7 +1057,7 @@ def find_nodes_from_convs_to_exclude(graph: Graph, quantize_mode: str = "int8"):
     return unsupported_conv_nodes
 
 
-def _exclude_matmuls_by_symbolic_inference(
+def _exclude_matmuls_by_shape_inference(
     model: onnx.ModelProto, matmul_nodes: list, calibration_shapes: str | dict | None = None
 ) -> list[str]:
     """Use symbolic shape inference to find MatMuls with dimension 1."""
@@ -1088,7 +1087,7 @@ def _exclude_matmuls_by_symbolic_inference(
                 dim.dim_value = new_dim_value
 
     model.graph.ClearField("value_info")
-    model = SymbolicShapeInference.infer_shapes(model)
+    model = infer_shapes(model)
     value_info_map = {vi.name: vi for vi in model.graph.value_info}
 
     nodes_to_exclude = []
