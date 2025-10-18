@@ -19,6 +19,13 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 from _test_utils.import_helper import skip_if_no_libcudnn, skip_if_no_tensorrt
+from _test_utils.onnx_autocast.utils import _assert_tensors_are_fp16
+from _test_utils.onnx_quantization.utils import _assert_nodes_are_quantized
+
+from modelopt.onnx.autocast import convert_to_mixed_precision
+from modelopt.onnx.autocast.graphsanitizer import GraphSanitizer
+from modelopt.onnx.quantization.quantize import quantize
+from modelopt.onnx.trt_utils import load_onnx_model
 
 skip_if_no_libcudnn()
 skip_if_no_tensorrt()
@@ -95,11 +102,6 @@ def _create_test_model_trt():
 
 
 def test_trt_plugin_quantization(tmp_path):
-    from _test_utils.onnx_quantization.utils import _assert_nodes_are_quantized
-
-    from modelopt.onnx.quantization.quantize import quantize
-    from modelopt.onnx.trt_utils import load_onnx_model
-
     model = _create_test_model_trt()
     with open(os.path.join(tmp_path, "model_with_trt_plugin.onnx"), "w") as f:
         onnx.save_model(model, f.name)
@@ -126,11 +128,6 @@ def test_trt_plugin_quantization(tmp_path):
 
 
 def test_trt_plugin_autocast(tmp_path):
-    from _test_utils.onnx_autocast.utils import _assert_tensors_are_fp16
-
-    from modelopt.onnx.autocast import convert_to_mixed_precision
-    from modelopt.onnx.autocast.graphsanitizer import GraphSanitizer
-
     model = _create_test_model_trt()
     with open(os.path.join(tmp_path, "model_with_trt_plugin_autocast.onnx"), "w") as f:
         onnx.save_model(model, f.name)
