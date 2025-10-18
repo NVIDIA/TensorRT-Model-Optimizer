@@ -1,0 +1,49 @@
+# Universal transformer rotation configuration
+
+rotation_matrices:
+  r1:
+    mode: hadamard
+    per_layer: false
+
+rotation_config:
+  # Embeddings and LM head
+  "*embed_tokens": [r1, null]
+  "*lm_head": [r1, null]
+
+  # Attention projections - Q/K get R1, V/O get R1+per-head R2
+  "*q_proj|*k_proj": [r1, null]
+  "*v_proj": [r1, null] # + per-head R2 on output
+  "*o_proj": [null, r1] # + per-head R2 on input
+
+  # MLP projections - inputs get R1, down gets R1+R2 Hadamard
+  "*up_proj|*gate_proj|*w1|*w3": [r1, null]
+  "*down_proj|*w2": [null, r1] # + full Hadamard (R2)
+
+  # Mamba2/hybrid architecture support
+  "*in_proj": [r1, null]
+  "*out_proj": [null, r1]
+
+# R2 Hadamard transforms (applied AFTER R1, matching SpinQuant)
+per_head_config:
+  "*v_proj":
+    enabled: true
+    transpose_first: true # Per-head R2 on output dimension
+    use_per_head: true
+
+  "*o_proj":
+    enabled: true
+    transpose_first: false # Per-head R2 on input dimension
+    use_per_head: true
+
+  "*down_proj|*w2":
+    enabled: true
+    transpose_first: false # Full R2 on input dimension
+    use_per_head: false
+
+# Optional: LayerNorm fusion (improves quantization quality)
+norm_fuse_config:
+  decoder_layer_fuse:
+    - [input_layernorm, [self_attn.q_proj, self_attn.k_proj, self_attn.v_proj]]
+    - [post_attention_layernorm, [mlp.up_proj, mlp.gate_proj]]
+  lm_head_fuse:
+    - [model.norm, lm_head]

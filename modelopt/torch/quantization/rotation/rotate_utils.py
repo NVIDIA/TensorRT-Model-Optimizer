@@ -1,3 +1,5 @@
+"""Rotation utility functions for preprocessing."""
+
 import re
 import typing
 
@@ -14,30 +16,29 @@ def fuse_ln_linear(
         linear_dtype = linear.weight.dtype
 
         # Calculating new weight and bias
-        W_ = linear.weight.data.double()
-        linear.weight.data = (W_ * layernorm.weight.double()).to(linear_dtype)
+        w_ = linear.weight.data.double()
+        linear.weight.data = (w_ * layernorm.weight.double()).to(linear_dtype)
 
         if hasattr(layernorm, "bias"):
             if linear.bias is None:
                 linear.bias = torch.nn.Parameter(
                     torch.zeros(linear.out_features, dtype=torch.float64)
                 )
-            linear.bias.data = linear.bias.data.double() + torch.matmul(W_, layernorm.bias.double())
+            linear.bias.data = linear.bias.data.double() + torch.matmul(w_, layernorm.bias.double())
             linear.bias.data = linear.bias.data.to(linear_dtype)
             torch.nn.init.zeros_(linear.bias)
     torch.nn.init.ones_(layernorm.weight)
 
 
 @torch.no_grad()
-def fuse_layernorms(model: torch.nn.Module, norm_fuse_config) -> None:
+def fuse_layernorms(model: torch.nn.Module, norm_fuse_config: dict) -> None:
     """Fuse LayerNorm scale/bias into neighboring Linear layers as configured.
 
-    norm_fuse_config must provide:
-      - decoder_layer_fuse(): Iterable[tuple[str, list[str]]] where the strings are
-        module names relative to each decoder block module (e.g., 'input_layernorm',
-        ['self_attn.q_proj', 'self_attn.k_proj', 'self_attn.v_proj']).
-      - lm_head_fuse: Iterable[tuple[str, str]] where the strings are absolute
-        module paths on the model (e.g., 'model.norm', 'lm_head').
+    Args:
+        model: Model to apply fusion to
+        norm_fuse_config: Dict with keys:
+            - decoder_layer_fuse: List[tuple[str, list[str]]] - decoder layer norm fusions
+            - lm_head_fuse: List[tuple[str, str]] - lm head norm fusions
     """
     # Embedding fusion
     emb_module = model.model.embed_tokens
@@ -48,12 +49,12 @@ def fuse_layernorms(model: torch.nn.Module, norm_fuse_config) -> None:
 
     for name, module in model.named_modules():
         if re.search("layers\\.[0-9]+$", name) is not None:
-            for layer_norm, linear_layers in norm_fuse_config.decoder_layer_fuse():
+            for layer_norm, linear_layers in norm_fuse_config.get("decoder_layer_fuse", []):
                 fuse_ln_linear(
                     module.get_submodule(layer_norm),
                     [module.get_submodule(linear) for linear in linear_layers],
                 )
-    for layer_norm, linear in getattr(norm_fuse_config, "lm_head_fuse", []):
+    for layer_norm, linear in norm_fuse_config.get("lm_head_fuse", []):
         fuse_ln_linear(model.get_submodule(layer_norm), [model.get_submodule(linear)])
 
 
@@ -140,6 +141,78 @@ def get_orthogonal_matrix(size: int, mode: str, device: torch.device) -> torch.T
     if mode == "hadamard":
         return random_hadamard_matrix(size, device)
     raise ValueError(f"Unknown rotation matrix mode: {mode}")
+
+
+def extract_layer_index(module_name: str) -> int | None:
+    """Extract layer index from module name.
+
+    Args:
+        module_name: Module name like 'model.layers.12.self_attn.o_proj'
+
+    Returns:
+        Layer index as integer, or None if not found
+    """
+    match = re.search(r"layers\.(\d+)", module_name)
+    return int(match.group(1)) if match else None
+
+
+def apply_full_rotation(weight: torch.Tensor, r2_full: torch.Tensor) -> torch.Tensor:
+    """Apply full-dimension R2 rotation to weight input dimension.
+
+    Used for O projection and down projection in QuaRot.
+    Applies W @ R2_full (right multiply on input dimension).
+
+    Args:
+        weight: Weight tensor [out_features, in_features]
+        r2_full: Full rotation matrix [in_features, in_features]
+
+    Returns:
+        Rotated weight tensor W @ R2_full
+    """
+    dtype = weight.dtype
+    device = weight.device
+    w = weight.to(torch.float64)
+    r2 = r2_full.to(dtype=torch.float64, device=device)
+
+    w_rotated = torch.matmul(w, r2)
+
+    return w_rotated.to(device=device, dtype=dtype)
+
+
+def apply_per_head_rotation(
+    weight: torch.Tensor, r2: torch.Tensor, num_heads: int, transpose_first: bool = False
+) -> torch.Tensor:
+    """Apply R2 rotation per attention head (matching SpinQuant).
+
+    Args:
+        weight: Weight tensor [out_features, in_features]
+        r2: Rotation matrix [head_dim, head_dim]
+        num_heads: Number of attention heads
+        transpose_first: If True, apply on output dim (V). If False, apply on input dim (O)
+
+    Returns:
+        Rotated weight tensor
+    """
+    head_dim = r2.shape[0]
+    dtype = weight.dtype
+    device = weight.device
+    w = weight.to(torch.float64)
+
+    if transpose_first:
+        # V projection: per-head R2 on output dimension (output=True in SpinQuant)
+        w = w.T  # Transpose to make output dim last
+        transposed_shape = w.shape
+        w_reshaped = w.reshape(-1, transposed_shape[-1] // head_dim, head_dim)
+        w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
+        w = w_rotated.reshape(transposed_shape).T
+    else:
+        # O projection: per-head R2 on input dimension (output=False in SpinQuant)
+        init_shape = w.shape
+        w_reshaped = w.reshape(-1, init_shape[-1] // head_dim, head_dim)
+        w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
+        w = w_rotated.reshape(init_shape)
+
+    return w.to(device=device, dtype=dtype)
 
 
 # The rest of the reference implementation (online transforms, model-specific helpers)

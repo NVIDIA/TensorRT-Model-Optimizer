@@ -490,6 +490,13 @@ def main(args):
                 quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
                 quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
 
+            # Add rotation preprocessing if enabled
+            if args.enable_rotation:
+                quant_cfg["rotation"] = {
+                    "enabled": True,
+                    "config_path": args.rotation_config,
+                }
+
         if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
             input_ids = next(iter(calib_dataloader))[
@@ -784,6 +791,18 @@ if __name__ == "__main__":
             "This arg will be passed to the HF model loading if specified."
         ),
         default=None,
+        type=str,
+    )
+    parser.add_argument(
+        "--enable_rotation",
+        help="Enable rotation preprocessing for quantization",
+        default=False,
+        action="store_true",
+    )
+    parser.add_argument(
+        "--rotation_config",
+        help="Path to rotation configuration YAML file",
+        default="modelopt/torch/quantization/rotation/configs/transformer_universal.yaml",
         type=str,
     )
 
