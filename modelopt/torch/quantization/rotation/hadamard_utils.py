@@ -111,20 +111,42 @@ def random_hadamard_matrix(size, device):
     return matmul_hadU(Q).to(device)
 
 
-def matmul_hadU_cuda(X, hadK, K):
+# def matmul_hadU_cuda(X, hadK, K):
+#     n = X.shape[-1]
+#     if K == 1:
+#         return fast_hadamard_transform.hadamard_transform(
+#             X.contiguous(), 1.0 / torch.tensor(n).sqrt()
+#         )
+#     # if transpose:
+#     #     hadK = hadK.T.contiguous()
+#     input = X.view(-1, K, n // K)
+#     input = fast_hadamard_transform.hadamard_transform(
+#         input.contiguous(), 1.0 / torch.tensor(n).sqrt()
+#     )
+#     input = hadK.to(input.device).to(input.dtype) @ input
+#     return input.reshape(X.shape)
+
+
+def matmul_hadU_cuda(X, hadK, transpose=False):
+    """Transpose is dummy here for support matmul_diag."""
     n = X.shape[-1]
-    if K == 1:
+    if hadK is None:
+        assert is_pow2(n), "Input dimension must be a power of 2!"
         return fast_hadamard_transform.hadamard_transform(
-            X.contiguous(), 1.0 / torch.tensor(n).sqrt()
+            X.contiguous(),
+            1.0 / math.sqrt(n),  # torch.tensor(n).sqrt()
         )
     # if transpose:
     #     hadK = hadK.T.contiguous()
-    input = X.view(-1, K, n // K)
+    K = hadK.shape[0]
+    input = X.view(*X.shape[:-1], K, n // K)
     input = fast_hadamard_transform.hadamard_transform(
-        input.contiguous(), 1.0 / torch.tensor(n).sqrt()
+        input.contiguous(),
+        1.0 / math.sqrt(n),  # torch.tensor(n).sqrt()
     )
-    input = hadK.to(input.device).to(input.dtype) @ input
-    return input.reshape(X.shape)
+    # input = hadK.to(input.device).to(input.dtype) @ input
+    input = hadK @ input
+    return input.contiguous().view(X.shape)
 
 
 def matmul_hadUt_cuda(X, hadK, K):

@@ -1,11 +1,31 @@
 """Rotation utility functions for preprocessing."""
 
+import fnmatch
+import gc
 import re
 import typing
 
 import torch
 
-from .hadamard_utils import random_hadamard_matrix
+from .hadamard_utils import matmul_hadU_cuda, random_hadamard_matrix
+
+
+def _iter_modules_by_pattern(
+    model: torch.nn.Module, pattern: str
+) -> list[tuple[str, torch.nn.Module]]:
+    """Find all modules matching the given glob pattern.
+
+    Supports OR logic with pipe separator: '*q_proj|*k_proj' matches either pattern.
+    """
+    results: list[tuple[str, torch.nn.Module]] = []
+    patterns = pattern.split("|")
+
+    for name, module in model.named_modules():
+        for p in patterns:
+            if fnmatch.fnmatch(name, p):
+                results.append((name, module))
+                break
+    return results
 
 
 def fuse_ln_linear(
@@ -58,69 +78,6 @@ def fuse_layernorms(model: torch.nn.Module, norm_fuse_config: dict) -> None:
         fuse_ln_linear(model.get_submodule(layer_norm), [model.get_submodule(linear)])
 
 
-# def bake_mean_into_linear(linear: torch.nn.Linear) -> None:
-#     """This function takes a linear layer and subtracts the means from the
-#     weights and biases. This will result in the linear layer performing
-#     the mean substitution which is usually done inside layernorm.
-#     """
-#     linear_dtype = linear.weight.dtype
-#     W_ = linear.weight.data.double()
-#     linear.weight.data = W_ - W_.mean(dim=-2, keepdim=True)
-#     linear.weight.data = linear.weight.data.to(linear_dtype)
-#     if linear.bias is not None:
-#         b_ = linear.bias.data.double()
-#         linear.bias.data = b_ - b_.mean()
-#         linear.bias.data = linear.bias.data.to(linear_dtype)
-
-
-# def fuse_layer_norms(model):
-#     model_type = model_utils.get_model_type(model)
-
-#     kwargs = {"model": model, "model_type": model_type}
-
-#     # Embedding fusion
-#     for W in model_utils.get_embeddings(**kwargs):
-#         W_ = W.weight.data.double()
-#         W.weight.data = (W_ - W_.mean(dim=-1, keepdim=True)).to(W.weight.data.dtype)
-
-#     layers = model_utils.get_transformer_layers(**kwargs)
-
-#     # Fuse the linear operations in Layernorm into the adjacent linear blocks.
-#     for layer in layers:
-#         # fuse the input layernorms into the linear layers
-#         if model_type == model_utils.LLAMA_MODEL:
-#             fuse_ln_linear(layer.post_attention_layernorm, [layer.mlp.up_proj, layer.mlp.gate_proj])
-#             fuse_ln_linear(
-#                 layer.input_layernorm,
-#                 [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj],
-#             )
-#         elif model_type == model_utils.OPT_MODEL:
-#             fuse_ln_linear(
-#                 layer.self_attn_layer_norm,
-#                 [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj],
-#             )
-#             fuse_ln_linear(layer.final_layer_norm, [layer.fc1])
-#         else:
-#             raise ValueError(f"Unknown model type {model_type}")
-
-#         if model_type == model_utils.OPT_MODEL:
-#             bake_mean_into_linear(layer.self_attn.out_proj)
-#             bake_mean_into_linear(layer.fc2)
-
-#     fuse_ln_linear(
-#         model_utils.get_pre_head_layernorm(**kwargs), [model_utils.get_lm_head(**kwargs)]
-#     )
-
-#     model_utils.replace_modules(
-#         model,
-#         transformers.models.llama.modeling_llama.LlamaRMSNorm
-#         if model_type == model_utils.LLAMA_MODEL
-#         else torch.nn.LayerNorm,
-#         lambda _: model_utils.RMSN(model.config.hidden_size),
-#         replace_layers=False,
-#     )
-
-
 def random_orthogonal_matrix(size: int, device: torch.device) -> torch.Tensor:
     """Generate a random orthogonal matrix of the specified size on device."""
     return torch.nn.init.orthogonal_(torch.empty(size, size, device=device))
@@ -156,63 +113,233 @@ def extract_layer_index(module_name: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def apply_full_rotation(weight: torch.Tensor, r2_full: torch.Tensor) -> torch.Tensor:
-    """Apply full-dimension R2 rotation to weight input dimension.
-
-    Used for O projection and down projection in QuaRot.
-    Applies W @ R2_full (right multiply on input dimension).
-
-    Args:
-        weight: Weight tensor [out_features, in_features]
-        r2_full: Full rotation matrix [in_features, in_features]
-
-    Returns:
-        Rotated weight tensor W @ R2_full
-    """
-    dtype = weight.dtype
-    device = weight.device
-    w = weight.to(torch.float64)
-    r2 = r2_full.to(dtype=torch.float64, device=device)
-
-    w_rotated = torch.matmul(w, r2)
-
-    return w_rotated.to(device=device, dtype=dtype)
-
-
-def apply_per_head_rotation(
-    weight: torch.Tensor, r2: torch.Tensor, num_heads: int, transpose_first: bool = False
+def diag_matmul(
+    m1: torch.Tensor, m2: torch.Tensor, transpose=True, block_size=None
 ) -> torch.Tensor:
-    """Apply R2 rotation per attention head (matching SpinQuant).
+    """m1 @ m2. m1 can be an element matrix of a diagonal matrix. e.g. diag(m1, m1, ..., m1).
 
-    Args:
-        weight: Weight tensor [out_features, in_features]
-        r2: Rotation matrix [head_dim, head_dim]
-        num_heads: Number of attention heads
-        transpose_first: If True, apply on output dim (V). If False, apply on input dim (O)
-
-    Returns:
-        Rotated weight tensor
+    In which case, there should be m2.shape[0] % m1.shape[1] == 0.
+    If m1 is not a diagnoal, peform a normal matrix multiplication.
     """
-    head_dim = r2.shape[0]
+    if transpose:
+        m1 = m1.t()
+    if m1.shape[-1] == m2.shape[-2]:
+        return torch.matmul(m1, m2)
+    m2_shape = m2.shape
+    size = m1.shape[1]
+    m2 = m2.view(*m2.shape[:-2], m2.shape[-2] // size, size, m2.shape[-1])
+    # print(m1.shape, m2.shape)
+    output = m1 @ m2  # torch.matmul(m1, m2)
+    return output.contiguous().view(*m2_shape)
+
+
+def matmul_diag(
+    m1: torch.Tensor, m2: torch.Tensor, transpose=False, block_size=None
+) -> torch.Tensor:
+    """m1 @ m2. m2 can be an element matrix of a diagonal matrix. e.g. diag(m2, m2, ..., m2).
+
+    In which case, there should be m1.shape[-1] % m2.shape[0] == 0.
+    If m2 is not a diagnoal, peform a normal matrix multiplication.
+    """
+    if transpose:
+        # print("transposed")
+        m2 = m2.t()
+    if m1.shape[-1] == m2.shape[-2]:
+        return torch.matmul(m1, m2)
+    m1_shape = m1.shape
+    size = m2.shape[0]
+    # assert block_size == size
+    m1 = m1.view(*m1.shape[:-1], m1.shape[-1] // size, size)
+    output = m1 @ m2
+    return output.contiguous().view(*m1_shape)
+
+
+def matmul_diag_fast_hadamard(m1, had_k, transpose=False, block_size=None):
+    """Fast hadamard transform, m1 @ hadamard matrix, if m1.shape[-1] is not a power of 2, a had_k must be provided.
+
+    The hadamard matrix is by Sylvester’s construction, which is also a symmetric matrix. So transpose is not needed.
+    """
+    if block_size is not None:
+        shape = m1.shape
+        m1 = m1.view(*shape[:-1], shape[-1] // block_size, block_size)
+
+        return matmul_hadU_cuda(m1, None).view(*shape)
+    return matmul_hadU_cuda(m1, had_k)
+
+
+def rotate_weight(weight, input_spin, output_spin, fast_hadamard=False, block_size=None):
+    """Rotating a matrix."""
     dtype = weight.dtype
-    device = weight.device
-    w = weight.to(torch.float64)
+    weight = weight.to(torch.float32)
+    if input_spin is not None:
+        input_spin = input_spin.to(torch.float32)
+    if output_spin is not None:
+        output_spin = output_spin.to(torch.float32)
+    matmul_spin = matmul_diag_fast_hadamard if fast_hadamard else matmul_diag
+    if input_spin is not None or (input_spin is None and fast_hadamard and block_size is not None):
+        weight = matmul_spin(
+            weight, input_spin, block_size=block_size
+        )  # torch.matmul(weight, input_spin)
+    if output_spin is not None:
+        weight = diag_matmul(output_spin, weight)
+    return weight.to(dtype)
 
-    if transpose_first:
-        # V projection: per-head R2 on output dimension (output=True in SpinQuant)
-        w = w.T  # Transpose to make output dim last
-        transposed_shape = w.shape
-        w_reshaped = w.reshape(-1, transposed_shape[-1] // head_dim, head_dim)
-        w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
-        w = w_rotated.reshape(transposed_shape).T
-    else:
-        # O projection: per-head R2 on input dimension (output=False in SpinQuant)
-        init_shape = w.shape
-        w_reshaped = w.reshape(-1, init_shape[-1] // head_dim, head_dim)
-        w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
-        w = w_rotated.reshape(init_shape)
 
-    return w.to(device=device, dtype=dtype)
+def rotate_bias(bias, output_spin, fast_hadamard=False, block_size=None):
+    """Rotate a bias."""
+    dtype = bias.dtype
+    bias = bias.to(torch.float32)
+    if output_spin is not None:
+        output_spin = output_spin.to(torch.float32)
+    matmul_spin = matmul_diag_fast_hadamard if fast_hadamard else matmul_diag
+    bias = bias.unsqueeze(0)
+    bias = matmul_spin(bias, output_spin, block_size=block_size, transpose=True)
+    bias = bias.squeeze(0)
+    return bias.to(dtype)
+
+
+class RotationMatrixStore:
+    """Store the rotation matrices."""
+
+    def __init__(self, config, model):
+        """Initialize the rotation matrix store."""
+        self.config = config
+        # list of (module, name), module.name is the rotation matrix
+        self.matrices = []
+        self.model = model
+        self._num_decoder_layers = getattr(
+            model.config, "num_hidden_layers", len(model.model.layers)
+        )
+        self.init_matrices()
+
+    # def format_matrix_name(self, name):
+    #     return f"rotation_{name}"
+
+    def init_matrices(self):
+        """Initialize the rotation matrices."""
+        for name in self.config:
+            per_layer = self.config.get(name).get("per_layer", False)
+            if isinstance(per_layer, str):
+                for moudle_name, module in _iter_modules_by_pattern(self.model, per_layer):
+                    setattr(
+                        module,
+                        name,
+                        get_orthogonal_matrix(
+                            self.config.get(name).get("dim"),
+                            self.config.get(name).get("mode", "hadamard"),
+                            module.device,
+                        ),
+                    )
+                    self.matrices.append((module, name))
+            elif per_layer:
+                for i in range(self._num_decoder_layers):
+                    module = self.model.get_submodule(f"*.layers.{i}")
+                    setattr(
+                        module,
+                        name,
+                        get_orthogonal_matrix(
+                            self.config.get(name).get("dim"),
+                            self.config.get(name).get("mode", "hadamard"),
+                            module.device,
+                        ),
+                    )
+                    self.matrices.append((module, name))
+            else:
+                setattr(
+                    self.model,
+                    name,
+                    get_orthogonal_matrix(
+                        self.config.get(name).get("dim"),
+                        self.config.get(name).get("mode", "hadamard"),
+                        self.model.device,
+                    ),
+                )
+                self.matrices.append((self.model, name))
+
+    def get(self, name, module_name=None):
+        """Get the rotation matrix by name.
+
+        Args:
+            name: Name of the rotation matrix
+            module_name: Name of the module that the rotation matrix will be applied to.
+
+        Returns:
+            The rotation matrix
+        """
+        if module_name is not None:
+            module = self.model.get_submodule(module_name)
+            while not hasattr(module, name):
+                module_name = module_name.rsplit(".", 1)[0]
+                module = self.model.get_submodule(module_name)
+            return getattr(module, name)
+
+        return getattr(self.model, name)
+
+    def clear(self):
+        """Clear the rotation matrices."""
+        for module, name in self.matrices:
+            delattr(module, name)
+        gc.collect()
+        torch.cuda.empty_cache()
+
+
+# def apply_full_rotation(weight: torch.Tensor, r2_full: torch.Tensor) -> torch.Tensor:
+#     """Apply full-dimension R2 rotation to weight input dimension.
+
+#     Used for O projection and down projection in QuaRot.
+#     Applies W @ R2_full (right multiply on input dimension).
+
+#     Args:
+#         weight: Weight tensor [out_features, in_features]
+#         r2_full: Full rotation matrix [in_features, in_features]
+
+#     Returns:
+#         Rotated weight tensor W @ R2_full
+#     """
+#     dtype = weight.dtype
+#     device = weight.device
+#     w = weight.to(torch.float64)
+#     r2 = r2_full.to(dtype=torch.float64, device=device)
+
+#     w_rotated = torch.matmul(w, r2)
+
+#     return w_rotated.to(device=device, dtype=dtype)
+
+
+# def apply_per_head_rotation(
+#     weight: torch.Tensor, r2: torch.Tensor, num_heads: int, transpose_first: bool = False
+# ) -> torch.Tensor:
+#     """Apply R2 rotation per attention head (matching SpinQuant).
+
+#     Args:
+#         weight: Weight tensor [out_features, in_features]
+#         r2: Rotation matrix [head_dim, head_dim]
+#         num_heads: Number of attention heads
+#         transpose_first: If True, apply on output dim (V). If False, apply on input dim (O)
+
+#     Returns:
+#         Rotated weight tensor
+#     """
+#     head_dim = r2.shape[0]
+#     dtype = weight.dtype
+#     device = weight.device
+#     w = weight.to(torch.float64)
+
+#     if transpose_first:
+#         # V projection: per-head R2 on output dimension (output=True in SpinQuant)
+#         w = w.T  # Transpose to make output dim last
+#         transposed_shape = w.shape
+#         w_reshaped = w.reshape(-1, transposed_shape[-1] // head_dim, head_dim)
+#         w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
+#         w = w_rotated.reshape(transposed_shape).T
+#     else:
+#         # O projection: per-head R2 on input dimension (output=False in SpinQuant)
+#         init_shape = w.shape
+#         w_reshaped = w.reshape(-1, init_shape[-1] // head_dim, head_dim)
+#         w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
+#         w = w_rotated.reshape(init_shape)
+
+#     return w.to(device=device, dtype=dtype)
 
 
 # The rest of the reference implementation (online transforms, model-specific helpers)
