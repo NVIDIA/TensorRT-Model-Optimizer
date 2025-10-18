@@ -70,8 +70,8 @@ def _export_tensor_proto(tensor: gs.Constant) -> onnx.TensorProto:
         vals = tensor.values
         if _onnx_supports_int4() and dtype in [onnx.TensorProto.INT4, onnx.TensorProto.UINT4]:
             signed = dtype == onnx.TensorProto.INT4
-            np_dtype = onnx.helper.tensor_dtype_to_np_dtype(dtype)
-            vals = pack_float32_to_4bit_cpp_based(tensor.values, signed=signed).astype(np_dtype)
+            packed_dtype = np.int8 if signed else np.uint8
+            vals = pack_float32_to_4bit_cpp_based(tensor.values, signed=signed).astype(packed_dtype)
 
         onnx_tensor = onnx.helper.make_tensor(
             tensor.name,
