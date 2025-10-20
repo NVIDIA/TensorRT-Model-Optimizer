@@ -247,6 +247,14 @@ class _MegatronParallelLinear(_ParallelLinear):
                 data_parallel_group,
                 mcore_parallel.get_tensor_model_parallel_group(),
             )
+
+        if getattr(self, "gradient_accumulation_fusion", False):
+            warnings.warn(
+                "gradient_accumulation_fusion is not supported with ModelOpt quantization. "
+                "Setting gradient_accumulation_fusion to False."
+            )
+            self.gradient_accumulation_fusion = False
+
         super()._setup()
 
     def _process_quantizer_amax(self, k, v, quantizer_state_dict):
