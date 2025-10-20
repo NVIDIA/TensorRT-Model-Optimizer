@@ -243,7 +243,6 @@ def main(args):
 
     # If low memory mode is enabled, we compress the model while loading the HF checkpoint.
     calibration_only = False
-    model._original_model_path = args.pyt_ckpt_path
     if not args.low_memory_mode:
         model = get_model(
             args.pyt_ckpt_path,
@@ -275,6 +274,9 @@ def main(args):
                 **model_kwargs,
             )
         calibration_only = True
+
+    # Store original model path for config restoration
+    model._original_model_path = args.pyt_ckpt_path
     model_is_already_quantized = is_quantized(model)
 
     model_type = get_model_type(model)
