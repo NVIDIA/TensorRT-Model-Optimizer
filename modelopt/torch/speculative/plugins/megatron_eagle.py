@@ -61,6 +61,7 @@ from ..utils import (
     TreeNode,
     get_default_attention_mask_and_position_ids,
 )
+from .megatron_medusa import MedusaHead
 
 try:
     from megatron.core.post_training.modelopt.gpt.model_specs import get_gpt_modelopt_spec
@@ -195,13 +196,12 @@ def set_multi_step_attention_mask(attn_mask, step):
     h0 h1 h2 h3 h4 h5 h6 h7  (base hidden_states)
     l0 l1 l2 l3 l4 l5 l6 l7  (base labels)
 
-    ttt_steps=2
-    parallel_draft_step=3
+
 
 
     ttt_step=0
-                  | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- | m1 m1 m1 m1 m1 m1 m1 -- |
-                  | h0 h1 h2 h3 h4 h5 h6 h7 | M0 M0 M0 M0 M0 M0 M0 M0 | M1 M1 M1 M1 M1 M1 M1 M1 |
+                  | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- |
+                  | h0 h1 h2 h3 h4 h5 h6 h7 | -- F1 F2 F3 F4 F5 F6 F7 | -- -- G2 G3 G4 G5 G6 G7 |
     =============================================================================================
     F1 l1 | i1 h0 |  x                      |                         |                         |
     F2 l2 | i2 h1 |  x  x                   |                         |                         |
@@ -212,57 +212,25 @@ def set_multi_step_attention_mask(attn_mask, step):
     F7 l7 | i7 h6 |  x  x  x  x  x  x  x    |                         |                         |
     -- -- | -- h7 |  o  o  o  o  o  o  o  o |                         |                         |
     =============================================================================================
-    -- -- | m0 M0 |                         |                         |                         |
-    G2 l2 | m0 M0 |  x  o                   |     x                   |                         |
-    G3 l3 | m0 M0 |  x  x  o                |        x                |                         |
-    G4 l4 | m0 M0 |  x  x  x  o             |           x             |                         |
-    G5 l5 | m0 M0 |  x  x  x  x  o          |              x          |                         |
-    G6 l6 | m0 M0 |  x  x  x  x  x  o       |                 x       |                         |
-    G7 l7 | m0 M0 |  x  x  x  x  x  x  o    |                    x    |                         |
-    -- -- | -- M0 |                         |                         |                         |
+    -- -- | i1 -- |                         |                         |                         |
+    G2 l2 | i2 F1 |  x  o                   |     x                   |                         |
+    G3 l3 | i3 F2 |  x  x  o                |        x                |                         |
+    G4 l4 | i4 F3 |  x  x  x  o             |           x             |                         |
+    G5 l5 | i5 F4 |  x  x  x  x  o          |              x          |                         |
+    G6 l6 | i6 F5 |  x  x  x  x  x  o       |                 x       |                         |
+    G7 l7 | i7 F6 |  x  x  x  x  x  x  o    |                    x    |                         |
+    -- -- | -- F7 |                         |                         |                         |
     =============================================================================================
-    -- -- | m1 M0 |                         |                         |                         |
-    -- -- | m1 M1 |                         |                         |                         |
-    H3 l3 | m1 M1 |  x  o  o                |     x  o                |        x                |
-    H4 l4 | m1 M1 |  x  x  o  o             |        x  o             |           x             |
-    H5 l5 | m1 M1 |  x  x  x  o  o          |           x  o          |              x          |
-    H6 l6 | m1 M1 |  x  x  x  x  o  o       |              x  o       |                 x       |
-    H7 l7 | m1 M1 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |
-    -- -- | -- M1 |                         |                         |                         |
-
-
-    ttt_step=1
-                  | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- | m0 m0 m0 m0 m0 m0 m0 -- | m1 m1 m1 m1 m1 m1 m1 -- |
-                  | h0 h1 h2 h3 h4 h5 h6 h7 | -- F1 F2 F3 F4 F5 F6 F7 | M0 M0 M0 M0 M0 M0 M0 M0 | M1 M1 M1 M1 M1 M1 M1 M1 |
-    =======================================================================================================================
-    -- -- | i1 -- |                         |                         |                         |                         |
-    J2 l2 | i2 F1 |  x  o                   |     x                   |                         |                         |
-    J3 l3 | i3 F2 |  x  x  o                |        x                |                         |                         |
-    J4 l4 | i4 F3 |  x  x  x  o             |           x             |                         |                         |
-    J5 l5 | i5 F4 |  x  x  x  x  o          |              x          |                         |                         |
-    J6 l6 | i6 F5 |  x  x  x  x  x  o       |                 x       |                         |                         |
-    J7 l7 | i7 F6 |  x  x  x  x  x  x  o    |                    x    |                         |                         |
-    -- -- | -- F7 |                         |                         |                         |                         |
-    =======================================================================================================================
-    -- -- | m0 M0 |                         |                         |                         |                         |
-    -- -- | m0 M0 |                         |                         |                         |                         |
-    K3 l3 | m0 M0 |  x  o  o                |     x  o                |        x                |                         |                         |
-    K4 l4 | m0 M0 |  x  x  o  o             |        x  o             |           x             |                         |
-    K5 l5 | m0 M0 |  x  x  x  o  o          |           x  o          |              x          |                         |
-    K6 l6 | m0 M0 |  x  x  x  x  o  o       |              x  o       |                 x       |                         |
-    K7 l7 | m0 M0 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |                         |
-    -- -- | -- M0 |                         |                         |                         |                         |
-    =======================================================================================================================
-    -- -- | m1 M1 |                         |                         |                         |                         |
-    -- -- | m1 M1 |                         |                         |                         |                         |
-    -- -- | m1 M1 |                         |                         |                         |                         |
-    N4 l4 | m1 M1 |  x                      |     x                   |        x                |          x              |
-    N5 l5 | m1 M1 |  x  x                   |        x                |           x             |             x           |
-    N6 l6 | m1 M1 |  x  x  x                |           x             |              x          |                x        |
-    N7 l7 | m1 M1 |  x  x  x  x             |              x          |                 x       |                   x     |
-    -- -- | -- M1 |                         |                         |                         |                         |
-    =======================================================================================================================
-    """  # noqa: E501
+    -- -- | i1 -- |                         |                         |                         |
+    -- -- | i2 -- |                         |                         |                         |
+    H3 l3 | i3 G2 |  x  o  o                |     x  o                |        x                |
+    H4 l4 | i4 G3 |  x  x  o  o             |        x  o             |           x             |
+    H5 l5 | i5 G4 |  x  x  x  o  o          |           x  o          |              x          |
+    H6 l6 | i6 G5 |  x  x  x  x  o  o       |              x  o       |                 x       |
+    H7 l7 | i7 G6 |  x  x  x  x  x  o  o    |                 x  o    |                    x    |
+    -- -- | -- G7 |                         |                         |                         |
+    =============================================================================================
+    """
     s = attn_mask.shape[-1]
     for step_idx in range(step):
         mask_0 = attn_mask.clone().detach()
@@ -480,13 +448,10 @@ class EagleModule(MegatronModule):
                 skip_weight_param_allocation=False,
             )
 
-        # Set up learnable parallel draft embeddings and hidden_states
-        if config.parallel_draft_step > 1:
-            self.parallel_draft_embeddings = torch.nn.Parameter(
-                torch.rand(config.parallel_draft_step - 1, config.hidden_size)
-            )
-            self.parallel_draft_hidden_states = torch.nn.Parameter(
-                torch.rand(config.parallel_draft_step - 1, config.hidden_size)
+        if self.config.parallel_draft_step > 1:
+            self.parallel_draft_heads = torch.nn.ModuleList(
+                MedusaHead(self.config, self.config.draft_vocab_size)
+                for _ in range(self.config.parallel_draft_step - 1)
             )
 
     def _get_eagle_transformer_layer_spec(self, config):
@@ -792,7 +757,6 @@ class _DynamicEagleGPTModel(EagleModel):
         attention_mask: torch.Tensor,
         position_ids: torch.Tensor,
         ttt_step: int = 0,
-        parallel_draft_index: int = 0,
     ):
         """Getting EAGLE module inputs."""
         # [b, 1]
@@ -813,26 +777,16 @@ class _DynamicEagleGPTModel(EagleModel):
         eagle_inputs["input_ids"] = padded_input_ids
         eagle_inputs["position_ids"] = position_ids
 
-        if parallel_draft_index == 0:
-            eagle_inputs["embedding"] = self.embedding(
-                input_ids=eagle_inputs["input_ids"],
-                position_ids=eagle_inputs["position_ids"],
-            )
-            eagle_inputs["hidden_states"] = hidden_states
-        else:
-            eagle_inputs["embedding"] = self.eagle_module.parallel_draft_embeddings[
-                parallel_draft_index - 1
-            ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
-            eagle_inputs["hidden_states"] = self.eagle_module.parallel_draft_hidden_states[
-                parallel_draft_index - 1
-            ].repeat(hidden_states.shape[0], hidden_states.shape[1], 1)
-
-        eagle_inputs["attention_mask"] = set_multi_step_attention_mask(
-            attn_mask, ttt_step + parallel_draft_index
+        eagle_inputs["embedding"] = self.embedding(
+            input_ids=eagle_inputs["input_ids"],
+            position_ids=eagle_inputs["position_ids"],
         )
+        eagle_inputs["hidden_states"] = hidden_states
+
+        eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, ttt_step)
 
         eagle_inputs["rotary_pos_emb"] = torch.cat(
-            [rotary_pos_emb] * (ttt_step + parallel_draft_index + 1),
+            [rotary_pos_emb] * (ttt_step + 1),
             dim=0,
         )
 
@@ -951,6 +905,14 @@ class _DynamicEagleGPTModel(EagleModel):
         else:
             eagle_logits, _ = self.output_layer(eagle_hidden_states, weight=output_weight)
 
+        if self.eagle_config.parallel_draft_step > 1:
+            # Get additional draft logits from parallel draft heads
+            draft_logits_list = [eagle_logits]
+            for draft_head in self.eagle_module.parallel_draft_heads:
+                draft_logits, _ = draft_head(eagle_hidden_states)
+                draft_logits_list.append(draft_logits)
+            eagle_logits = torch.cat(draft_logits_list, dim=-1)
+
         return (
             eagle_hidden_states,
             eagle_logits,
@@ -1013,7 +975,7 @@ class _DynamicEagleGPTModel(EagleModel):
         # EAGLE kv cache
         eagle_inference_context = StaticInferenceContext(
             input_ids.shape[0],
-            input_ids.shape[1] * (self.eagle_config.parallel_draft_step + ttt_steps - 1),
+            input_ids.shape[1] * ttt_steps,
         )
 
         if self.eagle_offline:
@@ -1064,32 +1026,23 @@ class _DynamicEagleGPTModel(EagleModel):
 
         acc = []
         for ttt_step in range(ttt_steps):
-            eagle_logits = []
-            for i in range(self.eagle_config.parallel_draft_step):
-                eagle_inputs = self._get_eagle_module_inputs(
-                    input_ids=input_ids,
-                    hidden_states=eagle_module_input_hidden_states,
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    ttt_step=ttt_step,
-                    parallel_draft_index=i,
-                )
+            eagle_inputs = self._get_eagle_module_inputs(
+                input_ids=input_ids,
+                hidden_states=eagle_module_input_hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                ttt_step=ttt_step,
+            )
 
-                _, eagle_logits_, eagle_hidden_states_pre_norm_ = self._eagle_forward(
-                    eagle_inputs,
-                    output_weight,
-                    inference_params=inference_params,
-                    packed_seq_params=packed_seq_params,
-                    inference_context=eagle_inference_context,
-                    **(extra_block_kwargs or {}),
-                )
+            _, eagle_logits, eagle_module_input_hidden_states = self._eagle_forward(
+                eagle_inputs,
+                output_weight,
+                inference_params=inference_params,
+                packed_seq_params=packed_seq_params,
+                inference_context=eagle_inference_context,
+                **(extra_block_kwargs or {}),
+            )
 
-                if i == 0:
-                    next_eagle_hidden_states_pre_norm = eagle_hidden_states_pre_norm_
-
-                eagle_logits.append(eagle_logits_)
-            eagle_logits = torch.cat(eagle_logits, dim=0)
-            eagle_module_input_hidden_states = next_eagle_hidden_states_pre_norm
             if self.config.sequence_parallel:
                 eagle_module_input_hidden_states = gather_from_sequence_parallel_region(
                     eagle_module_input_hidden_states
@@ -1112,13 +1065,6 @@ class _DynamicEagleGPTModel(EagleModel):
                 eagle_module_input_hidden_states = scatter_to_sequence_parallel_region(
                     eagle_module_input_hidden_states
                 )
-
-            # Discard kv cache for the last parallel_draft_step - 1 tokens
-            # as the next ttt_step will only base on the first token in the
-            # current ttt_step
-            eagle_inference_context.sequence_len_offset -= input_ids.shape[1] * (
-                self.eagle_config.parallel_draft_step - 1
-            )
 
             # If labels are not provided, return the original logits. We only return after
             # all eagle weights have been exercised for quantization calibration purpose.
@@ -1386,11 +1332,6 @@ class _DynamicEagleGPTModel(EagleModel):
 
         draft_tokens = []
         for _ in range(steps):
-            for _ in range(self.eagle_config.parallel_draft_step - 1):
-                # Pad dummy eagle_ids and hidden_states for parallel draft
-                # They will be replaced by parallel draft embeddings and hidden_states after padding
-                eagle_ids = torch.cat((eagle_ids, eagle_ids[:, -1:]), dim=-1)
-                hidden_states = torch.cat((hidden_states, hidden_states[-1:]), dim=0)
             padded_eagle_ids, seq_len, padded_hidden_states = right_padding(
                 eagle_ids, hidden_states
             )
@@ -1404,22 +1345,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 input_ids=padded_eagle_ids,
                 position_ids=eagle_position_ids,
             )
-            if self.config.sequence_parallel:
-                gathered_embedding = gather_from_sequence_parallel_region(embeddings)
-            else:
-                gathered_embedding = embeddings
-            if self.eagle_config.parallel_draft_step > 1:
-                # Replace dummy embeddings and hidden_states with
-                # parallel_draft_embeddings and parallel_draft_hidden_states
-                gathered_embedding[
-                    seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
-                ] = self.eagle_module.parallel_draft_embeddings.unsqueeze(1)
-                padded_hidden_states[
-                    seq_len - self.eagle_config.parallel_draft_step + 1 : seq_len
-                ] = self.eagle_module.parallel_draft_hidden_states.unsqueeze(1)
-            if self.config.sequence_parallel:
-                padded_hidden_states = scatter_to_sequence_parallel_region(padded_hidden_states)
-                embeddings = scatter_to_sequence_parallel_region(gathered_embedding)
+
             eagle_inputs["embedding"] = embeddings
             eagle_inputs["hidden_states"] = padded_hidden_states
             eagle_inputs["attention_mask"] = eagle_attention_mask
@@ -1432,6 +1358,13 @@ class _DynamicEagleGPTModel(EagleModel):
                 output_weight,
             )
 
+            parallel_tokens = [
+                eagle_logits[
+                    padded_eagle_ids.shape[-1] * i + seq_len - 1 : padded_eagle_ids.shape[-1] * i
+                    + seq_len
+                ]
+                for i in range(1, self.eagle_config.parallel_draft_step)
+            ]
             eagle_logits = eagle_logits[:seq_len, :, :]
             if self.config.sequence_parallel:
                 eagle_next_hidden_states_input = gather_from_sequence_parallel_region(
@@ -1440,9 +1373,7 @@ class _DynamicEagleGPTModel(EagleModel):
             eagle_next_hidden_states_input = eagle_next_hidden_states_input[:seq_len, :, :]
 
             draft_token = (
-                gather_from_tensor_model_parallel_region(eagle_logits)[
-                    -self.eagle_config.parallel_draft_step :, :, :
-                ]
+                gather_from_tensor_model_parallel_region(eagle_logits)[-1:, :, :]
                 .argmax(dim=-1)
                 .transpose(0, 1)
             )
@@ -1451,22 +1382,18 @@ class _DynamicEagleGPTModel(EagleModel):
 
             draft_tokens.append(draft_token)
 
-            # Remove dummy tokens from eagle_ids before adding draft_token
-            # Remove added hidden_states
-            if self.eagle_config.parallel_draft_step > 1:
-                eagle_ids = eagle_ids[:, : -self.eagle_config.parallel_draft_step + 1]
-                hidden_states = hidden_states[: -self.eagle_config.parallel_draft_step + 1]
-
             eagle_ids = torch.cat((eagle_ids, draft_token), dim=-1)
             hidden_states = torch.cat(
                 (
                     hidden_states,
-                    eagle_next_hidden_states_input[-self.eagle_config.parallel_draft_step :, :, :],
+                    eagle_next_hidden_states_input[-1:, :, :],
                 ),
                 dim=0,
             )
 
         draft_tokens = torch.cat(draft_tokens, dim=-1)
+        parallel_tokens = torch.cat(parallel_tokens, dim=-1)
+        draft_tokens = torch.cat((draft_tokens, parallel_tokens), dim=-1)
 
         return base_token, draft_tokens
 
