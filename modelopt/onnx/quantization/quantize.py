@@ -68,6 +68,7 @@ from modelopt.onnx.quantization.qdq_utils import (
 )
 from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag, load_onnx_model
 from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
+from modelopt.onnx.quantization.kv_cache import kv_cache_quantize
 
 __all__ = ["quantize"]
 
@@ -238,6 +239,8 @@ def quantize(
     calibrate_per_node: bool = False,
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
     direct_io_types: bool = False,
+    kv_quant_mode: str = "NONE", 
+    kv_cache_type: str = "fp8",
     **kwargs: Any,
 ) -> None:
     """Quantizes the provided ONNX model.
@@ -511,12 +514,24 @@ def quantize(
             use_zero_point=use_zero_point,
             log_level=log_level,
             input_shapes_profile=input_shapes_profile,
+            intermediate_generated_files=intermediate_generated_files,
+            kv_quant_mode=kv_quant_mode, 
             **kwargs,
         )
     else:
         raise RuntimeError(f"Invalid quantization mode choice: {quantize_mode}")
 
     if onnx_model:
+        if quantize_mode == "int4" and kv_quant_mode != "NONE" and calibration_method in ["awq_clip", "awq_lite", "rtn_dq"]:
+            logger.info(f"Quantization mode for KV cache: {kv_quant_mode}, kv_cache_type: {kv_cache_type}")
+            onnx_model = kv_cache_quantize(
+                onnx_model,
+                kv_quant_mode=kv_quant_mode,
+                kv_cache_type=kv_cache_type,
+                intermediate_generated_files=intermediate_generated_files,
+                calibration_method=calibration_method,
+            )
+
         # Fuse Q nodes for INT8/FP8 mode
         if quantize_mode in ["int8", "fp8"]:
             if dq_only:

@@ -57,6 +57,10 @@ from modelopt.onnx.quantization.quant_utils import (
     update_block_size,
 )
 from modelopt.onnx.utils import save_onnx
+from modelopt.onnx.quantization.kv_cache import (
+    save_kv_cache_calib_data, 
+    save_kv_cache_calib_data_rtn,
+)
 
 __all__ = ["quantize"]
 
@@ -444,6 +448,8 @@ def _quantize_awq_clip(
     force_fp16: bool = False,
     nodes_to_exclude: list[str] = [],
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
+    intermediate_generated_files: list[str] = [],
+    kv_quant_mode: str = "NONE",
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
@@ -482,10 +488,19 @@ def _quantize_awq_clip(
     # Apply AWQ clip on selected weights
     t = time.time()
     alphas = {}
+
+    if kv_quant_mode != "NONE":
+        save_kv_cache_calib_data(
+            onnx_model,
+            session=session,
+            inputs=inputs,
+            intermediate_generated_files=intermediate_generated_files,
+        )
+
     for i in tqdm(range(len(wa_pack)), desc="Running clip search..."):
         act_tensor, weight_tensor, do_transpose, gemm_io_type = wa_pack[i]
 
-        # First capture all the  activation values after calibration data sweep
+        # First capture all the activation values after calibration data sweep
         output_dicts = {}
         for inp_d in inputs:
             np_inp_d = {name: numpy.asarray(tensor) for name, tensor in inp_d.items()}
@@ -968,6 +983,8 @@ def _quantize_awq_lite(
     use_zero_point: bool = False,
     nodes_to_exclude: list[str] = [],
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
+    intermediate_generated_files: list[str] = [],
+    kv_quant_mode: str = "NONE",
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Quantizes `onnx_model` using the Activation aware quantization a.k.a AWQ algorithm."""
@@ -1024,6 +1041,14 @@ def _quantize_awq_lite(
         assert isinstance(inp_d, dict)
 
     gc.collect()
+
+    if kv_quant_mode != "NONE":
+        save_kv_cache_calib_data(
+            onnx_model,
+            session=session,
+            inputs=inputs,
+            intermediate_generated_files=intermediate_generated_files,
+        )
 
     output_data = []
 
@@ -1328,6 +1353,8 @@ def quantize(
     nodes_to_exclude: list[str] | None = [r"/lm_head"],
     log_level: str = "INFO",
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
+    intermediate_generated_files: list[str] = [],
+    kv_quant_mode: str = "NONE",
     **kwargs: Any,
 ) -> onnx.ModelProto:
     """Applies INT4 Weight-Only-Quantization (WoQ) to an ONNX model.
@@ -1421,6 +1448,16 @@ def quantize(
         qdq.use_trt_qdq_ops()
 
     if calibration_method in ["rtn", "rtn_dq", "rtn_trt", "rtn_trt_dq"]:
+        # Save kv-cache calibration data if kv_quant_mode is not NONE
+        if kv_quant_mode != "NONE":
+            save_kv_cache_calib_data_rtn(
+                onnx_model,
+                intermediate_generated_files=intermediate_generated_files,
+                data_reader=calibration_data_reader,
+                calibration_eps=calibration_eps,
+                input_shapes_profile=input_shapes_profile,
+                use_external_data_format=use_external_data_format,
+            )
         onnx_model = quantize_rtn(
             onnx_model,
             block_size,
@@ -1445,6 +1482,8 @@ def quantize(
             use_zero_point=use_zero_point,
             enable_weight_clipping=do_weight_clipping,
             input_shapes_profile=input_shapes_profile,
+            kv_quant_mode=kv_quant_mode,
+            intermediate_generated_files=intermediate_generated_files,
             **kwargs,
         )
     elif calibration_method in ["awq_clip", "awq_clip_trt"]:
@@ -1456,6 +1495,8 @@ def quantize(
             block_size,
             nodes_to_exclude=nodes_to_exclude,
             input_shapes_profile=input_shapes_profile,
+            kv_quant_mode=kv_quant_mode,
+            intermediate_generated_files=intermediate_generated_files,
             **kwargs,
         )
     else:
