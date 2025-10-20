@@ -34,7 +34,7 @@ RAND_SEED = 1234
 mto.enable_huggingface_checkpointing()
 
 
-def get_lora_model(
+def get_model(
     ckpt_path: str,
     device="cuda",
 ):
@@ -66,7 +66,7 @@ def get_lora_model(
 
 def main(args):
     # Load model
-    model = get_lora_model(args.pyt_ckpt_path, args.device)
+    model = get_model(args.pyt_ckpt_path, args.device)
     tokenizer = AutoTokenizer.from_pretrained(args.pyt_ckpt_path)
     is_qlora = hasattr(model, "peft_config")
 
