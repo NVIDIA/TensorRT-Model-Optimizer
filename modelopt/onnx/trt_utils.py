@@ -298,7 +298,8 @@ def load_onnx_model(
 
             static_shaped_onnx_path = onnx_path.replace(".onnx", "_static.onnx")
             save_onnx(onnx_model, static_shaped_onnx_path, use_external_data_format)
-            intermediate_generated_files.append(static_shaped_onnx_path)  # type: ignore[union-attr]
+            if intermediate_generated_files is not None:
+                intermediate_generated_files.append(static_shaped_onnx_path)
 
     if TRT_PYTHON_AVAILABLE and platform.system() != "Windows":
         # Check if there's a custom TensorRT op in the ONNX model. If so, make it ORT compatible by adding
@@ -330,7 +331,8 @@ def load_onnx_model(
             else onnx_path.replace(".onnx", f"_ir{MAX_IR_VERSION}.onnx")
         )
         save_onnx(onnx_model, ir_version_onnx_path, use_external_data_format)
-        intermediate_generated_files.append(ir_version_onnx_path)  # type: ignore[union-attr]
+        if intermediate_generated_files is not None:
+            intermediate_generated_files.append(ir_version_onnx_path)
 
     # Check that the model is valid
     onnx.checker.check_model(onnx_model)
