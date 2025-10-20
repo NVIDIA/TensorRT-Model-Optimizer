@@ -111,12 +111,11 @@ def test_int4_awq(tmp_path):
 
         wq_onnx_awq_clip = dq_tensor(wq_onnx_awq_clip, scale_awq_clip, block_size)
 
-        assert np.allclose(wq_torch_awq_lite.detach(), wq_onnx_awq_lite.T, atol=1e-3)
-        assert np.allclose(wq_torch_awq_clip.detach(), wq_onnx_awq_clip.T, atol=1e-3)
+        assert np.allclose(wq_torch_awq_lite.detach().cpu(), wq_onnx_awq_lite.T, atol=1e-3)
+        assert np.allclose(wq_torch_awq_clip.detach().cpu(), wq_onnx_awq_clip.T, atol=1e-3)
 
 
 def test_int4_awq_cuda(tmp_path):
-    skip_if_onnx_version_above_1_18()
     skip_if_no_libcudnn()
     block_size = 128
 

@@ -35,9 +35,7 @@ unit:
   tags: [docker, linux, 2-gpu]
   before_script:
     # Add libcudnn*.so and libnv*.so to path
-    - export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib"
-    # Add trtexec to path
-    - export PATH="${PATH}:/usr/local/tensorrt/targets/x86_64-linux-gnu/bin"
+    - export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu"
     # Install git-lfs for Daring-Anteater dataset
     - apt-get update && apt-get install -y git-lfs
     - git lfs install --system
