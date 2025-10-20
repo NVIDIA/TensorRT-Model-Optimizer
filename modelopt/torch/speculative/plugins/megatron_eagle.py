@@ -1080,7 +1080,9 @@ class _DynamicEagleGPTModel(EagleModel):
                 else:
                     loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
                 loss_ = loss_[:, ttt_step:]
-                loss[:, i + ttt_step + 1 :] += self.eagle_loss_decay_factor**ttt_step * loss_
+                loss[:, i + ttt_step + 1 :] += (
+                    self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
+                )
 
             if self.eagle_report_acc and not self.training:
                 with torch.no_grad():
@@ -1088,7 +1090,7 @@ class _DynamicEagleGPTModel(EagleModel):
                         gathered_logits = gather_from_tensor_model_parallel_region(
                             eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
                         )
-                        gathered_logits = gathered_logits[i + ttt_step : -1]
+                        gathered_logits = gathered_logits[ttt_step : -(1 + i)]
                         eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                             eagle_top1 += self.eagle_module.d2t[eagle_top1]
