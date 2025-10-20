@@ -360,6 +360,8 @@ To deploy with vLLM, run the following command. For more details about QLoRA dep
 vllm serve llama3-fp4-qlora-hf/base_model --enable-lora --lora-modules adapter=llama3-fp4-qlora-hf --port 8000 --tokenizer llama3-fp4-qlora-hf
 ```
 
+> _Note: We currently do not support export option for QLoRA models generated using FSDP2._
+>
 ## Pre-Quantized Checkpoints
 
 - Ready-to-deploy checkpoints \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/inference-optimized-checkpoints-with-model-optimizer)\]
