@@ -1073,8 +1073,13 @@ class _DynamicEagleGPTModel(EagleModel):
 
             for i in range(self.eagle_config.parallel_draft_step):
                 eagle_logit = eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-                loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
-                loss_ = loss_[:, i + ttt_step :]
+                if i > 0:
+                    loss_ = self._compute_eagle_loss(
+                        logits_sbh[i:], labels[:, i:], eagle_logit[:-i]
+                    )
+                else:
+                    loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
+                loss_ = loss_[:, ttt_step:]
                 loss[:, i + ttt_step + 1 :] += (
                     self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
                 )
