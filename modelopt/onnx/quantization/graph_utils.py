@@ -35,6 +35,7 @@ from modelopt.onnx.utils import (
     find_lowest_common_ancestor,
     get_child_nodes,
     get_parent_nodes,
+    infer_shapes,
     parse_shapes_spec,
     save_onnx,
 )
@@ -1088,7 +1089,7 @@ def _exclude_matmuls_by_shape_inference(
             for dim, new_dim_value in zip(tensor_shape, input_shape):
                 dim.dim_value = new_dim_value
 
-    model = onnx.shape_inference.infer_shapes(model)
+    model = infer_shapes(model)
     value_info_map = {vi.name: vi for vi in model.graph.value_info}
 
     nodes_to_exclude = []
