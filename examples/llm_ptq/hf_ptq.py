@@ -243,6 +243,7 @@ def main(args):
 
     # If low memory mode is enabled, we compress the model while loading the HF checkpoint.
     calibration_only = False
+    model._original_model_path = args.pyt_ckpt_path
     if not args.low_memory_mode:
         model = get_model(
             args.pyt_ckpt_path,
@@ -252,8 +253,6 @@ def main(args):
             use_seq_device_map=args.use_seq_device_map,
             attn_implementation=args.attn_implementation,
         )
-        # Store original model path for config restoration
-        model._original_model_path = args.pyt_ckpt_path
     else:
         assert args.qformat in QUANT_CFG_CHOICES, (
             f"Quantization format is not supported for low memory mode. Supported formats: {QUANT_CFG_CHOICES.keys()}"
@@ -275,8 +274,6 @@ def main(args):
                 args.pyt_ckpt_path,
                 **model_kwargs,
             )
-            # Store original model path for config restoration
-            model._original_model_path = args.pyt_ckpt_path
         calibration_only = True
     model_is_already_quantized = is_quantized(model)
 

@@ -16,7 +16,10 @@
 """Common utils for the ModelConfig."""
 
 import dataclasses
+import json
 import math
+import warnings
+from pathlib import Path
 from types import UnionType
 from typing import Union, get_args, get_origin
 
@@ -241,10 +244,6 @@ def restore_original_rope_scaling(config_data: dict, original_model_path: str) -
     Returns:
         The config_data dictionary with restored rope_scaling (modified in-place)
     """
-    import json
-    import warnings
-    from pathlib import Path
-
     try:
         original_config_file = Path(original_model_path) / "config.json"
         if original_config_file.exists():
