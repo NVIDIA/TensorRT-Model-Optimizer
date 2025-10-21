@@ -24,6 +24,7 @@ from onnx_utils.export import (
     update_dynamic_axes,
 )
 from quantize import ModelType, PipelineManager
+from tqdm import tqdm
 
 import modelopt.torch.opt as mto
 from modelopt.torch._deploy._runtime import RuntimeRegistry
@@ -59,7 +60,7 @@ def generate_image(pipe, prompt, image_name):
     print(f"Image generated saved as {image_name}")
 
 
-def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10, num_inference_steps=10):
+def benchmark_model(pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20):
     """Benchmark the backbone model inference time."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
@@ -78,7 +79,8 @@ def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10, num_inference_steps
     post_handle = backbone.register_forward_hook(forward_hook)
 
     try:
-        for _ in range(num_warmup):
+        print(f"Starting warmup: {num_warmup} runs")
+        for _ in tqdm(range(num_warmup), desc="Warmup"):
             _ = pipe(
                 prompt,
                 output_type="pil",
@@ -88,7 +90,8 @@ def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10, num_inference_steps
 
         backbone_times.clear()
 
-        for _ in range(num_runs):
+        print(f"Starting benchmark: {num_runs} runs")
+        for _ in tqdm(range(num_runs), desc="Benchmark"):
             _ = pipe(
                 prompt,
                 output_type="pil",
@@ -101,6 +104,7 @@ def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10, num_inference_steps
 
     total_backbone_time = sum(backbone_times)
     avg_latency = total_backbone_time / (num_runs * num_inference_steps)
+    print(f"Inference latency of the torch backbone: {avg_latency:.2f} ms")
     return avg_latency
 
 
@@ -185,9 +189,7 @@ def main():
         pipe.to("cuda")
 
         if args.benchmark:
-            # Benchmark the torch model
-            torch_latency = benchmark_model(pipe, args.prompt)
-            print(f"Inference latency of the torch pipeline is {torch_latency:.2f} ms")
+            benchmark_model(pipe, args.prompt)
 
         if not args.skip_image:
             generate_image(pipe, args.prompt, image_name)
@@ -276,7 +278,7 @@ def main():
 
     if args.benchmark:
         print(
-            f"Inference latency of the backbone of the pipeline is {device_model.get_latency()} ms"
+            f"Inference latency of the TensorRT optimized backbone: {device_model.get_latency()} ms"
         )
 
 
