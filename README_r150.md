@@ -11,7 +11,7 @@ git clone ssh://git@gitlab-master.nvidia.com:12051/omniml/modelopt-r-150.git
 git checkout YOUR_BRANCH
 
 # Enable ModelOpt installation overwrite - Needed for Nvidia containers with pre-installed ModelOpt
-export PIP_CONSTRAINT="" 
+export PIP_CONSTRAINT=""
 pip install -e .[dev]
 
 # [Optional] Pre-compile ModeOpt cuda extensions;
@@ -39,3 +39,16 @@ export PYTHONPATH=/PATH_TO/psx-formats:$PYTHONPATH
 ## Usage Example
 
 See `tests/gpu/torch/quantization/plugins/test_psx_formats.py`.
+
+## Install LUTs
+```bash
+git clone ssh://git@gitlab-master.nvidia.com:12051/compute/psx/next-gen/luts.git
+cd luts
+git submodule update --init --recursive
+rm -r .eggs/ build/ luts/__pycache__/ luts/_C.cpython-312-x86_64-linux-gnu.so
+pip install .
+```
+
+## Usage Example
+
+See `tests/gpu/torch/quantization/plugins/test_luts.py`.

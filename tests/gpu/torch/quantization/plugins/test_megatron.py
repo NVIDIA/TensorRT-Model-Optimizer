@@ -59,6 +59,12 @@ except ImportError:
     PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG = None
     print("psx_formats is not installed. Skip importing PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG.")
 
+try:
+    from modelopt.torch.quantization.plugins.luts import LUTS_SCALAR_LUT_E2M0_E4M3_16_16_CFG
+except ImportError:
+    LUTS_SCALAR_LUT_E2M0_E4M3_16_16_CFG = None
+    print("luts is not installed. Skip importing LUTS_SCALAR_LUT_E2M0_E4M3_16_16_CFG.")
+
 SEED = 1234
 
 
@@ -406,6 +412,7 @@ mixed_block_size_config["quant_cfg"].update(
         mtq.NVFP4_DEFAULT_CFG,
         mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
         PSX_WEIGHT_E2M0_ACTIVATION_E4M3_CFG,
+        LUTS_SCALAR_LUT_E2M0_E4M3_16_16_CFG,
     ],
 )
 @pytest.mark.parametrize("compress", [False, True])
@@ -420,6 +427,13 @@ def test_homogeneous_sharded_state_dict(tmp_path, config, compress, meta_device)
             pytest.skip("psx_formats backend is not supported for compress")
         if meta_device:
             pytest.skip("psx_formats backend is not supported for meta device")
+    if config is LUTS_SCALAR_LUT_E2M0_E4M3_16_16_CFG:
+        if config is None:
+            pytest.skip("luts is not installed.")
+        if compress:
+            pytest.skip("luts backend is not supported for compress")
+        if meta_device:
+            pytest.skip("luts backend is not supported for meta device")
 
     size = torch.cuda.device_count()
 

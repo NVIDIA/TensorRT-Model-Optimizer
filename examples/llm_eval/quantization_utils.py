@@ -39,6 +39,14 @@ except ImportError:
         "psx_formats is not installed. PSX formats quantization configs will not be available.",
     )
 
+try:
+    import modelopt.torch.quantization.plugins.luts as mtq_luts
+except ImportError:
+    mtq_luts = None
+    warnings.warn(
+        "luts is not installed. LUTS quantization configs will not be available.",
+    )
+
 # This is an example to customize the quantization config.
 # Modify your custom config for debugging or research purposes.
 CUSTOM_CONFIG = {
@@ -56,6 +64,8 @@ CUSTOM_CONFIG = {
 if mtq_psx is not None:
     CUSTOM_CONFIG.update({k: getattr(mtq_psx, k) for k in mtq_psx.choices})
 
+if mtq_luts is not None:
+    CUSTOM_CONFIG.update({k: getattr(mtq_luts, k) for k in mtq_luts.choices})
 
 def get_tokenizer(ckpt_path, max_seq_len=MAX_SEQ_LEN, trust_remote_code=False):
     """Returns the tokenizer from the model ckpt_path."""
