@@ -312,7 +312,7 @@ trainer.save_model("<path to the output directory>")
 | LLAMA 3, 3.1 | ✅ | ✅ | ✅ |
 | Mistral | ✅ | ✅ | ✅ |
 | Phi 3 | ✅ | ✅ | ✅ |
-| QWen 1.5,2,2.5 | ✅ | ✅ | ✅ |
+| QWen 1.5,2,2.5,3 | ✅ | ✅ | ✅ |
 
 ## Speculation Module Checkpoints
 
