@@ -27,7 +27,6 @@ from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
 from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 from modelopt.onnx.logging_config import logger
 from modelopt.onnx.op_types import is_copy_op, is_linear_op
@@ -36,6 +35,7 @@ from modelopt.onnx.utils import (
     find_lowest_common_ancestor,
     get_child_nodes,
     get_parent_nodes,
+    infer_shapes,
     parse_shapes_spec,
     save_onnx,
 )
@@ -966,7 +966,7 @@ def find_nodes_from_matmul_to_exclude(
     logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
     if calibration_shapes:
-        nodes_to_exclude = _exclude_matmuls_by_symbolic_inference(
+        nodes_to_exclude = _exclude_matmuls_by_shape_inference(
             model, matmul_nodes, calibration_shapes
         )
     else:
@@ -1058,10 +1058,10 @@ def find_nodes_from_convs_to_exclude(graph: Graph, quantize_mode: str = "int8"):
     return unsupported_conv_nodes
 
 
-def _exclude_matmuls_by_symbolic_inference(
+def _exclude_matmuls_by_shape_inference(
     model: onnx.ModelProto, matmul_nodes: list, calibration_shapes: str | dict | None = None
 ) -> list[str]:
-    """Use symbolic shape inference to find MatMuls with dimension 1."""
+    """Use shape inference to find MatMuls with dimension 1."""
     # Prepare model for symbolic inference
     for graph_input in model.graph.input:
         for dim in graph_input.type.tensor_type.shape.dim:
@@ -1070,11 +1070,13 @@ def _exclude_matmuls_by_symbolic_inference(
                 dim.dim_value = 1
 
     # Apply calibration shapes if provided
-    input_shapes = (
-        parse_shapes_spec(calibration_shapes)
-        if (calibration_shapes and isinstance(calibration_shapes, str))
-        else {}
-    )
+    input_shapes = {}
+    if calibration_shapes:
+        input_shapes = (
+            parse_shapes_spec(calibration_shapes)
+            if isinstance(calibration_shapes, str)
+            else calibration_shapes
+        )
     for graph_input in model.graph.input:
         if graph_input.name in input_shapes:
             input_shape = input_shapes[graph_input.name]
@@ -1087,9 +1089,9 @@ def _exclude_matmuls_by_symbolic_inference(
             for dim, new_dim_value in zip(tensor_shape, input_shape):
                 dim.dim_value = new_dim_value
 
-    model.graph.ClearField("value_info")
-    model = SymbolicShapeInference.infer_shapes(model)
+    model = infer_shapes(model)
     value_info_map = {vi.name: vi for vi in model.graph.value_info}
+    value_info_map.update({vi.name: vi for vi in model.graph.output})
 
     nodes_to_exclude = []
     for matmul_node in matmul_nodes:
