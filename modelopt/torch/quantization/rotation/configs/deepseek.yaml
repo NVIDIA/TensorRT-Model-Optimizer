@@ -1,34 +1,37 @@
-# Universal rotation configuration for DeepSeek architecture with per-head rotation
+# Rotation configuration for DeepSeek
 
 rotation_matrices:
   r1:
-    dim: "hidden_size" # can be a value in model.config
+    dim: hidden_size
     mode: hadamard
     per_layer: false
-  r2:
-    dim: "v_head_dim"
-    mode: base_hadamard
-    per_layer: true
 
 rotation_config:
   # Embeddings and LM head
   "*embed_tokens": [r1, null]
   "*lm_head": [r1, null]
 
-  # Attention projections - Q/K get R1, V gets R1+R2, O gets R2+R1
-  "*q_proj|*q_b_proj": [r1, null]
-  "*kv_b_proj": [r1, r2]
-  "*o_proj": [r2, r1]
+  # Attention projections
+  "*q_a_proj": [r1, r1]
+  "*q_b_proj": [r1, null]
+  "*kv_a_proj_with_mqa": [r1, null]
+  "*o_proj": [null, r1]
 
-  # MLP projections - inputs get R1, down gets R1
+  # MLP projections - wildcards automatically rotate ALL MLP components:
+  #   Regular: mlp.{gate_proj, up_proj, down_proj}
+  #   MoE experts: mlp.experts.{0..255}.{gate_proj, up_proj, down_proj}
+  #   MoE shared: mlp.shared_experts.{gate_proj, up_proj, down_proj}
   "*up_proj|*gate_proj": [r1, null]
   "*down_proj": [null, r1]
 
 # LayerNorm fusion
 norm_fuse_config:
   decoder_layer_fuse:
-    - [input_layernorm, [self_attn.q_proj, self_attn.q_b_proj, self_attn.kv_b_proj]]
-    - [post_attention_layernorm, [mlp.gate_proj, mlp.up_proj]]
+    - [input_layernorm, [self_attn.q_a_proj, self_attn.kv_a_proj_with_mqa]]
+    - [self_attn.q_a_layernorm, [self_attn.q_b_proj]]
+    - [self_attn.kv_a_layernorm, [self_attn.kv_b_proj]]
+    - [post_attention_layernorm, [mlp.gate_proj, mlp.up_proj]] # Regular MLP
+    - [post_attention_layernorm, [mlp.shared_experts.gate_proj, mlp.shared_experts.up_proj]] # MoE shared
   lm_head_fuse:
     - [model.norm, lm_head]
 
