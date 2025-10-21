@@ -284,6 +284,7 @@ def main(args):
 
     # Load tokenizer
     tokenizer = get_tokenizer(args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code)
+    default_padding_side = tokenizer.padding_side
     tokenizer.padding_side = "left"  # Left padding for better calibration
 
     # Set default dataset if not provided
@@ -314,7 +315,15 @@ def main(args):
     )
 
     # Build quantization config
-    quant_cfg = build_quant_cfg(args, model_type, QUANT_CFG_CHOICES, KV_QUANT_CFG_CHOICES)
+    quant_cfg = build_quant_cfg(
+        args.qformat,
+        args.kv_cache_qformat,
+        args.awq_block_size,
+        None,
+        model_type,
+        QUANT_CFG_CHOICES,
+        KV_QUANT_CFG_CHOICES,
+    )
 
     # Quantize the model
     if accelerator.is_main_process:
@@ -342,6 +351,10 @@ def main(args):
     elapsed = time.time() - start_time
 
     if accelerator.is_main_process:
+        # Restore default padding and export the tokenizer as well.
+        if tokenizer is not None:
+            tokenizer.padding_side = default_padding_side
+            tokenizer.save_pretrained(args.export_path)
         # Export the model
         print(f"Export completed in {elapsed:.2f}s")
         print(f"Model exported to {args.export_path}")

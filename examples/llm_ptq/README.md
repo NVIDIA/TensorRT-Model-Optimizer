@@ -254,8 +254,8 @@ accelerate launch --config_file fsdp2.yaml \
     --fsdp_transformer_layer_cls_to_wrap=<decoder_layer_name>
      multinode_ptq.py \
     --pyt_ckpt_path <path_to_model> \
-    --qformat <fp8/nvfp4/nvfp4_awq/int4_awq/int8_sq> \
-    --kv_cache_quant <fp8/nvfp4/nvfp4_affine/none> \
+    --qformat <fp8/nvfp4/nvfp4_awq/int8> \
+    --kv_cache_qformat <fp8/nvfp4/nvfp4_affine/none> \
     --batch_size <calib_batch_size> \
     --calib_size <num_calib_samples> \
     --dataset <dataset> \

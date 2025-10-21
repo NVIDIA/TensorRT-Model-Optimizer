@@ -448,7 +448,15 @@ def main(args):
                 include_labels=args.auto_quantize_bits is not None,
             )
 
-        quant_cfg = build_quant_cfg(args, model_type, QUANT_CFG_CHOICES, KV_QUANT_CFG_CHOICES)
+        quant_cfg = build_quant_cfg(
+            args.qformat,
+            args.kv_cache_qformat,
+            args.awq_block_size,
+            args.auto_quantize_bits,
+            model_type,
+            QUANT_CFG_CHOICES,
+            KV_QUANT_CFG_CHOICES,
+        )
 
         if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview

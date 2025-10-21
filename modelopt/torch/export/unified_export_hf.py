@@ -26,11 +26,6 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-
-try:
-    from accelerate import Accelerator
-except ImportError:  # pragma: no cover
-    Accelerator = None
 from safetensors.torch import save_file
 from torch.distributed.fsdp import FSDPModule
 
@@ -478,7 +473,9 @@ def _export_hf_checkpoint(
     for name, sub_module in layer_pool.items():
         # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
         if isinstance(sub_module, FSDPModule):
-            # Every time we encounter a new FSDPModule, we need to reshard the previous one
+            # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
+            # We need to reshard the previous FSDPModule to prevent potential OOM.
+            # This hack reduces the number of unshard reshard operations, to avoid unnecessary communication.
             if fsdp_module_to_reshard is not None:
                 fsdp_module_to_reshard.reshard()
 
@@ -510,7 +507,6 @@ def _export_hf_checkpoint(
                         _export_quantized_weight(sub_module, dtype, weight_name)
 
     if accelerator is not None:
-        assert accelerator is not None, "Accelerator is required for FSDP2 export"
         # Gather state_dict from all ranks
         quantized_state_dict = accelerator.get_state_dict(model)
     else:
