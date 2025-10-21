@@ -1,4 +1,25 @@
-"""Rotation utility functions for preprocessing."""
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+"""Rotation utility functions for preprocessing.
+
+This module provides utilities for applying rotation transformations to model weights
+and biases, including support for layer normalization fusion, orthogonal matrix generation,
+and distributed tensor (DTensor) handling.
+"""
 
 import fnmatch
 import gc
@@ -14,9 +35,22 @@ from .hadamard_utils import matmul_hadU_cuda, random_base_hadamard_matrix, rando
 def _iter_modules_by_pattern(
     model: torch.nn.Module, pattern: str, regex: bool = False
 ) -> list[tuple[str, torch.nn.Module]]:
-    """Find all modules matching the given glob pattern.
+    """Find all modules matching the given pattern.
 
     Supports OR logic with pipe separator: '*q_proj|*k_proj' matches either pattern.
+    Can use either glob patterns (fnmatch) or regular expressions.
+
+    Args:
+        model (torch.nn.Module): The model to search for matching modules.
+        pattern (str): Pattern string to match. Use '|' to separate multiple patterns
+            for OR logic. For regex=False, uses glob patterns (e.g., '*q_proj').
+            For regex=True, uses regular expressions.
+        regex (bool, optional): If True, treat pattern as a regular expression.
+            If False, treat as glob pattern. Defaults to False.
+
+    Returns:
+        list[tuple[str, torch.nn.Module]]: List of (module_name, module) tuples for
+            all modules matching the pattern(s).
     """
     results: list[tuple[str, torch.nn.Module]] = []
     patterns = pattern.split("|")
@@ -33,10 +67,27 @@ def _iter_modules_by_pattern(
     return results
 
 
+# Adapted from https://github.com/facebookresearch/SpinQuant/blob/main/utils/fuse_norm_utils.py
 def fuse_ln_linear(
     layernorm: torch.nn.Module, linear_layers: typing.Iterable[torch.nn.Linear]
 ) -> None:
-    """Fuse the linear operations in Layernorm into the adjacent linear blocks."""
+    """Fuse LayerNorm parameters into adjacent Linear layers.
+
+    This function absorbs the LayerNorm's scale (weight) and bias into the subsequent
+    Linear layer(s) by modifying their weights and biases. After fusion, the LayerNorm
+    is reset to identity (weight=1, bias=0).
+
+    Args:
+        layernorm (torch.nn.Module): The LayerNorm module whose parameters will be fused.
+            Should have 'weight' attribute and optionally 'bias' attribute.
+        linear_layers (typing.Iterable[torch.nn.Linear]): Iterable of Linear layers to
+            fuse the LayerNorm into. Each layer's weight (and bias if present) will be
+            modified in-place.
+
+    Note:
+        This operation modifies the modules in-place. After fusion, the layernorm
+        becomes an identity operation.
+    """
     for linear in linear_layers:
         linear_dtype = linear.weight.dtype
 
@@ -68,13 +119,6 @@ def fuse_layernorms(model: torch.nn.Module, norm_fuse_config: dict) -> None:
             - decoder_layer_fuse: List[tuple[str, list[str]]] - decoder layer norm fusions
             - lm_head_fuse: List[tuple[str, str]] - lm head norm fusions
     """
-    # Embedding fusion
-    # emb_module = model.model.embed_tokens
-    # emb_weight = emb_module.weight.data.double()
-    # emb_module.weight.data = (emb_weight - emb_weight.mean(dim=-1, keepdim=True)).to(
-    #     emb_module.weight.dtype
-    # )
-
     for name, module in model.named_modules():
         if re.search("layers\\.[0-9]+$", name) is not None:
             for layer_norm, linear_layers in norm_fuse_config.get("decoder_layer_fuse", []):
@@ -107,6 +151,15 @@ def random_orthogonal_matrix(size: int, device: torch.device) -> torch.Tensor:
 
 
 def _normalize_mode(mode: str) -> str:
+    """Normalize rotation mode string to canonical form.
+
+    Args:
+        mode (str): Mode string to normalize (e.g., "hadamard", "Hadamard", "HADAMARD").
+
+    Returns:
+        str: Normalized mode string ("hadamard" if the input contains "hadamard",
+            otherwise "random").
+    """
     m = mode.lower().strip().replace("_", " ")
     if "hadamard" in m:
         return "hadamard"
@@ -114,9 +167,25 @@ def _normalize_mode(mode: str) -> str:
 
 
 def get_orthogonal_matrix(size: int, mode: str, device: torch.device) -> torch.Tensor:
-    """Get an orthogonal matrix of the specified size and mode on device."""
+    """Get an orthogonal matrix of the specified size and mode on device.
+
+    Args:
+        size (int): The dimension of the square orthogonal matrix to generate.
+        mode (str): The type of orthogonal matrix to generate. Supported modes:
+            - "orthogonal" or "random": Random orthogonal matrix via QR decomposition.
+            - "hadamard": Randomized Hadamard matrix with diagonal randomization.
+            - "base_hadamard": Base Hadamard matrix using Sylvester's construction.
+            - "fast_hadamard": Fast Hadamard transform (returns None, handled separately).
+        device (torch.device): The device on which to create the matrix.
+
+    Returns:
+        torch.Tensor: An orthogonal matrix of shape (size, size).
+
+    Raises:
+        ValueError: If mode is not one of the supported modes.
+    """
     mode = _normalize_mode(mode)
-    if mode == "random":
+    if mode == "orthogonal":
         return random_orthogonal_matrix(size, device)
     if mode == "hadamard":
         return random_hadamard_matrix(size, device)
@@ -141,10 +210,26 @@ def extract_layer_index(module_name: str) -> int | None:
 def diag_matmul(
     m1: torch.Tensor, m2: torch.Tensor, transpose=True, block_size=None
 ) -> torch.Tensor:
-    """m1 @ m2. m1 can be an element matrix of a diagonal matrix. e.g. diag(m1, m1, ..., m1).
+    """Perform matrix multiplication m1 @ m2 with optional block-diagonal support.
 
-    In which case, there should be m2.shape[0] % m1.shape[1] == 0.
-    If m1 is not a diagnoal, peform a normal matrix multiplication.
+    This function handles two cases:
+    1. Standard matrix multiplication if dimensions match
+    2. Block-diagonal multiplication where m1 is replicated as a block-diagonal matrix
+
+    Args:
+        m1 (torch.Tensor): Left matrix. Can be a single block of a block-diagonal matrix.
+        m2 (torch.Tensor): Right matrix to multiply.
+        transpose (bool, optional): If True, transpose m1 before multiplication.
+            Defaults to True.
+        block_size (int, optional): Block size for block-diagonal operations. Currently
+            unused. Defaults to None.
+
+    Returns:
+        torch.Tensor: Result of m1 @ m2 (or m1.T @ m2 if transpose=True). If m1 is
+            smaller than required, it's treated as a repeated block-diagonal matrix.
+
+    Note:
+        For block-diagonal case, m2.shape[-2] must be divisible by m1.shape[1].
     """
     if transpose:
         m1 = m1.t()
@@ -161,10 +246,26 @@ def diag_matmul(
 def matmul_diag(
     m1: torch.Tensor, m2: torch.Tensor, transpose=False, block_size=None
 ) -> torch.Tensor:
-    """m1 @ m2. m2 can be an element matrix of a diagonal matrix. e.g. diag(m2, m2, ..., m2).
+    """Perform matrix multiplication m1 @ m2 with optional block-diagonal support.
 
-    In which case, there should be m1.shape[-1] % m2.shape[0] == 0.
-    If m2 is not a diagnoal, peform a normal matrix multiplication.
+    This function handles two cases:
+    1. Standard matrix multiplication if dimensions match
+    2. Block-diagonal multiplication where m2 is replicated as a block-diagonal matrix
+
+    Args:
+        m1 (torch.Tensor): Left matrix to multiply.
+        m2 (torch.Tensor): Right matrix. Can be a single block of a block-diagonal matrix.
+        transpose (bool, optional): If True, transpose m2 before multiplication.
+            Defaults to False.
+        block_size (int, optional): Block size for block-diagonal operations. Currently
+            unused. Defaults to None.
+
+    Returns:
+        torch.Tensor: Result of m1 @ m2 (or m1 @ m2.T if transpose=True). If m2 is
+            smaller than required, it's treated as a repeated block-diagonal matrix.
+
+    Note:
+        For block-diagonal case, m1.shape[-1] must be divisible by m2.shape[0].
     """
     if transpose:
         # print("transposed")
@@ -180,9 +281,25 @@ def matmul_diag(
 
 
 def matmul_diag_fast_hadamard(m1, had_k, transpose=False, block_size=None):
-    """Fast hadamard transform, m1 @ hadamard matrix, if m1.shape[-1] is not a power of 2, a had_k must be provided.
+    """Apply fast Hadamard transform: m1 @ H where H is a Hadamard matrix.
 
-    The hadamard matrix is by Sylvester's construction, which is also a symmetric matrix. So transpose is not needed.
+    Uses the fast_hadamard_transform library for efficient computation. The Hadamard
+    matrix is constructed via Sylvester's method, which produces a symmetric matrix.
+
+    Args:
+        m1 (torch.Tensor): Input matrix to multiply with the Hadamard matrix.
+        had_k (torch.Tensor or None): Pre-computed Hadamard matrix for non-power-of-2
+            dimensions. If None, assumes the last dimension is a power of 2.
+        transpose (bool, optional): Placeholder for API compatibility. Not used since
+            Hadamard matrices are symmetric. Defaults to False.
+        block_size (int, optional): If provided, applies Hadamard transform in blocks
+            of this size. Defaults to None.
+
+    Returns:
+        torch.Tensor: Result of m1 @ H where H is the Hadamard matrix.
+
+    Note:
+        If m1.shape[-1] is not a power of 2, had_k must be provided.
     """
     if block_size is not None:
         shape = m1.shape
@@ -256,7 +373,30 @@ def with_dtensor_support(rotation_fn):
 def _rotate_weight_impl(
     weight, input_spin, output_spin, fast_hadamard=False, block_size=None, use_float64=False
 ):
-    """Core implementation of weight rotation (non-DTensor version)."""
+    """Core implementation of weight rotation (non-DTensor version).
+
+    Applies rotation matrices to weight tensor: output_spin @ weight @ input_spin.
+    Automatically handles device placement and dtype conversions.
+
+    Args:
+        weight (torch.Tensor): Weight tensor to rotate, shape (out_features, in_features).
+        input_spin (torch.Tensor or None): Input rotation matrix. If None, no input
+            rotation is applied (unless fast_hadamard=True with block_size).
+        output_spin (torch.Tensor or None): Output rotation matrix. If None, no output
+            rotation is applied.
+        fast_hadamard (bool, optional): If True, use fast Hadamard transform instead
+            of explicit matrix multiplication. Defaults to False.
+        block_size (int, optional): Block size for chunked Hadamard transform.
+            Defaults to None.
+        use_float64 (bool, optional): If True, perform computations in float64 for
+            higher precision. Defaults to False (uses float32).
+
+    Returns:
+        torch.Tensor: Rotated weight tensor with same shape, dtype, and device as input.
+
+    Note:
+        Temporarily moves tensors to CUDA for computation if on CPU.
+    """
     device = weight.device
     dtype = weight.dtype
     if device.type == "cpu":
@@ -317,7 +457,28 @@ def rotate_weight(
 
 
 def _rotate_bias_impl(bias, output_spin, fast_hadamard=False, block_size=None, use_float64=False):
-    """Core implementation of bias rotation (non-DTensor version)."""
+    """Core implementation of bias rotation (non-DTensor version).
+
+    Applies output rotation matrix to bias vector: bias @ output_spin^T.
+    Automatically handles device placement and dtype conversions.
+
+    Args:
+        bias (torch.Tensor): Bias vector to rotate, shape (out_features,).
+        output_spin (torch.Tensor or None): Output rotation matrix. If None, returns
+            the bias unchanged.
+        fast_hadamard (bool, optional): If True, use fast Hadamard transform instead
+            of explicit matrix multiplication. Defaults to False.
+        block_size (int, optional): Block size for chunked Hadamard transform.
+            Defaults to None.
+        use_float64 (bool, optional): If True, perform computations in float64 for
+            higher precision. Defaults to False (uses float32).
+
+    Returns:
+        torch.Tensor: Rotated bias vector with same shape, dtype, and device as input.
+
+    Note:
+        Temporarily moves tensors to CUDA for computation if on CPU.
+    """
     dtype = bias.dtype
     device = bias.device
     if device.type == "cpu":
@@ -363,7 +524,18 @@ def rotate_bias(bias, output_spin, fast_hadamard=False, block_size=None, use_flo
 
 
 def get_device(module, model):
-    """Get the device of the module."""
+    """Get the device of the module.
+
+    Attempts to find the device by checking parameters and buffers of the module.
+    Falls back to the model's device if no parameters or buffers are found.
+
+    Args:
+        module (torch.nn.Module): The module to get the device from.
+        model (torch.nn.Module): The parent model to use as fallback.
+
+    Returns:
+        torch.device: The device where the module resides.
+    """
     for param in module.parameters():
         return param.device
     for buffer in module.buffers():
@@ -372,15 +544,35 @@ def get_device(module, model):
 
 
 def is_dtensor(tensor):
-    """Check if the tensor is an DTensor."""
+    """Check if the tensor is a DTensor (Distributed Tensor)."""
     return isinstance(tensor, torch.distributed.tensor.DTensor)
 
 
 class RotationMatrixStore:
-    """Store the rotation matrices."""
+    """Store and manage rotation matrices for model layers.
+
+    This class handles initialization, storage, and retrieval of rotation matrices
+    used in model quantization. Supports per-layer rotation matrices, pattern-based
+    matrix assignment, and various rotation modes (Hadamard, orthogonal, etc.).
+
+    Attributes:
+        config (dict): Configuration dictionary specifying rotation matrix properties.
+        model (torch.nn.Module): The model to apply rotations to.
+        matrices (list): List of (module, name) tuples tracking all rotation matrices.
+        _num_decoder_layers (int): Number of decoder layers in the model.
+    """
 
     def __init__(self, config, model):
-        """Initialize the rotation matrix store."""
+        """Initialize the rotation matrix store.
+
+        Args:
+            config (dict): Configuration dictionary with rotation matrix specifications.
+                Each key is a matrix name, and values contain:
+                - 'dim' (int or str): Dimension of the rotation matrix
+                - 'mode' (str): Type of rotation ('hadamard', 'orthogonal', etc.)
+                - 'per_layer' (bool or str): If True/str, create separate matrices per layer
+            model (torch.nn.Module): The model to apply rotations to.
+        """
         self.config = config
         # list of (module, name), module.name is the rotation matrix
         self.matrices = []
@@ -396,11 +588,29 @@ class RotationMatrixStore:
     # def format_matrix_name(self, name):
     #     return f"rotation_{name}"
     def is_fast_hadamard(self, name):
-        """Check if the rotation matrix is a fast hadamard matrix."""
+        """Check if the rotation matrix is a fast Hadamard matrix.
+
+        Args:
+            name (str): Name of the rotation matrix to check.
+
+        Returns:
+            bool: True if the matrix mode is 'fast_hadamard', False otherwise.
+        """
         return self.config.get(name).get("mode", "hadamard") == "fast_hadamard"
 
     def init_matrices(self, device=None):
-        """Initialize the rotation matrices."""
+        """Initialize the rotation matrices based on configuration.
+
+        Creates rotation matrices and attaches them as attributes to the appropriate
+        modules (per-layer, pattern-based, or model-level).
+
+        Args:
+            device (torch.device, optional): Device to create matrices on. If None,
+                uses the device of each target module. Defaults to None.
+
+        Note:
+            Matrices are stored as attributes on modules and tracked in self.matrices.
+        """
         for name in self.config:
             per_layer = self.config.get(name).get("per_layer", False)
             if isinstance(per_layer, str):
@@ -473,7 +683,15 @@ class RotationMatrixStore:
         return getattr(self.model, name)
 
     def clear(self):
-        """Clear the rotation matrices."""
+        """Clear all rotation matrices and free memory.
+
+        Removes all rotation matrix attributes from modules and performs garbage
+        collection to free memory.
+
+        Note:
+            After calling this method, the rotation matrices are no longer accessible
+            from the modules.
+        """
         for module, name in self.matrices:
             delattr(module, name)
         gc.collect()
