@@ -1091,6 +1091,7 @@ def _exclude_matmuls_by_shape_inference(
 
     model = infer_shapes(model)
     value_info_map = {vi.name: vi for vi in model.graph.value_info}
+    value_info_map.update({vi.name: vi for vi in model.graph.output})
 
     nodes_to_exclude = []
     for matmul_node in matmul_nodes:
