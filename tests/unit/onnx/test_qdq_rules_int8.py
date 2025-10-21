@@ -19,6 +19,7 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 from _test_utils.onnx_quantization.lib_test_models import (
+    build_conv_batchnorm_sig_mul_model,
     build_r1a_model,
     build_resnet_block,
     build_resnet_block_with_downsample,
@@ -26,6 +27,7 @@ from _test_utils.onnx_quantization.lib_test_models import (
 )
 
 from modelopt.onnx.quantization.quantize import quantize
+from modelopt.onnx.utils import save_onnx
 
 
 def _assert_nodes_are_quantized(nodes):
@@ -119,3 +121,32 @@ def test_resnet_residual_connection_with_downsample(tmp_path):
     onnx_path = os.path.join(tmp_path, "model.onnx")
     export_as_onnx(model_torch, input_tensor, onnx_filename=onnx_path)
     _check_resnet_residual_connection(onnx_path)
+
+
+def test_conv_batchnorm_sig_mul_int8(tmp_path):
+    onnx_model = build_conv_batchnorm_sig_mul_model()
+    onnx_path = os.path.join(tmp_path, "conv_batchnorm_sig_mul_model.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
+
+    # Check that quantized explicit model is generated
+    assert os.path.isfile(output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    graph = gs.import_onnx(onnx.load(output_onnx_path))
+
+    # Check that Conv and ConvTransposed are quantized
+    conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
+    assert _assert_nodes_are_quantized(conv_nodes)
+
+    # Check that only 1 input of Add is quantized
+    add_nodes = [n for n in graph.nodes if n.op == "Add"]
+    for node in add_nodes:
+        quantized_inputs = [inp for inp in node.inputs if inp.inputs[0].op == "DequantizeLinear"]
+        assert len(quantized_inputs) == 1, (
+            f"More than one input of {node.name} is being quantized, but only one should be quantized!"
+        )
