@@ -53,7 +53,7 @@ OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Upsample", "NonMaxSuppression", "Cel
 OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop", "LSTM"])
 
 # Mapping of op types to indices of inputs that should not be converted to low precision.
-SKIP_LOW_PRECISION_MAPPING_FP16 = {"Resize": {1}}
+SKIP_LOW_PRECISION_MAPPING_FP16 = {"Resize": {2}}
 SKIP_LOW_PRECISION_MAPPING_BF16 = {"Resize": {1, 2}}
 
 
