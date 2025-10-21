@@ -59,7 +59,7 @@ def generate_image(pipe, prompt, image_name):
     print(f"Image generated saved as {image_name}")
 
 
-def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10):
+def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10, num_inference_steps=10):
     """Benchmark the backbone model inference time."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
@@ -82,7 +82,7 @@ def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10):
             _ = pipe(
                 prompt,
                 output_type="pil",
-                num_inference_steps=10,
+                num_inference_steps=num_inference_steps,
                 generator=torch.Generator("cuda").manual_seed(42),
             )
 
@@ -92,7 +92,7 @@ def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10):
             _ = pipe(
                 prompt,
                 output_type="pil",
-                num_inference_steps=10,
+                num_inference_steps=num_inference_steps,
                 generator=torch.Generator("cuda").manual_seed(42),
             )
     finally:
@@ -100,7 +100,7 @@ def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10):
         post_handle.remove()
 
     total_backbone_time = sum(backbone_times)
-    avg_latency = total_backbone_time / num_runs
+    avg_latency = total_backbone_time / (num_runs * num_inference_steps)
     return avg_latency
 
 
@@ -138,18 +138,21 @@ def main():
         "--onnx-load-path", type=str, default="", help="Path to load the ONNX model"
     )
     parser.add_argument(
-        "--trt-engine-load-path", type=str, default=None, help="Path to load the TRT engine"
+        "--trt-engine-load-path", type=str, default=None, help="Path to load the TensorRT engine"
     )
     parser.add_argument(
         "--dq-only", action="store_true", help="Converts the ONNX model to a dq_only model"
     )
     parser.add_argument(
-        "--torch", action="store_true", help="Generate an image using the torch pipeline"
+        "--torch",
+        action="store_true",
+        help="Use the torch pipeline for image generation or benchmarking",
     )
     parser.add_argument("--save-image-as", type=str, default=None, help="Name of the image to save")
     parser.add_argument(
-        "--benchmark", action="store_true", help="Benchmark the model inference time"
+        "--benchmark", action="store_true", help="Benchmark the model backbone inference time"
     )
+    parser.add_argument("--skip-image", action="store_true", help="Skip image generation")
     args = parser.parse_args()
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
@@ -186,7 +189,8 @@ def main():
             torch_latency = benchmark_model(pipe, args.prompt)
             print(f"Inference latency of the torch pipeline is {torch_latency:.2f} ms")
 
-        generate_image(pipe, args.prompt, image_name)
+        if not args.skip_image:
+            generate_image(pipe, args.prompt, image_name)
         return
 
     backbone.to("cuda")
@@ -266,8 +270,9 @@ def main():
         raise ValueError("Pipeline does not have a transformer or unet backbone")
     pipe.to("cuda")
 
-    generate_image(pipe, args.prompt, image_name)
-    print(f"Image generated using {args.model} model saved as {image_name}")
+    if not args.skip_image:
+        generate_image(pipe, args.prompt, image_name)
+        print(f"Image generated using {args.model} model saved as {image_name}")
 
     if args.benchmark:
         print(
