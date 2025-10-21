@@ -1,11 +1,18 @@
 # Copied from
 import math
+import os
 from functools import cache
 
-# import fast_hadamard_transform
+import scipy.linalg as linalg
+
+try:
+    import fast_hadamard_transform
+except ImportError:
+    print("fast_hadamard_transform not found. It's currently not needed for pre-fuse rotation.")
+    fast_hadamard_transform = None
 import torch
 
-HADK_WEIGHTS = "hadK.pth"
+HADK_WEIGHTS = os.path.join(os.path.dirname(__file__), "hadK.pth")
 
 
 @cache
@@ -103,13 +110,19 @@ def matmul_hadUt(X):
     return matmul_hadU(X, transpose=True)
 
 
+# See https://cornell-relaxml.github.io/quip-sharp/ , Section "Randomized Hadamard Transformation"
 def random_hadamard_matrix(size, device):
-    # See https://cornell-relaxml.github.io/quip-sharp/ , Section "Randomized Hadamard Transformation"
-    print("size:", size)
+    """Generate a random hadamard matrix."""
     Q = torch.randint(0, 2, (size,)).to(torch.float64)
     Q = Q * 2 - 1
     Q = torch.diag(Q)
     return matmul_hadU(Q).to(device)
+
+
+def random_base_hadamard_matrix(size, device):
+    """Generate a random base hadamard matrix by Sylvester's construction."""
+    assert is_pow2(size), "Size must be a power of 2 for hadamard matrix!"
+    return torch.tensor(linalg.hadamard(size), dtype=torch.float64).to(device) / torch.sqrt(size)
 
 
 # def matmul_hadU_cuda(X, hadK, K):

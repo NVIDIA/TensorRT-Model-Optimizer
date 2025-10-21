@@ -36,7 +36,7 @@ from .config import QuantizeAlgoCfgType
 from .conversion import set_quantizer_attribute
 from .mode import QuantizeModeRegistry, get_modelike_from_algo_cfg
 from .nn import QuantModule, TensorQuantizer
-from .rotation import apply_rotation, build_rotation_config_from_yaml
+from .rotation import apply_rotation
 
 __all__ = [
     "auto_quantize",
@@ -47,6 +47,7 @@ __all__ = [
     "postprocess_amax",
     "print_quant_summary",
     "quantize",
+    "rotate",
 ]
 
 
@@ -134,24 +135,9 @@ def postprocess_amax(model: nn.Module, key: str, post_process_fn) -> nn.Module:
     return model
 
 
-def _apply_rotation_preprocessing(model: nn.Module, config: dict) -> dict:
-    """Apply rotation preprocessing to model weights before quantization."""
-    if not isinstance(config, dict):
-        return config
-
-    rotation_config = config.get("rotation")
-    if not rotation_config or not rotation_config.get("enabled", False):
-        return config
-
-    if rotation_config.get("config_path"):
-        flow_config = build_rotation_config_from_yaml(rotation_config["config_path"], model)
-    else:
-        flow_config = build_rotation_config(rotation_config, model)
-
-    apply_rotation(model, flow_config)
-
-    # Remove rotation from config to avoid issues in apply_mode
-    return {k: v for k, v in config.items() if k != "rotation"}
+def rotate(model: nn.Module, config: dict | str) -> nn.Module:
+    apply_rotation(model, config)
+    return model
 
 
 def quantize(
@@ -248,9 +234,6 @@ def quantize(
 
     Returns: A pytorch model which has been quantized and calibrated.
     """
-    # Apply rotation preprocessing if configured
-    config = _apply_rotation_preprocessing(model, config)
-
     # Continue with standard quantization
     model = apply_mode(model, mode=[("quantize", config)], registry=QuantizeModeRegistry)
     return calibrate(model, config["algorithm"], forward_loop=forward_loop)

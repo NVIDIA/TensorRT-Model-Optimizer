@@ -4,10 +4,11 @@ import fnmatch
 import gc
 import re
 import typing
+from warnings import warn
 
 import torch
 
-from .hadamard_utils import matmul_hadU_cuda, random_hadamard_matrix
+from .hadamard_utils import matmul_hadU_cuda, random_base_hadamard_matrix, random_hadamard_matrix
 
 
 def _iter_modules_by_pattern(
@@ -80,10 +81,21 @@ def fuse_layernorms(model: torch.nn.Module, norm_fuse_config: dict) -> None:
                 print(
                     f"Fusing layer norm {layer_norm} and linear layers {linear_layers} for {name}"
                 )
-                fuse_ln_linear(
-                    module.get_submodule(layer_norm),
-                    [module.get_submodule(linear) for linear in linear_layers],
-                )
+                submodules = {name for name, _ in module.named_modules()}
+
+                if layer_norm in submodules and all(
+                    linear in submodules for linear in linear_layers
+                ):
+                    fuse_ln_linear(
+                        module.get_submodule(layer_norm),
+                        [module.get_submodule(linear) for linear in linear_layers],
+                    )
+                else:
+                    print(f"{name} submodules: {submodules}")
+                    warn(
+                        f"{name} has no submodule {layer_norm} or {linear_layers}, skipping fusion. "
+                        "This can happen if the model has mixed types of layers, e.g. nemotron H architecture."
+                    )
     for layer_norm, linear in norm_fuse_config.get("lm_head_fuse", []):
         print(f"Fusing layer norm {layer_norm} and linear {linear} for model")
         fuse_ln_linear(model.get_submodule(layer_norm), [model.get_submodule(linear)])
@@ -108,6 +120,8 @@ def get_orthogonal_matrix(size: int, mode: str, device: torch.device) -> torch.T
         return random_orthogonal_matrix(size, device)
     if mode == "hadamard":
         return random_hadamard_matrix(size, device)
+    if mode == "base_hadamard":
+        return random_base_hadamard_matrix(size, device)
     raise ValueError(f"Unknown rotation matrix mode: {mode}")
 
 
@@ -168,7 +182,7 @@ def matmul_diag(
 def matmul_diag_fast_hadamard(m1, had_k, transpose=False, block_size=None):
     """Fast hadamard transform, m1 @ hadamard matrix, if m1.shape[-1] is not a power of 2, a had_k must be provided.
 
-    The hadamard matrix is by Sylvester’s construction, which is also a symmetric matrix. So transpose is not needed.
+    The hadamard matrix is by Sylvester's construction, which is also a symmetric matrix. So transpose is not needed.
     """
     if block_size is not None:
         shape = m1.shape
@@ -178,14 +192,82 @@ def matmul_diag_fast_hadamard(m1, had_k, transpose=False, block_size=None):
     return matmul_hadU_cuda(m1, had_k)
 
 
-def rotate_weight(weight, input_spin, output_spin, fast_hadamard=False, block_size=None):
-    """Rotating a matrix."""
+def with_dtensor_support(rotation_fn):
+    """Decorator to add DTensor support to rotation functions.
+
+    This wrapper handles the gather-compute-redistribute pattern for DTensors:
+    - Uses .full_tensor() to gather the complete tensor
+    - Runs rotation only on rank 0
+    - Broadcasts result to other ranks
+    - Redistributes back to original DTensor placements
+
+    Args:
+        rotation_fn: The rotation function to wrap (e.g., _rotate_weight_impl, _rotate_bias_impl)
+
+    Returns:
+        Wrapped function with DTensor support
+    """
+
+    def wrapper(tensor, *args, **kwargs):
+        if not is_dtensor(tensor):
+            # Regular tensor path - call the function directly
+            return rotation_fn(tensor, *args, **kwargs)
+
+        # DTensor path
+        try:
+            from torch.distributed._tensor import DTensor
+        except ImportError:
+            from torch.distributed.tensor import DTensor
+
+        # Save original DTensor metadata
+        original_placements = tensor.placements
+        original_device_mesh = tensor.device_mesh
+
+        # Gather the full tensor using .full_tensor() - simpler than manual redistribute
+        full_tensor = tensor.full_tensor()
+
+        # Only run rotation on rank 0 to save compute
+        current_rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+
+        if current_rank == 0:
+            # Run rotation on main GPU
+            rotated_tensor = rotation_fn(full_tensor, *args, **kwargs)
+        else:
+            # Other ranks create placeholder with same shape/dtype/device
+            rotated_tensor = torch.empty_like(full_tensor)
+
+        # Broadcast result from rank 0 to all other ranks
+        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
+            torch.distributed.broadcast(rotated_tensor, src=0)
+
+        # Convert back to DTensor and redistribute to original placements
+        dtensor_result = DTensor.from_local(
+            rotated_tensor,
+            device_mesh=original_device_mesh,
+            placements=original_placements,
+            run_check=False,
+        )
+
+        return dtensor_result
+
+    return wrapper
+
+
+def _rotate_weight_impl(
+    weight, input_spin, output_spin, fast_hadamard=False, block_size=None, use_float64=False
+):
+    """Core implementation of weight rotation (non-DTensor version)."""
+    device = weight.device
     dtype = weight.dtype
-    weight = weight.to(torch.float32)
+    if device.type == "cpu":
+        weight = weight.to("cuda")
+
+    cal_dtype = torch.float64 if use_float64 else torch.float32
+    weight = weight.to(cal_dtype)
     if input_spin is not None:
-        input_spin = input_spin.to(torch.float32)
+        input_spin = input_spin.to(dtype=cal_dtype, device=weight.device)
     if output_spin is not None:
-        output_spin = output_spin.to(torch.float32)
+        output_spin = output_spin.to(dtype=cal_dtype, device=weight.device)
     matmul_spin = matmul_diag_fast_hadamard if fast_hadamard else matmul_diag
     if input_spin is not None or (input_spin is None and fast_hadamard and block_size is not None):
         weight = matmul_spin(
@@ -193,28 +275,105 @@ def rotate_weight(weight, input_spin, output_spin, fast_hadamard=False, block_si
         )  # torch.matmul(weight, input_spin)
     if output_spin is not None:
         weight = diag_matmul(output_spin, weight)
-    return weight.to(dtype)
 
-
-def rotate_bias(bias, output_spin, fast_hadamard=False, block_size=None):
-    """Rotate a bias."""
-    dtype = bias.dtype
-    bias = bias.to(torch.float32)
+    # offload the rotation tensors to cpu
+    if input_spin is not None:
+        input_spin.to("cpu")
     if output_spin is not None:
-        output_spin = output_spin.to(torch.float32)
+        output_spin.to("cpu")
+
+    weight = weight.to(dtype=dtype, device=device)
+    gc.collect()
+    torch.cuda.empty_cache()
+    return weight
+
+
+@with_dtensor_support
+def rotate_weight(
+    weight, input_spin, output_spin, fast_hadamard=False, block_size=None, use_float64=False
+):
+    """Rotating a matrix with DTensor support.
+
+    This function supports both regular tensors and DTensors. For DTensors:
+    - Gathers the full tensor using .full_tensor()
+    - Runs rotation only on rank 0
+    - Broadcasts result to other ranks
+    - Redistributes back to original DTensor placements
+
+    Args:
+        weight: Weight tensor to rotate (can be DTensor or regular tensor)
+        input_spin: Input spin matrix
+        output_spin: Output spin matrix
+        fast_hadamard: Whether to use fast Hadamard transform
+        block_size: Block size for Hadamard transform
+        use_float64: Whether to use float64 for computation
+
+    Returns:
+        Rotated weight tensor (same type as input)
+    """
+    return _rotate_weight_impl(
+        weight, input_spin, output_spin, fast_hadamard, block_size, use_float64
+    )
+
+
+def _rotate_bias_impl(bias, output_spin, fast_hadamard=False, block_size=None, use_float64=False):
+    """Core implementation of bias rotation (non-DTensor version)."""
+    dtype = bias.dtype
+    device = bias.device
+    if device.type == "cpu":
+        bias = bias.to("cuda")
+    output_spin.to(bias.device)
+
+    cal_dtype = torch.float64 if use_float64 else torch.float32
+    bias = bias.to(cal_dtype)
+    if output_spin is not None:
+        output_spin = output_spin.to(cal_dtype)
     matmul_spin = matmul_diag_fast_hadamard if fast_hadamard else matmul_diag
     bias = bias.unsqueeze(0)
     bias = matmul_spin(bias, output_spin, block_size=block_size, transpose=True)
     bias = bias.squeeze(0)
-    return bias.to(dtype)
+    output_spin.to("cpu")
+    bias = bias.to(dtype=dtype, device=device)
+    gc.collect()
+    torch.cuda.empty_cache()
+    return bias
+
+
+@with_dtensor_support
+def rotate_bias(bias, output_spin, fast_hadamard=False, block_size=None, use_float64=False):
+    """Rotate a bias with DTensor support.
+
+    This function supports both regular tensors and DTensors. For DTensors:
+    - Gathers the full tensor using .full_tensor()
+    - Runs rotation only on rank 0
+    - Broadcasts result to other ranks
+    - Redistributes back to original DTensor placements
+
+    Args:
+        bias: Bias tensor to rotate (can be DTensor or regular tensor)
+        output_spin: Output spin matrix
+        fast_hadamard: Whether to use fast Hadamard transform
+        block_size: Block size for Hadamard transform
+        use_float64: Whether to use float64 for computation
+
+    Returns:
+        Rotated bias tensor (same type as input)
+    """
+    return _rotate_bias_impl(bias, output_spin, fast_hadamard, block_size, use_float64)
 
 
 def get_device(module, model):
+    """Get the device of the module."""
     for param in module.parameters():
         return param.device
     for buffer in module.buffers():
         return buffer.device
     return model.device
+
+
+def is_dtensor(tensor):
+    """Check if the tensor is an DTensor."""
+    return isinstance(tensor, torch.distributed.tensor.DTensor)
 
 
 class RotationMatrixStore:
@@ -226,15 +385,21 @@ class RotationMatrixStore:
         # list of (module, name), module.name is the rotation matrix
         self.matrices = []
         self.model = model
-        self._num_decoder_layers = getattr(
-            model.config, "num_hidden_layers", len(model.model.layers)
-        )
-        self.init_matrices()
+        self._num_decoder_layers = getattr(model.config, "num_hidden_layers", 0)
+        if self._num_decoder_layers == 0:
+            for name, _ in model.named_modules():
+                if re.search("layers\\.[0-9]+$", name) is not None:
+                    self._num_decoder_layers += 1
+        # let's initialize the matrices on cpu first, then move to the device of the model
+        self.init_matrices(device="cpu")
 
     # def format_matrix_name(self, name):
     #     return f"rotation_{name}"
+    def is_fast_hadamard(self, name):
+        """Check if the rotation matrix is a fast hadamard matrix."""
+        return self.config.get(name).get("mode", "hadamard") == "fast_hadamard"
 
-    def init_matrices(self):
+    def init_matrices(self, device=None):
         """Initialize the rotation matrices."""
         for name in self.config:
             per_layer = self.config.get(name).get("per_layer", False)
@@ -250,7 +415,7 @@ class RotationMatrixStore:
                         get_orthogonal_matrix(
                             dim,
                             self.config.get(name).get("mode", "hadamard"),
-                            get_device(module, self.model),
+                            device or get_device(module, self.model),
                         ),
                     )
                     self.matrices.append((module, name))
@@ -268,7 +433,7 @@ class RotationMatrixStore:
                         get_orthogonal_matrix(
                             dim,
                             self.config.get(name).get("mode", "hadamard"),
-                            get_device(module, self.model),
+                            device or get_device(module, self.model),
                         ),
                     )
                     self.matrices.append((module, name))
@@ -283,7 +448,7 @@ class RotationMatrixStore:
                     get_orthogonal_matrix(
                         dim,
                         self.config.get(name).get("mode", "hadamard"),
-                        get_device(self.model, self.model),
+                        device or get_device(self.model, self.model),
                     ),
                 )
                 self.matrices.append((self.model, name))
@@ -302,14 +467,9 @@ class RotationMatrixStore:
             module = self.model.get_submodule(module_name)
             while not hasattr(module, name) and "." in module_name:
                 module_name = module_name.rsplit(".", 1)[0]
-                # print(f"Getting {name} for {module_name}")
                 module = self.model.get_submodule(module_name)
             if hasattr(module, name):
-                print(f"Getting {name} for {module_name}")
                 return getattr(module, name)
-            # print(f"Getting {name} for {module_name} failed")
-            # return getattr(module, name)
-        print(f"Getting {name} for root model")
         return getattr(self.model, name)
 
     def clear(self):
@@ -318,149 +478,3 @@ class RotationMatrixStore:
             delattr(module, name)
         gc.collect()
         torch.cuda.empty_cache()
-
-
-# def apply_full_rotation(weight: torch.Tensor, r2_full: torch.Tensor) -> torch.Tensor:
-#     """Apply full-dimension R2 rotation to weight input dimension.
-
-#     Used for O projection and down projection in QuaRot.
-#     Applies W @ R2_full (right multiply on input dimension).
-
-#     Args:
-#         weight: Weight tensor [out_features, in_features]
-#         r2_full: Full rotation matrix [in_features, in_features]
-
-#     Returns:
-#         Rotated weight tensor W @ R2_full
-#     """
-#     dtype = weight.dtype
-#     device = weight.device
-#     w = weight.to(torch.float64)
-#     r2 = r2_full.to(dtype=torch.float64, device=device)
-
-#     w_rotated = torch.matmul(w, r2)
-
-#     return w_rotated.to(device=device, dtype=dtype)
-
-
-# def apply_per_head_rotation(
-#     weight: torch.Tensor, r2: torch.Tensor, num_heads: int, transpose_first: bool = False
-# ) -> torch.Tensor:
-#     """Apply R2 rotation per attention head (matching SpinQuant).
-
-#     Args:
-#         weight: Weight tensor [out_features, in_features]
-#         r2: Rotation matrix [head_dim, head_dim]
-#         num_heads: Number of attention heads
-#         transpose_first: If True, apply on output dim (V). If False, apply on input dim (O)
-
-#     Returns:
-#         Rotated weight tensor
-#     """
-#     head_dim = r2.shape[0]
-#     dtype = weight.dtype
-#     device = weight.device
-#     w = weight.to(torch.float64)
-
-#     if transpose_first:
-#         # V projection: per-head R2 on output dimension (output=True in SpinQuant)
-#         w = w.T  # Transpose to make output dim last
-#         transposed_shape = w.shape
-#         w_reshaped = w.reshape(-1, transposed_shape[-1] // head_dim, head_dim)
-#         w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
-#         w = w_rotated.reshape(transposed_shape).T
-#     else:
-#         # O projection: per-head R2 on input dimension (output=False in SpinQuant)
-#         init_shape = w.shape
-#         w_reshaped = w.reshape(-1, init_shape[-1] // head_dim, head_dim)
-#         w_rotated = w_reshaped @ r2.to(dtype=torch.float64, device=device)
-#         w = w_rotated.reshape(init_shape)
-
-#     return w.to(device=device, dtype=dtype)
-
-
-# The rest of the reference implementation (online transforms, model-specific helpers)
-# is intentionally omitted for QuaRot fusable-rotation flow.
-
-
-# @torch.inference_mode
-# def online_rotate(module, inp):
-#     x = torch.nn.functional.linear(inp[0], module.Q)
-#     return (x,) + inp[1:]
-
-
-# def register_online_rotation(module, Q: torch.Tensor):
-#     assert not hasattr(module, "Q")
-#     module.register_buffer("Q", Q.T.to(module.weight.data))  # Note F.linear(x, A) performs x@A.T
-
-#     # We use forward_pre_hook because we capture the input using forward_hook, which could then capture the rotated input.
-#     # If we implement in the forward() the un-rotated original input will be captured.
-#     module.rotate_handle = module.register_forward_pre_hook(online_rotate)
-
-
-# class QKRotationWrapper(torch.nn.Module):
-#     def __init__(self, func, config, *args, **kwargs):
-#         super().__init__()
-#         self.config = config
-#         num_heads = config.num_attention_heads
-#         model_dim = config.hidden_size
-#         head_dim = model_dim // num_heads
-#         assert is_pow2(head_dim), "Only power of 2 head_dim is supported for K-cache Quantization!"
-#         self.func = func
-#         self.k_quantizer = quant_utils.ActQuantizer()
-#         self.k_bits = 16
-#         if kwargs is not None:
-#             assert kwargs["k_groupsize"] in [-1, head_dim], (
-#                 f"Only token-wise/{head_dim}g quantization is supported for K-cache"
-#             )
-#             self.k_bits = kwargs["k_bits"]
-#             self.k_groupsize = kwargs["k_groupsize"]
-#             self.k_sym = kwargs["k_sym"]
-#             self.k_clip_ratio = kwargs["k_clip_ratio"]
-#             self.k_quantizer.configure(
-#                 bits=self.k_bits,
-#                 groupsize=-1,  # we put -1 to be toke-wise quantization and handle head-wise quantization by ourself
-#                 sym=self.k_sym,
-#                 clip_ratio=self.k_clip_ratio,
-#             )
-
-#     def forward(self, *args, **kwargs):
-#         q, k = self.func(*args, **kwargs)
-#         dtype = q.dtype
-#         q = hadamard_transform(q.float(), scale=1 / math.sqrt(q.shape[-1])).to(dtype)
-#         k = hadamard_transform(k.float(), scale=1 / math.sqrt(k.shape[-1])).to(dtype)
-#         (bsz, num_heads, seq_len, head_dim) = k.shape
-
-#         if self.k_groupsize == -1:  # token-wise quantization
-#             token_wise_k = k.transpose(1, 2).reshape(-1, self.config.hidden_size)
-#             self.k_quantizer.find_params(token_wise_k)
-#             k = (
-#                 self.k_quantizer(token_wise_k)
-#                 .reshape((bsz, seq_len, num_heads, head_dim))
-#                 .transpose(1, 2)
-#                 .to(q)
-#             )
-#         else:  # head-wise quantization
-#             per_head_k = k.view(-1, head_dim)
-#             self.k_quantizer.find_params(per_head_k)
-#             k = self.k_quantizer(per_head_k).reshape((bsz, num_heads, seq_len, head_dim)).to(q)
-
-#         self.k_quantizer.free()
-
-#         return q, k
-
-
-# def add_qk_rotation_wrapper_after_function_call_in_forward(module, function_name, *args, **kwargs):
-#     """This function adds a rotation wrapper after the output of a function call in forward.
-#     Only calls directly in the forward function are affected. calls by other functions called in forward are not affected.
-#     """
-#     import functools
-
-#     import monkeypatch
-
-#     attr_name = f"{function_name}_qk_rotation_wrapper"
-#     assert not hasattr(module, attr_name)
-#     wrapper = monkeypatch.add_wrapper_after_function_call_in_method(
-#         module, "forward", function_name, functools.partial(QKRotationWrapper, *args, **kwargs)
-#     )
-#     setattr(module, attr_name, wrapper)
