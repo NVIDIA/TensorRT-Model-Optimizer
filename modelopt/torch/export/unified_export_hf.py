@@ -510,6 +510,7 @@ def _export_hf_checkpoint(
                         _export_quantized_weight(sub_module, dtype, weight_name)
 
     if accelerator is not None:
+        assert accelerator is not None, "Accelerator is required for FSDP2 export"
         # Gather state_dict from all ranks
         quantized_state_dict = accelerator.get_state_dict(model)
     else:

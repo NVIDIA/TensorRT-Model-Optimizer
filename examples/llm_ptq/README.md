@@ -252,7 +252,7 @@ accelerate launch --config_file fsdp2.yaml \
     --main_process_ip=<node0_ip_addr> \
     --main_process_port=<port> \
     --fsdp_transformer_layer_cls_to_wrap=<decoder_layer_name>
-     multinode-ptq.py \
+     multinode_ptq.py \
     --pyt_ckpt_path <path_to_model> \
     --qformat <fp8/nvfp4/nvfp4_awq/int4_awq/int8_sq> \
     --kv_cache_quant <fp8/nvfp4/nvfp4_affine/none> \

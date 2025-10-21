@@ -1,7 +1,6 @@
 """Multi-node PTQ (Post-Training Quantization) with FSDP2 support."""
 
 import argparse
-import copy
 import json
 import os
 import random
@@ -14,7 +13,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from accelerate import Accelerator
-from example_utils import apply_kv_cache_quant, get_tokenizer
+from example_utils import build_quant_cfg, get_tokenizer
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedTokenizerFast
 
@@ -31,11 +30,14 @@ from modelopt.torch.utils.dataset_utils import get_dataset_dataloader, get_suppo
 RAND_SEED = 1234
 
 QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
-    "int8_wo": mtq.INT8_WEIGHT_ONLY_CFG,
-    "fp8": mtq.FP8_DEFAULT_CFG,
+    "int8": mtq.INT8_DEFAULT_CFG,
     "int4_awq": mtq.INT4_AWQ_CFG,
+    "fp8": mtq.FP8_DEFAULT_CFG,
     "nvfp4": mtq.NVFP4_DEFAULT_CFG,
     "nvfp4_awq": mtq.NVFP4_AWQ_LITE_CFG,
+    "w4a8_awq": mtq.W4A8_AWQ_BETA_CFG,
+    "fp8_pb_wo": mtq.FP8_2D_BLOCKWISE_WEIGHT_ONLY_CFG,
+    "w4a8_mxfp4_fp8": mtq.W4A8_MXFP4_FP8_CFG,
     "nvfp4_mlp_only": mtq.NVFP4_MLP_ONLY_CFG,
 }
 
@@ -86,8 +88,12 @@ def parse_args():
     )
     parser.add_argument(
         "--dataset",
+        help=(
+            f"name of a dataset, or a comma separated list of datasets. "
+            f"dataset choices are {get_supported_datasets()}"
+        ),
         type=str,
-        help=f"Comma-separated list of datasets. Choices: {get_supported_datasets()}",
+        default=None,
     )
     parser.add_argument(
         "--export_path",
@@ -121,7 +127,7 @@ def load_and_prepare_model(
     Args:
         model_path: Path to the HuggingFace model
         calibration_dataloader: Calibration dataloader to be sharded for calibration
-        accelerator: Accelerate Accelerator instance
+        accelerator: Accelerate's Accelerator instance
         trust_remote_code: Whether to trust remote code
 
     Returns:
@@ -147,7 +153,7 @@ def load_and_prepare_model(
 
 def create_calibration_dataloader(
     tokenizer: PreTrainedTokenizer | PreTrainedTokenizerFast,
-    dataset_names: list[str] | None,
+    dataset_names: list[str],
     calib_sizes: list[int],
     batch_size: int,
 ) -> torch.utils.data.DataLoader:
@@ -162,9 +168,6 @@ def create_calibration_dataloader(
     Returns:
         DataLoader for calibration
     """
-    if dataset_names is None:
-        dataset_names = ["cnn_dailymail"]
-        warnings.warn("No dataset specified. Defaulting to cnn_dailymail.")
 
     return get_dataset_dataloader(
         dataset_name=dataset_names,
@@ -174,49 +177,6 @@ def create_calibration_dataloader(
         device=None,  # Keep data on CPU, calibration loop handles device transfer
         include_labels=False,
     )
-
-
-def get_quantization_config(
-    qformat: str,
-    kv_cache_qformat: str,
-    model_type: str,
-    awq_block_size: int | None = None,
-) -> dict[str, Any]:
-    """Build quantization configuration.
-
-    Args:
-        qformat: Quantization format
-        kv_cache_qformat: KV cache quantization format
-        model_type: Model type (e.g., 'llama', 'gemma')
-        awq_block_size: Optional AWQ block size
-
-    Returns:
-        Quantization configuration dictionary
-    """
-    quant_cfg = copy.deepcopy(QUANT_CFG_CHOICES[qformat])
-
-    # Configure AWQ if needed
-    if "awq" in qformat:
-        weight_quantizer = quant_cfg["quant_cfg"]["*weight_quantizer"]
-        if isinstance(weight_quantizer, list):
-            weight_quantizer = weight_quantizer[0]
-
-        if awq_block_size:
-            weight_quantizer["block_sizes"][-1] = awq_block_size
-
-        # Coarser search for certain models to avoid overflow
-        if qformat == "w4a8_awq" and model_type in ["gemma", "mpt"]:
-            quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
-
-    # Configure KV cache quantization
-    enable_kv_quant = kv_cache_qformat != "none"
-    print(f"{'Enable' if enable_kv_quant else 'Disable'} KV cache quantization")
-
-    if enable_kv_quant:
-        kv_cfg = getattr(mtq, KV_QUANT_CFG_CHOICES[kv_cache_qformat])["quant_cfg"]
-        quant_cfg = apply_kv_cache_quant(quant_cfg, kv_cfg)
-
-    return quant_cfg
 
 
 def create_fsdp2_calibration_loop(
@@ -326,6 +286,17 @@ def main(args):
     tokenizer = get_tokenizer(args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code)
     tokenizer.padding_side = "left"  # Left padding for better calibration
 
+    # Set default dataset if not provided
+    if args.dataset is None:
+        args.dataset = ["cnn_dailymail", "nemotron-post-training-dataset-v2"]
+        warnings.warn(
+            "No dataset specified. Defaulting to cnn_dailymail and nemotron-post-training-dataset-v2."
+        )
+        # Adjust calib_size to match dataset length by extending or truncating as needed
+        args.calib_size = (args.calib_size + [args.calib_size[-1]] * len(args.dataset))[
+            : len(args.dataset)
+        ]
+
     # Create calibration dataloader with max batch size
     calib_dataloader = create_calibration_dataloader(
         tokenizer=tokenizer,
@@ -343,12 +314,7 @@ def main(args):
     )
 
     # Build quantization config
-    quant_cfg = get_quantization_config(
-        qformat=args.qformat,
-        kv_cache_qformat=args.kv_cache_qformat,
-        model_type=model_type,
-        awq_block_size=args.awq_block_size,
-    )
+    quant_cfg = build_quant_cfg(args, model_type, QUANT_CFG_CHOICES, KV_QUANT_CFG_CHOICES)
 
     # Quantize the model
     if accelerator.is_main_process:

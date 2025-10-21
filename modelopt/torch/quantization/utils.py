@@ -483,7 +483,11 @@ def set_quantizer_state_dict(model: nn.Module, quantizer_state_dict: dict):
 
 @contextmanager
 def patch_fsdp_mp_dtypes():
-    """Patch FSDP2 to handle mixed dtypes properly during quantization."""
+    """Patch FSDP2 to handle mixed dtypes properly during quantization.
+
+    This patch is used to relax the requirement of uniform original parameter dtype in FSDP2 and is
+    copied from the latest torch FSDP repository `torch/distributed/fsdp/_fully_shard/_fsdp_param_group.py <https://github.com/pytorch/pytorch/blob/c40048472cc4e28f44e8e5835cae319add231bf5/torch/distributed/fsdp/_fully_shard/_fsdp_param_group.py#L227>`_.
+    """
 
     def _init_mp_dtypes(self) -> None:
         """This function is directly copied from the latest version of torch FSDP."""
@@ -597,7 +601,23 @@ def enable_fake_quant(module):
 
 @contextmanager
 def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
-    """Context manager to update the FSDPParam list if an update is made to a submodule of an FSDPModule."""
+    """Context manager to update the FSDPParam list if an update is made to a submodule of an FSDPModule.
+
+    This context manager is to be used when updating a weight of a sharded module to ensure the changes are properly
+    reflected for future unsharding and resharding the FSDP root module. The context manager will unshard the FSDP root
+    module, register new FSDPParam/QFSDPParam for the updated modules and updates the FSDP param group list.
+
+    If reshard is True, the context manager will also reshard the FSDP root module after the weight update.
+
+    Args:
+        root_model (nn.Module): The root model of the FSDPModule.
+        modules_to_update (list): The list of modules to update which should be a list of modules that are
+            direct children of the FSDPModule.
+        reshard (bool): Whether to reshard the FSDP root module after the weight update.
+
+    Returns:
+        None
+    """
     try:
         if isinstance(root_model, FSDPModule):
             # Get FSDP root module, if none is returned, then the update is not made to a submodule of an FSDPModule
