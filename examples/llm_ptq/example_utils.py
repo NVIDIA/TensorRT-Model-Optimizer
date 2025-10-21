@@ -41,7 +41,7 @@ SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
 
 def build_quant_cfg(args, model_type, quant_cfg_choices, kv_quant_cfg_choices):
     quant_cfg = {}
-    if not args.auto_quantize_bits:
+    if not hasattr(args, "auto_quantize_bits") or not args.auto_quantize_bits:
         assert args.qformat in quant_cfg_choices, (
             f"Unsupported quantization format: {args.qformat} with {args.kv_cache_qformat} KV cache"
         )
@@ -82,7 +82,7 @@ def build_quant_cfg(args, model_type, quant_cfg_choices, kv_quant_cfg_choices):
             quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
             quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
 
-        return quant_cfg
+    return quant_cfg
 
 
 def is_speculative(hf_config):
