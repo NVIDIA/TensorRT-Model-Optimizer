@@ -16,7 +16,7 @@ export FP4_QUANT_PATH={path_to_save_quantization_results}
 export HF_FP4_PATH={path_to_save_the_final_FP4_checkpoint}
 ```
 
-### DeepSeek V3, R1 and V3.1
+### DeepSeek V3 R1 V3.1
 
 ```bash
 # download the FP8 checkpoint from Hugginface. This is an example of DeepSeek-R1
@@ -37,7 +37,7 @@ git clone https://github.com/deepseek-ai/DeepSeek-V3.2-Exp.git && cd DeepSeek-V3
 
 # Install requirements
 pip install git+https://github.com/Dao-AILab/fast-hadamard-transform.git
-pip install -r DeepSeek-V3.2-Exp/inference/requirements.txt
+pip install -r inference/requirements.txt
 ```
 
 ### Convert the Checkpoint
@@ -51,7 +51,7 @@ python inference/convert.py --hf-ckpt-path $HF_FP8_CKPT --save-path $DS_CKPT --n
 
 ### Run the calibration scripts
 
-DeepSeek V3
+DeepSeek V3, R1, V3.1
 
 ```bash
 torchrun --nproc-per-node 8 --master_port=12346 ptq.py --model_path $DS_CKPT --config DeepSeek-V3/inference/configs/config_671B.json --quant_cfg NVFP4_DEFAULT_CFG --output_path $FP4_QUANT_PATH
