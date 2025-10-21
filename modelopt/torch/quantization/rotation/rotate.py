@@ -14,7 +14,7 @@ from .rotate_utils import (
 )
 
 
-def build_rotation_config_from_yaml(yaml_path: str) -> dict:
+def build_rotation_config_from_yaml(yaml_path: str | Path) -> dict:
     """Load rotation config from YAML and build with matrices generated."""
     # Resolve path relative to this module's directory if it's a relative path
     yaml_path = Path(yaml_path)
@@ -37,9 +37,8 @@ def apply_rotation(model: torch.nn.Module, config: dict | str) -> None:
     if config.get("norm_fuse_config"):
         print("Fusing layer norms")
         fuse_layernorms(model, config["norm_fuse_config"])
-    use_float64 = config.get("use_float64", False)
+    use_float64 = config.get("use_float64", True)
 
-    # rot_mats =
     rotation_cfg = config["rotation_config"]
     rot_mat_store = RotationMatrixStore(config["rotation_matrices"], model)
     for pattern, (rin_name, rout_name) in rotation_cfg.items():

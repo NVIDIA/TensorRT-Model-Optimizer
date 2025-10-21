@@ -29,7 +29,7 @@ from warnings import warn
 
 import torch
 
-from .hadamard_utils import matmul_hadU_cuda, random_base_hadamard_matrix, random_hadamard_matrix
+from .hadamard_utils import matmul_had_u_cuda, random_base_hadamard_matrix, random_hadamard_matrix
 
 
 def _iter_modules_by_pattern(
@@ -305,8 +305,8 @@ def matmul_diag_fast_hadamard(m1, had_k, transpose=False, block_size=None):
         shape = m1.shape
         m1 = m1.view(*shape[:-1], shape[-1] // block_size, block_size)
 
-        return matmul_hadU_cuda(m1, None).view(*shape)
-    return matmul_hadU_cuda(m1, had_k)
+        return matmul_had_u_cuda(m1, None).view(*shape)
+    return matmul_had_u_cuda(m1, had_k)
 
 
 def with_dtensor_support(rotation_fn):
