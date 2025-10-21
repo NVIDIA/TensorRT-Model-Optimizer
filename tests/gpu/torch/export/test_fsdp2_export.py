@@ -14,12 +14,14 @@
 # limitations under the License.
 from __future__ import annotations
 
+import copy
 from functools import partial
 
 import pytest
 import torch
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
+from _test_utils.torch_dist.dist_utils import get_device_counts, spawn_multiprocess_job
 from _test_utils.torch_export.export_utils import SmallQKVModel, ToyModel
+from torch.distributed._composable.fsdp import fully_shard
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.export.layer_utils import is_quantlinear
@@ -117,10 +119,6 @@ def _compare_parameters_and_buffers(model1, model2):
 
 
 def _fuse_layers(rank, size, quant_config):
-    import copy
-
-    from torch.distributed._composable.fsdp import fully_shard
-
     with patch_fsdp_mp_dtypes():
         # Initialize model
         model = SmallQKVModel(dim=32).to("cuda")
@@ -216,7 +214,7 @@ def _export_quantized_weight_test(rank, size, quant_config):
         _compare_parameters_and_buffers(model, non_fsdp_model)
 
 
-@pytest.mark.parametrize("device_count", [2])
+@pytest.mark.parametrize("device_count", get_device_counts())
 def test_fsdp2_weight_compress_context_for_export(device_count):
     spawn_multiprocess_job(
         size=device_count,
@@ -225,7 +223,7 @@ def test_fsdp2_weight_compress_context_for_export(device_count):
     )
 
 
-@pytest.mark.parametrize("device_count", [2])
+@pytest.mark.parametrize("device_count", get_device_counts())
 def test_fsdp2_weight_update_context_for_export(device_count):
     spawn_multiprocess_job(
         size=device_count,
@@ -250,7 +248,7 @@ def test_fsdp2_weight_update_context_for_export(device_count):
         mtq.NVFP4_MLP_ONLY_CFG,
     ],
 )
-@pytest.mark.parametrize("device_count", [2])
+@pytest.mark.parametrize("device_count", get_device_counts())
 def test_fsdp2_weight_update_context_for_fuse_layers(device_count, quant_config):
     spawn_multiprocess_job(
         size=device_count,
@@ -275,7 +273,7 @@ def test_fsdp2_weight_update_context_for_fuse_layers(device_count, quant_config)
         mtq.NVFP4_MLP_ONLY_CFG,
     ],
 )
-@pytest.mark.parametrize("device_count", [2])
+@pytest.mark.parametrize("device_count", get_device_counts())
 def test_fsdp2_weight_update_context_for_export_quantized_weight(device_count, quant_config):
     spawn_multiprocess_job(
         size=device_count,

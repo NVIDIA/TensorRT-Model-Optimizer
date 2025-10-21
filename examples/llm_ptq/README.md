@@ -257,7 +257,7 @@ accelerate launch --config_file fsdp2.yaml \
     --qformat <fp8/nvfp4/nvfp4_awq/int4_awq/int8_sq> \
     --kv_cache_quant <fp8/nvfp4/nvfp4_affine/none> \
     --batch_size <calib_batch_size> \
-    --calib-size <no_calib_samples> \
+    --calib_size <num_calib_samples> \
     --dataset <dataset> \
     --export_path <export_path> \
     --trust_remote_code 

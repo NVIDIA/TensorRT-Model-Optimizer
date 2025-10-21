@@ -112,18 +112,20 @@ def parse_args():
 
 def load_and_prepare_model(
     model_path: str,
+    calib_dataloader: torch.utils.data.DataLoader,
     accelerator: Accelerator,
     trust_remote_code: bool = False,
-) -> tuple[nn.Module, str, list[str]]:
+) -> tuple[nn.Module, str, list[str], torch.utils.data.DataLoader]:
     """Load model and prepare it for FSDP2 distributed execution.
 
     Args:
         model_path: Path to the HuggingFace model
+        calibration_dataloader: Calibration dataloader to be sharded for calibration
         accelerator: Accelerate Accelerator instance
         trust_remote_code: Whether to trust remote code
 
     Returns:
-        Tuple of (prepared_model, model_type)
+        Tuple of (prepared_model, model_type, original_architectures, calibration_dataloader)
     """
     model = AutoModelForCausalLM.from_pretrained(
         model_path,
@@ -138,9 +140,9 @@ def load_and_prepare_model(
 
     # FSDP2 requires an optimizer to be prepared together with the model
     dummy_optimizer = torch.optim.SGD(model.parameters(), lr=0.0)
-    model, _ = accelerator.prepare(model, dummy_optimizer)
+    model, _, calibration_dataloader = accelerator.prepare(model, dummy_optimizer, calib_dataloader)
 
-    return model, model_type, original_architectures
+    return model, model_type, original_architectures, calibration_dataloader
 
 
 def create_calibration_dataloader(
@@ -213,10 +215,6 @@ def get_quantization_config(
     if enable_kv_quant:
         kv_cfg = getattr(mtq, KV_QUANT_CFG_CHOICES[kv_cache_qformat])["quant_cfg"]
         quant_cfg = apply_kv_cache_quant(quant_cfg, kv_cfg)
-
-    # Model-specific adjustments
-    if model_type == "gemma" and "int8_sq" in qformat:
-        quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
 
     return quant_cfg
 
@@ -328,7 +326,7 @@ def main(args):
     tokenizer = get_tokenizer(args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code)
     tokenizer.padding_side = "left"  # Left padding for better calibration
 
-    # Create calibration dataloader
+    # Create calibration dataloader with max batch size
     calib_dataloader = create_calibration_dataloader(
         tokenizer=tokenizer,
         dataset_names=args.dataset,
@@ -337,8 +335,9 @@ def main(args):
     )
 
     # Load and prepare model
-    model, model_type, original_architectures = load_and_prepare_model(
+    model, model_type, original_architectures, calib_dataloader = load_and_prepare_model(
         model_path=args.pyt_ckpt_path,
+        calib_dataloader=calib_dataloader,
         accelerator=accelerator,
         trust_remote_code=args.trust_remote_code,
     )
