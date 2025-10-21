@@ -151,7 +151,7 @@ def convert_fp8_ckpt_to_nvfp4(
     per_layer_quant_config,
 ):
     def amax_to_nvfp4_scaling_factor_2(amax):
-        return amax.float() / 6.0 / 448.0
+        return amax.float() / (6.0 * 448.0)
 
     def amax_to_fp8_scaling_factor(amax):
         return amax.float() / 448.0

@@ -198,6 +198,26 @@ def monkey_patch_deepseek_model():
             self.kv_bmm_quantizer = TensorQuantizer()
             self.pe_bmm_quantizer = TensorQuantizer()
 
+    class CalibMoe(deekseep_model.MoE):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._setup()
+
+        def _setup(self):
+            self._original_topk = self.gate.topk
+            self._original_topk_groups = self.gate.topk_groups
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            # Forward all tokens to all experts for calibration
+            self.gate.topk = self.n_routed_experts
+            self.gate.topk_groups = self.gate.n_groups
+            super().forward(x)
+            # Restore the original topk and topk_groups
+            self.gate.topk = self._original_topk
+            self.gate.topk_groups = self._original_topk_groups
+
+            return super().forward(x)
+
     mtq.register(
         original_cls=deekseep_model.RowParallelLinear,
         quantized_cls=QuantRowParallelLinear,
@@ -208,6 +228,7 @@ def monkey_patch_deepseek_model():
     )
     mtq.register(original_cls=deekseep_model.Linear, quantized_cls=QuantLinear)
     mtq.register(original_cls=deekseep_model.MLA, quantized_cls=QuantMLA)
+    mtq.register(original_cls=deekseep_model.MoE, quantized_cls=CalibMoe)
 
 
 def load_deepseek_model(model_config: str, model_path: str, batch_size: int):
@@ -318,6 +339,13 @@ def save_amax_and_quant_config(model, output_path: str, enable_fp8_kvcache: bool
         state_dict_filter(model.state_dict()),
         os.path.join(output_path, f"amax_dict_rank{rank}-mp{world_size}.pt"),
     )
+
+    # if rank == 0:
+    #     with open("expert_activation_counts.txt", "w") as f:
+    #         for name, module in model.named_modules():
+    #             if isinstance(module, deekseep_model.MoE):
+    #                 counts = module.activated_expert_counts()
+    #                 f.writelines(f"{name}: {count}\n" for count in counts)
 
     quant_config = get_quant_config(model.named_modules())
 
