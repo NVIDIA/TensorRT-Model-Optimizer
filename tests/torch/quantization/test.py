@@ -38,7 +38,7 @@ def test_overall_rotation():
     # kwargs.update(**config_kwargs)
     tiny_llama = LlamaForCausalLM(LlamaConfig(**kwargs))
     # tiny_llama = get_tiny_llama()
-    config = "modelopt/torch/quantization/rotation/configs/test_r1.yaml"
+    config = "modelopt/torch/quantization/rotation/configs/transformer_universal.yaml"
     device = "cuda"
     print("Device:", device)
     print("Tiny Llama:", tiny_llama)

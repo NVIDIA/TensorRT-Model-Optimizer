@@ -4,7 +4,13 @@ import torch
 import yaml
 
 from .online_rotations import OnlineHadamardTransform, create_online_transform_hook
-from .rotate_utils import RotationMatrixStore, _iter_modules_by_pattern, rotate_bias, rotate_weight
+from .rotate_utils import (
+    RotationMatrixStore,
+    _iter_modules_by_pattern,
+    fuse_layernorms,
+    rotate_bias,
+    rotate_weight,
+)
 
 # def _apply_weight_rotation(
 #     weight: torch.Tensor, rin: torch.Tensor | None, rout: torch.Tensor | None
@@ -117,12 +123,11 @@ def apply_rotation(model: torch.nn.Module, config: dict | str) -> None:
         config = build_rotation_config_from_yaml(config, model)
     if config.get("norm_fuse_config"):
         print("Fusing layer norms")
-        # fuse_layernorms(model, config["norm_fuse_config"])
+        fuse_layernorms(model, config["norm_fuse_config"])
 
     # rot_mats =
     rotation_cfg = config["rotation_config"]
     rot_mat_store = RotationMatrixStore(config["rotation_matrices"], model)
-
     for pattern, (rin_name, rout_name) in rotation_cfg.items():
         for module_name, module in _iter_modules_by_pattern(model, pattern):
             if not hasattr(module, "weight"):

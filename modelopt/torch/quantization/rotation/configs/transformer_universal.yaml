@@ -2,9 +2,11 @@
 
 rotation_matrices:
   r1:
+    dim: "hidden_size"  # can be a value in model.config
     mode: hadamard
     per_layer: false
   r2:
+    dim: "head_dim"
     mode: hadamard
     per_layer: true
 

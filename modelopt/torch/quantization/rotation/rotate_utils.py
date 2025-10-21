@@ -44,14 +44,17 @@ def fuse_ln_linear(
         linear.weight.data = (w_ * layernorm.weight.double()).to(linear_dtype)
 
         if hasattr(layernorm, "bias"):
+            print(f"Fusing bias for {linear.weight.shape} and {layernorm.weight.shape}")
             if linear.bias is None:
                 linear.bias = torch.nn.Parameter(
                     torch.zeros(linear.out_features, dtype=torch.float64)
                 )
             linear.bias.data = linear.bias.data.double() + torch.matmul(w_, layernorm.bias.double())
             linear.bias.data = linear.bias.data.to(linear_dtype)
-            torch.nn.init.zeros_(layernorm.bias)
+
     torch.nn.init.ones_(layernorm.weight)
+    if hasattr(layernorm, "bias"):
+        torch.nn.init.zeros_(layernorm.bias)
 
 
 @torch.no_grad()
@@ -65,20 +68,24 @@ def fuse_layernorms(model: torch.nn.Module, norm_fuse_config: dict) -> None:
             - lm_head_fuse: List[tuple[str, str]] - lm head norm fusions
     """
     # Embedding fusion
-    emb_module = model.model.embed_tokens
-    emb_weight = emb_module.weight.data.double()
-    emb_module.weight.data = (emb_weight - emb_weight.mean(dim=-1, keepdim=True)).to(
-        emb_module.weight.dtype
-    )
+    # emb_module = model.model.embed_tokens
+    # emb_weight = emb_module.weight.data.double()
+    # emb_module.weight.data = (emb_weight - emb_weight.mean(dim=-1, keepdim=True)).to(
+    #     emb_module.weight.dtype
+    # )
 
     for name, module in model.named_modules():
         if re.search("layers\\.[0-9]+$", name) is not None:
             for layer_norm, linear_layers in norm_fuse_config.get("decoder_layer_fuse", []):
+                print(
+                    f"Fusing layer norm {layer_norm} and linear layers {linear_layers} for {name}"
+                )
                 fuse_ln_linear(
                     module.get_submodule(layer_norm),
                     [module.get_submodule(linear) for linear in linear_layers],
                 )
     for layer_norm, linear in norm_fuse_config.get("lm_head_fuse", []):
+        print(f"Fusing layer norm {layer_norm} and linear {linear} for model")
         fuse_ln_linear(model.get_submodule(layer_norm), [model.get_submodule(linear)])
 
 
