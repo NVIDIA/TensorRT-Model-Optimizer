@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import argparse
+import time
 
 import torch
 from onnx_utils.export import (
@@ -56,6 +57,34 @@ def generate_image(pipe, prompt, image_name):
     ).images[0]
     image.save(image_name)
     print(f"Image generated saved as {image_name}")
+
+
+def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10):
+    """Benchmark the model inference time."""
+    # Warmup runs
+    for _ in range(num_warmup):
+        _ = pipe(
+            prompt,
+            output_type="pil",
+            num_inference_steps=30,
+            generator=torch.Generator("cuda").manual_seed(42),
+        )
+
+    # Benchmark runs
+    torch.cuda.synchronize()
+    start = time.time()
+    for _ in range(num_runs):
+        _ = pipe(
+            prompt,
+            output_type="pil",
+            num_inference_steps=30,
+            generator=torch.Generator("cuda").manual_seed(42),
+        )
+        torch.cuda.synchronize()
+    end = time.time()
+
+    avg_latency = (end - start) / num_runs * 1000  # Convert to ms
+    return avg_latency
 
 
 def main():
@@ -101,6 +130,9 @@ def main():
         "--torch", action="store_true", help="Generate an image using the torch pipeline"
     )
     parser.add_argument("--save-image-as", type=str, default=None, help="Name of the image to save")
+    parser.add_argument(
+        "--benchmark", action="store_true", help="Benchmark the model inference time"
+    )
     args = parser.parse_args()
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
@@ -131,6 +163,12 @@ def main():
         elif hasattr(pipe, "unet"):
             pipe.unet = backbone
         pipe.to("cuda")
+
+        if args.benchmark:
+            # Benchmark the torch model
+            torch_latency = benchmark_model(pipe, args.prompt)
+            print(f"Inference latency of the torch pipeline is {torch_latency:.2f} ms")
+
         generate_image(pipe, args.prompt, image_name)
         return
 
@@ -214,7 +252,10 @@ def main():
     generate_image(pipe, args.prompt, image_name)
     print(f"Image generated using {args.model} model saved as {image_name}")
 
-    print(f"Inference latency of the backbone of the pipeline is {device_model.get_latency()} ms")
+    if args.benchmark:
+        print(
+            f"Inference latency of the backbone of the pipeline is {device_model.get_latency()} ms"
+        )
 
 
 if __name__ == "__main__":
