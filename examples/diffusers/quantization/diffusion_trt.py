@@ -60,30 +60,47 @@ def generate_image(pipe, prompt, image_name):
 
 
 def benchmark_model(pipe, prompt, num_warmup=3, num_runs=10):
-    """Benchmark the model inference time."""
-    # Warmup runs
-    for _ in range(num_warmup):
-        _ = pipe(
-            prompt,
-            output_type="pil",
-            num_inference_steps=30,
-            generator=torch.Generator("cuda").manual_seed(42),
-        )
+    """Benchmark the backbone model inference time."""
+    backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
-    # Benchmark runs
-    torch.cuda.synchronize()
-    start = time.time()
-    for _ in range(num_runs):
-        _ = pipe(
-            prompt,
-            output_type="pil",
-            num_inference_steps=30,
-            generator=torch.Generator("cuda").manual_seed(42),
-        )
+    backbone_times = []
+
+    def forward_pre_hook(module, input):
         torch.cuda.synchronize()
-    end = time.time()
+        module._start_time = time.time()
 
-    avg_latency = (end - start) / num_runs * 1000  # Convert to ms
+    def forward_hook(module, input, output):
+        torch.cuda.synchronize()
+        module._end_time = time.time()
+        backbone_times.append((module._end_time - module._start_time) * 1000)  # Convert to ms
+
+    pre_handle = backbone.register_forward_pre_hook(forward_pre_hook)
+    post_handle = backbone.register_forward_hook(forward_hook)
+
+    try:
+        for _ in range(num_warmup):
+            _ = pipe(
+                prompt,
+                output_type="pil",
+                num_inference_steps=10,
+                generator=torch.Generator("cuda").manual_seed(42),
+            )
+
+        backbone_times.clear()
+
+        for _ in range(num_runs):
+            _ = pipe(
+                prompt,
+                output_type="pil",
+                num_inference_steps=10,
+                generator=torch.Generator("cuda").manual_seed(42),
+            )
+    finally:
+        pre_handle.remove()
+        post_handle.remove()
+
+    total_backbone_time = sum(backbone_times)
+    avg_latency = total_backbone_time / num_runs
     return avg_latency
 
 
