@@ -510,10 +510,6 @@ class PrecisionConverter:
             low_precision_nodes: List of node names that should use low precision initializers.
             high_precision_nodes: List of node names that should use high precision initializers.
         """
-        assert self.init_conversion_max_bytes == np.inf, (
-            "init_conversion_max_bytes not support for v2 version yet."
-        )
-
         # 1. Compute a mapping from initiailizers to high precision nodes & low precision nodes that use them.
         low_precision_nodes_set: set[str] = set(low_precision_nodes)
         high_precision_nodes_set: set[str] = set(high_precision_nodes)
