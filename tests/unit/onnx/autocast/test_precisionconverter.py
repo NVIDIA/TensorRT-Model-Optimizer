@@ -1174,6 +1174,7 @@ def test_casted_input_to_output_model(
     )
     onnx.checker.check_model(converted_model)
 
+
 @pytest.fixture
 def create_model_with_resize_op():
     """
@@ -1300,6 +1301,7 @@ def test_resize_op_initializer_conversion(
         high_precision_nodes=[], low_precision_nodes=[node.name for node in model.graph.node]
     )
     onnx.checker.check_model(converted_model)
+
 
 @pytest.mark.parametrize("keep_io_types", [True, False])
 @pytest.mark.parametrize("low_precision_type", ["fp16", "bf16"])
