@@ -555,3 +555,121 @@ def build_convtranspose_conv_residual_model():
     onnx.checker.check_model(model_inferred)
 
     return model_inferred
+
+
+def build_conv_batchnorm_sig_mul_model():
+    # Define your model inputs and outputs
+    input_names = ["input_0"]
+    output_names = ["output_0"]
+    input_shapes = [(6, 48, 64, 176)]
+    output_shapes = [(6, 48, 64, 176)]
+
+    inputs = [
+        helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, input_shape)
+        for input_name, input_shape in zip(input_names, input_shapes)
+    ]
+    outputs = [
+        helper.make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, output_shape)
+        for output_name, output_shape in zip(output_names, output_shapes)
+    ]
+
+    # Create the ONNX graph with the nodes
+    nodes = [
+        helper.make_node(
+            op_type="Relu",
+            inputs=["input_0"],
+            outputs=["relu0_relu/Relu:0"],
+            name="relu0_relu/Relu",
+        ),
+        helper.make_node(
+            op_type="Conv",
+            inputs=["relu0_relu/Relu:0", "weights_1"],
+            outputs=["conv1_conv/Conv2D:0"],
+            name="conv1_conv/Conv2D",
+            dilations=[1, 1],
+            group=1,
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
+            strides=[1, 1],
+        ),
+        helper.make_node(
+            op_type="BatchNormalization",
+            inputs=["conv1_conv/Conv2D:0", "bn1_scale", "bn1_bias", "bn1_mean", "bn1_var"],
+            outputs=["bn1_batchnorm/BatchNormalization:0"],
+            name="bn1_batchnorm/BatchNormalization",
+        ),
+        helper.make_node(
+            op_type="Sigmoid",
+            inputs=["bn1_batchnorm/BatchNormalization:0"],
+            outputs=["sig1_sigmoid/Sigmoid:0"],
+            name="sig1_sigmoid/Sigmoid",
+        ),
+        helper.make_node(
+            op_type="Mul",
+            inputs=["sig1_sigmoid/Sigmoid:0", "bn1_batchnorm/BatchNormalization:0"],
+            outputs=["mul1_mul/Mul:0"],
+            name="mul1_mul/Mul",
+        ),
+        helper.make_node(
+            op_type="Add",
+            inputs=["relu0_relu/Relu:0", "mul1_mul/Mul:0"],
+            outputs=["add1_add/Add:0"],
+            name="add1_add/Add",
+        ),
+        helper.make_node(
+            op_type="Relu",
+            inputs=["add1_add/Add:0"],
+            outputs=["output_0"],
+            name="relu2_relu/Relu",
+        ),
+    ]
+
+    # Create the ONNX initializers
+    initializers = [
+        helper.make_tensor(
+            name="weights_1",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(48, 48, 3, 3),
+            vals=np.random.uniform(low=0.5, high=1.0, size=48 * 48 * 3 * 3),
+        ),
+        helper.make_tensor(
+            name="bn1_scale",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(48,),
+            vals=np.random.uniform(low=0.5, high=1.0, size=48),
+        ),
+        helper.make_tensor(
+            name="bn1_bias",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(48,),
+            vals=np.random.uniform(low=0.5, high=1.0, size=48),
+        ),
+        helper.make_tensor(
+            name="bn1_mean",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(48,),
+            vals=np.random.uniform(low=0.5, high=1.0, size=48),
+        ),
+        helper.make_tensor(
+            name="bn1_var",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(48,),
+            vals=np.random.uniform(low=0.5, high=1.0, size=48),
+        ),
+    ]
+
+    # Create the ONNX graph with the nodes and initializers
+    graph = helper.make_graph(
+        nodes, "conv_batchnorm_sig_mul", inputs, outputs, initializer=initializers
+    )
+
+    # Create the ONNX model
+    model = helper.make_model(graph)
+    model.opset_import[0].version = 13
+    model.ir_version = 10
+
+    # Check the ONNX model
+    model_inferred = onnx.shape_inference.infer_shapes(model)
+    onnx.checker.check_model(model_inferred)
+
+    return model_inferred

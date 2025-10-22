@@ -201,6 +201,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             ["BatchNormalization", "BiasAdd", conv_type],
             ["Relu", "BatchNormalization", "BiasAdd", conv_type],
             ["MaxPool", "Relu", "BatchNormalization", "BiasAdd", conv_type],
+            ["Mul", "Sigmoid", "BatchNormalization", conv_type],
         ]
     for idx, path_type in enumerate(fusible_linear_path_types):
         if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=[]):
