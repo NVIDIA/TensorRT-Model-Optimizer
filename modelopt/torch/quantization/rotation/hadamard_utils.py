@@ -203,7 +203,7 @@ def random_hadamard_matrix(size, device):
     return matmul_had_u(q).to(device)
 
 
-def random_base_hadamard_matrix(size, device):
+def get_base_hadamard_matrix(size, device):
     """Generate a random base Hadamard matrix using Sylvester's construction.
 
     This function creates a Hadamard matrix using scipy's implementation of

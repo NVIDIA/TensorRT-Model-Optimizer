@@ -29,7 +29,7 @@ from warnings import warn
 
 import torch
 
-from .hadamard_utils import matmul_had_u_cuda, random_base_hadamard_matrix, random_hadamard_matrix
+from .hadamard_utils import get_base_hadamard_matrix, matmul_had_u_cuda, random_hadamard_matrix
 
 
 def _iter_modules_by_pattern(
@@ -190,7 +190,7 @@ def get_orthogonal_matrix(size: int, mode: str, device: torch.device) -> torch.T
     if mode == "hadamard":
         return random_hadamard_matrix(size, device)
     if mode == "base_hadamard":
-        return random_base_hadamard_matrix(size, device)
+        return get_base_hadamard_matrix(size, device)
     raise ValueError(f"Unknown rotation matrix mode: {mode}")
 
 
@@ -371,7 +371,7 @@ def with_dtensor_support(rotation_fn):
 
 
 def _rotate_weight_impl(
-    weight, input_spin, output_spin, fast_hadamard=False, block_size=None, use_float64=False
+    weight, input_spin, output_spin, fast_hadamard=False, block_size=None, use_float64=True
 ):
     """Core implementation of weight rotation (non-DTensor version).
 
@@ -430,7 +430,7 @@ def _rotate_weight_impl(
 
 @with_dtensor_support
 def rotate_weight(
-    weight, input_spin, output_spin, fast_hadamard=False, block_size=None, use_float64=False
+    weight, input_spin, output_spin, fast_hadamard=False, block_size=None, use_float64=True
 ):
     """Rotating a matrix with DTensor support.
 
@@ -456,7 +456,7 @@ def rotate_weight(
     )
 
 
-def _rotate_bias_impl(bias, output_spin, fast_hadamard=False, block_size=None, use_float64=False):
+def _rotate_bias_impl(bias, output_spin, fast_hadamard=False, block_size=None, use_float64=True):
     """Core implementation of bias rotation (non-DTensor version).
 
     Applies output rotation matrix to bias vector: bias @ output_spin^T.
@@ -501,7 +501,7 @@ def _rotate_bias_impl(bias, output_spin, fast_hadamard=False, block_size=None, u
 
 
 @with_dtensor_support
-def rotate_bias(bias, output_spin, fast_hadamard=False, block_size=None, use_float64=False):
+def rotate_bias(bias, output_spin, fast_hadamard=False, block_size=None, use_float64=True):
     """Rotate a bias with DTensor support.
 
     This function supports both regular tensors and DTensors. For DTensors:
@@ -585,8 +585,6 @@ class RotationMatrixStore:
         # let's initialize the matrices on cpu first, then move to the device of the model
         self.init_matrices(device="cpu")
 
-    # def format_matrix_name(self, name):
-    #     return f"rotation_{name}"
     def is_fast_hadamard(self, name):
         """Check if the rotation matrix is a fast Hadamard matrix.
 

@@ -30,10 +30,14 @@ def build_rotation_config_from_yaml(yaml_path: str | Path) -> dict:
     return config
 
 
-def apply_rotation(model: torch.nn.Module, config: dict | str) -> None:
-    """Apply R1/R2 rotations to model weights and register online transforms."""
-    if isinstance(config, str):
-        config = build_rotation_config_from_yaml(config)
+def apply_rotation(model: torch.nn.Module, config: str) -> None:
+    """Apply R1/R2 rotations to model weights and register online transforms.
+
+    Args:
+        model (torch.nn.Module): The model to apply rotations to.
+        config (str): The path to the YAML configuration file.
+    """
+    config = build_rotation_config_from_yaml(config)
     if config.get("norm_fuse_config"):
         print("Fusing layer norms")
         fuse_layernorms(model, config["norm_fuse_config"])

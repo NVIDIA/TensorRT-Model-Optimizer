@@ -135,8 +135,17 @@ def postprocess_amax(model: nn.Module, key: str, post_process_fn) -> nn.Module:
     return model
 
 
-def rotate(model: nn.Module, config: dict | str) -> nn.Module:
-    apply_rotation(model, config)
+def rotate(model: nn.Module, config_path_or_name: str) -> nn.Module:
+    """Preprocess model weights by applying rotations for improved quantization accuracy.
+
+    Args:
+        model (nn.Module): The model to apply rotations to.
+        config_path_or_name (str): The path to the YAML configuration file or the name of a supported configuration.
+
+    Returns:
+        nn.Module: The model with the rotations applied.
+    """
+    apply_rotation(model, config_path_or_name)
     return model
 
 
