@@ -108,6 +108,35 @@ Here is an example of a quantization config:
         }
     }
 
+Rotation Preprocessing
+----------------------
+
+Rotation preprocessing can be enabled to improve quantization quality by removing outliers from
+weight distributions. This implements R1 (global) and R2 (per-layer, per-head) rotations that
+permanently transform model weights before quantization.
+
+To enable rotation, add the ``"rotation"`` field as a top-level key:
+
+.. code-block:: python
+
+    config = {
+        "quant_cfg": {
+            "*weight_quantizer": {"num_bits": 4, "axis": 0},
+            "*input_quantizer": {"enable": False},
+        },
+        "algorithm": "max",  # or "awq", "smoothquant", etc.
+        "rotation": {
+            "enabled": True,
+            "config_path": "configs/transformer_universal.yaml",  # Optional
+        },
+    }
+
+    model = mtq.quantize(model, config, forward_loop)
+
+The rotation preprocessing happens before quantization and permanently transforms the model weights
+(zero runtime overhead). Rotation matrices are generated based on the specified mode (hadamard or random).
+It is compatible with all quantization algorithms and formats.
+
 .. _example-quantization-configs:
 
 Example Quantization Configurations
@@ -137,7 +166,7 @@ the layer named ``lm_head``,  you can create a custom config and quantize your m
 """
 
 from collections.abc import Callable
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
@@ -1164,6 +1193,13 @@ class QuantizeConfig(ModeloptBaseConfig):
         title="Calibration algorithm, see :meth:`calibrate <modelopt.torch.quantization.model_quant.calibrate>` "
         "for more details.",
         validate_default=True,
+    )
+
+    rotation: dict[str, Any] | None = ModeloptField(
+        default=None,
+        title="Rotation preprocessing configuration",
+        description="Optional rotation to apply before quantization. "
+        "Rotation permanently transforms model weights to remove outliers.",
     )
 
 
