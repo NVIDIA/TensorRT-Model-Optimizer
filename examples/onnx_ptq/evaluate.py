@@ -38,8 +38,14 @@ def main():
     parser.add_argument(
         "--engine_path",
         type=str,
-        required=True,
+        default=None,
         help="Path to the TensorRT engine",
+    )
+    parser.add_argument(
+        "--timing_cache_path",
+        type=str,
+        default=None,
+        help="Path to the TensorRT timing cache",
     )
     parser.add_argument(
         "--imagenet_path", type=str, default=None, help="Path to the imagenet dataset"
@@ -81,6 +87,7 @@ def main():
     # Compile the ONNX model to TRT engine and create the device model
     compilation_args = {
         "engine_path": args.engine_path,
+        "timing_cache_path": args.timing_cache_path,
     }
     compiled_model = client.ir_to_compiled(onnx_bytes, compilation_args)
     device_model = DeviceModel(client, compiled_model, metadata={})
