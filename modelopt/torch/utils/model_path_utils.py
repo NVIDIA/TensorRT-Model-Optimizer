@@ -23,6 +23,7 @@ from pathlib import Path
 
 try:
     from huggingface_hub import hf_hub_download, snapshot_download
+
     HF_HUB_AVAILABLE = True
 except ImportError:
     hf_hub_download = None
@@ -32,6 +33,7 @@ except ImportError:
 try:
     from transformers import AutoConfig
     from transformers.utils import TRANSFORMERS_CACHE
+
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     AutoConfig = None
@@ -39,10 +41,10 @@ except ImportError:
     TRANSFORMERS_AVAILABLE = False
 
 __all__ = [
+    "ModelPathResolver",
+    "fetch_model_config",
     "is_huggingface_model_id",
     "resolve_model_path",
-    "fetch_model_config",
-    "ModelPathResolver",
 ]
 
 
@@ -197,7 +199,9 @@ def resolve_model_path(
 
     # If all else fails and we're not supposed to download, raise an error
     if not download_files:
-        raise ValueError(f"Could not resolve model path for {model_name_or_path} and download_files=False")
+        raise ValueError(
+            f"Could not resolve model path for {model_name_or_path} and download_files=False"
+        )
 
     # Last resort: return the original path (might work for some use cases)
     warnings.warn(f"Could not resolve model path for {model_name_or_path}, returning original path")
@@ -250,11 +254,7 @@ def fetch_model_config(
 
     try:
         # Download only the specific config file
-        config_path = hf_hub_download(
-            repo_id=model_id,
-            filename=filename,
-            repo_type="model"
-        )
+        config_path = hf_hub_download(repo_id=model_id, filename=filename, repo_type="model")
 
         with open(config_path) as f:
             return json.load(f)
@@ -346,7 +346,6 @@ class ModelPathResolver:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
-        pass
 
     def __str__(self) -> str:
         """String representation."""
