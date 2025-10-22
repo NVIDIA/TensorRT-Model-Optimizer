@@ -23,6 +23,8 @@ def kv_cache_quantize(
     intermediate_generated_files: list[str] = [],
     calibration_method: str | None = None, # "awq_clip", "awq_lite", "rtn_dq"
 ) -> onnx.ModelProto:
+    if kv_cache_type == "NONE":
+        kv_cache_type = "fp8"
     
     logger.info(f"Start kv cache quantization with kv_cache_type {kv_cache_type}, "
                 f"kv_quant_mode {kv_quant_mode}, calibration_method {calibration_method}")
