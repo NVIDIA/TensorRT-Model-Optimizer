@@ -90,7 +90,7 @@ def is_huggingface_model_id(model_path: str) -> bool:
         invalid_chars = ["\\", ":", "*", "?", '"', "<", ">", "|"]
         if not any(char in model_path for char in invalid_chars):
             # Make sure it doesn't look like a local relative path
-            return not (model_path.startswith("./") or model_path.startswith("../"))
+            return not model_path.startswith(("./", "../"))
 
     return False
 
@@ -294,6 +294,14 @@ class ModelPathResolver:
         download_files: bool = True,
         allow_patterns: list[str] | None = None,
     ):
+        """Initialize the ModelPathResolver.
+
+        Args:
+            model_name_or_path: Either a local directory path or HuggingFace model ID
+            trust_remote_code: Whether to trust remote code when loading
+            download_files: Whether to download files if not found in cache
+            allow_patterns: List of file patterns to download
+        """
         self.model_name_or_path = model_name_or_path
         self.trust_remote_code = trust_remote_code
         self.download_files = download_files
