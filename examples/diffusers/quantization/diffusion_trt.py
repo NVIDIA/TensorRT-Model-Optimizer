@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import argparse
-import time
 
 import torch
 from onnx_utils.export import (
@@ -65,15 +64,16 @@ def benchmark_model(pipe, prompt, num_warmup=10, num_runs=50, num_inference_step
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
     backbone_times = []
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
 
-    def forward_pre_hook(module, input):
-        torch.cuda.synchronize()
-        module._start_time = time.time()
+    def forward_pre_hook(_module, _input):
+        start_event.record()
 
-    def forward_hook(module, input, output):
+    def forward_hook(_module, _input, _output):
+        end_event.record()
         torch.cuda.synchronize()
-        module._end_time = time.time()
-        backbone_times.append((module._end_time - module._start_time) * 1000)  # Convert to ms
+        backbone_times.append(start_event.elapsed_time(end_event))
 
     pre_handle = backbone.register_forward_pre_hook(forward_pre_hook)
     post_handle = backbone.register_forward_hook(forward_hook)
