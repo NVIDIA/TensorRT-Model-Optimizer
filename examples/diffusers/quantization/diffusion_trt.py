@@ -59,7 +59,9 @@ def generate_image(pipe, prompt, image_name):
     print(f"Image generated saved as {image_name}")
 
 
-def benchmark_model(pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20):
+def benchmark_model(
+    pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20, model_dtype="Half"
+):
     """Benchmark the backbone model inference time."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
 
@@ -81,23 +83,25 @@ def benchmark_model(pipe, prompt, num_warmup=10, num_runs=50, num_inference_step
     try:
         print(f"Starting warmup: {num_warmup} runs")
         for _ in tqdm(range(num_warmup), desc="Warmup"):
-            _ = pipe(
-                prompt,
-                output_type="pil",
-                num_inference_steps=num_inference_steps,
-                generator=torch.Generator("cuda").manual_seed(42),
-            )
+            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
+                _ = pipe(
+                    prompt,
+                    output_type="pil",
+                    num_inference_steps=num_inference_steps,
+                    generator=torch.Generator("cuda").manual_seed(42),
+                )
 
         backbone_times.clear()
 
         print(f"Starting benchmark: {num_runs} runs")
         for _ in tqdm(range(num_runs), desc="Benchmark"):
-            _ = pipe(
-                prompt,
-                output_type="pil",
-                num_inference_steps=num_inference_steps,
-                generator=torch.Generator("cuda").manual_seed(42),
-            )
+            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
+                _ = pipe(
+                    prompt,
+                    output_type="pil",
+                    num_inference_steps=num_inference_steps,
+                    generator=torch.Generator("cuda").manual_seed(42),
+                )
     finally:
         pre_handle.remove()
         post_handle.remove()
@@ -156,6 +160,9 @@ def main():
     parser.add_argument(
         "--benchmark", action="store_true", help="Benchmark the model backbone inference time"
     )
+    parser.add_argument(
+        "--torch-compile", action="store_true", help="Use torch.compile() on the backbone model"
+    )
     parser.add_argument("--skip-image", action="store_true", help="Skip image generation")
     args = parser.parse_args()
 
@@ -181,6 +188,13 @@ def main():
     if args.restore_from:
         mto.restore(backbone, args.restore_from)
 
+    if args.torch_compile:
+        assert args.model_dtype in ["BFloat16", "Float", "Half"], (
+            "torch.compile() only supports BFloat16 and Float"
+        )
+        print("Compiling backbone with torch.compile()...")
+        backbone = torch.compile(backbone, mode="max-autotune")
+
     if args.torch:
         if hasattr(pipe, "transformer"):
             pipe.transformer = backbone
@@ -189,7 +203,7 @@ def main():
         pipe.to("cuda")
 
         if args.benchmark:
-            benchmark_model(pipe, args.prompt)
+            benchmark_model(pipe, args.prompt, model_dtype=args.model_dtype)
 
         if not args.skip_image:
             generate_image(pipe, args.prompt, image_name)
