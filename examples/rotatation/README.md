@@ -69,7 +69,7 @@ from transformers import AutoModelForCausalLM
 model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
 
 # Apply rotation with a config file or dictionary
-mtq.rotate(model, config_path_or_dict="transformer_universal")
+mtq.rotate(model, config_path_or_name="transformer_universal")
 
 # Save the rotated model
 model.save_pretrained("output/Llama-3-8B-rotated")
