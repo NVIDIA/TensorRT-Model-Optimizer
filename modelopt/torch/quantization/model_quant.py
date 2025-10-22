@@ -36,6 +36,7 @@ from .config import QuantizeAlgoCfgType
 from .conversion import set_quantizer_attribute
 from .mode import QuantizeModeRegistry, get_modelike_from_algo_cfg
 from .nn import QuantModule, TensorQuantizer
+from .rotation import apply_rotation
 
 __all__ = [
     "auto_quantize",
@@ -46,6 +47,7 @@ __all__ = [
     "postprocess_amax",
     "print_quant_summary",
     "quantize",
+    "rotate",
 ]
 
 
@@ -130,6 +132,20 @@ def postprocess_amax(model: nn.Module, key: str, post_process_fn) -> nn.Module:
             continue
         module.amax = post_process_fn(module.amax)
 
+    return model
+
+
+def rotate(model: nn.Module, config_path_or_name: str) -> nn.Module:
+    """Preprocess model weights by applying rotations for improved quantization accuracy.
+
+    Args:
+        model (nn.Module): The model to apply rotations to.
+        config_path_or_name (str): The path to the YAML configuration file or the name of a supported configuration.
+
+    Returns:
+        nn.Module: The model with the rotations applied.
+    """
+    apply_rotation(model, config_path_or_name)
     return model
 
 
@@ -227,6 +243,7 @@ def quantize(
 
     Returns: A pytorch model which has been quantized and calibrated.
     """
+    # Continue with standard quantization
     model = apply_mode(model, mode=[("quantize", config)], registry=QuantizeModeRegistry)
     return calibrate(model, config.get("algorithm"), forward_loop=forward_loop)
 
