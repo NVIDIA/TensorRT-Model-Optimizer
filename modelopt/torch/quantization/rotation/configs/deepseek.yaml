@@ -1,0 +1,39 @@
+# Rotation configuration for DeepSeek models
+
+rotation_matrices:
+  r1:
+    dim: hidden_size
+    mode: hadamard
+    per_layer: false
+
+rotation_config:
+  # Embeddings and LM head
+  "*embed_tokens": [r1, null]
+  "*lm_head": [r1, null]
+
+  # Attention projections
+  "*q_a_proj": [r1, r1]
+  "*q_b_proj": [r1, null]
+  "*kv_a_proj_with_mqa": [r1, null]
+  "*o_proj": [null, r1]
+
+  # MLP projections - wildcards automatically rotate ALL MLP components:
+  #   Regular: mlp.{gate_proj, up_proj, down_proj}
+  #   MoE experts: mlp.experts.{0..255}.{gate_proj, up_proj, down_proj}
+  #   MoE shared: mlp.shared_experts.{gate_proj, up_proj, down_proj}
+  "*up_proj|*gate_proj": [r1, null]
+  "*down_proj": [null, r1]
+
+# LayerNorm fusion
+norm_fuse_config:
+  decoder_layer_fuse:
+    - [input_layernorm, [self_attn.q_a_proj, self_attn.kv_a_proj_with_mqa]]
+    - [self_attn.q_a_layernorm, [self_attn.q_b_proj]]
+    - [self_attn.kv_a_layernorm, [self_attn.kv_b_proj]]
+    - [post_attention_layernorm, [mlp.gate_proj, mlp.up_proj]] # Regular MLP
+    - [post_attention_layernorm, [mlp.shared_experts.gate_proj, mlp.shared_experts.up_proj]] # MoE shared
+  lm_head_fuse:
+    - [model.norm, lm_head]
+
+# Use float64 for rotation
+use_float64: true

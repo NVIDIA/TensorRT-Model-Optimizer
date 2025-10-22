@@ -6,7 +6,7 @@ This module implements the fusible rotation technique from QuaRot/SpinQuant pape
 
 We provide several pre-built configurations:
 - `nemotron_h` - Optimized for Nemotron models
-- `transformer_universal` - General configuration for transformer-based models (e.g., LLaMA, Qwen)
+- `vanilla` - General configuration for transformer-based models (e.g., LLaMA, Qwen)
 
 ## Configuration Format
 
@@ -69,7 +69,7 @@ from transformers import AutoModelForCausalLM
 model = AutoModelForCausalLM.from_pretrained("meta-llama/Meta-Llama-3-8B")
 
 # Apply rotation with a config file or dictionary
-mtq.rotate(model, config_path_or_name="transformer_universal")
+mtq.rotate(model, config_path_or_name="vanilla")
 
 # Save the rotated model
 model.save_pretrained("output/Llama-3-8B-rotated")
@@ -82,7 +82,7 @@ We provide a convenience script for transformer models:
 ```bash
 python main.py \
     --model "meta-llama/Meta-Llama-3-8B" \
-    --config transformer_universal \
+    --config vanilla \
     --output Llama-3-8B-rotated
 ```
 

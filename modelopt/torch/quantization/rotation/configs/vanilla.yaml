@@ -2,11 +2,11 @@
 
 rotation_matrices:
   r1:
-    dim: "hidden_size"  # can be a value in model.config
+    dim: hidden_size
     mode: hadamard
     per_layer: false
   r2:
-    dim: "head_dim"
+    dim: head_dim
     mode: hadamard
     per_layer: true
 
@@ -23,10 +23,6 @@ rotation_config:
   # MLP projections - inputs get R1, down gets R1+R2 Hadamard
   "*up_proj|*gate_proj|*w1|*w3": [r1, null]
   "*down_proj|*w2": [null, r1] # + full Hadamard (R2)
-
-  # Mamba2/hybrid architecture support
-  "*in_proj": [r1, null]
-  "*out_proj": [null, r1]
 
 # LayerNorm fusion
 norm_fuse_config:

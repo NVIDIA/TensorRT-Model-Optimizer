@@ -19,8 +19,8 @@ def main():
     parser.add_argument(
         "--config",
         type=str,
-        default="transformer_universal",
-        help="Config name (e.g., transformer_universal) or path to a config yaml file",
+        default="vanilla",
+        help="Config name (e.g., vanilla, nemotron, deepseek) or path to a config yaml file",
     )
     parser.add_argument(
         "--output",
