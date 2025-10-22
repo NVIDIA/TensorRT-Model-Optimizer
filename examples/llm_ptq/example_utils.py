@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import copy
-import glob
 import os
 import shutil
 import sys
@@ -34,6 +33,7 @@ except ImportError:
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
+from modelopt.torch.utils.model_path_utils import resolve_model_path
 
 SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
 
@@ -405,8 +405,7 @@ def is_enc_dec(model_type) -> bool:
 def _resolve_model_path(model_name_or_path: str, trust_remote_code: bool = False) -> str:
     """Resolve a model name or path to a local directory path.
 
-    If the input is already a local directory, returns it as-is.
-    If the input is a HuggingFace model ID, attempts to resolve it to the local cache path.
+    This function is now a wrapper around the unified resolve_model_path utility.
 
     Args:
         model_name_or_path: Either a local directory path or HuggingFace model ID
@@ -415,62 +414,12 @@ def _resolve_model_path(model_name_or_path: str, trust_remote_code: bool = False
     Returns:
         Local directory path to the model files
     """
-    # If it's already a local directory, return as-is
-    if os.path.isdir(model_name_or_path):
-        return model_name_or_path
-
-    # Try to resolve HuggingFace model ID to local cache path
-    try:
-        # First try to load the config to trigger caching
-        config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=trust_remote_code)
-
-        # The config object should have the local path information
-        # Try different ways to get the cached path
-        if hasattr(config, "_name_or_path") and os.path.isdir(config._name_or_path):
-            return config._name_or_path
-
-        # Alternative: use snapshot_download if available
-        if snapshot_download is not None:
-            try:
-                local_path = snapshot_download(
-                    repo_id=model_name_or_path,
-                    allow_patterns=["*.py", "*.json"],  # Only download Python files and config
-                )
-                return local_path
-            except Exception as e:
-                print(f"Warning: Could not download model files using snapshot_download: {e}")
-
-        # Fallback: try to find in HuggingFace cache
-        from transformers.utils import TRANSFORMERS_CACHE
-
-        # Look for the model in the cache directory
-        cache_pattern = os.path.join(TRANSFORMERS_CACHE, "models--*")
-        cache_dirs = glob.glob(cache_pattern)
-
-        # Convert model name to cache directory format
-        model_cache_name = model_name_or_path.replace("/", "--")
-        for cache_dir in cache_dirs:
-            if model_cache_name in cache_dir:
-                # Look for the snapshots directory
-                snapshots_dir = os.path.join(cache_dir, "snapshots")
-                if os.path.exists(snapshots_dir):
-                    # Get the latest snapshot
-                    snapshot_dirs = [
-                        d
-                        for d in os.listdir(snapshots_dir)
-                        if os.path.isdir(os.path.join(snapshots_dir, d))
-                    ]
-                    if snapshot_dirs:
-                        latest_snapshot = max(snapshot_dirs)  # Use lexicographically latest
-                        snapshot_path = os.path.join(snapshots_dir, latest_snapshot)
-                        return snapshot_path
-
-    except Exception as e:
-        print(f"Warning: Could not resolve model path for {model_name_or_path}: {e}")
-
-    # If all else fails, return the original path
-    # This will cause the copy function to skip with a warning
-    return model_name_or_path
+    return resolve_model_path(
+        model_name_or_path,
+        trust_remote_code=trust_remote_code,
+        download_files=True,
+        allow_patterns=["*.py", "*.json"],  # Only download Python files and config
+    )
 
 
 def copy_custom_model_files(source_path: str, export_path: str, trust_remote_code: bool = False):

@@ -26,6 +26,7 @@ from typing import Union, get_args, get_origin
 import numpy as np
 import torch
 
+from ..utils.model_path_utils import fetch_model_config, is_huggingface_model_id
 from .model_config import (
     QUANTIZATION_FP8_PC_PT,
     QUANTIZATION_INT4_AWQ,
@@ -239,17 +240,33 @@ def restore_original_rope_scaling(config_data: dict, original_model_path: str) -
 
     Args:
         config_data: The model configuration dictionary to restore
-        original_model_path: Path to the original model directory
+        original_model_path: Path to the original model directory or HuggingFace Hub model ID
+                           (e.g., "microsoft/DialoGPT-medium" or "/path/to/local/model")
 
     Returns:
         The config_data dictionary with restored rope_scaling (modified in-place)
+
+    Note:
+        This function automatically detects whether original_model_path is a local filesystem
+        path or a HuggingFace Hub model ID. For Hub model IDs, it will fetch the config.json
+        directly from the Hub. Requires huggingface_hub package for Hub model ID support.
     """
     try:
-        original_config_file = Path(original_model_path) / "config.json"
-        if original_config_file.exists():
-            with open(original_config_file) as f:
-                raw_original_config = json.load(f)
+        raw_original_config = None
 
+        # Check if original_model_path is a HuggingFace Hub model ID or local path
+        if is_huggingface_model_id(original_model_path):
+            # Try to fetch config from HuggingFace Hub
+            raw_original_config = fetch_model_config(original_model_path)
+        else:
+            # Handle as local filesystem path
+            original_config_file = Path(original_model_path) / "config.json"
+            if original_config_file.exists():
+                with open(original_config_file) as f:
+                    raw_original_config = json.load(f)
+
+        # If we successfully got the original config, proceed with restoration
+        if raw_original_config is not None:
             # Check if rope_scaling was modified from mrope to default
             if (
                 "rope_scaling" in raw_original_config
@@ -268,6 +285,16 @@ def restore_original_rope_scaling(config_data: dict, original_model_path: str) -
                     and config_data["text_config"]["rope_scaling"].get("type") == "default"
                 ):
                     config_data["text_config"]["rope_scaling"] = raw_original_config["rope_scaling"]
+        elif is_huggingface_model_id(original_model_path):
+            # Log that we couldn't find the original config
+            warnings.warn(
+                f"Could not fetch original config from HuggingFace Hub: {original_model_path}"
+            )
+        else:
+            # Only warn if the local path was expected to exist
+            original_config_file = Path(original_model_path) / "config.json"
+            if not original_config_file.exists():
+                warnings.warn(f"Original config file not found: {original_config_file}")
     except Exception as e:
         warnings.warn(f"Could not restore original rope_scaling configuration: {e}")
 
