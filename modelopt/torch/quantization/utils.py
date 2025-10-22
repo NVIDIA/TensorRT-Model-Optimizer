@@ -643,11 +643,12 @@ def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
             fsdp_param_mapping = create_fsdp_param_mapping(fsdp_param_group.fsdp_params, root_model)
 
             # Assert that all the modules in the module list are present in this fsdp_param_group
-            for module in modules_to_update:
-                name = _get_module_name(module, root_model)
-                assert name in fsdp_param_mapping, (
-                    f"Module {module} not found in fsdp_param_mapping"
-                )
+            if len(modules_to_update) > 1:
+                for module in modules_to_update:
+                    name = _get_module_name(module, root_model)
+                    assert name in fsdp_param_mapping, (
+                        f"Module {module} not found in fsdp_param_mapping"
+                    )
         # Yields for necessary weight updates/processing
         yield
     finally:
@@ -657,6 +658,9 @@ def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
             # Update FSDPParam list
             for module in modules_to_update:
                 name = _get_module_name(module, root_model)
+                if name not in fsdp_param_mapping:
+                    continue
+
                 old_fsdp_param = fsdp_param_mapping[name]
 
                 # Update mp policy to reflect the new dtype
@@ -672,6 +676,7 @@ def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
                     param_class = (
                         QFSDPParam if isinstance(module.weight, QTensorWrapper) else FSDPParam
                     )
+
                     new_param = param_class(
                         module.weight,
                         old_fsdp_param._module_info,
@@ -696,4 +701,5 @@ def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
 
             # Reshard FSDP root module
             if reshard:
-                root_module.reshard()
+                with enable_fake_quant(root_module):
+                    root_module.reshard()

@@ -16,12 +16,12 @@
 """Base Class for Real Quantized Tensor."""
 
 import enum
-import warnings
 
 import torch
-from torch.distributed.fsdp import FSDPModule, fully_shard
 from torch.distributed.fsdp._fully_shard._fsdp_param import FSDPParam
 from torch.distributed.tensor import DTensor
+
+from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, patch_fsdp_mp_dtypes
 
 
 class QTensorType(enum.Enum):
@@ -218,44 +218,12 @@ def pack_real_quantize_weight(module, force_quantize: bool = False):
 
         return False
 
-    def _compress_fsdp_module(fsdp_module):
-        """Applies weight compression to an FSDP-wrapped module and updates its sharded parameter group.
-
-        This function unshards the FSDP module to access full weights and compresses each eligible submodule’s weights.
-        A new FSDPParam wrapped with `QFSDPParam` is registered to the FSDPParamGroup for future handling of
-        sharding and unsharding. The weight_scale buffers registered during compression and the FSDPModule are reharded
-        once compression is complete.
-
-        Args:
-            fsdp_module (nn.Module): The FSDP-wrapped module to compress.
-
-        Returns:
-            None
-        """
-        from modelopt.torch.quantization.utils import enable_fake_quant, fsdp2_aware_weight_update
-
-        # Unshard FSDPmodule by temporarily setting _fake_quant to prevent weight compression from being triggered
-        with enable_fake_quant(fsdp_module):
-            fsdp_module.unshard()
-
-        # Get the FSDPParamGroup for the FSDPModule
-        fsdp_param_group = fully_shard.state(fsdp_module)._fsdp_param_group
-
-        if getattr(fsdp_param_group, "fsdp_params", None) is None:
-            warnings.warn(
-                f"FSDPParamGroup for {fsdp_module} has no fsdp_params, skipping compression"
-            )
-            return
-
-        for _, submodule in fsdp_module.named_modules():
-            with fsdp2_aware_weight_update(fsdp_module, submodule):
-                _compress_and_update_module_weight(submodule)
-
-    with SequentialQuantizer.convert_to_single_quantizer(module), torch.no_grad():
-        for _, m in module.named_modules():
-            # If FSDP module, we need to additionally process the FSDPParam list
-            if isinstance(m, FSDPModule):
-                _compress_fsdp_module(m)
-            else:
-                # Compress weights and update module weight
-                _compress_and_update_module_weight(m)
+    with (
+        SequentialQuantizer.convert_to_single_quantizer(module),
+        torch.no_grad(),
+        patch_fsdp_mp_dtypes(),
+    ):
+        for name, m in module.named_modules():
+            if name != "":
+                with fsdp2_aware_weight_update(module, m):
+                    _compress_and_update_module_weight(m)
