@@ -336,7 +336,7 @@ def load_onnx_model(
 
     # Ensure nodes are topologically sorted
     graph = gs.import_onnx(onnx_model)
-    graph.cleanup().toposort()
+    graph.toposort()
     onnx_model = gs.export_onnx(graph)
 
     # Check that the model is valid
