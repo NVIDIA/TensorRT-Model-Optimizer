@@ -58,6 +58,9 @@ class ModelDeployer:
 
     def run(self):
         """Run the deployment based on the specified backend."""
+        if not torch.cuda.is_available() or torch.cuda.device_count() == 0:
+            pytest.skip("CUDA is not available")
+            return
         if torch.cuda.get_device_capability() < (
             self.mini_sm // 10,
             self.mini_sm % 10,
@@ -68,7 +71,6 @@ class ModelDeployer:
         if torch.cuda.device_count() < self.tensor_parallel_size:
             pytest.skip(reason=f"Requires at least {self.tensor_parallel_size} GPUs")
             return
-
         if self.backend == "vllm":
             self._deploy_vllm()
         elif self.backend == "trtllm":
