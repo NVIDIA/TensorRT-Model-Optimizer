@@ -33,7 +33,6 @@ from example_utils import (
 )
 from transformers import (
     AutoConfig,
-    AutoImageProcessor,
     AutoModelForCausalLM,
     AutoProcessor,
     PreTrainedTokenizer,
