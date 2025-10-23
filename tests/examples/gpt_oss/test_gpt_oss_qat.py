@@ -46,7 +46,8 @@ class GPTOSS:
 
     def gpt_oss_sft_training(self, tmp_path):
         """Test supervised fine-tuning (SFT) of GPT-OSS-20B model - Step 1."""
-        output_dir = tmp_path / "gpt-oss-20b-sft"
+        model_name = self.model_path.split("/")[-1]
+        output_dir = tmp_path / f"{model_name}-sft"
 
         # Command for SFT training (Step 1)
         cmd_parts = [
@@ -72,7 +73,8 @@ class GPTOSS:
         """Test quantization-aware training (QAT) with MXFP4 configuration - Step 2."""
         # This test assumes test_gpt_oss_sft_training has been run first
         # Look for the SFT output directory from step 1
-        sft_dir = tmp_path / "gpt-oss-20b-sft"
+        model_name = self.model_path.split("/")[-1]
+        sft_dir = tmp_path / f"{model_name}-sft"
 
         # If SFT directory doesn't exist, create a mock one for standalone testing
         if not sft_dir.exists():
@@ -93,7 +95,7 @@ class GPTOSS:
             with open(sft_dir / "config.json", "w") as f:
                 json.dump(config_content, f)
 
-        qat_output_dir = tmp_path / "gpt-oss-20b-qat"
+        qat_output_dir = tmp_path / f"{model_name}-qat"
 
         # Command for QAT training (Step 2)
         cmd_parts = [
@@ -121,7 +123,8 @@ class GPTOSS:
         """Test conversion to MXFP4 weight-only format - Step 3."""
         # This test assumes test_gpt_oss_qat_training has been run first
         # Look for the QAT output directory from step 2
-        qat_dir = tmp_path / "gpt-oss-20b-qat"
+        model_name = self.model_path.split("/")[-1]
+        qat_dir = tmp_path / f"{model_name}-qat"
 
         # If QAT directory doesn't exist, create a mock one for standalone testing
         if not qat_dir.exists():
@@ -142,7 +145,7 @@ class GPTOSS:
             with open(qat_dir / "config.json", "w") as f:
                 json.dump(config_content, f)
 
-        conversion_output_dir = tmp_path / "gpt-oss-20b-qat-real-mxfp4"
+        conversion_output_dir = tmp_path / f"{model_name}-qat-real-mxfp4"
 
         # Command for MXFP4 conversion (Step 3)
         cmd_parts = [
