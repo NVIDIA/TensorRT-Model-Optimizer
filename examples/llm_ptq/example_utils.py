@@ -201,18 +201,18 @@ def get_model(
     # Prepare config kwargs for loading
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
 
-    # Special handling for vision-language models that may have device mapping issues
+    # Load config once and handle VL model detection
     try:
-        hf_config_check = AutoConfig.from_pretrained(ckpt_path, **config_kwargs)
-        if _is_multimodal_config(hf_config_check):
+        hf_config = AutoConfig.from_pretrained(ckpt_path, **config_kwargs)
+        if _is_multimodal_config(hf_config):
             print(
                 "Detected vision-language model from config. "
                 "Disabling automatic device mapping to avoid device_map errors."
             )
             device_map = None
     except Exception as e:
-        print(f"Warning: Could not load config for VL detection: {e}")
-        print("Model loading will likely fail. Please check the model path and configuration.")
+        print(f"Error: Could not load config from {ckpt_path}: {e}")
+        raise RuntimeError(f"Failed to load model configuration from {ckpt_path}") from e
     if attn_implementation is not None:
         config_kwargs["attn_implementation"] = attn_implementation
 
@@ -234,11 +234,6 @@ def get_model(
         )
         model = hf_vila.llm
     else:
-        hf_config = AutoConfig.from_pretrained(
-            ckpt_path,
-            **config_kwargs,
-        )
-
         if use_seq_device_map:
             device_map = "sequential"
             # If we use sequential, set max_memory limit to ensure that the model does not occupy the full GPU
