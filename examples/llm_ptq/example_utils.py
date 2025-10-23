@@ -52,6 +52,17 @@ def _is_multimodal_config(config):
     )
 
 
+def is_nemotron_vl_model(model):
+    """Check if model is a Nemotron VL model based on config architectures."""
+    from modelopt.torch.export.model_utils import is_multimodal_model
+
+    if not is_multimodal_model(model):
+        return False
+
+    architectures = getattr(model.config, "architectures", [])
+    return any("nemotron" in arch.lower() for arch in architectures)
+
+
 def build_quant_cfg(
     qformat,
     kv_cache_qformat,

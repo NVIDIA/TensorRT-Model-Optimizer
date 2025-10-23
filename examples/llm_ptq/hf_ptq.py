@@ -30,6 +30,7 @@ from example_utils import (
     get_processor,
     get_tokenizer,
     is_enc_dec,
+    is_nemotron_vl_model,
 )
 from transformers import (
     AutoConfig,
@@ -284,8 +285,8 @@ def main(args):
 
     full_model = model
 
-    # Detect if this is a Nemotron VL model using model-based detection
-    is_nemotron_vl = is_multimodal_model(full_model) and "nemotron" in args.pyt_ckpt_path.lower()
+    # Detect if this is a Nemotron VL model using architecture-based detection
+    is_nemotron_vl = is_nemotron_vl_model(full_model)
 
     if model_type == "mllama":
         processor = get_processor(
@@ -470,59 +471,36 @@ def main(args):
                 "input_features" if model_type == "whisper" else "input_ids"
             ][0:1]
 
-            # For Nemotron VL models, try text-only generation first, then VL generation as additional test
-            if is_nemotron_vl:
+            # Generate preview before quantization
+            if is_nemotron_vl and tokenizer is not None:
                 print("Running text-only preview generation for Nemotron VL model...")
-                try:
-                    # Try text-only generation using helper function that supports both v1 and v2
-                    if tokenizer is None:
-                        raise ValueError("Tokenizer is required for Nemotron VL text generation")
+                question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
+                generation_config = {
+                    "max_new_tokens": 100,
+                    "do_sample": False,
+                    "eos_token_id": tokenizer.eos_token_id,
+                }
 
-                    question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
-                    generation_config = {
-                        "max_new_tokens": 100,
-                        "do_sample": False,
-                        "eos_token_id": tokenizer.eos_token_id,
-                    }
+                # Try text-only generation first, fall back to standard generate
+                text_response = run_text_only_generation(
+                    full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
+                )
 
-                    # Use helper function that supports both v1 and v2 models
-                    text_response = run_text_only_generation(
-                        full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
-                    )
-
-                    if text_response is not None:
-                        generated_ids_before_ptq = text_response  # Store text response
-                        print(f"✅ Text-only generation successful: {text_response[:100]}...")
-                    else:
-                        raise Exception("Text-only generation returned None")
-
-                except Exception as e:
-                    print(f"Text-only generation failed: {e}")
-                    print("Falling back to standard generate() method...")
-                    try:
-                        generated_ids_before_ptq = full_model.generate(
-                            input_ids, max_new_tokens=100
-                        )
-                    except Exception as e2:
-                        print(f"Standard generation also failed: {e2}")
-                        generated_ids_before_ptq = None
+                if text_response is not None:
+                    generated_ids_before_ptq = text_response
+                    print(f"✅ Text-only generation successful: {text_response[:100]}...")
+                else:
+                    print("Text-only generation failed, falling back to standard generate...")
+                    generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
 
                 # Run additional VL test with images
                 print("Running additional VL test with images...")
                 run_vl_preview_generation(
                     full_model, tokenizer, args.pyt_ckpt_path, "before quantization (VL test)"
                 )
-
             else:
-                try:
-                    generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
-                except Exception as e:
-                    print(
-                        "Error during model generation. Please check if your transformers version is "
-                        "compatible with the model."
-                    )
-                    print(f"Error details: {e}")
-                    raise
+                # Standard generation for non-Nemotron VL models
+                generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
             if model_type == "gptoss" and args.qformat == "nvfp4_mlp_only":
                 print("Applying nvfp4 quantization (MoE only) for gpt-oss")
 
