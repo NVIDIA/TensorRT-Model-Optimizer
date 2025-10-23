@@ -60,7 +60,7 @@ __doc__ = f"""Utility functions for model type detection and classification.
         {MODEL_NAME_TO_TYPE=}
 """
 
-__all__ = ["get_model_type", "is_multimodal_model"]
+__all__ = ["get_model_type", "is_multimodal_model", "get_language_model_from_vl"]
 
 
 def get_model_type(model):
@@ -109,3 +109,49 @@ def is_multimodal_model(model):
             hasattr(config, "embd_layer") and hasattr(config.embd_layer, "image_embd_layer")
         )  # Image embedding layers
     )
+
+
+def get_language_model_from_vl(model):
+    """Extract the language model component from a Vision-Language Model (VLM).
+
+    This function handles the common patterns for accessing the language model component
+    in various VLM architectures. It checks multiple possible locations where the
+    language model might be stored.
+
+    Args:
+        model: The VLM model instance to extract the language model from
+
+    Returns:
+        tuple: (language_model, parent_model) where:
+            - language_model: The extracted language model component, or None if not found
+            - parent_model: The parent model containing the language_model attribute
+
+    Examples:
+        >>> # For LLaVA-style models
+        >>> lang_model, parent = get_language_model_from_vl(vlm_model)
+        >>> if lang_model is not None:
+        ...     # Work with the language model component
+        ...     quantized_lang_model = quantize(lang_model)
+        ...     # Update the parent model
+        ...     parent.language_model = quantized_lang_model
+    """
+    # Pattern 1: Direct language_model attribute (e.g., LLaVA, some Nemotron models)
+    if hasattr(model, "language_model"):
+        # Check if it's a property that might need special handling
+        if isinstance(type(model).__dict__.get("language_model"), property):
+            # Some models have language_model as a property that points to model.model.language_model
+            if hasattr(model, "model") and hasattr(model.model, "language_model"):
+                return model.model.language_model, model.model
+            else:
+                # Property exists but no nested structure found
+                return model.language_model, model
+        else:
+            # Direct attribute access
+            return model.language_model, model
+
+    # Pattern 2: Nested in model.model.language_model (e.g., some Gemma3, Qwen2.5-VL models)
+    elif hasattr(model, "model") and hasattr(model.model, "language_model"):
+        return model.model.language_model, model.model
+
+    # Pattern 3: No language_model found
+    return None, None

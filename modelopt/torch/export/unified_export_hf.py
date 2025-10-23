@@ -43,6 +43,7 @@ from .layer_utils import (
     is_quantlinear,
     set_expert_quantizer_amax,
 )
+from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .model_config import (
     KV_CACHE_FP8,
     KV_CACHE_NVFP4,
@@ -136,11 +137,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
         decoder_fake_input = fake_input
 
         # Check if this is a VL model that needs special input handling
-        is_vl_model = (
-            hasattr(model.config, "vision_config")
-            or hasattr(model, "vision_model")
-            or "nemotron" in getattr(model, "name_or_path", "").lower()
-        )
+        is_vl_model = is_multimodal_model(model)
 
         if model_type.startswith("whisper"):
             # For Whisper models, we need to pass a fake input with the specific sequence length
@@ -159,16 +156,10 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                 model(fake_input, decoder_input_ids=decoder_fake_input)
             elif is_vl_model:
                 # For VL models, try to run optimization on just the language model part
-                language_model = None
-                if hasattr(model, "language_model"):
-                    language_model = model.language_model
+                language_model, _ = get_language_model_from_vl(model)
+                if language_model is not None:
                     print(
-                        "Found language_model attribute - running optimization on language model only"
-                    )
-                elif hasattr(model, "model") and hasattr(model.model, "language_model"):
-                    language_model = model.model.language_model
-                    print(
-                        "Found language_model in model.model - running optimization on language model only"
+                        "Found language_model component - running optimization on language model only"
                     )
 
                 if language_model is not None:

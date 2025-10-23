@@ -50,7 +50,7 @@ from modelopt.torch.export import (
     export_tensorrt_llm_checkpoint,
     get_model_type,
 )
-from modelopt.torch.export.model_utils import is_multimodal_model
+from modelopt.torch.export.model_utils import get_language_model_from_vl, is_multimodal_model
 from modelopt.torch.quantization.config import need_calibration
 from modelopt.torch.quantization.plugins.accelerate import init_quantized_weights
 from modelopt.torch.quantization.utils import is_quantized
@@ -317,15 +317,8 @@ def main(args):
         tokenizer.padding_side = "left"
 
         # We only quantize the language model for VLMs other than the type supported above.
-        if hasattr(model, "language_model"):
-            parent_model = model  # llama4 case
-            if isinstance(type(model).__dict__.get("language_model"), property):
-                assert hasattr(model, "model") and hasattr(model.model, "language_model"), (
-                    "Expected language_model in model.model, but attribute not found. "
-                    "This may indicate an unsupported model structure."
-                )
-                parent_model = model.model  # gemma3, qwen2.5 VL case
-
+        language_model, parent_model = get_language_model_from_vl(model)
+        if language_model is not None:
             disabled_quant_cfg = {
                 "quant_cfg": {"default": {"enable": False}},
                 "algorithm": "max",
@@ -336,7 +329,7 @@ def main(args):
                 if name != "language_model":
                     mtq.quantize(child, disabled_quant_cfg, forward_loop=None)
 
-            model = model.language_model
+            model = language_model
             model_type = get_model_type(model)
 
     if model_type == "phi4mm":
@@ -538,9 +531,11 @@ def main(args):
             model = quantize_model(model, quant_cfg, args, calib_dataloader, calibration_only)
 
             # For VL models, update full_model to use the quantized language model
-            if is_nemotron_vl and hasattr(full_model, "language_model"):
-                print("Updating full_model with quantized language_model...")
-                full_model.language_model = model
+            if is_nemotron_vl:
+                _, parent_model = get_language_model_from_vl(full_model)
+                if parent_model is not None:
+                    print("Updating full_model with quantized language_model...")
+                    parent_model.language_model = model
 
             if args.verbose:
                 mtq.print_quant_summary(model)
