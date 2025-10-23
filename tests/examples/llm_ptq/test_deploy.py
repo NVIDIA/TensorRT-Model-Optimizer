@@ -355,6 +355,34 @@ def test_kimi(command):
     "command",
     [
         *ModelDeployerList(
+            model_id="nvidia/Llama-3_3-Nemotron-Super-49B-v1-FP8",
+            backend=("trtllm", "vllm", "sglang"),
+            tensor_parallel_size=1,
+            mini_sm=89,
+        ),
+        *ModelDeployerList(
+            model_id="nvidia/Llama-3_3-Nemotron-Super-49B-v1_5-FP8",
+            backend=("trtllm", "vllm", "sglang"),
+            tensor_parallel_size=1,
+            mini_sm=89,
+        ),
+        *ModelDeployerList(
+            model_id="nvidia/Llama-3_1-Nemotron-Ultra-253B-v1-FP8",
+            backend=("trtllm", "vllm", "sglang"),
+            tensor_parallel_size=4,
+            mini_sm=89,
+        ),
+    ],
+    ids=idfn,
+)
+def test_llama_nemotron(command):
+    command.run()
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        *ModelDeployerList(
             model_id="nvidia/Llama-3.1-8B-Medusa-FP8",
             backend=("trtllm", "sglang"),
             tensor_parallel_size=1,
