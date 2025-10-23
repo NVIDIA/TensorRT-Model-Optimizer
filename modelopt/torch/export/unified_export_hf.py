@@ -150,9 +150,6 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             fake_input = torch.ones(
                 [1, model.config.num_mel_bins, feature_extractor.nb_max_frames], dtype=model.dtype
             ).to(model.device)
-        elif is_vl_model:
-            # For VL models, run optimization on language model component only
-            print("Detected VL model during export - optimizing language model component")
 
         # Run forward pass so that all modules sharing the same input are collected using forward hook.
 

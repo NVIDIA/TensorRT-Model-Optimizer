@@ -211,9 +211,6 @@ def main(args):
     random.seed(RAND_SEED)
     np.random.seed(RAND_SEED)
 
-    # Detect if this is a Nemotron VL model
-    is_nemotron_vl = "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
-
     # launch a memory monitor to read the currently used GPU memory.
     launch_memory_monitor()
 
@@ -287,6 +284,9 @@ def main(args):
     tokenizer = None
 
     full_model = model
+
+    # Detect if this is a Nemotron VL model using model-based detection
+    is_nemotron_vl = is_multimodal_model(full_model) and "nemotron" in args.pyt_ckpt_path.lower()
 
     if model_type == "mllama":
         processor = get_processor(
