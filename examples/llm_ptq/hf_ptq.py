@@ -211,6 +211,9 @@ def main(args):
     random.seed(RAND_SEED)
     np.random.seed(RAND_SEED)
 
+    # Detect if this is a Nemotron VL model
+    is_nemotron_vl = "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
+
     # launch a memory monitor to read the currently used GPU memory.
     launch_memory_monitor()
 
@@ -276,16 +279,6 @@ def main(args):
     model_is_already_quantized = is_quantized(model)
 
     model_type = get_model_type(model)
-
-    # Special handling for Nemotron VL models that aren't detected by standard model type detection
-    # For HF export, we want to keep vision unquantized, so we treat it as a regular language model
-    # and only quantize the language components
-    if model_type != "mllama" and is_multimodal_model(model):
-        print(
-            f"Detected multimodal model: {type(model).__name__}. "
-            f"For HF export, will quantize language components only, keeping vision unquantized."
-        )
-        # Keep as regular model type to use text-only calibration
 
     device = model.device
     if hasattr(model, "model"):
@@ -471,9 +464,6 @@ def main(args):
         )
 
         # For Nemotron VL models, disable quantization of vision components
-        is_nemotron_vl = (
-            "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
-        )
         if is_nemotron_vl:
             print("Disabling quantization for vision components in Nemotron VL model")
             quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
@@ -489,9 +479,6 @@ def main(args):
             ][0:1]
 
             # For Nemotron VL models, try text-only generation first, then VL generation as additional test
-            is_nemotron_vl = (
-                "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
-            )
             if is_nemotron_vl:
                 print("Running text-only preview generation for Nemotron VL model...")
                 try:
