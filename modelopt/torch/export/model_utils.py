@@ -60,7 +60,7 @@ __doc__ = f"""Utility functions for model type detection and classification.
         {MODEL_NAME_TO_TYPE=}
 """
 
-__all__ = ["get_model_type", "is_multimodal_model", "get_language_model_from_vl"]
+__all__ = ["get_language_model_from_vl", "get_model_type", "is_multimodal_model"]
 
 
 def get_model_type(model):

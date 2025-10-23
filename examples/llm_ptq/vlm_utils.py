@@ -231,5 +231,3 @@ def run_text_only_generation(model, tokenizer, question, generation_config, mode
     except Exception as e:
         print(f"Text-only generation failed: {e}")
         return None
-
-
