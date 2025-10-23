@@ -40,6 +40,7 @@ from transformers import (
     PreTrainedTokenizerFast,
     WhisperProcessor,
 )
+from vlm_utils import run_text_only_generation, run_vl_preview_generation
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
@@ -90,225 +91,6 @@ KV_QUANT_CFG_CHOICES = {
 }
 
 mto.enable_huggingface_checkpointing()
-
-
-def _run_vl_preview_generation(model, tokenizer, model_path, stage_name):
-    """Run preview generation for VL models using sample images.
-
-    Args:
-        model: The VL model
-        tokenizer: The tokenizer
-        model_path: Path to the model (for loading image processor)
-        stage_name: Description of the stage (e.g., "before quantization")
-
-    Returns:
-        Generated response text for logging/comparison
-    """
-    import os
-
-    from PIL import Image
-    from transformers import AutoImageProcessor, AutoProcessor
-
-    try:
-        print(f"Loading sample images for {stage_name} preview...")
-
-        # Load sample images from the images directory
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        images_dir = os.path.join(script_dir, "images")
-
-        # Use single image for VL preview to avoid shape mismatch issues
-        image_files = ["example1a.jpeg", "example1b.jpeg"]
-        image = None
-        for img_file in image_files:
-            img_path = os.path.join(images_dir, img_file)
-            if os.path.exists(img_path):
-                image = Image.open(img_path)
-                print(f"  Loaded: {img_file}")
-                break  # Use the first available image
-            else:
-                print(f"  Warning: {img_file} not found")
-
-        if image is None:
-            print("No sample images found - skipping VL preview generation")
-            return None
-
-        # Generate response
-        question = "Describe this image briefly."  # Updated for single image
-        generation_config = {
-            "max_new_tokens": 50,
-            "do_sample": False,
-            "eos_token_id": tokenizer.eos_token_id,
-        }
-
-        print(f"Generating VL response ({stage_name})...")
-
-        # Try to detect if this is a v1 model (has chat method) or v2 model (uses generate)
-        if hasattr(model, "chat"):
-            print("  Using v1 model.chat() method...")
-            # Load image processor for v1 models
-            image_processor = AutoImageProcessor.from_pretrained(model_path, trust_remote_code=True)
-
-            # Process single image for v1 models
-            image_features = image_processor([image])  # Pass as list with single image
-
-            # Move image features to the same device as the model
-            model_device = model.device
-            for key, value in image_features.items():
-                if hasattr(value, "to"):  # Check if it's a tensor
-                    image_features[key] = value.to(model_device)
-                    print(f"    Moved {key} to {model_device}")
-
-            response = model.chat(
-                tokenizer=tokenizer,
-                question=question,
-                generation_config=generation_config,
-                **image_features,
-            )
-        else:
-            print("  Using v2 model.generate() method...")
-            # Load processor for v2 models
-            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
-
-            # Create messages in the format expected by v2 models
-            messages = [
-                {"role": "system", "content": "/no_think"},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "image": "",
-                        },
-                        {
-                            "type": "text",
-                            "text": question,
-                        },
-                    ],
-                },
-            ]
-
-            # Apply chat template
-            prompt = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-
-            # Process inputs using the processor with single image
-            inputs = processor(
-                text=[prompt],
-                images=[image],  # Pass single image as list
-                return_tensors="pt",
-            )
-
-            # Move inputs to the same device as the model
-            model_device = model.device
-            inputs = inputs.to(model_device)
-            print(f"    Moved inputs to {model_device}")
-
-            # Generate response using model.generate
-            generated_ids = model.generate(
-                pixel_values=inputs.pixel_values,
-                input_ids=inputs.input_ids,
-                attention_mask=inputs.attention_mask,
-                **generation_config,
-            )
-
-            # Decode the response (trim input tokens like in the working example)
-            generated_ids_trimmed = [
-                out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            output_text = processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )
-            response = output_text[0]
-
-        print(f"✅ VL generation {stage_name} successful!")
-        print(f"Question: {question}")
-        print(f"Response: {response}")
-
-        # Return the response for comparison/logging
-        return response
-
-    except Exception as e:
-        print(f"❌ VL preview generation {stage_name} failed: {e}")
-        print("This may indicate issues with the quantized model")
-        return None
-
-
-def _run_text_only_generation(model, tokenizer, question, generation_config, model_path):
-    """Run text-only generation for VL models, supporting both v1 (chat) and v2 (generate) models.
-
-    Args:
-        model: The VL model
-        tokenizer: The tokenizer
-        question: The text question to ask
-        generation_config: Generation configuration
-        model_path: Path to the model (for loading processor if needed)
-
-    Returns:
-        Generated response text or None if failed
-    """
-    try:
-        if hasattr(model, "chat"):
-            print("  Using v1 model.chat() method for text-only generation...")
-            # Use model.chat with None for images (text-only mode)
-            response = model.chat(tokenizer, None, question, generation_config, history=None)
-            return response
-        else:
-            print("  Using v2 model.generate() method for text-only generation...")
-            # Load processor for v2 models
-            from transformers import AutoProcessor
-
-            processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
-
-            # Create text-only messages
-            messages = [
-                {"role": "system", "content": "/no_think"},
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": question,
-                        },
-                    ],
-                },
-            ]
-
-            # Apply chat template
-            prompt = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-
-            # Process text-only inputs
-            inputs = processor(
-                text=[prompt],
-                images=None,  # No images for text-only
-                return_tensors="pt",
-            )
-
-            # Move inputs to the same device as the model
-            model_device = model.device
-            inputs = inputs.to(model_device)
-
-            # Generate response using model.generate
-            generated_ids = model.generate(
-                input_ids=inputs.input_ids,
-                attention_mask=inputs.attention_mask,
-                **generation_config,
-            )
-
-            # Decode the response (trim input tokens like in the working example)
-            generated_ids_trimmed = [
-                out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-            ]
-            output_text = processor.batch_decode(
-                generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )
-            return output_text[0]
-
-    except Exception as e:
-        print(f"Text-only generation failed: {e}")
-        return None
 
 
 def auto_quantize(
@@ -688,17 +470,17 @@ def main(args):
             KV_QUANT_CFG_CHOICES,
         )
 
-            # For Nemotron VL models, disable quantization of vision components
-            is_nemotron_vl = (
-                "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
-            )
-            if is_nemotron_vl:
-                print("Disabling quantization for vision components in Nemotron VL model")
-                quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
-                quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
-                # Also disable radio model components specifically
-                quant_cfg["quant_cfg"]["*radio*"] = {"enable": False}
-                quant_cfg["quant_cfg"]["*visual*"] = {"enable": False}
+        # For Nemotron VL models, disable quantization of vision components
+        is_nemotron_vl = (
+            "nemotron" in args.pyt_ckpt_path.lower() and "vl" in args.pyt_ckpt_path.lower()
+        )
+        if is_nemotron_vl:
+            print("Disabling quantization for vision components in Nemotron VL model")
+            quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
+            # Also disable radio model components specifically
+            quant_cfg["quant_cfg"]["*radio*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*visual*"] = {"enable": False}
 
         if not model_is_already_quantized or calibration_only:
             # Only run single sample for preview
@@ -725,7 +507,7 @@ def main(args):
                     }
 
                     # Use helper function that supports both v1 and v2 models
-                    text_response = _run_text_only_generation(
+                    text_response = run_text_only_generation(
                         full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
                     )
 
@@ -748,7 +530,7 @@ def main(args):
 
                 # Run additional VL test with images
                 print("Running additional VL test with images...")
-                _run_vl_preview_generation(
+                run_vl_preview_generation(
                     full_model, tokenizer, args.pyt_ckpt_path, "before quantization (VL test)"
                 )
 
@@ -768,23 +550,13 @@ def main(args):
             # quantize the model
             model = quantize_model(model, quant_cfg, args, calib_dataloader, calibration_only)
 
-            # amax_state_dict = torch.load("/home/scratch.omniml_data_2/jingyux/models/llama_nemotron_v2_fp4_ptq_state_dict_scalers_only.pt")
-
-
             # For VL models, update full_model to use the quantized language model
             if is_nemotron_vl and hasattr(full_model, "language_model"):
                 print("Updating full_model with quantized language_model...")
                 full_model.language_model = model
-                amax_state_dict = torch.load("/home/scratch.omniml_data_2/jingyux/models/llama_nemotron_v2_fp4_ptq_state_dict_scalers_only.pt")
-                model_keys = full_model.load_state_dict(amax_state_dict, strict=False)
-                print(f"Loaded amax_state_dict with keys: {model_keys}")
-                # fullmodel_key = full_model.load_state_dict(torch.load("/home/scratch.omniml_data_2/jingyux/models/llama_nemotron_v2_fp4_ptq_state_dict.pt"), strict=False)
-                # print(f"Loaded full_model_state_dict with keys: {fullmodel_key}")
-                mtq.print_quant_summary(full_model.language_model)
-                print("Loaded additional state dict into full_model.")
+
             if args.verbose:
-                pass
-                # mtq.print_quant_summary(model)
+                mtq.print_quant_summary(model)
 
             # Run some samples
             torch.cuda.empty_cache()
@@ -807,7 +579,7 @@ def main(args):
                     }
 
                     # Use helper function that supports both v1 and v2 models
-                    text_response = _run_text_only_generation(
+                    text_response = run_text_only_generation(
                         full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
                     )
 
@@ -823,7 +595,7 @@ def main(args):
 
                 # Run additional VL test with images
                 print("Running additional VL test with images...")
-                _run_vl_preview_generation(
+                run_vl_preview_generation(
                     full_model, tokenizer, args.pyt_ckpt_path, "after quantization (VL test)"
                 )
 

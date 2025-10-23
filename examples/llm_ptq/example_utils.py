@@ -202,7 +202,6 @@ def get_model(
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
 
     # Special handling for vision-language models that may have device mapping issues
-    # Check if this is a VL model by examining the config before loading the full model
     try:
         hf_config_check = AutoConfig.from_pretrained(ckpt_path, **config_kwargs)
         if _is_multimodal_config(hf_config_check):
