@@ -40,20 +40,37 @@ def run_vl_preview_generation(model, tokenizer, model_path, stage_name):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         images_dir = os.path.join(script_dir, "images")
 
+        # Check if images directory exists
+        if not os.path.exists(images_dir):
+            print(f"❌ Warning: Images directory not found at {images_dir}")
+            print("   VL preview generation requires sample images to test vision capabilities.")
+            print("   Skipping VL preview generation.")
+            return None
+
         # Use single image for VL preview to avoid shape mismatch issues
-        image_files = ["example1a.jpeg", "example1b.jpeg"]
+        image_files = ["example1a.jpeg", "example1b.jpeg", "example.jpg", "test.jpg", "sample.png"]
         image = None
+        missing_files = []
         for img_file in image_files:
             img_path = os.path.join(images_dir, img_file)
             if os.path.exists(img_path):
-                image = Image.open(img_path)
-                print(f"  Loaded: {img_file}")
-                break  # Use the first available image
+                try:
+                    image = Image.open(img_path)
+                    print(f"  ✅ Successfully loaded: {img_file}")
+                    break  # Use the first available image
+                except Exception as e:
+                    print(f"  ⚠️  Warning: Could not open {img_file}: {e}")
+                    missing_files.append(f"{img_file} (corrupted)")
             else:
-                print(f"  Warning: {img_file} not found")
+                missing_files.append(img_file)
 
         if image is None:
-            print("No sample images found - skipping VL preview generation")
+            print(f"❌ Warning: No valid sample images found in {images_dir}")
+            print(f"   Searched for: {', '.join(image_files)}")
+            if missing_files:
+                print(f"   Missing/invalid files: {', '.join(missing_files)}")
+            print("   VL preview generation requires sample images to test vision capabilities.")
+            print("   Skipping VL preview generation.")
             return None
 
         # Generate response
@@ -66,13 +83,10 @@ def run_vl_preview_generation(model, tokenizer, model_path, stage_name):
 
         print(f"Generating VL response ({stage_name})...")
 
-        # Try to detect if this is a v1 model (has chat method) or v2 model (uses generate)
+        # Try to detect the VL model has chat method or generate method
         if hasattr(model, "chat"):
-            print("  Using v1 model.chat() method...")
-            # Load image processor for v1 models
             image_processor = AutoImageProcessor.from_pretrained(model_path, trust_remote_code=True)
 
-            # Process single image for v1 models
             image_features = image_processor([image])  # Pass as list with single image
 
             # Move image features to the same device as the model
@@ -89,11 +103,8 @@ def run_vl_preview_generation(model, tokenizer, model_path, stage_name):
                 **image_features,
             )
         else:
-            print("  Using v2 model.generate() method...")
-            # Load processor for v2 models
             processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
 
-            # Create messages in the format expected by v2 models
             messages = [
                 {"role": "system", "content": "/no_think"},
                 {
@@ -159,7 +170,7 @@ def run_vl_preview_generation(model, tokenizer, model_path, stage_name):
 
 
 def run_text_only_generation(model, tokenizer, question, generation_config, model_path):
-    """Run text-only generation for VL models, supporting both v1 (chat) and v2 (generate) models.
+    """Run text-only generation for VL models, supporting both chat and generate methods.
 
     Args:
         model: The VL model
@@ -173,13 +184,10 @@ def run_text_only_generation(model, tokenizer, question, generation_config, mode
     """
     try:
         if hasattr(model, "chat"):
-            print("  Using v1 model.chat() method for text-only generation...")
             # Use model.chat with None for images (text-only mode)
             response = model.chat(tokenizer, None, question, generation_config, history=None)
             return response
         else:
-            print("  Using v2 model.generate() method for text-only generation...")
-            # Load processor for v2 models
             processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
 
             # Create text-only messages

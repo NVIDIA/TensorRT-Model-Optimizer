@@ -660,48 +660,15 @@ def main(args):
                 export_path
             )
 
-            # Try to save processor config if available (skip for Nemotron VL models)
-            if not is_nemotron_vl:
-                try:
-                    print(f"Saving processor config to {export_path}")
-                    AutoProcessor.from_pretrained(
-                        args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-                    ).save_pretrained(export_path)
-                except Exception as e:
-                    print(f"Warning: Could not save processor config: {e}")
-                    print("This is normal for some VLM architectures that don't use AutoProcessor")
-            else:
-                print("Skipping AutoProcessor for Nemotron VL (uses separate AutoImageProcessor)")
-
-            # For Nemotron VL models, save image processor using proper HuggingFace APIs
-            if is_nemotron_vl:
-                import os
-                import shutil
-
-                # Try to save image processor config using HuggingFace API
-                try:
-                    print("Saving image processor config using AutoImageProcessor...")
-                    image_processor = AutoImageProcessor.from_pretrained(
-                        args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
-                    )
-                    image_processor.save_pretrained(export_path)
-                    print("  ✅ Image processor config saved successfully")
-                except Exception as e:
-                    print(f"  Warning: Could not save image processor config: {e}")
-
-                # Manually copy image_processing.py as it contains custom code that save_pretrained doesn't handle
-                print("Copying custom image processing implementation...")
-                src_path = os.path.join(args.pyt_ckpt_path, "image_processing.py")
-                dst_path = os.path.join(export_path, "image_processing.py")
-
-                if os.path.exists(src_path):
-                    try:
-                        shutil.copy2(src_path, dst_path)
-                        print("  ✅ Copied: image_processing.py")
-                    except Exception as copy_e:
-                        print(f"  Warning: Could not copy image_processing.py: {copy_e}")
-                else:
-                    print("  Warning: image_processing.py not found in source model")
+            # Try to save processor config if available
+            try:
+                print(f"Saving processor config to {export_path}")
+                AutoProcessor.from_pretrained(
+                    args.pyt_ckpt_path, trust_remote_code=args.trust_remote_code
+                ).save_pretrained(export_path)
+            except Exception as e:
+                print(f"Warning: Could not save processor config: {e}")
+                print("This is normal for some VLM architectures that don't use AutoProcessor")
 
         if model_type == "mllama":
             full_model_config = model.config
