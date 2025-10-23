@@ -39,6 +39,19 @@ from modelopt.torch.utils.image_processor import MllamaImageProcessor
 SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
 
 
+def _is_multimodal_config(config):
+    """Check if a config indicates a multimodal model (config-only version of is_multimodal_model)."""
+    return (
+        hasattr(config, "vision_config")  # Standard vision config (e.g., Qwen2.5-VL)
+        or getattr(config, "model_type", "") == "phi4mm"  # Phi-4 multimodal
+        or hasattr(config, "vision_lora")  # Vision LoRA configurations
+        or hasattr(config, "audio_processor")  # Audio processing capabilities
+        or (
+            hasattr(config, "embd_layer") and hasattr(config.embd_layer, "image_embd_layer")
+        )  # Image embedding layers
+    )
+
+
 def build_quant_cfg(
     qformat,
     kv_cache_qformat,
@@ -185,18 +198,22 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
-    # Special handling for vision-language models that may have device mapping issues
-    # Check if this is a VL model by looking at the model path
-    is_vl_model = any(
-        vl_keyword in ckpt_path.lower() for vl_keyword in ["vl", "vision", "nemotron-nano-vl"]
-    )
-    if is_vl_model:
-        print(
-            "Detected vision-language model. Disabling automatic device mapping to avoid device_map errors."
-        )
-        device_map = None
-
+    # Prepare config kwargs for loading
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
+
+    # Special handling for vision-language models that may have device mapping issues
+    # Check if this is a VL model by examining the config before loading the full model
+    try:
+        hf_config_check = AutoConfig.from_pretrained(ckpt_path, **config_kwargs)
+        if _is_multimodal_config(hf_config_check):
+            print(
+                "Detected vision-language model from config. "
+                "Disabling automatic device mapping to avoid device_map errors."
+            )
+            device_map = None
+    except Exception as e:
+        print(f"Warning: Could not load config for VL detection: {e}")
+        print("Model loading will likely fail. Please check the model path and configuration.")
     if attn_implementation is not None:
         config_kwargs["attn_implementation"] = attn_implementation
 
