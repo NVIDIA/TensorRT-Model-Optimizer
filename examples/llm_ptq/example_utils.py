@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import glob
 import os
 import shutil
@@ -32,9 +33,64 @@ try:
 except ImportError:
     snapshot_download = None
 
+import modelopt.torch.quantization as mtq
 from modelopt.torch.utils.image_processor import MllamaImageProcessor
 
 SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
+
+
+def build_quant_cfg(
+    qformat,
+    kv_cache_qformat,
+    awq_block_size,
+    auto_quantize,
+    model_type,
+    quant_cfg_choices,
+    kv_quant_cfg_choices,
+):
+    quant_cfg = {}
+    if not auto_quantize:
+        assert qformat in quant_cfg_choices, (
+            f"Unsupported quantization format: {qformat} with {kv_cache_qformat} KV cache"
+        )
+
+        quant_cfg = quant_cfg_choices[qformat]
+
+        if "awq" in qformat:
+            quant_cfg = copy.deepcopy(quant_cfg_choices[qformat])
+            weight_quantizer = quant_cfg["quant_cfg"]["*weight_quantizer"]
+            if isinstance(weight_quantizer, list):
+                weight_quantizer = weight_quantizer[0]
+            # If awq_block_size argument is provided, update weight_quantizer
+            if awq_block_size:
+                weight_quantizer["block_sizes"][-1] = awq_block_size
+
+            # Coarser optimal scale search seems to resolve the overflow in TRT-LLM for some models
+            if qformat == "w4a8_awq" and model_type in ["gemma", "mpt"]:
+                quant_cfg["algorithm"] = {"method": "awq_lite", "alpha_step": 1}
+
+        enable_quant_kv_cache = kv_cache_qformat != "none"
+        print(f"{'Enable' if enable_quant_kv_cache else 'Disable'} KV cache quantization")
+
+        # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
+        if enable_quant_kv_cache:
+            quant_cfg = apply_kv_cache_quant(
+                quant_cfg,
+                getattr(mtq, kv_quant_cfg_choices[kv_cache_qformat])["quant_cfg"],
+            )
+
+        # Gemma 7B has accuracy regression using alpha 1. We set 0.5 instead.
+        if model_type == "gemma" and "int8_sq" in qformat:
+            quant_cfg["algorithm"] = {"method": "smoothquant", "alpha": 0.5}
+
+        if model_type == "phi4mm":
+            # Only quantize the language model
+            quant_cfg["quant_cfg"]["*speech*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*audio*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
+            quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
+
+    return quant_cfg
 
 
 def is_speculative(hf_config):

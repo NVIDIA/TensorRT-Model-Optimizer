@@ -45,6 +45,7 @@ from modelopt.onnx.utils import (
     get_node_names,
     get_output_names,
     get_output_shapes,
+    infer_shapes,
     remove_node_training_mode,
 )
 from modelopt.torch.quantization.export_onnx import configure_linear_module_onnx_quantizers
@@ -52,7 +53,7 @@ from modelopt.torch.utils import flatten_tree, standardize_named_model_args
 from modelopt.torch.utils._pytree import TreeSpec
 
 from ..utils.onnx_optimizer import Optimizer
-from .onnx_utils import _get_onnx_external_data_tensors, check_model_uses_external_data
+from .onnx_utils import check_model_uses_external_data
 
 ModelMetadata = dict[str, Any]
 ModelType = Any
@@ -83,15 +84,8 @@ class OnnxBytes:
         self.onnx_load_path = os.path.abspath(onnx_load_path)
         self.onnx_model = {}
         self.model_name = ""
-        onnx_model = onnx.load(self.onnx_load_path, load_external_data=False)
 
-        # Check for external data
-        external_data_format = False
-        for initializer in onnx_model.graph.initializer:
-            if initializer.external_data:
-                external_data_format = True
-
-        if external_data_format:
+        if has_external_data(onnx_load_path):
             onnx_model_dir = os.path.dirname(self.onnx_load_path)
             for onnx_model_file in os.listdir(onnx_model_dir):
                 with open(os.path.join(onnx_model_dir, onnx_model_file), "rb") as f:
@@ -419,9 +413,7 @@ def get_onnx_bytes_and_metadata(
     # Export onnx model from pytorch model
     # As the maximum size of protobuf is 2GB, we cannot use io.BytesIO() buffer during export.
     model_name = model.__class__.__name__
-    onnx_build_folder = os.path.join(tempfile.gettempdir(), "modelopt_build/onnx/")
-    onnx_path = os.path.join(onnx_build_folder, model_name)
-    os.makedirs(onnx_path, exist_ok=True)
+    onnx_path = tempfile.mkdtemp(prefix=f"modelopt_{model_name}_")
     onnx_save_path = os.path.join(onnx_path, f"{model_name}.onnx")
 
     # Configure quantizers if the model is quantized in NVFP4 or MXFP8 mode
@@ -452,7 +444,7 @@ def get_onnx_bytes_and_metadata(
     onnx_graph = onnx.load(onnx_save_path, load_external_data=True)
 
     try:
-        onnx_graph = onnx.shape_inference.infer_shapes(onnx_graph)
+        onnx_graph = infer_shapes(onnx_graph)
     except Exception as e:
         print(f"Shape inference failed: {e}")
 
@@ -502,7 +494,7 @@ def get_onnx_bytes_and_metadata(
 
     # If the onnx model contains external data store the external tensors in one file and save the onnx model
     if has_external_data(onnx_save_path):
-        tensor_paths = _get_onnx_external_data_tensors(onnx_opt_graph)
+        tensor_paths = get_external_tensor_paths(onnx_path)
         onnx.save_model(
             onnx_opt_graph,
             onnx_save_path,
@@ -510,18 +502,27 @@ def get_onnx_bytes_and_metadata(
             all_tensors_to_one_file=True,
             location=f"{model_name}.onnx_data",
             size_threshold=1024,
+            convert_attribute=False,
         )
-        for tensor in tensor_paths:
-            tensor_path = os.path.join(onnx_path, tensor)
-            os.remove(tensor_path)
+        for path in tensor_paths:
+            os.remove(path)
     else:
         onnx.save_model(onnx_opt_graph, onnx_save_path)
 
     onnx_bytes = OnnxBytes(onnx_save_path)
 
     if remove_exported_model:
-        shutil.rmtree(os.path.dirname(onnx_build_folder))
+        shutil.rmtree(onnx_path)
     return onnx_bytes.to_bytes(), model_metadata
+
+
+def get_external_tensor_paths(model_dir: str) -> list[str]:
+    """Get the paths of the external data tensors in the model."""
+    return [
+        os.path.join(model_dir, file)
+        for file in os.listdir(model_dir)
+        if not file.endswith(".onnx")
+    ]
 
 
 def has_external_data(onnx_model_path: str):

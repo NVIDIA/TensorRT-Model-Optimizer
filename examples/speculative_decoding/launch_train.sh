@@ -78,6 +78,10 @@ while [ $# -gt 0 ]; do
       if [[ "$1" != *=* ]]; then shift; fi
       NUM_GPU="${1#*=}"
       ;;
+    --disable_tqdm*)
+      if [[ "$1" != *=* ]]; then shift; fi
+      DISABLE_TQDM="${1#*=}"
+      ;;
     *)
       >&2 printf "Error: Invalid argument ${1#*=}\n"
       exit 1
@@ -110,6 +114,7 @@ FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP=${FSDP_TRANSFORMER_LAYER_CLS_TO_WRAP:-"LlamaD
 NUM_GPU=${NUM_GPU:-1}
 TRAINING_SEQ_LEN=${TRAINING_SEQ_LEN:-2048}
 OFFLINE_DATA_PATH=${OFFLINE_DATA_PATH:-""}
+DISABLE_TQDM=${DISABLE_TQDM:-False}
 
 if [[ "$MODE" == "medusa" ]]; then
   SPECULATIVE_ARGS="--medusa_num_heads $MEDUSA_NUM_HEADS --medusa_num_layers $MEDUSA_NUM_LAYERS"
@@ -165,6 +170,7 @@ CMD="accelerate launch $MULTI_GPU --mixed_precision bf16 main.py \
     --logging_steps 100 \
     --tf32 True \
     --data_path $DATA \
+    --disable_tqdm $DISABLE_TQDM \
     $OFFLINE_TRAINING_ARGS \
     $SPECULATIVE_ARGS
 "
