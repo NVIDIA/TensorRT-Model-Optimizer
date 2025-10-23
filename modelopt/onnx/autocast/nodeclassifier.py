@@ -360,6 +360,7 @@ class NodeClassifier:
         data_max: float | None = 1000.0,
         init_max: float | None = np.finfo(np.float16).max,
         max_depth_of_reduction: int | None = None,
+        custom_ops_low_precision_nodes: list[str] | None = None,
     ):
         """Initialize the node classifier.
 
@@ -375,6 +376,7 @@ class NodeClassifier:
             data_max: Maximum absolute value allowed for node I/O.
             init_max: Maximum absolute value allowed for initializers.
             max_depth_of_reduction: Maximum depth of reduction allowed in low precision.
+            custom_ops_low_precision_nodes: List of custom op node names to convert to low precision.
         """
         self.model = model
         self.node_to_init_map = node_to_init_map
@@ -387,6 +389,7 @@ class NodeClassifier:
         self.data_max = data_max
         self.init_max = init_max
         self.max_depth_of_reduction = max_depth_of_reduction
+        self.custom_ops_low_precision_nodes = custom_ops_low_precision_nodes
 
     def _gen_exclude_node_rules(self, reference_data):
         """Generate list of rules for blocking nodes from precision conversion.
@@ -446,11 +449,11 @@ class NodeClassifier:
         """
         exclude_node_rules = self._gen_exclude_node_rules(ref_outputs_dict)
         include_node_rules = self._gen_include_node_rules()
-        low_precision_nodes = []
+        low_precision_nodes = self.custom_ops_low_precision_nodes or []
         high_precision_nodes = []
         for node in self.model.graph.node:
             # If any condition is met - node will be executed in high precision
-            if any(rule.check(node) for rule in exclude_node_rules) and not any(
+            if node.name not in low_precision_nodes and any(rule.check(node) for rule in exclude_node_rules) and not any(
                 rule.check(node) for rule in include_node_rules
             ):
                 high_precision_nodes.append(node.name)
