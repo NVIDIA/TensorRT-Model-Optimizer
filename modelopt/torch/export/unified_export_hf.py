@@ -15,6 +15,7 @@
 
 """Code that export quantized Hugging Face models for deployment."""
 
+from builtins import ValueError
 import collections.abc
 import json
 import re
@@ -154,13 +155,9 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             if getattr(model.config, "is_encoder_decoder", False):
                 # For encoder-decoder models, we need to pass both the encoder and decoder input ids
                 model(fake_input, decoder_input_ids=decoder_fake_input)
-            elif is_vl_model:
-                # For VL models, try to run optimization on just the language model part
+            elif is_vl_model and "nemotron" in model_type:
+                # For Nemotron VL models, try to run optimization on just the language model part
                 language_model, _ = get_language_model_from_vl(model)
-                if language_model is not None:
-                    print(
-                        "Found language_model component - running optimization on language model only"
-                    )
 
                 if language_model is not None:
                     # Run optimization on just the language model with the same input format as regular LLMs
@@ -168,15 +165,13 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                     print(
                         f"Running optimization on language model with fake_input shape: {fake_input.shape}"
                     )
-                    try:
-                        language_model(fake_input)
-                        print("✅ Language model optimization completed successfully")
-                    except Exception as e:
-                        print(f"Language model optimization failed: {e}")
-                        print("Continuing with export...")
+                    language_model(fake_input)
                 else:
-                    print("Warning: No language_model found in VL model - skipping optimization")
-                    print("This is unexpected for most VL models")
+                    raise ValueError(
+                        f"Cannot extract language_model from Nemotron VL model (type: {model_type}). "
+                        "This is required for requantization/resmoothing optimization. "
+                        "Please ensure the model architecture is supported or file an issue."
+                    )
             else:
                 model(fake_input)
 
