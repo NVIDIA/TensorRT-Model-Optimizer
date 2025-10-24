@@ -39,6 +39,53 @@ from modelopt.torch.utils.image_processor import MllamaImageProcessor
 SPECULATIVE_MODEL_LIST = ["Eagle", "Medusa"]
 
 
+def run_nemotron_vl_preview(
+    full_model, tokenizer, input_ids, pyt_ckpt_path, stage_name, allow_fallback=False
+):
+    """Run text-only and VL preview generation for Nemotron VL models.
+
+    Args:
+        full_model: The full VL model
+        tokenizer: The tokenizer
+        input_ids: Input tensor for generation
+        pyt_ckpt_path: Path to the model checkpoint
+        stage_name: Description of the stage (e.g., "before quantization", "after quantization")
+        allow_fallback: Whether to allow fallback to standard generate on failure
+
+    Returns:
+        Generated text response or None if generation failed
+    """
+    from vlm_utils import run_text_only_generation, run_vl_preview_generation
+
+    print(f"Running text-only preview generation for Nemotron VL model ({stage_name})...")
+    question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
+    generation_config = {
+        "max_new_tokens": 100,
+        "do_sample": False,
+        "eos_token_id": tokenizer.eos_token_id,
+    }
+
+    # Try text-only generation
+    text_response = run_text_only_generation(
+        full_model, tokenizer, question, generation_config, pyt_ckpt_path
+    )
+
+    if text_response is not None:
+        print(f"✅ Text-only generation successful: {text_response[:100]}...")
+        generated_ids = text_response
+    elif allow_fallback:
+        print("Text-only generation failed, falling back to standard generate...")
+        generated_ids = full_model.generate(input_ids, max_new_tokens=100)
+    else:
+        generated_ids = None
+
+    # Run additional VL test with images
+    print(f"Running additional VL test with images ({stage_name})...")
+    run_vl_preview_generation(full_model, tokenizer, pyt_ckpt_path, stage_name)
+
+    return generated_ids
+
+
 def _is_multimodal_config(config):
     """Check if a config indicates a multimodal model (config-only version of is_multimodal_model)."""
     return (

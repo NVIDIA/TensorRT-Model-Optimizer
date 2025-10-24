@@ -31,6 +31,7 @@ from example_utils import (
     get_tokenizer,
     is_enc_dec,
     is_nemotron_vl,
+    run_nemotron_vl_preview,
 )
 from transformers import (
     AutoConfig,
@@ -40,7 +41,6 @@ from transformers import (
     PreTrainedTokenizerFast,
     WhisperProcessor,
 )
-from vlm_utils import run_text_only_generation, run_vl_preview_generation
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq
@@ -473,30 +473,13 @@ def main(args):
 
             # Generate preview before quantization
             if is_nemotron_vl_model and tokenizer is not None:
-                print("Running text-only preview generation for Nemotron VL model...")
-                question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
-                generation_config = {
-                    "max_new_tokens": 100,
-                    "do_sample": False,
-                    "eos_token_id": tokenizer.eos_token_id,
-                }
-
-                # Try text-only generation first, fall back to standard generate
-                text_response = run_text_only_generation(
-                    full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
-                )
-
-                if text_response is not None:
-                    generated_ids_before_ptq = text_response
-                    print(f"✅ Text-only generation successful: {text_response[:100]}...")
-                else:
-                    print("Text-only generation failed, falling back to standard generate...")
-                    generated_ids_before_ptq = full_model.generate(input_ids, max_new_tokens=100)
-
-                # Run additional VL test with images
-                print("Running additional VL test with images...")
-                run_vl_preview_generation(
-                    full_model, tokenizer, args.pyt_ckpt_path, "before quantization (VL test)"
+                generated_ids_before_ptq = run_nemotron_vl_preview(
+                    full_model,
+                    tokenizer,
+                    input_ids,
+                    args.pyt_ckpt_path,
+                    "before quantization",
+                    allow_fallback=True,
                 )
             else:
                 # Standard generation for non-Nemotron VL models
@@ -523,41 +506,15 @@ def main(args):
             if model_type != "llama4" and not is_nemotron_vl_model:
                 # Our fake quantizer may not be fully compatible with torch.compile.
                 generated_ids_after_ptq = full_model.generate(input_ids, max_new_tokens=100)
-            elif is_nemotron_vl_model:
-                print("Running text-only preview generation for quantized Nemotron VL model...")
-                try:
-                    # Try text-only generation using helper function that supports both v1 and v2
-                    if tokenizer is None:
-                        raise ValueError("Tokenizer is required for Nemotron VL text generation")
-
-                    question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
-                    generation_config = {
-                        "max_new_tokens": 100,
-                        "do_sample": False,
-                        "eos_token_id": tokenizer.eos_token_id,
-                    }
-
-                    # Use helper function that supports both v1 and v2 models
-                    text_response = run_text_only_generation(
-                        full_model, tokenizer, question, generation_config, args.pyt_ckpt_path
-                    )
-
-                    if text_response is not None:
-                        generated_ids_after_ptq = text_response  # Store text response
-                        print(f"✅ Text-only generation successful: {text_response[:100]}...")
-                    else:
-                        generated_ids_after_ptq = None
-
-                except Exception as e:
-                    print(f"Text-only generation failed: {e}")
-                    generated_ids_after_ptq = None
-
-                # Run additional VL test with images
-                print("Running additional VL test with images...")
-                run_vl_preview_generation(
-                    full_model, tokenizer, args.pyt_ckpt_path, "after quantization (VL test)"
+            elif is_nemotron_vl_model and tokenizer is not None:
+                generated_ids_after_ptq = run_nemotron_vl_preview(
+                    full_model,
+                    tokenizer,
+                    input_ids,
+                    args.pyt_ckpt_path,
+                    "after quantization",
+                    allow_fallback=False,
                 )
-
             else:
                 warnings.warn(
                     "Llama4 Maverick generation after quantization has a bug. Skipping generation sample."
