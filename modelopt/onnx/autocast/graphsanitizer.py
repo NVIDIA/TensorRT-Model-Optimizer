@@ -92,7 +92,6 @@ class GraphSanitizer:
 
         if modified:
             logger.info("Converted FP64 initializers, I/O types, and nodes to FP32")
-            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
 
     def ensure_custom_ops_precision(self) -> None:
         """Ensure that custom ops run in the requested precision."""
