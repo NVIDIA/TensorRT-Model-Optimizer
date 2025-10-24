@@ -52,14 +52,28 @@ def _is_multimodal_config(config):
     )
 
 
-def is_nemotron_vl_model(model):
-    """Check if model is a Nemotron VL model based on config architectures."""
-    from modelopt.torch.export.model_utils import is_multimodal_model
+def is_nemotron_vl(model_or_config):
+    """Check if model or config indicates a Nemotron VL model.
 
-    if not is_multimodal_model(model):
-        return False
+    Args:
+        model_or_config: Either a model instance or a config object.
 
-    architectures = getattr(model.config, "architectures", [])
+    Returns:
+        bool: True if it's a Nemotron VL model, False otherwise.
+    """
+    # Try to get config from model, or use directly if it's a config
+    if hasattr(model_or_config, "config"):
+        config = model_or_config.config
+        from modelopt.torch.export.model_utils import is_multimodal_model
+
+        if not is_multimodal_model(model_or_config):
+            return False
+    else:
+        config = model_or_config
+        if not _is_multimodal_config(config):
+            return False
+
+    architectures = getattr(config, "architectures", [])
     return any("nemotron" in arch.lower() for arch in architectures)
 
 
@@ -215,10 +229,10 @@ def get_model(
     # Load config once and handle VL model detection
     try:
         hf_config = AutoConfig.from_pretrained(ckpt_path, **config_kwargs)
-        if _is_multimodal_config(hf_config):
+        if is_nemotron_vl(hf_config):
             print(
-                "Detected vision-language model from config. "
-                "Disabling automatic device mapping to avoid device_map errors."
+                "Detected Nemotron VL model from config. "
+                "Disabling automatic device mapping for compatibility."
             )
             device_map = None
     except Exception as e:

@@ -30,7 +30,7 @@ from example_utils import (
     get_processor,
     get_tokenizer,
     is_enc_dec,
-    is_nemotron_vl_model,
+    is_nemotron_vl,
 )
 from transformers import (
     AutoConfig,
@@ -286,7 +286,7 @@ def main(args):
     full_model = model
 
     # Detect if this is a Nemotron VL model using architecture-based detection
-    is_nemotron_vl = is_nemotron_vl_model(full_model)
+    is_nemotron_vl = is_nemotron_vl(full_model)
 
     if model_type == "mllama":
         processor = get_processor(
