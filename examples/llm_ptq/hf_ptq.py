@@ -836,7 +836,7 @@ if __name__ == "__main__":
             "Specify the attention implementation to use. "
             "This arg will be passed to the HF model loading if specified."
         ),
-        default="eager",
+        default=None,
         type=str,
     )
 
