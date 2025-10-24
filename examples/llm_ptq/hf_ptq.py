@@ -286,7 +286,7 @@ def main(args):
     full_model = model
 
     # Detect if this is a Nemotron VL model using architecture-based detection
-    is_nemotron_vl = is_nemotron_vl(full_model)
+    is_nemotron_vl_model = is_nemotron_vl(full_model)
 
     if model_type == "mllama":
         processor = get_processor(
@@ -457,7 +457,7 @@ def main(args):
         )
 
         # For Nemotron VL models, disable quantization of vision components
-        if is_nemotron_vl:
+        if is_nemotron_vl_model:
             print("Disabling quantization for vision components in Nemotron VL model")
             quant_cfg["quant_cfg"]["*vision*"] = {"enable": False}
             quant_cfg["quant_cfg"]["*image*"] = {"enable": False}
@@ -472,7 +472,7 @@ def main(args):
             ][0:1]
 
             # Generate preview before quantization
-            if is_nemotron_vl and tokenizer is not None:
+            if is_nemotron_vl_model and tokenizer is not None:
                 print("Running text-only preview generation for Nemotron VL model...")
                 question = tokenizer.decode(input_ids[0], skip_special_tokens=True)
                 generation_config = {
@@ -508,7 +508,7 @@ def main(args):
             model = quantize_model(model, quant_cfg, args, calib_dataloader, calibration_only)
 
             # For VL models, update full_model to use the quantized language model
-            if is_nemotron_vl:
+            if is_nemotron_vl_model:
                 _, parent_model = get_language_model_from_vl(full_model)
                 if parent_model is not None:
                     print("Updating full_model with quantized language_model...")
@@ -520,10 +520,10 @@ def main(args):
             # Run some samples
             torch.cuda.empty_cache()
             generated_ids_after_ptq = None
-            if model_type != "llama4" and not is_nemotron_vl:
+            if model_type != "llama4" and not is_nemotron_vl_model:
                 # Our fake quantizer may not be fully compatible with torch.compile.
                 generated_ids_after_ptq = full_model.generate(input_ids, max_new_tokens=100)
-            elif is_nemotron_vl:
+            elif is_nemotron_vl_model:
                 print("Running text-only preview generation for quantized Nemotron VL model...")
                 try:
                     # Try text-only generation using helper function that supports both v1 and v2
@@ -590,7 +590,7 @@ def main(args):
 
             if generated_ids_after_ptq is not None:
                 print("--------")
-                if is_nemotron_vl:
+                if is_nemotron_vl_model:
                     # For Nemotron VL models, generated_ids are text strings from model.chat()
                     print("Nemotron VL model text-only generation results:")
                     print(f"Text response before quantization: {generated_ids_before_ptq}")
