@@ -675,7 +675,6 @@ def build_conv_batchnorm_sig_mul_model():
     return model_inferred
 
 
-def build_conv_act_pool_model():
 def build_conv_act_pool_model(include_reshape_node=False):
     # Define your model inputs and outputs
     input_names = ["input_0"]

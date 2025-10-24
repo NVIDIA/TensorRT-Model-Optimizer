@@ -159,7 +159,7 @@ def test_conv_act_pool_int8(tmp_path, include_reshape_node):
     onnx_path = os.path.join(tmp_path, f"conv_act_pool_model_{include_reshape_node}.onnx")
     save_onnx(onnx_model, onnx_path)
 
-    quantize.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+    quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
 
     # Output model should be produced in the same tmp_path
     output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
