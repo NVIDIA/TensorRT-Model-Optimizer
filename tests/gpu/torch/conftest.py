@@ -40,6 +40,12 @@ def need_8_gpus():
         pytest.skip("Need at least 8 GPUs to run this test")
 
 
+@pytest.fixture
+def need_4_gpus():
+    if torch.cuda.device_count() < 4:
+        pytest.skip("Need at least 4 GPUs to run this test")
+
+
 @pytest.fixture(scope="module")
 def set_torch_dtype(request):
     orig_dtype = torch.get_default_dtype()

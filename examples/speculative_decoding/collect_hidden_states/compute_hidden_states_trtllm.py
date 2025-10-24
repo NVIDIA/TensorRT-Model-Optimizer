@@ -208,13 +208,16 @@ def main(args: argparse.Namespace) -> None:
     num_success = 0
     pbar = tqdm(total=len(dataset), desc=f"DP#{args.dp_rank} Processing conversations")
 
-    def _post_process_trtllm_dumped(trtllm_dumped_file: str, conversation_id: int):
-        """Post-process the TRTLLM dumped file to same format as HF dumped:
+    async def _post_process_trtllm_dumped(trtllm_dumped_file: str, conversation_id: int):
+        """
+        Post-process the TRTLLM dumped file to same format as HF dumped:
         1. Remove id field, replace it with conversation_id
         2. Rename hidden_state field to hidden_states
         3. From list of length 1 to dict
         4. Rename file to conversation_id.pt
         """
+        if not trtllm_dumped_file.exists():
+            return False
         with open(trtllm_dumped_file, "rb") as f:
             trtllm_dumped = torch.load(f)
         assert isinstance(trtllm_dumped, list) and len(trtllm_dumped) == 1, (
@@ -232,9 +235,8 @@ def main(args: argparse.Namespace) -> None:
         output_file = args.output_dir / f"{conversation_id}.pt"
         with open(output_file, "wb") as f:
             torch.save(trtllm_dumped, f)
-
-        if trtllm_dumped_file.exists():
-            trtllm_dumped_file.unlink()
+        trtllm_dumped_file.unlink()
+        return True
 
     async def dump_hidden_states(idx: int, conversation_id: int, input_ids: list[int]):
         nonlocal num_success
@@ -242,15 +244,16 @@ def main(args: argparse.Namespace) -> None:
         # TRTLLM API name files starts from 1
         # ref:https://github.com/NVIDIA/TensorRT-LLM/pull/7012
         trtllm_dumped_file = args.output_dir / f"{spec_config['file_prefix']}_{idx + 1}.pt"
-        _post_process_trtllm_dumped(trtllm_dumped_file, conversation_id)
-        num_success += 1
+        dump_success = await _post_process_trtllm_dumped(trtllm_dumped_file, conversation_id)
+        num_success += int(dump_success)
         pbar.update(1)
 
     async def submit_generates():
         nonlocal num_skipped_too_long
         nonlocal num_invalid
         tasks = []
-        for idx, entry in enumerate(dataset):
+        idx = 0
+        for entry in dataset:
             conversation_id = entry.get("conversation_id", entry.get("uuid"))
 
             conversations = entry["conversations"]
@@ -258,9 +261,7 @@ def main(args: argparse.Namespace) -> None:
                 num_invalid += 1
                 continue
 
-            input_ids = tokenizer.apply_chat_template(conversations, add_generation_template=False)[
-                :256
-            ]
+            input_ids = tokenizer.apply_chat_template(conversations, add_generation_template=False)
             num_input_tokens = (
                 input_ids.shape[1] if isinstance(input_ids, torch.Tensor) else len(input_ids)
             )
@@ -269,6 +270,8 @@ def main(args: argparse.Namespace) -> None:
                 continue
 
             tasks.append(dump_hidden_states(idx, conversation_id, input_ids))
+            # Increment only for valid conversations to match dump file index
+            idx += 1
         await asyncio.gather(*tasks)
 
     asyncio.run(submit_generates())

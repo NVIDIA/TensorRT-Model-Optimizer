@@ -99,6 +99,29 @@ UINT4_MAX = 15
 CLIP_MIN = 1e-5
 
 
+def safe_cupy_array(tensor):
+    """Convert ml_dtypes.int4 tensor to numpy.int8 for CuPy compatibility.
+
+    In ONNX 1.19, int4 tensors use ml_dtypes.int4 which CuPy doesn't support.
+    This function converts them to regular numpy.int8 while preserving values.
+
+    Args:
+        tensor: numpy array that may have ml_dtypes.int4 dtype
+    Returns:
+        cupy or numpy array (if cupy is not supported) with numpy.int8 dtype if input was ml_dtypes.int4,
+        otherwise unchanged
+    """
+    try:
+        import ml_dtypes
+
+        if hasattr(tensor, "dtype") and tensor.dtype == ml_dtypes.int4:
+            return np.asarray(tensor.astype(numpy.int8))
+    except ImportError:
+        pass
+
+    return np.asarray(tensor)
+
+
 def _quantize_gather_nodes(
     graph: onnx.GraphProto,
     nodes_to_exclude: list[str],
@@ -288,6 +311,10 @@ def quantize_rtn(
                 "block_size": gather_block_size,
             }
             assert gather_s_map is not None, "scale-map not found for quantizable gather nodes"
+            gather_dq_node_attributes = {
+                "axis": gather_quantize_axis,
+                "block_size": gather_block_size,
+            }
             qdq.insert_dq_nodes(
                 graph,
                 gather_s_map,
@@ -310,6 +337,7 @@ def quantize_rtn(
     logger.info(f"RTN quantization completed in {time.time() - t_start:.2f} seconds")
     model = gs.export_onnx(graph)
     model.ir_version = 10
+
     return model
 
 

@@ -41,8 +41,7 @@ Environment setup
     .. code-block:: shell
 
         export PIP_CONSTRAINT=""
-        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu:/usr/local/tensorrt/targets/x86_64-linux-gnu/lib"
-        export PATH="${PATH}:/usr/local/tensorrt/targets/x86_64-linux-gnu/bin"
+        export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/include:/usr/lib/x86_64-linux-gnu"
 
     You may need to install additional dependencies from the respective examples's `requirements.txt` file.
 

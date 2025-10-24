@@ -92,6 +92,7 @@ class TrainingArguments(transformers.TrainingArguments):
     bf16: bool = field(default=True)
     mode: Literal["eagle1", "eagle3", "medusa"] = "eagle3"
     ar_validate_steps: int = field(default=1000, metadata={"help": "Steps between AR validation."})
+    disable_tqdm: bool = field(default=False, metadata={"help": "Disable tqdm progress bar."})
 
 
 @dataclass

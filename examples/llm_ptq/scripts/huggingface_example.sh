@@ -113,6 +113,10 @@ if [ -n "$GPU_MAX_MEM_PERCENTAGE" ]; then
     PTQ_ARGS+=" --gpu_max_mem_percentage=$GPU_MAX_MEM_PERCENTAGE "
 fi
 
+if [ -n "$CALIB_SEQ" ]; then
+    PTQ_ARGS+=" --calib_seq=$CALIB_SEQ "
+fi
+
 if ! $VERBOSE; then
     PTQ_ARGS+=" --no-verbose "
 fi

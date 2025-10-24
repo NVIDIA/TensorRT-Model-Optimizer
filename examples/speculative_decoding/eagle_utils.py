@@ -47,7 +47,6 @@ def preprocess(examples, tokenizer):
         "loss_mask": [],
         "labels": [],
     }
-    roles = ["user", "assistant"]
     for i in range(len(examples)):
         messages = []
         source = examples[i]["conversations"]
@@ -61,13 +60,8 @@ def preprocess(examples, tokenizer):
             else:
                 raise ValueError(f"Unknown conversation format: {item}")
 
-        first_role, _ = get_role_content(source[0])
-        if first_role.lower() != "user":
-            # Skip the first one if it is not from human
-            source = source[1:]
-        for j, sentence in enumerate(source):
+        for sentence in source:
             role, content = get_role_content(sentence)
-            assert role.lower() == roles[j % 2], f"{i}"
             messages.append({"role": role.lower(), "content": content})
         conversation = tokenizer.apply_chat_template(
             messages,
@@ -259,11 +253,20 @@ def make_eagle_supervised_data_module(
         dict: A dictionary containing train and eval datasets.
     """
     # Load the conversations from the source file
-    with open(data_args.data_path) as f:
-        if data_args.data_path.endswith("jsonl"):
-            data_json = [json.loads(line) for line in f]
-        else:
-            data_json = json.load(f)
+    print_rank_0("Loading input conversations...")
+    data_json = []
+    data_path_p = Path(data_args.data_path)
+    if data_path_p.is_dir():
+        # Load all .jsonl files in the directory and combine them
+        for jsonl_file in sorted(data_path_p.glob("*.jsonl")):
+            with open(jsonl_file) as f:
+                data_json.extend(json.loads(line) for line in f)
+    else:
+        with open(data_args.data_path) as f:
+            if data_args.data_path.endswith("jsonl"):
+                data_json = [json.loads(line) for line in f]
+            else:
+                data_json = json.load(f)
 
     if use_offline_training:
         print_rank_0("Loading pre-processed data for offline training...")
@@ -280,12 +283,14 @@ def make_eagle_supervised_data_module(
 
         # Filter to conversations that exist in the offline data and in the provided json
         valid_entries = []
-        for idx, entry in enumerate(data_json):
+        for entry in data_json:
             conv_id = entry.get("conversation_id")
+            if conv_id is None:
+                conv_id = entry.get("uuid")
             if conv_id is None:
                 conv_id = entry.get("id")
             if conv_id is None:
-                conv_id = "{:08d}".format(idx)
+                raise ValueError(f"Conversation ID required but not found for entry {entry}")
             file_path = str(offline_data_path / f"{conv_id}.pt")
             if file_path in all_files:
                 valid_entries.append((entry, file_path))
