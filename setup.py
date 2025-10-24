@@ -61,7 +61,7 @@ optional_deps = {
         "diffusers>=0.32.2",
         "huggingface_hub>=0.24.0",
         "peft>=0.17.0",
-        "transformers>=4.48,<5.0",  # Should match modelopt/torch/__init__.py and tox.ini
+        "transformers>=4.48,<4.58",  # Should match modelopt/torch/__init__.py and tox.ini
         "deepspeed>=0.9.6 ; platform_system != 'Darwin' and platform_system != 'Windows'",
     ],
     # linter tools
