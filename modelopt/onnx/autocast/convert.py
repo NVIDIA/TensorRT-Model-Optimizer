@@ -56,6 +56,7 @@ def convert_to_mixed_precision(
     init_conversion_max_bytes: int | None = None,
     providers: list[str] = ["cpu"],
     trt_plugins: list[str] = [],
+    trt_plugins_precision: list[str] = [],
     max_depth_of_reduction: int | None = None,
 ) -> onnx.ModelProto:
     """Convert model to mixed precision.
@@ -74,6 +75,7 @@ def convert_to_mixed_precision(
                                    runtime.
         providers: List of ORT execution providers.
         trt_plugins: List of TensorRT plugin library paths in .so format (compiled shared library).
+        trt_plugins_precision: List indicating the precision for each custom op.
         max_depth_of_reduction: Maximum depth of reduction for node classification.
 
     Returns:
@@ -88,7 +90,11 @@ def convert_to_mixed_precision(
     # Otherwise, prefer to keep the original opset version unless it's very old
     min_opset = 22 if low_precision_type == "bf16" else 13
     graph_sanitizer = GraphSanitizer(
-        model, min_opset, trt_plugins=trt_plugins, max_ir_version=LATEST_IR_VERSION_SUPPORTED_BY_ORT
+        model,
+        min_opset,
+        trt_plugins=trt_plugins,
+        trt_plugins_precision=trt_plugins_precision,
+        max_ir_version=LATEST_IR_VERSION_SUPPORTED_BY_ORT,
     )
     graph_sanitizer.sanitize()
     model = graph_sanitizer.model
@@ -112,6 +118,7 @@ def convert_to_mixed_precision(
         init_max=init_max,
         custom_rule=custom_rule,
         max_depth_of_reduction=max_depth_of_reduction,
+        custom_ops_low_precision_nodes=graph_sanitizer.custom_ops_low_precision_nodes or [],
     )
 
     precision_converter = PrecisionConverter(
