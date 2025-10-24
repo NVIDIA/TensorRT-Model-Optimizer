@@ -47,7 +47,13 @@ PRECISION_MAP = {
 
 ONNX_TYPES = [t.onnx_type for t in PRECISION_MAP.values()]
 
-OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Upsample", "NonMaxSuppression", "Celu"]
+OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = [
+    "Upsample",
+    "NonMaxSuppression",
+    "Celu",
+    "IsInf",
+    "IsNaN",
+]
 
 # Temporarily block these ops in low precision, as they are not supported yet
 OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop", "LSTM"])

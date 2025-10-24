@@ -673,3 +673,102 @@ def build_conv_batchnorm_sig_mul_model():
     onnx.checker.check_model(model_inferred)
 
     return model_inferred
+
+
+def build_conv_isinf_model():
+    # Define your model inputs and outputs
+    input_names = ["input_0"]
+    output_names = ["output_0"]
+    input_shapes = [(6, 32, 900, 256)]
+    output_shapes = [(6, 32, 900, 256)]
+
+    inputs = [
+        helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, input_shape)
+        for input_name, input_shape in zip(input_names, input_shapes)
+    ]
+    outputs = [
+        helper.make_tensor_value_info(output_name, onnx.TensorProto.FLOAT, output_shape)
+        for output_name, output_shape in zip(output_names, output_shapes)
+    ]
+
+    # Create the ONNX graph with the nodes
+    nodes = [
+        helper.make_node(
+            op_type="Conv",
+            inputs=["input_0", "weights_1"],
+            outputs=["conv1_conv/Conv2D:0"],
+            name="conv1_conv/Conv2D",
+            dilations=[1, 1],
+            group=1,
+            kernel_shape=[3, 3],
+            pads=[1, 1, 1, 1],
+            strides=[1, 1],
+        ),
+        helper.make_node(
+            op_type="Cast",
+            inputs=["conv1_conv/Conv2D:0"],
+            outputs=["cast1_cast/Cast:0"],
+            name="cast1_cast/Cast",
+            to=onnx.TensorProto.DOUBLE,
+        ),
+        helper.make_node(
+            op_type="IsInf",
+            inputs=["cast1_cast/Cast:0"],
+            outputs=["isinf1_isinf/IsInf:0"],
+            name="isinf1_isinf/IsInf",
+        ),
+        helper.make_node(
+            op_type="Greater",
+            inputs=["conv1_conv/Conv2D:0", "greater_const1"],
+            outputs=["greater1_greater/Greater:0"],
+            name="greater1_greater/Greater",
+        ),
+        helper.make_node(
+            op_type="And",
+            inputs=["isinf1_isinf/IsInf:0", "greater1_greater/Greater:0"],
+            outputs=["and1_and/And:0"],
+            name="and1_and/And",
+        ),
+        helper.make_node(
+            op_type="Where",
+            inputs=["and1_and/And:0", "conv1_conv/Conv2D:0", "where_const1"],
+            outputs=["output_0"],
+            name="where1_where/Where",
+        ),
+    ]
+
+    # Create the ONNX initializers
+    initializers = [
+        helper.make_tensor(
+            name="weights_1",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(32, 32, 3, 3),
+            vals=np.random.uniform(low=0.5, high=1.0, size=32 * 32 * 3 * 3),
+        ),
+        helper.make_tensor(
+            name="greater_const1",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(1,),
+            vals=[0],
+        ),
+        helper.make_tensor(
+            name="where_const1",
+            data_type=onnx.TensorProto.FLOAT,
+            dims=(1,),
+            vals=[10000],
+        ),
+    ]
+
+    # Create the ONNX graph with the nodes and initializers
+    graph = helper.make_graph(nodes, "conv_isinf", inputs, outputs, initializer=initializers)
+
+    # Create the ONNX model
+    model = helper.make_model(graph)
+    model.opset_import[0].version = 13
+    model.ir_version = 10
+
+    # Check the ONNX model
+    model_inferred = onnx.shape_inference.infer_shapes(model)
+    onnx.checker.check_model(model_inferred)
+
+    return model_inferred

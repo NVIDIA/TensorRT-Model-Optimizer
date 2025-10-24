@@ -86,7 +86,6 @@ class GraphSanitizer:
 
         if modified:
             logger.info("Converted FP64 initializers, I/O types, and nodes to FP32")
-            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
 
     def find_custom_nodes(self) -> None:
         """Find custom nodes in the model.
