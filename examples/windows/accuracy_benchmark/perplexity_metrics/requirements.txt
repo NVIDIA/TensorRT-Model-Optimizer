@@ -1,3 +1,6 @@
+# PyTorch with CUDA 12.x support (compatible with CUDA 12.1-12.9)
+--extra-index-url https://download.pytorch.org/whl/cu129
+
 coloredlogs
 datasets
 flatbuffers
@@ -11,6 +14,10 @@ protobuf>=5.28.2
 pytest
 sentencepiece
 sympy
-torch
+torch>=2.0.0
+torchvision
+torchaudio
 transformers
+accelerate
+
 
