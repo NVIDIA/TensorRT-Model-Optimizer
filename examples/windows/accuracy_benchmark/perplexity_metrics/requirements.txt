@@ -1,5 +1,6 @@
 # PyTorch with CUDA 12.x support (compatible with CUDA 12.1-12.9)
 --extra-index-url https://download.pytorch.org/whl/cu129
+accelerate
 
 coloredlogs
 datasets
@@ -15,9 +16,8 @@ pytest
 sentencepiece
 sympy
 torch>=2.0.0
-torchvision
 torchaudio
+torchvision
 transformers
-accelerate
 
 

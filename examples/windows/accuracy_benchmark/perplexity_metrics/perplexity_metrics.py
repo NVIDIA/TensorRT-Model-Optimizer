@@ -114,9 +114,9 @@ def calculate_perplexity_hf(
     print(f"[INFO] Full input length: {seq_len}")
     print(f"[INFO] max_length: {max_length}, stride: {stride}")
 
-    max_eval_length = seq_len  
+    max_eval_length = seq_len
 
-    # Initialize accumulators for log probabilities (same as ONNX version)
+    # Initialize accumulators for log probabilities
     total_log_probs = 0.0
     total_token_count = 0
     prev_end_loc = 0
@@ -127,14 +127,15 @@ def calculate_perplexity_hf(
         trg_len = end_loc - prev_end_loc
 
         if DEBUG:
-            print(f"\n[LOOP] chunk_idx={chunk_idx} [begin={begin_loc} end={end_loc}] trg_len={trg_len}")
+            print(
+                f"\n[LOOP] chunk_idx={chunk_idx} [begin={begin_loc} end={end_loc}] trg_len={trg_len}"
+            )
 
         # Extract the current chunk of input tokens (keep on CPU until needed)
         input_ids_chunk = input_ids[:, begin_loc:end_loc].to(device)
         target_ids = input_ids_chunk.clone()
 
         # Mask context tokens: only predict for last trg_len tokens in chunk
-        # This matches the ONNX version logic
         mask = np.ones(target_ids.shape, dtype=bool)
         mask[:, :-trg_len] = False
         target_ids_masked = target_ids.clone()
@@ -155,7 +156,7 @@ def calculate_perplexity_hf(
             if DEBUG:
                 print(f"[LOGITS] Shape: {logits.shape}, dtype: {logits.dtype}")
 
-        # Compute log probabilities over vocabulary for each position (same as ONNX)
+        # Compute log probabilities over vocabulary for each position
         log_probs = torch.nn.functional.log_softmax(logits, dim=2).cpu().numpy()
         chunk_seq_len = log_probs.shape[1]
 
@@ -197,12 +198,22 @@ def calculate_perplexity_hf(
         total_token_count += int(valid_log_probs.size)
 
         if DEBUG:
-            print(f"[LOOP] This chunk: valid tokens={valid_log_probs.size}, sum={np.sum(valid_log_probs)}")
+            print(
+                f"[LOOP] This chunk: valid tokens={valid_log_probs.size}, sum={np.sum(valid_log_probs)}"
+            )
             print(f"[TALLY] total_log_probs: {total_log_probs}")
             print(f"[TALLY] total_token_count: {total_token_count}")
 
         # Clear GPU cache to prevent OOM
-        del outputs, logits, log_probs, pred_log_probs, input_ids_chunk, target_ids, target_ids_masked
+        del (
+            outputs,
+            logits,
+            log_probs,
+            pred_log_probs,
+            input_ids_chunk,
+            target_ids,
+            target_ids_masked,
+        )
         if device == "cuda":
             torch.cuda.empty_cache()
 
