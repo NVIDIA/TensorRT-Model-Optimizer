@@ -140,7 +140,10 @@ def train():
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.model_name_or_path, torch_dtype="auto", device_map="cpu"
+            model_args.model_name_or_path,
+            torch_dtype="auto",
+            device_map="cpu",
+            trust_remote_code=True,
         )
         if use_offline_training:
             # When doing offline training, we need to set num_hidden_layers
