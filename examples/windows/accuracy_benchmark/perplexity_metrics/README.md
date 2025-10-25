@@ -25,6 +25,7 @@ This script is originally based on [perplexity_metrics.py](https://github.com/mi
 - Install dependencies:
 
   **For CUDA 12.x (recommended for CUDA 12.1-12.9):**
+
   ```bash
   pip install -r requirements.txt
   ```
@@ -38,11 +39,13 @@ This script is originally based on [perplexity_metrics.py](https://github.com/mi
 ## Supported Models
 
 ### ONNX Runtime GenAI Models
+
 - Any ONNX Runtime GenAI model exported with a compatible `genai_config.json` and tokenizer.
 - Supported architectures include: Gemma, Llama, Mistral, Phi (language + vision), Qwen.
 - Supported execution providers: CPU, DirectML, CUDA, NvTensorRtRtx.
 
 ### HuggingFace Models
+
 - Any HuggingFace causal language model (e.g., `meta-llama/Llama-2-7b-hf`, `gpt2`, `mistralai/Mistral-7B-v0.1`).
 - Models are automatically downloaded from the HuggingFace Hub if not cached locally.
 - Supports custom data types (float16, bfloat16, float32) for efficient inference.
@@ -52,16 +55,19 @@ This script is originally based on [perplexity_metrics.py](https://github.com/mi
 ### Evaluate ONNX Models
 
 #### Single Model
+
 ```bash
 python run_perplexity.py --models /path/to/model
 ```
 
 #### Multiple Models
+
 ```bash
 python run_perplexity.py --models /path/to/model1 /path/to/model2
 ```
 
 #### Custom Input Sequence Length(s)
+
 You can specify the input sequence length(s) to evaluate using the `--i` argument:
 
 ```bash
@@ -69,6 +75,7 @@ python run_perplexity.py --models /path/to/model --i 1024,2048,4096,8192,12288
 ```
 
 #### Custom Prefill Chunk Size
+
 You can specify the prefill chunk size to evaluate using the `--chunk_size` argument:
 
 ```bash
@@ -78,21 +85,25 @@ python run_perplexity.py --models /path/to/model --i 1024,2048,4096,8192,12288 -
 ### Evaluate HuggingFace Models
 
 #### Basic HuggingFace Model Evaluation
+
 ```bash
 python run_perplexity.py --hf_model meta-llama/Llama-2-7b-hf --i 1024
 ```
 
 #### With Custom Data Type (Recommended for Performance)
+
 ```bash
 python run_perplexity.py --hf_model meta-llama/Llama-2-7b-hf --hf_dtype float16 --i 1024
 ```
 
 #### With Multiple Input Lengths
+
 ```bash
 python run_perplexity.py --hf_model meta-llama/Llama-2-7b-hf --hf_dtype float16 --i 1024,2048,4096
 ```
 
 #### On CPU (if no GPU available)
+
 ```bash
 python run_perplexity.py --hf_model gpt2 --hf_device cpu --i 1024
 ```
@@ -189,6 +200,7 @@ Set `DEBUG = True` in `perplexity_metrics.py` for detailed logs.
 ## Common Use Cases
 
 ### Compare ONNX vs. HuggingFace Model
+
 Verify that your ONNX exported model has similar perplexity to the original HuggingFace model:
 
 ```bash
@@ -201,11 +213,13 @@ python run_perplexity.py \
 ```
 
 ### Evaluate Small Models (for quick testing)
+
 ```bash
 python run_perplexity.py --hf_model gpt2 --hf_dtype float16 --i 1024
 ```
 
 ### Benchmark Multiple Quantization Variants
+
 ```bash
 python run_perplexity.py \
   --models /path/to/fp16_model /path/to/int8_model /path/to/int4_model \

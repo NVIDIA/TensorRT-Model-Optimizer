@@ -116,7 +116,7 @@ def run_perplexity_on_models(
                         "Error": "None",
                     }
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: PERF203
                 print(f"  Error for input length {input_len}: {e!s}")
                 results.append(
                     {
@@ -134,6 +134,7 @@ def run_perplexity_on_models(
         # Unload HuggingFace model from GPU memory before ONNX evaluation
         print("[CLEANUP] Unloading HuggingFace model from GPU memory...")
         import gc
+
         import torch
 
         if torch.cuda.is_available():
