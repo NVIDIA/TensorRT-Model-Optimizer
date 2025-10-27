@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 import torch
+from _test_utils.torch_misc import set_seed
 from packaging.version import Version
 
 transformers = pytest.importorskip("transformers")
@@ -40,8 +41,11 @@ if Version(transformers.__version__) >= Version("4.55"):
 
 import modelopt.torch.opt as mto
 
+SEED = 1234
+
 
 def get_tiny_qwen3(**config_kwargs) -> "Qwen3ForCausalLM":
+    set_seed(SEED)
     if Version(transformers.__version__) < Version("4.51"):
         pytest.skip("Qwen3ForCausalLM is not supported in transformers < 4.51")
 
@@ -61,6 +65,7 @@ def get_tiny_qwen3(**config_kwargs) -> "Qwen3ForCausalLM":
 
 
 def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:
+    set_seed(SEED)
     kwargs = {
         "hidden_size": 32,
         "intermediate_size": 32,
@@ -77,6 +82,7 @@ def get_tiny_llama(**config_kwargs) -> LlamaForCausalLM:
 
 
 def get_tiny_t5(**config_kwargs) -> T5ForConditionalGeneration:
+    set_seed(SEED)
     kwargs = {
         "vocab_size": 32,
         "d_model": 32,
@@ -95,6 +101,7 @@ def get_tiny_t5(**config_kwargs) -> T5ForConditionalGeneration:
 
 
 def get_tiny_gpt_oss(**config_kwargs) -> "GptOssForCausalLM":
+    set_seed(SEED)
     if Version(transformers.__version__) < Version("4.55"):
         pytest.skip("GptOssForCausalLM is not supported in transformers < 4.55")
 
@@ -145,6 +152,7 @@ def create_tiny_t5_dir(tmp_path: Path | str, with_tokenizer: bool = False, **con
 
 
 def create_tiny_bert_dir(tmp_path: Path) -> Path:
+    set_seed(SEED)
     model = BertForQuestionAnswering(
         BertConfig(
             vocab_size=64,
