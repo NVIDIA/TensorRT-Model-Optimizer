@@ -1,3 +1,8 @@
+"""
+This script was used to truncate the tokenizer.json file from Llama 3.1 8B model
+to keep only the top 100 most common tokens.
+"""
+
 import json
 
 # Path to your original and new tokenizer.json
