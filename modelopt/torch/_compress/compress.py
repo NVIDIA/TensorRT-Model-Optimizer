@@ -53,10 +53,6 @@ def compress(
         pruning_ckpts.launch_prune_ckpt(hydra_cfg)
     runtime.wait_for_everyone()
 
-    # # Step 3: bypass distillation (distributed processing)
-    # # TODO: Add bypass distillation step
-    # #run_bypassed_training(hydra_cfg, runtime)
-
     # Step 4: build_library_and_stats (single process)
     if runtime.global_rank == 0:
         build_library_and_stats.launch_build_library_and_stats(hydra_cfg)
