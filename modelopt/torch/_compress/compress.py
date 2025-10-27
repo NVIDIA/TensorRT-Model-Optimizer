@@ -2,6 +2,7 @@
 
 This module provides the main compression function for a model
 using MIP-based NAS search algorithm.
+
 """
 
 import build_library_and_stats
