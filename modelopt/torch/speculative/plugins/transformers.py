@@ -184,10 +184,6 @@ class EagleModule(nn.Module):
         super().__init__()
         self.config = config
 
-        # Use flex attention for efficient TTT
-        # config._attn_implementation = "flex_attention"
-        config.attn_implementation = "sdpa"
-
         self.layers = nn.ModuleList(
             [decoder_layer_cls(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
@@ -446,7 +442,6 @@ class HFEagleModel(EagleModel):
             eagle_architecture_config=eagle_architecture_config,
         )
         self.eagle_config = PretrainedConfig.from_dict(eagle_architecture_config)
-        self.eagle_config._attn_implementation = "sdpa"
         decoder_cls = (
             type(self.model.layers[-1]) if self.eagle_reuse_base_decoder else LlamaDecoderLayer
         )
