@@ -68,8 +68,7 @@ SUPPORTED_HPARAMS = {
     "mamba_head_dim",
     # MoE pruning
     "num_moe_experts",
-    "expert_ffn_hidden_size",
-    "shared_expert_ffn_hidden_size",
+    "moe_shared_expert_intermediate_size",
     # Depth pruning
     "num_layers",
 }
@@ -216,8 +215,6 @@ MCoreMinitronConfig: type[ModeloptBaseConfig] = create_model(
                 "num_query_groups_divisor": 1,
                 "ffn_hidden_size_divisor": 64,
                 "num_moe_experts_divisor": 1,
-                "expert_ffn_hidden_size_divisor": 64,
-                "shared_expert_ffn_hidden_size_divisor": 64,
             },
             **(
                 {
@@ -229,8 +226,6 @@ MCoreMinitronConfig: type[ModeloptBaseConfig] = create_model(
                         "mamba_num_heads_divisor": 4,
                         "mamba_head_dim_divisor": 4,
                         "num_moe_experts_divisor": 1,
-                        "expert_ffn_hidden_size_divisor": 64,
-                        "shared_expert_ffn_hidden_size_divisor": 64,
                     }
                 }
                 if HAS_MAMBA

@@ -197,7 +197,10 @@ class _DynamicMLP(DynamicModule):
         assert self.input_size == self.config.hidden_size, (
             "MLP input_size must be equal to hidden_size"
         )
-
+        if isinstance(self, SharedExpertMLP):
+            self.hparam_name = "moe_shared_expert_intermediate_size"
+        else:
+            self.hparam_name = "ffn_hidden_size"
         self.linear_fc1 = DMRegistry.convert(self.linear_fc1)
         self.linear_fc2 = DMRegistry.convert(self.linear_fc2)
 
@@ -208,7 +211,7 @@ class _DynamicMLP(DynamicModule):
             else ffn_hidden_size
         )
 
-        self._register_hparam("ffn_hidden_size", ffn_hidden_size)
+        self._register_hparam(self.hparam_name, ffn_hidden_size)
         self.linear_fc1.output_size = fc1_output_size
         self.linear_fc2.input_size = ffn_hidden_size
 
@@ -232,9 +235,11 @@ class _DynamicMLP(DynamicModule):
         # Gather input [seq_len, batch_size, ffn_hidden_size] over all TP regions
         # NOTE: This is not used at the moment since we restrict to TP=1
         input = gather_from_tensor_model_parallel_region(input[0]).detach()
-
+        if input.dim() == 2:
+            # For sparse experts, there is no batch dimension. 
+            input = input[:, None, :]
         # Dont aggregate activations from non-max subnets (e.g. from profiling)
-        if input.shape[-1] != self.get_hparam("ffn_hidden_size").max:
+        if input.shape[-1] != self.get_hparam(self.hparam_name).max:
             return
 
         input = input.to(torch.float32)  # use full precision to avoid overflow
@@ -643,15 +648,14 @@ class _DynamicTopKRouter(DynamicModule):
     def _setup(self):
         # Register hyperparameters for router weight dimensions
         # Router weight shape: [num_moe_experts, hidden_size]
+        # Initialize num_moe_experts (will be set by expert's num_moe_experts)
         self._register_hparam("num_moe_experts", TracedHp(list(range(1, self.weight.shape[0] + 1))))
         # Initialize hidden_size reference (will be set by parent via set_hidden_size_hp)
-        # Use object.__setattr__ to avoid DynamicModule __setattr__ interference
         self._register_hparam("hidden_size", TracedHp(list(range(1, self.weight.shape[1] + 1))))
         
         # Register dynamic attributes like Mamba parameters
         self._register_dynamic_attribute("weight", self._get_router_weight)
         self._register_dynamic_attribute("expert_bias", self._get_expert_bias)
-        self._register_dynamic_attribute("local_tokens_per_expert", self._get_local_tokens_per_expert)
 
     @staticmethod
     def _get_router_weight(mod: "_DynamicTopKRouter", weight: torch.Tensor) -> torch.Tensor:
@@ -663,11 +667,6 @@ class _DynamicTopKRouter(DynamicModule):
     def _get_expert_bias(mod: "_DynamicTopKRouter", bias: torch.Tensor) -> torch.Tensor:
         """Return sliced expert bias - same pattern as Mamba parameters."""
         return get_sliced_tensor(mod, bias, "num_moe_experts")
-
-    @staticmethod
-    def _get_local_tokens_per_expert(mod: "_DynamicTopKRouter", tokens: torch.Tensor) -> torch.Tensor:
-        """Return sliced tokens per expert - same pattern as Mamba parameters."""
-        return get_sliced_tensor(mod, tokens, "num_moe_experts")
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
         """Set hidden size for router weights - recursive pattern."""
@@ -698,12 +697,15 @@ class _DynamicSequentialMLP(DynamicModule):
     def _drop_experts_during_export(self) -> None:
         """Drop experts during export based on active hyperparameter value."""
         hp = self.get_hparam("num_moe_experts")
-        if hp.active == hp.max:
-            return  # No expert pruning
         
         active_count = hp.active
         active_slice = hp.active_slice
         
+        # TODO: @ataghibakhsh: Hack sorting here, move to proper place.
+        importance = hp.importance.argsort(descending=True)
+        
+        self.local_experts = nn.ModuleList([self.local_experts[i] for i in importance])
+
         if isinstance(active_slice, slice):
             # No sorting applied, keep first N experts
             kept_experts = self.local_experts[:active_count]
@@ -761,11 +763,10 @@ class _DynamicSequentialMLP(DynamicModule):
             expert.linear_fc1.input_size = hidden_size
             expert.linear_fc2.output_size = hidden_size
 
-    def modify(self, *, expert_ffn_hidden_size_divisor: int = 1, **kwargs):
+    def modify(self, *, ffn_hidden_size_divisor: int = 1, **kwargs):
         """Modify expert FFN sizes."""
         for expert in self.local_experts:
-            if hasattr(expert, 'modify'):
-                expert.modify(ffn_hidden_size_divisor=expert_ffn_hidden_size_divisor)
+            expert.modify(ffn_hidden_size_divisor=ffn_hidden_size_divisor)
 
     def export(self) -> torch.nn.Module:
         """Export the dynamic module."""
@@ -777,71 +778,10 @@ class _DynamicSequentialMLP(DynamicModule):
         
         # Export remaining experts
         for expert in self.local_experts:
-            if hasattr(expert, 'export'):
-                expert.export()
+            expert.export()
         
         super().export()
         return self
-
-
-# @DMRegistry.register({SharedExpertMLP: "megatron.core.transformer.moe.shared_experts.SharedExpertMLP"})
-# class _DynamicSharedExpertMLP(DynamicModule):
-#     """A SharedExpertMLP with dynamic hyperparams following _DynamicMLP pattern."""
-
-#     def _setup(self):
-#         # Convert linear layers (same as _DynamicMLP)
-#         self.linear_fc1 = DMRegistry.convert(self.linear_fc1)
-#         self.linear_fc2 = DMRegistry.convert(self.linear_fc2)
-        
-#         # Register FFN hyperparameter (same pattern as _DynamicMLP)
-#         ffn_hidden_size = TracedHp(list(range(1, self.config.moe_shared_expert_intermediate_size + 1)))
-#         self._register_hparam("ffn_hidden_size", ffn_hidden_size)
-#         self.linear_fc1.output_size = ffn_hidden_size
-#         self.linear_fc2.input_size = ffn_hidden_size
-        
-#         # Register dynamic attribute (same as _DynamicMLP)
-#         self._register_dynamic_attribute("input_size", lambda mod, val: mod.linear_fc1.input_size)
-        
-#         # Register importance estimator (same as _DynamicMLP)
-#         self._register_temp_attribute("_activations", None)
-#         self.hook_handle = self.linear_fc2.register_forward_hook(self._linear_fc2_forward_hook)
-#         ffn_hidden_size.register_importance(self._estimate_importance)
-
-#     def _linear_fc2_forward_hook(self, module, input, output):
-#         """Hook to collect activations - same as _DynamicMLP."""
-#         input_tensor = gather_from_tensor_model_parallel_region(input[0]).detach()
-#         if input_tensor.shape[-1] != self.get_hparam("ffn_hidden_size").max:
-#             return
-#         input_tensor = input_tensor.to(torch.float32)
-#         activations = input_tensor.abs().mean(dim=0).pow(2).sum(dim=0)
-#         if self._activations is None:
-#             self._activations = activations
-#         else:
-#             self._activations += activations
-
-#     def _estimate_importance(self) -> TracedHp.Importance:
-#         """Estimate importance - same as _DynamicMLP."""
-#         assert self._activations is not None, "No activations collected for importance estimation."
-#         return self._activations.pow(0.5)
-
-    # def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-    #     """Set hidden size for shared expert."""
-    #     self.linear_fc1.input_size = hidden_size
-    #     self.linear_fc2.output_size = hidden_size
-
-#     def modify(self, *, ffn_hidden_size_divisor: int = 1, **kwargs):
-#         """Modify shared expert FFN size."""
-#         hp = self.get_hparam("ffn_hidden_size")
-#         choices = {int(make_divisible(c, ffn_hidden_size_divisor)) for c in hp.choices}
-#         hp.choices = list(set(hp.choices) & choices | {hp.original})
-
-#     def export(self) -> torch.nn.Module:
-#         """Export the dynamic module."""
-#         self.hook_handle.remove()
-#         self.linear_fc1.export()
-#         self.linear_fc2.export()
-#         super().export()
-#         return self
 
 
 @DMRegistry.register({MoELayer: "megatron.core.transformer.moe.moe_layer.MoELayer"})
@@ -867,25 +807,21 @@ class _DynamicMoELayer(DynamicModule):
         self.experts.set_hidden_size_hp(hidden_size)
         self.shared_experts.set_hidden_size_hp(hidden_size)
 
-    def modify(self, *, num_moe_experts_divisor: int = 1, expert_ffn_hidden_size_divisor: int = 1, shared_expert_ffn_hidden_size_divisor: int = 1, **kwargs):
+    def modify(self, *, num_moe_experts_divisor: int = 1, ffn_hidden_size_divisor: int = 1, **kwargs):
         """Modify MoE hyperparameters."""
         # Modify expert count (applies to both router and experts)
-        if hasattr(self.experts, 'get_hparam'):
-            expert_hp = self.experts.get_hparam("num_moe_experts")
-            choices = {int(make_divisible(c, num_moe_experts_divisor)) for c in expert_hp.choices}
-            expert_hp.choices = list(set(expert_hp.choices) & choices | {expert_hp.original})
-            
-            # Synchronize router num_experts with expert count
-            if hasattr(self.router, 'get_hparam'):
-                router_hp = self.router.get_hparam("num_moe_experts")
-                router_hp.choices = expert_hp.choices.copy()
-                router_hp.active = expert_hp.active
+        expert_hp = self.experts.get_hparam("num_moe_experts")
+        choices = {int(make_divisible(c, num_moe_experts_divisor)) for c in expert_hp.choices}
+        expert_hp.choices = list(set(expert_hp.choices) & choices | {expert_hp.original})
         
+        # Synchronize router num_experts with expert count
+        router_hp = self.router.get_hparam("num_moe_experts")
+        router_hp.choices = expert_hp.choices.copy()
+        router_hp.active = expert_hp.active
+    
         # Modify expert FFN sizes
-        if hasattr(self.experts, 'modify'):
-            self.experts.modify(expert_ffn_hidden_size_divisor=expert_ffn_hidden_size_divisor)
-        if hasattr(self.shared_experts, 'modify'):
-            self.shared_experts.modify(ffn_hidden_size_divisor=shared_expert_ffn_hidden_size_divisor)
+        self.experts.modify(ffn_hidden_size_divisor=ffn_hidden_size_divisor)
+        self.shared_experts.modify(ffn_hidden_size_divisor=ffn_hidden_size_divisor)
 
     def export(self) -> torch.nn.Module:
         """Export the dynamic module."""
@@ -951,8 +887,7 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
         if hasattr(self, 'mlp') and self.mlp is not None:
             if isinstance(self.mlp, MoELayer):
                 # Convert MoE layer and its layernorm
-                if hasattr(self, 'pre_mlp_layernorm') and self.pre_mlp_layernorm is not None:
-                    self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
+                self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
                 self.mlp = DMRegistry.convert(self.mlp)
             elif isinstance(self.mlp, MLP):
                 # Regular MLP
@@ -983,8 +918,6 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
         num_query_groups_divisor: int = 1,
         ffn_hidden_size_divisor: int = 1,
         num_moe_experts_divisor: int = 1,  # New parameter for MoE expert pruning
-        expert_ffn_hidden_size_divisor: int = 1,  # New parameter for MoE
-        shared_expert_ffn_hidden_size_divisor: int = 1,  # New parameter for MoE
         **kwargs,  # Unused hparams
     ) -> None:
         # Modify SelfAttention hparams
@@ -1001,15 +934,13 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
         if hasattr(self, 'mlp') and self.mlp is not None:
             if isinstance(self.mlp, MoELayer):
                 # MoE modification
-                if hasattr(self.mlp, 'modify'):
-                    self.mlp.modify(
-                        num_moe_experts_divisor=num_moe_experts_divisor,
-                        expert_ffn_hidden_size_divisor=expert_ffn_hidden_size_divisor,
-                        shared_expert_ffn_hidden_size_divisor=shared_expert_ffn_hidden_size_divisor
-                    )
+                self.mlp.modify(
+                    num_moe_experts_divisor=num_moe_experts_divisor,
+                    ffn_hidden_size_divisor=ffn_hidden_size_divisor,
+                )
             elif isinstance(self.mlp, MLP):
                 # Regular MLP modification
-                hp_mlp = self.mlp.get_hparam("ffn_hidden_size")
+                hp_mlp = self.mlp.get_hparam(self.mlp.hparam_name)
                 choices = {int(make_divisible(c, ffn_hidden_size_divisor)) for c in hp_mlp.choices}
                 hp_mlp.choices = list(set(hp_mlp.choices) & choices | {hp_mlp.original})
 
@@ -1587,8 +1518,6 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         mamba_num_heads_divisor: int = 1,
         mamba_head_dim_divisor: int = 1,
         num_moe_experts_divisor: int = 1,  # New parameter for MoE expert pruning
-        expert_ffn_hidden_size_divisor: int = 1,  # New parameter for MoE
-        shared_expert_ffn_hidden_size_divisor: int = 1,  # New parameter for MoE
     ):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 
@@ -1600,8 +1529,6 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             mamba_num_heads_divisor: The divisor of the mamba num_heads.
             mamba_head_dim_divisor: The divisor of the mamba head_dim.
             num_moe_experts_divisor: The divisor of the number of MoE experts.
-            expert_ffn_hidden_size_divisor: The divisor of the MoE expert FFN hidden size.
-            shared_expert_ffn_hidden_size_divisor: The divisor of the MoE shared expert FFN hidden size.
         """
         hp = self.get_hparam("hidden_size")
         choices = {int(make_divisible(c, hidden_size_divisor)) for c in hp.choices}  # type: ignore[arg-type]
@@ -1615,8 +1542,6 @@ class _DynamicMCoreLanguageModel(DynamicModule):
                 mamba_num_heads_divisor=mamba_num_heads_divisor,
                 mamba_head_dim_divisor=mamba_head_dim_divisor,
                 num_moe_experts_divisor=num_moe_experts_divisor,
-                expert_ffn_hidden_size_divisor=expert_ffn_hidden_size_divisor,
-                shared_expert_ffn_hidden_size_divisor=shared_expert_ffn_hidden_size_divisor,
             )
 
     def _get_layer_scores(self) -> dict[int, torch.Tensor]:
