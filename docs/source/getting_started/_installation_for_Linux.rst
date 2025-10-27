@@ -126,6 +126,11 @@ Additionally, we support installing dependencies for following 3rd-party package
     *   - Huggingface (``transformers``, ``diffusers``, etc.)
         - ``[hf]``
 
+**CUDA / Python specific dependencies**
+
+* By default, cupy-cuda13x is installed for INT4 ONNX quantization. If you have CUDA 12, you need to run ``pip uninstall -y cupy-cuda13x`` and ``pip install cupy-cuda12x`` after installing ``nvidia-modelopt``.
+* Onnxsim for Python 3.12+ requires CMake to build from source. If you are installing ``nvidia-modelopt`` on Python 3.12+, you need to run ``pip install cmake`` before installing ``nvidia-modelopt``.
+
 **Accelerated Quantization with Triton Kernels**
 
 ModelOpt includes optimized quantization kernels implemented with Triton language that accelerate quantization

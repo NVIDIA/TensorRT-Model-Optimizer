@@ -1,6 +1,13 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.41 (2026-01-xx)
+^^^^^^^^^^^^^^^^^
+
+**Misc**
+
+- Default ``cupy`` package (for INT4 ONNX quantization) is now ``cupy-cuda13x`` for CUDA 13 unless installed from source. If you install from PyPI wheel and have CUDA 12, you need to run ``pip uninstall -y cupy-cuda13x`` and ``pip install cupy-cuda12x`` after installing ``nvidia-modelopt``.
+
 0.40 (2025-12-11)
 ^^^^^^^^^^^^^^^^^
 

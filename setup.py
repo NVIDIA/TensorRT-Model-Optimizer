@@ -13,13 +13,64 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The package setup script for modelopt customizing certain aspects of the installation process."""
+"""The package setup script for modelopt customizing certain aspects of the installation process.
+
+If installing from source, the CUDA version is detected and the appropriate cupy (for INT4 ONNX quantization)
+package is selected. If installing from a wheel, cupy for CUDA 13 is installed by default.
+    If you have CUDA 12, you need to run `pip uninstall -y cupy-cuda13x` and `pip install cupy-cuda12x` separately.
+
+Onnxsim for Python 3.12+ requires CMake to build from source.
+    If installing nvidia-modelopt from source, onnxsim will be installed if CMake is available or
+    Python version is lower than 3.12. Run `pip install cmake` before installing nvidia-modelopt.
+"""
+
+import re
+import subprocess
+import sys
 
 import setuptools
 from setuptools_scm import get_version
 
 # TODO: Set fallback_version to X.Y.Z release version when creating the release branch
 version = get_version(root=".", fallback_version="0.0.0")
+
+
+def get_cuda_major_version() -> int | None:
+    """Return CUDA major version installed on the system or None if detection fails."""
+    # Check nvcc version
+    try:
+        result = subprocess.run(
+            ["nvcc", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            # Parse output like "release 12.0, V12.0.140" or "release 13.0, V13.0.0"
+            for line in result.stdout.split("\n"):
+                if "release" in line.lower():
+                    match = re.search(r"release (\d+)\.", line)
+                    if match:
+                        return int(match.group(1))
+    except Exception:
+        pass
+
+    return None
+
+
+def is_cmake_installed() -> bool:
+    """Return True if cmake is installed on the system."""
+    try:
+        result = subprocess.run(
+            ["cmake", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
 
 # Required and optional dependencies ###############################################################
 required_deps = [
@@ -41,9 +92,9 @@ required_deps = [
 ]
 
 optional_deps = {
+    # cupy and onnxsim added below based on the detected CUDA and Python versions
     "onnx": [
         "cppimport",
-        "cupy-cuda12x; platform_machine != 'aarch64' and platform_system != 'Darwin'",
         "ml_dtypes",  # for bfloat16 conversion
         "onnx-graphsurgeon",
         "onnx~=1.19.0",
@@ -52,7 +103,6 @@ optional_deps = {
         "onnxruntime-gpu~=1.22.0 ; platform_machine != 'aarch64' and platform_system != 'Darwin' and platform_system != 'Windows'",  # noqa: E501
         "onnxruntime-directml==1.20.0; platform_system == 'Windows'",
         "onnxscript",  # For autocast opset conversion and test_onnx_dynamo_export unit test
-        "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
         "polygraphy>=0.49.22",
     ],
     "hf": [
@@ -101,6 +151,23 @@ optional_deps = {
         "setuptools-scm>=8",
     ],
 }
+
+
+# Select the appropriate cupy package based on the detected CUDA version or fallback to cupy-cuda12x
+cuda_version = get_cuda_major_version()
+
+if cuda_version is None:
+    # Default to CUDA 13 if detection fails
+    cuda_version = 13
+
+optional_deps["onnx"].append(
+    f"cupy-cuda{cuda_version}x ; platform_machine != 'aarch64' and platform_system != 'Darwin'"
+)
+
+
+# onnxsim for Python 3.12+ requires CMake to build from source
+if (is_cmake_installed() and sys.version_info >= (3, 12)) or sys.version_info < (3, 12):
+    optional_deps["onnx"].append("onnxsim ; platform_machine != 'aarch64'")
 
 # create "compound" optional dependencies
 optional_deps["all"] = [

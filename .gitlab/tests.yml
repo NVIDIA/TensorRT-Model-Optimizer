@@ -29,7 +29,7 @@ unit:
 .multi-gpu-tests-default:
   extends: .tests-default
   timeout: 90m
-  image: nvcr.io/nvidia/pytorch:25.06-py3
+  image: nvcr.io/nvidia/pytorch:25.08-py3
   variables:
     GIT_DEPTH: 1000 # For correct version for tests/gpu/torch/quantization/plugins/test_megatron.py
   tags: [docker, linux, 2-gpu]
@@ -45,7 +45,7 @@ multi-gpu:
   script:
     # Use pre-installed packages without a new venv with tox-current-env
     - pip install tox-current-env
-    - tox -e py312-cuda12-gpu --current-env
+    - tox -e py312-cuda13-gpu --current-env
 
 ##### Example Tests #####
 example-torch:
