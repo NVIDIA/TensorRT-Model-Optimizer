@@ -36,9 +36,8 @@ from typing import Literal
 
 import torch
 import transformers
-from eagle_utils import ARValidationCallback, make_eagle_supervised_data_module
+from eagle_utils import EagleTrainerWithAccLog, EagleTrainingPlot, make_eagle_supervised_data_module
 from medusa_utils import make_medusa_supervised_data_module
-from transformers import Trainer
 from transformers.trainer_utils import get_last_checkpoint
 
 import modelopt.torch.opt as mto
@@ -75,6 +74,8 @@ class DataArguments:
         default="draft_vocab_cache",
         metadata={"help": "Path to the d2t cache directory."},
     )
+    vlm_img_dir: str = field(default=None, metadata={"help": "Path to the VLM image directory."})
+    vlm_processor: str = field(default=None, metadata={"help": "Path to the VLM processor."})
 
 
 @dataclass
@@ -93,6 +94,9 @@ class TrainingArguments(transformers.TrainingArguments):
     mode: Literal["eagle1", "eagle3", "medusa"] = "eagle3"
     ar_validate_steps: int = field(default=1000, metadata={"help": "Steps between AR validation."})
     disable_tqdm: bool = field(default=False, metadata={"help": "Disable tqdm progress bar."})
+    remove_unused_columns: bool = field(
+        default=False, metadata={"help": "Set to False to keep extra args for VLM."}
+    )
 
 
 @dataclass
@@ -188,15 +192,18 @@ def train():
                 config["eagle_architecture_config"].update(custom_config)
 
             # Hidden size and vocab size must match base model
+            llm_config = (
+                model.config.llm_config if hasattr(model.config, "llm_config") else model.config
+            )
             config["eagle_architecture_config"].update(
                 {
-                    "hidden_size": model.config.hidden_size,
-                    "vocab_size": model.config.vocab_size,
+                    "hidden_size": llm_config.hidden_size,
+                    "vocab_size": llm_config.vocab_size,
                     # we also overwrite max_pos_embedding for deployment compatibility
-                    "max_position_embeddings": model.config.max_position_embeddings,
+                    "max_position_embeddings": llm_config.max_position_embeddings,
                     "draft_vocab_size": custom_config["draft_vocab_size"]
                     if eagle_args.eagle_config and "draft_vocab_size" in custom_config
-                    else model.config.vocab_size,
+                    else llm_config.vocab_size,
                 }
             )
 
@@ -222,14 +229,14 @@ def train():
         data_module = make_medusa_supervised_data_module(tokenizer, data_args)
     elif training_args.mode in ["eagle1", "eagle3"]:
         data_module = make_eagle_supervised_data_module(
-            tokenizer, data_args, use_offline_training, max_length=training_args.training_seq_len
+            tokenizer, data_args, max_length=training_args.training_seq_len
         )
 
-    trainer = Trainer(
+    trainer = EagleTrainerWithAccLog(
         model=model,
         processing_class=tokenizer,
         args=training_args,
-        callbacks=[ARValidationCallback(training_args.ar_validate_steps)],
+        callbacks=[EagleTrainingPlot(training_args.ar_validate_steps)],
         **data_module,
     )
 
