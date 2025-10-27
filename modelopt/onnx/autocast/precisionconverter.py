@@ -538,6 +538,7 @@ class PrecisionConverter:
                             InputIndexTracker(node=node, node_index=idx)
                         )
 
+        onnx_float_types = set(ONNX_TYPES)
         # 2. Convert initializers to appropriate precision based on their consumer nodes.
         for init_name, tracker in initializer_to_nodes.items():
             # Get the initializer.
@@ -547,10 +548,7 @@ class PrecisionConverter:
                 logger.debug(f"Initializer {init_name} is not used by any nodes, skipping")
                 continue
             # If the initializer is not a float, then just skip.
-            if init.data_type not in {
-                self.high_precision_type.onnx_type,
-                self.low_precision_type.onnx_type,
-            }:
+            if init.data_type not in onnx_float_types:
                 logger.debug(f"Initializer {init_name} is not a float, skipping")
                 continue
             # If the initializer is only used by high precision nodes and is high precision, then just skip.
