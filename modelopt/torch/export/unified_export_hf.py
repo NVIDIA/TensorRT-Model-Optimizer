@@ -20,6 +20,7 @@ import json
 import re
 import tempfile
 import warnings
+from builtins import ValueError
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -27,11 +28,12 @@ from typing import Any
 import torch
 import torch.nn as nn
 from safetensors.torch import save_file
+from torch.distributed.fsdp import FSDPModule
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
-from modelopt.torch.quantization.utils import quantizer_attr_names
+from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
 from .layer_utils import (
@@ -54,6 +56,7 @@ from .model_config import (
     QUANTIZATION_W4A8_AWQ,
     QUANTIZATION_W4A8_NVFP4_FP8,
 )
+from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
     fuse_prequant_layernorm,
@@ -114,7 +117,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             # update_experts_avg_prequant_scale(module)
             grouped_experts = get_experts_list(module, model_type)
             for modules in grouped_experts:
-                preprocess_linear_fusion(modules, resmooth_only=True)
+                with fsdp2_aware_weight_update(model, modules):
+                    preprocess_linear_fusion(modules, resmooth_only=True)
 
         # Attach hook to layernorm modules that need to be fused
         if is_layernorm(module):
@@ -132,6 +136,10 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     with torch.no_grad():
         fake_input = torch.ones([1, 2], dtype=torch.long).to(model.device)
         decoder_fake_input = fake_input
+
+        # Check if this is a VL model that needs special input handling
+        is_vl_model = is_multimodal_model(model)
+
         if model_type.startswith("whisper"):
             # For Whisper models, we need to pass a fake input with the specific sequence length
             from transformers import AutoFeatureExtractor
@@ -147,6 +155,23 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             if getattr(model.config, "is_encoder_decoder", False):
                 # For encoder-decoder models, we need to pass both the encoder and decoder input ids
                 model(fake_input, decoder_input_ids=decoder_fake_input)
+            elif is_vl_model and "nemotron" in model_type:
+                # For Nemotron VL models, try to run optimization on just the language model part
+                language_model, _ = get_language_model_from_vl(model)
+
+                if language_model is not None:
+                    # Run optimization on just the language model with the same input format as regular LLMs
+                    # Use the same fake_input tensor that regular LLMs use
+                    print(
+                        f"Running optimization on language model with fake_input shape: {fake_input.shape}"
+                    )
+                    language_model(fake_input)
+                else:
+                    raise ValueError(
+                        f"Cannot extract language_model from Nemotron VL model (type: {model_type}). "
+                        "This is required for requantization/resmoothing optimization. "
+                        "Please ensure the model architecture is supported or file an issue."
+                    )
             else:
                 model(fake_input)
 
@@ -161,7 +186,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             QUANTIZATION_FP8_PB_REAL,
         ]:
             # Fuse modules that have the same input
-            preprocess_linear_fusion(modules)
+            with fsdp2_aware_weight_update(model, modules):
+                preprocess_linear_fusion(modules)
             fused_linears[modules[0].name] = [module.name for module in modules]
 
         # Fuse layernorms
@@ -171,7 +197,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             and tensor in output_to_layernorm
         ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
-            fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+            with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
+                fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.
@@ -192,7 +219,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                     assert new_expert_name in module_names
                     new_expert_modules.append(model.get_submodule(new_expert_name))
 
-                preprocess_linear_fusion(new_expert_modules)
+                with fsdp2_aware_weight_update(model, new_expert_modules):
+                    preprocess_linear_fusion(new_expert_modules)
 
                 expert_id += 1
 
@@ -339,7 +367,9 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module, dtype: torch.dtype | None = None
+    model: nn.Module,
+    dtype: torch.dtype | None = None,
+    **kwargs,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -348,6 +378,7 @@ def _export_hf_checkpoint(
     Args:
         model: the torch model.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
+        accelerator: the accelerator instance in case of distributed export setup.
 
     Returns:
         post_state_dict: Dict containing quantized weights
@@ -360,6 +391,8 @@ def _export_hf_checkpoint(
             f"Model's original dtype ({model.config.torch_dtype}) differs from target dtype "
             f"({dtype}), which may lead to numerical errors."
         )
+
+    accelerator = kwargs.get("accelerator")
 
     # Create a model layer pool
     # If `model.model` exists use that, otherwise use `model` itself, e.g., Nemotron-H
@@ -458,12 +491,24 @@ def _export_hf_checkpoint(
 
     # Track if any layers are quantized to properly set exclude_modules
     has_quantized_layers = False
+    fsdp_module_to_reshard = None
 
     for name, sub_module in layer_pool.items():
+        # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
+        if isinstance(sub_module, FSDPModule):
+            # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
+            # We need to reshard the previous FSDPModule to prevent potential OOM.
+            # This hack reduces the number of unshard reshard operations, to avoid unnecessary communication.
+            if fsdp_module_to_reshard is not None:
+                fsdp_module_to_reshard.reshard()
+
+            fsdp_module_to_reshard = sub_module
+
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
             if is_quantlinear(sub_module):
-                _export_quantized_weight(sub_module, dtype)
+                with fsdp2_aware_weight_update(model, sub_module, reshard=False):
+                    _export_quantized_weight(sub_module, dtype)
             elif (
                 "Llama4TextExperts" in type(sub_module).__name__
                 or "GptOssExperts" in type(sub_module).__name__
@@ -481,9 +526,14 @@ def _export_hf_checkpoint(
                 )
                 # Export the quantized weights
                 for weight_name in ["gate_up_proj", "down_proj"]:
-                    _export_quantized_weight(sub_module, dtype, weight_name)
+                    with fsdp2_aware_weight_update(model, sub_module, reshard=False):
+                        _export_quantized_weight(sub_module, dtype, weight_name)
 
-    quantized_state_dict = model.state_dict()
+    if accelerator is not None:
+        # Gather state_dict from all ranks
+        quantized_state_dict = accelerator.get_state_dict(model)
+    else:
+        quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
         quantized_state_dict, kv_cache_max_bound, kv_cache_format

@@ -97,7 +97,10 @@ def setup_distillation_config(
     student_cfg: "TransformerConfig",
     teacher_cfg: "TransformerConfig",
 ) -> DistillationConfig:
-    """Read the distillation yaml config file specified by ``args.export_kd_cfg``.
+    """Setup and/or finalize the distillation config.
+
+    Either reads the distillation yaml config file from a path, fills in an
+    existing DistillationConfig, or creates a default one.
 
     Args:
         config_or_path: Path to user-defined distillation settings yaml file, or the incomplete config itself.
@@ -117,34 +120,34 @@ def setup_distillation_config(
             cfg = yaml.safe_load(f)
         cfg = DistillationConfig(**cfg)
 
-    criterion = {}
-    if student_cfg.pipeline_model_parallel_size == 1 or parallel_state.is_pipeline_last_stage():
-        criterion[tuple(cfg.logit_layers)] = LogitsKLLoss(
-            student_cfg, temperature=cfg.logit_kl_temperature
-        )
-        # NOTE: Projection layer shared among intermediate layer pairs.
-        projection_layer = ProjectionLayer(student_cfg, teacher_cfg)
-
-        for entry in cfg.intermediate_layer_pairs:
-            student_layer, teacher_layer, loss_fn = cfg.parse_intermediate_entry(entry)
-            if parallel_state.get_tensor_and_context_parallel_rank() == 0:
-                logger.info(
-                    "Distillation: Adding intermediate loss between"
-                    f" `{student_layer}` of student (hidden size {student_cfg.hidden_size}) and"
-                    f" `{teacher_layer}` of teacher (hidden size {teacher_cfg.hidden_size})."
-                )
-            student_layer = _adjust_layer_index_for_pp(student_layer, student_cfg)
-            teacher_layer = _adjust_layer_index_for_pp(teacher_layer, teacher_cfg)
-            criterion[(student_layer, teacher_layer)] = loss_fn(
-                student_cfg, projection_layer=projection_layer
+    if cfg.criterion is None:
+        criterion = {}
+        if parallel_state.is_pipeline_last_stage():
+            criterion[tuple(cfg.logit_layers)] = LogitsKLLoss(
+                student_cfg, temperature=cfg.logit_kl_temperature
             )
+            # NOTE: Projection layer shared among intermediate layer pairs.
+            projection_layer = ProjectionLayer(student_cfg, teacher_cfg)
 
-    loss_balancer = LogitsAndIntermediatesLossBalancer(
-        kd_loss_scale=cfg.kd_loss_scale, skip_original_loss=cfg.skip_lm_loss
-    )
+            for entry in cfg.intermediate_layer_pairs:
+                student_layer, teacher_layer, loss_fn = cfg.parse_intermediate_entry(entry)
+                if parallel_state.get_tensor_and_context_parallel_rank() == 0:
+                    logger.info(
+                        "Distillation: Adding intermediate loss between"
+                        f" `{student_layer}` of student (hidden size {student_cfg.hidden_size}) and"
+                        f" `{teacher_layer}` of teacher (hidden size {teacher_cfg.hidden_size})."
+                    )
+                student_layer = _adjust_layer_index_for_pp(student_layer, student_cfg)
+                teacher_layer = _adjust_layer_index_for_pp(teacher_layer, teacher_cfg)
+                criterion[(student_layer, teacher_layer)] = loss_fn(
+                    student_cfg, projection_layer=projection_layer
+                )
+        cfg.criterion = criterion
 
-    cfg.criterion = criterion
-    cfg.loss_balancer = loss_balancer
+    if cfg.loss_balancer is None:
+        cfg.loss_balancer = LogitsAndIntermediatesLossBalancer(
+            kd_loss_scale=cfg.kd_loss_scale, skip_original_loss=cfg.skip_lm_loss
+        )
 
     return cfg
 

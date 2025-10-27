@@ -27,7 +27,6 @@ from onnx_graphsurgeon.ir.graph import Graph
 from onnx_graphsurgeon.ir.node import Node
 from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
-from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 from modelopt.onnx.logging_config import logger
 from modelopt.onnx.op_types import is_copy_op, is_linear_op
@@ -36,9 +35,13 @@ from modelopt.onnx.utils import (
     find_lowest_common_ancestor,
     get_child_nodes,
     get_parent_nodes,
+    infer_shapes,
     parse_shapes_spec,
     save_onnx,
 )
+
+DEFAULT_GATHER_BLOCK_SIZE = 32
+DEFAULT_GATHER_QUANTIZE_AXIS = None
 
 
 def is_const_input(tensor: Tensor) -> bool:
@@ -201,6 +204,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             ["BatchNormalization", "BiasAdd", conv_type],
             ["Relu", "BatchNormalization", "BiasAdd", conv_type],
             ["MaxPool", "Relu", "BatchNormalization", "BiasAdd", conv_type],
+            ["Mul", "Sigmoid", "BatchNormalization", conv_type],
         ]
     for idx, path_type in enumerate(fusible_linear_path_types):
         if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=[]):
@@ -528,7 +532,7 @@ def build_non_residual_input_map(
 
             # Generally if both the inputs have a backbone then both backbones are of the same type
             if backbone1 and backbone2:
-                if backbone1 == backbone2 or backbone1.op != backbone2.op:
+                if backbone1 == backbone2:
                     non_residual_inputs[node.name] = None
                     continue
 
@@ -717,6 +721,8 @@ def get_layer_precision_mapping(
     onnx_model: onnx.ModelProto,
     precision_pattern_8bit: str | None = None,
     nodes_to_exclude: list[str] | None = [r"/lm_head"],
+    block_size: int = 128,
+    quantize_axis: int = 0,
 ):
     """Generate a mapping of layer names to their quantization precision (4 bits or 8 bits) for an ONNX model.
 
@@ -745,7 +751,7 @@ def get_layer_precision_mapping(
         matmul_nodes = [
             node
             for node in onnx_model.graph.node
-            if node.op_type == "MatMul" and "lm_head" not in node.name
+            if node.op_type in ["Gemm", "MatMul"] and "lm_head" not in node.name
         ]
 
         # Only include nodes matching the specified patterns for all layers present in the model
@@ -807,27 +813,38 @@ def get_layer_precision_mapping(
                     layers_8bit_set.add(names_sorted[i])
         layers_list_8bit = list(layers_8bit_set)
 
-    # NEW: Create precision info mapping
-    precision_info = {}
+    # NEW: Create layer info mapping with precision, block_size, and axis
+    layer_info = {}
     for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type) in enumerate(wa_pack):
         weight_name = weight_tensor.name
         if should_quantize_to_8bit(weight_name, layers_list_8bit):
-            precision_info[weight_name] = 8
+            layer_info[weight_name] = {
+                "precision": 8,
+                "block_size": -1,  # Per-channel for 8-bit
+                "axis": 0,
+            }
         else:
-            precision_info[weight_name] = 4
-    return precision_info
+            layer_info[weight_name] = {
+                "precision": 4,
+                "block_size": block_size,  # Default block size for 4-bit
+                "axis": quantize_axis,
+            }
+
+    return layer_info
 
 
-def get_precision_info(
+def get_layer_info(
     onnx_model: onnx.ModelProto,
     nodes_to_exclude: list[str] | None = [r"/lm_head"],
+    block_size: int = 128,
+    quantize_axis: int = 0,
     **kwargs: Any,
 ):
-    """Generate a mapping of weight tensor names to their quantization precision (e.g., 4 or 8 bits).
+    """Generate a mapping of weight tensor names to their quantization configuration.
 
-    This function determines the quantization precision for each weight tensor in the ONNX model,
-    based on the provided configuration. If mixed quantization is enabled, it uses the layer
-    precision mapping; otherwise, it returns None.
+    This function determines the quantization configuration (precision, block_size, axis) for each
+    weight tensor in the ONNX model, based on the provided configuration. If mixed quantization
+    is enabled, it uses the layer precision mapping; otherwise, it returns None.
 
     Args:
         onnx_model (onnx.ModelProto): The ONNX model to analyze.
@@ -835,19 +852,42 @@ def get_precision_info(
         **kwargs: Additional keyword arguments, such as:
             - enable_mixed_quant (bool): Whether to enable mixed quantization.
             - layers_8bit (str): Comma-separated list of layer patterns to quantize to 8 bit.
+            - block_size (int): Default block size for quantization.
+            - quantize_axis (int): Default quantization axis.
+            - gather_block_size (int): Default block size for gather quantization.
+            - gather_quantize_axis (int): Default quantization axis for gather.
 
     Returns:
-        dict[str, int] | None: A mapping from weight tensor names to their quantization precision,
-        or None if mixed quantization is not enabled.
+        dict[str, dict[str, Any]] | None: A mapping from weight tensor names to their quantization
+        configuration (with keys: precision, block_size, axis), or None if mixed quantization is not enabled.
     """
-    precision_info = None
+    layer_info = None
     enable_mixed_quant = kwargs.get("enable_mixed_quant", False)
     layers_8bit = kwargs.get("layers_8bit")
+    gather_block_size = kwargs.get("gather_block_size", DEFAULT_GATHER_BLOCK_SIZE)
+    gather_quantize_axis = kwargs.get("gather_quantize_axis", DEFAULT_GATHER_QUANTIZE_AXIS)
     if enable_mixed_quant:
-        precision_info = get_layer_precision_mapping(onnx_model, layers_8bit, nodes_to_exclude)
+        layer_info = get_layer_precision_mapping(
+            onnx_model,
+            layers_8bit,
+            nodes_to_exclude,
+            block_size,
+            quantize_axis,
+        )
     else:
-        precision_info = None
-    return precision_info
+        layer_info = None
+
+    if gather_quantize_axis is not None:
+        if layer_info is None:
+            layer_info = {}
+        for node in onnx_model.graph.node:
+            if node.op_type == "Gather":
+                layer_info[node.input[0]] = {
+                    "precision": 4,
+                    "block_size": gather_block_size,
+                    "axis": gather_quantize_axis,
+                }
+    return layer_info
 
 
 def expand_node_names_from_patterns(
@@ -966,7 +1006,7 @@ def find_nodes_from_matmul_to_exclude(
     logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
     if calibration_shapes:
-        nodes_to_exclude = _exclude_matmuls_by_symbolic_inference(
+        nodes_to_exclude = _exclude_matmuls_by_shape_inference(
             model, matmul_nodes, calibration_shapes
         )
     else:
@@ -1058,10 +1098,10 @@ def find_nodes_from_convs_to_exclude(graph: Graph, quantize_mode: str = "int8"):
     return unsupported_conv_nodes
 
 
-def _exclude_matmuls_by_symbolic_inference(
+def _exclude_matmuls_by_shape_inference(
     model: onnx.ModelProto, matmul_nodes: list, calibration_shapes: str | dict | None = None
 ) -> list[str]:
-    """Use symbolic shape inference to find MatMuls with dimension 1."""
+    """Use shape inference to find MatMuls with dimension 1."""
     # Prepare model for symbolic inference
     for graph_input in model.graph.input:
         for dim in graph_input.type.tensor_type.shape.dim:
@@ -1070,11 +1110,13 @@ def _exclude_matmuls_by_symbolic_inference(
                 dim.dim_value = 1
 
     # Apply calibration shapes if provided
-    input_shapes = (
-        parse_shapes_spec(calibration_shapes)
-        if (calibration_shapes and isinstance(calibration_shapes, str))
-        else {}
-    )
+    input_shapes = {}
+    if calibration_shapes:
+        input_shapes = (
+            parse_shapes_spec(calibration_shapes)
+            if isinstance(calibration_shapes, str)
+            else calibration_shapes
+        )
     for graph_input in model.graph.input:
         if graph_input.name in input_shapes:
             input_shape = input_shapes[graph_input.name]
@@ -1087,9 +1129,9 @@ def _exclude_matmuls_by_symbolic_inference(
             for dim, new_dim_value in zip(tensor_shape, input_shape):
                 dim.dim_value = new_dim_value
 
-    model.graph.ClearField("value_info")
-    model = SymbolicShapeInference.infer_shapes(model)
+    model = infer_shapes(model)
     value_info_map = {vi.name: vi for vi in model.graph.value_info}
+    value_info_map.update({vi.name: vi for vi in model.graph.output})
 
     nodes_to_exclude = []
     for matmul_node in matmul_nodes:

@@ -470,7 +470,7 @@ def quantize(
         calibration_eps,
     )
 
-    if not calibration_shapes:
+    if calibrate_per_node and not calibration_shapes:
         calibration_shapes = get_input_shapes(onnx_path)
 
     if quantize_mode in ["fp8", "int8"]:

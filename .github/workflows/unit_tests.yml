@@ -3,9 +3,9 @@ name: Unit tests
 
 on:
   pull_request:
-    branches: [main, release/*]
+    branches: [main, release/*, feature/*]
   push:
-    branches: [main, release/*]
+    branches: [main, release/*, feature/*]
     paths:
       - ".github/workflows/unit_tests.yml"
       - "modelopt/**"

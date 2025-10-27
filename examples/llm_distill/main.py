@@ -37,7 +37,6 @@ logger = get_logger(__name__, log_level="INFO")
 class ModelArguments:
     teacher_name_or_path: str | None = None
     student_name_or_path: str | None = None
-    single_model: bool = False
 
 
 @dataclass
@@ -55,39 +54,18 @@ class TrainingArguments(transformers.TrainingArguments):
     tf32: bool = True
 
 
-def llama_text_format_func(sample):
-    p, q, r = sample["system_prompt"], sample["question"], sample["response"]
-    if not p:
-        return f"<s>[INST] {q}[/INST]\n{r}</s>"
-    else:
-        return f"<s>[INST] <<SYS>>{p}<</SYS>>\n{q}[/INST]\n{r}</s>"
+def _format_smoltalk_chat_template(sample, tokenizer):
+    # smol-smoltalk-Interaction-SFT dataset has "query" and "answer" fields
+    # Convert them to messages format and use tokenizer's apply_chat_template
+    messages = [
+        {"role": "user", "content": sample["query"]},
+        {"role": "assistant", "content": sample["answer"]},
+    ]
+    return tokenizer.apply_chat_template(messages, tokenize=False)
 
 
 class KDSFTTrainer(SFTTrainer, KDTrainer):
     pass
-
-
-def _save_model_fsdp_compat(
-    self,
-    output_dir: str | None = None,
-    _internal_call: bool = False,
-    *args,
-    **kwargs,
-):
-    output_dir = output_dir or self.args.output_dir
-    model = self.accelerator.unwrap_model(self.model)
-    if not _internal_call and self.is_fsdp_enabled:
-        state_dict = self.accelerator.get_state_dict(self.model)
-        if self.accelerator.is_main_process:
-            model.save_pretrained(
-                output_dir,
-                is_main_process=self.accelerator.is_main_process,
-                save_function=self.accelerator.save,
-                state_dict=state_dict,
-            )
-            self.processing_class.save_pretrained(output_dir)
-    else:
-        super(SFTTrainer, self).save_model(output_dir, _internal_call, *args, **kwargs)
 
 
 def train():
@@ -97,9 +75,6 @@ def train():
     # Enable automatic save/load of modelopt state huggingface checkpointing
     # modelopt state will be saved automatically to "modelopt_state.pth"
     mto.enable_huggingface_checkpointing()
-
-    # HACK: Fix FSDP2-incompatible save_model() function for SFTTrainer
-    SFTTrainer.save_model = _save_model_fsdp_compat
 
     # Set total batch size across all ranks to equal 64
     total_batch_size = 64
@@ -117,8 +92,8 @@ def train():
 
     # Dataset
     logger.info("Loading dataset...")
-    dset = datasets.load_dataset("Open-Orca/OpenOrca", split="train")
-    dset_splits = dset.train_test_split(train_size=25600, test_size=1700, seed=420)
+    dset = datasets.load_dataset("ReactiveAI/smol-smoltalk-Interaction-SFT", split="train")
+    dset_splits = dset.train_test_split(train_size=12800, test_size=1280, seed=420)
     dset_train, dset_eval = dset_splits["train"], dset_splits["test"]
     logger.info("Dataset loaded.")
 
@@ -131,42 +106,34 @@ def train():
     logger.info("Tokenizer loaded.")
 
     # Model
-    if model_args.single_model:
-        logger.info("Loading single model only...")
-        model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_path, dtype=torch.bfloat16 if training_args.bf16 else None
-        )
-        logger.info("Model loaded.")
-    else:
-        logger.info("Loading student model...")
-        model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.student_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
-        )
-        logger.info("Student loaded.")
-        # Load checkpoint
-        logger.info("Loading teacher model and converting to Distillation model...")
-        teacher_model = transformers.AutoModelForCausalLM.from_pretrained(
-            model_args.teacher_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
-        )
-        kd_config = {
-            "teacher_model": teacher_model,
-            "criterion": LMLogitsLoss(),
-        }
-        model = mtd.convert(model, mode=[("kd_loss", kd_config)])
-        logger.info("Models converted.")
+    logger.info("Loading student model...")
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+        model_args.student_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
+    )
+    logger.info("Student loaded.")
+    # Load checkpoint
+    logger.info("Loading teacher model and converting to Distillation model...")
+    teacher_model = transformers.AutoModelForCausalLM.from_pretrained(
+        model_args.teacher_name_or_path, dtype=torch.bfloat16 if training_args.bf16 else None
+    )
+    kd_config = {
+        "teacher_model": teacher_model,
+        "criterion": LMLogitsLoss(),
+    }
+    model = mtd.convert(model, mode=[("kd_loss", kd_config)])
+    logger.info("Models converted.")
 
     # Fix problematic settings that logger.info excessive warnings
     model.generation_config.temperature = None
     model.generation_config.top_p = None
 
     # Trainer
-    trainer_cls = SFTTrainer if model_args.single_model else KDSFTTrainer
-    trainer = trainer_cls(
+    trainer = KDSFTTrainer(
         model,
         training_args,
         train_dataset=dset_train,
         eval_dataset=dset_eval,
-        formatting_func=llama_text_format_func,
+        formatting_func=lambda sample: _format_smoltalk_chat_template(sample, tokenizer),
         processing_class=tokenizer,
     )
 
@@ -186,8 +153,7 @@ def train():
     # Save checkpoint
     logger.info("Saving checkpoint...")
     trainer.save_state()
-    kwargs = {"export_student": True} if not model_args.single_model else {}
-    trainer.save_model(trainer.args.output_dir, **kwargs)
+    trainer.save_model(trainer.args.output_dir, export_student=True)
     logger.info("Checkpoint saved.")
 
 
