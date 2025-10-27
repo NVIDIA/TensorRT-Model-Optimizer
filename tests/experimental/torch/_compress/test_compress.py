@@ -106,21 +106,22 @@ def test_compress(project_root_path):
             rank_filepath = (
                 f"pruning/pruning_scores/ffn_iterative/100samples_diverse_mini/rank_{rank}.pth"
             )
-            assert os.path.isfile(puzzle_dir / rank_filepath)
+            assert (puzzle_dir / rank_filepath).is_file()
 
             # assertions for the pruning_ckpts step 2
-            assert os.path.exists(puzzle_dir / "ckpts/ffn_256_attn_no_op")
+            assert (puzzle_dir / "ckpts/ffn_256_attn_no_op").exists()
 
             # assertions for the build_library_and_stats step 4
-            assert os.path.isfile(puzzle_dir / "replacement_library.json")
-            assert os.path.isfile(puzzle_dir / "subblock_stats.json")
+
+            assert (puzzle_dir / "replacement_library.json").is_file()
+            assert (puzzle_dir / "subblock_stats.json").is_file()
 
             # assertions for the scoring step 5
             solution_0_filepath = (
                 puzzle_dir / "single_sequence_replacement_solutions--validation/solution_0.json"
             )
 
-            assert os.path.exists(solution_0_filepath)
+            assert solution_0_filepath.exists()
 
             # assertions for the mip_and_realize_models step 6
             solution_0_ckpt_config_path = (
@@ -128,10 +129,10 @@ def test_compress(project_root_path):
                 / "mip/puzzle_solutions/target_memory_780000MiB/solutions--checkpoints/solution_0/config.json"
             )
 
-            assert os.path.exists(solution_0_ckpt_config_path)
-            assert os.path.exists(
+            assert solution_0_ckpt_config_path.exists()
+            assert (
                 puzzle_dir / "mip/puzzle_solutions/target_memory_780000MiB/solutions.json"
-            )
+            ).exists()
 
         runtime.wait_for_everyone()
 
