@@ -57,7 +57,7 @@ def test_compress(project_root_path):
     dataset_path = osp.join(puzzle_dir, "dummy_dataset")
     hydra_config_dir = osp.join(
         project_root_path,
-        "tests/gpu/torch/_compress/resources/configs",
+        "tests/experimental/torch/_compress/resources/configs",
     )
 
     _runtime = NativeDDP_Runtime(
@@ -78,7 +78,7 @@ def test_compress(project_root_path):
             # This mimics the normal pipeline where we start with a Llama model
             #
             tokenizer_path = osp.join(
-                project_root_path, "tests/gpu/torch/_compress/resources/tokenizer"
+                project_root_path, "tests/experimental/torch/_compress/resources/tokenizer"
             )
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
