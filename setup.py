@@ -99,6 +99,8 @@ optional_deps = {
         "setuptools>=80",
         "setuptools-scm>=8",
     ],
+    # Dependedencies for modelopt.torch._compress subpackage
+    "compress": ["fire"],
 }
 
 # create "compound" optional dependencies
