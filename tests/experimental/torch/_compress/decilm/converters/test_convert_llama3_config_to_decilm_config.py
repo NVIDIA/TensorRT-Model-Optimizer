@@ -1,9 +1,24 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import json
 import os.path as osp
 from pathlib import Path
 
 import pytest
-from gpu.torch._compress.test_compress import create_and_save_small_llama_model
+from experimental.torch._compress.test_compress import _create_and_save_small_llama_model
 from transformers import AutoTokenizer
 
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
@@ -17,11 +32,13 @@ def project_root_path(request: pytest.FixtureRequest) -> Path:
 
 
 def test_convert_llama3_config_to_decilm_config(project_root_path: Path, tmp_path: Path):
-    tokenizer_path = osp.join(project_root_path, "tests/gpu/torch/_compress/resources/tokenizer")
+    tokenizer_path = osp.join(
+        project_root_path, "tests/experimental/torch/_compress/resources/tokenizer"
+    )
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
     llama_checkpoint_path = tmp_path / "llama_checkpoint"
-    create_and_save_small_llama_model(
+    _create_and_save_small_llama_model(
         llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
     )
 
