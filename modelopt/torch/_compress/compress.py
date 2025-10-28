@@ -35,12 +35,12 @@ from tests.utils.test_utils import initialize_hydra_config_for_dir
 def compress(
     hydra_config_dir: str, hydra_config: str, puzzle_dir: str, dataset_path: str, runtime: IRuntime
 ) -> DictConfig:
-    """Compress a puzzletron model using the MIP-based NAS search algorithm.
+    """Compress a compress model using the MIP-based NAS search algorithm.
 
     Args:
         hydra_config_dir (str): path to a hydra_config_dir that defines the search space
         hydra_config (str): the corresponding hydra config file
-        puzzle_dir (str): directory with a puzzletron model to compress
+        puzzle_dir (str): directory with a compress model to compress
         dataset_path (str): dataset used for scoring and distillation
         runtime: distributed runtime to use to run the compression steps, e.g.,
                  NativeDdpRuntime(dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10))
@@ -50,7 +50,7 @@ def compress(
         The same hydra configuration object is used across all compression steps.
         @TODO: Investigate if this config object is immutable across steps and clarify
     """
-    # Step 0: Load puzzletron hydra config
+    # Step 0: Load hydra config
     hydra_cfg = initialize_hydra_config_for_dir(
         config_dir=hydra_config_dir,
         config_name=hydra_config,
