@@ -780,15 +780,7 @@ class _DynamicEagleGPTModel(EagleModel):
             raise ValueError("For EAGLE, only RoPE or YaRN embedding are supported")
 
         if not self.pre_process and self.post_process:
-            if self.eagle_config.parallel_draft_step > 1:
-                self.eagle_embedding = EagleLanguageModelEmbedding(
-                    config=self.config,
-                    vocab_size=self.vocab_size
-                    + self.eagle_config.tensor_model_parallel_size,  # for mask token
-                    max_sequence_length=self.max_sequence_length,
-                    position_embedding_type=self.position_embedding_type,
-                )
-            else:
+            if self.eagle_config.parallel_draft_step == 1:
                 self.embedding = EagleLanguageModelEmbedding(
                     config=self.config,
                     vocab_size=self.vocab_size,
@@ -848,6 +840,15 @@ class _DynamicEagleGPTModel(EagleModel):
 
             # Eagle loss functions
             self.kld = logits_kld_loss
+
+            if self.eagle_config.parallel_draft_step > 1:
+                self.eagle_embedding = EagleLanguageModelEmbedding(
+                    config=self.config,
+                    vocab_size=self.vocab_size
+                    + self.eagle_config.tensor_model_parallel_size,  # for mask token
+                    max_sequence_length=self.max_sequence_length,
+                    position_embedding_type=self.position_embedding_type,
+                )
 
     def _get_eagle_input_hidden_states(self, hidden_states: torch.Tensor, apply_fc: bool = True):
         """When _aux_hidden_states is not empty for online, then this is EAGLE-3.
