@@ -702,9 +702,11 @@ class _DynamicSequentialMLP(DynamicModule):
         active_slice = hp.active_slice
         
         # TODO: @ataghibakhsh: Hack sorting here, move to proper place.
-        importance = hp.importance.argsort(descending=True)
-        
-        self.local_experts = nn.ModuleList([self.local_experts[i] for i in importance])
+        importance = hp.importance
+        if (importance.sum() > 0.0).item():
+            importance = hp.importance.argsort(descending=True)
+            
+            self.local_experts = nn.ModuleList([self.local_experts[i] for i in importance])
 
         if isinstance(active_slice, slice):
             # No sorting applied, keep first N experts
@@ -721,41 +723,38 @@ class _DynamicSequentialMLP(DynamicModule):
 
     def _track_expert_l2_importance(self, module, input, output):
         """Track expert importance based on L2 norms of expert outputs."""
-        # Input: (permuted_local_hidden_states, tokens_per_expert, permuted_probs)
-        # Output: (output_local, output_bias_local)
         
-        if len(input) >= 2 and isinstance(output, tuple):
-            tokens_per_expert = input[1]  # tokens_per_expert tensor
-            output_local = output[0]      # output_local tensor
+        tokens_per_expert = input[1]  # tokens_per_expert tensor
+        output_local = output[0]      # output_local tensor
+        
+        # Convert to float32 for precision
+        output_local = output_local.to(torch.float32).detach()
+        
+        # Split output back to per-expert outputs using torch.split
+        tokens_per_expert_list = tokens_per_expert.tolist()
+
+        output_local_list = torch.split(output_local, tokens_per_expert_list)
+        
+        # Compute L2 norm for each expert's output
+        for expert_idx, expert_output in enumerate(output_local_list):
+            # Guard: if expert_output is empty tensor, add zero score
+            if expert_output.numel() == 0:
+                l2_norm = 0.0
+            else:
+                # Compute L2 norm of expert output (router_prob * expert_output)
+                l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1).sum().item()
             
-            # Convert to float32 for precision
-            output_local = output_local.to(torch.float32).detach()
-            
-            # Split output back to per-expert outputs using torch.split
-            tokens_per_expert_list = tokens_per_expert.tolist()
-            if len(tokens_per_expert_list) > 0:
-                output_local_list = torch.split(output_local, tokens_per_expert_list)
-                
-                # Compute L2 norm for each expert's output
-                for expert_idx, expert_output in enumerate(output_local_list):
-                    if expert_idx < len(self._expert_l2_scores):
-                        # Guard: if expert_output is empty tensor, add zero score
-                        if expert_output.numel() == 0:
-                            l2_norm = 0.0
-                        else:
-                            # Compute L2 norm of expert output (router_prob * expert_output)
-                            l2_norm = torch.linalg.vector_norm(expert_output, ord=2).item()
-                        
-                        # Accumulate L2 scores and sample counts
-                        self._expert_l2_scores[expert_idx] += l2_norm
-                        self._expert_sample_counts[expert_idx] += 1
+            # Accumulate L2 scores and sample counts
+            self._expert_l2_scores[expert_idx] += l2_norm
+            self._expert_sample_counts[expert_idx] += tokens_per_expert_list[expert_idx]
+
 
     def _estimate_expert_importance(self) -> TracedHp.Importance:
         """Estimate expert importance based on accumulated L2 norms."""
         # Average L2 scores across samples (avoid division by zero)
         avg_l2_scores = self._expert_l2_scores / (self._expert_sample_counts + 1e-8)
         # Normalize to get importance scores
-        return avg_l2_scores / (avg_l2_scores.sum() + 1e-8)
+        return avg_l2_scores
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
         """Set hidden size for all expert MLPs."""
