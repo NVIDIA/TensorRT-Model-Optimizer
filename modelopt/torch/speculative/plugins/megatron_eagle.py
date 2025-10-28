@@ -565,15 +565,6 @@ class EagleModule(MegatronModule):
                 skip_weight_param_allocation=False,
             )
 
-        if self.config.parallel_draft_step > 1:
-            self.embedding = EagleLanguageModelEmbedding(
-                config=self.config,
-                vocab_size=self.config.vocab_size
-                + self.config.tensor_model_parallel_size,  # for mask token
-                max_sequence_length=self.config.max_sequence_length,
-                position_embedding_type=self.config.position_embedding_type,
-            )
-
     def _get_eagle_transformer_layer_spec(self, config):
         """Get the TransformerLayer implementation spec.
 
@@ -789,12 +780,21 @@ class _DynamicEagleGPTModel(EagleModel):
             raise ValueError("For EAGLE, only RoPE or YaRN embedding are supported")
 
         if not self.pre_process and self.post_process:
-            self.embedding = EagleLanguageModelEmbedding(
-                config=self.config,
-                vocab_size=self.vocab_size,
-                max_sequence_length=self.max_sequence_length,
-                position_embedding_type=self.position_embedding_type,
-            )
+            if self.eagle_config.parallel_draft_step > 1:
+                self.eagle_embedding = EagleLanguageModelEmbedding(
+                    config=self.config,
+                    vocab_size=self.vocab_size
+                    + self.eagle_config.tensor_model_parallel_size,  # for mask token
+                    max_sequence_length=self.max_sequence_length,
+                    position_embedding_type=self.position_embedding_type,
+                )
+            else:
+                self.embedding = EagleLanguageModelEmbedding(
+                    config=self.config,
+                    vocab_size=self.vocab_size,
+                    max_sequence_length=self.max_sequence_length,
+                    position_embedding_type=self.position_embedding_type,
+                )
 
         # Register TransformerLayer forward hook to extract aux hidden_states.
         if len(self.eagle_config.eagle_aux_hidden_state_layer_ids) > 0:
@@ -899,8 +899,8 @@ class _DynamicEagleGPTModel(EagleModel):
         eagle_inputs["input_ids"] = padded_input_ids
         eagle_inputs["position_ids"] = position_ids
 
-        if hasattr(self.eagle_module, "embedding"):
-            eagle_inputs["embedding"] = self.eagle_module.embedding(
+        if self.eagle_config.parallel_draft_step > 1:
+            eagle_inputs["embedding"] = self.eagle_embedding(
                 input_ids=eagle_inputs["input_ids"],
                 position_ids=eagle_inputs["position_ids"],
             )
@@ -1559,8 +1559,8 @@ class _DynamicEagleGPTModel(EagleModel):
 
             eagle_inputs = {}
             eagle_inputs["input_ids"] = padded_eagle_ids
-            if hasattr(self.eagle_module, "embedding"):
-                embeddings = self.eagle_module.embedding(
+            if self.eagle_config.parallel_draft_step > 1:
+                embeddings = self.eagle_embedding(
                     input_ids=padded_eagle_ids,
                     position_ids=eagle_position_ids,
                 )
