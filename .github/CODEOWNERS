@@ -17,6 +17,7 @@ modelopt/deploy @NVIDIA/modelopt-deploy-codeowners
 modelopt/onnx @NVIDIA/modelopt-onnx-codeowners
 modelopt/onnx/autocast @NVIDIA/modelopt-onnx-autocast-codeowners
 modelopt/torch @NVIDIA/modelopt-torch-codeowners
+modelopt/torch/_compress @NVIDIA/modelopt-torch-compress-codeowners
 modelopt/torch/_deploy @NVIDIA/modelopt-torch-deploy-codeowners
 modelopt/torch/distill @NVIDIA/modelopt-torch-distill-codeowners
 modelopt/torch/export @NVIDIA/modelopt-torch-export-codeowners
