@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from _test_utils.import_helper import skip_if_no_megatron
+from huggingface_hub import constants as hf_constants
 
 skip_if_no_megatron()
 
@@ -226,6 +227,7 @@ def get_mcore_gpt_model(
 def get_mcore_qwen3_600m(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
+    workspace_dir: str | None = None,
 ) -> GPTModel:
     config = TransformerConfig(
         tensor_model_parallel_size=tensor_model_parallel_size,
@@ -262,7 +264,13 @@ def get_mcore_qwen3_600m(
 
     model = model.to(torch.bfloat16)
 
-    import_mcore_gpt_from_hf(model, pretrained_model_path="Qwen/Qwen3-0.6B")
+    # Use HF hub cache directory as default workspace_dir
+    if workspace_dir is None:
+        workspace_dir = hf_constants.HF_HUB_CACHE
+
+    import_mcore_gpt_from_hf(
+        model, pretrained_model_path="Qwen/Qwen3-0.6B", workspace_dir=workspace_dir
+    )
 
     return model
 
