@@ -59,25 +59,14 @@ class CompressConfig(ModeloptBaseConfig):
     )
 
 
-# TOD: Why is it called SuperNetMLP?
-class SuperNetMLP(CompressModel):
-    """Marker subclass indicating converted/search-space state for CompressConfig.
-    TODO: Provide better description
-    """
-
-    hydra_config_dir: str
-    puzzle_dir: str
-    dataset_path: str
-
-
 def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertReturnType:
     """Convert the model to a search space model."""
     print("=" * 80)
     print(f"[convert] before convert:\n{model}")
-    model.__class__ = SuperNetMLP
-    model.hydra_config_dir = config.hydra_config_dir
-    model.puzzle_dir = config.puzzle_dir
-    model.dataset_path = config.dataset_path
+
+    # _runtime = NativeDdpRuntime(
+    #     dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
+    # )
 
     # Load hydra config
     initialize_hydra_config_for_dir(
@@ -96,6 +85,9 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
         output_dir=Path(config.puzzle_dir) / hf_ckpt_teacher_dir,
     )
 
+    #  Score_pruning_activations (distributed processing)
+    # score_pruning_activations.launch_score_activations(hydra_cfg, runtime)
+
     print(f"[convert] after convert:\n{model}")
     return model, {}
 
@@ -103,8 +95,8 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
 def restore_compress_model(
     model: nn.Module, config: CompressConfig, metadata: MetadataDict
 ) -> nn.Module:
-    """Reuse convert to produce the same behavior on restore."""
-    return convert_compress_model(model, config)[0]
+    """Restore is not needed for the compress mode as we are not saving any model state"""
+    return model
 
 
 @NASModeRegistry.register_mode
