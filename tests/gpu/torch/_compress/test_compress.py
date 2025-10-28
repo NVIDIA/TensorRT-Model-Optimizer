@@ -48,6 +48,8 @@ def project_root_path(request: pytest.FixtureRequest) -> Path:
 #
 # ../puzzletron/v1/scripts/torch_dist_runner.sh \
 # pytest -s -v ./tests/gpu/torch/puzzletron/test_compress_model.py -o addopts=""
+#
+# TODO: Remove those instructions once this test runs automatically on CI
 
 
 def test_compress(project_root_path):
