@@ -909,7 +909,7 @@ class _DynamicEagleGPTModel(EagleModel):
             # Get additional draft logits from parallel draft heads
             draft_logits_list = [eagle_logits]
             for draft_head in self.eagle_module.parallel_draft_heads:
-                draft_logits, _ = draft_head(eagle_hidden_states)
+                draft_logits, _ = draft_head(eagle_hidden_states.detach())
                 draft_logits_list.append(draft_logits)
             eagle_logits = torch.cat(draft_logits_list, dim=0)
 
