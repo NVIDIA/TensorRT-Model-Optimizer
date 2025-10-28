@@ -54,6 +54,7 @@ optional_deps = {
         "onnxscript",  # For test_onnx_dynamo_export unit test
         "onnxsim ; python_version < '3.12' and platform_machine != 'aarch64'",
         "polygraphy>=0.49.22",
+        "onnxslim",
     ],
     "hf": [
         "accelerate>=1.0.0",
