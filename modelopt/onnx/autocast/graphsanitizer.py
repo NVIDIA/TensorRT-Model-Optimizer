@@ -23,6 +23,8 @@ from onnx import helper, numpy_helper
 import modelopt.onnx.autocast.utils as utils
 import modelopt.onnx.utils as onnx_utils
 from modelopt.onnx.autocast.logging_config import logger
+from modelopt.onnx.quantization.graph_utils import cast_custom_ops
+from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag
 
 
 class GraphSanitizer:
@@ -34,6 +36,7 @@ class GraphSanitizer:
         min_opset: int = 13,
         max_ir_version: int | None = None,
         trt_plugins: list[str] | None = [],
+        trt_plugins_precision: list[str] | None = [],
     ) -> None:
         """Initialize GraphSanitizer.
 
@@ -48,7 +51,9 @@ class GraphSanitizer:
         self.max_ir_version = max_ir_version
         self.standard_ops = {schema.name for schema in onnx.defs.get_all_schemas()}
         self.custom_ops = None
+        self.custom_ops_low_precision_nodes = []
         self.trt_plugins = trt_plugins
+        self.trt_plugins_precision = trt_plugins_precision or []
 
     def sanitize(self) -> None:
         """Sanitize the model graph.
@@ -67,6 +72,7 @@ class GraphSanitizer:
         self.cleanup_model()
         self.set_ir_version(self.max_ir_version)
         self.convert_fp64_to_fp32()
+        self.ensure_custom_ops_precision()
 
     def convert_fp64_to_fp32(self) -> None:
         """Convert FP64 initializers, I/O types, and specific nodes to FP32."""
@@ -87,6 +93,19 @@ class GraphSanitizer:
         if modified:
             logger.info("Converted FP64 initializers, I/O types, and nodes to FP32")
             self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
+
+    def ensure_custom_ops_precision(self) -> None:
+        """Ensure that custom ops run in the requested precision."""
+        custom_ops_to_cast, _ = interpret_trt_plugins_precision_flag(
+            self.model,
+            self.trt_plugins_precision,
+        )
+        if custom_ops_to_cast.get("fp16", {}):
+            self.model = cast_custom_ops(self.model, custom_ops_to_cast["fp16"])
+            self.custom_ops_low_precision_nodes = [
+                n.name for n in self.model.graph.node if n.op_type in custom_ops_to_cast["fp16"]
+            ]
+            logger.info("Ensured custom ops precision")
 
     def find_custom_nodes(self) -> None:
         """Find custom nodes in the model.

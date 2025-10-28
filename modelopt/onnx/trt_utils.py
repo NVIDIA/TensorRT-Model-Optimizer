@@ -349,7 +349,7 @@ def load_onnx_model(
 def interpret_trt_plugins_precision_flag(
     onnx_model: onnx.ModelProto,
     trt_plugins_precision: list[str],
-    quantize_mode: str,
+    quantize_mode: str = "int8",
 ) -> tuple[dict, dict]:
     """Convert custom ops precision flag to dictionaries with custom op and I/O indices to be cast/quantized.
 
