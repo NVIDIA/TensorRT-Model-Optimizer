@@ -1198,7 +1198,7 @@ class _DynamicEagleGPTModel(EagleModel):
         # EAGLE kv cache
         eagle_inference_context = StaticInferenceContext(
             input_ids.shape[0],
-            input_ids.shape[1] * ttt_steps,
+            input_ids.shape[1] * (ttt_steps + 1),
         )
 
         if self.eagle_offline:
