@@ -345,7 +345,7 @@ def make_eagle_supervised_data_module(
     else:
         with open(data_args.data_path) as f:
             if data_args.data_path.endswith("jsonl"):
-                data_json = [json.loads(line) for line in f][:256]
+                data_json = [json.loads(line) for line in f]
             else:
                 data_json = json.load(f)
 
