@@ -1030,11 +1030,11 @@ class _DynamicEagleGPTModel(EagleModel):
             if shift_labels:
                 token_loss = self.kld(eagle_logits[:-1, :, :], logits[1:, :, :], mapping)
             else:
-                token_loss = self.kld(eagle_logits[:-1, :, :], logits[-1:, :, :], mapping)
+                token_loss = self.kld(eagle_logits[:-1, :, :], logits[:-1, :, :], mapping)
         elif shift_labels:
             token_loss = self.compute_language_model_loss(labels[:, 1:], eagle_logits[:-1, :, :])
         else:
-            token_loss = self.compute_language_model_loss(labels[:, -1:], eagle_logits[-1:, :, :])
+            token_loss = self.compute_language_model_loss(labels[:, :-1], eagle_logits[:-1, :, :])
 
         # [b, s - 1]
         return token_loss
