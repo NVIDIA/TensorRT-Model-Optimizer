@@ -335,13 +335,14 @@ def load_onnx_model(
             intermediate_generated_files.append(ir_version_onnx_path)
 
     # Check that the model is valid
-    onnx.checker.check_model(onnx_model)
+    new_onnx_path = ir_version_onnx_path or static_shaped_onnx_path or onnx_path
+    onnx.checker.check_model(new_onnx_path)
 
     return (
         onnx_model,
         has_custom_op,
         custom_ops,
-        ir_version_onnx_path or static_shaped_onnx_path or onnx_path,
+        new_onnx_path,
         use_external_data_format,
     )
 

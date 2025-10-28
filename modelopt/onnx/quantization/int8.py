@@ -35,6 +35,7 @@ from modelopt.onnx.quantization.graph_utils import (
     classify_partition_nodes,
     expand_node_names_from_patterns,
     filter_quantizable_kgen_heads,
+    find_cask_output_consumers,
     find_nodes_from_convs_to_exclude,
     find_nodes_from_matmul_to_exclude,
     find_nodes_to_exclude,
@@ -88,12 +89,21 @@ def _find_nodes_to_quantize(
         quantizable_op_types,
         graph,
     )
+
+    quantizable_cask_output_consumers = find_cask_output_consumers(
+        cask_fusible_partitions,
+        quantizable_op_types,
+    )
+    print(f"quantizable_cask_output_consumers: {[node.name for node in quantizable_cask_output_consumers]}")
+
     logger.info(
         f"Found {len(quantizable_partition_nodes)} quantizable partition "
         f"nodes and {len(quantizable_kgen_heads)} quantizable KGEN heads"
     )
 
-    quantizable_nodes = quantizable_kgen_heads + quantizable_partition_nodes
+    quantizable_nodes = (
+        quantizable_kgen_heads + quantizable_partition_nodes + quantizable_cask_output_consumers
+    )
     partially_quantizable_nodes = [dst for _, dst, _ in no_quantize_inputs]
     # Quantize all inputs of partially quantizable nodes by ORT
     # but remove QDQ from non-quantizable inputs in the post-processing step
