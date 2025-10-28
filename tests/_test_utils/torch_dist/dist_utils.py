@@ -38,6 +38,7 @@ def init_process(rank, size, job=None, backend="gloo", port=None):
     os.environ["LOCAL_RANK"] = str(rank)
     os.environ["WORLD_SIZE"] = str(size)
     os.environ["LOCAL_WORLD_SIZE"] = str(size)
+    os.environ["WANDB_DISABLED"] = "true"
 
     port = str(get_free_port()) if port is None else str(port)
 

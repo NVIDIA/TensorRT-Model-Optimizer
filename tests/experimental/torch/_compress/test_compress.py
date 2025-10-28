@@ -70,9 +70,6 @@ def test_compress(project_root_path: Path, tmp_path: Path):
 def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, rank: int, size: int):
     register_hydra_resolvers()
 
-    # Set environment variables expected by NativeDDP_Runtime
-    os.environ["WANDB_DISABLED"] = "true"
-
     puzzle_dir = tmp_path
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
