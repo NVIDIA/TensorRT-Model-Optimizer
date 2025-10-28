@@ -569,8 +569,8 @@ class EagleModule(MegatronModule):
             self.embedding = EagleLanguageModelEmbedding(
                 config=self.config,
                 vocab_size=self.config.vocab_size + 1,  # for mask token
-                max_sequence_length=self.max_sequence_length,
-                position_embedding_type=self.position_embedding_type,
+                max_sequence_length=self.config.max_sequence_length,
+                position_embedding_type=self.config.position_embedding_type,
             )
 
     def _get_eagle_transformer_layer_spec(self, config):
