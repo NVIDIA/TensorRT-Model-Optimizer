@@ -71,7 +71,7 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--nodes_to_exclude",
-        "-n",
+        "-ne",
         type=str,
         nargs="*",
         default=[],
@@ -79,7 +79,7 @@ def get_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--op_types_to_exclude",
-        "-op",
+        "-ope",
         type=str,
         nargs="*",
         default=[],

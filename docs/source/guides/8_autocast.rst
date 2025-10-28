@@ -2,7 +2,7 @@ AutoCast (ONNX)
 ###############
 
 AutoCast is a tool for converting FP32 ONNX models to mixed precision FP32-FP16 or FP32-BF16 models.
-While casting FP32 to FP16/BF16, some nodes might be more sensitive to effecting accuracy.
+While casting FP32 to FP16/BF16, some nodes might be more sensitive to affecting accuracy.
 AutoCast intelligently selects nodes to keep in FP32 precision to maintain model accuracy while benefiting from
 reduced precision on the rest of the nodes. AutoCast automatically injects cast operations around the selected
 nodes.
