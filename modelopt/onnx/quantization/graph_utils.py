@@ -294,6 +294,23 @@ def get_tensor_consumer_nodes(
     return tensor_consumers
 
 
+def find_cask_output_consumers(
+    cask_fusible_partitions: list[list[Node]],
+    quantizable_op_types: list[str],
+) -> list[Node]:
+    """Returns the list of CASK output consumers."""
+    quantizable_cask_output_consumers = []
+    for partition in cask_fusible_partitions:
+        if partition[0].op != "Conv":
+            continue
+        last_node = partition[-1]
+        cask_output_consumers = get_child_nodes(last_node)
+        for consumer in cask_output_consumers:
+            if consumer.op in quantizable_op_types:
+                quantizable_cask_output_consumers.extend([consumer])
+    return quantizable_cask_output_consumers
+
+
 def filter_quantizable_kgen_heads(
     cask_fusible_partitions: list[list[Node]],
     kgen_partitions: list[list[Node]],
