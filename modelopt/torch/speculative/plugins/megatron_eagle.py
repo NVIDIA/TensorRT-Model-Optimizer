@@ -1156,222 +1156,223 @@ class _DynamicEagleGPTModel(EagleModel):
         ttt_steps=4,
         **kwargs,
     ) -> torch.Tensor:
-        if position_ids is None or attention_mask is None:
-            attention_mask, position_ids = get_default_attention_mask_and_position_ids(input_ids)
+        torch.autograd.set_detect_anomaly(True)
+            if position_ids is None or attention_mask is None:
+                attention_mask, position_ids = get_default_attention_mask_and_position_ids(input_ids)
 
-        if self.eagle_offline:
-            # aux_hidden_states and hidden_states are provided for offline eagle
-            # _base_model_forward is skipped
-            if return_eagle_inputs:
-                raise ValueError("return_eagle_inputs is unsupported in EAGLE offline mode.")
-            aux_hidden_states = kwargs.get("aux_hidden_states")
-            hidden_states = kwargs.get("hidden_states")
-            if aux_hidden_states is None or hidden_states is None:
-                raise ValueError(
-                    "EAGLE offline mode requires kwargs: aux_hidden_states=[s,b,k*h], "
-                    "hidden_states=[s,b,h]."
+            if self.eagle_offline:
+                # aux_hidden_states and hidden_states are provided for offline eagle
+                # _base_model_forward is skipped
+                if return_eagle_inputs:
+                    raise ValueError("return_eagle_inputs is unsupported in EAGLE offline mode.")
+                aux_hidden_states = kwargs.get("aux_hidden_states")
+                hidden_states = kwargs.get("hidden_states")
+                if aux_hidden_states is None or hidden_states is None:
+                    raise ValueError(
+                        "EAGLE offline mode requires kwargs: aux_hidden_states=[s,b,k*h], "
+                        "hidden_states=[s,b,h]."
+                    )
+            else:
+                # When return_eagle_inputs is True, return decoder_input_for_eagle.
+                # For LLM, decoder_input_for_eagle is just the text embeddings. However, for VLM
+                # decoder_input_for_eagle will also contain projected image/video embeddings.
+                hidden_states, decoder_input_for_eagle = self._base_model_forward(
+                    input_ids,
+                    position_ids,
+                    attention_mask,
+                    decoder_input,
+                    inference_params,
+                    packed_seq_params,
+                    extra_block_kwargs,
+                    return_eagle_inputs=return_eagle_inputs,
                 )
-        else:
-            # When return_eagle_inputs is True, return decoder_input_for_eagle.
-            # For LLM, decoder_input_for_eagle is just the text embeddings. However, for VLM
-            # decoder_input_for_eagle will also contain projected image/video embeddings.
-            hidden_states, decoder_input_for_eagle = self._base_model_forward(
-                input_ids,
-                position_ids,
-                attention_mask,
-                decoder_input,
-                inference_params,
-                packed_seq_params,
-                extra_block_kwargs,
-                return_eagle_inputs=return_eagle_inputs,
+
+                # Typically, this is only the case when PP > 1.
+                if not self.post_process:
+                    return hidden_states
+
+            output_weight = None
+            if self.share_embeddings_and_output_weights:
+                output_weight = self.shared_embedding_or_output_weight()
+            logits_sbh, _ = self.output_layer(hidden_states, weight=output_weight)
+
+            # EAGLE kv cache
+            eagle_inference_context = StaticInferenceContext(
+                input_ids.shape[0],
+                input_ids.shape[1] * (ttt_steps + 1),
             )
 
-            # Typically, this is only the case when PP > 1.
-            if not self.post_process:
-                return hidden_states
-
-        output_weight = None
-        if self.share_embeddings_and_output_weights:
-            output_weight = self.shared_embedding_or_output_weight()
-        logits_sbh, _ = self.output_layer(hidden_states, weight=output_weight)
-
-        # EAGLE kv cache
-        eagle_inference_context = StaticInferenceContext(
-            input_ids.shape[0],
-            input_ids.shape[1] * (ttt_steps + 1),
-        )
-
-        if self.eagle_offline:
-            eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
-                aux_hidden_states, apply_fc=self.eagle_config.use_aux_hidden_state
-            )
-        # If EAGLE-3, aux_hidden_states are gathered by the forward_hook
-        elif return_eagle_inputs:
-            eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
-                hidden_states, apply_fc=False
-            )
-
-            if self.config.sequence_parallel:
-                eagle_module_input_hidden_states = gather_from_sequence_parallel_region(
-                    eagle_module_input_hidden_states
+            if self.eagle_offline:
+                eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
+                    aux_hidden_states, apply_fc=self.eagle_config.use_aux_hidden_state
                 )
-                hidden_states = gather_from_sequence_parallel_region(hidden_states)
-            logits_sbh = gather_from_tensor_model_parallel_region(logits_sbh)
-            # In case of VLM, there will be other fields for pixels.
-            return {
-                "input_ids": input_ids.squeeze(0).cpu(),
-                "aux_hidden_states": eagle_module_input_hidden_states.squeeze(1).cpu(),
-                "hidden_states": hidden_states.squeeze(1).cpu(),
-            }
-        else:
-            eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
-                hidden_states, apply_fc=True
-            )
-
-        if labels is not None:
-            if labels.shape[1] == input_ids.shape[1] - 1:
-                # For offline training, labels may be 1 token shorter than input_ids.
-                # We will just pad a 0 to the labels to make the seq_len the same as
-                # input_ids. This will introduce a small error in training if logit_distillation
-                # is False, and testing accuracy is wrong for the last token.
-                right_token_pad = torch.zeros(
-                    (labels.shape[0], 1),
-                    dtype=labels.dtype,
-                    device=labels.device,
+            # If EAGLE-3, aux_hidden_states are gathered by the forward_hook
+            elif return_eagle_inputs:
+                eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
+                    hidden_states, apply_fc=False
                 )
-                labels = torch.cat((labels, right_token_pad), dim=-1)
 
-            # If eagle_freeze_base_model is set to True,
-            # the base model is frozen .
-            loss = self.compute_language_model_loss(labels, logits_sbh)
-            if self.eagle_freeze_base_model:
-                loss = 0.0 * loss
+                if self.config.sequence_parallel:
+                    eagle_module_input_hidden_states = gather_from_sequence_parallel_region(
+                        eagle_module_input_hidden_states
+                    )
+                    hidden_states = gather_from_sequence_parallel_region(hidden_states)
+                logits_sbh = gather_from_tensor_model_parallel_region(logits_sbh)
+                # In case of VLM, there will be other fields for pixels.
+                return {
+                    "input_ids": input_ids.squeeze(0).cpu(),
+                    "aux_hidden_states": eagle_module_input_hidden_states.squeeze(1).cpu(),
+                    "hidden_states": hidden_states.squeeze(1).cpu(),
+                }
+            else:
+                eagle_module_input_hidden_states = self._get_eagle_input_hidden_states(
+                    hidden_states, apply_fc=True
+                )
 
-        acc = []
-        for ttt_step in range(ttt_steps):
-            eagle_logits = []
+            if labels is not None:
+                if labels.shape[1] == input_ids.shape[1] - 1:
+                    # For offline training, labels may be 1 token shorter than input_ids.
+                    # We will just pad a 0 to the labels to make the seq_len the same as
+                    # input_ids. This will introduce a small error in training if logit_distillation
+                    # is False, and testing accuracy is wrong for the last token.
+                    right_token_pad = torch.zeros(
+                        (labels.shape[0], 1),
+                        dtype=labels.dtype,
+                        device=labels.device,
+                    )
+                    labels = torch.cat((labels, right_token_pad), dim=-1)
 
-            eagle_inputs = self._get_eagle_module_inputs(
-                input_ids=input_ids,
-                hidden_states=eagle_module_input_hidden_states,
-                attention_mask=attention_mask,
-                position_ids=position_ids,
-                ttt_step=ttt_step,
-            )
+                # If eagle_freeze_base_model is set to True,
+                # the base model is frozen .
+                loss = self.compute_language_model_loss(labels, logits_sbh)
+                if self.eagle_freeze_base_model:
+                    loss = 0.0 * loss
 
-            _, eagle_logits_, eagle_module_input_hidden_states = self._eagle_forward(
-                eagle_inputs,
-                output_weight,
-                inference_params=inference_params,
-                packed_seq_params=packed_seq_params,
-                inference_context=eagle_inference_context,
-                **(extra_block_kwargs or {}),
-            )
+            acc = []
+            for ttt_step in range(ttt_steps):
+                eagle_logits = []
 
-            eagle_logits.append(eagle_logits_)
-
-            if self.eagle_config.parallel_draft_step > 1:
-                # Diffusion training within EAGLE module
                 eagle_inputs = self._get_eagle_module_inputs(
                     input_ids=input_ids,
-                    hidden_states=eagle_module_input_hidden_states,  # Not used in diffusion
+                    hidden_states=eagle_module_input_hidden_states,
                     attention_mask=attention_mask,
                     position_ids=position_ids,
                     ttt_step=ttt_step,
-                    diffusion=True,
-                    max_block_size=self.eagle_config.parallel_draft_step - 1,
                 )
 
-                _, eagle_logits_, _ = self._eagle_forward(
+                _, eagle_logits_, eagle_module_input_hidden_states = self._eagle_forward(
                     eagle_inputs,
                     output_weight,
                     inference_params=inference_params,
                     packed_seq_params=packed_seq_params,
                     inference_context=eagle_inference_context,
-                    update_sequence_len_offset=False,
                     **(extra_block_kwargs or {}),
                 )
 
                 eagle_logits.append(eagle_logits_)
 
-            if self.config.sequence_parallel:
-                eagle_module_input_hidden_states = gather_from_sequence_parallel_region(
-                    eagle_module_input_hidden_states
-                )
-            eagle_module_input_hidden_states = torch.cat(
-                (
-                    torch.zeros(
-                        (
-                            1,
-                            eagle_module_input_hidden_states.shape[1],
-                            eagle_module_input_hidden_states.shape[2],
-                        ),
-                        dtype=eagle_module_input_hidden_states.dtype,
-                        device=eagle_module_input_hidden_states.device,
-                    ),
-                    eagle_module_input_hidden_states[:-1, :, :],
-                )
-            )
-            if self.config.sequence_parallel:
-                eagle_module_input_hidden_states = scatter_to_sequence_parallel_region(
-                    eagle_module_input_hidden_states
-                )
-
-            # If labels are not provided, return the original logits. We only return after
-            # all eagle weights have been exercised for quantization calibration purpose.
-            if labels is None:
-                return logits_sbh.transpose(0, 1).contiguous()
-
-            # TTT loss computation
-            eagle_logit = eagle_logits[0]
-            loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
-            loss_ = loss_[:, ttt_step:]
-            loss[:, ttt_step + 1 :] += self.eagle_loss_decay_factor**ttt_step * loss_
-            # Diffusion loss computation
-            if self.eagle_config.parallel_draft_step > 1:
-                eagle_logit = eagle_logits[1]
-                # Diffusion labels = input_ids, so we do not shift labels here.
-                # Diffusion loss only compute for the masked tokens
-                loss_ = self._compute_eagle_loss(
-                    logits_sbh, labels, eagle_logit, shift_labels=False
-                )
-                loss_ = loss_ * eagle_inputs["diffusion_loss_mask"][:, :-1]
-                shift_idx = (ttt_step // eagle_inputs["block_len"] + 1) * eagle_inputs["block_len"]
-                loss_ = loss_[:, shift_idx:]
-                loss[:, shift_idx + 1 :] += self.eagle_loss_decay_factor**ttt_step * loss_
-
-            if self.eagle_report_acc and not self.training:
-                with torch.no_grad():
-                    eagle_logit = eagle_logits[0]
-                    gathered_logits = gather_from_tensor_model_parallel_region(eagle_logit)
-                    gathered_logits = gathered_logits[ttt_step:-1]
-                    eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
-                    if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                        eagle_top1 += self.eagle_module.d2t[eagle_top1]
-                    top1_p = (
-                        torch.eq(labels[:, ttt_step + 1 :], eagle_top1).sum() / eagle_top1.numel()
+                if self.eagle_config.parallel_draft_step > 1:
+                    # Diffusion training within EAGLE module
+                    eagle_inputs = self._get_eagle_module_inputs(
+                        input_ids=input_ids,
+                        hidden_states=eagle_module_input_hidden_states,  # Not used in diffusion
+                        attention_mask=attention_mask,
+                        position_ids=position_ids,
+                        ttt_step=ttt_step,
+                        diffusion=True,
+                        max_block_size=self.eagle_config.parallel_draft_step - 1,
                     )
-                    acc.append(top1_p)
-                    if self.eagle_config.parallel_draft_step > 1:
-                        # Diffusion accuracy only for masked tokens
-                        eagle_logit = eagle_logits[1]
+
+                    _, eagle_logits_, _ = self._eagle_forward(
+                        eagle_inputs,
+                        output_weight,
+                        inference_params=inference_params,
+                        packed_seq_params=packed_seq_params,
+                        inference_context=eagle_inference_context,
+                        update_sequence_len_offset=False,
+                        **(extra_block_kwargs or {}),
+                    )
+
+                    eagle_logits.append(eagle_logits_)
+
+                if self.config.sequence_parallel:
+                    eagle_module_input_hidden_states = gather_from_sequence_parallel_region(
+                        eagle_module_input_hidden_states
+                    )
+                eagle_module_input_hidden_states = torch.cat(
+                    (
+                        torch.zeros(
+                            (
+                                1,
+                                eagle_module_input_hidden_states.shape[1],
+                                eagle_module_input_hidden_states.shape[2],
+                            ),
+                            dtype=eagle_module_input_hidden_states.dtype,
+                            device=eagle_module_input_hidden_states.device,
+                        ),
+                        eagle_module_input_hidden_states[:-1, :, :],
+                    )
+                )
+                if self.config.sequence_parallel:
+                    eagle_module_input_hidden_states = scatter_to_sequence_parallel_region(
+                        eagle_module_input_hidden_states
+                    )
+
+                # If labels are not provided, return the original logits. We only return after
+                # all eagle weights have been exercised for quantization calibration purpose.
+                if labels is None:
+                    return logits_sbh.transpose(0, 1).contiguous()
+
+                # TTT loss computation
+                eagle_logit = eagle_logits[0]
+                loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
+                loss_ = loss_[:, ttt_step:]
+                loss[:, ttt_step + 1 :] += self.eagle_loss_decay_factor**ttt_step * loss_
+                # Diffusion loss computation
+                if self.eagle_config.parallel_draft_step > 1:
+                    eagle_logit = eagle_logits[1]
+                    # Diffusion labels = input_ids, so we do not shift labels here.
+                    # Diffusion loss only compute for the masked tokens
+                    loss_ = self._compute_eagle_loss(
+                        logits_sbh, labels, eagle_logit, shift_labels=False
+                    )
+                    loss_ = loss_ * eagle_inputs["diffusion_loss_mask"][:, :-1]
+                    shift_idx = (ttt_step // eagle_inputs["block_len"] + 1) * eagle_inputs["block_len"]
+                    loss_ = loss_[:, shift_idx:]
+                    loss[:, shift_idx + 1 :] += self.eagle_loss_decay_factor**ttt_step * loss_
+
+                if self.eagle_report_acc and not self.training:
+                    with torch.no_grad():
+                        eagle_logit = eagle_logits[0]
                         gathered_logits = gather_from_tensor_model_parallel_region(eagle_logit)
-                        gathered_logits = gathered_logits[shift_idx:-1]
+                        gathered_logits = gathered_logits[ttt_step:-1]
                         eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                             eagle_top1 += self.eagle_module.d2t[eagle_top1]
                         top1_p = (
-                            torch.eq(labels[:, shift_idx:-1], eagle_top1)
-                            * eagle_inputs["diffusion_loss_mask"][:, shift_idx:-1]
-                        ).sum() / eagle_inputs["diffusion_loss_mask"][:, shift_idx:-1].sum()
+                            torch.eq(labels[:, ttt_step + 1 :], eagle_top1).sum() / eagle_top1.numel()
+                        )
                         acc.append(top1_p)
+                        if self.eagle_config.parallel_draft_step > 1:
+                            # Diffusion accuracy only for masked tokens
+                            eagle_logit = eagle_logits[1]
+                            gathered_logits = gather_from_tensor_model_parallel_region(eagle_logit)
+                            gathered_logits = gathered_logits[shift_idx:-1]
+                            eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
+                            if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+                                eagle_top1 += self.eagle_module.d2t[eagle_top1]
+                            top1_p = (
+                                torch.eq(labels[:, shift_idx:-1], eagle_top1)
+                                * eagle_inputs["diffusion_loss_mask"][:, shift_idx:-1]
+                            ).sum() / eagle_inputs["diffusion_loss_mask"][:, shift_idx:-1].sum()
+                            acc.append(top1_p)
 
-        if self.eagle_report_acc and not self.training and get_tensor_model_parallel_rank() == 0:
-            print(
-                f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3}"
-                f"EAGLE Top-1: {acc}",
-                flush=True,
-            )
+            if self.eagle_report_acc and not self.training and get_tensor_model_parallel_rank() == 0:
+                print(
+                    f"{torch.distributed.get_rank():3}/{torch.distributed.get_world_size():3}"
+                    f"EAGLE Top-1: {acc}",
+                    flush=True,
+                )
 
         return loss
 
