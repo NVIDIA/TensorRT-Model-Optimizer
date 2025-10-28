@@ -15,9 +15,9 @@
 
 
 import pytest
+from _test_utils.examples.models import QWEN_VL_PATH
 from _test_utils.examples.run_command import run_vlm_ptq_command
-from _test_utils.model import QWEN_VL_PATH
-from _test_utils.torch_misc import minimum_gpu
+from _test_utils.torch.misc import minimum_gpu
 
 
 @pytest.mark.parametrize("quant", ["fp8", "int8_sq", "nvfp4"])

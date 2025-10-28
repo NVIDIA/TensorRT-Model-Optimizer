@@ -15,7 +15,7 @@
 
 import pytest
 import torch
-from _test_utils.torch_export.export_utils import (
+from _test_utils.torch.export.utils import (
     SmallLinearModelwithCustomWeight,
     ToyModel,
     only_input_quantizer_fp8_config,

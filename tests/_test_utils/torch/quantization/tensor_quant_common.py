@@ -17,7 +17,7 @@
 
 import pytest
 import torch
-from _test_utils.torch_quantization.quant_utils import quant
+from _test_utils.torch.quantization.quant_utils import quant
 from torch.nn.parameter import Parameter
 
 from modelopt.torch.quantization import tensor_quant
