@@ -132,8 +132,8 @@ Loss balancers:
 | Gemma 2 | gemma | ✅ |
 | Gemma 3 | gemma | ✅ |
 | Phi 3 | phi | ✅ |
-| Qwen 2 | phi | ✅ |
-| Qwen 3 | phi | ✅ |
+| Qwen 2 | qwen2 | ✅ |
+| Qwen 3 | qwen3 | ✅ |
 | Mamba | mamba | ✅ |
 
 ## Knowledge Distillation (KD) for NVIDIA NeMo Models
