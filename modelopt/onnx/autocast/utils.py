@@ -120,12 +120,12 @@ def get_cast_to_type(cast_node: onnx.NodeProto) -> int:
     raise ValueError("Cast node does not have 'to' attribute")
 
 
-def get_ops_without_low_precision_support(
+def get_op_types_not_supported_in_low_precision(
     model: onnx.ModelProto,
     low_precision_type: str,
     min_opset: int,
 ) -> list[str]:
-    """Get a list of ops without low precision support for the current opset version.
+    """Get a list of ops not supported in low precision for the current opset version.
 
     Args:
         model: ONNX model.
@@ -133,7 +133,7 @@ def get_ops_without_low_precision_support(
         min_opset: Minimum opset version.
 
     Returns:
-        ops_without_support: List of ops without low precision support for the current opset version.
+        ops_without_support: List of ops not supported in low precision for the current opset version.
     """
     # Obtain the current model's opset version
     ai_onnx_domain = [
