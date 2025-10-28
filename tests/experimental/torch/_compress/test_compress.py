@@ -22,13 +22,13 @@ from pathlib import Path
 import pytest
 import torch
 from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
+from datasets import Dataset, DatasetDict
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 from scripts.convert_llama3_to_decilm import convert_llama3_to_decilm
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerBase
 
 from modelopt.torch._compress import compress
 from modelopt.torch._compress.runtime import NativeDdpRuntime
-from tests.integration.puzzle_tools.e2e_puzzletron_test.dummy_dataset import save_dummy_dataset
 
 
 @pytest.fixture
@@ -91,8 +91,8 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         #
         if runtime.global_rank == 0:
             # Setup puzzle_dir and dataset
-            setup_puzzle_dir(puzzle_dir)
-            save_dummy_dataset(dataset_path)
+            _setup_puzzle_dir(puzzle_dir)
+            _save_dummy_dataset(dataset_path)
 
             #
             # Step 1: Create and save a teacher model to compress
@@ -107,7 +107,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
             # Create a small Llama model (not DeciLM) to match the normal conversion pipeline
             hf_ckpt_teacher_dir = "ckpts/teacher"
             llama_checkpoint_path = puzzle_dir / hf_ckpt_teacher_dir
-            create_and_save_small_llama_model(
+            _create_and_save_small_llama_model(
                 llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
             )
 
@@ -165,7 +165,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         print("PYTEST SUMMARY: test_compress_model() test has finished successfully")
 
 
-def create_and_save_small_llama_model(
+def _create_and_save_small_llama_model(
     output_path: str, vocab_size: int, tokenizer: PreTrainedTokenizerBase
 ):
     """
@@ -203,7 +203,45 @@ def create_and_save_small_llama_model(
     llama_config.save_pretrained(output_path)
 
 
-def setup_puzzle_dir(puzzle_dir: str):
+def _setup_puzzle_dir(puzzle_dir: str):
     if Path(puzzle_dir).exists():
         shutil.rmtree(puzzle_dir)
         Path(puzzle_dir).mkdir(parents=True, exist_ok=True)
+
+
+def _save_dummy_dataset(dataset_path: str):
+    # dummy sample
+    sample = [
+        {"role": "user", "content": "please cite Lorem Ipsum?"},
+        {
+            "role": "assistant",
+            "content": (
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed in blandit ante. "
+                "Sed tempus erat urna, ac elementum nisl facilisis quis. Aliquam consectetur mollis massa, "
+                "in elementum sem venenatis posuere. Fusce lorem arcu, egestas vel massa sollicitudin, "
+                "dictum mollis purus. Proin in ullamcorper elit. Nam tellus nisi, volutpat a mattis vel, "
+                "pretium in purus. Nunc at lectus facilisis risus scelerisque rhoncus eu nec ex. "
+                "Maecenas semper, tellus non placerat vulputate, urna felis facilisis diam, "
+                "sit amet vestibulum erat sapien nec libero. Praesent non massa velit. Donec faucibus mi eros. "
+                "Nam turpis nulla, congue sit amet mi at, porttitor scelerisque elit. Nunc id sodales lorem, "
+                "nec tincidunt leo. Quisque a neque nec ligula porttitor auctor. "
+                "Nunc accumsan nunc ac tellus congue vehicula. Praesent tellus eros, luctus non gravida dapibus, "
+                "faucibus eu ex. Quisque bibendum leo pharetra, tristique est vitae, hendrerit nunc. "
+                "Duis nec congue dolor. Donec commodo ipsum non efficitur volutpat. "
+                "Nulla risus nulla, efficitur et urna at, imperdiet sodales lorem. "
+                "Suspendisse erat est, sollicitudin at nisl tincidunt, vehicula hendrerit lectus. "
+                "Nam quis nisi ullamcorper, rhoncus massa vel, tempus purus. "
+                "Duis pulvinar eros vel nulla pellentesque, at dapibus justo laoreet. "
+                "Praesent tortor orci, vulputate fermentum dapibus nec, feugiat vitae tortor. "
+                "Donec mollis convallis massa quis iaculis."
+            ),
+        },
+    ]
+
+    # Prepare train and val splits with sample repeated, 2500 samples are for
+    # 128 samples with block-size 8192 and LLama3 tokenizer
+    data = [{"conversation": sample}] * 2500
+
+    # For train-val splits
+    data_dict = DatasetDict({"train": Dataset.from_list(data), "valid": Dataset.from_list(data)})
+    data_dict.save_to_disk(dataset_path)
