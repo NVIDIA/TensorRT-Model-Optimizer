@@ -1019,11 +1019,15 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
                 module.weight_quantizer.amax = weight_amax
 
 
-def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[str, Any]:
-    """Generate quantization config for a torch model.
+def get_quant_config(
+    named_modules: Generator[tuple[str, nn.Module]] | dict[str, nn.Module],
+) -> dict[str, Any]:
+    """Generate quantization config for a set of named modules.
+
+    It should be the name_modules of a model or a subset of it.
 
     Args:
-        model: The PyTorch model to analyze
+        named_modules: The set of PyTorch named modules
 
     Returns:
         Dictionary containing the quantization configuration
