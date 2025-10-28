@@ -21,6 +21,9 @@ and mapping setup between nodes, initializers, and value info. These utilities
 support the core functionality of model precision conversion.
 """
 
+import logging
+from collections import defaultdict
+
 import onnx
 
 
@@ -115,3 +118,58 @@ def get_cast_to_type(cast_node: onnx.NodeProto) -> int:
         if attr.name == "to":
             return attr.i
     raise ValueError("Cast node does not have 'to' attribute")
+
+
+def get_ops_without_low_precision_support(
+    model: onnx.ModelProto,
+    low_precision_type: str,
+    min_opset: int,
+) -> list[str]:
+    """Get a list of ops without low precision support for the current opset version.
+
+    Args:
+        model: ONNX model.
+        low_precision_type: Target precision to reduce to ('float16' or 'bfloat16').
+        min_opset: Minimum opset version.
+
+    Returns:
+        ops_without_support: List of ops without low precision support for the current opset version.
+    """
+    # Obtain the current model's opset version
+    ai_onnx_domain = [
+        opset
+        for opset in model.opset_import
+        if not opset.domain or opset.domain in ["ai.onnx", "ai.onnx.contrib", "trt.plugins"]
+    ]
+    opset_version = max(ai_onnx_domain[0].version, min_opset)
+
+    # Get all ops precision support information
+    precision = "tensor(float16)" if low_precision_type == "float16" else "tensor(bfloat16)"
+    schemas_dict = defaultdict(dict)
+    for schema in onnx.defs.get_all_schemas_with_history():
+        float16_supported = False
+        for constr in schema.type_constraints:
+            if precision in constr.allowed_type_strs:
+                float16_supported = True
+                break
+        schemas_dict[schema.name].update({schema.since_version: float16_supported})
+
+    # Check that all ops are supported in low precision for the current opset version.
+    # Otherwise, exclude from conversion.
+    ops_without_support = []
+    for op, schema in schemas_dict.items():
+        supported_opsets = [k for k, v in schema.items() if v]
+        if supported_opsets:
+            min_opset = min(supported_opsets)
+            if min_opset > opset_version:
+                ops_without_support.append(op)
+        else:
+            ops_without_support.append(op)
+
+    if ops_without_support:
+        logging.warning(
+            f"{len(ops_without_support)} ops are not supported in {low_precision_type} in opset {opset_version}. "
+            f"Skipping those from conversion: {ops_without_support}."
+        )
+
+    return ops_without_support

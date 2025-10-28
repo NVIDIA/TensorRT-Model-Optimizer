@@ -65,13 +65,7 @@ PRECISION_MAP = {
 
 ONNX_TYPES = [t.onnx_type for t in PRECISION_MAP.values()]
 
-OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = [
-    "Upsample",
-    "NonMaxSuppression",
-    "Celu",
-    "IsInf",
-    "IsNaN",
-]
+OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION = ["Upsample", "NonMaxSuppression", "Celu"]
 
 # Temporarily block these ops in low precision, as they are not supported yet
 OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(["Scan", "If", "Loop", "LSTM"])
@@ -144,6 +138,11 @@ class PrecisionConverter:
         self.min_opset = min_opset
         self.max_ir_version = max_ir_version
         self.trt_plugins = trt_plugins
+        OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(
+            utils.get_ops_without_low_precision_support(
+                self.model, self.low_precision_type.str_full, self.min_opset
+            )
+        )
 
     def convert(
         self,
