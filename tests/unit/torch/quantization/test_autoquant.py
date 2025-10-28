@@ -18,8 +18,8 @@ import io
 
 import pytest
 import torch
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
 
 import modelopt.torch.opt as mto
 import modelopt.torch.quantization as mtq

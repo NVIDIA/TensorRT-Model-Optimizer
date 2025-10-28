@@ -21,13 +21,13 @@ from _test_utils.import_helper import skip_if_no_megatron
 
 skip_if_no_megatron(apex_or_te_required=True)
 
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    get_mcore_gpt_model,
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_gpt_model
+from _test_utils.torch.megatron.utils import (
     run_mcore_inference,
     run_mcore_inference_with_dummy_input,
 )
-from _test_utils.torch_misc import set_seed
+from _test_utils.torch.misc import set_seed
 from megatron.core.parallel_state import destroy_model_parallel
 from megatron.core.tensor_parallel.layers import VocabParallelEmbedding
 from megatron.core.transformer.attention import SelfAttention

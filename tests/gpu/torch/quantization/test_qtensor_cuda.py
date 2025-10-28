@@ -17,7 +17,7 @@
 
 import pytest
 import torch
-from _test_utils.torch_misc import set_seed
+from _test_utils.torch.misc import set_seed
 
 from modelopt.torch.quantization.backends.utils import fp4_compatible
 from modelopt.torch.quantization.config import QuantizerAttributeConfig
