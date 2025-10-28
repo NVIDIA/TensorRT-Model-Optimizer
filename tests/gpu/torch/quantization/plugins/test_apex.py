@@ -18,10 +18,10 @@ from functools import partial
 import pytest
 import torch
 import torch.nn as nn
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_misc import set_seed
-from _test_utils.torch_quantization.models import RegularQuantModelForTP
-from _test_utils.torch_quantization.quantize_common import (
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.misc import set_seed
+from _test_utils.torch.quantization.models import RegularQuantModelForTP
+from _test_utils.torch.quantization.quantize_common import (
     auto_quantize_helper,
     data_tensor_context_parallel_test_helper,
 )

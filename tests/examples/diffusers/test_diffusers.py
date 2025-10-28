@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
-from _test_utils.examples.run_command import run_diffusers_cmd
-from _test_utils.model import FLUX_SCHNELL_PATH, SD3_PATH, SDXL_1_0_PATH
-from _test_utils.torch_misc import minimum_sm
+from _test_utils.examples.models import FLUX_SCHNELL_PATH, SD3_PATH, SDXL_1_0_PATH
+from _test_utils.examples.run_command import run_example_command
+from _test_utils.torch.misc import minimum_sm
 
 
 class DiffuserModel(NamedTuple):
@@ -42,7 +42,7 @@ class DiffuserModel(NamedTuple):
             self.dtype,
         ]
         cmd_args.extend(args)
-        run_diffusers_cmd(cmd_args)
+        run_example_command(cmd_args, "diffusers/quantization")
 
     def _format_args(self) -> list[str]:
         return [

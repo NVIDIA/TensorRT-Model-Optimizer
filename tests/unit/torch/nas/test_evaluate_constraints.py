@@ -14,17 +14,14 @@
 # limitations under the License.
 
 import pytest
-from _test_utils.torch_model.vision_models import (
-    get_tiny_mobilenet_and_input,
-    get_tiny_resnet_and_input,
-)
+from _test_utils.torch.vision_models import get_tiny_mobilenet_and_input, get_tiny_resnet_and_input
 from torchprofile import profile_macs
 
 from modelopt.torch.nas.algorithms import ConstraintsFunc
 from modelopt.torch.utils import param_num, remove_bn
 
 try:
-    from _test_utils.torch_deploy.runtime import FAKE_DEPLOYMENT, fake_latency
+    from _test_utils.torch.deploy.runtime import FAKE_DEPLOYMENT, fake_latency
 
     SKIP_LATENCY_TEST = False
 except ImportError:

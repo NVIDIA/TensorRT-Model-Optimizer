@@ -18,8 +18,8 @@ from functools import partial
 import pytest
 import torch
 import torch.nn as nn
-from _test_utils.torch_dist.dist_utils import get_device_counts, spawn_multiprocess_job
-from _test_utils.torch_dist.fsdp_test import run_fsdp_test
+from _test_utils.torch.distributed.fsdp_test import run_fsdp_test
+from _test_utils.torch.distributed.utils import get_device_counts, spawn_multiprocess_job
 
 from modelopt.torch.nas.search_space import SearchSpace
 from modelopt.torch.opt.conversion import apply_mode
