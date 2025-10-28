@@ -365,6 +365,11 @@ def set_multi_step_attention_mask(attn_mask, step, block_len=1):
 class EagleLanguageModelEmbedding(LanguageModelEmbedding):
     """Allow last pp stage to also load the embedding."""
 
+    def __init__(self, extra_embedding=False, *args, **kwargs):
+        """If extra_embedding is False, this is just a replica of base model LanguageModelEmbedding."""
+        super().__init__(*args, **kwargs)
+        self.extra_embedding = extra_embedding
+
     def sharded_state_dict(
         self,
         prefix: str = "",
@@ -382,7 +387,11 @@ class EagleLanguageModelEmbedding(LanguageModelEmbedding):
                 allow_shape_mismatch=True,
                 prepend_offsets=sharded_offsets,
                 # (PP, TP, DP)
-                replica_id=(1, 0, get_data_parallel_rank(with_context_parallel=True)),
+                replica_id=(
+                    0 if self.extra_embedding else 1,
+                    0,
+                    get_data_parallel_rank(with_context_parallel=True),
+                ),
             )
         }
 
