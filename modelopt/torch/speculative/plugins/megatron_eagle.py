@@ -20,6 +20,7 @@ import warnings
 from collections import deque
 
 import megatron.core
+import torch
 import torch.nn.functional as F
 from megatron.core import InferenceParams, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
