@@ -568,7 +568,7 @@ class EagleModule(MegatronModule):
         if self.config.parallel_draft_step > 1:
             self.embedding = EagleLanguageModelEmbedding(
                 config=self.config,
-                vocab_size=self.vocab_size + 1,  # for mask token
+                vocab_size=self.config.vocab_size + 1,  # for mask token
                 max_sequence_length=self.max_sequence_length,
                 position_embedding_type=self.position_embedding_type,
             )
