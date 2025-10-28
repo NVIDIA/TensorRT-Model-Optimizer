@@ -5,7 +5,6 @@ Follows the same logic as extract_logits.py but uses transformers instead of ONN
 """
 
 import argparse
-import os
 import pickle
 import time
 
@@ -181,8 +180,6 @@ def main():
     # Set global debug flag
     global DEBUG
     DEBUG = args.debug
-
-
 
     try:
         # Extract logits
