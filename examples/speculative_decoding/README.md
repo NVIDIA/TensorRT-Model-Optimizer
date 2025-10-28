@@ -179,6 +179,10 @@ Please refer to [TRT-LLM Doc: Speculative Decoding](https://nvidia.github.io/Ten
 
 Please refer to [SGLang Doc: Speculative Decoding](https://docs.sglang.ai/advanced_features/speculative_decoding.html#EAGLE-3-Decoding) for detailed usage.
 
+### SpecDec Bench
+
+One can also use `examples/specdec_bench` to validate the trained Eagle3 checkpoints in a variety of frameworks (vLLM, SGLang, TRT-LLM) on a set of datasets.
+
 ### Deploying Quantized model
 
 See more details on deployment of quantized model to TRTLLM [here](../llm_ptq/README.md).
