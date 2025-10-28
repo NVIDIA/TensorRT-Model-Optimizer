@@ -182,10 +182,7 @@ def main():
     global DEBUG
     DEBUG = args.debug
 
-    # Validate model directory exists
-    if not os.path.exists(args.model_path):
-        print(f"Error: Model directory does not exist: {args.model_path}")
-        return 1
+
 
     try:
         # Extract logits

@@ -496,10 +496,13 @@ def validate_inputs(hf_model, ep_path_pairs):
     Returns:
         bool: True if all inputs are valid, False otherwise.
     """
-    # Check HF model path (only if provided)
-    if hf_model and not os.path.exists(hf_model):
-        print(f"[ERROR] Hugging Face model path does not exist: {hf_model}")
-        return False
+    # Check HF model path (only if provided and it looks like a local path)
+    # If it doesn't exist locally, assume it's a HF model name to be downloaded
+    if hf_model and os.path.exists(hf_model):
+        # Verify it's a valid directory
+        if not os.path.isdir(hf_model):
+            print(f"[ERROR] Hugging Face model path is not a directory: {hf_model}")
+            return False
 
     # Check execution providers and paths
     for ep, path in ep_path_pairs:
@@ -523,6 +526,10 @@ def main():
 Examples:
   # Compare HF vs CUDA model
   python compute_kl_divergence.py --hf_model "F:\\shared\\Llama-3.1-8B-Instruct"
+      --ep cuda --path "G:\\models\\cuda_model" --output "hf_vs_cuda.json"
+
+  # Compare HF vs CUDA model (download from Hugging Face)
+  python compute_kl_divergence.py --hf_model "meta-llama/Llama-3.1-8B-Instruct"
       --ep cuda --path "G:\\models\\cuda_model" --output "hf_vs_cuda.json"
 
   # Compare HF vs CUDA vs DirectML models
