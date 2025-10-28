@@ -71,10 +71,6 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
     register_hydra_resolvers()
 
     # Set environment variables expected by NativeDDP_Runtime
-    os.environ["RANK"] = str(rank)
-    os.environ["LOCAL_RANK"] = str(rank)
-    os.environ["WORLD_SIZE"] = str(size)
-    os.environ["LOCAL_WORLD_SIZE"] = str(size)
     os.environ["WANDB_DISABLED"] = "true"
 
     puzzle_dir = tmp_path
@@ -89,7 +85,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         #
         # Test setup
         #
-        if runtime.global_rank == 0:
+        if rank == 0:
             # Setup puzzle_dir and dataset
             _setup_puzzle_dir(puzzle_dir)
             _save_dummy_dataset(dataset_path)
@@ -126,7 +122,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         #
         # Check assertions
         #
-        if runtime.global_rank == 0:
+        if rank == 0:
             # assertions for the score_pruning_activations step 1
             rank = int(os.environ["RANK"])
             rank_filepath = (
