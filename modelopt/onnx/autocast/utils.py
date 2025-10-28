@@ -145,8 +145,11 @@ def get_ops_without_low_precision_support(
 
     # Get all ops precision support information
     precision = "tensor(float16)" if low_precision_type == "float16" else "tensor(bfloat16)"
+    model_ops = {n.op_type for n in model.graph.node}
     schemas_dict = defaultdict(dict)
     for schema in onnx.defs.get_all_schemas_with_history():
+        if schema.name not in model_ops:
+            continue
         float16_supported = False
         for constr in schema.type_constraints:
             if precision in constr.allowed_type_strs:
@@ -156,20 +159,21 @@ def get_ops_without_low_precision_support(
 
     # Check that all ops are supported in low precision for the current opset version.
     # Otherwise, exclude from conversion.
-    ops_without_support = []
+    ops_without_support = {}
     for op, schema in schemas_dict.items():
         supported_opsets = [k for k, v in schema.items() if v]
         if supported_opsets:
             min_opset = min(supported_opsets)
             if min_opset > opset_version:
-                ops_without_support.append(op)
+                ops_without_support[op] = min_opset
         else:
-            ops_without_support.append(op)
+            ops_without_support[op] = None
 
     if ops_without_support:
         logging.warning(
-            f"{len(ops_without_support)} ops are not supported in {low_precision_type} in opset {opset_version}. "
-            f"Skipping those from conversion: {ops_without_support}."
+            f"{len(ops_without_support)} ops are not supported in '{low_precision_type}' in opset {opset_version}, "
+            f"skipping those from conversion. Upgrade the model's opset version as follows to run them in low "
+            f" precision: {ops_without_support}."
         )
 
-    return ops_without_support
+    return list(ops_without_support.keys())
