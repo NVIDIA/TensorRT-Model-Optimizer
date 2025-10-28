@@ -43,7 +43,7 @@ def compress(
         puzzle_dir (str): directory with a puzzletron model to compress
         dataset_path (str): dataset used for scoring and distillation
         runtime: distributed runtime to use to run the compression steps, e.g.,
-                 NativeDDP_Runtime(dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10))
+                 NativeDdpRuntime(dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10))
 
     Returns:
         Hydra config object after compressing the model.

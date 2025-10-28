@@ -16,22 +16,19 @@
 import datetime
 import os
 import shutil
+from functools import partial
 from pathlib import Path
 
 import pytest
 import torch
+from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from puzzle_tools.hydra_utils import register_hydra_resolvers
-from puzzle_tools.runtime import NativeDDP_Runtime
 from scripts.convert_llama3_to_decilm import convert_llama3_to_decilm
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerBase
 
 from modelopt.torch._compress import compress
+from modelopt.torch._compress.runtime import NativeDdpRuntime
 from tests.integration.puzzle_tools.e2e_puzzletron_test.dummy_dataset import save_dummy_dataset
-
-
-@pytest.fixture(scope="module", autouse=True)
-def setup_test_module():
-    register_hydra_resolvers()
 
 
 @pytest.fixture
@@ -59,18 +56,32 @@ def project_root_path(request: pytest.FixtureRequest) -> Path:
 #
 # export PYTHONPATH=$PYTHONPATH:/workspace/puzzletron/v1
 #
-# ../puzzletron/v1/scripts/torch_dist_runner.sh \
-# pytest -s -v ./tests/gpu/torch/puzzletron/test_compress_model.py -o addopts=""
+# pytest -s -v ./tests/experimental/torch/_compress/test_compress.py::test_compress -o addopts=""
 
 
-def test_compress(project_root_path):
-    # The input to puzzletron.compress().
+def test_compress(project_root_path: Path, tmp_path: Path):
+    spawn_multiprocess_job(
+        size=torch.cuda.device_count(),
+        job=partial(_test_compress_multiprocess_job, project_root_path, tmp_path),
+        backend="nccl",
+    )
+
+
+def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, rank: int, size: int):
+    register_hydra_resolvers()
+
+    # Set environment variables expected by NativeDDP_Runtime
+    os.environ["RANK"] = str(rank)
+    os.environ["LOCAL_RANK"] = str(rank)
+    os.environ["WORLD_SIZE"] = str(size)
+    os.environ["LOCAL_WORLD_SIZE"] = str(size)
     os.environ["WANDB_DISABLED"] = "true"
-    puzzle_dir = Path("/tmp/pytest-shared/test_compress_model")
+
+    puzzle_dir = tmp_path
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
 
-    _runtime = NativeDDP_Runtime(
+    _runtime = NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     )
 
