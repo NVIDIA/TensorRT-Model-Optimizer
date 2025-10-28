@@ -19,8 +19,8 @@ from functools import partial
 
 import pytest
 import torch
-from _test_utils.torch_dist.dist_utils import get_device_counts, spawn_multiprocess_job
-from _test_utils.torch_export.export_utils import SmallQKVModel, ToyModel
+from _test_utils.torch.distributed.utils import get_device_counts, spawn_multiprocess_job
+from _test_utils.torch.export.utils import SmallQKVModel, ToyModel
 from torch.distributed._composable.fsdp import fully_shard
 
 import modelopt.torch.quantization as mtq

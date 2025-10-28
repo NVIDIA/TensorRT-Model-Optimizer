@@ -18,14 +18,14 @@ from functools import partial
 
 import pytest
 import torch
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
 from packaging.version import Version
 
 import modelopt.torch.quantization as mtq
 
 pytest.importorskip("transformers")
 import transformers
-from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
+from _test_utils.torch.transformers_models import create_tiny_llama_dir
 from transformers import AutoModelForCausalLM
 
 

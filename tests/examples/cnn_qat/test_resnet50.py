@@ -17,7 +17,7 @@ import os
 
 import pytest
 from _test_utils.examples.run_command import run_example_command
-from _test_utils.torch_misc import minimum_gpu
+from _test_utils.torch.misc import minimum_gpu
 
 imagenet_path = os.getenv("IMAGENET_PATH")
 if not imagenet_path or not os.path.isdir(imagenet_path):

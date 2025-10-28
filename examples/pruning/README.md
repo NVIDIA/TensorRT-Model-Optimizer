@@ -183,7 +183,7 @@ You can also look at the NeMo tutorial notebooks [here](https://github.com/NVIDI
 
 Some of the models pruned using Minitron method followed by distillation and post-training are:
 
-- [Minitron Collection on Hugging Face](https://huggingface.co/collections/nvidia/minitron-669ac727dc9c86e6ab7f0f3e)
+- [Minitron Collection on Hugging Face](https://huggingface.co/collections/nvidia/minitron)
 - [NVIDIA-Nemotron-Nano-9B-v2](https://huggingface.co/nvidia/NVIDIA-Nemotron-Nano-9B-v2)
 
 ### FastNAS Pruning for PyTorch Computer Vision Models
