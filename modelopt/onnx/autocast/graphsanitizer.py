@@ -86,7 +86,6 @@ class GraphSanitizer:
 
         if modified:
             logger.info("Converted FP64 initializers, I/O types, and nodes to FP32")
-            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
 
     def find_custom_nodes(self) -> None:
         """Find custom nodes in the model.
@@ -124,9 +123,6 @@ class GraphSanitizer:
 
     def convert_opset(self) -> None:
         """Convert the model to the given opset version.
-
-        Args:
-            min_opset: minimum opset version to use
 
         The method checks all opset imports and converts the model if any are below the minimum version.
         """

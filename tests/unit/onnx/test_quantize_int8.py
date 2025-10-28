@@ -21,6 +21,7 @@ import pytest
 import torch
 from _test_utils.onnx_quantization.lib_test_models import (
     SimpleMLP,
+    build_conv_isinf_model,
     build_convtranspose_conv_residual_model,
     export_as_onnx,
 )
@@ -89,3 +90,32 @@ def test_convtranspose_conv_residual_int8(tmp_path):
         assert len(quantized_inputs) == 1, (
             f"More than one input of {node.name} is being quantized, but only one should be quantized!"
         )
+
+
+def test_conv_isinf_int8(tmp_path):
+    onnx_model = build_conv_isinf_model()
+    onnx_path = os.path.join(tmp_path, "conv_isinf_model.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    moq.quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
+
+    # Check that quantized explicit model is generated
+    assert os.path.isfile(output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    graph = gs.import_onnx(onnx.load(output_onnx_path))
+
+    # Check that Conv is quantized
+    conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
+    assert _assert_nodes_are_quantized(conv_nodes)
+
+    # Check that IsInf is running in FP32
+    isinf_nodes = [n for n in graph.nodes if n.op == "IsInf"]
+    for node in isinf_nodes:
+        for inp in node.inputs:
+            assert inp.dtype == "float32", (
+                f"Node of type 'IsInf' has type {inp.dtype} but should have type float32"
+            )

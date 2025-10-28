@@ -138,6 +138,11 @@ class PrecisionConverter:
         self.min_opset = min_opset
         self.max_ir_version = max_ir_version
         self.trt_plugins = trt_plugins
+        OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION.extend(
+            utils.get_ops_without_low_precision_support(
+                self.model, self.low_precision_type.str_full, self.min_opset
+            )
+        )
 
     def convert(
         self,
