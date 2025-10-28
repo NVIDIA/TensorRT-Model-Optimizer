@@ -15,12 +15,43 @@
 
 
 import pytest
-from _test_utils.examples.run_command import (
-    run_example_command,
-    run_llm_sparsity_command,
-    run_llm_sparsity_ft_command,
-)
-from _test_utils.torch_misc import minimum_gpu
+from _test_utils.examples.run_command import extend_cmd_parts, run_example_command
+from _test_utils.torch.misc import minimum_gpu
+
+
+def run_llm_sparsity_command(
+    *, model: str, output_dir: str, sparsity_fmt: str = "sparsegpt", **kwargs
+):
+    kwargs.update(
+        {"model_name_or_path": model, "sparsity_fmt": sparsity_fmt, "output_dir": output_dir}
+    )
+    kwargs.setdefault("calib_size", 16)
+    kwargs.setdefault("device", "cuda")
+    kwargs.setdefault("dtype", "fp16")
+    kwargs.setdefault("model_max_length", 1024)
+
+    cmd_parts = extend_cmd_parts(["python", "hf_pts.py"], **kwargs)
+    run_example_command(cmd_parts, "llm_sparsity")
+
+
+def run_llm_sparsity_ft_command(
+    *, model: str, restore_path: str, output_dir: str, data_path: str, **kwargs
+):
+    kwargs.update(
+        {
+            "model": model,
+            "restore_path": restore_path,
+            "output_dir": output_dir,
+            "data_path": data_path,
+        }
+    )
+    kwargs.setdefault("num_epochs", 0.01)
+    kwargs.setdefault("max_length", 128)
+    kwargs.setdefault("train_bs", 1)
+    kwargs.setdefault("eval_bs", 1)
+
+    cmd_parts = extend_cmd_parts(["bash", "launch_finetune.sh"], **kwargs)
+    run_example_command(cmd_parts, "llm_sparsity")
 
 
 @pytest.fixture(scope="session")

@@ -18,20 +18,19 @@ from functools import partial
 import pytest
 import torch
 from _test_utils.import_helper import skip_if_no_megatron
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    MegatronModel,
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import MegatronModel, get_mcore_gpt_model
+from _test_utils.torch.megatron.utils import (
     compare_amax_sync_across_expert_parallel,
     copy_weights_from_grouped_to_non_grouped,
-    get_mcore_gpt_model,
     initialize_for_megatron,
     run_mcore_inference,
     sharded_state_dict_test_helper,
 )
-from _test_utils.torch_misc import set_seed
-from _test_utils.torch_quantization.models import RegularQuantModelForTP
-from _test_utils.torch_quantization.quant_utils import get_model_size
-from _test_utils.torch_quantization.quantize_common import (
+from _test_utils.torch.misc import set_seed
+from _test_utils.torch.quantization.models import RegularQuantModelForTP
+from _test_utils.torch.quantization.quant_utils import get_model_size
+from _test_utils.torch.quantization.quantize_common import (
     auto_quantize_helper,
     data_tensor_context_parallel_test_helper,
 )

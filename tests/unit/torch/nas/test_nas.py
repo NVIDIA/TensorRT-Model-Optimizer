@@ -21,7 +21,7 @@ from collections import deque
 
 import pytest
 import torch
-from _test_utils.torch_model.vision_models import TinyMobileNetFeatures
+from _test_utils.torch.vision_models import TinyMobileNetFeatures
 from torch import nn
 from torch.nn.modules.batchnorm import _BatchNorm
 from torchvision.models.mobilenetv2 import InvertedResidual

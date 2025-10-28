@@ -19,7 +19,7 @@ import warnings
 import pytest
 import torch
 import torch.nn as nn
-from _test_utils.torch_model.vision_models import get_tiny_mobilenet_and_input
+from _test_utils.torch.vision_models import get_tiny_mobilenet_and_input
 from torch.nn.modules.loss import _Loss as Loss
 from torchvision.models import alexnet
 

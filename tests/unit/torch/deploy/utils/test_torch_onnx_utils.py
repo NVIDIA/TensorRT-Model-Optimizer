@@ -22,7 +22,7 @@ import onnxruntime as ort
 import pytest
 import torch
 import torch.nn as nn
-from _test_utils.torch_model.deploy_models import BaseDeployModel, get_deploy_models
+from _test_utils.torch.deploy.lib_test_models import BaseDeployModel, get_deploy_models
 
 from modelopt.onnx.utils import get_batch_size_from_bytes, validate_batch_size
 from modelopt.torch._deploy.utils import (

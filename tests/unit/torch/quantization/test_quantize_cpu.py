@@ -19,8 +19,8 @@ import copy
 
 import pytest
 import torch
-from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
-from _test_utils.torch_quantization.quantize_common import (
+from _test_utils.torch.quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
+from _test_utils.torch.quantization.quantize_common import (
     INT4_AWQ_CLIP_CFG,
     INT4_AWQ_FULL_CFG,
     INT4_SVDQUANT_CFG,

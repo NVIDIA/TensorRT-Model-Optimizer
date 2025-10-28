@@ -16,7 +16,7 @@
 import pytest
 import torch
 import torch.distributed as dist
-from _test_utils.torch_dist.dist_utils import init_process
+from _test_utils.torch.distributed.utils import init_process
 
 import modelopt.torch.opt as mto
 

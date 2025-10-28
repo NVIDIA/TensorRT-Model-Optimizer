@@ -16,11 +16,9 @@
 from functools import partial
 
 import torch
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    get_mcore_qwen3_600m,
-    initialize_for_megatron,
-)
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_qwen3_600m
+from _test_utils.torch.megatron.utils import initialize_for_megatron
 from transformers import AutoTokenizer
 
 from modelopt.torch.utils.plugins import megatron_generate, megatron_mmlu
