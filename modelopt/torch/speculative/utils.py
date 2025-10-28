@@ -340,6 +340,7 @@ class AcceptanceRateValidation:
         if tree_paths:
             tree = Tree(tree_paths)
 
+        diffusion_steps = 0
         while input_ids.shape[1] < ground_truth.shape[1]:
             cnt += 1
             input_ids = self.check_draft(ground_truth, input_ids, draft_tokens)
@@ -350,17 +351,19 @@ class AcceptanceRateValidation:
                 input_id, draft_tokens, pred_tokens = self.model.tree_decode(input_ids, tree=tree)
                 pred_tokens = self.check_data_consistency_across_ranks(pred_tokens)
             else:
-                input_id, draft_tokens = self.model.pseudo_speculative_generate(
+                input_id, draft_tokens, diffusion_step = self.model.pseudo_speculative_generate(
                     input_ids, steps=steps
                 )
                 draft_tokens = self.check_data_consistency_across_ranks(draft_tokens)
+                diffusion_steps += diffusion_step
 
             input_id = self.check_data_consistency_across_ranks(input_id)
             input_ids = torch.cat((input_ids, input_id), dim=-1)
 
         ar = (ground_truth.shape[1] - isl) / cnt
+        diffusion_steps /= cnt
 
-        return ground_truth, ar
+        return ground_truth, ar, diffusion_steps
 
 
 @contextlib.contextmanager
