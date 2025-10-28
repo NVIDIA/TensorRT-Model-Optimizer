@@ -2,7 +2,7 @@ name: Docs
 
 on:
   pull_request:
-    branches: [main, release/*]
+    branches: [main, release/*, feature/*]
   push:
     branches: [main]
   schedule:

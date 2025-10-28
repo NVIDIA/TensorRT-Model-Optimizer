@@ -13,6 +13,7 @@ Model Optimizer Changelog (Linux)
 - Allow specifying ``calib_seq`` in ``examples/llm_ptq`` to set the maximum sequence length for calibration.
 - Add support for MCore MoE PTQ/QAT/QAD.
 - Add support for multi-node PTQ and export with FSDP2 in ``examples/llm_ptq/multinode_ptq.py``. See `examples/llm_ptq/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq#multi-node-post-training-quantization-with-fsdp2>`_ for more details.
+- Add support for Nemotron Nano VL v1 & v2 models in FP8/NVFP4 PTQ workflow.
 
 **Documentation**
 
