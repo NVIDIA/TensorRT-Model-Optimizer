@@ -985,10 +985,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, ttt_step)
 
-        eagle_inputs["rotary_pos_emb"] = torch.cat(
-            [rotary_pos_emb] * (ttt_step + 1),
-            dim=0,
-        )
+        eagle_inputs["rotary_pos_emb"] = rotary_pos_emb.repeat(ttt_step + 1, 1, 1, 1)
 
         # Update eagle_inputs for diffusion
         if diffusion:
@@ -1010,10 +1007,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 ttt_step,
                 block_len,
             )
-            eagle_inputs["rotary_pos_emb"] = torch.cat(
-                [rotary_pos_emb] * (ttt_step + 2),
-                dim=0,
-            )
+            eagle_inputs["rotary_pos_emb"] = rotary_pos_emb.repeat(ttt_step + 2, 1, 1, 1)
 
         return eagle_inputs
 
