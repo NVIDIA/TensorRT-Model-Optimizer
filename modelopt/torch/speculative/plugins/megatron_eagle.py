@@ -253,7 +253,7 @@ def right_padding(input_ids: torch.Tensor, hidden_states: torch.Tensor = None):
         return padded_input_ids, seq_len
 
 
-def set_multi_step_attention_mask(attn_mask, step, block_len=1):
+def set_multi_step_attention_mask(attn_mask, step):
     """Given an original attention_mask, construct a multi-step attention_mask.
 
     i0 i1 i2 i3 i4 i5 i6 i7  (base input_ids)
@@ -261,7 +261,68 @@ def set_multi_step_attention_mask(attn_mask, step, block_len=1):
     h0 h1 h2 h3 h4 h5 h6 h7  (base hidden_states)
     l0 l1 l2 l3 l4 l5 l6 l7  (base labels)
 
-    ttt_steps=2
+
+    ttt_step=0
+                  | i1 i2 i3 i4 i5 i6 i7 -- |
+                  | h0 h1 h2 h3 h4 h5 h6 h7 |
+    =========================================
+    F1 l1 | i1 h0 |  x                      |
+    F2 l2 | i2 h1 |  x  x                   |
+    F3 l3 | i3 h2 |  x  x  x                |
+    F4 l4 | i4 h3 |  x  x  x  x             |
+    F5 l5 | i5 h4 |  x  x  x  x  x          |
+    F6 l6 | i6 h5 |  x  x  x  x  x  x       |
+    F7 l7 | i7 h6 |  x  x  x  x  x  x  x    |
+    -- -- | -- h7 |  o  o  o  o  o  o  o  o |
+    =========================================
+
+
+    ttt_step=1
+                  | i1 i2 i3 i4 i5 i6 i7 -- | i1 i2 i3 i4 i5 i6 i7 -- |
+                  | h0 h1 h2 h3 h4 h5 h6 h7 | -- F1 F2 F3 F4 F5 F6 F7 |
+    ===================================================================
+    -- -- | i1 -- |                         |                         |
+    J2 l2 | i2 F1 |  x  o                   |     x                   |
+    J3 l3 | i3 F2 |  x  x  o                |        x                |
+    J4 l4 | i4 F3 |  x  x  x  o             |           x             |
+    J5 l5 | i5 F4 |  x  x  x  x  o          |              x          |
+    J6 l6 | i6 F5 |  x  x  x  x  x  o       |                 x       |
+    J7 l7 | i7 F6 |  x  x  x  x  x  x  o    |                    x    |
+    -- -- | -- F7 |                         |                         |
+    ===================================================================
+    -- -- | m0 M0 |                         |                         |
+    -- -- | m0 M0 |                         |                         |
+    K3 l3 | m0 M0 |  x  o  o                |     x  o                |
+    K4 l4 | m0 M0 |  x  x  o  o             |        x  o             |
+    K5 l5 | m0 M0 |  x  x  x  o  o          |           x  o          |
+    K6 l6 | m0 M0 |  x  x  x  x  o  o       |              x  o       |
+    K7 l7 | m0 M0 |  x  x  x  x  x  o  o    |                 x  o    |
+    -- -- | -- M0 |                         |                         |
+    ===================================================================
+    """
+    s = attn_mask.shape[-1]
+    for step_idx in range(step):
+        mask_0 = attn_mask.clone().detach()
+        mask_0[:, :, step_idx, :] = True
+        mask_0[:, :, :, :-1] = mask_0[:, :, :, 1:]
+        mask_1 = attn_mask.new_ones(attn_mask.shape[0], attn_mask.shape[1], s, s).bool()
+        for i in range(step_idx + 1, s - 1):
+            mask_1[:, :, i, i] = False
+
+        attn_mask = torch.cat((mask_0, mask_1), dim=-1)
+
+    return attn_mask
+
+
+def set_diffusion_attention_mask(attn_mask, step, block_len=1):
+    """Given an original attention_mask, construct a multi-step attention_mask.
+
+    i0 i1 i2 i3 i4 i5 i6 i7  (base input_ids)
+    =======================
+    h0 h1 h2 h3 h4 h5 h6 h7  (base hidden_states)
+    l0 l1 l2 l3 l4 l5 l6 l7  (base labels)
+
+
 
 
     ttt_step=0
@@ -944,7 +1005,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 position_ids=eagle_inputs["position_ids"],
             )
             eagle_inputs["hidden_states"] = eagle_inputs["embedding"]
-            eagle_inputs["attention_mask"] = self.set_multi_step_attention_mask(
+            eagle_inputs["attention_mask"] = set_diffusion_attention_mask(
                 attn_mask,
                 ttt_step,
                 block_len,
