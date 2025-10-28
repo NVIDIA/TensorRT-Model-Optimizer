@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 import torch
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
 from datasets import Dataset, DatasetDict
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 from scripts.convert_llama3_to_decilm import convert_llama3_to_decilm
