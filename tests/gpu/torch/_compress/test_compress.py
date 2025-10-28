@@ -88,7 +88,9 @@ def test_compress(project_root_path):
             hf_ckpt_teacher_dir = "ckpts/teacher"
             llama_checkpoint_path = osp.join(puzzle_dir, hf_ckpt_teacher_dir)
             create_and_save_small_llama_model(
-                llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
+                llama_checkpoint_path,
+                vocab_size=tokenizer.vocab_size,
+                tokenizer=tokenizer,
             )
 
             # Use the full conversion pipeline (matches normal usage)
@@ -125,7 +127,8 @@ def test_compress(project_root_path):
 
             # assertions for the scoring step 5
             solution_0_filepath = osp.join(
-                puzzle_dir, "single_sequence_replacement_solutions--validation/solution_0.json"
+                puzzle_dir,
+                "single_sequence_replacement_solutions--validation/solution_0.json",
             )
             assert os.path.exists(solution_0_filepath)
 
@@ -136,7 +139,10 @@ def test_compress(project_root_path):
             )
             assert os.path.exists(solution_0_ckpt_config_path)
             assert os.path.exists(
-                osp.join(puzzle_dir, "mip/puzzle_solutions/target_memory_780000MiB/solutions.json")
+                osp.join(
+                    puzzle_dir,
+                    "mip/puzzle_solutions/target_memory_780000MiB/solutions.json",
+                )
             )
 
         runtime.wait_for_everyone()
