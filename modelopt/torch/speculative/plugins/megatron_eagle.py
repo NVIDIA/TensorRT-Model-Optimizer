@@ -365,7 +365,7 @@ def set_multi_step_attention_mask(attn_mask, step, block_len=1):
 class EagleLanguageModelEmbedding(LanguageModelEmbedding):
     """Allow last pp stage to also load the embedding."""
 
-    def __init__(self, extra_embedding=False, *args, **kwargs):
+    def __init__(self, extra_embedding, *args, **kwargs):
         """If extra_embedding is False, this is just a replica of base model LanguageModelEmbedding."""
         super().__init__(*args, **kwargs)
         self.extra_embedding = extra_embedding
@@ -576,6 +576,7 @@ class EagleModule(MegatronModule):
 
         if self.config.parallel_draft_step > 1:
             self.embedding = EagleLanguageModelEmbedding(
+                extra_embedding=True,
                 config=self.config,
                 vocab_size=self.config.vocab_size
                 + self.config.tensor_model_parallel_size,  # for mask token
@@ -799,6 +800,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
         if not self.pre_process and self.post_process:
             self.embedding = EagleLanguageModelEmbedding(
+                extra_embedding=False,
                 config=self.config,
                 vocab_size=self.vocab_size,
                 max_sequence_length=self.max_sequence_length,
