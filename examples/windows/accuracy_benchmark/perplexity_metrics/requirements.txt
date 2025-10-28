@@ -15,9 +15,9 @@ protobuf>=5.28.2
 pytest
 sentencepiece
 sympy
+tokenizers>=0.14.1
 torch>=2.0.0
 torchaudio
 torchvision
-transformers
-
+transformers>=4.36
 

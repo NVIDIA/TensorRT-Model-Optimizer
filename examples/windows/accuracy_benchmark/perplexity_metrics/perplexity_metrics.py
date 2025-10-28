@@ -314,6 +314,7 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
     time_start = time.time()
     print(f"\n[RUN] === BEGIN perplexity_eval('{model_dir}') ===")
     print(f"[RUN] Loading ONNX model from: {model_dir}")
+    chunking_failed = False
     # Load the ONNX model
     # Apply chunk_size overlay if provided
     config = og.Config(model_dir)
@@ -325,6 +326,7 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
             print(f"[CONFIG] Successfully applied chunk_size: {chunk_size}")
         except Exception as e:
             print(f"[WARNING] Failed to apply chunk_size overlay: {e}")
+            chunking_failed = True
     model = og.Model(config)
 
     if DEBUG:
@@ -349,7 +351,7 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
 
     # Check for chunk_size - prioritize parameter over config file
     effective_chunk_size = None
-    if chunk_size is not None:
+    if chunk_size is not None and not chunking_failed:
         # Use the provided chunk_size parameter (overlaid)
         effective_chunk_size = int(chunk_size)
         kv_chunking_enabled = True
