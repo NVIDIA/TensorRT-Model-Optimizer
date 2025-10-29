@@ -69,6 +69,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
     puzzle_dir = tmp_path
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
+    hydra_config_name = "Llama-3_1-8B"
 
     _runtime = NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
@@ -105,7 +106,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
 
         # Compress the model using a one-click approach
         compress.compress(
-            str(hydra_config_dir), "Llama-3_1-8B", str(puzzle_dir), str(dataset_path), runtime
+            str(hydra_config_dir), hydra_config_name, str(puzzle_dir), str(dataset_path), runtime
         )
 
         #
