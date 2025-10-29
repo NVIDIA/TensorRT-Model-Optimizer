@@ -109,7 +109,7 @@ def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
 
 def get_quantized_state(
     module: torch.nn.Module,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype = torch.bfloat16,
 ) -> tuple[dict[str, torch.Tensor], str, int]:
     """Return a state_dict, quantization format, and block_size of the module.
 
@@ -197,7 +197,12 @@ class GPTModelExporter:
         self._hf_config = transformers.AutoConfig.from_pretrained(
             pretrained_model_name_or_path, trust_remote_code=trust_remote_code
         )
-        self.moe_router_dtype = moe_router_dtype
+        self.moe_router_dtype = None
+        if moe_router_dtype == "fp32":
+            self.moe_router_dtype = torch.float32
+        elif moe_router_dtype == "fp64":
+            self.moe_router_dtype = torch.float64
+
         # If multimodal, extra the text_config
         self._hf_text_config = getattr(self._hf_config, "text_config", self._hf_config)
 
@@ -1142,7 +1147,7 @@ def export_mcore_gpt_to_hf(
     model: torch.nn.Module,
     pretrained_model_name_or_path: str | os.PathLike | None = None,
     export_extra_modules: bool = False,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype = torch.bfloat16,
     export_dir: Path | str = tempfile.gettempdir(),
     moe_router_dtype: torch.dtype | None = None,
 ):
@@ -1169,7 +1174,7 @@ def import_mcore_gpt_from_hf(
     model: torch.nn.Module,
     pretrained_model_path: str,
     workspace_dir: str | None = None,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype = torch.bfloat16,
     moe_router_dtype: torch.dtype | None = None,
 ):
     """Import GPTModel state_dict from supported HuggingFace pretrained model path.

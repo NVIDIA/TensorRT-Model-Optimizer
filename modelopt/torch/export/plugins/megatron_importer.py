@@ -83,7 +83,11 @@ class GPTModelImporter:
         self._hf_config = transformers.AutoConfig.from_pretrained(
             pretrained_model_name_or_path, trust_remote_code=trust_remote_code
         )
-        self.moe_router_dtype = moe_router_dtype
+        self.moe_router_dtype = None
+        if moe_router_dtype == "fp32":
+            self.moe_router_dtype = torch.float32
+        elif moe_router_dtype == "fp64":
+            self.moe_router_dtype = torch.float64
         
         pretrained_model_path = Path(pretrained_model_name_or_path)
         if not pretrained_model_path.is_dir():
@@ -145,6 +149,8 @@ class GPTModelImporter:
         parallel_config: ParallelConfig | None = None,
         dtype: torch.dtype | None = None,
     ):
+        if dtype is None:
+            dtype = self.dtype
         if isinstance(module, torch.Tensor):
             tensor = self._get_safetensor(prefix, parallel_config=parallel_config)
             module.data.copy_(tensor)
@@ -197,7 +203,7 @@ class GPTModelImporter:
                     tensor = self._get_safetensor(
                         prefix + source_key, parallel_config=parallel_config
                     )
-                state_dict[key] = tensor.to(dtype=self.dtype).to(device=val.device)
+                state_dict[key] = tensor.to(dtype=dtype).to(device=val.device)
 
         module.load_state_dict(state_dict)
 
