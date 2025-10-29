@@ -66,16 +66,19 @@ def test_compress(project_root_path: Path, tmp_path: Path):
 def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, rank: int, size: int):
     register_hydra_resolvers()
 
+    #
+    # The inputs for the compress() algorihm.
+    #
     puzzle_dir = tmp_path
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
     hydra_config_name = "Llama-3_1-8B"
 
-    _runtime = NativeDdpRuntime(
+    runtime = NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     )
 
-    with _runtime as runtime:
+    with runtime as runtime:
         #
         # Test setup
         #
@@ -148,4 +151,4 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
 
         runtime.wait_for_everyone()
 
-        print("PYTEST SUMMARY: test_compress_model() test has finished successfully")
+    print("PYTEST SUMMARY: test_compress_model() test has finished successfully")

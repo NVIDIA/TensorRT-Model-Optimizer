@@ -13,22 +13,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import os
 from functools import partial
 from pathlib import Path
 
 import pytest
 import torch
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from experimental.torch._compress.test_compress import (
-    _create_and_save_small_llama_model,
-    _save_dummy_dataset,
-    _setup_puzzle_dir,
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from experimental.torch._compress.conftest import (
+    create_and_save_small_llama_model,
+    create_tokenizer,
+    save_dummy_dataset,
+    setup_puzzle_dir,
 )
 from puzzle_tools.hydra_utils import register_hydra_resolvers
-from transformers import AutoTokenizer
 
 import modelopt.torch.nas as mtn
+from modelopt.torch._compress.runtime import NativeDdpRuntime
 from modelopt.torch.nas.plugins._compress.compress_nas_plugin import CompressModel
 
 
@@ -56,54 +58,65 @@ def _test_nas_convert_multiprocess_job(
     register_hydra_resolvers()
 
     #
-    # Setup the inputs for the nas.convert() step: puzzle_dir, dataset,
-    # hydra_config_dir/hydra_config_name, and input model
+    # The inputs for the nas.convert() step.
     #
     puzzle_dir = tmp_path
+    llama_checkpoint_path = puzzle_dir / "ckpts/llama"
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
     hydra_config_name = "Llama-3_1-8B"
 
-    # Setup puzzle_dir and dataset
-    _setup_puzzle_dir(puzzle_dir)
-    _save_dummy_dataset(dataset_path)
-
-    # Create a small Llama model
-    tokenizer_path = project_root_path / "tests/experimental/torch/_compress/resources/tokenizer"
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-    llama_checkpoint_path = puzzle_dir / "ckpts/llama"
-    _create_and_save_small_llama_model(
-        llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
+    runtime = NativeDdpRuntime(
+        dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     )
 
-    #
-    # Run the mnt.convert() step
-    #
-    input_model = CompressModel()
-    mtn.convert(
-        input_model,
-        mode=[
-            (
-                "compress",
-                {
-                    "input_model_path": str(llama_checkpoint_path),
-                    "hydra_config_dir": str(hydra_config_dir),
-                    "hydra_config_name": hydra_config_name,
-                    "puzzle_dir": str(puzzle_dir),
-                    "dataset_path": str(dataset_path),
-                },
+    with runtime as runtime:
+        if rank == 0:
+            # Setup puzzle_dir and dataset
+            setup_puzzle_dir(puzzle_dir)
+            save_dummy_dataset(dataset_path)
+
+            # Create a small Llama model
+            tokenizer = create_tokenizer(project_root_path)
+            create_and_save_small_llama_model(
+                llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
             )
-        ],
-    )
+        runtime.wait_for_everyone()
 
-    #
-    # Check assertions
-    #
+        #
+        # Run the mnt.convert() step
+        #
+        input_model = CompressModel()
+        mtn.convert(
+            input_model,
+            mode=[
+                (
+                    "compress",
+                    {
+                        "puzzle_dir": str(puzzle_dir),
+                        "input_model_path": str(llama_checkpoint_path),
+                        "hydra_config_dir": str(hydra_config_dir),
+                        "hydra_config_name": hydra_config_name,
+                        "dataset_path": str(dataset_path),
+                    },
+                )
+            ],
+        )
 
-    # assertions for the score_pruning_activations step
-    rank = int(os.environ["RANK"])
-    rank_filepath = f"pruning/pruning_scores/ffn_iterative/100samples_diverse_mini/rank_{rank}.pth"
-    assert (puzzle_dir / rank_filepath).is_file()
+        #
+        # Check assertions
+        #
+        if rank == 0:
+            # assertions for the score_pruning_activations step
+            rank = int(os.environ["RANK"])
+            rank_filepath = (
+                f"pruning/pruning_scores/ffn_iterative/100samples_diverse_mini/rank_{rank}.pth"
+            )
+            assert (puzzle_dir / rank_filepath).is_file()
 
-    # assertions for the pruning_ckpts step
-    assert (puzzle_dir / "ckpts/ffn_256_attn_no_op").exists()
+            # assertions for the pruning_ckpts step
+            assert (puzzle_dir / "ckpts/ffn_256_attn_no_op").exists()
+
+        runtime.wait_for_everyone()
+
+    print("PYTEST SUMMARY: test_nas_convert() test has finished successfully")
