@@ -18,10 +18,9 @@ import os
 from functools import partial
 from pathlib import Path
 
-import pytest
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.conftest import (
+from experimental.torch._compress.test_utils import (
     create_and_save_small_llama_model,
     create_tokenizer,
     save_dummy_dataset,
@@ -32,11 +31,6 @@ from puzzle_tools.hydra_utils import register_hydra_resolvers
 import modelopt.torch.nas as mtn
 from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
 from modelopt.torch._compress.runtime import NativeDdpRuntime
-
-
-@pytest.fixture
-def project_root_path(request: pytest.FixtureRequest) -> Path:
-    return Path(request.config.rootpath)
 
 
 #

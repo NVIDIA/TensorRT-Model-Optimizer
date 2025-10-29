@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.conftest import (
+from experimental.torch._compress.test_utils import (
     create_and_save_small_llama_model,
     create_tokenizer,
     save_dummy_dataset,
