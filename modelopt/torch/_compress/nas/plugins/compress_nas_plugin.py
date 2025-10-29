@@ -20,8 +20,11 @@ Compress NAS plugin for the Modelopt framework (based on Puzzle algorithm: https
 import datetime
 from pathlib import Path
 
+import build_library_and_stats
+import mip_and_realize_models
 import pruning_ckpts
 import score_pruning_activations
+import scoring
 import torch
 from scripts.convert_llama3_to_decilm import convert_llama3_to_decilm
 from torch import nn
@@ -36,7 +39,7 @@ from modelopt.torch.opt.mode import (
     ModeDescriptor,
     RestoreEntrypoint,
 )
-from modelopt.torch.opt.searcher import BaseSearcher
+from modelopt.torch.opt.searcher import BaseSearcher, SearchStateDict
 
 # TODO Move initialize_hydra_config_for_dir from tests to main
 from tests.utils.test_utils import initialize_hydra_config_for_dir
@@ -96,6 +99,12 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     )
 
+    # Required for mtn.search() to read NAS configuration
+    model.hydra_config_dir = config.hydra_config_dir
+    model.hydra_config_name = config.hydra_config_name
+    model.puzzle_dir = config.puzzle_dir
+    model.dataset_path = config.dataset_path
+
     # Load hydra config
     hydra_cfg = initialize_hydra_config_for_dir(
         config_dir=config.hydra_config_dir,
@@ -148,7 +157,7 @@ class CompressDescriptor(ModeDescriptor):
     @property
     def search_algorithm(self) -> type[BaseSearcher]:
         """Return the associated searcher implementation."""
-        raise NotImplementedError("Compress mode does not have a search algorithm yet.")
+        return CompressSearcher
 
     @property
     def convert(self) -> ConvertEntrypoint:
@@ -167,3 +176,38 @@ class CompressDescriptor(ModeDescriptor):
         for the compress algorithm.
         """
         return "export_nas"
+
+
+class CompressSearcher(BaseSearcher):
+    """Runs NAS search for the Compress mode."""
+
+    @property
+    def default_state_dict(self) -> SearchStateDict:
+        """Not needed for the compress mode as we are not saving any model state"""
+        return {}
+
+    def run_search(self) -> None:
+        runtime = NativeDdpRuntime(
+            dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
+        )
+
+        # Load hydra config
+        hydra_cfg = initialize_hydra_config_for_dir(
+            config_dir=self.model.hydra_config_dir,
+            config_name=self.model.hydra_config_name,
+            overrides=[
+                f"puzzle_dir={self.model.puzzle_dir}",
+                f"dataset_path={self.model.dataset_path}",
+            ],
+        )
+
+        # Build_library_and_stats (single process)
+        if runtime.global_rank == 0:
+            build_library_and_stats.launch_build_library_and_stats(hydra_cfg)
+        runtime.wait_for_everyone()
+
+        # Calc_one_block_scores (distributed processing)
+        scoring.launch_scoring(hydra_cfg, runtime)
+
+        # mip_and_realize_models (distributed processing)
+        mip_and_realize_models.launch_mip_and_realize_model(hydra_cfg, runtime)
