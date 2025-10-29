@@ -19,6 +19,7 @@ Convert a Llama3 model to a DeciLM model."""
 #!/usr/bin/env python3
 from pathlib import Path
 
+import torch
 from fire import Fire
 from puzzle_tools.checkpoint_utils import copy_tokenizer
 from puzzle_tools.checkpoint_utils_hf import copy_deci_lm_hf_code
@@ -46,7 +47,7 @@ def convert_llama3_config_to_decilm_config(config: LlamaConfig) -> DeciLMConfig:
         dtype = getattr(config, "torch_dtype", None)
 
     # Convert torch.dtype to string if needed (for JSON serialization)
-    if dtype is not None and hasattr(dtype, "__module__") and "torch" in dtype.__module__:
+    if dtype is not None and isinstance(dtype, torch.dtype):
         dtype = str(dtype).replace("torch.", "")
 
     # Track which global values will be removed (moved to per-layer configs)
