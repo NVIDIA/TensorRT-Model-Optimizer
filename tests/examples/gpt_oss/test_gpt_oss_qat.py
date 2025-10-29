@@ -168,7 +168,7 @@ class GPTOSS:
         tensorrt_llm_workspace = "/app/tensorrt_llm"
         script = os.path.join(tensorrt_llm_workspace, "benchmarks", "cpp", "prepare_dataset.py")
         model_name = self.model_path.split("/")[-1]
-        benchmark_file = f"{model_name}_synthetic_128_128.txt"
+        benchmark_file = str(tmp_path / f"{model_name}_synthetic_128_128.txt")
 
         if not os.path.exists(benchmark_file) or os.path.getsize(benchmark_file) == 0:
             print(f"Creating dataset file '{benchmark_file}'...")
