@@ -13,9 +13,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
+from functools import partial
 from pathlib import Path
 
 import pytest
+import torch
+from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
 from experimental.torch._compress.test_compress import (
     _create_and_save_small_llama_model,
     _save_dummy_dataset,
@@ -38,6 +42,16 @@ def project_root_path(request: pytest.FixtureRequest) -> Path:
 # TODO: Remove those instructions once this test runs automatically on CI
 #
 def test_nas_convert(project_root_path: Path, tmp_path: Path):
+    spawn_multiprocess_job(
+        size=torch.cuda.device_count(),
+        job=partial(_test_nas_convert_multiprocess_job, project_root_path, tmp_path),
+        backend="nccl",
+    )
+
+
+def _test_nas_convert_multiprocess_job(
+    project_root_path: Path, tmp_path: Path, rank: int, size: int
+):
     # Register Hydra custom resolvers (needed for config resolution)
     register_hydra_resolvers()
 
@@ -48,6 +62,7 @@ def test_nas_convert(project_root_path: Path, tmp_path: Path):
     puzzle_dir = tmp_path
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
+    hydra_config_name = "Llama-3_1-8B"
 
     # Setup puzzle_dir and dataset
     _setup_puzzle_dir(puzzle_dir)
@@ -56,8 +71,7 @@ def test_nas_convert(project_root_path: Path, tmp_path: Path):
     # Create a small Llama model (input to the mnt.convert() step)
     tokenizer_path = project_root_path / "tests/experimental/torch/_compress/resources/tokenizer"
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-    hf_ckpt_teacher_dir = "ckpts/teacher"
-    llama_checkpoint_path = puzzle_dir / hf_ckpt_teacher_dir
+    llama_checkpoint_path = puzzle_dir / "ckpts/llama"
     _create_and_save_small_llama_model(
         llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
     )
@@ -72,7 +86,9 @@ def test_nas_convert(project_root_path: Path, tmp_path: Path):
             (
                 "compress",
                 {
+                    "input_model_path": str(llama_checkpoint_path),
                     "hydra_config_dir": str(hydra_config_dir),
+                    "hydra_config_name": hydra_config_name,
                     "puzzle_dir": str(puzzle_dir),
                     "dataset_path": str(dataset_path),
                 },
@@ -83,3 +99,11 @@ def test_nas_convert(project_root_path: Path, tmp_path: Path):
     #
     # Check assertions
     #
+
+    # assertions for the score_pruning_activations step 1
+    rank = int(os.environ["RANK"])
+    rank_filepath = f"pruning/pruning_scores/ffn_iterative/100samples_diverse_mini/rank_{rank}.pth"
+    assert (puzzle_dir / rank_filepath).is_file()
+
+    # assertions for the pruning_ckpts step 2
+    assert (puzzle_dir / "ckpts/ffn_256_attn_no_op").exists()
