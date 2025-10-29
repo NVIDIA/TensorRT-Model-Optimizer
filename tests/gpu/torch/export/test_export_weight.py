@@ -17,7 +17,7 @@ import math
 
 import torch
 import torch.nn as nn
-from _test_utils.torch_export.export_utils import ToyModel, partial_w4a8_config
+from _test_utils.torch.export.utils import ToyModel, partial_w4a8_config
 from torch.nn import functional as F
 from torch.nn import init
 

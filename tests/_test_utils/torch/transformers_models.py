@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 import torch
-from _test_utils.torch_misc import set_seed
+from _test_utils.torch.misc import set_seed
 from packaging.version import Version
 
 transformers = pytest.importorskip("transformers")

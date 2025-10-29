@@ -19,8 +19,8 @@ import warnings
 import pytest
 import torch
 import torch.nn as nn
-from _test_utils.torch_misc import set_seed
-from _test_utils.torch_model.transformers_models import (
+from _test_utils.torch.misc import set_seed
+from _test_utils.torch.transformers_models import (
     create_tiny_llama_dir,
     get_tiny_llama,
     tf_modelopt_state_and_output_tester,

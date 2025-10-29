@@ -16,8 +16,8 @@
 import copy
 
 import pytest
-from _test_utils.torch_misc import compare_outputs
-from _test_utils.torch_model.nas_trace_models import BaseExampleModel, get_example_models
+from _test_utils.torch.misc import compare_outputs
+from _test_utils.torch.nas_prune.models import BaseExampleModel, get_example_models
 
 import modelopt.torch.opt as mto
 import modelopt.torch.sparsity as mts
