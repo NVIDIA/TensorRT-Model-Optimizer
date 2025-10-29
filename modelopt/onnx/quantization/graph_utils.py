@@ -190,7 +190,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             return root
 
         for tensor in root.inputs:
-            if not isinstance(tensor, Constant):
+            if not isinstance(tensor, Constant) and tensor.inputs:
                 parent_node = tensor.inputs[0]
                 bb = _get_backbone(parent_node)
                 if bb:
