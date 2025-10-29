@@ -14,31 +14,22 @@
 # limitations under the License.
 
 import json
-import os.path as osp
 from pathlib import Path
 
-import pytest
-from experimental.torch._compress.test_compress import _create_and_save_small_llama_model
-from transformers import AutoTokenizer
+from experimental.torch._compress.conftest import (
+    create_and_save_small_llama_model,
+    create_tokenizer,
+)
 
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
 )
 
 
-@pytest.fixture
-def project_root_path(request: pytest.FixtureRequest) -> Path:
-    return Path(request.config.rootpath)
-
-
 def test_convert_llama3_config_to_decilm_config(project_root_path: Path, tmp_path: Path):
-    tokenizer_path = osp.join(
-        project_root_path, "tests/experimental/torch/_compress/resources/tokenizer"
-    )
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
-
+    tokenizer = create_tokenizer(project_root_path)
     llama_checkpoint_path = tmp_path / "llama_checkpoint"
-    _create_and_save_small_llama_model(
+    create_and_save_small_llama_model(
         llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
     )
 

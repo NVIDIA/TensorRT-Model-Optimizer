@@ -15,26 +15,22 @@
 
 import datetime
 import os
-import shutil
 from functools import partial
 from pathlib import Path
 
-import pytest
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from datasets import Dataset, DatasetDict
+from experimental.torch._compress.conftest import (
+    create_and_save_small_llama_model,
+    create_tokenizer,
+    save_dummy_dataset,
+    setup_puzzle_dir,
+)
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 from scripts.convert_llama3_to_decilm import convert_llama3_to_decilm
-from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerBase
 
 from modelopt.torch._compress import compress
 from modelopt.torch._compress.runtime import NativeDdpRuntime
-
-
-@pytest.fixture
-def project_root_path(request: pytest.FixtureRequest) -> Path:
-    return Path(request.config.rootpath)
-
 
 # The e2e test to compress a model based on Local Neural Architecture Search (Mixed Integer Programing NAS search)
 # using a one-click command.
@@ -84,23 +80,19 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         #
         if rank == 0:
             # Setup puzzle_dir and dataset
-            _setup_puzzle_dir(puzzle_dir)
-            _save_dummy_dataset(dataset_path)
+            setup_puzzle_dir(puzzle_dir)
+            save_dummy_dataset(dataset_path)
 
             #
             # Step 1: Create and save a teacher model to compress
             # This mimics the normal pipeline where we start with a Llama model
             #
-            tokenizer_path = (
-                project_root_path / "tests/experimental/torch/_compress/resources/tokenizer"
-            )
-
-            tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
 
             # Create a small Llama model (not DeciLM) to match the normal conversion pipeline
+            tokenizer = create_tokenizer(project_root_path)
             hf_ckpt_teacher_dir = "ckpts/teacher"
             llama_checkpoint_path = puzzle_dir / hf_ckpt_teacher_dir
-            _create_and_save_small_llama_model(
+            create_and_save_small_llama_model(
                 llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
             )
 
@@ -156,85 +148,3 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         runtime.wait_for_everyone()
 
         print("PYTEST SUMMARY: test_compress_model() test has finished successfully")
-
-
-def _create_and_save_small_llama_model(
-    output_path: str, vocab_size: int, tokenizer: PreTrainedTokenizerBase
-):
-    """
-    Create and save a small Llama model for testing the conversion pipeline.
-    This mimics having a real Llama checkpoint that needs to be converted.
-    """
-    os.makedirs(output_path, exist_ok=True)
-
-    # Create a minimal Llama config (small for testing)
-    # Note: intermediate_size must be divisible by 256 per DeciLM config requirements
-    # Note: hidden_size must give head_dim >= 8 for Flash Attention 2 compatibility
-    llama_config = LlamaConfig(
-        vocab_size=vocab_size,
-        hidden_size=256,  # 32 heads times 8 head_dim = 256 (matches bypass config expectations)
-        intermediate_size=512,  # Must be divisible by 256
-        num_hidden_layers=2,
-        num_attention_heads=32,  # Matches original test
-        num_key_value_heads=8,  # GQA: 32÷4=8 (matches original n_heads_in_group=4)
-        max_position_embeddings=512,
-        rms_norm_eps=1e-5,
-        rope_theta=10000.0,
-        attention_bias=False,
-        hidden_act="silu",
-        tie_word_embeddings=False,
-    )
-
-    # Create and save the Llama model
-    model = LlamaForCausalLM(llama_config)
-    model.to(dtype=torch.bfloat16).save_pretrained(output_path)
-
-    # Save tokenizer
-    tokenizer.save_pretrained(output_path)
-
-    # Save config
-    llama_config.save_pretrained(output_path)
-
-
-def _setup_puzzle_dir(puzzle_dir: str):
-    if Path(puzzle_dir).exists():
-        shutil.rmtree(puzzle_dir)
-        Path(puzzle_dir).mkdir(parents=True, exist_ok=True)
-
-
-def _save_dummy_dataset(dataset_path: str):
-    # dummy sample
-    sample = [
-        {"role": "user", "content": "please cite Lorem Ipsum?"},
-        {
-            "role": "assistant",
-            "content": (
-                "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed in blandit ante. "
-                "Sed tempus erat urna, ac elementum nisl facilisis quis. Aliquam consectetur mollis massa, "
-                "in elementum sem venenatis posuere. Fusce lorem arcu, egestas vel massa sollicitudin, "
-                "dictum mollis purus. Proin in ullamcorper elit. Nam tellus nisi, volutpat a mattis vel, "
-                "pretium in purus. Nunc at lectus facilisis risus scelerisque rhoncus eu nec ex. "
-                "Maecenas semper, tellus non placerat vulputate, urna felis facilisis diam, "
-                "sit amet vestibulum erat sapien nec libero. Praesent non massa velit. Donec faucibus mi eros. "
-                "Nam turpis nulla, congue sit amet mi at, porttitor scelerisque elit. Nunc id sodales lorem, "
-                "nec tincidunt leo. Quisque a neque nec ligula porttitor auctor. "
-                "Nunc accumsan nunc ac tellus congue vehicula. Praesent tellus eros, luctus non gravida dapibus, "
-                "faucibus eu ex. Quisque bibendum leo pharetra, tristique est vitae, hendrerit nunc. "
-                "Duis nec congue dolor. Donec commodo ipsum non efficitur volutpat. "
-                "Nulla risus nulla, efficitur et urna at, imperdiet sodales lorem. "
-                "Suspendisse erat est, sollicitudin at nisl tincidunt, vehicula hendrerit lectus. "
-                "Nam quis nisi ullamcorper, rhoncus massa vel, tempus purus. "
-                "Duis pulvinar eros vel nulla pellentesque, at dapibus justo laoreet. "
-                "Praesent tortor orci, vulputate fermentum dapibus nec, feugiat vitae tortor. "
-                "Donec mollis convallis massa quis iaculis."
-            ),
-        },
-    ]
-
-    # Prepare train and val splits with sample repeated, 2500 samples are for
-    # 128 samples with block-size 8192 and LLama3 tokenizer
-    data = [{"conversation": sample}] * 2500
-
-    # For train-val splits
-    data_dict = DatasetDict({"train": Dataset.from_list(data), "valid": Dataset.from_list(data)})
-    data_dict.save_to_disk(dataset_path)
