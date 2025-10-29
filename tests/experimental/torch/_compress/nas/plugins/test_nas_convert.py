@@ -30,8 +30,8 @@ from experimental.torch._compress.conftest import (
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 
 import modelopt.torch.nas as mtn
+from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
 from modelopt.torch._compress.runtime import NativeDdpRuntime
-from modelopt.torch.nas.plugins._compress.compress_nas_plugin import CompressModel
 
 
 @pytest.fixture
