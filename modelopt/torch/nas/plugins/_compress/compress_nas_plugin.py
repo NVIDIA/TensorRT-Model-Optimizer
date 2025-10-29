@@ -13,6 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""
+Compress NAS plugin for the Modelopt framework (based on Puzzle algorithm: https://arxiv.org/abs/2411.19146).
+"""
+
 import datetime
 from pathlib import Path
 
@@ -39,36 +43,41 @@ from tests.utils.test_utils import initialize_hydra_config_for_dir
 
 
 class CompressModel(nn.Module):
-    pass
+    pass  # No model implementation is needed for the compress mode
 
 
 class CompressConfig(ModeloptBaseConfig):
     """Configuration for Compress NAS algorithm."""
 
+    # Input model path to compress in the HF format
     input_model_path: str = ModeloptField(
         default="",
         title="",
         description="",
     )
 
+    # Hydra config directory containing the search space definition
     hydra_config_dir: str = ModeloptField(
         default="",
         title="",
         description="",
     )
 
+    # Hydra config name containing the search space definition
     hydra_config_name: str = ModeloptField(
         default="",
         title="",
         description="",
     )
 
+    # Directory to save the compressed model and intermediate results
     puzzle_dir: str = ModeloptField(
         default="",
         title="",
         description="",
     )
 
+    # Dataset path to use for scoring in prunining and NAS search
     dataset_path: str = ModeloptField(
         default="",
         title="",
@@ -77,10 +86,12 @@ class CompressConfig(ModeloptBaseConfig):
 
 
 def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertReturnType:
-    """Convert the model to a search space model."""
-    print("=" * 80)
-    print(f"[convert] before convert:\n{model}")
+    """1. Convert the model from HF format to DeciLM format.
+    2. Score the pruning activations.
+    3. Prune the model and save pruned checkpoints
 
+    The output of this step will be used by mnt.search() to perform the NAS search.
+    """
     runtime = NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     )
@@ -96,20 +107,20 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
     )
 
     # Convert Llama3 model to DeciLM model
-    hf_ckpt_teacher_dir = "ckpts/teacher"
+    hf_ckpt_teacher_dir = "ckpts/teacher"  # TODO: make it configurable
     convert_llama3_to_decilm(
         input_dir=config.input_model_path,
         output_dir=Path(config.puzzle_dir) / hf_ckpt_teacher_dir,
     )
 
-    #  Score_pruning_activations (distributed processing)
+    # Score_pruning_activations (distributed processing)
     score_pruning_activations.launch_score_activations(hydra_cfg, runtime)
 
+    # Prune the model and save pruned checkpoints
     if runtime.global_rank == 0:
         pruning_ckpts.launch_prune_ckpt(hydra_cfg)
     runtime.wait_for_everyone()
 
-    print(f"[convert] after convert:\n{model}")
     return model, {}
 
 
@@ -137,7 +148,7 @@ class CompressDescriptor(ModeDescriptor):
     @property
     def search_algorithm(self) -> type[BaseSearcher]:
         """Return the associated searcher implementation."""
-        raise NotImplementedError("Compress mode does not have a search algorithm.")
+        raise NotImplementedError("Compress mode does not have a search algorithm yet.")
 
     @property
     def convert(self) -> ConvertEntrypoint:
