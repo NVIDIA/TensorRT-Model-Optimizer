@@ -38,7 +38,7 @@ def project_root_path(request: pytest.FixtureRequest) -> Path:
 
 
 #
-# See tests/gpu/torch/_compress/test_compress.py for instructions on how to run this test
+# See tests/experimental/torch/_compress/test_compress.py for instructions on how to run this test
 # TODO: Remove those instructions once this test runs automatically on CI
 #
 def test_nas_convert(project_root_path: Path, tmp_path: Path):
@@ -56,8 +56,8 @@ def _test_nas_convert_multiprocess_job(
     register_hydra_resolvers()
 
     #
-    # Step 1: Setup the puzzle_dir, dataset, hydra_config_dir, and input model
-    # needed for the mnt.convert() step
+    # Setup the inputs for the nas.convert() step: puzzle_dir, dataset,
+    # hydra_config_dir/hydra_config_name, and input model
     #
     puzzle_dir = tmp_path
     dataset_path = puzzle_dir / "dummy_dataset"
@@ -68,7 +68,7 @@ def _test_nas_convert_multiprocess_job(
     _setup_puzzle_dir(puzzle_dir)
     _save_dummy_dataset(dataset_path)
 
-    # Create a small Llama model (input to the mnt.convert() step)
+    # Create a small Llama model
     tokenizer_path = project_root_path / "tests/experimental/torch/_compress/resources/tokenizer"
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     llama_checkpoint_path = puzzle_dir / "ckpts/llama"
@@ -100,10 +100,10 @@ def _test_nas_convert_multiprocess_job(
     # Check assertions
     #
 
-    # assertions for the score_pruning_activations step 1
+    # assertions for the score_pruning_activations step
     rank = int(os.environ["RANK"])
     rank_filepath = f"pruning/pruning_scores/ffn_iterative/100samples_diverse_mini/rank_{rank}.pth"
     assert (puzzle_dir / rank_filepath).is_file()
 
-    # assertions for the pruning_ckpts step 2
+    # assertions for the pruning_ckpts step
     assert (puzzle_dir / "ckpts/ffn_256_attn_no_op").exists()
