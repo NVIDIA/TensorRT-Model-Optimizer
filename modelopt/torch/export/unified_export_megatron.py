@@ -35,7 +35,6 @@ from tqdm import tqdm
 
 from modelopt import __version__
 from modelopt.torch.utils import import_plugin
-from megatron.core import ModelParallelConfig
 
 from .model_config import (
     KV_CACHE_FP8,
@@ -187,7 +186,7 @@ class GPTModelExporter:
         export_extra_modules: bool = False,
         dtype=torch.bfloat16,
         trust_remote_code: bool = True,
-        config: ModelParallelConfig | None = None,
+        moe_router_dtype: torch.dtype | None = None,
     ):
         """Create a GPTModel exporter instance."""
         if not isinstance(model, (GPTModel, MambaModel, LLaVAModel)):
@@ -198,9 +197,7 @@ class GPTModelExporter:
         self._hf_config = transformers.AutoConfig.from_pretrained(
             pretrained_model_name_or_path, trust_remote_code=trust_remote_code
         )
-        if config.moe_router_dtype:
-            if config.moe_router_dtype == "fp32":
-                self.moe_router_dtype = torch.float32
+        self.moe_router_dtype = moe_router_dtype
         # If multimodal, extra the text_config
         self._hf_text_config = getattr(self._hf_config, "text_config", self._hf_config)
 
@@ -1147,7 +1144,7 @@ def export_mcore_gpt_to_hf(
     export_extra_modules: bool = False,
     dtype: torch.dtype = torch.float16,
     export_dir: Path | str = tempfile.gettempdir(),
-    config: ModelParallelConfig = None,
+    moe_router_dtype: torch.dtype | None = None,
 ):
     """Export Megatron Core GPTModel to unified checkpoint and save to export_dir.
 
@@ -1163,7 +1160,7 @@ def export_mcore_gpt_to_hf(
         export_dir: The target export path.
     """
     exporter = GPTModelExporter(
-        model, pretrained_model_name_or_path, export_extra_modules=export_extra_modules, dtype=dtype, config=config
+        model, pretrained_model_name_or_path, export_extra_modules=export_extra_modules, dtype=dtype, moe_router_dtype=moe_router_dtype
     )
     exporter.save_pretrained(export_dir, pretrained_model_name_or_path)
 
@@ -1173,6 +1170,7 @@ def import_mcore_gpt_from_hf(
     pretrained_model_path: str,
     workspace_dir: str | None = None,
     dtype: torch.dtype = torch.float16,
+    moe_router_dtype: torch.dtype | None = None,
 ):
     """Import GPTModel state_dict from supported HuggingFace pretrained model path.
 
@@ -1183,6 +1181,6 @@ def import_mcore_gpt_from_hf(
         dtype: The weights data type to import.
     """
     importer = GPTModelImporter(
-        model, pretrained_model_path, workspace_dir=workspace_dir, dtype=dtype,
+        model, pretrained_model_path, workspace_dir=workspace_dir, dtype=dtype, moe_router_dtype=moe_router_dtype
     )
     importer._import_state_dict()

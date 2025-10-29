@@ -77,11 +77,14 @@ class GPTModelImporter:
         dequantize: bool = True,
         trust_remote_code: bool = True,
         verbose: bool = False,
+        moe_router_dtype: torch.dtype | None = None,
     ):
         """Create a GPTModel importer instance."""
         self._hf_config = transformers.AutoConfig.from_pretrained(
             pretrained_model_name_or_path, trust_remote_code=trust_remote_code
         )
+        self.moe_router_dtype = moe_router_dtype
+        
         pretrained_model_path = Path(pretrained_model_name_or_path)
         if not pretrained_model_path.is_dir():
             if workspace_dir is None:
@@ -118,7 +121,7 @@ class GPTModelImporter:
             func = method_map[mapping.func_name]
             prefix = mapping.target_name_or_prefix
             func_kwargs = mapping.func_kwargs
-            return lambda m, *args: func(m, prefix.format(*args), **func_kwargs)
+            return lambda m, *args, **kwargs: func(m, prefix.format(*args), **{**func_kwargs, **kwargs})
 
         for arch, mappings in all_mcore_hf_import_mapping.items():
             all_rules[arch] = {
@@ -140,6 +143,7 @@ class GPTModelImporter:
         prefix,
         mapping={},
         parallel_config: ParallelConfig | None = None,
+        dtype: torch.dtype | None = None,
     ):
         if isinstance(module, torch.Tensor):
             tensor = self._get_safetensor(prefix, parallel_config=parallel_config)
@@ -523,7 +527,7 @@ class GPTModelImporter:
                 if not isinstance(layer.mlp, IdentityOp):
                     if "MoE" in str(type(layer.mlp)):
                         layer_pbar.set_description("Importing MoE")
-                        self.rules["router"](layer.mlp.router, layer_id)
+                        self.rules["router"](layer.mlp.router, layer_id, dtype=self.moe_router_dtype)
                         if (
                             hasattr(layer.mlp, "shared_experts")
                             and layer.mlp.shared_experts is not None
