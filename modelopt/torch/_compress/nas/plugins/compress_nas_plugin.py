@@ -162,5 +162,8 @@ class CompressDescriptor(ModeDescriptor):
 
     @property
     def export_mode(self) -> str | None:
-        """The mode that corresponds to the export mode of this mode."""
-        return "export"
+        """The mode that corresponds to the export mode.
+        For now, this will be a no-op as there is no modelopt's concept of search space defined
+        for the compress algorithm.
+        """
+        return "export_nas"
