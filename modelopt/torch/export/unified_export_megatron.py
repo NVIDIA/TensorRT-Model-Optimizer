@@ -491,12 +491,10 @@ class GPTModelExporter:
                 "pack_name_remapping": self._pack_name_remapping,
                 "pack_name_remapping_gpt_oss": self._pack_name_remapping_gpt_oss,
             }
-            print("Mapping: ", mapping)
             func = method_map[mapping.func_name]
             prefix = mapping.target_name_or_prefix
             func_kwargs = mapping.func_kwargs
-            dtype = mapping.dtype
-            return lambda m, *args: func(m, prefix.format(*args), **func_kwargs)
+            return lambda m, *args, **kwargs: func(m, prefix.format(*args), **{**func_kwargs, **kwargs})
 
         for arch, mappings in all_mcore_hf_export_mapping.items():
             all_rules[arch] = {
