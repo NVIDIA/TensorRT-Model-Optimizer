@@ -21,8 +21,8 @@ from functools import partial
 
 import torch
 from _test_utils.import_helper import skip_if_no_libcudnn
-from _test_utils.onnx_quantization.lib_test_models import SimpleMLP, export_as_onnx, find_init
-from _test_utils.torch_quantization.quantize_common import get_awq_config
+from _test_utils.onnx.quantization.lib_test_models import SimpleMLP, export_as_onnx, find_init
+from _test_utils.torch.quantization.quantize_common import get_awq_config
 
 import modelopt.onnx.quantization.int4 as int4
 import modelopt.torch.quantization as mtq

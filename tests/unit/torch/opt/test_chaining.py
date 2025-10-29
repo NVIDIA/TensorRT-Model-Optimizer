@@ -15,8 +15,8 @@
 
 import pytest
 import torch
-from _test_utils.opt_utils import apply_mode_with_sampling
-from _test_utils.torch_misc import compare_outputs
+from _test_utils.torch.misc import compare_outputs
+from _test_utils.torch.opt.utils import apply_mode_with_sampling
 from torchvision.models.mobilenetv2 import InvertedResidual
 
 import modelopt.torch.distill as mtd

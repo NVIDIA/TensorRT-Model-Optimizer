@@ -18,7 +18,7 @@ import os
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
-from _test_utils.onnx_quantization.lib_test_models import (
+from _test_utils.onnx.quantization.lib_test_models import (
     build_conv_batchnorm_sig_mul_model,
     build_r1a_model,
     build_resnet_block,
@@ -30,7 +30,7 @@ from modelopt.onnx.quantization.quantize import quantize
 from modelopt.onnx.utils import save_onnx
 
 
-def _assert_nodes_are_quantized(nodes):
+def assert_nodes_are_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable) and node.i(inp_idx).op != "Identity":
@@ -70,7 +70,7 @@ def test_bias_add_rule(tmp_path):
 
     #   Check that all Conv nodes are quantized
     conv_nodes = [n for n in graph.nodes if n.op == "Conv"]
-    assert _assert_nodes_are_quantized(conv_nodes)
+    assert assert_nodes_are_quantized(conv_nodes)
 
     #   Check that all other nodes are not quantized
     other_nodes = [
@@ -92,7 +92,7 @@ def _check_resnet_residual_connection(onnx_path):
 
     #   Check that all Conv nodes are quantized
     conv_nodes = [n for n in graph.nodes if n.op == "Conv"]
-    assert _assert_nodes_are_quantized(conv_nodes)
+    assert assert_nodes_are_quantized(conv_nodes)
 
     #   Check that the left-side branch of Add contains a QDQ node
     #   In this case, this means that the inputs of Add should be DequantizeLinear and Conv.
@@ -141,7 +141,7 @@ def test_conv_batchnorm_sig_mul_int8(tmp_path):
 
     # Check that Conv and ConvTransposed are quantized
     conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
-    assert _assert_nodes_are_quantized(conv_nodes)
+    assert assert_nodes_are_quantized(conv_nodes)
 
     # Check that only 1 input of Add is quantized
     add_nodes = [n for n in graph.nodes if n.op == "Add"]

@@ -20,11 +20,9 @@ import pytest
 import torch
 import torch.nn.init as init
 from _test_utils.import_helper import skip_if_no_megatron
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    get_mcore_gpt_model,
-    initialize_for_megatron,
-)
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_gpt_model
+from _test_utils.torch.megatron.utils import initialize_for_megatron
 from megatron.core import dist_checkpointing
 
 from modelopt.torch.opt.plugins.mcore_dist_checkpointing import (

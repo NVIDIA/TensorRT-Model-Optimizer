@@ -19,7 +19,7 @@ import contextlib
 
 import pytest
 import torch
-from _test_utils.torch_quantization.tensor_quantizer_common import (
+from _test_utils.torch.quantization.tensor_quantizer_common import (
     BlockQuantTester,
     TensorQuantizerTester,
 )

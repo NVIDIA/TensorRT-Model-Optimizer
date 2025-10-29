@@ -16,7 +16,7 @@
 import pytest
 import torch
 import torch.nn.functional as F
-from _test_utils.torch_quantization.quant_utils import quant
+from _test_utils.torch.quantization.quant_utils import quant
 
 from modelopt.torch.quantization import tensor_quant
 from modelopt.torch.quantization import utils as quant_utils

@@ -17,7 +17,7 @@ import pytest
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from _test_utils.torch_model.transformers_models import get_tiny_llama, get_tiny_t5
+from _test_utils.torch.transformers_models import get_tiny_llama, get_tiny_t5
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.plugins.huggingface import _QuantAttention

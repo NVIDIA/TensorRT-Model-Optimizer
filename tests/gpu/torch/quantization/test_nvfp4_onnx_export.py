@@ -18,7 +18,7 @@ import os
 import onnx
 import pytest
 import torch
-from _test_utils.torch_quantization.models import SimpleLinear
+from _test_utils.torch.quantization.models import SimpleLinear
 
 import modelopt.torch.quantization as mtq
 from modelopt.onnx.quantization.qdq_utils import fp4qdq_to_2dq

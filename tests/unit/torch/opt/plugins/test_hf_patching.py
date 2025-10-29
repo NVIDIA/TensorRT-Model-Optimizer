@@ -14,7 +14,7 @@
 # limitations under the License.
 
 import pytest
-from _test_utils.torch_model.transformers_models import (
+from _test_utils.torch.transformers_models import (
     create_tiny_llama_dir,
     get_tiny_qwen3,
     tf_output_tester,

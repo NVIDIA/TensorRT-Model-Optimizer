@@ -18,7 +18,7 @@ from unittest import mock
 
 import pytest
 import torch
-from _test_utils.torch_model.deploy_models import BaseDeployModel
+from _test_utils.torch.deploy.lib_test_models import BaseDeployModel
 
 from modelopt.torch._deploy import compile
 from modelopt.torch._deploy.utils.torch_onnx import _to_expected_onnx_type

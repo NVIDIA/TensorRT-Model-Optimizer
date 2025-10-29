@@ -18,7 +18,7 @@ import os
 import numpy as np
 import onnx
 import pytest
-from _test_utils.torch_model.vision_models import get_tiny_resnet_and_input
+from _test_utils.torch.vision_models import get_tiny_resnet_and_input
 from onnx.helper import (
     make_graph,
     make_model,

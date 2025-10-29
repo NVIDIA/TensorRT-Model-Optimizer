@@ -42,4 +42,4 @@ For further details and examples, please refer to the `ONNX Runtime documentatio
 Collection of optimized ONNX models
 ===================================
 
-The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at HuggingFace `NVIDIA collections <https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus-67373fe7c006ebc1df310613>`_. These models can be deployed using DirectML backend. Follow the instructions provided along with the published models for deployment.
+The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at HuggingFace `NVIDIA collections <https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus>`_. These models can be deployed using DirectML backend. Follow the instructions provided along with the published models for deployment.

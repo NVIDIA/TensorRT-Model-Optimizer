@@ -18,8 +18,8 @@
 import numpy as np
 import pytest
 import torch
-from _test_utils.torch_quantization.models import SimpleLinear
-from _test_utils.torch_quantization.tensor_quant_common import FakeTensorQuantTester
+from _test_utils.torch.quantization.models import SimpleLinear
+from _test_utils.torch.quantization.tensor_quant_common import FakeTensorQuantTester
 
 import modelopt.torch.quantization as mtq
 from modelopt.torch.quantization.config import QuantizerAttributeConfig

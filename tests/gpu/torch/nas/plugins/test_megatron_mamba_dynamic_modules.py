@@ -19,13 +19,13 @@ from _test_utils.import_helper import skip_if_no_megatron
 
 skip_if_no_megatron(apex_or_te_required=True, mamba_required=True)
 
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import (
-    get_mcore_mamba_model,
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_mamba_model
+from _test_utils.torch.megatron.utils import (
     run_mcore_inference,
     run_mcore_inference_with_dummy_input,
 )
-from _test_utils.torch_misc import set_seed
+from _test_utils.torch.misc import set_seed
 from megatron.core.parallel_state import is_pipeline_first_stage, is_pipeline_last_stage
 from megatron.core.transformer.identity_op import IdentityOp
 

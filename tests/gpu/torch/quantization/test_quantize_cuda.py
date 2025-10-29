@@ -16,8 +16,8 @@
 """High-level tests for quantization."""
 
 import pytest
-from _test_utils.torch_quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
-from _test_utils.torch_quantization.quantize_common import (
+from _test_utils.torch.quantization.models import SimpleConv, SimpleConvLinear, SimpleLinear
+from _test_utils.torch.quantization.quantize_common import (
     FP4_SVDQUANT_CFG,
     INT4_AWQ_CLIP_CFG,
     INT4_AWQ_FULL_CFG,

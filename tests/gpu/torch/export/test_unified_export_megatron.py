@@ -21,9 +21,9 @@ import pytest
 import torch
 import transformers
 from _test_utils.import_helper import skip_if_no_megatron
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import get_mcore_gpt_model
-from _test_utils.torch_model.transformers_models import create_tiny_llama_dir
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_gpt_model
+from _test_utils.torch.transformers_models import create_tiny_llama_dir
 
 skip_if_no_megatron(apex_or_te_required=True)
 

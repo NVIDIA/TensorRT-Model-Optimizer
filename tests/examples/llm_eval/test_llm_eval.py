@@ -15,9 +15,9 @@
 
 import subprocess
 
+from _test_utils.examples.models import TINY_LLAMA_PATH
 from _test_utils.examples.run_command import run_llm_ptq_command
-from _test_utils.model import TINY_LLAMA_PATH
-from _test_utils.torch_misc import minimum_sm
+from _test_utils.torch.misc import minimum_sm
 
 
 @minimum_sm(89)

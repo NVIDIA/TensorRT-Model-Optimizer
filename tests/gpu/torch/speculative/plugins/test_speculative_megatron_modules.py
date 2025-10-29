@@ -22,8 +22,8 @@ from _test_utils.import_helper import skip_if_no_megatron
 
 skip_if_no_megatron(apex_or_te_required=True)
 
-from _test_utils.torch_dist.dist_utils import spawn_multiprocess_job
-from _test_utils.torch_dist.plugins.megatron_common import get_mcore_gpt_model
+from _test_utils.torch.distributed.utils import spawn_multiprocess_job
+from _test_utils.torch.megatron.models import get_mcore_gpt_model
 from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
 
 import modelopt.torch.speculative as mtsp

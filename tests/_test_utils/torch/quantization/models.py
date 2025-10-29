@@ -134,7 +134,7 @@ class SDPAAttention(nn.Module):
         return (q, k, v)
 
 
-# NOTE: This should match configuration of _test_utils.torch_dist.plugins.megatron_common.MegatronModel
+# NOTE: This should match configuration of _test_utils.torch.megatron.models.MegatronModel
 class RegularQuantModelForTP(nn.Module):
     def __init__(self):
         super().__init__()

@@ -17,8 +17,8 @@
 
 import pytest
 import torch
-from _test_utils.torch_quantization.quant_utils import quant
-from _test_utils.torch_quantization.tensor_quant_common import FakeTensorQuantTester
+from _test_utils.torch.quantization.quant_utils import quant
+from _test_utils.torch.quantization.tensor_quant_common import FakeTensorQuantTester
 
 import modelopt.torch.quantization.triton as triton_kernel
 import modelopt.torch.quantization.utils as quant_utils

@@ -18,8 +18,8 @@ import os
 import onnx
 import onnx_graphsurgeon as gs
 import torch
-from _test_utils.onnx_quantization.lib_test_models import NonSimplifiedModel, export_as_onnx
-from _test_utils.onnx_quantization.utils import _assert_nodes_are_quantized
+from _test_utils.onnx.quantization.lib_test_models import NonSimplifiedModel, export_as_onnx
+from _test_utils.onnx.quantization.utils import assert_nodes_are_quantized
 
 from modelopt.onnx.quantization.quantize import quantize
 
@@ -73,4 +73,4 @@ def test_onnx_simplification(tmp_path):
 
         # Check that the default quantization happened successfully: Conv layer should be quantized
         quantizable_nodes = [n for n in graph.nodes if n.op == "Conv"]
-        assert _assert_nodes_are_quantized(quantizable_nodes)
+        assert assert_nodes_are_quantized(quantizable_nodes)

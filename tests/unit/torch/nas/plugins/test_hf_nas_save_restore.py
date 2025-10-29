@@ -16,10 +16,10 @@
 import os
 
 import pytest
-from _test_utils.opt_utils import apply_mode_with_sampling
+from _test_utils.torch.opt.utils import apply_mode_with_sampling
 
 pytest.importorskip("transformers")
-from _test_utils.torch_model.transformers_models import (
+from _test_utils.torch.transformers_models import (
     create_tiny_bert_dir,
     tf_modelopt_state_and_output_tester,
 )

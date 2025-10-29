@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 import torch
 
-PTQ_EXAMPLE_DIR = Path(__file__).parents[2] / "examples" / "llm_ptq"
+PTQ_EXAMPLE_DIR = Path(__file__).parents[3] / "examples" / "llm_ptq"
 
 
 @dataclass
