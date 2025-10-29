@@ -184,6 +184,8 @@ class PrecisionConverter:
         logger.debug(f"cast down (to {self.low_precision_type.str_full}): {cast_down_tensors}")
         logger.debug(f"cast up (to {self.high_precision_type.str_full}): {cast_up_tensors}")
 
+        # Since we have removed all casts, we can pre-compute the tensor_to_consumers and
+        # tensor_to_producers maps since they will not change for the duration of the conversion.
         tensor_to_consumers = defaultdict(list)
         tensor_to_producers = defaultdict(list)
 
@@ -835,6 +837,10 @@ class PrecisionConverter:
                 If not provided, the map will be computed on the fly.
             tensor_to_producers: Optional pre-computed map of tensor names to their producer nodes.
                 If not provided, the map will be computed on the fly.
+
+        NOTE: It is up to the user to ensure that the tensor_to_consumers and tensor_to_producers
+        maps are up to date before calling this function. Consecutive casts in the graph will break
+        this assumption and the maps must be recomputed.
         """
         # Empty tensors may have special handling in ONNX (e.g. for Resize scales) which can break when redundant casts
         # are injected. Since there's no data, it's safe to only update the metadata.
