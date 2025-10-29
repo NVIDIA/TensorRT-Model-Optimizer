@@ -86,7 +86,8 @@ def run_nas_convert(
     # The inputs for the nas.convert() step.
     #
     puzzle_dir = tmp_path
-    llama_checkpoint_path = puzzle_dir / "ckpts/llama"
+    # TODO: change it to "ckpts/llama" once the conversion script is fixed (internal NVidia modelopt bug: issues/17)
+    llama_checkpoint_path = puzzle_dir / "ckpts/teacher"
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
     hydra_config_name = "Llama-3_1-8B"
