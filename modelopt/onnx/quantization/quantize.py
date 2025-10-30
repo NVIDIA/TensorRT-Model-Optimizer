@@ -523,7 +523,7 @@ def quantize(
         raise RuntimeError(f"Invalid quantization mode choice: {quantize_mode}")
 
     if onnx_model:
-        if quantize_mode == "int4" and kv_quant_mode != "NONE" and calibration_method in ["awq_clip", "awq_lite", "rtn_dq"]:
+        if kv_quant_mode != "NONE":
             logger.info(f"Quantization mode for KV cache: {kv_quant_mode}, kv_cache_type: {kv_cache_type}")
             onnx_model = kv_cache_quantize(
                 onnx_model,
