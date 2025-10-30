@@ -60,11 +60,9 @@ def _test_nas_convert_multiprocess_job(
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
     hydra_config_name = "Llama-3_1-8B"
 
-    runtime = NativeDdpRuntime(
+    with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
-    )
-
-    with runtime as runtime:
+    ) as runtime:
         if rank == 0:
             # Setup puzzle_dir and dataset
             setup_puzzle_dir(puzzle_dir)
