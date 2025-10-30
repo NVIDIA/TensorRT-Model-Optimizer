@@ -18,6 +18,7 @@ import os
 import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
+import pytest
 from _test_utils.onnx.quantization.lib_test_models import (
     build_conv_act_pool_model,
     build_conv_batchnorm_sig_mul_model,
@@ -42,7 +43,7 @@ def assert_nodes_are_quantized(nodes):
     return True
 
 
-def _assert_nodes_are_not_quantized(nodes):
+def assert_nodes_are_not_quantized(nodes):
     for node in nodes:
         for inp_idx, inp in enumerate(node.inputs):
             if isinstance(inp, gs.Variable) and inp.inputs:
@@ -78,7 +79,7 @@ def test_bias_add_rule(tmp_path):
     other_nodes = [
         n for n in graph.nodes if n.op not in ["Conv", "QuantizeLinear", "DequantizeLinear"]
     ]
-    assert _assert_nodes_are_not_quantized(other_nodes)
+    assert assert_nodes_are_not_quantized(other_nodes)
 
 
 def _check_resnet_residual_connection(onnx_path):
@@ -108,7 +109,7 @@ def _check_resnet_residual_connection(onnx_path):
     other_nodes = [
         n for n in graph.nodes if n.op not in ["Conv", "Add", "QuantizeLinear", "DequantizeLinear"]
     ]
-    assert _assert_nodes_are_not_quantized(other_nodes)
+    assert assert_nodes_are_not_quantized(other_nodes)
 
 
 def test_resnet_residual_connections(tmp_path):
@@ -143,7 +144,7 @@ def test_convtranspose_conv_residual_int8(tmp_path):
 
     # Check that Conv and ConvTransposed are quantized
     conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
-    assert _assert_nodes_are_quantized(conv_nodes)
+    assert assert_nodes_are_quantized(conv_nodes)
 
     # Check that only 1 input of Add is quantized
     add_nodes = [n for n in graph.nodes if n.op == "Add"]
@@ -202,8 +203,8 @@ def test_conv_act_pool_int8(tmp_path, include_reshape_node):
 
     # Check that Conv is quantized
     conv_nodes = [n for n in graph.nodes if n.op == "Conv"]
-    assert _assert_nodes_are_quantized(conv_nodes)
+    assert assert_nodes_are_quantized(conv_nodes)
 
     # Check that MaxPool is not quantized
     pool_nodes = [n for n in graph.nodes if n.op == "MaxPool"]
-    assert _assert_nodes_are_not_quantized(pool_nodes)
+    assert assert_nodes_are_not_quantized(pool_nodes)
