@@ -15,7 +15,6 @@
 
 """Utility functions for getting samples and forward loop function for different speech datasets."""
 
-import math
 from typing import Any
 
 import torch
@@ -100,8 +99,6 @@ def get_speech_dataset_dataloader(
         An instance of dataloader.
     """
     assert processor is not None, "Please provide a valid processor."
-
-    num_samples = math.ceil(num_samples / batch_size) * batch_size
 
     dataset = _get_speech_dataset(dataset_name, num_samples=num_samples)
     first_sample = next(iter(dataset))
