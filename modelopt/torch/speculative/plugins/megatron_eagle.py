@@ -1080,9 +1080,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 else:
                     loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
                 loss_ = loss_[:, ttt_step:]
-                loss[:, i + ttt_step + 1 :] += (
-                    self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
-                )
+                loss[:, i + ttt_step + 1 :] += self.eagle_loss_decay_factor**ttt_step * loss_
 
             if self.eagle_report_acc and not self.training:
                 with torch.no_grad():
