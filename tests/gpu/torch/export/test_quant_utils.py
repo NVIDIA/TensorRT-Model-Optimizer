@@ -21,7 +21,7 @@ pytest.importorskip("transformers")
 from transformers import LlamaConfig, LlamaForCausalLM
 
 import modelopt.torch.quantization as mtq
-from modelopt.torch.export.quant_utils import pattern_fuse_prequant
+from modelopt.torch.export.quant_utils import fuse_prequant_to_linear
 
 
 def get_tiny_llama(attention_heads=4, key_value_heads=4):
@@ -74,7 +74,7 @@ def test_pattern_fuse_prequant(quant_config, attention_kv_heads_pair):
     ]
 
     # Apply fusion
-    pattern_fuse_prequant(model, fuse_mismatch_dim=True)
+    fuse_prequant_to_linear(model, fuse_grouped_heads=True)
 
     # Check if pre_quant_scale and fused_with_prequant flag are removed correctly
     for target_module_name in traget_module_name_list:
@@ -172,7 +172,7 @@ def test_pattern_fuse_prequant_moe(quant_config):
         output_before_fuse = model(dummy_input)
 
     # Apply fusion (fuse_mismatch_dim only needed for GQA/MQA attention, not for MLP)
-    pattern_fuse_prequant(model)
+    fuse_prequant_to_linear(model)
 
     # Check if down_proj's pre_quant_scale was removed and fused into up_proj
     for name, module in moe_down_proj_modules:
