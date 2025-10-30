@@ -27,9 +27,11 @@ from experimental.torch._compress.test_utils import (
     setup_puzzle_dir,
 )
 from puzzle_tools.hydra_utils import register_hydra_resolvers
-from scripts.convert_llama3_to_decilm import convert_llama3_to_decilm
 
 from modelopt.torch._compress import compress
+from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
+    convert_llama3_to_decilm,
+)
 from modelopt.torch._compress.runtime import NativeDdpRuntime
 
 # The e2e test to compress a model based on Local Neural Architecture Search (Mixed Integer Programing NAS search)
