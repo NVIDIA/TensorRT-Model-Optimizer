@@ -58,3 +58,4 @@ Step 2: add `<vllm_amax.pth>` to `quant_config` in `vllm_serve_fakequant.py`
 ## Know Problems
 
 1. AWQ is not yet supported in vLLM.
+2. Amax sync across TP/EP is not handled now.
