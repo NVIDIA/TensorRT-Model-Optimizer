@@ -43,7 +43,6 @@ This script is originally based on [perplexity_metrics.py](https://github.com/mi
   huggingface-cli login
   ```
 
-
 ## Supported Models
 
 ### ONNX Runtime GenAI Models

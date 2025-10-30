@@ -49,6 +49,7 @@ import json
 import os
 import time
 from datetime import datetime
+from typing import Any
 
 import numpy as np
 import torch
@@ -56,7 +57,7 @@ from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Lazy import for onnxruntime_genai
-og = None
+og: Any = None
 
 DEBUG = False
 
@@ -75,7 +76,9 @@ def cleanup_vram():
         torch.cuda.synchronize()
         debug_print("VRAM cleaned")
         try:
-            debug_print(f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+            debug_print(
+                f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB"
+            )
             debug_print(f"[INFO] GPU Memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
         except Exception:
             pass
@@ -139,6 +142,7 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
     global og
     try:
         import onnxruntime_genai as og_module
+
         og = og_module
         debug_print("[INFO] Successfully imported onnxruntime_genai")
     except ImportError as e:
@@ -147,6 +151,8 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
             f"Make sure the correct onnxruntime-genai package is installed"
         )
 
+    assert og is not None, "onnxruntime_genai module not loaded"
+
     # Load GenAI model
     model = og.Model(model_path)
     tokenizer = og.Tokenizer(model)
@@ -154,7 +160,9 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
 
     if torch.cuda.is_available():
         try:
-            debug_print(f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+            debug_print(
+                f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB"
+            )
             debug_print(f"[INFO] GPU Memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
         except Exception:
             pass
@@ -162,17 +170,17 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
     # Tokenize
     print("[INFO] Tokenizing dataset...")
     input_ids = tokenizer.encode_batch([dataset])
-    
+
     if isinstance(input_ids, dict) and "input_ids" in input_ids:
         input_ids = input_ids["input_ids"]
     if hasattr(input_ids, "as_numpy"):
         input_ids = input_ids.as_numpy()
-    
+
     input_ids = np.array(input_ids)
-    
+
     if input_ids.ndim == 1:
         input_ids = np.expand_dims(input_ids, 0)
-    
+
     input_ids = torch.tensor(input_ids, dtype=torch.long)
     seq_len = int(input_ids.shape[1])
     debug_print(f"[INFO] Input sequence length: {seq_len}")
@@ -181,11 +189,8 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
     all_logits = []
     chunk_info = []
 
-    print(f"[INFO] Extracting logits ...")
-    chunk_count = 0
-
-    for begin_loc in range(0, seq_len, max_context_length):
-        chunk_count += 1
+    print("[INFO] Extracting logits ...")
+    for chunk_count, begin_loc in enumerate(range(0, seq_len, max_context_length), start=1):
         end_loc = min(begin_loc + max_context_length, seq_len)
 
         # Extract chunk
@@ -195,11 +200,9 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
         # Run GenAI model
         params = og.GeneratorParams(model)
         params.set_search_options(
-            max_length=int(input_ids_chunk.shape[1]),
-            do_sample=False,
-            early_stopping=False
+            max_length=int(input_ids_chunk.shape[1]), do_sample=False, early_stopping=False
         )
-        
+
         generator = og.Generator(model, params)
         generator.append_tokens(input_ids_chunk.numpy())
 
@@ -207,10 +210,10 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
             try:
                 generator.generate_next_token()
                 logits = generator.get_output("logits")
-                
+
                 if hasattr(logits, "as_numpy"):
                     logits = logits.as_numpy()
-                
+
                 logits = torch.tensor(logits, dtype=torch.float32)
                 debug_print(f"Logits shape: {logits.shape}")
 
@@ -218,12 +221,14 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
                 logits_cpu = logits.cpu().numpy()
                 all_logits.append(logits_cpu)
 
-                chunk_info.append({
-                    "chunk_id": chunk_count,
-                    "begin_loc": begin_loc,
-                    "end_loc": end_loc,
-                    "shape": logits_cpu.shape,
-                })
+                chunk_info.append(
+                    {
+                        "chunk_id": chunk_count,
+                        "begin_loc": begin_loc,
+                        "end_loc": end_loc,
+                        "shape": logits_cpu.shape,
+                    }
+                )
 
                 # Clean up chunk tensors immediately
                 del generator, params, logits, input_ids_chunk
@@ -250,9 +255,9 @@ def extract_genai_logits(model_path, dataset, max_context_length=4096):
     del model
     del tokenizer
     del input_ids
-    
+
     cleanup_vram()
-    
+
     debug_print("[INFO] GenAI model cleaned from VRAM")
     debug_print("=" * 80)
 
@@ -302,7 +307,9 @@ def extract_hf_logits(hf_model_path, dataset, device="cuda", max_context_length=
 
     if device == "cuda":
         try:
-            debug_print(f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
+            debug_print(
+                f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB"
+            )
             debug_print(f"[INFO] GPU Memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
         except Exception:
             pass
@@ -318,11 +325,8 @@ def extract_hf_logits(hf_model_path, dataset, device="cuda", max_context_length=
     all_logits = []
     chunk_info = []
 
-    print(f"[INFO] Extracting logits ...")
-    chunk_count = 0
-
-    for begin_loc in range(0, seq_len, max_context_length):
-        chunk_count += 1
+    print("[INFO] Extracting logits ...")
+    for chunk_count, begin_loc in enumerate(range(0, seq_len, max_context_length), 1):
         end_loc = min(begin_loc + max_context_length, seq_len)
 
         # Extract chunk
@@ -343,12 +347,14 @@ def extract_hf_logits(hf_model_path, dataset, device="cuda", max_context_length=
                 logits_cpu = logits.cpu().numpy()
                 all_logits.append(logits_cpu)
 
-                chunk_info.append({
-                    "chunk_id": chunk_count,
-                    "begin_loc": begin_loc,
-                    "end_loc": end_loc,
-                    "shape": logits_cpu.shape,
-                })
+                chunk_info.append(
+                    {
+                        "chunk_id": chunk_count,
+                        "begin_loc": begin_loc,
+                        "end_loc": end_loc,
+                        "shape": logits_cpu.shape,
+                    }
+                )
 
                 # Clean up chunk tensors immediately
                 del outputs, logits, input_ids_chunk
@@ -372,30 +378,34 @@ def extract_hf_logits(hf_model_path, dataset, device="cuda", max_context_length=
 
     # Cleanup: Delete model and free VRAM
     debug_print("\n[INFO] Cleaning up HF model from VRAM...")
-    
+
     # Move model to CPU first to free GPU memory
     if device == "cuda":
         model = model.to("cpu")
-    
+
     # Delete all references
     del model
     del tokenizer
     del input_ids
     del inputs
-    
+
     # Aggressive cleanup
     cleanup_vram()
     gc.collect()
-    
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-    
+
     debug_print("[INFO] HF model cleaned from VRAM")
     if torch.cuda.is_available():
         try:
-            debug_print(f"[INFO] GPU Memory allocated after cleanup: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-            debug_print(f"[INFO] GPU Memory reserved after cleanup: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
+            debug_print(
+                f"[INFO] GPU Memory allocated after cleanup: {torch.cuda.memory_allocated() / 1e9:.2f} GB"
+            )
+            debug_print(
+                f"[INFO] GPU Memory reserved after cleanup: {torch.cuda.memory_reserved() / 1e9:.2f} GB"
+            )
         except Exception:
             pass
     debug_print("=" * 80)
@@ -428,6 +438,7 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
         global og
         try:
             import onnxruntime_genai as og_module
+
             og = og_module
             debug_print("[INFO] Successfully imported onnxruntime_genai")
         except ImportError as e:
@@ -436,6 +447,8 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
                 f"Make sure the correct onnxruntime-genai package is installed"
             )
 
+        assert og is not None, "onnxruntime_genai module not loaded"
+
         # Load GenAI model
         model = og.Model(model_path)
         tokenizer = og.Tokenizer(model)
@@ -443,57 +456,65 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
 
         if torch.cuda.is_available():
             try:
-                debug_print(f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-                debug_print(f"[INFO] GPU Memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
+                debug_print(
+                    f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB"
+                )
+                debug_print(
+                    f"[INFO] GPU Memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB"
+                )
             except Exception:
                 pass
 
         # Tokenize with GenAI tokenizer
         print("\n[INFO] Tokenizing dataset...")
         input_ids = tokenizer.encode_batch([dataset])
-        
+
         if isinstance(input_ids, dict) and "input_ids" in input_ids:
             input_ids = input_ids["input_ids"]
         if hasattr(input_ids, "as_numpy"):
             input_ids = input_ids.as_numpy()
-        
+
         input_ids = np.array(input_ids)
-        
+
         if input_ids.ndim == 1:
             input_ids = np.expand_dims(input_ids, 0)
-        
+
         input_ids = torch.tensor(input_ids, dtype=torch.long)
-        
+
     else:  # model2_type == "hf"
         # Load HF model
         from transformers import AutoModelForCausalLM, AutoTokenizer
-        
+
         tokenizer = AutoTokenizer.from_pretrained(model_path)
         model = AutoModelForCausalLM.from_pretrained(
             model_path,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
             device_map=None,  # Don't use device_map="auto" for proper cleanup
         )
-        
+
         if device == "cuda":
             model = model.to("cuda")
         else:
             model = model.to("cpu")
-        
+
         model.eval()
-        
+
         # Add padding token if it doesn't exist
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
         if getattr(getattr(model, "config", None), "pad_token_id", None) is None:
             model.config.pad_token_id = tokenizer.pad_token_id
-            
+
         print("[INFO] HF model loaded successfully")
 
         if device == "cuda" and torch.cuda.is_available():
             try:
-                debug_print(f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-                debug_print(f"[INFO] GPU Memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
+                debug_print(
+                    f"[INFO] GPU Memory allocated: {torch.cuda.memory_allocated() / 1e9:.2f} GB"
+                )
+                debug_print(
+                    f"[INFO] GPU Memory reserved: {torch.cuda.memory_reserved() / 1e9:.2f} GB"
+                )
             except Exception:
                 pass
 
@@ -519,7 +540,7 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
 
     for begin_loc in range(0, seq_len, max_context_length):
         chunk_count += 1
-        
+
         if chunk_count > total_chunks:
             break
 
@@ -538,26 +559,26 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
                     params.set_search_options(
                         max_length=int(input_ids_chunk.shape[1]),
                         do_sample=False,
-                        early_stopping=False
+                        early_stopping=False,
                     )
-                    
+
                     generator = og.Generator(model, params)
                     generator.append_tokens(input_ids_chunk.numpy())
                     generator.generate_next_token()
-                    
+
                     model2_logits = generator.get_output("logits")
                     if hasattr(model2_logits, "as_numpy"):
                         model2_logits = model2_logits.as_numpy()
                     model2_logits = torch.tensor(model2_logits, dtype=torch.float32)
-                    
+
                 else:  # model2_type == "hf"
                     # Run HF model
                     input_ids_chunk_device = input_ids_chunk.to(model.device)
                     outputs = model(input_ids_chunk_device)
                     model2_logits = outputs.logits
-                    
+
                 debug_print(f"Model2 logits shape: {model2_logits.shape}")
-                
+
             except Exception as e:
                 print(f"[ERROR] Model2 forward pass failed: {e}")
                 break
@@ -569,7 +590,7 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
         # Ensure logits are compatible (trim to same dimensions)
         min_seq = min(model1_logits.shape[1], model2_logits.shape[1])
         min_vocab = min(model1_logits.shape[2], model2_logits.shape[2])
-        
+
         model1_logits_trimmed = model1_logits[:, :min_seq, :min_vocab]
         model2_logits_trimmed = model2_logits[:, :min_seq, :min_vocab]
 
@@ -577,8 +598,12 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
         debug_print(f"Trimmed Model2 logits: {model2_logits_trimmed.shape}")
 
         # Compute log probabilities
-        model1_log_probs = torch.nn.functional.log_softmax(model1_logits_trimmed, dim=2).cpu().numpy()
-        model2_log_probs = torch.nn.functional.log_softmax(model2_logits_trimmed, dim=2).cpu().numpy()
+        model1_log_probs = (
+            torch.nn.functional.log_softmax(model1_logits_trimmed, dim=2).cpu().numpy()
+        )
+        model2_log_probs = (
+            torch.nn.functional.log_softmax(model2_logits_trimmed, dim=2).cpu().numpy()
+        )
 
         # Squeeze batch dimension
         model1_log_probs = np.squeeze(model1_log_probs, axis=0)
@@ -593,12 +618,14 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
 
         debug_print(f"[RESULT] Chunk {chunk_count} KL divergence: {chunk_kl:.6f}")
 
-        chunk_results.append({
-            "chunk_id": chunk_count,
-            "begin_loc": int(model1_data["chunk_info"][chunk_count - 1]["begin_loc"]),
-            "end_loc": int(model1_data["chunk_info"][chunk_count - 1]["end_loc"]),
-            "kl_divergence": float(chunk_kl),
-        })
+        chunk_results.append(
+            {
+                "chunk_id": chunk_count,
+                "begin_loc": int(model1_data["chunk_info"][chunk_count - 1]["begin_loc"]),
+                "end_loc": int(model1_data["chunk_info"][chunk_count - 1]["end_loc"]),
+                "kl_divergence": float(chunk_kl),
+            }
+        )
 
         # Cleanup chunk data immediately
         del model2_logits, model1_logits, model1_logits_trimmed, model2_logits_trimmed
@@ -620,28 +647,32 @@ def compute_kl_with_model2(model_path, model1_data, dataset, model2_type, device
 
     # Cleanup model2
     debug_print(f"\n[INFO] Cleaning up model2 ({model2_type}) from VRAM...")
-    
+
     # For HF models, move to CPU first
     if model2_type == "hf" and device == "cuda":
         model = model.to("cpu")
-    
+
     del model
     del tokenizer
     del input_ids
-    
+
     # Aggressive cleanup
     cleanup_vram()
     gc.collect()
-    
+
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-    
+
     debug_print(f"[INFO] Model2 ({model2_type}) cleaned from VRAM")
     if torch.cuda.is_available():
         try:
-            debug_print(f"[INFO] GPU Memory allocated after cleanup: {torch.cuda.memory_allocated() / 1e9:.2f} GB")
-            debug_print(f"[INFO] GPU Memory reserved after cleanup: {torch.cuda.memory_reserved() / 1e9:.2f} GB")
+            debug_print(
+                f"[INFO] GPU Memory allocated after cleanup: {torch.cuda.memory_allocated() / 1e9:.2f} GB"
+            )
+            debug_print(
+                f"[INFO] GPU Memory reserved after cleanup: {torch.cuda.memory_reserved() / 1e9:.2f} GB"
+            )
         except Exception:
             pass
 
@@ -685,7 +716,7 @@ Examples:
       --output results.json
 
 Note:
-  - GenAI models automatically use the appropriate execution provider 
+  - GenAI models automatically use the appropriate execution provider
     based on the installed onnxruntime-genai package (cuda, directml, cpu, tensorrt)
   - The --device flag only controls HF model inference (applies to any HF model)
   - For GenAI vs GenAI comparison, both models must use the same execution provider
@@ -702,44 +733,28 @@ VRAM Requirements:
         """,
     )
 
-    parser.add_argument(
-        "--model1",
-        required=True,
-        help="Path to first model directory"
-    )
+    parser.add_argument("--model1", required=True, help="Path to first model directory")
     parser.add_argument(
         "--model1_type",
         required=True,
         choices=["hf", "genai"],
-        help="Type of first model (hf or genai)"
+        help="Type of first model (hf or genai)",
     )
-    parser.add_argument(
-        "--model2",
-        required=True,
-        help="Path to second model directory"
-    )
+    parser.add_argument("--model2", required=True, help="Path to second model directory")
     parser.add_argument(
         "--model2_type",
         required=True,
         choices=["hf", "genai"],
-        help="Type of second model (hf or genai)"
+        help="Type of second model (hf or genai)",
     )
     parser.add_argument(
         "--device",
         default="cuda",
         choices=["cuda", "cpu"],
-        help="Device for HF model inference (default: cuda)"
+        help="Device for HF model inference (default: cuda)",
     )
-    parser.add_argument(
-        "--output",
-        required=False,
-        help="Output JSON file for results (optional)"
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable verbose debug output"
-    )
+    parser.add_argument("--output", required=False, help="Output JSON file for results (optional)")
+    parser.add_argument("--debug", action="store_true", help="Enable verbose debug output")
 
     args = parser.parse_args()
 
@@ -751,7 +766,9 @@ VRAM Requirements:
     if args.model1_type == "genai" and not os.path.exists(args.model1):
         print(f"[ERROR] Model1 path does not exist: {args.model1}")
         return 1
-    elif args.model1_type == "hf" and os.path.sep in args.model1 and not os.path.exists(args.model1):
+    elif (
+        args.model1_type == "hf" and os.path.sep in args.model1 and not os.path.exists(args.model1)
+    ):
         # Only validate if it looks like a local path (contains path separators)
         print(f"[ERROR] Model1 path does not exist: {args.model1}")
         return 1
@@ -759,7 +776,9 @@ VRAM Requirements:
     if args.model2_type == "genai" and not os.path.exists(args.model2):
         print(f"[ERROR] Model2 path does not exist: {args.model2}")
         return 1
-    elif args.model2_type == "hf" and os.path.sep in args.model2 and not os.path.exists(args.model2):
+    elif (
+        args.model2_type == "hf" and os.path.sep in args.model2 and not os.path.exists(args.model2)
+    ):
         # Only validate if it looks like a local path (contains path separators)
         print(f"[ERROR] Model2 path does not exist: {args.model2}")
         return 1
@@ -792,29 +811,31 @@ VRAM Requirements:
         else:  # genai
             model1_data = extract_genai_logits(args.model1, dataset)
         model1_end_time = time.time()
-        print(f"\n[TIMING] Model1 extraction time: {model1_end_time - model1_start_time:.2f} seconds")
+        print(
+            f"\n[TIMING] Model1 extraction time: {model1_end_time - model1_start_time:.2f} seconds"
+        )
 
         # Step 2: Load Model2 and compute KL divergence
         model2_start_time = time.time()
-        kl_results = compute_kl_with_model2(args.model2, model1_data, dataset, args.model2_type, args.device)
+        kl_results = compute_kl_with_model2(
+            args.model2, model1_data, dataset, args.model2_type, args.device
+        )
         model2_end_time = time.time()
-        debug_print(f"\n[TIMING] Model2 computation time: {model2_end_time - model2_start_time:.2f} seconds")
+        debug_print(
+            f"\n[TIMING] Model2 computation time: {model2_end_time - model2_start_time:.2f} seconds"
+        )
 
         overall_end_time = time.time()
 
         # Prepare final results
         final_results = {
             "models": {
-                "model1": {
-                    "path": str(args.model1),
-                    "type": args.model1_type
-                },
-                "model2": {
-                    "path": str(args.model2),
-                    "type": args.model2_type
-                }
+                "model1": {"path": str(args.model1), "type": args.model1_type},
+                "model2": {"path": str(args.model2), "type": args.model2_type},
             },
-            "device": args.device if (args.model1_type == "hf" or args.model2_type == "hf") else "N/A",
+            "device": args.device
+            if (args.model1_type == "hf" or args.model2_type == "hf")
+            else "N/A",
             "total_chunks": kl_results["total_chunks"],
             "max_context_length": model1_data["max_context_length"],
             "kl_divergence": {
@@ -835,14 +856,18 @@ VRAM Requirements:
             print(f"\n[INFO] Saving results to: {args.output}")
         with open(args.output, "w") as f:
             json.dump(final_results, f, indent=2)
-            print(f"[INFO] Results saved successfully")
+            print("[INFO] Results saved successfully")
 
         print("\n" + "=" * 80)
         print("FINAL SUMMARY")
         print("=" * 80)
         print(f"Total execution time: {overall_end_time - overall_start_time:.2f} seconds")
-        print(f"  - Model1 ({args.model1_type}) extraction: {model1_end_time - model1_start_time:.2f} seconds")
-        print(f"  - Model2 ({args.model2_type}) + KL computation: {model2_end_time - model2_start_time:.2f} seconds")
+        print(
+            f"  - Model1 ({args.model1_type}) extraction: {model1_end_time - model1_start_time:.2f} seconds"
+        )
+        print(
+            f"  - Model2 ({args.model2_type}) + KL computation: {model2_end_time - model2_start_time:.2f} seconds"
+        )
         print(f"\nAverage KL divergence: {kl_results['average_kl_divergence']:.6f}")
         print("=" * 80)
 
@@ -856,6 +881,7 @@ VRAM Requirements:
         print(f"\n[ERROR] Computation failed: {e}")
         if DEBUG:
             import traceback
+
             traceback.print_exc()
         return 1
     finally:
@@ -865,5 +891,5 @@ VRAM Requirements:
 
 if __name__ == "__main__":
     import sys
-    sys.exit(main())
 
+    sys.exit(main())

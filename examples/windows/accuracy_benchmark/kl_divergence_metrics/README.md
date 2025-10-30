@@ -7,6 +7,7 @@ This toolkit provides comprehensive model validation capabilities using KL diver
 The toolkit measures output similarity between models using KL (Kullback-Leibler) divergence, which quantifies how one probability distribution differs from another. Lower KL divergence values indicate more similar model outputs.
 
 **Primary Use Cases:**
+
 1. **Model Optimization Validation** - Verify that optimized models (quantization, pruning) maintain output quality
 2. **Framework Comparison** - Compare Hugging Face models vs ONNX Runtime GenAI models
 3. **Precision Analysis** - Evaluate FP16 vs INT4 vs INT8 model outputs
@@ -74,7 +75,6 @@ python compute_kl_divergence.py \
     --output fp16_vs_int4.json
 ```
 
-
 ### Advanced Options
 
 #### Enable Debug Output
@@ -110,10 +110,11 @@ python compute_kl_divergence.py \
 | `--debug` | Enable verbose debug output | False |
 
 **Model Path Formats:**
-- **HF models**: 
+
+- **HF models**:
   - Hub identifier: `meta-llama/Llama-3.1-8B-Instruct`
   - Local path: `F:\shared\Llama-3.1-8B-Instruct`
-- **GenAI models**: 
+- **GenAI models**:
   - Local path only: `G:\models\genai_model`
 
 ### Key Insights
@@ -121,20 +122,20 @@ python compute_kl_divergence.py \
 - **Lower is better**: Smaller KL divergence = more similar outputs
 - **Relative comparison**: Compare against baseline (e.g., HF FP32)
 
-
 ## Troubleshooting
 
 ### Common Issues and Solutions
 
-
 #### 1. CUDA Out of Memory
 
 **Error:**
-```
+
+```text
 RuntimeError: CUDA out of memory
 ```
 
 **Solutions:**
+
 - Use CPU for HF model: `--device cpu`
 - Close other applications using GPU
 - Try smaller batch size (modify code if needed)
@@ -143,7 +144,8 @@ RuntimeError: CUDA out of memory
 #### 2. Execution Provider Mismatch
 
 **Error:**
-```
+
+```text
 [INFO] Comparing two GenAI models (same execution provider)
 ```
 
