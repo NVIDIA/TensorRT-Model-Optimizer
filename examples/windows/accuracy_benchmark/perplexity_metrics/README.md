@@ -22,12 +22,19 @@ This script is originally based on [perplexity_metrics.py](https://github.com/mi
 
 - Python 3.8+
 - CUDA 12.x (if using GPU acceleration)
+
 - Install dependencies:
 
   **For CUDA 12.x (recommended for CUDA 12.1-12.9):**
-
+  
   ```bash
   pip install -r requirements.txt
+  ```
+
+- Install ONNX Runtime GenAI (required for ONNX model evaluation):
+
+  ```bash
+  pip install onnxruntime-genai
   ```
 
 - [HuggingFace CLI](https://huggingface.co/docs/huggingface_hub/main/en/guides/cli) login is required to access the WikiText-2 dataset:
@@ -35,6 +42,7 @@ This script is originally based on [perplexity_metrics.py](https://github.com/mi
   ```bash
   huggingface-cli login
   ```
+
 
 ## Supported Models
 

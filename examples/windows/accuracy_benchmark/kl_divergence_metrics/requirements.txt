@@ -1,18 +1,8 @@
 --extra-index-url https://download.pytorch.org/whl/cu129
-accelerate
-coloredlogs
-datasets
-flatbuffers
-huggingface_hub[cli]
-numpy
-onnx
-packaging
-pandas
-protobuf>=5.28.2
-pytest
-sentencepiece
-sympy
+
 torch>=2.0.0
-torchaudio
-torchvision
-transformers
+numpy
+transformers>=4.30.0
+datasets
+accelerate
+safetensors>=0.4.0

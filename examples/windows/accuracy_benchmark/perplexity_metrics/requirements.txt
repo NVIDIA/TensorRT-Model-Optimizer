@@ -1,23 +1,12 @@
 # PyTorch with CUDA 12.x support (compatible with CUDA 12.1-12.9)
 --extra-index-url https://download.pytorch.org/whl/cu129
-accelerate
 
-coloredlogs
-datasets
-flatbuffers
-huggingface_hub[cli]
-numpy
-onnx
-onnxruntime-genai
-packaging
-pandas
-protobuf>=5.28.2
-pytest
-sentencepiece
-sympy
-tokenizers>=0.14.1
 torch>=2.0.0
-torchaudio
-torchvision
+numpy
+pandas
+datasets
 transformers>=4.36
-
+tokenizers>=0.14.1
+sentencepiece
+accelerate
+onnxruntime-genai

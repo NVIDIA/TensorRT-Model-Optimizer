@@ -430,6 +430,11 @@ def perplexity_eval(model_dir, input_len=1024, chunk_size=None):
     total_log_probs = 0.0
     total_token_count = 0
     prev_end_loc = 0
+    if kv_chunking_enabled:
+        assert stride == effective_chunk_size, (
+            f"For chunking case, stride must equal chunk_size. "
+            f"Got stride={stride}, chunk_size={effective_chunk_size}"
+        )
     # Slide a window over the input to compute perplexity in chunks
     for chunk_idx, begin_loc in enumerate(range(0, seq_len, stride)):
         end_loc = min(begin_loc + max_length, seq_len)

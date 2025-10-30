@@ -113,6 +113,11 @@ def run_perplexity_on_models(
                 # Calculate stride (use chunk_size if provided, otherwise use half of input_len)
                 stride = chunk_size if chunk_size is not None else input_len // 2
 
+                if chunk_size is not None:
+                    assert stride == chunk_size, (
+                        f"For chunking case, stride must equal chunk_size. "
+                        f"Got stride={stride}, chunk_size={chunk_size}"
+                    )
                 perplexity = calculate_perplexity_hf(
                     model_name_or_path=hf_model,
                     max_length=input_len,
