@@ -77,51 +77,49 @@ def kv_cache_quantize(
             logger.info(f"Using calibration data from {intermediate_file} for kv cache quantization")
             break
    
-    if calibration_method in ["awq_clip", "awq_lite", "rtn_dq"]:
-        logger.info(f"Using {calibration_method} calibration method for kv cache quantization")
-        # parse tensor_range
-        for node in group_query_attention_nodes:
-            # calculate k_scale based on input and output range
-            k_max = 0
-            v_max = 0
-            for output in node.output:
-                if "key" in output:    
-                    index = kv_tensor_names_list.index(output)                
-                    for data_range in tensor_range:
-                        k_max = max(k_max, np.abs(np.asarray(data_range[index]).max()))
-                if "value" in output:
-                    index = kv_tensor_names_list.index(output)
-                    for data_range in tensor_range:
-                        v_max = max(v_max, np.abs(np.asarray(data_range[index]).max()))
-            if kv_quant_mode == "PER_TENSOR":
-                Qmax = 0
-                if kv_cache_type == "fp8":
-                    Qmax = 448 # max fp value for E4M3
-                elif kv_cache_type == "int8":
-                    Qmax = 127 # max int8 value
-                else:
-                    raise ValueError(f"Unsupported kv_cache_type {kv_cache_type} for kv cache quantization")
-                # create onnx tensor data as fp16 and assign to k_scale and v_scale
-                k_scale = onnx.helper.make_tensor(
-                    name=node.name + "_k_scale",
-                    data_type=onnx.TensorProto.FLOAT16,
-                    dims=[1],
-                    vals=[k_max / Qmax] if k_max != 0 else [1.0],
-                )
-                v_scale = onnx.helper.make_tensor(
-                    name=node.name + "_v_scale",
-                    data_type=onnx.TensorProto.FLOAT16,
-                    dims=[1],
-                    vals=[v_max / Qmax] if v_max != 0 else [1.0],
-                )
-                onnx_model.graph.initializer.append(k_scale)
-                onnx_model.graph.initializer.append(v_scale)
-                # add scale to input, use empty string to pad the input to 12,
-                # insert k_scale at index 12 and v_scale at index 13
-                while len(node.input) < 12:
-                    node.input.append("")
-                node.input.append(k_scale.name)
-                node.input.append(v_scale.name)
+    # parse tensor_range
+    for node in group_query_attention_nodes:
+        # calculate k_scale based on input and output range
+        k_max = 0
+        v_max = 0
+        for output in node.output:
+            if "key" in output:    
+                index = kv_tensor_names_list.index(output)                
+                for data_range in tensor_range:
+                    k_max = max(k_max, np.abs(np.asarray(data_range[index]).max()))
+            if "value" in output:
+                index = kv_tensor_names_list.index(output)
+                for data_range in tensor_range:
+                    v_max = max(v_max, np.abs(np.asarray(data_range[index]).max()))
+        if kv_quant_mode == "PER_TENSOR":
+            Qmax = 0
+            if kv_cache_type == "fp8":
+                Qmax = 448 # max fp value for E4M3
+            elif kv_cache_type == "int8":
+                Qmax = 127 # max int8 value
+            else:
+                raise ValueError(f"Unsupported kv_cache_type {kv_cache_type} for kv cache quantization")
+            # create onnx tensor data as fp16 and assign to k_scale and v_scale
+            k_scale = onnx.helper.make_tensor(
+                name=node.name + "_k_scale",
+                data_type=onnx.TensorProto.FLOAT16,
+                dims=[1],
+                vals=[k_max / Qmax] if k_max != 0 else [1.0],
+            )
+            v_scale = onnx.helper.make_tensor(
+                name=node.name + "_v_scale",
+                data_type=onnx.TensorProto.FLOAT16,
+                dims=[1],
+                vals=[v_max / Qmax] if v_max != 0 else [1.0],
+            )
+            onnx_model.graph.initializer.append(k_scale)
+            onnx_model.graph.initializer.append(v_scale)
+            # add scale to input, use empty string to pad the input to 12,
+            # insert k_scale at index 12 and v_scale at index 13
+            while len(node.input) < 12:
+                node.input.append("")
+            node.input.append(k_scale.name)
+            node.input.append(v_scale.name)
             
     # add attributes to GQA node
     for node in group_query_attention_nodes:        
@@ -136,13 +134,17 @@ def kv_cache_quantize(
     return onnx_model
     
 def save_kv_cache_calib_data(
-    onnx_model: onnx.ModelProto,
+    onnx_model: str | Path | onnx.ModelProto,
     session: ort.InferenceSession | None = None,
     inputs: list[dict] = [],
     intermediate_generated_files: list[str] = [],
 ):
     kv_tensor_data = []
     kv_tensor_names_list = []
+
+    if not isinstance(onnx_model, onnx.ModelProto):
+        onnx_model = onnx.load(onnx_model)
+
     for output in onnx_model.graph.output:
         if "present" in output.name:
             kv_tensor_names_list.append(output.name) 

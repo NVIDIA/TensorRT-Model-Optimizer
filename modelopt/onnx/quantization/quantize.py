@@ -500,6 +500,7 @@ def quantize(
             calibrate_per_node=calibrate_per_node,
             custom_ops_to_quantize=list(custom_ops_to_quantize.keys()),
             direct_io_types=direct_io_types,
+            kv_quant_mode=kv_quant_mode,
             **kwargs,
         )
     elif "int4" in quantize_mode:
