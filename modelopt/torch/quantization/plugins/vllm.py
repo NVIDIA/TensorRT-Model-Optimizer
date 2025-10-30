@@ -192,14 +192,14 @@ class _QuantFusedMoEBase(QuantModule):
         #     self.invoke_fused_moe_quantized,
         # ):
         try:
-            vllm_fused_moe_package._invoke_fused_moe_kernel = (
+            vllm_fused_moe_package._invoke_fused_moe_kernel = (  # type: ignore[attr-defined]
                 vllm_fused_moe_package.invoke_fused_moe_kernel
             )
-            vllm_fused_moe_package.invoke_fused_moe_kernel = self.invoke_fused_moe_quantized
+            vllm_fused_moe_package.invoke_fused_moe_kernel = self.invoke_fused_moe_quantized  # type: ignore[attr-defined]
             output = super().forward(hidden_states, router_logits)
             return output
         finally:
-            vllm_fused_moe_package.invoke_fused_moe_kernel = (
+            vllm_fused_moe_package.invoke_fused_moe_kernel = (  # type: ignore[attr-defined]
                 vllm_fused_moe_package._invoke_fused_moe_kernel
             )
         # self.invoke_fused_moe_quantized = self._invoke_fused_moe_quantized
