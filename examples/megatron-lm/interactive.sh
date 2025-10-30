@@ -18,6 +18,7 @@
 if [ -n "${USER_FSW}" ]; then
     echo "USER_FSW is set to ${USER_FSW}"
 else
+    echo "USER_FSW is not set, using default /tmp"
     USER_FSW=/tmp
 fi
 
@@ -25,5 +26,4 @@ docker run --gpus all --init -it --rm --network host --ipc=host \
     --user $(id -u):$(id -g) \
     -v $PWD:/workspace/nmm-sandbox \
     -v ${USER_FSW}:/workspace/scratch \
-    -v /home/chenhany/projects/nmm-sandbox/modelopt:/workspace/TensorRT-Model-Optimizer \
     nvidia-modelopt-megatron:latest bash

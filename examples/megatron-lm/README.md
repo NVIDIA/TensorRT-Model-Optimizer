@@ -59,14 +59,14 @@ Provide the pretrained checkpoint path through variable `${HF_MODEL_CKPT}`:
     TP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_SAVE=/tmp/Llama-3.2-1B-Instruct-FP8 \
-    bash megatron-lm/examples/post_training/modelopt/quantize.sh meta-llama/Llama-3.2-1B-Instruct fp8
+    bash Megatron-LM/examples/post_training/modelopt/quantize.sh meta-llama/Llama-3.2-1B-Instruct fp8
 
 \
     PP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_LOAD=/tmp/Llama-3.2-1B-Instruct-FP8 \
     EXPORT_DIR=/tmp/Llama-3.2-1B-Instruct-Export \
-    bash megatron-lm/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
+    bash Megatron-LM/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
 
 ```
 
@@ -86,14 +86,14 @@ required for training is generated on the fly.
     TP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_SAVE=/tmp/Llama-3.2-1B-Eagle3 \
-    bash megatron-lm/examples/post_training/modelopt/eagle3.sh meta-llama/Llama-3.2-1B-Instruct
+    bash Megatron-LM/examples/post_training/modelopt/eagle3.sh meta-llama/Llama-3.2-1B-Instruct
 
 \
     PP=1 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
     MLM_MODEL_LOAD=/tmp/Llama-3.2-1B-Eagle3 \
     EXPORT_DIR=/tmp/Llama-3.2-1B-Eagle3-Export \
-    bash megatron-lm/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
+    bash Megatron-LM/examples/post_training/modelopt/export.sh meta-llama/Llama-3.2-1B-Instruct
 ```
 
 Periodically, **acceptance length (AL)** is evaluated on MT-Bench prompts. You can find resumable
@@ -130,7 +130,7 @@ PP=1 \
 TARGET_NUM_LAYERS=24 \
 HF_MODEL_CKPT=<pretrained_model_name_or_path> \
 MLM_MODEL_SAVE=Qwen3-8B-Pruned \
-bash megatron-lm/examples/post_training/modelopt/prune.sh qwen/Qwen3-8B
+bash Megatron-LM/examples/post_training/modelopt/prune.sh qwen/Qwen3-8B
 ```
 
 > [!TIP]
@@ -146,7 +146,7 @@ quantization.
 ```sh
 \
     HF_MODEL_CKPT=<pretrained_model_name_or_path> \
-    bash megatron-lm/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
+    bash Megatron-LM/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
 ```
 
 > **❗ IMPORTANT:** `pretrained_model_card` **CANNOT** be a path to a local pretrained checkpoint.
@@ -163,7 +163,7 @@ to pass all variables instead. If you have your own script, use `${SANDBOX_ENV_S
 ```sh
 \
     SANDBOX_ENV_SETUP=<path_to_your_script> \
-    bash megatron-lm/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
+    bash Megatron-LM/examples/post_training/modelopt/quantize.sh [pretrained_model_card] [qformat]
 ```
 
 If you use our `slurm` script, then you **MUST USE** `${SANDBOX_ENV_SETUP}` (default: `./env_setup_template.sh`).
