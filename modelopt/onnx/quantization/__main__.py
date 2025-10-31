@@ -41,7 +41,7 @@ def get_parser() -> argparse.ArgumentParser:
     argparser.add_argument(
         "--calibration_method",
         type=str,
-        choices=["max", "entropy", "awq_clip", "rtn_dq", "awq_full", "awq_lite"],
+        choices=["max", "entropy", "awq_clip", "rtn_dq", "awq_full", "awq_lite", "rtn"],
         help=(
             "Calibration method choices for int8/fp8: {entropy (default), max}, "
             "int4: {awq_clip (default), rtn_dq}."
@@ -269,9 +269,7 @@ def get_parser() -> argparse.ArgumentParser:
         type=str,
         choices=["fp8", "int8"],
         default="NONE",
-        help=(
-            "Quantization type for kv cache in GQA. fp8 is default."
-        ),
+        help=("Quantization type for kv cache in GQA. fp8 is default."),
     )
     return argparser
 

@@ -1655,14 +1655,14 @@ def _quantize_static(
             raise TypeError(
                 f"Unexpected type {type(tensors_range)} for tensors_range and calibrator={type(calibrator)}."
             )
-        
+
         if kv_quant_mode != "NONE":
             from modelopt.onnx.quantization.kv_cache import save_kv_cache_calib_data
 
             save_kv_cache_calib_data(
                 Path(model_input),
                 session=calibrator.infer_session,
-                inputs=[inp_d for inp_d in calibration_data_reader],
+                inputs=list(calibration_data_reader),
                 intermediate_generated_files=intermediate_generated_files,
             )
 

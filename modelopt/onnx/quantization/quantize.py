@@ -60,6 +60,7 @@ from modelopt.onnx.quantization.graph_utils import (
 )
 from modelopt.onnx.quantization.int4 import quantize as quantize_int4
 from modelopt.onnx.quantization.int8 import quantize as quantize_int8
+from modelopt.onnx.quantization.kv_cache import kv_cache_quantize
 from modelopt.onnx.quantization.ort_utils import update_trt_ep_support
 from modelopt.onnx.quantization.qdq_utils import (
     qdq_to_dq,
@@ -68,7 +69,6 @@ from modelopt.onnx.quantization.qdq_utils import (
 )
 from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag, load_onnx_model
 from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
-from modelopt.onnx.quantization.kv_cache import kv_cache_quantize
 
 __all__ = ["quantize"]
 
@@ -239,7 +239,7 @@ def quantize(
     calibrate_per_node: bool = False,
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
     direct_io_types: bool = False,
-    kv_quant_mode: str = "NONE", 
+    kv_quant_mode: str = "NONE",
     kv_cache_type: str = "fp8",
     **kwargs: Any,
 ) -> None:
@@ -516,7 +516,7 @@ def quantize(
             log_level=log_level,
             input_shapes_profile=input_shapes_profile,
             intermediate_generated_files=intermediate_generated_files,
-            kv_quant_mode=kv_quant_mode, 
+            kv_quant_mode=kv_quant_mode,
             **kwargs,
         )
     else:
@@ -524,7 +524,9 @@ def quantize(
 
     if onnx_model:
         if kv_quant_mode != "NONE":
-            logger.info(f"Quantization mode for KV cache: {kv_quant_mode}, kv_cache_type: {kv_cache_type}")
+            logger.info(
+                f"Quantization mode for KV cache: {kv_quant_mode}, kv_cache_type: {kv_cache_type}"
+            )
             onnx_model = kv_cache_quantize(
                 onnx_model,
                 kv_quant_mode=kv_quant_mode,

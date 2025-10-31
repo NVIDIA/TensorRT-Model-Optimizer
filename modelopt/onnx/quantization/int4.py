@@ -45,6 +45,10 @@ from modelopt.onnx.quantization.graph_utils import (
     get_tensor_producer_nodes,
 )
 from modelopt.onnx.quantization.gs_patching import patch_gs_modules
+from modelopt.onnx.quantization.kv_cache import (
+    save_kv_cache_calib_data,
+    save_kv_cache_calib_data_rtn,
+)
 from modelopt.onnx.quantization.ort_utils import create_inference_session
 from modelopt.onnx.quantization.quant_utils import (
     _pad,
@@ -57,10 +61,6 @@ from modelopt.onnx.quantization.quant_utils import (
     update_block_size,
 )
 from modelopt.onnx.utils import save_onnx
-from modelopt.onnx.quantization.kv_cache import (
-    save_kv_cache_calib_data, 
-    save_kv_cache_calib_data_rtn,
-)
 
 __all__ = ["quantize"]
 
