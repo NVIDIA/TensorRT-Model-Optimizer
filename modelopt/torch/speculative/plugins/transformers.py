@@ -184,9 +184,6 @@ class EagleModule(nn.Module):
         super().__init__()
         self.config = config
 
-        # Use flex attention for efficient TTT
-        config._attn_implementation = "flex_attention"
-
         self.layers = nn.ModuleList(
             [decoder_layer_cls(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
         )
@@ -338,9 +335,54 @@ class EagleModule(nn.Module):
 class HFEagleModel(EagleModel):
     """Eagle Model Class for huggingface models."""
 
+    # Use functions to get base model parts without creating tied modules.
+    @property
+    def _base_model(self):
+        return self.get_submodule(self.base_model_path)
+
+    @property
+    def _base_model_embeddings(self):
+        return self.get_submodule(self.base_model_embeddings_path)
+
+    @property
+    def _base_model_lm_head(self):
+        return self.get_submodule(self.base_model_lm_head_path)
+
+    @property
+    def _base_llm_config(self):
+        """Return the llm config for the base model, from LLM or VLM."""
+        return self.config.llm_config if hasattr(self.config, "llm_config") else self.config
+
+    def _find_base_model_parts(self):
+        """Find model parts from different models and set base_{part}_path attributes."""
+        base_model_parts_mapping = {
+            "base_model_path": ["model", "backbone", "language_model.backbone"],
+            "base_model_embeddings_path": [
+                "model.embed_tokens",
+                "backbone.embeddings",
+                "language_model.backbone.embeddings",
+            ],
+            "base_model_lm_head_path": ["lm_head", "language_model.lm_head"],
+        }
+
+        for name, paths in base_model_parts_mapping.items():
+            found_submodule = False
+            for path in paths:
+                try:
+                    submodule = self.get_submodule(path)
+                    assert isinstance(submodule, torch.nn.Module)
+                    print(f"Found {name} at {path}")
+                    found_submodule = True
+                    setattr(self, name, path)
+                    break
+                except Exception:
+                    continue
+            if not found_submodule:
+                raise ValueError(f"Part {name} not found in model")
+
     def _set_default_aux_hidden_state_layers(self):
         # Read a custom config attribute since we override num_hidden_layers for offline training
-        num_layers = self.config.num_hidden_layers
+        num_layers = self._base_llm_config.num_hidden_layers
         if self.eagle_offline and (num_layers is None or num_layers <= 0):
             num_layers = getattr(self.config, "num_orig_hidden_layers", 0)
 
@@ -400,7 +442,6 @@ class HFEagleModel(EagleModel):
             eagle_architecture_config=eagle_architecture_config,
         )
         self.eagle_config = PretrainedConfig.from_dict(eagle_architecture_config)
-        self.eagle_config._attn_implementation = "sdpa"
         decoder_cls = (
             type(self.model.layers[-1]) if self.eagle_reuse_base_decoder else LlamaDecoderLayer
         )
@@ -413,11 +454,11 @@ class HFEagleModel(EagleModel):
         ):
             self._set_default_aux_hidden_state_layers()
 
-        if self.config.hidden_size != self.eagle_config.hidden_size:
+        if self._base_llm_config.hidden_size != self.eagle_config.hidden_size:
             raise ValueError(
                 "EAGLE module hidden size "
                 f"{self.eagle_config.hidden_size} must match base model hidden size "
-                f"{self.config.hidden_size}!"
+                f"{self._base_llm_config.hidden_size}!"
             )
 
         self.eagle_module = EagleModule(
@@ -426,34 +467,26 @@ class HFEagleModel(EagleModel):
         )
         self.eagle_rotary_emb = LlamaRotaryEmbedding(config=self.eagle_config)
 
-        if eagle_offline:
-            # For offline training, the base model has no layers.
-            # Read the device from the lm_head instead.
-            device = self.lm_head.weight.device
-        elif hasattr(self.model.layers[-1].self_attn, "o_proj"):
-            device = self.model.layers[-1].self_attn.o_proj.weight.device
-        elif hasattr(self.model.layers[-1].self_attn, "q_proj"):
-            device = self.model.layers[-1].self_attn.q_proj.weight.device
-        elif hasattr(self.model.layers[-1].self_attn, "qkv_proj"):
-            device = self.model.layers[-1].self_attn.qkv_proj.weight.device
-        self.eagle_module.to(self.dtype).to(device)
+        # find base model, lm head, and embeddings paths
+        self._find_base_model_parts()
+        self.eagle_module.to(self._base_model.dtype).to(self._base_model_lm_head.weight.device)
 
-        # Make sure self.model.embed_tokens and self.lm_head are frozen
-        for param in self.model.embed_tokens.parameters():
+        # Make sure word embedding and lm head are frozen
+        for param in self._base_model_embeddings.parameters():
             param.requires_grad = False
-        for param in self.lm_head.parameters():
+        for param in self._base_model_lm_head.parameters():
             param.requires_grad = False
 
         # EAGLE-3 auxiliary hidden_states
         if (not eagle_offline) and self.eagle_config.use_aux_hidden_state:
             self._aux_hidden_states = []
-            for layer_idx, layer in enumerate(self.model.layers):
+            for layer_idx, layer in enumerate(self._base_model.layers):
                 if layer_idx in self.eagle_config.eagle_aux_hidden_state_layer_ids:
                     layer.register_forward_hook(self._collect_aux_hidden_states_forward_hook)
 
         # delete base model layers for offline training
         if eagle_offline:
-            self.model._modules.pop("layers")
+            self._base_model._modules.pop("layers")
 
         # NOTE: this is a temporary hack to bypass hf trainer check:
         # https://github.com/huggingface/transformers/blob/v4.56-release/src/transformers/trainer.py#L566
@@ -465,7 +498,9 @@ class HFEagleModel(EagleModel):
     def _get_ttt_attention_mask(self, seq_length, ttt_step):
         # compile and cached flex attention masks in first call
         if ttt_step >= len(self._cached_attn_blk_masks):
-            self._cached_attn_blk_masks.append(self._compile_ttt_block_mask(seq_length, ttt_step))
+            self._cached_attn_blk_masks.append(
+                self._compute_ttt_attention_mask(seq_length, ttt_step)
+            )
 
         # return cached flex attention mask
         return self._cached_attn_blk_masks[ttt_step]
@@ -547,15 +582,14 @@ class HFEagleModel(EagleModel):
 
         return eagle_input_ids, attention_mask, position_ids
 
-    def _compile_ttt_block_mask(self, seq_length, ttt_step) -> BlockMask:
-        """Compile TTT attention_masks with symbolic masks and return a BlockMask object for flex attention."""
+    def _compute_ttt_attention_mask(self, seq_length, ttt_step) -> BlockMask | torch.Tensor:
+        """Return TTT attention_mask tensor of type BlockMask or Tensor depends on eagle attn impl."""
         if ttt_step == 0:
 
             def msk(b, h, q_idx, kv_idx):
                 # symbolic attention mask of shape [seq_len, 2* seq_len] for TTT step 0
                 return (kv_idx <= (q_idx - 1)) | (kv_idx == q_idx + seq_length)
 
-            return create_block_mask(msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 2)
         elif ttt_step == 1:
 
             def msk(b, h, q_idx, kv_idx):
@@ -565,8 +599,6 @@ class HFEagleModel(EagleModel):
                     | ((kv_idx == q_idx + seq_length - 1) & (kv_idx >= seq_length))
                     | ((kv_idx == q_idx + 2 * seq_length) & (kv_idx >= seq_length * 2))
                 )
-
-            return create_block_mask(msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 3)
         elif ttt_step == 2:
 
             def msk(b, h, q_idx, kv_idx):
@@ -577,10 +609,28 @@ class HFEagleModel(EagleModel):
                     | ((kv_idx == q_idx + 2 * seq_length - 1) & (kv_idx >= seq_length * 2))
                     | ((kv_idx == q_idx + 3 * seq_length) & (kv_idx >= seq_length * 3))
                 )
-
-            return create_block_mask(msk, B=None, H=None, Q_LEN=seq_length, KV_LEN=seq_length * 4)
         else:
             raise ValueError(f"EAGLE TTT step {ttt_step} is not supported")
+
+        dtypemin = torch.finfo(self._base_llm_config.dtype).min
+        q_len = seq_length
+        kv_len = seq_length * (2 + ttt_step)
+        if self.eagle_module.config._attn_implementation == "flex_attention":
+            # Return block mask for flex attention
+            block_mask = create_block_mask(msk, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len)
+            return block_mask
+        else:
+            # Return tensor mask for non-flex attention
+            tensor_mask = msk(
+                None,
+                None,
+                torch.arange(q_len).view(1, 1, q_len, 1),
+                torch.arange(kv_len).view(1, 1, 1, kv_len),
+            ).to(self.device)
+            tensor_mask = torch.full_like(
+                tensor_mask, 0, dtype=self._base_llm_config.dtype, device=self.device
+            ).masked_fill(~tensor_mask, dtypemin)
+            return tensor_mask
 
     def _base_model_forward(
         self,
@@ -603,7 +653,7 @@ class HFEagleModel(EagleModel):
                 output_hidden_states=True,
                 **kwargs,
             )
-            past_key_values = outputs.past_key_values
+            past_key_values = getattr(outputs, "past_key_values", None)
             base_model_hidden_states = outputs.hidden_states[-1]
             base_model_logits = outputs.logits
 
@@ -650,7 +700,7 @@ class HFEagleModel(EagleModel):
         eagle_lm_head = (
             self.eagle_module.eagle_lm_head
             if hasattr(self.eagle_module, "eagle_lm_head")
-            else self.lm_head
+            else self._base_model_lm_head
         )
         eagle_logits = eagle_lm_head(eagle_postnorm_h)
 
@@ -748,7 +798,7 @@ class HFEagleModel(EagleModel):
                 eagle_cache,
             )
             with torch.no_grad():
-                inputs_embeds = self.model.embed_tokens(eagle_input_ids)
+                inputs_embeds = self._base_model_embeddings(eagle_input_ids)
             position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states, position_ids)
 
             # Then, we run eagle forward
@@ -921,7 +971,7 @@ class HFEagleModel(EagleModel):
             ):
                 _, eagle_prenorm_h, eagle_logits, _ = self._eagle_forward(
                     eagle_input_hidden_states,
-                    self.model.embed_tokens(eagle_ids),
+                    self._base_model_embeddings(eagle_ids),
                     eagle_attention_mask,
                     eagle_position_ids,
                     position_embeddings,
