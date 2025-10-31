@@ -98,7 +98,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
             tokenizer = create_tokenizer(project_root_path)
             # TODO: change it to "ckpts/llama" once the conversion script is fixed
             # Currently, the build replacement library step will fail with such a path.
-            llama_checkpoint_path = puzzle_dir / "ckpts/teacher"
+            llama_checkpoint_path = puzzle_dir / "input_model/llama"
             create_and_save_small_llama_model(
                 llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
             )
