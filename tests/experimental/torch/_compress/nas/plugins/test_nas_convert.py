@@ -48,11 +48,9 @@ def test_nas_convert(project_root_path: Path, tmp_path: Path):
 def _test_nas_convert_multiprocess_job(
     project_root_path: Path, tmp_path: Path, rank: int, size: int
 ):
-    runtime = NativeDdpRuntime(
+    with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
-    )
-
-    with runtime as runtime:
+    ) as runtime:
         converted_model, puzzle_dir = run_nas_convert(project_root_path, tmp_path, rank, runtime)
 
         #
