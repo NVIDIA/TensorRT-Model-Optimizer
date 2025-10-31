@@ -1019,11 +1019,16 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
                 module.weight_quantizer.amax = weight_amax
 
 
-def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[str, Any]:
-    """Generate quantization config for a torch model.
+def get_quant_config(
+    model: nn.Module,
+) -> dict[str, Any]:
+    """Generate quantization config for a model.
+
+    The model should be the root model. It can be fully quantized, partially quantized or
+    mixed-precision quantized.
 
     Args:
-        model: The PyTorch model to analyze
+        model: The PyTorch model to make config for.
 
     Returns:
         Dictionary containing the quantization configuration
@@ -1052,16 +1057,13 @@ def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[st
     layer_config_dict = {}
 
     kv_cache_format = QUANTIZATION_NONE
-    for name, module in dict(named_modules).items():
+    for name, module in dict(model.named_modules()).items():
         # Check for standard quantizers or any quantizers from weight attributes
-        has_quantizers = (
-            hasattr(module, "input_quantizer")
-            or hasattr(module, "weight_quantizer")
-            or any(
-                hasattr(module, quantizer_attr_names(weight_name).weight_quantizer)
-                or hasattr(module, quantizer_attr_names(weight_name).input_quantizer)
-                for weight_name in weight_attr_names(module)
-            )
+        weight_names = list(weight_attr_names(module))
+        has_quantizers = any(
+            hasattr(module, quantizer_attr_names(weight_name).weight_quantizer)
+            or hasattr(module, quantizer_attr_names(weight_name).input_quantizer)
+            for weight_name in weight_names
         )
         if has_quantizers:
             quantization_format = get_quantization_format(module)
@@ -1069,7 +1071,6 @@ def get_quant_config(named_modules: nn.Module | dict[str, nn.Module]) -> dict[st
             # For MoE expert modules, we need to extract block size from the correct weight quantizer
             # Try to get block size from each weight attribute (e.g., gate_up_proj, down_proj)
             block_size = 0
-            weight_names = list(weight_attr_names(module))
 
             for weight_name in weight_names:
                 weight_block_size = get_weight_block_size(module, weight_name)
