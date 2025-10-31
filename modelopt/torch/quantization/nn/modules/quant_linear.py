@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ... import backends, tensor_quant
+from ... import tensor_quant
 from ...qtensor.base_qtensor import QTensorWrapper, dynamically_update_state_methods
 from ...utils import is_torch_export_mode
 from .quant_module import (
@@ -203,12 +203,15 @@ class RealQuantLinear(QuantModule):
             and self.allow_real_quant_gemm
         )
 
+    # Todo: Make this functions safe for torch compile
+    @torch._dynamo.disable
     def has_real_quant_gemm_impl(self, input, *args, **kwargs) -> bool:
         """Get the real quant GEMM implementation base on input arguments."""
         if not hasattr(self, "_real_quant_gemm_impl"):
-            self._real_quant_gemm_impl = backends.gemm_registry.find_match(
-                self, input, *args, **kwargs
-            )
+            # Todo: Figure out how to fetch this gemm from registry during torch compilation
+            from modelopt.torch.quantization.backends.fp8_per_tensor_gemm import Fp8PerTensorLinear
+
+            self._real_quant_gemm_impl = Fp8PerTensorLinear.apply
             if self._real_quant_gemm_impl is None:
                 warnings.warn(f"RealQuantLinear: No real-quant GEMM found: {self}.")
 
@@ -229,10 +232,11 @@ class RealQuantLinear(QuantModule):
             # Note: We cache the real-quant GEMM function to avoid matching overhead.
             # This assumes that the function will not change after the first call.
             assert self._real_quant_gemm_impl is not None
-            with torch.cuda.nvtx.range("RealQuantLinear gemm"):
-                output = self._real_quant_gemm_impl(
-                    self, input, self.weight, self.bias, *args, **kwargs
-                )
+            # Todo: Figure out how to enable capture range for the real quant gemm
+            # with torch.cuda.nvtx.range("RealQuantLinear gemm"):
+            output = self._real_quant_gemm_impl(
+                self, input, self.weight, self.bias, *args, **kwargs
+            )
             return self.output_quantizer(output) if hasattr(self, "output_quantizer") else output
 
         # Otherwise, fallback to the default GEMM

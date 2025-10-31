@@ -79,7 +79,7 @@ class _FoldedCallback:
 
     def __len__(self) -> int:
         """Return the number of callbacks."""
-        return len(self._callbacks)
+        return len(getattr(self, "_callbacks", []))
 
     def extend(self, cbs_other: Iterable[DynamicAttributeCallback]):
         """Extend the list of other callbacks."""

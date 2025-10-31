@@ -26,6 +26,8 @@ FP8_DEFAULT_CONFIG = {
             "num_bits": (4, 3),
             "axis": None,
         },
+        # Todo: Figure out how to quantize the attention layers
+        "*attn*": {"enable": False},
         "default": {"enable": False},
     },
     "algorithm": "max",

@@ -32,12 +32,14 @@ FP8_MIN = torch.finfo(torch.float8_e4m3fn).min
 FP8_MAX = torch.finfo(torch.float8_e4m3fn).max
 
 
-@torch.compile(dynamic=True)
+# Todo: Figure out dynamic compilation for the fp8 gemm
+@torch.compile()
 def _to_fp8(x, scale):
     return (x / scale).clamp(FP8_MIN, FP8_MAX).to(torch.float8_e4m3fn)
 
 
-@torch.compile(dynamic=True)
+# Todo: Figure out dynamic compilation for the fp8 gemm
+@torch.compile()
 def _fp8_gemm_impl(input, weight_fp8, scale_a, scale_b, bias=None):
     input_shape = input.shape
     input_fp8 = _to_fp8(input, scale_a).reshape(-1, input_shape[-1])

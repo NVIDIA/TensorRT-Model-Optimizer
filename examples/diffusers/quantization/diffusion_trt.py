@@ -32,6 +32,8 @@ from modelopt.torch._deploy._runtime.tensorrt.tensorrt_utils import prepend_hash
 from modelopt.torch._deploy.device_model import DeviceModel
 from modelopt.torch._deploy.utils import get_onnx_bytes_and_metadata
 
+torch._dynamo.config.cache_size_limit = 100
+
 MODEL_ID = {
     "sdxl-1.0": ModelType.SDXL_BASE,
     "sdxl-turbo": ModelType.SDXL_TURBO,
@@ -47,6 +49,72 @@ dtype_map = {
 }
 
 
+class CUDAGraphWrapper:
+    """Wrapper to capture backbone model in CUDA graph."""
+
+    def __init__(self, model, sample_input, original_forward):
+        self.model = model
+        self.original_forward = original_forward
+        self.static_input = {}
+        self.static_output = None
+        self.graph = None
+        self.is_captured = False
+
+        # Create static tensors for all inputs
+        for k, v in sample_input.items():
+            if isinstance(v, torch.Tensor):
+                self.static_input[k] = torch.zeros_like(v)
+
+    def capture(self, sample_input):
+        """Capture the model execution in a CUDA graph."""
+        # Temporarily remove any hooks that might interfere with capture
+        hooks_to_restore = []
+        for hook_dict in [self.model._forward_pre_hooks, self.model._forward_hooks]:
+            hooks_to_restore.append(dict(hook_dict))
+            hook_dict.clear()
+
+        try:
+            # Warmup
+            torch.cuda.synchronize()
+            s = torch.cuda.Stream()
+            s.wait_stream(torch.cuda.current_stream())
+
+            with torch.cuda.stream(s):
+                for _ in range(3):
+                    self.original_forward(**sample_input)
+            torch.cuda.current_stream().wait_stream(s)
+            torch.cuda.synchronize()
+
+            # Capture
+            self.graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.graph):
+                self.static_output = self.original_forward(**self.static_input)
+
+            self.is_captured = True
+            print("CUDA graph captured successfully")
+        finally:
+            # Restore hooks
+            self.model._forward_pre_hooks.update(hooks_to_restore[0])
+            self.model._forward_hooks.update(hooks_to_restore[1])
+
+    def __call__(self, **kwargs):
+        if not self.is_captured:
+            # First call - capture the graph
+            self.capture(kwargs)
+
+        # Copy inputs to static tensors
+        for k, v in kwargs.items():
+            if isinstance(v, torch.Tensor) and k in self.static_input:
+                self.static_input[k].copy_(v)
+
+        # Replay graph
+        if self.graph is not None:
+            self.graph.replay()
+
+        return self.static_output
+
+
+@torch.inference_mode()
 def generate_image(pipe, prompt, image_name):
     seed = 42
     image = pipe(
@@ -59,8 +127,20 @@ def generate_image(pipe, prompt, image_name):
     print(f"Image generated saved as {image_name}")
 
 
+@torch.inference_mode()
+def run_pipeline(pipe, prompt, num_runs=10, num_inference_steps=30, run_type="warmup"):
+    print(f"Starting {run_type}: {num_runs} runs")
+    for _ in tqdm(range(num_runs), desc=run_type):
+        _ = pipe(
+            prompt,
+            output_type="pil",
+            num_inference_steps=num_inference_steps,
+            generator=torch.Generator("cuda").manual_seed(42),
+        )
+
+
 def benchmark_model(
-    pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20, model_dtype="Half"
+    pipe, prompt, num_warmup=10, num_benchmark=50, num_inference_steps=20, model_dtype="Half"
 ):
     """Benchmark the backbone model inference time."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
@@ -81,33 +161,18 @@ def benchmark_model(
     post_handle = backbone.register_forward_hook(forward_hook)
 
     try:
-        print(f"Starting warmup: {num_warmup} runs")
-        for _ in tqdm(range(num_warmup), desc="Warmup"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
-                _ = pipe(
-                    prompt,
-                    output_type="pil",
-                    num_inference_steps=num_inference_steps,
-                    generator=torch.Generator("cuda").manual_seed(42),
-                )
-
+        run_pipeline(pipe, prompt, num_warmup, num_inference_steps, "warmup")
         backbone_times.clear()
+        torch.cuda.cudart().cudaProfilerStart()
+        run_pipeline(pipe, prompt, num_benchmark, num_inference_steps, "benchmark")
+        torch.cuda.cudart().cudaProfilerStart()
 
-        print(f"Starting benchmark: {num_runs} runs")
-        for _ in tqdm(range(num_runs), desc="Benchmark"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
-                _ = pipe(
-                    prompt,
-                    output_type="pil",
-                    num_inference_steps=num_inference_steps,
-                    generator=torch.Generator("cuda").manual_seed(42),
-                )
     finally:
         pre_handle.remove()
         post_handle.remove()
 
     total_backbone_time = sum(backbone_times)
-    avg_latency = total_backbone_time / (num_runs * num_inference_steps)
+    avg_latency = total_backbone_time / (num_benchmark * num_inference_steps)
     print(f"Inference latency of the torch backbone: {avg_latency:.2f} ms")
     return avg_latency
 
@@ -163,6 +228,11 @@ def main():
     parser.add_argument(
         "--torch-compile", action="store_true", help="Use torch.compile() on the backbone model"
     )
+    parser.add_argument(
+        "--cudagraphs",
+        action="store_true",
+        help="Use CUDA graphs for the backbone model",
+    )
     parser.add_argument("--skip-image", action="store_true", help="Skip image generation")
     args = parser.parse_args()
 
@@ -173,6 +243,7 @@ def main():
         dtype_map[args.model_dtype],
         override_model_path=args.override_model_path,
     )
+    pipe.to("cuda")
 
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
@@ -188,19 +259,67 @@ def main():
     if args.restore_from:
         mto.restore(backbone, args.restore_from)
 
+    # Generate dummy inputs for the backbone
+    dummy_inputs, dynamic_axes, dynamic_shapes = generate_dummy_inputs_and_dynamic_axes_and_shapes(
+        args.model, backbone
+    )
+
     if args.torch_compile:
         assert args.model_dtype in ["BFloat16", "Float", "Half"], (
             "torch.compile() only supports BFloat16 and Float"
         )
-        print("Compiling backbone with torch.compile()...")
-        backbone = torch.compile(backbone, mode="max-autotune")
+        with torch.inference_mode():
+            backbone = torch.compile(backbone, mode="default")
+
+    if args.cudagraphs:
+        assert args.torch, "CUDA graphs only supported in torch mode (use --torch flag)"
+        print("Wrapping backbone with CUDA graphs...")
+
+        # Need to do a forward pass to get sample input structure
+        # Extract the dict from the tuple and move dummy inputs to cuda
+        dummy_inputs_cuda = (
+            {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in dummy_inputs[0].items()},
+        )
+
+        # Save original forward before replacing it
+        original_forward = backbone.forward
+
+        # Create wrapper with original forward
+        cuda_wrapper = CUDAGraphWrapper(backbone, dummy_inputs_cuda, original_forward)
+
+        def forward_with_cudagraph(*args, **kwargs):
+            # Convert args to kwargs if needed based on model signature
+            if args and not kwargs:
+                # Handle positional arguments - map to expected parameter names
+                if hasattr(pipe, "transformer"):  # Flux/SD3
+                    param_names = [
+                        "hidden_states",
+                        "encoder_hidden_states",
+                        "pooled_projections",
+                        "timestep",
+                        "img_ids",
+                        "txt_ids",
+                        "guidance",
+                    ]
+                else:  # SDXL/SD
+                    param_names = [
+                        "sample",
+                        "timestep",
+                        "encoder_hidden_states",
+                        "added_cond_kwargs",
+                    ]
+                kwargs = {param_names[i]: args[i] for i in range(len(args))}
+
+            return cuda_wrapper(**kwargs)
+
+        backbone.forward = forward_with_cudagraph
+        print("CUDA graphs wrapper initialized")
 
     if args.torch:
         if hasattr(pipe, "transformer"):
             pipe.transformer = backbone
         elif hasattr(pipe, "unet"):
             pipe.unet = backbone
-        pipe.to("cuda")
 
         if args.benchmark:
             benchmark_model(pipe, args.prompt, model_dtype=args.model_dtype)
@@ -208,13 +327,6 @@ def main():
         if not args.skip_image:
             generate_image(pipe, args.prompt, image_name)
         return
-
-    backbone.to("cuda")
-
-    # Generate dummy inputs for the backbone
-    dummy_inputs, dynamic_axes, dynamic_shapes = generate_dummy_inputs_and_dynamic_axes_and_shapes(
-        args.model, backbone
-    )
 
     # Postprocess the dynamic axes to match the input and output names with DeviceModel
     if args.onnx_load_path == "":
