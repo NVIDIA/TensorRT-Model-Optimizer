@@ -1,15 +1,15 @@
 defaults:
-  - ./Llama-3_2-1B
+  - Llama-3_2-1B
   - _self_
 
 # Input Hugging Face model to compress
-input_hf_model_path: ???  # e.g., "path/to/meta-llama/Llama-3.2-1B"
+input_hf_model_path: /workspace/hf_models/meta-llama/Llama-3.2-1B
 
 # Dataset path for pruning and NAS scoring
-dataset_path: ???  # e.g., "path/to/dataset"
+dataset_path: /workspace/datasets/Nemotron-Post-Training-Dataset-v2
 
 # Working directory for compression outputs
-puzzle_dir: ???  # e.g., "path/to/puzzle_dir"
+puzzle_dir: /workspace/puzzle_dir
 
 # MIP memory constraint (in MiB) 
 mip:
@@ -18,4 +18,4 @@ mip:
 
 # FFN intermediate sizes to search over (heterogeneous architecture)
 pruning:
-  intermediate_size_list: [768, 1024, 1536, 2048, 2560, 4192]  # Llama 3.2 1B baseline: 8192
+  intermediate_size_list: [256]  # Llama 3.2 1B baseline: 8192

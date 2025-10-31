@@ -29,10 +29,15 @@ Usage:
 """
 
 import argparse
+import datetime
 from pathlib import Path
 
+import torch
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 
+import modelopt.torch.nas as mtn
+from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
+from modelopt.torch._compress.runtime import NativeDdpRuntime
 from tests.utils.test_utils import initialize_hydra_config_for_dir
 
 
@@ -63,19 +68,39 @@ def run_full_compress(hydra_config_path: str):
         config_path: Path to the YAML configuration file
     """
 
-    # Register Hydra custom resolvers (needed for config resolution)
-    register_hydra_resolvers()
+    with NativeDdpRuntime(dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)):
+        # Register Hydra custom resolvers (needed for config resolution)
+        register_hydra_resolvers()
 
-    hydra_config_path = Path(hydra_config_path).resolve()
-    hydra_config_dir = str(hydra_config_path.parent)
-    hydra_config_name = hydra_config_path.stem
+        hydra_config_path = Path(hydra_config_path).resolve()
+        hydra_config_dir = str(hydra_config_path.parent)
+        hydra_config_name = hydra_config_path.stem
 
-    # Load hydra config
-    initialize_hydra_config_for_dir(
-        config_dir=hydra_config_dir,
-        config_name=hydra_config_name,
-        overrides=[],
-    )
+        # Load hydra config
+        hydra_cfg = initialize_hydra_config_for_dir(
+            config_dir=hydra_config_dir,
+            config_name=hydra_config_name,
+            overrides=[],
+        )
+
+        input_model = CompressModel()
+        mtn.convert(
+            input_model,
+            mode=[
+                (
+                    "compress",
+                    {
+                        "puzzle_dir": str(hydra_cfg.puzzle_dir),
+                        "input_model_path": hydra_cfg.input_hf_model_path,
+                        "hydra_config_dir": hydra_config_dir,
+                        "hydra_config_name": hydra_config_name,
+                        "dataset_path": str(hydra_cfg.dataset_path),
+                    },
+                )
+            ],
+        )
+
+        print(f"\nCompression completed. Output in: {hydra_cfg.puzzle_dir}")
 
 
 def run_mip_only(hydra_config_path: str):
@@ -87,7 +112,8 @@ def run_mip_only(hydra_config_path: str):
     Args:
         config_path: Path to the YAML configuration file
     """
-    hydra_config_path = Path(hydra_config_path).resolve()
+    raise NotImplementedError("MIP-only mode is not implemented yet")
+    # hydra_config_path = Path(hydra_config_path).resolve()
     # config_dir = str(hydra_config_path.parent)
     # config_name = hydra_config_path.stem
 
