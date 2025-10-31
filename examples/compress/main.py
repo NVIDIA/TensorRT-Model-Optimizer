@@ -83,8 +83,10 @@ def run_full_compress(hydra_config_path: str):
             overrides=[],
         )
 
+        # Convert model (convert from HF to DeciLM, score pruning activations,
+        # prune the model and save pruned checkpoints)
         input_model = CompressModel()
-        mtn.convert(
+        converted_model = mtn.convert(
             input_model,
             mode=[
                 (
@@ -98,6 +100,15 @@ def run_full_compress(hydra_config_path: str):
                     },
                 )
             ],
+        )
+
+        # Run NAS search (build replacement library and compute stats,
+        # compute one block scores, run MIP and realize models)
+        mtn.search(
+            converted_model,
+            constraints={},  # this is not used as the search space is defined in the hydra config
+            dummy_input=None,  # Not used
+            config={},  # this is not used as the search space is defined in the hydra config
         )
 
         print(f"\nCompression completed. Output in: {hydra_cfg.puzzle_dir}")
