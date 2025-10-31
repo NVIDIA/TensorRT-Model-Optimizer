@@ -159,6 +159,7 @@ class CompressDescriptor(ModeDescriptor):
     @property
     def search_algorithm(self) -> type[BaseSearcher]:
         """Return the associated searcher implementation."""
+
         return CompressSearcher
 
     @property
