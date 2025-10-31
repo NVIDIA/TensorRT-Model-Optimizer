@@ -31,6 +31,7 @@ from torch import nn
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
 )
+from modelopt.torch._compress.hydra import initialize_hydra_config_for_dir
 from modelopt.torch._compress.runtime import NativeDdpRuntime
 from modelopt.torch.nas.conversion import NASModeRegistry
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
@@ -42,9 +43,6 @@ from modelopt.torch.opt.mode import (
     RestoreEntrypoint,
 )
 from modelopt.torch.opt.searcher import BaseSearcher, SearchStateDict
-
-# TODO Move initialize_hydra_config_for_dir from tests to main
-from tests.utils.test_utils import initialize_hydra_config_for_dir
 
 
 class CompressModel(nn.Module):
@@ -159,6 +157,7 @@ class CompressDescriptor(ModeDescriptor):
     @property
     def search_algorithm(self) -> type[BaseSearcher]:
         """Return the associated searcher implementation."""
+
         return CompressSearcher
 
     @property

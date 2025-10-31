@@ -40,11 +40,9 @@ def test_nas_search(project_root_path: Path, tmp_path: Path):
 def _test_nas_search_multiprocess_job(
     project_root_path: Path, tmp_path: Path, rank: int, size: int
 ):
-    runtime = NativeDdpRuntime(
+    with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
-    )
-
-    with runtime as runtime:
+    ) as runtime:
         converted_model, puzzle_dir = run_nas_convert(project_root_path, tmp_path, rank, runtime)
 
         #
@@ -58,7 +56,7 @@ def _test_nas_search_multiprocess_job(
         )
 
         #
-        # Check assertions for mnt.search() step
+        # Check assertions for mtn.search() step
         #
         if rank == 0:
             # assertions for the build_library_and_stats step

@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.test_utils import (
+from experimental.torch._compress.compress_test_utils import (
     create_and_save_small_llama_model,
     create_tokenizer,
     save_dummy_dataset,
@@ -48,11 +48,9 @@ def test_nas_convert(project_root_path: Path, tmp_path: Path):
 def _test_nas_convert_multiprocess_job(
     project_root_path: Path, tmp_path: Path, rank: int, size: int
 ):
-    runtime = NativeDdpRuntime(
+    with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
-    )
-
-    with runtime as runtime:
+    ) as runtime:
         converted_model, puzzle_dir = run_nas_convert(project_root_path, tmp_path, rank, runtime)
 
         #
