@@ -56,7 +56,7 @@ def _test_nas_search_multiprocess_job(
         )
 
         #
-        # Check assertions for mnt.search() step
+        # Check assertions for mtn.search() step
         #
         if rank == 0:
             # assertions for the build_library_and_stats step
