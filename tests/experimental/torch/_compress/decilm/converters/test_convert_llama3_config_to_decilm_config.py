@@ -16,7 +16,7 @@
 import json
 from pathlib import Path
 
-from experimental.torch._compress.conftest import (
+from experimental.torch._compress.compress_test_utils import (
     create_and_save_small_llama_model,
     create_tokenizer,
 )

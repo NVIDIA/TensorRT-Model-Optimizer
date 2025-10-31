@@ -20,7 +20,7 @@ from pathlib import Path
 
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.conftest import (
+from experimental.torch._compress.compress_test_utils import (
     create_and_save_small_llama_model,
     create_tokenizer,
     save_dummy_dataset,
@@ -66,16 +66,17 @@ def test_compress(project_root_path: Path, tmp_path: Path):
 def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, rank: int, size: int):
     register_hydra_resolvers()
 
+    #
+    # The inputs for the compress() algorihm.
+    #
     puzzle_dir = tmp_path
     dataset_path = puzzle_dir / "dummy_dataset"
     hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
     hydra_config_name = "Llama-3_1-8B"
 
-    _runtime = NativeDdpRuntime(
+    with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
-    )
-
-    with _runtime as runtime:
+    ) as runtime:
         #
         # Test setup
         #
@@ -91,8 +92,9 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
 
             # Create a small Llama model (not DeciLM) to match the normal conversion pipeline
             tokenizer = create_tokenizer(project_root_path)
-            hf_ckpt_teacher_dir = "ckpts/teacher"
-            llama_checkpoint_path = puzzle_dir / hf_ckpt_teacher_dir
+            # TODO: change it to "ckpts/llama" once the conversion script is fixed
+            # Currently, the build replacement library step will fail with such a path.
+            llama_checkpoint_path = puzzle_dir / "ckpts/teacher"
             create_and_save_small_llama_model(
                 llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
             )
@@ -100,7 +102,7 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
             # Use the full conversion pipeline (matches normal usage)
             convert_llama3_to_decilm(
                 input_dir=llama_checkpoint_path,
-                output_dir=llama_checkpoint_path,
+                output_dir=puzzle_dir / "ckpts/teacher",
             )
         runtime.wait_for_everyone()
 
@@ -148,4 +150,4 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
 
         runtime.wait_for_everyone()
 
-        print("PYTEST SUMMARY: test_compress_model() test has finished successfully")
+    print("PYTEST SUMMARY: test_compress_model() test has finished successfully")
