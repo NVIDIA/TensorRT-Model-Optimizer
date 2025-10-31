@@ -121,7 +121,7 @@ def run_mip_only(hydra_config_path: str):
     have already been completed.
 
     Args:
-        config_path: Path to the YAML configuration file
+        hydra_config_path: Path to the YAML configuration file
     """
     raise NotImplementedError("MIP-only mode is not implemented yet")
     # hydra_config_path = Path(hydra_config_path).resolve()
