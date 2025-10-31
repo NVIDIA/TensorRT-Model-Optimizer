@@ -866,7 +866,7 @@ def get_layer_info(
     layers_8bit = kwargs.get("layers_8bit")
     gather_block_size = kwargs.get("gather_block_size", DEFAULT_GATHER_BLOCK_SIZE)
     gather_quantize_axis = kwargs.get("gather_quantize_axis", DEFAULT_GATHER_QUANTIZE_AXIS)
-    if enable_mixed_quant:
+    if enable_mixed_quant or layers_8bit:
         layer_info = get_layer_precision_mapping(
             onnx_model,
             layers_8bit,

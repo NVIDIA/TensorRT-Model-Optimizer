@@ -16,7 +16,6 @@
 """Utility functions for getting samples and forward loop function for different datasets."""
 
 import copy
-import math
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from warnings import warn
@@ -205,8 +204,6 @@ def get_dataset_dataloader(
 
     if isinstance(dataset_name, str):
         dataset_name = [dataset_name]
-
-    num_samples = [math.ceil(num_sample / batch_size) * batch_size for num_sample in num_samples]
 
     assert len(dataset_name) == len(num_samples), (
         "dataset_name and num_samples must be the same length"
