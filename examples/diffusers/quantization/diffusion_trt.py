@@ -61,41 +61,30 @@ class CUDAGraphWrapper:
         self.is_captured = False
 
         # Create static tensors for all inputs
-        for k, v in sample_input.items():
+        for k, v in sample_input[0].items():
             if isinstance(v, torch.Tensor):
                 self.static_input[k] = torch.zeros_like(v)
 
     def capture(self, sample_input):
         """Capture the model execution in a CUDA graph."""
-        # Temporarily remove any hooks that might interfere with capture
-        hooks_to_restore = []
-        for hook_dict in [self.model._forward_pre_hooks, self.model._forward_hooks]:
-            hooks_to_restore.append(dict(hook_dict))
-            hook_dict.clear()
+        # Warmup
+        torch.cuda.synchronize()
+        s = torch.cuda.Stream()
+        s.wait_stream(torch.cuda.current_stream())
 
-        try:
-            # Warmup
-            torch.cuda.synchronize()
-            s = torch.cuda.Stream()
-            s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            for _ in tqdm(range(3), desc="CUDA graph warmup"):
+                self.original_forward(**sample_input)
+        torch.cuda.current_stream().wait_stream(s)
+        torch.cuda.synchronize()
 
-            with torch.cuda.stream(s):
-                for _ in range(3):
-                    self.original_forward(**sample_input)
-            torch.cuda.current_stream().wait_stream(s)
-            torch.cuda.synchronize()
+        # Capture
+        self.graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.graph):
+            self.static_output = self.original_forward(**self.static_input)
 
-            # Capture
-            self.graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self.graph):
-                self.static_output = self.original_forward(**self.static_input)
-
-            self.is_captured = True
-            print("CUDA graph captured successfully")
-        finally:
-            # Restore hooks
-            self.model._forward_pre_hooks.update(hooks_to_restore[0])
-            self.model._forward_hooks.update(hooks_to_restore[1])
+        self.is_captured = True
+        print("CUDA graph captured successfully")
 
     def __call__(self, **kwargs):
         if not self.is_captured:
