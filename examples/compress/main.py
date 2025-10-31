@@ -31,6 +31,10 @@ Usage:
 import argparse
 from pathlib import Path
 
+from puzzle_tools.hydra_utils import register_hydra_resolvers
+
+from tests.utils.test_utils import initialize_hydra_config_for_dir
+
 
 def parse_args():
     """Parse command line arguments."""
@@ -58,9 +62,20 @@ def run_full_compress(hydra_config_path: str):
     Args:
         config_path: Path to the YAML configuration file
     """
+
+    # Register Hydra custom resolvers (needed for config resolution)
+    register_hydra_resolvers()
+
     hydra_config_path = Path(hydra_config_path).resolve()
-    # config_dir = str(hydra_config_path.parent)
-    # config_name = hydra_config_path.stem
+    hydra_config_dir = str(hydra_config_path.parent)
+    hydra_config_name = hydra_config_path.stem
+
+    # Load hydra config
+    initialize_hydra_config_for_dir(
+        config_dir=hydra_config_dir,
+        config_name=hydra_config_name,
+        overrides=[],
+    )
 
 
 def run_mip_only(hydra_config_path: str):

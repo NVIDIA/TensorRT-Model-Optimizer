@@ -7,8 +7,8 @@ In this example, we compress Llama 3.2 1B by searching for the optimal `ffn_inte
 ## Compress the Model
 
 ```bash
-torchrun --nproc_per_node=8 examples/compress/main.py \
-  --config ./examples/compress/configs/llama_3.2_1B_pruneffn_memory.yaml
+torchrun examples/compress/main.py \
+  --config path/to/llama_3.2_1B_pruneffn_memory.yaml
 ```
 
 ## Evaluate Model Accuracy
@@ -22,8 +22,8 @@ torchrun --nproc_per_node=8 examples/compress/main.py \
 If you want to try different memory constraints without re-running the expensive pruning and scoring steps, use the `--mip-only` flag:
 
 ```bash
-torchrun --nproc_per_node=8 examples/compress/main.py \
-  --config ./examples/compress/configs/llama_3.2_1B_pruneffn_memory.yaml \
+torchrun examples/compress/main.py \
+  --config path/to/llama_3.2_1B_pruneffn_memory.yaml \
   --mip-only
 ```
 
@@ -40,3 +40,7 @@ This assumes pruning, replacement library building, NAS scoring, and subblock st
 ```bash
 # TODO
 ```
+
+## Advanced usage
+
+Modify `path/to/Llama-3_2-1B yaml` file for advanced compression scenarios.

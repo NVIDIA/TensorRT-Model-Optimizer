@@ -1,5 +1,5 @@
 defaults:
-  - /Llama-3_2-1B
+  - ./Llama-3_2-1B
   - _self_
 
 # Input Hugging Face model to compress
