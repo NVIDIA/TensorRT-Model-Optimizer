@@ -18,4 +18,4 @@ mip:
 
 # FFN intermediate sizes to search over (heterogeneous architecture)
 pruning:
-  intermediate_size_list: [256]  # Llama 3.2 1B baseline: 8192
+  intermediate_size_list: [3072, 5888, 8704, 11520]  # teacher_intermediate_size is 14336
