@@ -29,7 +29,7 @@ from onnx_graphsurgeon.ir.tensor import Constant, Tensor, Variable
 from onnxruntime.quantization.calibrate import CalibrationDataReader
 
 from modelopt.onnx.logging_config import logger
-from modelopt.onnx.op_types import is_copy_op, is_linear_op
+from modelopt.onnx.op_types import get_copy_ops, is_copy_op, is_linear_op
 from modelopt.onnx.quantization.ort_utils import create_inference_session
 from modelopt.onnx.utils import (
     find_lowest_common_ancestor,
@@ -173,7 +173,7 @@ def has_path_type(
 def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
     """Returns the linear backbone node for a given node if it matches the pattern.
 
-    TensorRT fuses convolution with BN, Relu etc. when in some specific pattern.
+    TensorRT fuses convolution with BN, Relu, MaxPool etc. when in some specific pattern.
     This rule tries to match some of those patterns.
     Note. BiasAdd and ConstMul are optional in path types.
 
@@ -190,7 +190,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             return root
 
         for tensor in root.inputs:
-            if not isinstance(tensor, Constant):
+            if not isinstance(tensor, Constant) and tensor.inputs:
                 parent_node = tensor.inputs[0]
                 bb = _get_backbone(parent_node)
                 if bb:
@@ -207,7 +207,7 @@ def get_fusible_backbone(node: Node, graph: Graph) -> Node | None:
             ["Mul", "Sigmoid", "BatchNormalization", conv_type],
         ]
     for idx, path_type in enumerate(fusible_linear_path_types):
-        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=[]):
+        if has_path_type(node, graph, path_type, is_forward=False, wild_card_types=get_copy_ops()):
             return _get_backbone(node)
 
     return None
@@ -1002,7 +1002,6 @@ def find_nodes_from_matmul_to_exclude(
         logger.debug("No MatMul nodes found in the model")
         return []
 
-    nodes_to_exclude = []
     logger.debug(f"Found {len(matmul_nodes)} MatMul nodes to analyze")
 
     if calibration_shapes:
