@@ -46,9 +46,7 @@ In this example, we compress [meta-llama/Llama-3.1-8B-Instruct](https://huggingf
 If you want to try different memory constraints without re-running the expensive pruning and scoring steps, use the `--mip-only` flag:
 
 ```bash
-torchrun examples/compress/main.py \
-  --config path/to/llama-3_1_8B_pruneffn_memory.yaml \
-  --mip-only
+torchrun examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml --mip-only 2>&1 | tee ./log.txt |grep "Compress Progress"  
 ```
 
 This assumes pruning, replacement library building, NAS scoring, and subblock stats calculation have already been completed.
