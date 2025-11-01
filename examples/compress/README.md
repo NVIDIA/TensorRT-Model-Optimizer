@@ -11,7 +11,7 @@ In this example, we compress Llama 3.2 1B by searching for the optimal `ffn_inte
 2. Download and prepare the dataset:
 
    ```bash
-   python -m scripts.prepare_dataset --dataset_name nvidia/Nemotron-Post-Training-Dataset-v2 --output_dir path/to/Nemotron-Post-Training-Dataset-v2
+   python -m modelopt.torch._compress.dataset.prepare_dataset --dataset_name nvidia/Nemotron-Post-Training-Dataset-v2 --output_dir path/to/Nemotron-Post-Training-Dataset-v2
    ```
 
 3. Run the compression script:
