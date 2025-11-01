@@ -28,6 +28,7 @@ import scoring
 import torch
 from torch import nn
 
+from modelopt.torch._compress.dateutils import timestamped
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
 )
@@ -116,6 +117,7 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
     )
 
     # Convert Llama3 model to DeciLM model
+    print(timestamped("Compress Progress 2/8: converting model from HF to DeciLM"))
     hf_ckpt_teacher_dir = "ckpts/teacher"  # TODO: make it configurable
     convert_llama3_to_decilm(
         input_dir=config.input_model_path,
@@ -123,9 +125,11 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
     )
 
     # Score_pruning_activations (distributed processing)
+    print(timestamped("Compress Progress 3/8: scoring pruning activations"))
     score_pruning_activations.launch_score_activations(hydra_cfg, runtime)
 
     # Prune the model and save pruned checkpoints
+    print(timestamped("Compress Progress 4/8: pruning the model and saving pruned checkpoints"))
     if runtime.global_rank == 0:
         pruning_ckpts.launch_prune_ckpt(hydra_cfg)
     runtime.wait_for_everyone()
@@ -203,12 +207,19 @@ class CompressSearcher(BaseSearcher):
         )
 
         # Build_library_and_stats (single process)
+        print(
+            timestamped(
+                "Compress Progress 5/8: building replacement library and calculating subblock statistics"
+            )
+        )
         if runtime.global_rank == 0:
             build_library_and_stats.launch_build_library_and_stats(hydra_cfg)
         runtime.wait_for_everyone()
 
         # Calc_one_block_scores (distributed processing)
+        print(timestamped("Compress Progress 6/8: calculating one block scores"))
         scoring.launch_scoring(hydra_cfg, runtime)
 
         # mip_and_realize_models (distributed processing)
+        print(timestamped("Compress Progress 7/8: running MIP and realizing models"))
         mip_and_realize_models.launch_mip_and_realize_model(hydra_cfg, runtime)
