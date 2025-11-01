@@ -26,14 +26,14 @@ In this example, we compress [meta-llama/Llama-3.1-8B-Instruct](https://huggingf
 
    ```bash
    # Produced on a single NVIDIA H100 80GB HBM3 card
-   [2025-11-01 13:43:10] Compress Progress 1/8: starting compression pipeline
-   [2025-11-01 13:43:10] Compress Progress 2/8: converting model from HF to DeciLM
-   [2025-11-01 13:43:30] Compress Progress 3/8: scoring pruning activations
-   [2025-11-01 13:44:38] Compress Progress 4/8: pruning the model and saving pruned checkpoints
-   [2025-11-01 13:44:45] Compress Progress 5/8: building replacement library and calculating subblock statistics
-   [2025-11-01 13:44:46] Compress Progress 6/8: calculating one block scores
-   [2025-11-01 13:49:29] Compress Progress 7/8: running MIP and realizing models
-   [2025-11-01 13:52:59] Compress Progress 8/8: compression pipeline completed
+   [2025-11-01 14:01:10] Compress Progress 1/8: starting compression pipeline
+   [2025-11-01 14:01:10] Compress Progress 2/8: converting model from HF to DeciLM
+   [2025-11-01 14:01:29] Compress Progress 3/8: scoring pruning activations
+   [2025-11-01 14:02:30] Compress Progress 4/8: pruning the model and saving pruned checkpoints
+   [2025-11-01 14:03:18] Compress Progress 5/8: building replacement library and calculating subblock statistics
+   [2025-11-01 14:03:19] Compress Progress 6/8: calculating one block scores
+   [2025-11-01 14:13:35] Compress Progress 7/8: running MIP and realizing models
+   [2025-11-01 14:13:52] Compress Progress 8/8: compression pipeline completed
    ```
 
 ## Evaluate model accuracy
