@@ -6,10 +6,19 @@ In this example, we compress Llama 3.2 1B by searching for the optimal `ffn_inte
 
 ## Compress the Model
 
-```bash
-torchrun examples/compress/main.py \
-  --config path/to/llama_3.2_1B_pruneffn_memory.yaml
-```
+1. Specify the `puzzle_dir`, `input_hf_model_path`, `dataset_path`, `intermediate_size_list`, and `target_memory` arguments in the [llama_3.2_1B_pruneffn_memory.yaml](./configs/llama_3.2_1B_pruneffn_memory/llama_3.2_1B_pruneffn_memory.yaml) configuration file.
+
+2. Download and prepare the dataset:
+
+   ```bash
+   python -m scripts.prepare_dataset --dataset_name nvidia/Nemotron-Post-Training-Dataset-v2 --output_dir path/to/Nemotron-Post-Training-Dataset-v2
+   ```
+
+3. Run the compression script:
+
+   ```bash
+   torchrun examples/compress/main.py --config path/to/llama_3.2_1B_pruneffn_memory.yaml
+   ```
 
 ## Evaluate Model Accuracy
 
