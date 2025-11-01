@@ -1,9 +1,9 @@
 defaults:
-  - Llama-3_2-1B
+  - Llama-3_1-8B
   - _self_
 
 # Input Hugging Face model to compress
-input_hf_model_path: /workspace/hf_models/meta-llama/Llama-3.2-1B
+input_hf_model_path: /workspace/hf_models/meta-llama/Llama-3.1-8B-Instruct
 
 # Dataset path for pruning and NAS scoring
 dataset_path: /workspace/datasets/Nemotron-Post-Training-Dataset-v2
