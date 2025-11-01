@@ -19,20 +19,21 @@ In this example, we compress [meta-llama/Llama-3.1-8B-Instruct](https://huggingf
 3. Run the compression script.
 
    ```bash
-   torchrun examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml 2>&1 | tee ./log.txt |grep "Compress Progress"
+   torchrun examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml 2>&1 | tee ./log.txt | grep "Compress Progress"
    ```
 
-   screen output:
+   This will save the full output to `log.txt` and display the following progress on screen:
 
    ```bash
-   [2025-11-01 19:26:38] Compress Progress 1/8: starting compression pipeline
-   [2025-11-01 19:26:38] Compress Progress 2/8: converting model from HF to DeciLM
-   [2025-11-01 19:26:39] Compress Progress 3/8: scoring pruning activations
-   [2025-11-01 19:26:46] Compress Progress 4/8: pruning the model and saving pruned checkpoints
-   [2025-11-01 19:26:46] Compress Progress 5/8: building replacement library and calculating subblock statistics
-   [2025-11-01 19:26:46] Compress Progress 6/8: calculating one block scores
-   [2025-11-01 19:26:52] Compress Progress 7/8: running MIP and realizing models
-   [2025-11-01 19:26:59] Compress Progress 8/8: compression pipeline completed
+   # Produced on a single NVIDIA H100 80GB HBM3 card
+   [2025-11-01 13:43:10] Compress Progress 1/8: starting compression pipeline
+   [2025-11-01 13:43:10] Compress Progress 2/8: converting model from HF to DeciLM
+   [2025-11-01 13:43:30] Compress Progress 3/8: scoring pruning activations
+   [2025-11-01 13:44:38] Compress Progress 4/8: pruning the model and saving pruned checkpoints
+   [2025-11-01 13:44:45] Compress Progress 5/8: building replacement library and calculating subblock statistics
+   [2025-11-01 13:44:46] Compress Progress 6/8: calculating one block scores
+   [2025-11-01 13:49:29] Compress Progress 7/8: running MIP and realizing models
+   [2025-11-01 13:52:59] Compress Progress 8/8: compression pipeline completed
    ```
 
 ## Evaluate model accuracy
@@ -46,7 +47,7 @@ In this example, we compress [meta-llama/Llama-3.1-8B-Instruct](https://huggingf
 If you want to try different memory constraints without re-running the expensive pruning and scoring steps, use the `--mip-only` flag:
 
 ```bash
-torchrun examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml --mip-only 2>&1 | tee ./log.txt |grep "Compress Progress"  
+torchrun examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml --mip-only 2>&1 | tee ./log.txt | grep "Compress Progress"
 ```
 
 This assumes pruning, replacement library building, NAS scoring, and subblock stats calculation have already been completed.
