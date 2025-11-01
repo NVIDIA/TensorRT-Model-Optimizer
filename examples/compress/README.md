@@ -8,7 +8,7 @@ In this example, we compress Llama 3.2 1B by searching for the optimal `ffn_inte
 
 1. Specify the `puzzle_dir`, `input_hf_model_path`, `dataset_path`, `intermediate_size_list`, and `target_memory` arguments in the [llama_3.2_1B_pruneffn_memory.yaml](./configs/llama_3.2_1B_pruneffn_memory/llama_3.2_1B_pruneffn_memory.yaml) configuration file.
 
-2. Download and prepare the dataset:
+2. Download and prepare the dataset (2.62GB):
 
    ```bash
    python -m modelopt.torch._compress.dataset.prepare_dataset --dataset_name nvidia/Nemotron-Post-Training-Dataset-v2 --output_dir path/to/Nemotron-Post-Training-Dataset-v2
