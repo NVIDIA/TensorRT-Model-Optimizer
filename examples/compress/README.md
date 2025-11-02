@@ -28,14 +28,14 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
 
    ```bash
    # Produced on 2x NVIDIA H100 80GB HBM3
-   [2025-11-01 14:01:10] Compress Progress 1/8: starting compression pipeline
-   [2025-11-01 14:01:10] Compress Progress 2/8: converting model from HF to DeciLM
-   [2025-11-01 14:01:29] Compress Progress 3/8: scoring pruning activations
-   [2025-11-01 14:02:30] Compress Progress 4/8: pruning the model and saving pruned checkpoints
-   [2025-11-01 14:03:18] Compress Progress 5/8: building replacement library and calculating subblock statistics
-   [2025-11-01 14:03:19] Compress Progress 6/8: calculating one block scores
-   [2025-11-01 14:13:35] Compress Progress 7/8: running MIP and realizing models
-   [2025-11-01 14:13:52] Compress Progress 8/8: compression pipeline completed
+   [2025-11-02 12:06:34] Compress Progress 1/8: starting compression pipeline
+   [2025-11-02 12:06:45] Compress Progress 2/8: converting model from HF to DeciLM (single-gpu)
+   [2025-11-02 12:07:07] Compress Progress 3/8: scoring pruning activations (multi-gpu)
+   [2025-11-02 12:11:36] Compress Progress 4/8: pruning the model and saving pruned checkpoints (single-gpu)
+   [2025-11-02 12:12:20] Compress Progress 5/8: building replacement library and subblock statistics (single-gpu)
+   [2025-11-02 12:12:21] Compress Progress 6/8: calculating one block scores (multi-gpu)
+   [2025-11-02 12:50:41] Compress Progress 7/8: running MIP and realizing models (multi-gpu)
+   [2025-11-02 12:52:34] Compress Progress 8/8: compression pipeline completed (multi-gpu)
    ```
 
    This will generate the following network architecture (see `log.txt`):
@@ -81,14 +81,13 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
    validate_model_and_extract_token_probs(model_name='teacher')
    ################################################################
    ...
-   Average losses = {'lm_loss': 1.118250765837729, 'token_accuracy_top_1': 0.7331905364990234, 'token_accuracy_top_5': 0.9094219207763672, 'token_accuracy_top_10': 0.9423646926879883,
+   Average losses = {'lm_loss': 1.118250765837729, 'token_accuracy_top_1': 0.7331905364990234, 'token_accuracy_top_5': 0.9094219207763672, 'token_accuracy_top_10': 0.9423646926879883}
    ...
    ################################################################
    validate_model_with_kl_div(model_name='solution_0', is_calc_kl_div=True)
    ################################################################
    ....
-   Average losses = {'lm_loss': 1.7577573340386152, 'token_accuracy_top_1': 0.6225490570068359, 'token_accuracy_top_5': 0.846257209777832, 'token_accuracy_top_10': 0.8987817764282227} 
-
+   Average losses = {'lm_loss': 1.7577573340386152, 'token_accuracy_top_1': 0.6225490570068359, 'token_accuracy_top_5': 0.846257209777832, 'token_accuracy_top_10': 0.8987817764282227}
    ```
 
    30% GPU memory reduction leads to nearly 5% regression in token_accuracy_top_10 metric (0.898 / 0.942). Let's rerun MIP search aiming for 15% memory reduction.
@@ -140,12 +139,12 @@ block_29:  attention  gqa_4   ffn  intermediate_14336
 block_30:  attention  gqa_4   ffn  intermediate_14336
 block_31:  attention  gqa_4   ffn  intermediate_14336
 
-[2025-11-02 11:01:56,443]^[[92m[rank-0]^[[0m[run_puzzle.py:295] Total costs: {'stats.memory_mib': 94708.4609375, 'stats.attention_memory_mib': 81952.203125, 'stats.ffn_memory_mib': 10752.25, 'stats.has_ffn': 32, 'stats.ffn_num_params': 5637275648, 'stats.attention_num_params': 1090625536, 'stats.has_attention': 26, 'stats.kv_cache_memory_mib': 79872.0, 'stats.num_kv_heads': 208, 'stats.num_params': 7778578432}
+[2025-11-02 12:50:42,024]^[[92m[rank-0]^[[0m[run_puzzle.py:295] Total costs: {'stats.memory_mib': 94708.4609375, 'stats.has_ffn': 32, 'stats.ffn_memory_mib': 10752.25, 'stats.kv_cache_memory_mib': 79872.0, 'stats.attention_num_params': 1090625536, 'stats.ffn_num_params': 5637275648, 'stats.has_attention': 26, 'stats.num_params': 7778578432, 'stats.attention_memory_mib': 81952.203125, 'stats.num_kv_heads': 208}
 ...
 ################################################################
 validate_model_with_kl_div(model_name='solution_0', is_calc_kl_div=True)
 ################################################################
-Average losses = {'lm_loss': 1.2425934937782586, 'token_accuracy_top_1': 0.703862190246582, 'token_accuracy_top_5': 0.8954982757568359, 'token_accuracy_top_10': 0.9336576461791992,
+Average losses = {'lm_loss': 1.2425934937782586, 'token_accuracy_top_1': 0.703862190246582, 'token_accuracy_top_5': 0.8954982757568359, 'token_accuracy_top_10': 0.9336576461791992
 ```
 
 On the other hand, if you set `target_memory: 28_000`, you would observe that for some layers the intermediate FFN size starts to reduce (see `log.txt`):
