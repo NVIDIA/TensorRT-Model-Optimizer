@@ -46,7 +46,7 @@ from modelopt.torch._compress.runtime import NativeDdpRuntime
 # /workspace/puzzletron
 #
 # submit_job --partition interactive --time 0 \
-# --image gitlab-master.nvidia.com/deci/puzzletron:trtllm_main \
+# --image gitlab-master.nvidia.com/deci/puzzletron:modelopt_main \
 # --workdir $MODELOPT SRC DIRECTORY --interactive --gpu 1
 #
 # export PYTHONPATH=$PYTHONPATH:.:/workspace/puzzletron/v1
