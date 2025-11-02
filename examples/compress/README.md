@@ -2,7 +2,7 @@
 
 This tutorial demonstrates how to compress large language models using the compress algorithm based on the [Puzzle paper](https://arxiv.org/abs/2411.19146).
 
-In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) model by searching for the optimal `ffn_intermediate_size` across MLP layers and `attention op/noop`. This results in a heterogeneous architecture while reducing GPU memory usage from 113GB to 96GB (15% reduction) with less than 1% regression in the token_accuracy_top_10 metric.
+In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) model by searching for the optimal `ffn_intermediate_size` across MLP layers and `attention op/noop`. This results in a heterogeneous architecture while reducing GPU memory usage from 113 GiB to 96 GiB (15% reduction) with less than 1% regression in the token_accuracy_top_10 metric.
 
 ## Compress the Model
 
