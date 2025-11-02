@@ -52,7 +52,7 @@ from modelopt.torch._compress.runtime import NativeDdpRuntime
 # pip install mip
 # pip install lru-dict
 #
-# export PYTHONPATH=$PYTHONPATH:/workspace/puzzletron/v1
+# export PYTHONPATH=$PYTHONPATH:.:/workspace/puzzletron/v1
 #
 # pytest -s -v ./tests/experimental/torch/_compress/test_compress.py::test_compress -o addopts=""
 
