@@ -27,7 +27,7 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
    This will save the full output to `log.txt` and display the following progress on screen:
 
    ```bash
-   # Produced on a single NVIDIA H100 80GB HBM3 card
+   # Produced on 2x NVIDIA H100 80GB HBM3
    [2025-11-01 14:01:10] Compress Progress 1/8: starting compression pipeline
    [2025-11-01 14:01:10] Compress Progress 2/8: converting model from HF to DeciLM
    [2025-11-01 14:01:29] Compress Progress 3/8: scoring pruning activations
