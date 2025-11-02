@@ -8,5 +8,5 @@ activation_hooks_kwargs:
   target_layer: "mlp.down_proj"
   layer_input_descriptors_path:
 
-intermediate_size_list: [256]  # teacher_intermediate_size is 14336
+intermediate_size_list: [3072, 5888, 8704, 11520]  # teacher_intermediate_size is 14336
 mlp_init_mode: "PruneByActivationsLog"
