@@ -36,6 +36,47 @@ In this example, we compress [meta-llama/Llama-3.1-8B-Instruct](https://huggingf
    [2025-11-01 14:13:52] Compress Progress 8/8: compression pipeline completed
    ```
 
+   This will generate the following network architecture (see `log.txt`):
+
+   ```bash
+   block_0:   attention  gqa_4   ffn  intermediate_14336
+   block_1:   attention  gqa_4   ffn  intermediate_14336
+   block_2:   attention  gqa_4   ffn  intermediate_14336
+   block_3:   attention  gqa_4   ffn  intermediate_14336
+   block_4:   attention  gqa_4   ffn  intermediate_14336
+   block_5:   attention  gqa_4   ffn  intermediate_14336
+   block_6:   attention  gqa_4   ffn  intermediate_14336
+   block_7:   attention  gqa_4   ffn  intermediate_14336
+   block_8:   attention  gqa_4   ffn  intermediate_14336
+   block_9:   attention  gqa_4   ffn  intermediate_14336
+   block_10:  attention  gqa_4   ffn  intermediate_14336
+   block_11:  attention  gqa_4   ffn  intermediate_14336
+   block_12:  attention  gqa_4   ffn  intermediate_14336
+   block_13:  attention  gqa_4   ffn  intermediate_14336
+   block_14:  attention  gqa_4   ffn  intermediate_14336
+   block_15:  attention  gqa_4   ffn  intermediate_14336
+   block_16:  attention  gqa_4   ffn  intermediate_14336
+   block_17:  attention  no_op   ffn  intermediate_14336
+   block_18:  attention  no_op   ffn  intermediate_14336
+   block_19:  attention  no_op   ffn  intermediate_14336
+   block_20:  attention  no_op   ffn  intermediate_14336
+   block_21:  attention  no_op   ffn  intermediate_14336
+   block_22:  attention  no_op   ffn  intermediate_14336
+   block_23:  attention  no_op   ffn  intermediate_14336
+   block_24:  attention  no_op   ffn  intermediate_14336
+   block_25:  attention  no_op   ffn  intermediate_14336
+   block_26:  attention  no_op   ffn  intermediate_14336
+   block_27:  attention  no_op   ffn  intermediate_14336
+   block_28:  attention  no_op   ffn  intermediate_14336
+   block_29:  attention  gqa_4   ffn  intermediate_14336
+   block_30:  attention  gqa_4   ffn  intermediate_14336
+   block_31:  attention  gqa_4   ffn  intermediate_14336
+
+   [2025-11-02 04:53:11,332]^[[92m[rank-0]^[[0m[run_puzzle.py:295] Total costs: {'stats.memory_mib': 75796.4140625, 'stats.ffn_num_params': 5637275648, 'stats.num_kv_heads': 160, 'stats.kv_cache_memory_mib': 61440.0, 'stats.ffn_memory_mib': 10752.25, 'stats.attention_memory_mib': 63040.15625, 'stats.attention_num_params': 838942720, 'stats.num_params': 7526895616, 'stats.has_attention': 20, 'stats.has_ffn': 32}
+   [2025-11-02 04:53:11,341]^[[92m[rank-0]^[[0m[run_puzzle.py:300] /workspace/puzzle_dir/mip/puzzle_solutions/target_memory_78000MiB/solutions.json
+   [2025-11-02 04:53:11,341]^[[92m[rank-0]^[[0m[mip_and_realize_models.py:49]      Realize model for the solution: /workspace/puzzle_dir/mip/puzzle_solutions/target_memory_78000MiB/solutions.json
+   ```
+
 ## Evaluate model accuracy
 
 ```bash
@@ -44,13 +85,55 @@ In this example, we compress [meta-llama/Llama-3.1-8B-Instruct](https://huggingf
 
 ## Re-run MIP Search with different memory constraints
 
-If you want to try different memory constraints without re-running the expensive pruning and scoring steps, use the `--mip-only` flag:
+If you want to try different memory constraints without re-running the expensive pruning and scoring steps, use the `--mip-only` flag.
+This assumes pruning, replacement library building, NAS scoring, and subblock stats calculation have already been completed.
+
+Set `target_memory: 28_000` in `llama-3_1-8B_pruneffn_memory.yaml`.
 
 ```bash
 torchrun --nproc_per_node 1 examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml --mip-only 2>&1 | tee ./log.txt | grep "Compress Progress"
 ```
 
-This assumes pruning, replacement library building, NAS scoring, and subblock stats calculation have already been completed.
+This will generate the following network architecture (see `log.txt`):
+
+```bash
+block_0:   attention  gqa_4   ffn  intermediate_14336
+block_1:   attention  gqa_4   ffn  intermediate_14336
+block_2:   attention  gqa_4   ffn  intermediate_14336
+block_3:   attention  gqa_4   ffn  intermediate_14336
+block_4:   attention  gqa_4   ffn  intermediate_14336
+block_5:   attention  no_op   ffn  intermediate_11520
+block_6:   attention  no_op   ffn  intermediate_14336
+block_7:   attention  no_op   ffn  intermediate_8704
+block_8:   attention  no_op   ffn  intermediate_14336
+block_9:   attention  no_op   ffn  intermediate_3072
+block_10:  attention  no_op   ffn  intermediate_11520
+block_11:  attention  no_op   ffn  intermediate_11520
+block_12:  attention  no_op   ffn  intermediate_11520
+block_13:  attention  no_op   ffn  intermediate_11520
+block_14:  attention  no_op   ffn  intermediate_3072
+block_15:  attention  no_op   ffn  intermediate_14336
+block_16:  attention  no_op   ffn  intermediate_14336
+block_17:  attention  no_op   ffn  intermediate_14336
+block_18:  attention  no_op   ffn  intermediate_14336
+block_19:  attention  no_op   ffn  intermediate_14336
+block_20:  attention  no_op   ffn  intermediate_14336
+block_21:  attention  no_op   ffn  intermediate_14336
+block_22:  attention  no_op   ffn  intermediate_14336
+block_23:  attention  no_op   ffn  intermediate_14336
+block_24:  attention  no_op   ffn  intermediate_14336
+block_25:  attention  no_op   ffn  intermediate_14336
+block_26:  attention  no_op   ffn  intermediate_14336
+block_27:  attention  no_op   ffn  intermediate_14336
+block_28:  attention  no_op   ffn  intermediate_14336
+block_29:  attention  no_op   ffn  intermediate_14336
+block_30:  attention  no_op   ffn  intermediate_14336
+block_31:  attention  no_op   ffn  intermediate_14336
+
+[2025-11-02 04:47:51,874]^[[92m[rank-0]^[[0m[run_puzzle.py:295] Total costs: {'stats.memory_mib': 27526.296875, 'stats.num_kv_heads': 40, 'stats.kv_cache_memory_mib': 15360.0, 'stats.has_ffn': 32, 'stats.attention_num_params': 209735680, 'stats.ffn_num_params': 5118230528, 'stats.attention_memory_mib': 15760.0390625, 'stats.num_params': 6378643456, 'stats.has_attention': 5, 'stats.ffn_memory_mib': 9762.25}
+[2025-11-02 04:47:51,882]^[[92m[rank-0]^[[0m[run_puzzle.py:300] /workspace/puzzle_dir/mip/puzzle_solutions/target_memory_28000MiB/solutions.json
+[2025-11-02 04:47:51,882]^[[92m[rank-0]^[[0m[mip_and_realize_models.py:49]      Realize model for the solution: /workspace/puzzle_dir/mip/puzzle_solutions/target_memory_28000MiB/solutions.json
+```
 
 ## Deploy to TensorRT-LLM
 
