@@ -32,6 +32,7 @@ import argparse
 import datetime
 from pathlib import Path
 
+import mip_and_realize_models
 import torch
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 
@@ -125,10 +126,30 @@ def run_mip_only(hydra_config_path: str):
     Args:
         hydra_config_path: Path to the YAML configuration file
     """
-    raise NotImplementedError("MIP-only mode is not implemented yet")
-    # hydra_config_path = Path(hydra_config_path).resolve()
-    # config_dir = str(hydra_config_path.parent)
-    # config_name = hydra_config_path.stem
+
+    with NativeDdpRuntime(
+        dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
+    ) as runtime:
+        # Register Hydra custom resolvers (needed for config resolution)
+        register_hydra_resolvers()
+
+        hydra_config_path = Path(hydra_config_path).resolve()
+        hydra_config_dir = str(hydra_config_path.parent)
+        hydra_config_name = hydra_config_path.stem
+
+        # Load hydra config
+        hydra_cfg = initialize_hydra_config_for_dir(
+            config_dir=hydra_config_dir,
+            config_name=hydra_config_name,
+            overrides=[],
+        )
+
+        # mip_and_realize_models (distributed processing)
+        # TODO: How to make it part of mnt.search() api, similarly to run_full_compress() API
+        print(timestamped("Compress Progress 7/8: running MIP and realizing models"))
+        mip_and_realize_models.launch_mip_and_realize_model(hydra_cfg, runtime)
+
+        print(timestamped("Compress Progress 8/8: compression pipeline completed"))
 
 
 def main():
