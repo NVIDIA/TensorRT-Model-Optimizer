@@ -114,7 +114,7 @@ def run_full_compress(hydra_config_path: str):
             config={},  # this is not used as the search space is defined in the hydra config
         )
 
-        print(timestamped("Compress Progress 8/8: compression pipeline completed"))
+        print(timestamped("Compress Progress 8/8: compression pipeline completed (multi-gpu)"))
 
 
 def run_mip_only(hydra_config_path: str):
@@ -146,10 +146,10 @@ def run_mip_only(hydra_config_path: str):
 
         # mip_and_realize_models (distributed processing)
         # TODO: How to make it part of mnt.search() api, similarly to run_full_compress() API
-        print(timestamped("Compress Progress 7/8: running MIP and realizing models"))
+        print(timestamped("Compress Progress 7/8: running MIP and realizing models (multi-gpu)"))
         mip_and_realize_models.launch_mip_and_realize_model(hydra_cfg, runtime)
 
-        print(timestamped("Compress Progress 8/8: compression pipeline completed"))
+        print(timestamped("Compress Progress 8/8: compression pipeline completed (multi-gpu)"))
 
 
 def main():
