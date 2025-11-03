@@ -35,7 +35,7 @@ select = [
     "I",    # isort
     "ISC",  # flake8-implicit-str-concat
     "N",    # pep8 naming
-    "PERF",  # Perflint
+    "PERF", # Perflint
     "PGH",  # pygrep-hooks
     "PIE",  # flake8-pie
     "PLE",  # pylint errors
@@ -44,7 +44,7 @@ select = [
     "RUF",  # ruff
     "SIM",  # flake8-simplify
     "TC",   # flake8-type-checking
-    "UP",    # pyupgrade
+    "UP",   # pyupgrade
     "W",    # pycodestyle warnings
 ]
 extend-ignore = [
@@ -62,9 +62,9 @@ extend-ignore = [
 "__init__.py" = ["F401", "F403"]
 "examples/*" = ["D"]
 "tests/*" = ["B017", "D", "E402", "PT012"]
-"*/_[a-zA-Z]*" = ["D"]           # Private packages (_abc/*.py) or modules (_xyz.py)
-"*.ipynb" = ["D", "E501"]        # Ignore missing docstrings or line length for Jupyter notebooks
-"modelopt/torch/quantization/triton/*" = ["N803", "N806", "E731"]  # triton style
+"*/_[a-zA-Z]*" = ["D"] # Private packages (_abc/*.py) or modules (_xyz.py)
+"*.ipynb" = ["D", "E501"] # Ignore missing docstrings or line length for Jupyter notebooks
+"modelopt/torch/quantization/triton/*" = ["N803", "N806", "E731"] # triton style
 
 
 [tool.ruff.lint.pycodestyle]
@@ -154,7 +154,7 @@ exclude_lines = [
 
 
 [tool.bandit]
-exclude_dirs = ["examples/", "tests/"]
+exclude_dirs = [".github/", "examples/", "tests/"]
 # Do not change `skips`. It should be consistent with NVIDIA's Wheel-CI-CD bandit.yml config.
 # Use of `# nosec BXXX` requires special approval
 skips = [
