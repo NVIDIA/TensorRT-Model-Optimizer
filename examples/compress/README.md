@@ -1,8 +1,15 @@
 # Compress Algorithm Tutorial
 
 This tutorial demonstrates how to compress large language models using the compress algorithm based on the [Puzzle paper](https://arxiv.org/abs/2411.19146).
+The goal of the algorithm it to find the most optimal modifications to MLP and attention layers of the model, resulting in a heterogeneous model architecture.
+The supported modifications are: 
 
-In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) model by searching for the optimal `ffn_intermediate_size` across MLP layers and `attention op/noop`. This results in a heterogeneous architecture while reducing GPU memory usage from 113 GiB to 96 GiB (15% reduction) with less than 1% regression in the token_accuracy_top_10 metric.
+- `ffn_intermediate_size`: different FFN intermediate sizes
+- `attention op/noop`: complete removal of attention layers
+
+To use the Puzzle algorithm effectively, we need to specify the target number of parameters and/or the memory. The final stage is based on Mixed-Integer Programming (MIP) algorithm to find the most optimal combination of layer modifications that satisfy the target requirements.
+
+In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) model reducing GPU memory usage from 113 GiB to 96 GiB (15% reduction) with less than 1% regression in the token_accuracy_top_10 metric.
 
 ## Environment
 
@@ -13,7 +20,11 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
 
 1. Specify the `puzzle_dir`, `input_hf_model_path`, `dataset_path`, `intermediate_size_list`, and `target_memory` arguments in the [llama-3_1-8B_pruneffn_memory.yaml](./configs/llama-3_1-8B_pruneffn_memory/llama-3_1-8B_pruneffn_memory.yaml) configuration file.
 
-   Let's first shoot for 32% GPU memory reduction setting `target_memory = 78_000` GiB.
+   **_NOTE:_**
+   How to choose `intermediate_size_list`? 
+   The list specifies the candidate FFN sizes that we wish to search over. It is recommended to choose several pruning sizes (e.g. 15%, 20%, 30% etc of the original). Note that the values must be hardware-friendly (divisible by a multiple of 2) to avoid issues with tensor operations in subsequent steps. 
+
+   Let's first shoot for 32% GPU memory reduction setting `target_memory = 78_000` GiB. This means that the algorithm will choose the candidates with highest accuracy that also meet the specified requirements.
 
 2. Download and prepare the [Nemotron-Post-Training-Dataset-v2](https://huggingface.co/datasets/nvidia/Nemotron-Post-Training-Dataset-v2).
 
@@ -23,7 +34,7 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
    python -m modelopt.torch._compress.dataset.prepare_dataset --dataset_name nvidia/Nemotron-Post-Training-Dataset-v2 --output_dir path/to/Nemotron-Post-Training-Dataset-v2
    ```
 
-3. Run the compression script.
+3. Run the compression script. 
 
    ```bash
    torchrun --nproc_per_node 2 examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml 2>&1 | tee ./log.txt | grep "Compress Progress"
@@ -42,7 +53,7 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
    [2025-11-02 12:52:34] Compress Progress 8/8: compression pipeline completed (multi-gpu)
    ```
 
-   This will generate the following network architecture (see `log.txt`):
+   Once the process is complete, the resulting network architecture will be recorded in `log.txt` for your review:
 
    ```bash
    ...
@@ -96,12 +107,12 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
 
    30% GPU memory reduction leads to nearly 5% regression in token_accuracy_top_10 metric (0.898 / 0.942). Let's rerun MIP search aiming for 15% memory reduction.
 
-## Re-run MIP Search with different memory constraints
+## Re-run MIP Search with different constraints
 
-If you want to try different memory constraints without re-running the expensive pruning and scoring steps, use the `--mip-only` flag.
+If you want to try different constraints without re-running the expensive pruning and scoring steps, use the `--mip-only` flag.
 This assumes pruning, replacement library building, NAS scoring, and subblock stats calculation have already been completed.
 
-Set `target_memory: 96_000` in `llama-3_1-8B_pruneffn_memory.yaml`.
+For example, let's set `target_memory: 96_000` in `llama-3_1-8B_pruneffn_memory.yaml`.
 
 ```bash
 torchrun --nproc_per_node 2 examples/compress/main.py --config path/to/llama-3_1-8B_pruneffn_memory.yaml --mip-only 2>&1 | tee ./log.txt | grep "Compress Progress"
@@ -151,7 +162,7 @@ validate_model_with_kl_div(model_name='solution_0', is_calc_kl_div=True)
 Average losses = {'lm_loss': 1.2425934937782586, 'token_accuracy_top_1': 0.703862190246582, 'token_accuracy_top_5': 0.8954982757568359, 'token_accuracy_top_10': 0.9336576461791992
 ```
 
-On the other hand, if you set `target_memory: 28_000`, you would observe that for some layers the intermediate FFN size starts to reduce (see `log.txt`):
+On the other hand, if you set `target_memory: 28_000`, you'll observe that the intermediate FFN sizes are significantly reduced in certain layers (see `log.txt` for details):
 
 ```bash
 block_5:   attention  no_op   ffn  intermediate_11520
@@ -164,6 +175,18 @@ block_11:  attention  no_op   ffn  intermediate_11520
 block_12:  attention  no_op   ffn  intermediate_11520
 block_13:  attention  no_op   ffn  intermediate_11520
 block_14:  attention  no_op   ffn  intermediate_3072
+```
+
+## Evaluation
+
+Once the model is ready, you can evaluate it using [Language Model Evaluation Harness](https://pypi.org/project/lm-eval/). For example, run the following to evaluate the model on a subset of [MMLU](https://huggingface.co/datasets/cais/mmlu).
+
+```bash
+lm_eval --model hf \
+  --model_args pretrained=path/to/model,dtype=bfloat16,trust_remote_code=true,parallelize=True \
+  --tasks mmlu_humanities \
+  --num_fewshot 5 \
+  --batch_size 4
 ```
 
 ## Advanced usage
