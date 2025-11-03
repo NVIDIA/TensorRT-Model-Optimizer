@@ -453,8 +453,10 @@ class NodeClassifier:
         high_precision_nodes = []
         for node in self.model.graph.node:
             # If any condition is met - node will be executed in high precision
-            if node.name not in low_precision_nodes and any(rule.check(node) for rule in exclude_node_rules) and not any(
-                rule.check(node) for rule in include_node_rules
+            if (
+                node.name not in low_precision_nodes
+                and any(rule.check(node) for rule in exclude_node_rules)
+                and not any(rule.check(node) for rule in include_node_rules)
             ):
                 high_precision_nodes.append(node.name)
             else:
