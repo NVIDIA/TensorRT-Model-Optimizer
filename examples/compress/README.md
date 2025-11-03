@@ -4,6 +4,11 @@ This tutorial demonstrates how to compress large language models using the compr
 
 In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://huggingface.co/meta-llama/Llama-3.1-8B-Instruct) model by searching for the optimal `ffn_intermediate_size` across MLP layers and `attention op/noop`. This results in a heterogeneous architecture while reducing GPU memory usage from 113 GiB to 96 GiB (15% reduction) with less than 1% regression in the token_accuracy_top_10 metric.
 
+## Environment
+
+- [Dockerfile](./Dockerfile) to use.
+- 2x NVIDIA H100 80GB HBM3 (1 card will be good as well).
+
 ## Compress the Model
 
 1. Specify the `puzzle_dir`, `input_hf_model_path`, `dataset_path`, `intermediate_size_list`, and `target_memory` arguments in the [llama-3_1-8B_pruneffn_memory.yaml](./configs/llama-3_1-8B_pruneffn_memory/llama-3_1-8B_pruneffn_memory.yaml) configuration file.
@@ -27,7 +32,6 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
    This will save the full output to `log.txt` and display the following progress on screen:
 
    ```bash
-   # Produced on 2x NVIDIA H100 80GB HBM3
    [2025-11-02 12:06:34] Compress Progress 1/8: starting compression pipeline
    [2025-11-02 12:06:45] Compress Progress 2/8: converting model from HF to DeciLM (single-gpu)
    [2025-11-02 12:07:07] Compress Progress 3/8: scoring pruning activations (multi-gpu)
