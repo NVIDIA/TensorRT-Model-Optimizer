@@ -24,8 +24,9 @@ from fire import Fire
 from puzzle_tools.checkpoint_utils import copy_tokenizer
 from puzzle_tools.checkpoint_utils_hf import copy_deci_lm_hf_code
 from puzzle_tools.conversion_utils import convert_model_weights_to_decilm
-from puzzle_tools.deci_lm_hf_code.configuration_decilm import DeciLMConfig
 from transformers import LlamaConfig
+
+from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
 
 """
 example:
