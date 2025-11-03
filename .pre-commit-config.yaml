@@ -28,15 +28,13 @@ repos:
         exclude: >
           (?x)^(
               modelopt/torch/_compress/decilm/deci_lm_hf_code/block_config\.py|
-              modelopt/torch/_compress/decilm/deci_lm_hf_code/transformers_4_44_2__cache_utils\.py|
-              modelopt/torch/_compress/decilm/deci_lm_hf_code/transformers_4_51_3__cache_utils\.py
+              modelopt/torch/_compress/decilm/deci_lm_hf_code/transformers_.*\.py
           )$
       - id: ruff-format
         exclude: >
           (?x)^(
               modelopt/torch/_compress/decilm/deci_lm_hf_code/block_config\.py|
-              modelopt/torch/_compress/decilm/deci_lm_hf_code/transformers_4_44_2__cache_utils\.py|
-              modelopt/torch/_compress/decilm/deci_lm_hf_code/transformers_4_51_3__cache_utils\.py
+              modelopt/torch/_compress/decilm/deci_lm_hf_code/transformers_.*\.py
           )$
 
   - repo: https://github.com/pre-commit/mirrors-mypy
