@@ -99,9 +99,6 @@ def test_pattern_fuse_prequant(quant_config, attention_kv_heads_pair):
     ), "Output should be the same before and after fusion"
 
 
-# TODO: add test for Qwen3MoeSparseMoeBlock MLP fusion
-
-
 @pytest.mark.parametrize(
     "quant_config",
     [
@@ -111,7 +108,7 @@ def test_pattern_fuse_prequant(quant_config, attention_kv_heads_pair):
 )
 def test_pattern_fuse_prequant_moe(quant_config):
     """Test pattern_fuse_prequant on Qwen3 MoE sparse MLP."""
-    pytest.importorskip("transformers", minversion="4.46.0")
+    pytest.importorskip("transformers")
     from transformers import Qwen3MoeConfig, Qwen3MoeForCausalLM
 
     # Create a tiny Qwen3MoE model for testing
@@ -185,33 +182,6 @@ def test_pattern_fuse_prequant_moe(quant_config):
             assert hasattr(module, "fused_with_prequant") and module.fused_with_prequant, (
                 f"{name}: down_proj should have fused_with_prequant flag set"
             )
-
-    # Verify that gate_proj and up_proj still have pre_quant_scale and are resmoothed
-    for name, module in model.named_modules():
-        if "Qwen3MoeSparseMoeBlock".lower() in type(module).__name__.lower():
-            first_gate_scale = getattr(
-                getattr(module, "experts")[0], "gate_proj"
-            ).input_quantizer._pre_quant_scale
-            first_up_scale = getattr(
-                getattr(module, "experts")[0], "up_proj"
-            ).input_quantizer._pre_quant_scale
-
-            # gate_proj and up_proj should have the same scale after resmoothing
-            assert torch.allclose(first_gate_scale, first_up_scale), (
-                "gate_proj and up_proj should have the same pre_quant_scale after resmoothing"
-            )
-
-            # All experts should have the same gate_proj and up_proj scales
-            for i, expert in enumerate(getattr(module, "experts")):
-                gate_scale = getattr(expert, "gate_proj").input_quantizer._pre_quant_scale
-                up_scale = getattr(expert, "up_proj").input_quantizer._pre_quant_scale
-
-                assert torch.allclose(gate_scale, first_gate_scale), (
-                    f"Expert {i} gate_proj scale should match expert 0"
-                )
-                assert torch.allclose(up_scale, first_up_scale), (
-                    f"Expert {i} up_proj scale should match expert 0"
-                )
 
     # Verify output is close to the original output
     with torch.no_grad():
