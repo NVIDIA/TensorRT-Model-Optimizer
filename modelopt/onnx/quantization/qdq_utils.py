@@ -1332,7 +1332,6 @@ def replace_fp4qdq_with_2dq(
     w_f4: np.ndarray,
     sw_f32_per_tensor: np.ndarray,
     sw_f8_per_block: np.ndarray,
-    precision_dtype: str,
     block_size: int,
 ):
     """Replaces the given node in the ONNX graph with a subgraph consisting of two DequantizeLinear nodes.
@@ -1346,7 +1345,6 @@ def replace_fp4qdq_with_2dq(
         w_f4: NumPy array for w_f4.
         sw_f32_per_tensor: NumPy array for sw_f32_per_tensor.
         sw_f8_per_block: NumPy array for sw_f8_per_block.
-        precision_dtype: The precision of the weights.
         block_size: Block size used in block quantization.
     """
 
