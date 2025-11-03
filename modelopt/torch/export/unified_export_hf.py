@@ -60,6 +60,7 @@ from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
     fuse_prequant_layernorm,
+    fuse_prequant_to_linear,
     get_activation_scaling_factor,
     get_quant_config,
     get_quantization_format,
@@ -67,7 +68,6 @@ from .quant_utils import (
     get_weight_scaling_factor,
     get_weight_scaling_factor_2,
     maybe_transpose_expert_weight_dimensions,
-    pattern_fuse_prequant,
     postprocess_state_dict,
     preprocess_linear_fusion,
     to_quantized_weight,
@@ -107,6 +107,9 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
 
     fused_linears = {}
     module_names = set()
+
+    # Fuse pre_quant_scale to the linear weights if possible
+    fuse_prequant_to_linear(model)
 
     for name, module in model.named_modules():
         module_names.add(name)
@@ -199,8 +202,6 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
                 fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
-
-    pattern_fuse_prequant(model)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.

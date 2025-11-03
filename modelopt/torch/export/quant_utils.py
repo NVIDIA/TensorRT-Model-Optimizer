@@ -974,9 +974,8 @@ PQS_FUSE_MODULE_MAPPING = [
 ]
 
 
-# TODO: make this more general instead of rule based
-def pattern_fuse_prequant(model: torch.nn.Module, fuse_mismatch_dim=False):
-    """Fuse pre_quant_scale to the linear weights.
+def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
+    """Fuse pre_quant_scale to the linear weights if possible.
 
     For example, we can fuse the pre_quant_scale of o_proj to the output_dimension of v_proj, such that
     the results are mathematically equivalent to the following::
@@ -991,26 +990,13 @@ def pattern_fuse_prequant(model: torch.nn.Module, fuse_mismatch_dim=False):
 
     Args:
         model: The model to fuse pre_quant_scale to.
-        fuse_mismatch_dim: If True, fuse the pre_quant_scale even if dimension between pre_quant_scale
+        fuse_grouped_heads: If True, fuse the pre_quant_scale even if dimension between pre_quant_scale
         and linear weights is not the same. This is useful for GQA/MQA models but may lead to accuracy
         drop.
 
     Note:
-        This is an experimental feature, and it might mess up the quantization errors
-        of fused linear modules.
+        Fuse_grouped_heads is useful for GQA/MQA models but may lead to accuracy drop.
     """
-    # For MoE models, let's first resmooth the w1 and w3 in experts to get the average pre_quant_scale
-    for _, module in model.named_modules():
-        if (
-            hasattr(module, "experts")
-            and "Qwen3MoeSparseMoeBlock".lower() in type(module).__name__.lower()
-        ):
-            linear_list = []
-            linear_list.extend([getattr(expert, "up_proj") for expert in module.experts])
-            linear_list.extend([getattr(expert, "gate_proj") for expert in module.experts])
-            preprocess_linear_fusion(linear_list, resmooth_only=True)
-
-    # import pdb; pdb.set_trace()
     # Fuse pre_quant_scale to the linear weights
     for _, module in model.named_modules():
         for module_map in PQS_FUSE_MODULE_MAPPING:
@@ -1024,10 +1010,10 @@ def pattern_fuse_prequant(model: torch.nn.Module, fuse_mismatch_dim=False):
                 ):
                     pre_quant_scale = linear_pqs_from.input_quantizer._pre_quant_scale
 
-                    # for GQA/MQA models, we apply averaging to the pre_quant_scale for shared head groups
+                    # for GQA/MQA models, we can apply averaging to the pre_quant_scale for shared head groups
                     if pre_quant_scale.numel() != linear_fuse_into.weight.shape[-2]:
                         if (
-                            not fuse_mismatch_dim
+                            not fuse_grouped_heads
                             or "attention" not in type(module).__name__.lower()
                         ):
                             warn(
@@ -1077,7 +1063,7 @@ def pattern_fuse_prequant(model: torch.nn.Module, fuse_mismatch_dim=False):
                         # Use averaged scale (flattened) for v_proj fusion
                         pre_quant_scale = averaged_scale.reshape(-1)
 
-                    # Fuse the pre_quant_scale to v_proj weight
+                    # Fuse the pre_quant_scale to weight
                     linear_fuse_into.weight = torch.nn.Parameter(
                         linear_fuse_into.weight * pre_quant_scale.view(-1, 1)
                     )
