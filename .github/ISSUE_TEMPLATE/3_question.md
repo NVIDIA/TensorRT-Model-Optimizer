@@ -1,25 +1,18 @@
 ---
-name: Bug report
-about: Submit a bug report to help us improve ModelOpt
+name: Help needed
+about: Raise an issue here if you don't know how to use ModelOpt
 title: ''
-labels: bug
+labels: question
 assignees: ''
 ---
 
-**Before submitting an issue, please make sure it hasn't been already addressed by searching through the [existing and past issues](https://github.com/NVIDIA/TensorRT-Model-Optimizer/issues?q=is%3Aissue).**
+Make sure you already checked the [examples](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples) and [documentation](https://nvidia.github.io/TensorRT-Model-Optimizer/) before submitting an issue.
 
-## Describe the bug
-<!-- Description of what the bug is, its impact (blocker, should have, nice to have) and any stack traces or error messages. -->
+## How would you like to use ModelOpt
 
-- ?
-
-### Steps/Code to reproduce bug
-<!-- Please list *minimal* steps or code snippet for us to be able to reproduce the bug. -->
-<!-- A helpful guide on on how to craft a minimal bug report http://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports. -->
+<!-- Description of what you would like to do with ModelOpt. -->
 
 - ?
-
-### Expected behavior
 
 ### Who can help?
 
