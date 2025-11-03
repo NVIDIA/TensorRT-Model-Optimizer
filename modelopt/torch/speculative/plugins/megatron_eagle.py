@@ -1398,7 +1398,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
         draft_tokens = torch.cat(draft_tokens, dim=-1)
         if self.eagle_config.parallel_draft_step > 1:
-            parallel_logits = torch.cat(parallel_logits, dim=-1)
+            parallel_logits = torch.cat(parallel_logits, dim=0)
             parallel_tokens = (
                 (gather_from_tensor_model_parallel_region(parallel_logits))
                 .argmax(dim=-1)
