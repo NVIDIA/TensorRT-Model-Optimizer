@@ -20,16 +20,12 @@ from pathlib import Path
 
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.compress_test_utils import (
-    create_and_save_small_llama_model,
-    create_tokenizer,
-    save_dummy_dataset,
-    setup_puzzle_dir,
-)
-from puzzle_tools.hydra_utils import register_hydra_resolvers
-from scripts.convert_llama3_to_decilm import convert_llama3_to_decilm
+from experimental.torch._compress.compress_test_utils import setup_test_model_and_data
 
 from modelopt.torch._compress import compress
+from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
+    convert_llama3_to_decilm,
+)
 from modelopt.torch._compress.runtime import NativeDdpRuntime
 
 # The e2e test to compress a model based on Local Neural Architecture Search (Mixed Integer Programing NAS search)
@@ -64,42 +60,16 @@ def test_compress(project_root_path: Path, tmp_path: Path):
 
 
 def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, rank: int, size: int):
-    register_hydra_resolvers()
-
-    #
-    # The inputs for the compress() algorihm.
-    #
-    puzzle_dir = tmp_path
-    dataset_path = puzzle_dir / "dummy_dataset"
-    hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
-    hydra_config_name = "Llama-3_1-8B"
-
     with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     ) as runtime:
-        #
-        # Test setup
-        #
+        # Setup the test model and data.
+        puzzle_dir, llama_checkpoint_path, dataset_path, hydra_config_dir, hydra_config_name = (
+            setup_test_model_and_data(project_root_path, tmp_path, rank, runtime)
+        )
+
+        # Convert the Llama model to DeciLM model.
         if rank == 0:
-            # Setup puzzle_dir and dataset
-            setup_puzzle_dir(puzzle_dir)
-            save_dummy_dataset(dataset_path)
-
-            #
-            # Step 1: Create and save a teacher model to compress
-            # This mimics the normal pipeline where we start with a Llama model
-            #
-
-            # Create a small Llama model (not DeciLM) to match the normal conversion pipeline
-            tokenizer = create_tokenizer(project_root_path)
-            # TODO: change it to "ckpts/llama" once the conversion script is fixed
-            # Currently, the build replacement library step will fail with such a path.
-            llama_checkpoint_path = puzzle_dir / "ckpts/teacher"
-            create_and_save_small_llama_model(
-                llama_checkpoint_path, vocab_size=tokenizer.vocab_size, tokenizer=tokenizer
-            )
-
-            # Use the full conversion pipeline (matches normal usage)
             convert_llama3_to_decilm(
                 input_dir=llama_checkpoint_path,
                 output_dir=puzzle_dir / "ckpts/teacher",

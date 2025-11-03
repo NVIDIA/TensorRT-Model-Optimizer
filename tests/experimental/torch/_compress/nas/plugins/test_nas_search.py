@@ -13,8 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+#
+# See tests/experimental/torch/_compress/test_compress.py for instructions on how to run this test
+# TODO: Remove those instructions once this test runs automatically on CI
+#
 import datetime
-import os
 from functools import partial
 from pathlib import Path
 
@@ -27,19 +30,15 @@ from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressMod
 from modelopt.torch._compress.runtime import NativeDdpRuntime
 
 
-#
-# See tests/experimental/torch/_compress/test_compress.py for instructions on how to run this test
-# TODO: Remove those instructions once this test runs automatically on CI
-#
-def test_nas_convert(project_root_path: Path, tmp_path: Path):
+def test_nas_search(project_root_path: Path, tmp_path: Path):
     spawn_multiprocess_job(
         size=torch.cuda.device_count(),
-        job=partial(_test_nas_convert_multiprocess_job, project_root_path, tmp_path),
+        job=partial(_test_nas_search_multiprocess_job, project_root_path, tmp_path),
         backend="nccl",
     )
 
 
-def _test_nas_convert_multiprocess_job(
+def _test_nas_search_multiprocess_job(
     project_root_path: Path, tmp_path: Path, rank: int, size: int
 ):
     with NativeDdpRuntime(
@@ -54,7 +53,7 @@ def _test_nas_convert_multiprocess_job(
         # Run the mnt.convert() step
         #
         input_model = CompressModel()
-        mtn.convert(
+        converted_model = mtn.convert(
             input_model,
             mode=[
                 (
@@ -71,19 +70,41 @@ def _test_nas_convert_multiprocess_job(
         )
 
         #
-        # Check assertions
+        # Run the mnt.search() step
+        #
+        mtn.search(
+            converted_model,
+            constraints={},  # this is not used as the search space is defined in the hydra config
+            dummy_input=None,  # Not used
+            config={},  # this is not used as the search space is defined in the hydra config
+        )
+
+        #
+        # Check assertions for mtn.search() step
         #
         if rank == 0:
-            # assertions for the score_pruning_activations step
-            rank = int(os.environ["RANK"])
-            rank_filepath = (
-                f"pruning/pruning_scores/ffn_iterative/100samples_diverse_mini/rank_{rank}.pth"
-            )
-            assert (puzzle_dir / rank_filepath).is_file()
+            # assertions for the build_library_and_stats step
+            assert (puzzle_dir / "replacement_library.json").is_file()
+            assert (puzzle_dir / "subblock_stats.json").is_file()
 
-            # assertions for the pruning_ckpts step
-            assert (puzzle_dir / "ckpts/ffn_256_attn_no_op").exists()
+            # assertions for the scoring step
+            solution_0_filepath = (
+                puzzle_dir / "single_sequence_replacement_solutions--validation/solution_0.json"
+            )
+
+            assert solution_0_filepath.exists()
+
+            # assertions for the mip_and_realize_models step
+            solution_0_ckpt_config_path = (
+                puzzle_dir
+                / "mip/puzzle_solutions/target_memory_780000MiB/solutions--checkpoints/solution_0/config.json"
+            )
+
+            assert solution_0_ckpt_config_path.exists()
+            assert (
+                puzzle_dir / "mip/puzzle_solutions/target_memory_780000MiB/solutions.json"
+            ).exists()
 
         runtime.wait_for_everyone()
 
-    print("PYTEST SUMMARY: test_nas_convert() test has finished successfully")
+    print("PYTEST SUMMARY: test_nas_search() test has finished successfully")
