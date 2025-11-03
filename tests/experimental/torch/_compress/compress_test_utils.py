@@ -22,16 +22,33 @@ from datasets import Dataset, DatasetDict
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerBase
 
-import modelopt.torch.nas as mtn
-from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
-
 
 def setup_test_model_and_data(
     project_root_path: Path,
     tmp_path: Path,
     rank: int,
     runtime,
-):
+) -> tuple[
+    Path,
+    Path,
+    Path,
+    Path,
+    str,
+]:
+    """
+    Setup the test model and data for the compress NAS search.
+
+    Args:
+        project_root_path (Path): the root path of the project
+        tmp_path (Path): the temporary path to use for the test
+        rank (int): the rank of the process
+        runtime: the runtime to use for the test
+
+    Returns:
+        tuple[Path, Path, Path, Path, str]:
+        the puzzle_dir, llama_checkpoint_path, dataset_path, hydra_config_dir, hydra_config_name
+    """
+
     # Register Hydra custom resolvers (needed for config resolution)
     register_hydra_resolvers()
 
@@ -55,26 +72,13 @@ def setup_test_model_and_data(
         )
     runtime.wait_for_everyone()
 
-    # Run the mnt.convert() step
-    #
-    input_model = CompressModel()
-    converted_model = mtn.convert(
-        input_model,
-        mode=[
-            (
-                "compress",
-                {
-                    "puzzle_dir": str(puzzle_dir),
-                    "input_model_path": str(llama_checkpoint_path),
-                    "hydra_config_dir": str(hydra_config_dir),
-                    "hydra_config_name": hydra_config_name,
-                    "dataset_path": str(dataset_path),
-                },
-            )
-        ],
+    return (
+        puzzle_dir,
+        llama_checkpoint_path,
+        dataset_path,
+        hydra_config_dir,
+        hydra_config_name,
     )
-
-    return converted_model, puzzle_dir
 
 
 def create_and_save_small_llama_model(

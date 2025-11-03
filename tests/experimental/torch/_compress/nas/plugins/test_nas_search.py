@@ -26,6 +26,7 @@ from _test_utils.torch.distributed.utils import spawn_multiprocess_job
 from experimental.torch._compress.compress_test_utils import setup_test_model_and_data
 
 import modelopt.torch.nas as mtn
+from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
 from modelopt.torch._compress.runtime import NativeDdpRuntime
 
 
@@ -43,8 +44,29 @@ def _test_nas_search_multiprocess_job(
     with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     ) as runtime:
-        converted_model, puzzle_dir = setup_test_model_and_data(
-            project_root_path, tmp_path, rank, runtime
+        # Setup the test model and data.
+        puzzle_dir, llama_checkpoint_path, dataset_path, hydra_config_dir, hydra_config_name = (
+            setup_test_model_and_data(project_root_path, tmp_path, rank, runtime)
+        )
+
+        #
+        # Run the mnt.convert() step
+        #
+        input_model = CompressModel()
+        converted_model = mtn.convert(
+            input_model,
+            mode=[
+                (
+                    "compress",
+                    {
+                        "puzzle_dir": str(puzzle_dir),
+                        "input_model_path": str(llama_checkpoint_path),
+                        "hydra_config_dir": str(hydra_config_dir),
+                        "hydra_config_name": hydra_config_name,
+                        "dataset_path": str(dataset_path),
+                    },
+                )
+            ],
         )
 
         #
