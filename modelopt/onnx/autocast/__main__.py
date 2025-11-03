@@ -171,9 +171,8 @@ def get_parser() -> argparse.ArgumentParser:
             "A space-separated list indicating the precision for each custom op. "
             "Each item should have the format <op_type>:<precision> (all inputs and outputs have the same precision) "
             "or <op_type>:[<inp1_precision>,<inp2_precision>,...]:[<out1_precision>,<out2_precision>,...] "
-            "(inputs and outputs can have different precisions), where precision can be fp32 (default), "
-            "fp16, int8, or fp8. Note that int8/fp8 should be the same as the quantization mode. "
-            "For example: op_type_1:fp16 op_type_2:[int8,fp32]:[int8]."
+            "(inputs and outputs can have different precisions), where precision can be fp32 (default) or fp16."
+            "For example: op_type_1:fp16 op_type_2:[fp16,fp32]:[fp16]."
         ),
     )
 
