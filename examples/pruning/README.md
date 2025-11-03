@@ -6,7 +6,7 @@ Pruning can involve removal (prune) of Linear and Conv layers, and Transformer a
 
 This section focuses on applying Model Optimizer's state-of-the-art complementary pruning modes to enable you to search for the best subnet architecture from your provided base model:
 
-1. [Minitron](https://arxiv.org/pdf/2408.11796): A pruning method developed by NVIDIA Research for pruning GPT, Mamba and Hybrid Transformer Mamba models in NVIDIA NeMo or Megatron-LM framework. It uses the activation magnitudes to prune the embedding hidden size, mlp ffn hidden size, transformer attention heads, GQA query groups, mamba heads and head dimension, and number of layers of the model.
+1. [Minitron](https://arxiv.org/pdf/2408.11796): A pruning method developed by NVIDIA Research for pruning GPT, Mamba and Hybrid Transformer Mamba models in NVIDIA NeMo or Megatron-LM framework. It uses the activation magnitudes to prune the embedding hidden size, mlp ffn hidden size, transformer attention heads, GQA query groups, mamba heads and head dimension, MoE number of experts and shared expert intermediate size, and number of layers of the model.
 1. FastNAS: A pruning method recommended for Computer Vision models. Given a pretrained model, FastNAS finds the subnet which maximizes the score function while meeting the given constraints.
 1. GradNAS: A light-weight pruning method recommended for language models like Hugging Face BERT, GPT-J. It uses the gradient information to prune the model's linear layers and attention heads to meet the given constraints.
 
@@ -89,11 +89,11 @@ If your model parameters are already sorted, you can skip the sorting step by se
 
 | **Algorithm** | **Model** | **Pruning Constraints** |
 | :---: | :---: | :---: |
-| Minitron | Megatron-core / NeMo based GPT / Mamba / Hybrid Models<sup>1</sup> | Export config with width (`hidden_size`, `ffn_hidden_size`, `num_attention_heads`, `num_query_groups`, `mamba_num_heads`, `mamba_head_dim`) and/or depth (`num_layers`) values |
+| Minitron | Megatron-core / NeMo based GPT / Mamba / MoE / Hybrid Models<sup>1</sup> | Export config with width (`hidden_size`, `ffn_hidden_size`, `num_attention_heads`, `num_query_groups`, `mamba_num_heads`, `mamba_head_dim`, `num_moe_experts`, `moe_shared_expert_intermediate_size`) and/or depth (`num_layers`) values |
 | FastNAS | Computer Vision models | flops, parameters |
 | GradNAS | HuggingFace BERT, GPT-J | flops, parameters |
 
-> *<sup>1.</sup>Only Pipeline Parallel models are supported. Hugging Face models can be converted to NeMo format and used subsequently.*
+> *<sup>1.</sup>Only Pipeline Parallel models are supported. Hugging Face models can be converted to Megatron-LM/NeMo format and used subsequently.*
 
 ## Pruning Guidelines
 
@@ -122,7 +122,7 @@ Depth pruning reduces the number of layers (`num_layers`) in the model.
 
 #### Width Pruning
 
-Width pruning reduces model dimensions per layer such as `hidden_size`, `ffn_hidden_size`, `num_attention_heads`, `num_query_groups`, `mamba_num_heads`, and `mamba_head_dim`.
+Width pruning reduces model dimensions per layer such as `hidden_size`, `ffn_hidden_size`, `num_attention_heads`, `num_query_groups`, `mamba_num_heads`, `mamba_head_dim`, `num_moe_experts`, and `moe_shared_expert_intermediate_size`.
 
 **Advantages:**
 

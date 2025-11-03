@@ -363,7 +363,8 @@ can be converted into searchable units:
 
     # We convert Megatron-core / NeMo GPT or Mamba style models (e.g. Llama3.1, NeMo Mistral, NeMotron-H, etc.)
     # to automatically search over the MLP hidden size, number of attention heads, number of GQA groups,
-    # number of mamba heads, mamba head dimension, and depth of the model.
+    # number of mamba heads, mamba head dimension, MoE number of experts and shared expert intermediate size,
+    # and depth of the model.
     megatron.core.models.gpt.GPTModel
     megatron.core.models.mamba.MambaModel
     nemo.collections.llm.gpt.model.base.GPTModel
@@ -640,7 +641,7 @@ The difference between NAS and pruning is summarized below.
 [Advanced] Adding a new NAS/Prune Algorithm
 ===========================================
 
-* Please refer to this `template <https://github.com/NVIDIA/TensorRT-Model-Optimizer/compare/template/new-nas-mode>`_ 
+* Please refer to this `template <https://github.com/NVIDIA/TensorRT-Model-Optimizer/compare/template/new-nas-mode>`_
   for adding a new NAS algorithm.
 * Please refer to `mcore_minitron.py <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/main/modelopt/torch/prune/plugins/mcore_minitron.py>`_
   for an actual example of adding Minitron Pruning algorithm.

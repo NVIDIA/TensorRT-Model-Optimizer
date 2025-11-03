@@ -1,6 +1,13 @@
 Model Optimizer Changelog (Linux)
 =================================
 
+0.40 (2025-12-xx)
+^^^^^^^^^^^^^^^^^
+
+**New Features**
+
+- Add MoE pruning support for ``num_moe_experts`` and ``moe_shared_expert_intermediate_size`` in Minitron pruning (``mcore_minitron``).
+
 0.39 (2025-11-07)
 ^^^^^^^^^^^^^^^^^
 

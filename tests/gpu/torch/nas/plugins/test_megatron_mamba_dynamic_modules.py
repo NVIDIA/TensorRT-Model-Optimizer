@@ -20,7 +20,7 @@ from _test_utils.import_helper import skip_if_no_megatron
 skip_if_no_megatron(apex_or_te_required=True, mamba_required=True)
 
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from _test_utils.torch.megatron.models import get_mcore_mamba_model
+from _test_utils.torch.megatron.models import get_mcore_mamba_hybrid_model
 from _test_utils.torch.megatron.utils import (
     run_mcore_inference,
     run_mcore_inference_with_dummy_input,
@@ -67,7 +67,7 @@ def _test_mamba_search_space(rank, size):
     vocab_size = 32
     batch_size = 2
 
-    model = get_mcore_mamba_model(
+    model = get_mcore_mamba_hybrid_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=size,
         initialize_megatron=True,
@@ -79,7 +79,7 @@ def _test_mamba_search_space(rank, size):
         mamba_num_groups=mamba_num_groups,
         max_sequence_length=max_sequence_length,
         vocab_size=vocab_size,
-    )
+    ).cuda()
     mamba_num_heads = model.decoder.layers[0].mixer.nheads
 
     model = mtn.convert(model, "mcore_minitron")
@@ -142,7 +142,7 @@ def _test_mamba_parameter_sorting(rank, size):
     vocab_size = 64
     batch_size = 2
 
-    model = get_mcore_mamba_model(
+    model = get_mcore_mamba_hybrid_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=size,
         initialize_megatron=True,
@@ -155,7 +155,7 @@ def _test_mamba_parameter_sorting(rank, size):
         max_sequence_length=max_sequence_length,
         vocab_size=vocab_size,
         bf16=False,
-    )
+    ).cuda()
 
     # Randomize norm weights instead of all zeros or ones
     for n, m in model.named_modules():

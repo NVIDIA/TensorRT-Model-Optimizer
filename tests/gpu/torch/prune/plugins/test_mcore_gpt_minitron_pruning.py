@@ -85,7 +85,7 @@ def _test_mcore_gpt_pruning(
             normalization=normalization,
             num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
             num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
-        )
+        ).cuda()
         return model
 
     model = _get_model()
@@ -134,6 +134,7 @@ def _test_mcore_gpt_pruning(
 
     # Assert weights are pruned correctly
     for layer in model.decoder.layers:
+        print(rank, layer.mlp)
         assert layer.mlp.linear_fc1.weight.shape == (
             pruned_ffn * (2 if activation_func == "swiglu" else 1),
             pruned_hidden_size,
@@ -233,7 +234,7 @@ def test_mcore_gpt_pruning(
             num_layers_div,
             uneven_pp,
             skip_sorting,
-            tmp_path / "modelopt_minitron_scores.pth" if test_ckpt else None,
+            tmp_path / "minitron_scores.pth" if test_ckpt else None,
         ),
         backend="nccl",
     )

@@ -22,14 +22,14 @@ from _test_utils.import_helper import skip_if_no_megatron
 skip_if_no_megatron(apex_or_te_required=True, mamba_required=True)
 
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from _test_utils.torch.megatron.models import get_mcore_mamba_model
+from _test_utils.torch.megatron.models import get_mcore_mamba_hybrid_model
 from _test_utils.torch.megatron.utils import run_mcore_inference_with_dummy_input
 from megatron.core.ssm.mamba_layer import MambaLayer
 
 import modelopt.torch.prune as mtp
 
 
-def _test_mcore_mamba_pruning(ckpt_path, rank, size):
+def _test_mcore_mamba_hybrid_pruning(ckpt_path, rank, size):
     num_layers = min(size * 2, 8)
     hidden_size = 256
     ffn_hidden_size = 128
@@ -41,7 +41,7 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
     batch_size = 2
 
     def _get_model(initialize_megatron=True):
-        model = get_mcore_mamba_model(
+        model = get_mcore_mamba_hybrid_model(
             tensor_model_parallel_size=1,
             pipeline_model_parallel_size=size,
             initialize_megatron=initialize_megatron,
@@ -52,7 +52,7 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
             mamba_state_dim=mamba_state_dim,
             mamba_head_dim=mamba_head_dim,
             mamba_num_groups=mamba_num_groups,
-        )
+        ).cuda()
         return model
 
     model = _get_model()
@@ -130,9 +130,9 @@ def _test_mcore_mamba_pruning(ckpt_path, rank, size):
     )
 
 
-def test_mcore_mamba_pruning(tmp_path):
+def test_mcore_mamba_hybrid_pruning(tmp_path):
     spawn_multiprocess_job(
         size=torch.cuda.device_count(),
-        job=partial(_test_mcore_mamba_pruning, tmp_path / "modelopt_minitron_scores.pth"),
+        job=partial(_test_mcore_mamba_hybrid_pruning, tmp_path / "modelopt_minitron_scores.pth"),
         backend="nccl",
     )

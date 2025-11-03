@@ -82,7 +82,7 @@ def _test_gpt_search_space(
         vocab_size=vocab_size,
         activation_func=activation_func,
         normalization=normalization,
-    )
+    ).cuda()
 
     model = mtn.convert(model, "mcore_minitron")
 
@@ -171,7 +171,7 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
         vocab_size=vocab_size,
         activation_func=activation_func,
         bf16=False,
-    )
+    ).cuda()
 
     # Randomize layernorm weights instead of all zeros or ones
     for n, m in model.named_modules():
@@ -239,7 +239,7 @@ def test_megatron_self_attention_head_sorting(distributed_setup_size_1):
         num_query_groups=2,
         ffn_hidden_size=16,
         activation_func="squared_relu",
-    )
+    ).cuda()
 
     model = mtn.convert(model, "mcore_minitron")
 

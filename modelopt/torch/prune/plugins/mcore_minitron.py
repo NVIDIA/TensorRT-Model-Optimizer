@@ -60,17 +60,20 @@ from modelopt.torch.utils import print_rank_0
 from ..pruning import PruneModeRegistry
 
 SUPPORTED_HPARAMS = {
-    # Width pruning
+    # 1. Width pruning
+    "hidden_size",
+    # MLP
     "ffn_hidden_size",
+    # Attention
     "num_attention_heads",
     "num_query_groups",
-    "hidden_size",
+    # Mamba
     "mamba_num_heads",
     "mamba_head_dim",
-    # MoE pruning
+    # MoE
     "num_moe_experts",
     "moe_shared_expert_intermediate_size",
-    # Depth pruning
+    # 2. Depth pruning
     "num_layers",
 }
 
