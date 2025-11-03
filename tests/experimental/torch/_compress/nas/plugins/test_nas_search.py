@@ -23,7 +23,7 @@ from pathlib import Path
 
 import torch
 from _test_utils.torch.distributed.utils import spawn_multiprocess_job
-from experimental.torch._compress.nas.plugins.test_nas_convert import run_nas_convert
+from experimental.torch._compress.compress_test_utils import setup_test_model_and_data
 
 import modelopt.torch.nas as mtn
 from modelopt.torch._compress.runtime import NativeDdpRuntime
@@ -43,7 +43,9 @@ def _test_nas_search_multiprocess_job(
     with NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     ) as runtime:
-        converted_model, puzzle_dir = run_nas_convert(project_root_path, tmp_path, rank, runtime)
+        converted_model, puzzle_dir = setup_test_model_and_data(
+            project_root_path, tmp_path, rank, runtime
+        )
 
         #
         # Run the mnt.search() step

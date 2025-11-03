@@ -95,6 +95,9 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
 
     The output of this step will be used by mnt.search() to perform the NAS search.
     """
+
+    # NativeDdpRuntime must be initialized/closed from outside of this function, so we are
+    # NOT calling runtime.cleanup() here. TODO: Not optimal - redesign it.
     runtime = NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     )
@@ -188,6 +191,8 @@ class CompressSearcher(BaseSearcher):
         return {}
 
     def run_search(self) -> None:
+        # NativeDdpRuntime must be initialized/closed from outside of this function, so we are
+        # NOT calling runtime.cleanup() here. TODO: Not optimal - redesign it.
         runtime = NativeDdpRuntime(
             dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
         )
