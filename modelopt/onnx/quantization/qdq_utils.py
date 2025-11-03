@@ -1535,7 +1535,6 @@ def fp4qdq_to_2dq(onnx_model: onnx.ModelProto, verbose: bool = False) -> onnx.Mo
             w_f4,
             sw_f32_per_tensor,
             sw_f8_per_block,
-            precision_dtype,
             block_size,
         )
 
