@@ -96,6 +96,9 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
 
     The output of this step will be used by mnt.search() to perform the NAS search.
     """
+
+    # NativeDdpRuntime must be initialized/closed from outside of this function, so we are
+    # NOT calling runtime.cleanup() here. TODO: Not optimal - redesign it.
     runtime = NativeDdpRuntime(
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     )
@@ -199,6 +202,8 @@ class CompressSearcher(BaseSearcher):
         return {}
 
     def run_search(self) -> None:
+        # NativeDdpRuntime must be initialized/closed from outside of this function, so we are
+        # NOT calling runtime.cleanup() here. TODO: Not optimal - redesign it.
         runtime = NativeDdpRuntime(
             dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
         )
@@ -220,10 +225,12 @@ class CompressSearcher(BaseSearcher):
                     "Compress Progress 5/8: building replacement library and subblock statistics (single-gpu)"
                 )
             )
-            build_library_and_stats.launch_build_library_and_stats(hydra_cfg)
+
+        build_library_and_stats.launch_build_library_and_stats(hydra_cfg)
         runtime.wait_for_everyone()
 
         # Calc_one_block_scores (distributed processing)
+
         print(timestamped("Compress Progress 6/8: calculating one block scores (multi-gpu)"))
         scoring.launch_scoring(hydra_cfg, runtime)
 
