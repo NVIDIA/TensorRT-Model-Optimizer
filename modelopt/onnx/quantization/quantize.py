@@ -238,6 +238,7 @@ def quantize(
     calibrate_per_node: bool = False,
     input_shapes_profile: Sequence[dict[str, str]] | None = None,
     direct_io_types: bool = False,
+    disable_int32_weight_adjustment: bool = False,
     **kwargs: Any,
 ) -> None:
     """Quantizes the provided ONNX model.
@@ -357,6 +358,8 @@ def quantize(
         direct_io_types:
             If True, modify the I/O types in the quantized ONNX model to be lower precision whenever possible.
             If False, keep the I/O types in the quantized ONNX model the same as in the given ONNX model.
+        disable_int32_weight_adjustment:
+            If True, disable weight adjustment for INT32 bias in QDQ quantization.
         kwargs:
             Additional keyword arguments for int4 quantization, including:
             - awqlite_alpha_step (float): Alpha step for lite, range [0, 1].
@@ -497,6 +500,7 @@ def quantize(
             calibrate_per_node=calibrate_per_node,
             custom_ops_to_quantize=list(custom_ops_to_quantize.keys()),
             direct_io_types=direct_io_types,
+            disable_int32_weight_adjustment=disable_int32_weight_adjustment,
             **kwargs,
         )
     elif "int4" in quantize_mode:

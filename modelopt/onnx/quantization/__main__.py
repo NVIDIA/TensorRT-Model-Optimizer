@@ -255,6 +255,11 @@ def get_parser() -> argparse.ArgumentParser:
             "The currently supported precisions are {fp16, int8, fp8}."
         ),
     )
+    argparser.add_argument(
+        "--disable_int32_weight_adjustment",
+        action="store_true",
+        help="If set, disable weight adjustment for INT32 bias in QDQ quantization.",
+    )
     return argparser
 
 
@@ -298,6 +303,7 @@ def main():
         simplify=args.simplify,
         calibrate_per_node=args.calibrate_per_node,
         direct_io_types=args.direct_io_types,
+        disable_int32_weight_adjustment=args.disable_int32_weight_adjustment,
     )
 
 

@@ -1612,6 +1612,7 @@ def _quantize_static(
         ("TrtExtraPluginLibraryPaths", "trt_extra_plugin_lib_paths"),
         ("ExecutionProviders", "execution_providers"),
         ("group_qdq_tensors", "group_qdq_tensors"),
+        ("QDQDisableWeightAdjustForInt32Bias", "disable_int32_weight_adjustment"),
         # ==========================================================
     ]
     calib_extra_options = {

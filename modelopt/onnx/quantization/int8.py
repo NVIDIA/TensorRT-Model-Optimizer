@@ -131,6 +131,7 @@ def quantize(
     calibrate_per_node: bool = False,
     custom_ops_to_quantize: list[str] = [],
     direct_io_types: bool = False,
+    disable_int32_weight_adjustment: bool = False,
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies INT8 quantization to an ONNX file using the compiler friendly heuristics.
@@ -236,6 +237,11 @@ def quantize(
             if group_qdq_tensors:
                 trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
                 logger.debug(f"Found {len(group_qdq_tensors)} tensor groups for concat elimination")
+
+        # Add disable_int32_weight_adjustment flag to extra options
+        if disable_int32_weight_adjustment:
+            trt_guided_options["QDQDisableWeightAdjustForInt32Bias"] = True
+            logger.debug("Disabled weight adjustment for INT32 bias in QDQ quantization")
 
         # Create a temp file for intermediate model
         tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
