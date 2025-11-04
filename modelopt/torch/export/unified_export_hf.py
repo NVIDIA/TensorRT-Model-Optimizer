@@ -74,8 +74,6 @@ from .quant_utils import (
 
 __all__ = ["export_hf_checkpoint"]
 
-SPECULATIVE_DECODING_MODULE_NAMES = ["medusa_heads", "eagle_module", "drafter"]
-
 
 def _is_enabled_quantizer(quantizer):
     if hasattr(quantizer, "is_enabled") and quantizer.is_enabled:
@@ -376,7 +374,7 @@ def _export_hf_checkpoint(
     The packed checkpoint will be consumed by the TensorRT-LLM unified converter.
 
     Args:
-        model: the torch model.
+        model: the full torch model to export. The actual quantized model may be a submodule.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         accelerator: the accelerator instance in case of distributed export setup.
 
@@ -394,15 +392,8 @@ def _export_hf_checkpoint(
 
     accelerator = kwargs.get("accelerator")
 
-    # Create a model layer pool
-    # If `model.model` exists use that, otherwise use `model` itself, e.g., Nemotron-H
-    root = getattr(model, "model", model)
-    # If that has a `.layers`, use it, otherwise fall back to the object itself
-    root = getattr(root, "layers", root)
-    layer_pool = {f"model.layers.{name}": sub_module for name, sub_module in root.named_modules()}
-
     # Handle input quantizers of experts that are not calibrated
-    for name, sub_module in model.named_modules():
+    for _, sub_module in model.named_modules():
         if is_moe(sub_module) and hasattr(sub_module, "experts"):
             expert_linear_names = get_expert_linear_names(sub_module)
             for linear_name in expert_linear_names:
@@ -455,13 +446,6 @@ def _export_hf_checkpoint(
                         f"Please file an issue or add support for this model architecture."
                     )
 
-    # NOTE: Speculative decoding models have extra modules that may be quantized
-    # Need to add these modules to the layer_pool
-    for key in SPECULATIVE_DECODING_MODULE_NAMES:
-        if hasattr(model, key):
-            for name, sub_module in getattr(model, key).named_modules():
-                layer_pool.update({f"{key}.{name}": sub_module})
-
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
     requantize_resmooth_fused_llm_layers(model)
@@ -474,7 +458,7 @@ def _export_hf_checkpoint(
     except ImportError:
         warnings.warn("accelerate is not installed, hooks will not be removed")
 
-    quant_config = get_quant_config(layer_pool)
+    quant_config = get_quant_config(model)
 
     kv_cache_max_bound = 0
     kv_cache_format = quant_config["quantization"]["kv_cache_quant_algo"]
@@ -493,7 +477,7 @@ def _export_hf_checkpoint(
     has_quantized_layers = False
     fsdp_module_to_reshard = None
 
-    for name, sub_module in layer_pool.items():
+    for _, sub_module in model.named_modules():
         # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
         if isinstance(sub_module, FSDPModule):
             # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
@@ -555,7 +539,7 @@ def export_hf_checkpoint(
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
     Args:
-        model: the torch model.
+        model: the full torch model to export. The actual quantized model may be a submodule.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
