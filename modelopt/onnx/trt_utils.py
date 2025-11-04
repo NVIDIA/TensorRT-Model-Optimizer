@@ -335,7 +335,13 @@ def load_onnx_model(
             intermediate_generated_files.append(ir_version_onnx_path)
 
     # Check that the model is valid
-    onnx.checker.check_model(onnx_model)
+    if use_external_data_format:
+        # For large models, use the file path to avoid protobuf size limitation
+        model_path_to_check = ir_version_onnx_path or static_shaped_onnx_path or onnx_path
+        onnx.checker.check_model(model_path_to_check)
+    else:
+        # For smaller models, checking the model object is fine
+        onnx.checker.check_model(onnx_model)
 
     return (
         onnx_model,
