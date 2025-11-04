@@ -26,8 +26,8 @@ from torch import nn
 from transformers import AutoTokenizer
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME
 
-from modelopt.torch._compress.common import infer_weights_dtype
-from modelopt.torch._compress.decilm.checkpoint_utils_hf import load_model_config
+from modelopt.torch._compress.tools.checkpoint_utils_hf import load_model_config
+from modelopt.torch._compress.tools.common import infer_weights_dtype
 
 SAFETENSORS_SUBBLOCKS_DIR_NAME = "subblocks_safetensors"
 PTH_SUBBLOCKS_DIR_NAME = "subblocks"

@@ -31,8 +31,8 @@ from torch import nn
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
 )
-from modelopt.torch._compress.hydra import initialize_hydra_config_for_dir
-from modelopt.torch._compress.runtime import NativeDdpRuntime
+from modelopt.torch._compress.tools.hydra import initialize_hydra_config_for_dir
+from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 from modelopt.torch.nas.conversion import NASModeRegistry
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 from modelopt.torch.opt.mode import (

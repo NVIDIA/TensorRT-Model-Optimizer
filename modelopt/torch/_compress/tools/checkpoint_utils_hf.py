@@ -68,7 +68,9 @@ def load_checkpoint(
     Unlike AutoModelForCausalLM.from_pretrained, the models loaded by this function use your
     local repo code, not the code inside the checkpoint.
     """
-    from puzzle_tools.checkpoint_utils import load_state_dict  # prevent circular import
+    from modelopt.torch._compress.tools.checkpoint_utils import (
+        load_state_dict,  # prevent circular import
+    )
 
     if not isinstance(checkpoint_dir, Path):
         checkpoint_dir = Path(checkpoint_dir)
@@ -185,7 +187,9 @@ def _save_checkpoint(
 
 
 def split_checkpoint_to_subblocks(checkpoint_dir: Path | str) -> None:
-    from puzzle_tools.checkpoint_utils import load_state_dict  # prevent circular import
+    from modelopt.torch._compress.tools.checkpoint_utils import (
+        load_state_dict,  # prevent circular import
+    )
 
     if not isinstance(checkpoint_dir, Path):
         checkpoint_dir = Path(checkpoint_dir)

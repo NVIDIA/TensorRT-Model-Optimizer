@@ -24,7 +24,7 @@ from experimental.torch._compress.compress_test_utils import setup_test_model_an
 
 import modelopt.torch.nas as mtn
 from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
-from modelopt.torch._compress.runtime import NativeDdpRuntime
+from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 
 
 #
