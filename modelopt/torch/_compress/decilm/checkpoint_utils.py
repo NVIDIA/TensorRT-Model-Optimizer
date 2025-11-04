@@ -21,12 +21,12 @@ from pathlib import Path
 from typing import Literal, TypeVar
 
 import torch
-from puzzle_tools.common import infer_weights_dtype
 from safetensors.torch import load_file as safe_load_file
 from torch import nn
 from transformers import AutoTokenizer
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_NAME
 
+from modelopt.torch._compress.common import infer_weights_dtype
 from modelopt.torch._compress.decilm.checkpoint_utils_hf import load_model_config
 
 SAFETENSORS_SUBBLOCKS_DIR_NAME = "subblocks_safetensors"
