@@ -202,7 +202,6 @@ class _QuantFusedMoEBase(QuantModule):
             vllm_fused_moe_package.invoke_fused_moe_kernel = (  # type: ignore[attr-defined]
                 vllm_fused_moe_package._invoke_fused_moe_kernel
             )
-        # self.invoke_fused_moe_quantized = self._invoke_fused_moe_quantized
 
     @torch.no_grad()
     def fold_weight(self):
