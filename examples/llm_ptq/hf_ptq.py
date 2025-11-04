@@ -498,7 +498,7 @@ def main(args):
                     parent_model.language_model = model
 
             if args.verbose:
-                mtq.print_quant_summary(model)
+                mtq.print_quant_summary(full_model)
 
             # Run some samples
             torch.cuda.empty_cache()
