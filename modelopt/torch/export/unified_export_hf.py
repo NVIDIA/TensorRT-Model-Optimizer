@@ -155,11 +155,12 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                 model(fake_input, decoder_input_ids=decoder_fake_input)
             elif is_vl_model and "nemotron" in model_type:
                 # For Nemotron VL models, try to run optimization on just the language model part
-                language_model, _ = get_language_model_from_vl(model)
+                language_model_lineage = get_language_model_from_vl(model)
 
-                if language_model is not None:
+                if language_model_lineage is not None:
                     # Run optimization on just the language model with the same input format as regular LLMs
                     # Use the same fake_input tensor that regular LLMs use
+                    language_model = language_model_lineage[-1]
                     print(
                         f"Running optimization on language model with fake_input shape: {fake_input.shape}"
                     )
@@ -474,7 +475,6 @@ def _export_hf_checkpoint(
         kv_cache_max_bound = cache_bound_mapping.get(kv_cache_format)
 
     # Track if any layers are quantized to properly set exclude_modules
-    has_quantized_layers = False
     fsdp_module_to_reshard = None
 
     for _, sub_module in model.named_modules():
@@ -489,7 +489,6 @@ def _export_hf_checkpoint(
             fsdp_module_to_reshard = sub_module
 
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
-            has_quantized_layers = True
             if is_quantlinear(sub_module):
                 with fsdp2_aware_weight_update(model, sub_module, reshard=False):
                     _export_quantized_weight(sub_module, dtype)
@@ -522,10 +521,6 @@ def _export_hf_checkpoint(
     quantized_state_dict = postprocess_state_dict(
         quantized_state_dict, kv_cache_max_bound, kv_cache_format
     )
-
-    # Check if any layers are quantized
-    if has_quantized_layers:
-        quant_config["quantization"].setdefault("exclude_modules", []).append("lm_head")
 
     return quantized_state_dict, quant_config
 
