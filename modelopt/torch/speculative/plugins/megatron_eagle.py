@@ -1338,6 +1338,8 @@ class _DynamicEagleGPTModel(EagleModel):
             padded_eagle_ids, seq_len, padded_hidden_states = right_padding(
                 eagle_ids, hidden_states
             )
+            if self.config.sequence_parallel:
+                padded_hidden_states = scatter_to_sequence_parallel_region(padded_hidden_states)
             eagle_attention_mask, eagle_position_ids = get_default_attention_mask_and_position_ids(
                 padded_eagle_ids
             )
