@@ -37,6 +37,7 @@ from modelopt.torch.quantization.utils import (
     quantizer_attr_names,
     weight_attr_names,
 )
+from modelopt.torch.utils import clear_cuda_cache
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .model_config import (
