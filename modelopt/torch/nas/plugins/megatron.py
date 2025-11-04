@@ -689,7 +689,8 @@ class _DynamicSequentialMLP(DynamicModule):
             self.local_experts[i] = DMRegistry.convert(self.local_experts[i])
         
         # Register importance estimator for expert pruning based on L2 norms
-        self._register_temp_attribute("_expert_l2_scores", torch.zeros(self.num_local_experts))
+        # self._register_temp_attribute("_expert_l2_scores", torch.zeros(self.num_local_experts))
+        self._register_temp_attribute("_expert_l2_scores", [[] for _ in range(128)])
         self._register_temp_attribute("_expert_sample_counts", torch.zeros(self.num_local_experts))
         self.hook_handle = self.register_forward_hook(self._track_expert_l2_importance)
         self.get_hparam("num_moe_experts").register_importance(self._estimate_expert_importance)
@@ -742,17 +743,20 @@ class _DynamicSequentialMLP(DynamicModule):
                 l2_norm = 0.0
             else:
                 # Compute L2 norm of expert output (router_prob * expert_output)
-                l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1).sum().item()
+                l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1).mean().item()
             
             # Accumulate L2 scores and sample counts
-            self._expert_l2_scores[expert_idx] += l2_norm
-            self._expert_sample_counts[expert_idx] += tokens_per_expert_list[expert_idx]
+            # self._expert_l2_scores[expert_idx] += l2_norm
+
+            self._expert_l2_scores[expert_idx].append(l2_norm)
+            # self._expert_sample_counts[expert_idx] += 1 #tokens_per_expert_list[expert_idx]
 
 
     def _estimate_expert_importance(self) -> TracedHp.Importance:
         """Estimate expert importance based on accumulated L2 norms."""
         # Average L2 scores across samples (avoid division by zero)
-        avg_l2_scores = self._expert_l2_scores / (self._expert_sample_counts + 1e-8)
+        # avg_l2_scores = self._expert_l2_scores #/ (self._expert_sample_counts + 1e-8)
+        avg_l2_scores = torch.linalg.vector_norm(torch.tensor(self._expert_l2_scores), ord=2, dim=-1)
         # Normalize to get importance scores
         return avg_l2_scores
 
