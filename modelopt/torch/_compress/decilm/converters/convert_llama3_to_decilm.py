@@ -21,11 +21,11 @@ from pathlib import Path
 
 import torch
 from fire import Fire
-from puzzle_tools.checkpoint_utils import copy_tokenizer
-from puzzle_tools.checkpoint_utils_hf import copy_deci_lm_hf_code
-from puzzle_tools.conversion_utils import convert_model_weights_to_decilm
 from transformers import LlamaConfig
 
+from modelopt.torch._compress.decilm.checkpoint_utils import copy_tokenizer
+from modelopt.torch._compress.decilm.checkpoint_utils_hf import copy_deci_lm_hf_code
+from modelopt.torch._compress.decilm.conversion_utils import convert_model_weights_to_decilm
 from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
 
 """
