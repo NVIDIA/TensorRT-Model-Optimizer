@@ -136,15 +136,19 @@ def _fakequant_run_prolog_worker(self) -> None:
 
     quant_cfg = getattr(mtq, quant_config["quant_format"])
 
-    with disable_compilation(self.model_runner.model):
+    model = self.model_runner.model
+    if hasattr(model, "unwrap"):
+        model = model.unwrap()
+
+    with disable_compilation(model):
         print("quantizing model...")
-        mtq.quantize(self.model_runner.model, quant_cfg, forward_loop=calibrate_loop)
+        mtq.quantize(model, quant_cfg, forward_loop=calibrate_loop)
 
     amax_file_path = quant_config["amax_file_path"]
     if amax_file_path:
         print(f"Loading amax values from {amax_file_path}")
-        saved_amax_dict = torch.load(amax_file_path, map_location=self.model_runner.device)
-        current_state_dict = self.model_runner.model.state_dict()
+        saved_amax_dict = torch.load(amax_file_path)
+        current_state_dict = model.state_dict()
 
         # Count amax keys in checkpoint and model
         checkpoint_amax_keys = [key for key in saved_amax_dict if key.endswith("_amax")]
@@ -173,13 +177,13 @@ def _fakequant_run_prolog_worker(self) -> None:
             if key in current_state_dict:
                 current_state_dict[key] = value.to(current_state_dict[key].device)
 
-        self.model_runner.model.load_state_dict(current_state_dict)
+        model.load_state_dict(current_state_dict)
         torch.distributed.barrier()
 
     if amax_file_path is None:
         # Sync amax across TP can be done here if needed
         pass
-        # for name, buffer in self.model_runner.model.named_buffers():
+        # for name, buffer in model.named_buffers():
         #     if name.endswith("_amax"):
         #         print("syncing amax across TP for", name)
         #         torch.distributed.all_reduce(
@@ -188,10 +192,10 @@ def _fakequant_run_prolog_worker(self) -> None:
         # torch.distributed.barrier()
 
     if not torch.distributed.is_initialized() or torch.distributed.get_rank() == 0:
-        mtq.print_quant_summary(self.model_runner.model)
+        mtq.print_quant_summary(model)
 
-    mtq.fold_weight(self.model_runner.model)
-    for name, module in self.model_runner.model.named_modules():
+    mtq.fold_weight(model)
+    for name, module in model.named_modules():
         if name.endswith("weight_quantizer"):
             assert not module.is_enabled, f"quantizer {name} is still enabled"
 
@@ -199,7 +203,10 @@ def _fakequant_run_prolog_worker(self) -> None:
 class FakeQuantWorker(BaseWorker):
     @torch.inference_mode()
     def determine_available_memory(self) -> int:
-        with disable_compilation(self.model_runner.model):
+        model = self.model_runner.model
+        if hasattr(model, "unwrap"):
+            model = model.unwrap()
+        with disable_compilation(model):
             return super().determine_available_memory()
 
     def compile_or_warm_up_model(self) -> None:
