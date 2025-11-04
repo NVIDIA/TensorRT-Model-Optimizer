@@ -109,7 +109,8 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     module_names = set()
 
     # Fuse pre_quant_scale to the linear weights if possible
-    fuse_prequant_to_linear(model)
+    if "NVFP4_AWQ" in quantization_format:
+        fuse_prequant_to_linear(model)
 
     for name, module in model.named_modules():
         module_names.add(name)
