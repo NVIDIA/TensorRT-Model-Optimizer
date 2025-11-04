@@ -16,7 +16,17 @@ docker build -f examples/vllm_serve/Dockerfile -t vllm-modelopt .
 
 ## Calibrate and serve fake quant model in vLLM
 
-Step 1: Modify `quant_config` in `vllm_serve_fake_quant.py` for the desired quantization format
+Step 1: Configure quantization settings.  
+You can either edit the `quant_config` dictionary in `vllm_serve_fakequant.py`, or set the following environment variables to control quantization behavior:
+
+| Variable        | Description                                      | Default             |
+|-----------------|--------------------------------------------------|---------------------|
+| QUANT_DATASET   | Dataset name for calibration                     | cnn_dailymail       |
+| QUANT_NUM_SAMPLES| Number of samples used for calibration           | 512                 |
+| QUANT_FORMAT    | Quantization format                              | NVFP4_DEFAULT_CFG   |
+| AMAX_FILE_PATH  | Optional path to amax file (for loading amax)    | None                |
+
+Set these variables in your shell or Docker environment as needed to customize calibration.
 
 Step 2: Run the following command, with all supported flag as `vllm serve`:
 
