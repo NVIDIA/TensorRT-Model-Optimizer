@@ -32,7 +32,7 @@ Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#getting-started) fo
 
 ### Current out of the box configs
 
-Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#current-out-of-the-box-configs) for details on the current out of the box configs.
+Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#support-matrix) for details on the current out of the box configs.
 
 ### Supported Models
 
