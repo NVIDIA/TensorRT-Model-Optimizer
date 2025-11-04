@@ -55,9 +55,23 @@ import sys
 from pathlib import Path
 
 import uvloop
+import vllm
+from packaging import version
 from vllm.entrypoints.openai.api_server import run_server
 from vllm.entrypoints.openai.cli_args import make_arg_parser
-from vllm.utils import FlexibleArgumentParser
+from vllm.executor.ray_distributed_executor import RayDistributedExecutor
+
+vllm_version = version.parse(vllm.__version__)
+if vllm_version <= version.parse("0.11.0"):
+    from vllm.utils import FlexibleArgumentParser
+else:
+    from vllm.utils.argument_parser import FlexibleArgumentParser
+
+
+# Adding the envs you want to pass to the workers
+additional_env_vars = {"QUANT_DATASET", "QUANT_NUM_SAMPLES", "QUANT_FORMAT", "AMAX_FILE_PATH"}
+
+RayDistributedExecutor.ADDITIONAL_ENV_VARS.update(additional_env_vars)
 
 
 def main():
@@ -66,13 +80,13 @@ def main():
     parser.add_argument("model", type=str, help="The path or name of the model to serve")
     parser = make_arg_parser(parser)
     # Ensure workers can import our custom worker module when using spawn
-    repo_root = str(Path(__file__).resolve().parents[2])
+    repo_root = str(Path(__file__).resolve().parent)
     if repo_root not in sys.path:
         sys.path.insert(0, repo_root)
     os.environ["PYTHONPATH"] = os.environ.get("PYTHONPATH", "") + ":" + f"{repo_root}"
 
     # Default to our FakeQuantWorker if user doesn't specify a worker class
-    parser.set_defaults(worker_cls="examples.vllm_serve.fakequant_worker.FakeQuantWorker")
+    parser.set_defaults(worker_cls="fakequant_worker.FakeQuantWorker")
 
     # Parse arguments
     args = parser.parse_args()
