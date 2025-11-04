@@ -6,7 +6,7 @@ Model Optimizer Changelog (Linux)
 
 **New Features**
 
-- Add MoE pruning support for ``num_moe_experts`` and ``moe_shared_expert_intermediate_size`` in Minitron pruning (``mcore_minitron``).
+- Add MoE (e.g. Qwen3-30B-A3B) pruning support for ``num_moe_experts`` and ``moe_shared_expert_intermediate_size`` parameters in Minitron pruning (``mcore_minitron``).
 
 0.39 (2025-11-07)
 ^^^^^^^^^^^^^^^^^

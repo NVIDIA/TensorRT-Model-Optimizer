@@ -142,10 +142,12 @@ def get_mcore_gpt_model(
     normalization: str = "LayerNorm",
     transformer_impl: str = "modelopt" if HAS_TE else "local",
     use_cpu_initialization: bool = False,
-    num_moe_experts: int | None = None,
-    moe_grouped_gemm: bool = False,
     bf16: bool = True,
     use_te: bool = False,
+    # MoE-specific parameters
+    moe_grouped_gemm: bool = False,
+    moe_shared_expert_intermediate_size: int | None = None,
+    num_moe_experts: int | None = None,
 ) -> GPTModel:
     assert activation_func in ["swiglu", "squared_relu"]
     assert normalization in ["LayerNorm", "RMSNorm"]
@@ -169,7 +171,6 @@ def get_mcore_gpt_model(
         expert_model_parallel_size=expert_model_parallel_size,
         expert_tensor_parallel_size=expert_tensor_parallel_size,
         sequence_parallel=False,
-        moe_grouped_gemm=moe_grouped_gemm,
         num_layers=num_layers,
         num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
         num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
@@ -177,7 +178,6 @@ def get_mcore_gpt_model(
         num_attention_heads=num_attention_heads,
         num_query_groups=num_query_groups,
         ffn_hidden_size=ffn_hidden_size,
-        num_moe_experts=num_moe_experts,
         activation_func=squared_relu if activation_func == "squared_relu" else F.silu,
         normalization=normalization,
         gated_linear_unit=(activation_func == "swiglu"),
@@ -185,6 +185,11 @@ def get_mcore_gpt_model(
         use_cpu_initialization=use_cpu_initialization,
         pipeline_dtype=torch.bfloat16 if bf16 else torch.float32,
         bf16=bf16,
+        # MoE-specific parameters
+        moe_grouped_gemm=moe_grouped_gemm,
+        moe_router_dtype="fp32",
+        moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+        num_moe_experts=num_moe_experts,
     )
 
     if transformer_impl == "local":

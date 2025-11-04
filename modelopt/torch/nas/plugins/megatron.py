@@ -263,7 +263,7 @@ class _DynamicMLP(DynamicModule):
         self.linear_fc1.input_size = hidden_size
         self.linear_fc2.output_size = hidden_size
 
-    def modify(self, ffn_hidden_size_divisor: int) -> None:
+    def modify(self, ffn_hidden_size_divisor: int, **kwargs) -> None:
         """Modify the ffn_hidden_size hparam choices based on search space config."""
         hp_mlp = self.get_hparam(self.hparam_name)
         choices = {int(make_divisible(c, ffn_hidden_size_divisor)) for c in hp_mlp.choices}  # type: ignore[arg-type]
@@ -937,7 +937,7 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
                 hp.choices = list(set(hp.choices) & choices | {hp.original})
 
         # Modify MLP hparam (regular or MoE)
-        elif isinstance(self.mlp, (MLP, MoELayer)):
+        if isinstance(self.mlp, (MLP, MoELayer)):
             self.mlp.modify(
                 ffn_hidden_size_divisor=ffn_hidden_size_divisor,
                 num_moe_experts_divisor=num_moe_experts_divisor,

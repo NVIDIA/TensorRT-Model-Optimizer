@@ -20,7 +20,7 @@
 | Model | Quantization | EAGLE3 | Q-LoRA | Pruning (PP only) | Distillation |
 | :---: | :---: | :---: | :---: | :---: | :---: |
 | `moonshotai/Kimi-K2-Instruct` | ✅ | **Online** | | | |
-| `Qwen/Qwen3-{30B-A3B, 235B-A22B}` | **WAR** | **Online** | | | |
+| `Qwen/Qwen3-{30B-A3B, 235B-A22B}` | **WAR** | **Online** | | ✅ | ✅ |
 | `Qwen/Qwen3-{0.6B, 8B}` | ✅ | **Online** | | ✅ | ✅ |
 | `deepseek-ai/DeepSeek-R1` | ✅ | **Online** | | | |
 | `meta-llama/Llama-{3.1-8B, 3.1-405B, 3.2-1B}-Instruct` | ✅ | **Online** | | ✅ | ✅ |
@@ -112,7 +112,7 @@ Coming soon ...
 
 Checkout pruning [getting started section](../pruning/README.md#getting-started) and [guidelines](../pruning/README.md#pruning-guidelines) for configuring pruning parameters in the pruning README.
 
-Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Available pruning options are:
+Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Available pruning dimensions are:
 
 - `TARGET_FFN_HIDDEN_SIZE`
 - `TARGET_HIDDEN_SIZE`
@@ -120,6 +120,8 @@ Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Availab
 - `TARGET_NUM_QUERY_GROUPS`
 - `TARGET_MAMBA_NUM_HEADS`
 - `TARGET_MAMBA_HEAD_DIM`
+- `TARGET_NUM_MOE_EXPERTS`
+- `TARGET_MOE_SHARED_EXPERT_INTERMEDIATE_SIZE`
 - `TARGET_NUM_LAYERS`
 - `LAYERS_TO_DROP` (comma separated, 1-indexed list of layer numbers to directly drop)
 
