@@ -23,6 +23,7 @@ import megatron.core.parallel_state as mcore_parallel
 import megatron.core.tensor_parallel.layers as megatron_parallel
 import megatron.core.transformer.mlp as megatron_mlp
 import megatron.core.transformer.moe.experts as megatron_moe
+import megatron.core.transformer.moe.moe_layer as megatron_moe_layer
 import torch
 from megatron.core.parallel_state import get_data_parallel_group
 from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
@@ -36,7 +37,7 @@ from modelopt.torch.opt.plugins.megatron import (
 )
 from modelopt.torch.utils.distributed import ParallelState
 
-from ..nn import QuantModuleRegistry, TensorQuantizer
+from ..nn import QuantModule, QuantModuleRegistry, TensorQuantizer
 from ..nn.modules.quant_linear import RealQuantLinear
 from ..qtensor import QTensorWrapper
 from .custom import CUSTOM_MODEL_PLUGINS, _ParallelLinear
@@ -247,6 +248,14 @@ class _MegatronParallelLinear(_ParallelLinear):
                 data_parallel_group,
                 mcore_parallel.get_tensor_model_parallel_group(),
             )
+
+        if getattr(self, "gradient_accumulation_fusion", False):
+            warnings.warn(
+                "gradient_accumulation_fusion is not supported with ModelOpt quantization. "
+                "Setting gradient_accumulation_fusion to False."
+            )
+            self.gradient_accumulation_fusion = False
+
         super()._setup()
 
     def _process_quantizer_amax(self, k, v, quantizer_state_dict):
@@ -580,3 +589,26 @@ if HAS_TE:
             # initialize parallel state for submodules linear_fc1 and linear_fc2
             self.linear_fc1.parallel_state = self.parallel_state
             self.linear_fc2.parallel_state = self.parallel_state
+
+
+@QuantModuleRegistry.register({megatron_moe_layer.MoELayer: "megatron_moe_MoELayer"})
+class _QuantMoELayer(QuantModule):
+    """Module to support special handling of token dispatching during calibration.
+
+    During calibration, we forward all tokens to all experts so that all experts see sufficient tokens to calibrate.
+    However, even in calibration mode, the actual top_k routing is used to calculate the actual outputs this instance
+    returns.
+
+    If calibration is not enabled, this module behaves as a normal MoELayer.
+    """
+
+    def _setup(self):
+        pass
+
+    def forward(self, hidden_states):
+        if any(getattr(m, "_if_calib", False) for m in self.experts.modules()):
+            original_top_k = self.router.topk
+            self.router.topk = self.router.num_experts
+            super().forward(hidden_states)
+            self.router.topk = original_top_k
+        return super().forward(hidden_states)

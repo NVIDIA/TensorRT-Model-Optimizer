@@ -345,7 +345,16 @@ class _TransposedQuantization(torch.autograd.Function):
 _transposed_quantize = _TransposedQuantization.apply
 
 
-class _QuantMoeSparseMoe(QuantModule):
+class _QuantSparseMoe(QuantModule):
+    """Module to support special handling of token dispatching during calibration.
+
+    During calibration, we forward all tokens to all experts so that all experts see sufficient tokens to calibrate.
+    However, even in calibration mode, the actual top_k routing is used to calculate the actual outputs this instance
+    returns.
+
+    If calibration is not enabled, this module behaves as a normal MoELayer.
+    """
+
     def _setup(self):
         pass
 
@@ -480,7 +489,7 @@ class _QuantDbrxExpertGLU(QuantModule):
         return self.w2_linear[expert_idx](x1)
 
 
-class _QuantDbrxFFN(_QuantMoeSparseMoe):
+class _QuantDbrxFFN(_QuantSparseMoe):
     @property
     def num_experts(self):
         return self.router.moe_num_experts
@@ -498,7 +507,7 @@ try:
     from transformers.models.llama4.modeling_llama4 import Llama4TextExperts, Llama4TextMoe
 
     if Llama4TextMoe not in QuantModuleRegistry:
-        QuantModuleRegistry.register({Llama4TextMoe: "hf.Llama4TextMoe"})(_QuantMoeSparseMoe)
+        QuantModuleRegistry.register({Llama4TextMoe: "hf.Llama4TextMoe"})(_QuantSparseMoe)
 
     if Llama4TextExperts not in QuantModuleRegistry:
         QuantModuleRegistry.register({Llama4TextExperts: "hf.Llama4TextExperts"})(
@@ -526,7 +535,7 @@ try:
 
     if MixtralSparseMoeBlock not in QuantModuleRegistry:
         QuantModuleRegistry.register({MixtralSparseMoeBlock: "hf.MixtralSparseMoeBlock"})(
-            _QuantMoeSparseMoe
+            _QuantSparseMoe
         )
 except ImportError:
     pass
@@ -544,7 +553,7 @@ try:
 
     if Qwen3MoeSparseMoeBlock not in QuantModuleRegistry:
         QuantModuleRegistry.register({Qwen3MoeSparseMoeBlock: "hf.Qwen3MoeSparseMoeBlock"})(
-            _QuantMoeSparseMoe
+            _QuantSparseMoe
         )
 except ImportError:
     pass
@@ -554,7 +563,7 @@ try:
 
     if Qwen2MoeSparseMoeBlock not in QuantModuleRegistry:
         QuantModuleRegistry.register({Qwen2MoeSparseMoeBlock: "hf.Qwen2MoeSparseMoeBlock"})(
-            _QuantMoeSparseMoe
+            _QuantSparseMoe
         )
 except ImportError:
     pass
@@ -564,7 +573,7 @@ try:
 
     if Qwen3NextSparseMoeBlock not in QuantModuleRegistry:
         QuantModuleRegistry.register({Qwen3NextSparseMoeBlock: "hf.Qwen3NextSparseMoeBlock"})(
-            _QuantMoeSparseMoe
+            _QuantSparseMoe
         )
 except ImportError:
     pass
