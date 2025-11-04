@@ -107,6 +107,7 @@ repos:
               examples/speculative_decoding/main.py|
               examples/speculative_decoding/medusa_utils.py|
               examples/speculative_decoding/server_generate.py|
+              modelopt/torch/_compress/decilm/deci_lm_hf_code/transformers_.*\.py|
           )$
 
       # Default hook for Apache 2.0 in c/c++/cuda files
