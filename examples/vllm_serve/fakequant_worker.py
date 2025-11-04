@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import dataclasses
+import os
 import warnings
 from contextlib import contextmanager
 from typing import Any
@@ -30,7 +32,6 @@ from modelopt.torch.utils.dataset_utils import get_dataset_dataloader
 
 @contextmanager
 def disable_compilation(model):
-    print("fakequant_worker.disable_compilation")
     do_not_compile = True
     if hasattr(model, "model"):
         do_not_compile = model.model.do_not_compile
@@ -51,15 +52,22 @@ def disable_compilation(model):
 
 
 quant_config: dict[str, Any] = {
-    "quant_dataset": "magpie",
-    "quant_num_samples": 512,
-    "quant_format": "NVFP4_DEFAULT_CFG",
-    "amax_file_path": None,
+    "quant_dataset": os.environ.get("QUANT_DATASET", "cnn_dailymail"),
+    "quant_num_samples": int(os.environ.get("QUANT_NUM_SAMPLES", 512)),
+    "quant_format": os.environ.get("QUANT_FORMAT", "NVFP4_DEFAULT_CFG"),
+    "amax_file_path": os.environ.get("AMAX_FILE_PATH", None),
 }
 
 
+def _create_new_request_data(**kwargs) -> NewRequestData:
+    """vLLM's low-level API changes frequently. This function creates NewRequestData with parameters
+    compatible with the different vLLM versions."""
+    valid_params = {field.name for field in dataclasses.fields(NewRequestData)}
+    filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
+    return NewRequestData(**filtered_kwargs)
+
+
 def _fakequant_run_prolog_worker(self) -> None:
-    print("fakequant_worker._fakequant_run_prolog")
     tokenizer = AutoTokenizer.from_pretrained(
         self.model_runner.model_config.tokenizer,
         trust_remote_code=True,
@@ -93,12 +101,15 @@ def _fakequant_run_prolog_worker(self) -> None:
             empty_block_ids = tuple([] for _ in range(num_groups))
 
             req_id = f"req-{batch_idx}"
-            new_req = NewRequestData(
+            # Pass all possible parameters - the helper will filter based on vLLM version
+            new_req = _create_new_request_data(
                 req_id=req_id,
                 prompt_token_ids=input_ids_list,
-                # mm_kwargs=[],
-                # mm_hashes=[],
-                # mm_positions=[],
+                # Old API parameters
+                mm_kwargs=[],
+                mm_hashes=[],
+                mm_positions=[],
+                # New API parameter
                 mm_features=[],
                 sampling_params=SamplingParams(max_tokens=1),
                 pooling_params=None,
