@@ -59,13 +59,14 @@ import vllm
 from packaging import version
 from vllm.entrypoints.openai.api_server import run_server
 from vllm.entrypoints.openai.cli_args import make_arg_parser
-from vllm.executor.ray_distributed_executor import RayDistributedExecutor
 
 vllm_version = version.parse(vllm.__version__)
 if vllm_version <= version.parse("0.11.0"):
+    from vllm.executor.ray_distributed_executor import RayDistributedExecutor
     from vllm.utils import FlexibleArgumentParser
 else:
-    from vllm.utils.argument_parser import FlexibleArgumentParser
+    from vllm.utils.argparse_utils import FlexibleArgumentParser
+    from vllm.v1.executor.ray_executor import RayDistributedExecutor
 
 
 # Adding the envs you want to pass to the workers

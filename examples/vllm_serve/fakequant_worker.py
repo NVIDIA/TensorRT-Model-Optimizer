@@ -59,12 +59,12 @@ quant_config: dict[str, Any] = {
 }
 
 
-def _create_new_request_data(**kwargs) -> NewRequestData:
-    """vLLM's low-level API changes frequently. This function creates NewRequestData with parameters
+def _create_new_data_cls(data_cls, **kwargs):
+    """vLLM's low-level API changes frequently. This function creates a class with parameters
     compatible with the different vLLM versions."""
-    valid_params = {field.name for field in dataclasses.fields(NewRequestData)}
+    valid_params = {field.name for field in dataclasses.fields(data_cls)}
     filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
-    return NewRequestData(**filtered_kwargs)
+    return data_cls(**filtered_kwargs)
 
 
 def _fakequant_run_prolog_worker(self) -> None:
@@ -102,13 +102,14 @@ def _fakequant_run_prolog_worker(self) -> None:
 
             req_id = f"req-{batch_idx}"
             # Pass all possible parameters - the helper will filter based on vLLM version
-            new_req = _create_new_request_data(
+            new_req = _create_new_data_cls(
+                NewRequestData,
                 req_id=req_id,
                 prompt_token_ids=input_ids_list,
                 # Old API parameters
-                mm_kwargs=[],
-                mm_hashes=[],
-                mm_positions=[],
+                mm_kwargs=[],  # TODO: remove this when vllm <= 0.11 is outdated
+                mm_hashes=[],  # TODO: remove this when vllm <= 0.11 is outdated
+                mm_positions=[],  # TODO: remove this when vllm <= 0.11 is outdated
                 # New API parameter
                 mm_features=[],
                 sampling_params=SamplingParams(max_tokens=1),
@@ -118,7 +119,8 @@ def _fakequant_run_prolog_worker(self) -> None:
                 lora_request=None,
             )
 
-            scheduler_output = SchedulerOutput(
+            scheduler_output = _create_new_data_cls(
+                SchedulerOutput,
                 scheduled_new_reqs=[new_req],
                 scheduled_cached_reqs=CachedRequestData.make_empty(),
                 num_scheduled_tokens={req_id: len(input_ids_list)},
@@ -128,11 +130,15 @@ def _fakequant_run_prolog_worker(self) -> None:
                 num_common_prefix_blocks=[0] * num_groups,
                 finished_req_ids=set(),
                 free_encoder_mm_hashes=[],
-                structured_output_request_ids={},
-                grammar_bitmask=None,
                 kv_connector_metadata=None,
+                # Old API parameters
+                structured_output_request_ids={},  # TODO: remove this when vllm <= 0.11 is outdated
+                grammar_bitmask=None,  # TODO: remove this when vllm <= 0.11 is outdated
             )
-            self.execute_model(scheduler_output)
+            output = self.execute_model(scheduler_output)
+            if hasattr(self, "sample_tokens"):
+                if output is None:  # TODO: make this default when vllm <= 0.11 is outdated
+                    self.sample_tokens(None)
 
     quant_cfg = getattr(mtq, quant_config["quant_format"])
 
