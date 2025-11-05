@@ -18,7 +18,7 @@ import sys
 
 import onnx
 import onnx_graphsurgeon as gs
-from _test_utils.onnx.quantization.lib_test_models import build_conv_concat_model
+from _test_utils.onnx.lib_test_models import build_conv_concat_model
 
 from modelopt.onnx.quantization.quantize import quantize
 

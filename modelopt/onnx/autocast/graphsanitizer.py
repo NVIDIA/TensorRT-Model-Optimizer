@@ -92,7 +92,6 @@ class GraphSanitizer:
 
         if modified:
             logger.info("Converted FP64 initializers, I/O types, and nodes to FP32")
-            self.model = onnx_utils.infer_shapes(self.model, strict_mode=True)
 
     def ensure_custom_ops_precision(self) -> None:
         """Ensure that custom ops run in the requested precision."""
@@ -143,9 +142,6 @@ class GraphSanitizer:
 
     def convert_opset(self) -> None:
         """Convert the model to the given opset version.
-
-        Args:
-            min_opset: minimum opset version to use
 
         The method checks all opset imports and converts the model if any are below the minimum version.
         """
