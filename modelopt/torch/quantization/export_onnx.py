@@ -241,7 +241,7 @@ def _fp8_quantize(
 
 
 def _fp8_block_quantize(
-    g: torch.onnx._internal.jit_utils.GraphContext,
+    g: "GraphContext",
     inputs: torch.Value,
     trt_high_precision_dtype: str,
     block_sizes: list,
@@ -270,7 +270,7 @@ def _fp8_block_quantize(
 
 
 def _fp8_dequantize(
-    g: torch.onnx._internal.jit_utils.GraphContext,
+    g: "GraphContext",
     inputs: torch.Value,
     scale_inv: float,
     trt_high_precision_dtype: str,
@@ -297,7 +297,7 @@ def _fp8_dequantize(
 
 
 def _fp8_block_dequantize(
-    g: torch.onnx._internal.jit_utils.GraphContext,
+    g: "GraphContext",
     inputs: torch.Value,
     scales: torch.Value,
     trt_high_precision_dtype: str,
@@ -326,7 +326,7 @@ def _fp8_block_dequantize(
 
 
 def export_fp8(
-    g: torch.onnx._internal.jit_utils.GraphContext,
+    g: "GraphContext",
     inputs: torch.Value,
     amax: float | None,
     trt_high_precision_dtype: str | None,
