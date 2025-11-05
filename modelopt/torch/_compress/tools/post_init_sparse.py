@@ -14,9 +14,10 @@
 # limitations under the License.
 # mypy: ignore-errors
 import torch
-from puzzle_tools.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
 from torch import nn
 from torch.nn.utils.prune import custom_from_mask
+
+from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
 
 
 class SparsityMethod:
