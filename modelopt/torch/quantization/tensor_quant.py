@@ -406,7 +406,7 @@ class ScaledE4M3Function(Function):
     """E4M3fy input with scale."""
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "t", "t", "is", "i", "i", "s", "b")
+    @symbolic_helper.parse_args("v", "t", "t", "i", "i", "s", "b", "is")
     def symbolic(
         g,
         inputs,
