@@ -19,7 +19,7 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 import pytest
-from _test_utils.onnx.quantization.lib_test_models import (
+from _test_utils.onnx.lib_test_models import (
     build_conv_act_pool_model,
     build_conv_batchnorm_sig_mul_model,
     build_conv_isinf_model,
