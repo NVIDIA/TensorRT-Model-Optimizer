@@ -124,15 +124,19 @@ def get_cast_to_type(cast_node: onnx.NodeProto) -> int:
 
 def get_op_types_not_supported_in_low_precision(
     model: onnx.ModelProto,
-    low_precision_type: str,
     min_opset: int,
+    low_precision_type: str = "float16",
 ) -> list[str]:
-    """Get a list of ops not supported in low precision for the current opset version.
+    """Get a list of ops not supported in low precision for the opset_version = max(model.opset, min_opset).
+
+    An op is considered to be supported if at least one of the inputs may be in low precision.
+    Ops where only some of the inputs may be in low precision are considered supported by this function
+    and may need special handling. See PrecisionConverter::_should_skip_low_precision_input_conversion.
 
     Args:
         model: ONNX model.
-        low_precision_type: Target precision to reduce to ('float16' or 'bfloat16').
         min_opset: Minimum opset version.
+        low_precision_type: Target precision to reduce to ('float16' or 'bfloat16').
 
     Returns:
         ops_without_support: List of ops not supported in low precision for the current opset version.
@@ -160,9 +164,9 @@ def get_op_types_not_supported_in_low_precision(
     for op, schema in schemas_dict.items():
         supported_opsets = [k for k, v in schema.items() if v]
         if supported_opsets:
-            min_opset = min(supported_opsets)
-            if min_opset > opset_version:
-                ops_without_support[op] = min_opset
+            min_supported_opset = min(supported_opsets)
+            if min_supported_opset > opset_version:
+                ops_without_support[op] = min_supported_opset
         else:
             ops_without_support[op] = None
 
