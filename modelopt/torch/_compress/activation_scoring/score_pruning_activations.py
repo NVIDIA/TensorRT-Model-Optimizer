@@ -17,13 +17,14 @@ from pathlib import Path
 
 import hydra
 import torch
-from logger import mprint
 from omegaconf import DictConfig
-from puzzle_tools.hydra_utils import register_hydra_resolvers
-from puzzle_tools.runtime import BaseRuntime, NativeDDP_Runtime
 from puzzle_tools.validate_model import validate_model
 from utils.dist_utils import is_distributed
 from utils.parsing import format_global_config
+
+from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
+from modelopt.torch._compress.tools.logger import mprint
+from modelopt.torch._compress.tools.runtime import BaseRuntime, NativeDdpRuntime
 
 
 def has_checkpoint_support(activation_hooks_kwargs: dict) -> bool:
@@ -157,7 +158,7 @@ def main(cfg: DictConfig) -> None:
     mprint(format_global_config(cfg, title="Score Pruning Activations"))
 
     _runtime = (
-        NativeDDP_Runtime(
+        NativeDdpRuntime(
             dtype=torch.bfloat16, torch_distributed_timeout=getattr(cfg, "nccl_timeout_minutes")
         )
         if is_distributed()
