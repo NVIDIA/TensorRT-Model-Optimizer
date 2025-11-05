@@ -181,7 +181,6 @@ def quantize(
     calibrate_per_node: bool = False,
     custom_ops_to_quantize: list[str] = [],
     direct_io_types: bool = False,
-    disable_int32_weight_adjustment: bool = False,
     **kwargs,
 ) -> onnx.ModelProto:
     """Applies FP8 GEMM only quantization to an ONNX file.
@@ -274,9 +273,8 @@ def quantize(
                 logger.debug(f"Grouping QDQ tensors for concat elimination: {group_qdq_tensors}")
 
         # Add disable_int32_weight_adjustment flag to extra options
-        if disable_int32_weight_adjustment:
-            trt_guided_options["QDQDisableWeightAdjustForInt32Bias"] = True
-            logger.debug("Disabled weight adjustment for INT32 bias in QDQ quantization")
+        trt_guided_options["QDQDisableWeightAdjustForInt32Bias"] = True
+        logger.debug("Disabled weight adjustment for INT32 bias in QDQ quantization")
 
         # Create a temp file for intermediate model
         tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
