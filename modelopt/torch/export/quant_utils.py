@@ -37,6 +37,7 @@ from modelopt.torch.quantization.utils import (
     quantizer_attr_names,
     weight_attr_names,
 )
+from modelopt.torch.utils import clear_cuda_cache
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .model_config import (
@@ -763,6 +764,8 @@ def to_quantized_weight(
 
         if weight.dim() == 3:
             # for MOE stacked weights
+            # Clear GPU cache to avoid pontential GPU OOM issues for large models.
+            clear_cuda_cache()
             return (weight / weights_scaling_factor.unsqueeze(-1)).to(torch.float8_e4m3fn)
         return (weight / weights_scaling_factor).to(torch.float8_e4m3fn)
 
