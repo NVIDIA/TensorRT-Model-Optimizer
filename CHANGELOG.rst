@@ -4,6 +4,10 @@ Model Optimizer Changelog (Linux)
 0.39 (2025-11-07)
 ^^^^^^^^^^^^^^^^^
 
+**Deprecations**
+
+- Deprecated ``modelopt.torch._deploy.utils.get_onnx_bytes`` API. Please use ``modelopt.torch._deploy.utils.get_onnx_bytes_and_metadata`` instead to access the ONNX model bytes with external data. see `examples/onnx_ptq/download_example_onnx.py <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/onnx_ptq/download_example_onnx.py>`_ for example usage.
+
 **New Features**
 
 - Add flag ``op_types_to_exclude_fp16`` in ONNX quantization to exclude ops from being converted to FP16/BF16. Alternatively, for custom TensorRT ops, this can also be done by indicating ``'fp32'`` precision in ``trt_plugins_precision``.
