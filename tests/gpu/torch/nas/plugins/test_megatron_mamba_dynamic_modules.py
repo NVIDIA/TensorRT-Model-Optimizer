@@ -16,6 +16,7 @@
 
 import torch
 from _test_utils.import_helper import skip_if_no_megatron
+from _test_utils.torch.misc import compare_outputs
 
 skip_if_no_megatron(apex_or_te_required=True, mamba_required=True)
 
@@ -46,7 +47,6 @@ from modelopt.torch.nas.plugins.megatron import (
 from modelopt.torch.nas.traced_hp import TracedHp
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
 from modelopt.torch.prune.plugins.mcore_minitron import _convert_model_to_dynamic_space
-from modelopt.torch.utils import flatten_tree
 from modelopt.torch.utils.random import centroid
 
 SEED = 1234
@@ -186,10 +186,7 @@ def _test_mamba_parameter_sorting(rank, size):
     y2 = run_mcore_inference(model, prompt_tokens)
 
     # check if the inference results after sorting is the same
-    assert all(
-        torch.allclose(t1, t2, rtol=1e-5, atol=1e-3)
-        for t1, t2 in zip(flatten_tree(y1)[0], flatten_tree(y2)[0])
-    )
+    compare_outputs(y1, y2, rtol=1e-5, atol=1e-3)
 
 
 def test_mamba_parameter_sorting(need_2_gpus):

@@ -49,6 +49,7 @@ from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.moe.experts import SequentialMLP
 from megatron.core.transformer.moe.moe_layer import MoELayer
+from megatron.core.transformer.moe.moe_utils import get_default_model_comm_pgs
 from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
@@ -657,6 +658,8 @@ class _DynamicTopKRouter(ABC, DynamicModule):
     """A TopKRouter with dynamic hyperparams."""
 
     def _setup(self):
+        assert not self.enable_expert_bias, "Expert bias is not supported for dynamic module"
+
         # Register hparams for router weight dimensions (will be overridden by _DynamicSequentialMLP's hp)
         # Router weight shape: [num_moe_experts, hidden_size]
         self._register_hparam("num_experts", TracedHp(list(range(1, self.weight.shape[0] + 1))))
@@ -786,19 +789,15 @@ class _DynamicMoELayer(DynamicModule):
         if self.use_shared_expert:
             self.shared_experts = DMRegistry.convert(self.shared_experts)
 
-        self._register_dynamic_attribute("local_expert_indices", self._get_local_expert_indices)
-        # assert self.config.moe_token_dispatcher_type == "alltoall", (
-        #     "Only moe_token_dispatcher_type=='alltoall' is supported!"
-        # )
-        # self.token_dispatcher = DMRegistry.convert(self.token_dispatcher)
-
-    def _get_local_expert_indices(self, mod: "_DynamicMoELayer", val: list[int]) -> list[int]:
-        """Get local expert indices for the current active hparam value."""
-        active_slice = self.get_hparam("num_moe_experts").active_slice
-        if isinstance(active_slice, slice):
-            return list(range(active_slice.stop))
-        else:
-            return active_slice.tolist()
+    def forward(self, *args, **kwargs):
+        """Forward pass for the MoE layer."""
+        # Dont allow forward if model is sorted / trimmed unless exported (reinitializing token dispatcher correctly)
+        if isinstance(self, DynamicModule) and (
+            self.get_hparam("num_moe_experts")._slice_order is not None
+            or self.get_hparam("num_moe_experts").active != self.get_hparam("num_moe_experts").max
+        ):
+            raise RuntimeError("Only run forward after exporting the pruned model")
+        return super().forward(*args, **kwargs)
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
         """Set hidden size for all MoE components from global hidden_size hparam."""
@@ -822,12 +821,28 @@ class _DynamicMoELayer(DynamicModule):
         if self.use_shared_expert:
             self.shared_experts.modify(ffn_hidden_size_divisor)
 
+    def _export_reinit_token_dispatcher(self) -> None:
+        """Reinitialize the token dispatcher after pruning."""
+        print_rank_0("Reinitializing token dispatcher after pruning")
+        # NOTE: Update config.num_moe_experts for correct router initialization.
+        self.config.num_moe_experts = self.num_moe_experts
+        self.token_dispatcher = type(self.token_dispatcher)(
+            num_local_experts=self.num_local_experts,
+            local_expert_indices=list(range(self.num_local_experts)),
+            config=self.config,
+            model_comm_pgs=get_default_model_comm_pgs(),
+        )
+
+        if self.use_shared_expert and self.shared_expert_overlap:
+            self.token_dispatcher.set_shared_experts(self.shared_experts)
+
     def export(self) -> torch.nn.Module:
         """Export the dynamic module to a standard MoELayer."""
         self.router.export()
         self.experts.export()
         if self.use_shared_expert:
             self.shared_experts.export()
+        self._export_reinit_token_dispatcher()
         return super().export()
 
 

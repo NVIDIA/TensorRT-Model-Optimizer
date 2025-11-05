@@ -18,6 +18,7 @@ from functools import partial
 import pytest
 import torch
 from _test_utils.import_helper import skip_if_no_megatron
+from _test_utils.torch.misc import compare_outputs
 
 skip_if_no_megatron(apex_or_te_required=True)
 
@@ -36,6 +37,7 @@ from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
 import modelopt.torch.nas as mtn
+from modelopt.torch.nas.conversion import export_searchspace
 from modelopt.torch.nas.modules import DynamicModuleList
 from modelopt.torch.nas.plugins.megatron import (
     _DynamicColumnParallelLinear,
@@ -54,7 +56,6 @@ from modelopt.torch.nas.plugins.megatron import (
 )
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
 from modelopt.torch.prune.plugins.mcore_minitron import _convert_model_to_dynamic_space
-from modelopt.torch.utils import flatten_tree
 from modelopt.torch.utils.random import centroid
 
 SEED = 1234
@@ -205,10 +206,7 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
     y2 = run_mcore_inference(model, prompt_tokens)
 
     # check if the inference results after sorting is the same
-    assert all(
-        torch.allclose(t1, t2, rtol=1e-5, atol=1e-3)
-        for t1, t2 in zip(flatten_tree(y1)[0], flatten_tree(y2)[0])
-    )
+    compare_outputs(y1, y2, rtol=1e-5, atol=1e-3)
 
 
 @pytest.mark.parametrize("activation_func", ["swiglu"])
@@ -352,12 +350,11 @@ def _test_gpt_moe_search_space(rank, size):
 
     # Make sure forward pass works on min and centroid subnets
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
-    for sample_func in [min, max, centroid]:
-        mtn.sample(model, sample_func)
-        output = run_mcore_inference(model, prompt_tokens)
-        assert output.shape == (batch_size, max_sequence_length, vocab_size)
+    output = run_mcore_inference(model, prompt_tokens)
+    assert output.shape == (batch_size, max_sequence_length, vocab_size)
 
     # Make sure export and forward pass works on centroid model
+    mtn.sample(model, centroid)
     mtn.export(model)
     _ = run_mcore_inference(model, prompt_tokens, model.hidden_size)
     assert not any(named_dynamic_modules(model))
@@ -366,4 +363,75 @@ def _test_gpt_moe_search_space(rank, size):
 def test_gpt_moe_search_space():
     spawn_multiprocess_job(
         size=torch.cuda.device_count(), job=_test_gpt_moe_search_space, backend="nccl"
+    )
+
+
+def _test_gpt_moe_parameter_sorting(rank, size):
+    num_layers = min(size * 2, 8)
+    hidden_size = 256
+    num_attention_heads = 8
+    num_query_groups = 4
+    moe_ffn_hidden_size = 128
+    num_moe_experts = 4
+    moe_shared_expert_intermediate_size = 256
+    max_sequence_length = 16
+    vocab_size = 64
+    batch_size = 2
+
+    model = get_mcore_gpt_model(
+        tensor_model_parallel_size=1,
+        pipeline_model_parallel_size=size,
+        initialize_megatron=True,
+        num_layers=num_layers,
+        hidden_size=hidden_size,
+        num_attention_heads=num_attention_heads,
+        num_query_groups=num_query_groups,
+        max_sequence_length=max_sequence_length,
+        vocab_size=vocab_size,
+        activation_func="squared_relu",
+        num_moe_experts=num_moe_experts,
+        moe_ffn_hidden_size=moe_ffn_hidden_size,
+        moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+    ).cuda()
+
+    # Randomize layernorm weights instead of all zeros or ones
+    for n, m in model.named_modules():
+        if "layernorm" in n and not isinstance(m, IdentityOp):
+            m.weight.data = torch.randn_like(m.weight)
+
+    model.eval()
+    dynamic_space = _convert_model_to_dynamic_space(model)
+
+    # Compute activations for sorting
+    for _ in range(10):
+        run_mcore_inference_with_dummy_input(model, batch_size)
+
+    # Get the output of the original model
+    prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
+    y1 = run_mcore_inference(model, prompt_tokens)
+
+    mtn.utils.sort_parameters(model)
+
+    # check if all num_moe_experts, moe_ffn, moe_shared_ffn, num_heads_per_group, num_query_groups, hidden_size
+    # have been sorted
+    sortable_per_pp = [
+        n for n, hp in dynamic_space.named_hparams(configurable=True) if hp.importance is not None
+    ]
+    # (num_moe_experts + 4) hps per layer + 1 for hidden_size (num_layers is not sorted!)
+    assert len(sortable_per_pp) == (num_moe_experts + 4) * num_layers // size + 1
+
+    # sanity check if the model functionality is preserved after sorting
+    export_searchspace(model, mtn.get_subnet_config(model))
+    y2 = run_mcore_inference(model, prompt_tokens)
+
+    # check if the inference results after sorting is the same
+    compare_outputs(y1, y2, rtol=1e-5, atol=1e-2)
+
+
+def test_gpt_moe_parameter_sorting(need_2_gpus):
+    set_seed(SEED)
+    spawn_multiprocess_job(
+        size=torch.cuda.device_count(),
+        job=_test_gpt_moe_parameter_sorting,
+        backend="nccl",
     )
