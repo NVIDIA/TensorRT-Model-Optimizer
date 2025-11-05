@@ -26,6 +26,8 @@ from collections import defaultdict
 
 import onnx
 
+from modelopt.onnx.utils import get_opset_version
+
 
 def setup_mappings(model: onnx.ModelProto) -> tuple[dict, dict, dict]:
     """Setup and return mappings for model components.
@@ -136,12 +138,7 @@ def get_op_types_not_supported_in_low_precision(
         ops_without_support: List of ops not supported in low precision for the current opset version.
     """
     # Obtain the current model's opset version
-    ai_onnx_domain = [
-        opset
-        for opset in model.opset_import
-        if not opset.domain or opset.domain in ["ai.onnx", "ai.onnx.contrib", "trt.plugins"]
-    ]
-    opset_version = max(ai_onnx_domain[0].version, min_opset)
+    opset_version = max(get_opset_version(model), min_opset)
 
     # Get all ops precision support information
     precision = "tensor(float16)" if low_precision_type == "float16" else "tensor(bfloat16)"
