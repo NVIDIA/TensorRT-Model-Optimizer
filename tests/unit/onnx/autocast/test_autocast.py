@@ -13,11 +13,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from pathlib import Path
 
 import numpy as np
 import onnx
+import onnx_graphsurgeon as gs
 import pytest
+from _test_utils.onnx.lib_test_models import build_conv_isinf_model
 
 import modelopt.onnx.autocast.utils as utils
 import modelopt.onnx.utils as onnx_utils
@@ -146,3 +149,41 @@ def test_convert_simple_model(temp_model_path, temp_output_path, keep_io_types):
     assert loaded_model.graph.output[0].type.tensor_type.elem_type == expected_io_type
 
     onnx.checker.check_model(loaded_model)
+
+
+def assert_input_precision(nodes, dtype="float16"):
+    for node in nodes:
+        for inp in node.inputs:
+            assert inp.dtype == dtype, (
+                f"Node of type {node.op} has type {inp.dtype} but should have type {dtype}"
+            )
+    return True
+
+
+@pytest.mark.parametrize("opset_version", [13, 21])
+def test_conv_isinf_conversion(tmp_path, opset_version):
+    onnx_model = build_conv_isinf_model(opset_version)
+    onnx_path = os.path.join(tmp_path, f"conv_isinf_model_opset{opset_version}.onnx")
+    onnx.save(onnx_model, onnx_path)
+
+    # Convert the model
+    converted_model = convert_to_mixed_precision(onnx_path=onnx_path, keep_io_types=True)
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".fp16.onnx")
+    onnx.save(converted_model, output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    graph = gs.import_onnx(converted_model)
+
+    # Check that Conv is converted
+    conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
+    assert assert_input_precision(conv_nodes)
+
+    # Check that IsInf is running in the lowest supported precision:
+    # - FP32 if opset < 20, or
+    # - FP16 if opset >= 20
+    isinf_nodes = [n for n in graph.nodes if n.op == "IsInf"]
+    opset_version = onnx_utils.get_opset_version(converted_model)
+    supported_dtype = "float32" if opset_version < 20 else "float16"
+    assert assert_input_precision(isinf_nodes, dtype=supported_dtype)
