@@ -71,8 +71,9 @@ SUPPORTED_HPARAMS = {
     "mamba_num_heads",
     "mamba_head_dim",
     # MoE
-    "num_moe_experts",
+    "moe_ffn_hidden_size",
     "moe_shared_expert_intermediate_size",
+    "num_moe_experts",
     # 2. Depth pruning
     "num_layers",
 }
@@ -198,6 +199,8 @@ class MCoreMinitronSearcher(BaseSearcher):
         assert isinstance(export_config, dict)  # to keep mypy happy
         for n, hp in named_hparams(self.model, configurable=True):
             hp_name = n.split(".")[-1]
+            # Make sure configurable hparams are the ones with right hparam names else implementation needs to be fixed!
+            assert hp_name in SUPPORTED_HPARAMS, f"[ImplError] Invalid hparam {hp_name}!"
             if hp_name in export_config:
                 hp.active = export_config[hp_name]
 

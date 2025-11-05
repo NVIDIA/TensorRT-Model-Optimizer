@@ -146,6 +146,7 @@ def get_mcore_gpt_model(
     use_te: bool = False,
     # MoE-specific parameters
     moe_grouped_gemm: bool = False,
+    moe_ffn_hidden_size: int | None = None,
     moe_shared_expert_intermediate_size: int | None = None,
     num_moe_experts: int | None = None,
 ) -> GPTModel:
@@ -188,6 +189,7 @@ def get_mcore_gpt_model(
         # MoE-specific parameters
         moe_grouped_gemm=moe_grouped_gemm,
         moe_router_dtype="fp32",
+        moe_ffn_hidden_size=moe_ffn_hidden_size,
         moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
         num_moe_experts=num_moe_experts,
     )

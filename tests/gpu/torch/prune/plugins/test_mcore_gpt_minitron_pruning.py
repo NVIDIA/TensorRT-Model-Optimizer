@@ -241,10 +241,10 @@ def test_mcore_gpt_pruning(
 
 def _test_mcore_gpt_pruning_moe(ckpt_path, rank, size):
     num_layers = size
-    hidden_size = 256
-    ffn_hidden_size = 256
-    num_moe_experts = 8
-    moe_shared_expert_intermediate_size = 128
+    hidden_size = 128
+    moe_ffn_hidden_size = 128
+    num_moe_experts = 4
+    moe_shared_expert_intermediate_size = 256
     max_sequence_length = 16
     vocab_size = 64
     batch_size = 2
@@ -256,11 +256,11 @@ def _test_mcore_gpt_pruning_moe(ckpt_path, rank, size):
             initialize_megatron=initialize_megatron,
             num_layers=num_layers,
             hidden_size=hidden_size,
-            ffn_hidden_size=ffn_hidden_size,
             max_sequence_length=max_sequence_length,
             vocab_size=vocab_size,
             activation_func="squared_relu",
             num_moe_experts=num_moe_experts,
+            moe_ffn_hidden_size=moe_ffn_hidden_size,
             moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
         ).cuda()
         return model
@@ -272,16 +272,16 @@ def _test_mcore_gpt_pruning_moe(ckpt_path, rank, size):
         for _ in range(5):
             run_mcore_inference_with_dummy_input(m, batch_size, hidden_size)
 
-    pruned_ffn = ffn_hidden_size // 2
     pruned_hidden_size = hidden_size // 2
+    pruned_moe_ffn = moe_ffn_hidden_size // 2
+    pruned_moe_shared_ffn = moe_shared_expert_intermediate_size // 2
     pruned_num_moe_experts = num_moe_experts // 2
-    pruned_moe_ffn = moe_shared_expert_intermediate_size // 2
 
     export_config = {
-        "ffn_hidden_size": pruned_ffn,
         "hidden_size": pruned_hidden_size,
+        "moe_ffn_hidden_size": pruned_moe_ffn,
+        "moe_shared_expert_intermediate_size": pruned_moe_shared_ffn,
         "num_moe_experts": pruned_num_moe_experts,
-        "moe_shared_expert_intermediate_size": pruned_moe_ffn,
     }
 
     mtp.prune(
@@ -300,30 +300,22 @@ def _test_mcore_gpt_pruning_moe(ckpt_path, rank, size):
         assert moe.experts.num_local_experts == pruned_num_moe_experts
         assert len(moe.experts.local_experts) == pruned_num_moe_experts
         for expert in moe.experts.local_experts:
-            assert expert.linear_fc1.weight.shape == (pruned_ffn, pruned_hidden_size), (
-                expert.linear_fc1.weight.shape,
-                pruned_ffn,
-                pruned_hidden_size,
-            )
-            assert expert.linear_fc2.weight.shape == (pruned_hidden_size, pruned_ffn), (
-                expert.linear_fc2.weight.shape,
-                pruned_hidden_size,
-                pruned_ffn,
-            )
+            assert expert.linear_fc1.weight.shape == (pruned_moe_ffn, pruned_hidden_size)
+            assert expert.linear_fc2.weight.shape == (pruned_hidden_size, pruned_moe_ffn)
         assert moe.shared_experts.linear_fc1.weight.shape == (
-            pruned_moe_ffn,
+            pruned_moe_shared_ffn,
             pruned_hidden_size,
         )
         assert moe.shared_experts.linear_fc2.weight.shape == (
             pruned_hidden_size,
-            pruned_moe_ffn,
+            pruned_moe_shared_ffn,
         )
 
     # Assert model.config is updated for correct save/restoring
-    assert model.config.ffn_hidden_size == pruned_ffn
     assert model.config.hidden_size == pruned_hidden_size
+    assert model.config.moe_ffn_hidden_size == pruned_moe_ffn
     assert model.config.num_moe_experts == pruned_num_moe_experts
-    assert model.config.moe_shared_expert_intermediate_size == pruned_moe_ffn
+    assert model.config.moe_shared_expert_intermediate_size == pruned_moe_shared_ffn
 
     # Assert forward pass works on the pruned model
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()

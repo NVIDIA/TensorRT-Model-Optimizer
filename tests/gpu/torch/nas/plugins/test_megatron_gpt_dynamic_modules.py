@@ -36,19 +36,22 @@ from megatron.core.transformer.mlp import MLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
 import modelopt.torch.nas as mtn
+from modelopt.torch.nas.modules import DynamicModuleList
 from modelopt.torch.nas.plugins.megatron import (
     _DynamicColumnParallelLinear,
     _DynamicMCoreLanguageModel,
     _DynamicMLP,
+    _DynamicMoELayer,
     _DynamicProjRowParallelLinear,
     _DynamicQKVColumnParallelLinear,
     _DynamicRowParallelLinear,
     _DynamicSelfAttention,
+    _DynamicSequentialMLP,
+    _DynamicTopKRouter,
     _DynamicTransformerLayer,
     _DynamicVocabParallelEmbedding,
     expand_head_indices,
 )
-from modelopt.torch.nas.registry import DMRegistry
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
 from modelopt.torch.prune.plugins.mcore_minitron import _convert_model_to_dynamic_space
 from modelopt.torch.utils import flatten_tree
@@ -198,10 +201,6 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
     # 3 hps per layer + 1 for hidden_size (num_layers is not sorted!)
     assert len(sortable_per_pp) == 3 * num_layers // size + 1
 
-    # Export since sorting force reassigns SelfAttention weights which we dont want to re-sort!
-    # TODO: ideally we shouldn't need this
-    dynamic_space.export(DMRegistry)
-
     # sanity check if the model functionality is preserved after sorting
     y2 = run_mcore_inference(model, prompt_tokens)
 
@@ -228,7 +227,7 @@ def test_expand_head_indices():
     assert expand_head_indices(heads, hidden_size_per_head).tolist() == [2, 3, 6, 7, 4, 5, 0, 1]
 
 
-def test_megatron_self_attention_head_sorting(distributed_setup_size_1):
+def test_self_attention_head_sorting(distributed_setup_size_1):
     model = get_mcore_gpt_model(
         tensor_model_parallel_size=1,
         pipeline_model_parallel_size=1,
@@ -289,3 +288,82 @@ def test_megatron_self_attention_head_sorting(distributed_setup_size_1):
 
     # Clean up since this is not a spawned process
     destroy_model_parallel()
+
+
+def _test_gpt_moe_search_space(rank, size):
+    channel_divisor = 64
+
+    num_layers = min(size * 2, 8)
+    hidden_size = 256
+    num_attention_heads = 8
+    num_query_groups = 4
+    moe_ffn_hidden_size = 128
+    num_moe_experts = 4
+    moe_shared_expert_intermediate_size = 256
+    max_sequence_length = 16
+    vocab_size = 64
+    batch_size = 2
+
+    model = get_mcore_gpt_model(
+        tensor_model_parallel_size=1,
+        pipeline_model_parallel_size=size,
+        initialize_megatron=True,
+        num_layers=num_layers,
+        hidden_size=hidden_size,
+        num_attention_heads=num_attention_heads,
+        num_query_groups=num_query_groups,
+        max_sequence_length=max_sequence_length,
+        vocab_size=vocab_size,
+        activation_func="squared_relu",
+        num_moe_experts=num_moe_experts,
+        moe_ffn_hidden_size=moe_ffn_hidden_size,
+        moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+    ).cuda()
+
+    model = mtn.convert(model, "mcore_minitron")
+
+    moe = model.decoder.layers[0].mlp
+    assert isinstance(moe, _DynamicMoELayer)
+    assert isinstance(moe.router, _DynamicTopKRouter)
+    assert isinstance(moe.experts, _DynamicSequentialMLP)
+    assert isinstance(moe.experts.local_experts, DynamicModuleList)
+    for expert in moe.experts.local_experts:
+        assert isinstance(expert, _DynamicMLP)
+    assert isinstance(moe.shared_experts, _DynamicMLP)
+
+    # NOTE: `search_space_size` does not reduce across TP/PP groups
+    ss_size_per_pp = search_space_size(model)
+    moe_ffn_choices = moe_ffn_hidden_size // channel_divisor
+    moe_shared_ffn_choices = moe_shared_expert_intermediate_size // channel_divisor
+    hidden_size_choices = hidden_size // channel_divisor
+    num_layers_per_pp = num_layers // size
+    assert (
+        ss_size_per_pp
+        == (
+            num_attention_heads
+            * num_moe_experts
+            * moe_ffn_choices**num_moe_experts
+            * moe_shared_ffn_choices
+        )
+        ** num_layers_per_pp
+        * num_layers
+        * hidden_size_choices
+    )
+
+    # Make sure forward pass works on min and centroid subnets
+    prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
+    for sample_func in [min, max, centroid]:
+        mtn.sample(model, sample_func)
+        output = run_mcore_inference(model, prompt_tokens)
+        assert output.shape == (batch_size, max_sequence_length, vocab_size)
+
+    # Make sure export and forward pass works on centroid model
+    mtn.export(model)
+    _ = run_mcore_inference(model, prompt_tokens, model.hidden_size)
+    assert not any(named_dynamic_modules(model))
+
+
+def test_gpt_moe_search_space():
+    spawn_multiprocess_job(
+        size=torch.cuda.device_count(), job=_test_gpt_moe_search_space, backend="nccl"
+    )

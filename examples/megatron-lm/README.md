@@ -121,6 +121,7 @@ Pruning is supported for GPT and Mamba models in Pipeline Parallel mode. Availab
 - `TARGET_MAMBA_NUM_HEADS`
 - `TARGET_MAMBA_HEAD_DIM`
 - `TARGET_NUM_MOE_EXPERTS`
+- `TARGET_MOE_FFN_HIDDEN_SIZE`
 - `TARGET_MOE_SHARED_EXPERT_INTERMEDIATE_SIZE`
 - `TARGET_NUM_LAYERS`
 - `LAYERS_TO_DROP` (comma separated, 1-indexed list of layer numbers to directly drop)
