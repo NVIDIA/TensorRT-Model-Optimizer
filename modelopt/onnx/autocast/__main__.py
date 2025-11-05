@@ -162,6 +162,19 @@ def get_parser() -> argparse.ArgumentParser:
             "libraries are in the PATH or LD_LIBRARY_PATH variables."
         ),
     )
+    parser.add_argument(
+        "--trt_plugins_precision",
+        type=str,
+        default=[],
+        nargs="+",
+        help=(
+            "A space-separated list indicating the precision for each custom op. "
+            "Each item should have the format <op_type>:<precision> (all inputs and outputs have the same precision) "
+            "or <op_type>:[<inp1_precision>,<inp2_precision>,...]:[<out1_precision>,<out2_precision>,...] "
+            "(inputs and outputs can have different precisions), where precision can be fp32 (default) or fp16."
+            "For example: op_type_1:fp16 op_type_2:[fp16,fp32]:[fp16]."
+        ),
+    )
 
     return parser
 
@@ -192,6 +205,7 @@ def main(argv=None):
         init_conversion_max_bytes=args.init_conversion_max_bytes,
         providers=args.providers,
         trt_plugins=args.trt_plugins,
+        trt_plugins_precision=args.trt_plugins_precision,
         max_depth_of_reduction=args.max_depth_of_reduction,
     )
 

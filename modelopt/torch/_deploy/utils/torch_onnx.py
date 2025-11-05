@@ -102,16 +102,29 @@ class OnnxBytes:
                 self.onnx_model[onnx_model_file] = f.read()
             self.model_name = onnx_model_file.replace(".onnx", "")
 
-    def write_to_disk(self, onnx_save_dir: str) -> None:
-        """Writes the onnx model into the specified directory."""
-        if os.path.exists(onnx_save_dir):
-            print(f"Removing existing directory: {onnx_save_dir}")
-            shutil.rmtree(onnx_save_dir)
-        os.makedirs(onnx_save_dir)
-        print("Writing onnx model to path:", onnx_save_dir)
-        for onnx_model_file, onnx_model_bytes in self.onnx_model.items():
-            with open(os.path.join(onnx_save_dir, onnx_model_file), "wb") as f:
-                f.write(onnx_model_bytes)
+    def write_to_disk(self, onnx_save_dir: str = "", clean_dir: bool = True) -> None:
+        """Write ONNX model(s) to the specified directory.
+
+        Args:
+            onnx_save_dir: Directory path for saving. Defaults to current directory if empty.
+            clean_dir: Whether to remove existing directory first.
+        """
+        # Determine save directory
+        save_dir = os.path.abspath(onnx_save_dir) if onnx_save_dir else os.getcwd()
+
+        # Clean existing directory if requested
+        if clean_dir and os.path.exists(save_dir) and onnx_save_dir:
+            print(f"Removing existing directory: {save_dir}")
+            shutil.rmtree(save_dir)
+
+        # Ensure directory exists
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Write model files
+        print(f"Writing ONNX model to directory: {save_dir}")
+        for filename, file_bytes in self.onnx_model.items():
+            with open(os.path.join(save_dir, filename), "wb") as f:
+                f.write(file_bytes)
 
     def to_bytes(self) -> bytes:
         """Returns the bytes of the object that can be restored using the OnnxBytes.from_bytes method."""
@@ -129,7 +142,11 @@ class OnnxBytes:
         return json.dumps(data).encode("utf-8")
 
     def get_onnx_model_file_bytes(self) -> bytes:
-        """Returns the bytes of the onnx model file."""
+        """Returns the bytes of the onnx model file.
+
+        Note: Even if the model has external data, this function will return the bytes of the main onnx model file.
+        To get the bytes of the external data, use the get_external_data_bytes() method.
+        """
         return self.onnx_model[self.model_name + ".onnx"]
 
     @classmethod
@@ -323,6 +340,7 @@ def is_mxfp8_quantized(model: nn.Module) -> bool:
 def get_onnx_bytes_and_metadata(
     model: nn.Module,
     dummy_input: Any | tuple,
+    model_name: str = "",
     onnx_load_path: str = "",
     dynamic_axes: dict = {},
     remove_exported_model: bool = True,
@@ -338,6 +356,7 @@ def get_onnx_bytes_and_metadata(
         dummy_input: A tuple of args/kwargs or torch.Tensor, see
             `torch.onnx.export <https://pytorch.org/docs/stable/onnx.html#torch.onnx.export>`_
             for more info on the convention.
+        model_name: The name of the model. If not provided, the model name will be inferred from the model class name.
         onnx_load_path: The path to load the onnx model.
         dynamic_axes: A dictionary of dynamic shapes used for exporting the torch model to onnx.
         remove_exported_model: If True, the onnx model will be cleared from the disk after the
@@ -412,7 +431,7 @@ def get_onnx_bytes_and_metadata(
 
     # Export onnx model from pytorch model
     # As the maximum size of protobuf is 2GB, we cannot use io.BytesIO() buffer during export.
-    model_name = model.__class__.__name__
+    model_name = model_name or model.__class__.__name__
     onnx_path = tempfile.mkdtemp(prefix=f"modelopt_{model_name}_")
     onnx_save_path = os.path.join(onnx_path, f"{model_name}.onnx")
 
@@ -563,13 +582,3 @@ def create_model_metadata(
         "is_bytes_pickled": onnx_graph.ByteSize() > TWO_GB,
         "config": model.config if hasattr(model, "config") else None,
     }
-
-
-def get_onnx_bytes(*args, **kwargs) -> bytes:
-    """Return onnx bytes only.
-
-    See ``get_onnx_bytes_and_metadata()`` for more info.
-    """
-    onnx_bytes = get_onnx_bytes_and_metadata(*args, **kwargs)[0]
-    onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
-    return onnx_bytes_obj.get_onnx_model_file_bytes()

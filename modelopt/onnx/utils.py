@@ -165,9 +165,7 @@ def get_dynamic_graph_inputs(onnx_model: onnx.ModelProto):
         List of dynamic inputs.
     """
     graph = gs.import_onnx(onnx_model)
-    return [
-        inp for inp in graph.inputs if -1 in inp.shape or any(isinstance(s, str) for s in inp.shape)
-    ]
+    return [inp for inp in graph.inputs if any(isinstance(s, str) or s <= 0 for s in inp.shape)]
 
 
 def _get_all_shapes(container: Any) -> dict[str, list[int]]:

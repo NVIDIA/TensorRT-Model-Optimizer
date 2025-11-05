@@ -155,6 +155,8 @@ _default_disabled_quantizer_cfg = {
     "*router*": {"enable": False},  # Skip the MOE router
     "*mlp.gate.*": {"enable": False},  # Skip the MOE router
     "*mlp.shared_expert_gate.*": {"enable": False},  # Skip the MOE router
+    "*linear_attn.conv1d*": {"enable": False},
+    "*mixer.conv1d*": {"enable": False},
     "*output_layer*": {"enable": False},
     "output.*": {"enable": False},
     "default": {"enable": False},

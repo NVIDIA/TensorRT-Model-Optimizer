@@ -38,7 +38,7 @@ from modelopt.onnx.utils import (
     save_onnx_bytes_to_dir,
     validate_onnx,
 )
-from modelopt.torch._deploy.utils import get_onnx_bytes
+from modelopt.torch._deploy.utils import OnnxBytes, get_onnx_bytes_and_metadata
 
 
 @pytest.mark.parametrize(
@@ -103,20 +103,24 @@ def test_random_onnx_weights():
     model, args, kwargs = get_tiny_resnet_and_input()
     assert not kwargs
 
-    onnx_bytes = get_onnx_bytes(model, args)
-    original_avg_var_dict = _get_avg_var_of_weights(onnx.load_from_string(onnx_bytes))
-    original_model_size = len(onnx_bytes)
+    onnx_bytes, _ = get_onnx_bytes_and_metadata(model, args)
+    onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
+    model_bytes = onnx_bytes_obj.get_onnx_model_file_bytes()
+    model = onnx.load_from_string(model_bytes)
 
-    onnx_bytes = remove_weights_data(onnx_bytes)
+    original_avg_var_dict = _get_avg_var_of_weights(model)
+    original_model_size = len(model_bytes)
+
+    onnx_model_wo_weights = remove_weights_data(model_bytes)
     # Removed model weights should be greater than 18 MB
-    assert original_model_size - len(onnx_bytes) > 18e6
+    assert original_model_size - len(onnx_model_wo_weights) > 18e6
 
     # After assigning random weights, model size should be slightly greater than the the original
     # size due to some extra metadata
-    onnx_bytes = randomize_weights_onnx_bytes(onnx_bytes)
-    assert len(onnx_bytes) > original_model_size
+    onnx_model_randomized = randomize_weights_onnx_bytes(onnx_model_wo_weights)
+    assert len(onnx_model_randomized) > original_model_size
 
-    randomized_avg_var_dict = _get_avg_var_of_weights(onnx.load_from_string(onnx_bytes))
+    randomized_avg_var_dict = _get_avg_var_of_weights(onnx.load_from_string(onnx_model_randomized))
     for key, value in original_avg_var_dict.items():
         assert abs(value - randomized_avg_var_dict[key]) < 0.1
 
@@ -125,12 +129,14 @@ def test_reproducible_random_weights():
     model, args, kwargs = get_tiny_resnet_and_input()
     assert not kwargs
 
-    original_onnx_bytes = get_onnx_bytes(model, args)
-    onnx_bytes_wo_weights = remove_weights_data(original_onnx_bytes)
+    onnx_bytes, _ = get_onnx_bytes_and_metadata(model, args)
+    onnx_bytes_obj = OnnxBytes.from_bytes(onnx_bytes)
+    model_bytes = onnx_bytes_obj.get_onnx_model_file_bytes()
+    model = onnx.load_from_string(model_bytes)
 
     # Check if the randomization produces the same weights
-    onnx_bytes_1 = randomize_weights_onnx_bytes(onnx_bytes_wo_weights)
-    onnx_bytes_2 = randomize_weights_onnx_bytes(onnx_bytes_wo_weights)
+    onnx_bytes_1 = randomize_weights_onnx_bytes(model_bytes)
+    onnx_bytes_2 = randomize_weights_onnx_bytes(model_bytes)
     assert onnx_bytes_1 == onnx_bytes_2
 
 

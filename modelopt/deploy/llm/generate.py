@@ -57,10 +57,10 @@ class LLM(TRTLLM):
         self,
         checkpoint_dir: str | Path,
         tokenizer: "str | Path | None" = None,
-        kv_cache_config: dict[str, int | float] = {},
         medusa_choices: Any = None,
         tp: int = 0,
         trust_remote_code: bool = False,
+        max_seq_len: int = 0,
         max_batch_size: int = 0,
     ):
         """Initializes the LLM runner class.
@@ -68,11 +68,10 @@ class LLM(TRTLLM):
         Args:
             checkpoint_dir: the directory path of the model checkpoint.
             tokenizer: the tokenizer. For example, a tokenizer from the Huggingface model.
-            kv_cache_config: the kv cache config as a dict. Please refer to
-                https://nvidia.github.io/TensorRT-LLM/performance/performance-tuning-guide/
             medusa_choices: The medusa choices for the decoding config.
             tp: the tensor parallel size (for the torch backend). If 0, it will be set to the number of GPUs.
             trust_remote_code: whether to trust the remote code (for the torch backend).
+            max_seq_len: Max sequence length for the LLM backend. If 0, it is not specified.
             max_batch_size: Max batch size for the LLM backend. If 0, it is not specified.
         """
         with open(Path(checkpoint_dir) / "config.json") as config_file:
@@ -91,14 +90,16 @@ class LLM(TRTLLM):
             return None
 
         # Some VLMs may have a sub-config for max_position_embeddings, so we need to find it.
-        self._max_seq_len = _find_max_position_embeddings(config)
-        if self._max_seq_len is None:
-            warnings.warn(
-                "max_position_embeddings not found in config.json, using default value 8192"
-            )
-            self._max_seq_len = 8192
+        if max_seq_len > 0:
+            self._max_seq_len = max_seq_len
         else:
-            print(f"max_position_embeddings: {self._max_seq_len}")
+            self._max_seq_len = _find_max_position_embeddings(config)
+            if self._max_seq_len is None:
+                warnings.warn(
+                    "max_position_embeddings not found in config.json, using default value 8192"
+                )
+                self._max_seq_len = 8192
+        print(f"max_position_embeddings: {self._max_seq_len}")
         self._max_beam_width = 1
 
         kwargs = {}

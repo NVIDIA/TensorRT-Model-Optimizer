@@ -270,6 +270,13 @@ def get_model(
     if device == "cpu":
         device_map = "cpu"
 
+    # Add VILA to sys.path before loading config if needed
+    if "vila" in ckpt_path.lower():
+        vila_path = os.path.join(ckpt_path, "..", "VILA")
+        if vila_path not in sys.path:
+            sys.path.append(vila_path)
+        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
+
     # Prepare config kwargs for loading
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
 
@@ -295,8 +302,6 @@ def get_model(
         model_kwargs.setdefault("torch_dtype", "auto")
 
     if "vila" in ckpt_path.lower():
-        sys.path.append(os.path.join(ckpt_path, "..", "VILA"))
-        from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
         from transformers import AutoModel
 
         hf_vila = AutoModel.from_pretrained(

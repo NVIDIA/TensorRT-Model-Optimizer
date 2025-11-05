@@ -109,7 +109,7 @@ def get_kv_cache_scaling_factor(kv_module: nn.Module) -> torch.Tensor:
 
 def get_quantized_state(
     module: torch.nn.Module,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype = torch.bfloat16,
 ) -> tuple[dict[str, torch.Tensor], str, int]:
     """Return a state_dict, quantization format, and block_size of the module.
 
@@ -186,6 +186,7 @@ class GPTModelExporter:
         export_extra_modules: bool = False,
         dtype=torch.bfloat16,
         trust_remote_code: bool = True,
+        moe_router_dtype: torch.dtype | None = None,
     ):
         """Create a GPTModel exporter instance."""
         if not isinstance(model, (GPTModel, MambaModel, LLaVAModel)):
@@ -196,6 +197,12 @@ class GPTModelExporter:
         self._hf_config = transformers.AutoConfig.from_pretrained(
             pretrained_model_name_or_path, trust_remote_code=trust_remote_code
         )
+        self.moe_router_dtype = None
+        if moe_router_dtype == "fp32":
+            self.moe_router_dtype = torch.float32
+        elif moe_router_dtype == "fp64":
+            self.moe_router_dtype = torch.float64
+
         # If multimodal, extra the text_config
         self._hf_text_config = getattr(self._hf_config, "text_config", self._hf_config)
 
@@ -489,7 +496,9 @@ class GPTModelExporter:
             func = method_map[mapping.func_name]
             prefix = mapping.target_name_or_prefix
             func_kwargs = mapping.func_kwargs
-            return lambda m, *args: func(m, prefix.format(*args), **func_kwargs)
+            return lambda m, *args, **kwargs: func(
+                m, prefix.format(*args), **{**func_kwargs, **kwargs}
+            )
 
         for arch, mappings in all_mcore_hf_export_mapping.items():
             all_rules[arch] = {
@@ -519,12 +528,16 @@ class GPTModelExporter:
         prefix: str,
         skip_output_scale: bool = True,
         mapping={},
+        dtype: torch.dtype | None = None,
     ):
+        if dtype is None:
+            dtype = self.dtype
+
         if isinstance(module, torch.Tensor):
             self._state_dict[prefix] = module
             return
 
-        name_to_value, qformat, block_size = get_quantized_state(module, self.dtype)
+        name_to_value, qformat, block_size = get_quantized_state(module, dtype)
 
         weight = name_to_value.pop("weight")
         weight_scale, weight_scale_2 = self._get_weight_scales(name_to_value, qformat)
@@ -1098,7 +1111,9 @@ class GPTModelExporter:
 
                 if not isinstance(layer.mlp, IdentityOp):
                     if "MoE" in str(type(layer.mlp)):
-                        self.rules["router"](layer.mlp.router, layer_id)
+                        self.rules["router"](
+                            layer.mlp.router, layer_id, dtype=self.moe_router_dtype
+                        )
                         if (
                             hasattr(layer.mlp, "shared_experts")
                             and layer.mlp.shared_experts is not None
@@ -1136,8 +1151,9 @@ def export_mcore_gpt_to_hf(
     model: torch.nn.Module,
     pretrained_model_name_or_path: str | os.PathLike | None = None,
     export_extra_modules: bool = False,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype = torch.bfloat16,
     export_dir: Path | str = tempfile.gettempdir(),
+    moe_router_dtype: torch.dtype | None = None,
 ):
     """Export Megatron Core GPTModel to unified checkpoint and save to export_dir.
 
@@ -1153,7 +1169,11 @@ def export_mcore_gpt_to_hf(
         export_dir: The target export path.
     """
     exporter = GPTModelExporter(
-        model, pretrained_model_name_or_path, export_extra_modules=export_extra_modules, dtype=dtype
+        model,
+        pretrained_model_name_or_path,
+        export_extra_modules=export_extra_modules,
+        dtype=dtype,
+        moe_router_dtype=moe_router_dtype,
     )
     exporter.save_pretrained(export_dir, pretrained_model_name_or_path)
 
@@ -1162,7 +1182,8 @@ def import_mcore_gpt_from_hf(
     model: torch.nn.Module,
     pretrained_model_path: str,
     workspace_dir: str | None = None,
-    dtype: torch.dtype = torch.float16,
+    dtype: torch.dtype = torch.bfloat16,
+    moe_router_dtype: torch.dtype | None = None,
 ):
     """Import GPTModel state_dict from supported HuggingFace pretrained model path.
 
@@ -1173,6 +1194,10 @@ def import_mcore_gpt_from_hf(
         dtype: The weights data type to import.
     """
     importer = GPTModelImporter(
-        model, pretrained_model_path, workspace_dir=workspace_dir, dtype=dtype
+        model,
+        pretrained_model_path,
+        workspace_dir=workspace_dir,
+        dtype=dtype,
+        moe_router_dtype=moe_router_dtype,
     )
     importer._import_state_dict()

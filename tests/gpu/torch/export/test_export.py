@@ -464,5 +464,5 @@ def test_get_scaling_factor(
 def test_get_quant_config(config, expected):
     model = ToyModel().to("cuda")
     mtq.quantize(model, config, lambda x: x(torch.randn(1, 4, 10, device="cuda")))
-    quant_config = get_quant_config(model.named_modules())
+    quant_config = get_quant_config(model)
     assert quant_config["quantization"] == expected

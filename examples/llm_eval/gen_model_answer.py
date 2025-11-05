@@ -181,7 +181,7 @@ def get_model_answers(
     tokenizer = get_tokenizer(model_path, trust_remote_code=args.trust_remote_code)
     if checkpoint_dir:
         assert LLM is not None, "tensorrt_llm APIs could not be imported."
-        model = LLM(checkpoint_dir, tokenizer=tokenizer)
+        model = LLM(checkpoint_dir, tokenizer=tokenizer, max_batch_size=1)
     elif not nim_model:
         model, _ = load_model(
             model_path,

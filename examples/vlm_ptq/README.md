@@ -30,10 +30,6 @@ Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#getting-started) fo
 
 ## Support Matrix
 
-### Current out of the box configs
-
-Please refer to the [llm_ptq/README.md](../llm_ptq/README.md#current-out-of-the-box-configs) for details on the current out of the box configs.
-
 ### Supported Models
 
 | Model | fp8 | int8_sq<sup>1</sup> | int4_awq | w4a8_awq<sup>2</sup> | nvfp4<sup>3</sup> |
