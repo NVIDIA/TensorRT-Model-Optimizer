@@ -64,9 +64,13 @@ def _test_compress_multiprocess_job(project_root_path: Path, tmp_path: Path, ran
         dtype=torch.bfloat16, torch_distributed_timeout=datetime.timedelta(10)
     ) as runtime:
         # Setup the test model and data.
-        puzzle_dir, llama_checkpoint_path, dataset_path, hydra_config_dir, hydra_config_name = (
-            setup_test_model_and_data(project_root_path, tmp_path, rank, runtime)
+        puzzle_dir, llama_checkpoint_path, dataset_path = setup_test_model_and_data(
+            project_root_path, tmp_path, rank, runtime
         )
+        hydra_config_dir = (
+            project_root_path / "tests/experimental/torch/_compress/resources/configs"
+        )
+        hydra_config_name = "Llama-3_1-8B-ffn-pruning"
 
         # Convert the Llama model to DeciLM model.
         if rank == 0:
