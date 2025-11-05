@@ -67,7 +67,12 @@ from modelopt.onnx.quantization.qdq_utils import (
     remove_input_dq_and_output_q,
 )
 from modelopt.onnx.trt_utils import interpret_trt_plugins_precision_flag, load_onnx_model
-from modelopt.onnx.utils import duplicate_shared_constants, name_onnx_nodes, save_onnx
+from modelopt.onnx.utils import (
+    duplicate_shared_constants,
+    get_opset_version,
+    name_onnx_nodes,
+    save_onnx,
+)
 
 __all__ = ["quantize"]
 
@@ -113,12 +118,7 @@ def _preprocess_onnx(
         )
 
     # Per-Channel support with QDQ format requires onnx opset version 13 or above
-    ai_onnx_domain = [
-        opset
-        for opset in onnx_model.opset_import
-        if not opset.domain or opset.domain in ["ai.onnx", "ai.onnx.contrib"]
-    ]
-    opset_version = ai_onnx_domain[0].version
+    opset_version = get_opset_version(onnx_model)
 
     required_opset_version = 13
     if opset_version < required_opset_version and opset_version != 1:
@@ -470,7 +470,7 @@ def quantize(
         calibration_eps,
     )
 
-    if not calibration_shapes:
+    if calibrate_per_node and not calibration_shapes:
         calibration_shapes = get_input_shapes(onnx_path)
 
     if quantize_mode in ["fp8", "int8"]:

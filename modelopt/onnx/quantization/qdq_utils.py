@@ -352,7 +352,7 @@ def insert_dq_nodes(
     quantized_weights: dict[str, np.ndarray],
     attributes: dict[str, Any] | None = None,
     zero_points: dict[str, np.ndarray] | None = None,
-    precision_info: dict[str, int] | None = None,
+    layer_info: dict[str, dict] | None = None,
 ):
     """Insert new initializers and DQ nodes into graph.
 
@@ -361,6 +361,8 @@ def insert_dq_nodes(
         weights: A map from ONNX initializer name to tensor.
         scales: A map from ONNX initializer name to desired scale factor for that initializer.
         dq_only: Whether to only insert dq nodes.
+        layer_info: Optional dictionary mapping tensor names to precision (old format) or
+            to layer configuration dict (new format with precision, block_size, axis).
     """
     logger.debug(f"Inserting DQ nodes for {len(scales)} weights")
 
@@ -397,7 +399,7 @@ def insert_dq_nodes(
             zp = zero_points.get(name)
             assert zp is not None, "zero-point is enabled but zero-point values not found"
 
-        num_bits = get_num_bits(precision_info, name)
+        num_bits = get_num_bits(layer_info, name)
         # Updating the attributes for per-channel nodes.
         attrs = attributes.copy() if attributes is not None else None
         attrs = update_attributes_for_per_channel_nodes(attrs, num_bits)
@@ -423,7 +425,7 @@ def insert_qdq_nodes(
     graph: gs.Graph,
     scales: dict[str, np.ndarray],
     weight_map: dict[str, gs.Tensor],
-    precision_info: dict[str, int] | None = None,
+    layer_info: dict[str, dict] | None = None,
 ):
     """Insert scales and QDQ nodes into graph.
 
@@ -431,6 +433,8 @@ def insert_qdq_nodes(
         graph: The graph to modify.
         scales: A map from ONNX initializer name to desired scale factor for that initializer.
         weight_map: A map from ONNX initializer name to graphsurgeon tensor.
+        layer_info: Optional dictionary mapping tensor names to precision (old format) or
+            to layer configuration dict (new format with precision, block_size, axis).
     """
     logger.debug(f"Inserting QDQ nodes for {len(scales)} weights")
 
@@ -465,7 +469,7 @@ def insert_qdq_nodes(
             scale,
             q_nodes,
             dq_nodes,
-            num_bits=get_num_bits(precision_info, name),
+            num_bits=get_num_bits(layer_info, name),
         )
 
     _postprocess_qdq(
@@ -537,7 +541,7 @@ def _get_scale_and_zp(
     node: onnx.NodeProto,
     initializers: dict[str, onnx.TensorProto],
     tensor_producers: dict[str, onnx.NodeProto],
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[onnx.TensorProto, onnx.TensorProto]:
     """Get scale and zero point tensors for a node.
 
     Args:
@@ -546,7 +550,7 @@ def _get_scale_and_zp(
         tensor_producers: Dictionary of tensor producers
 
     Returns:
-        Tuple of (scale_array, zero_point_array)
+        Tuple of (scale_tensor, zero_point_tensor)
 
     Raises:
         ValueError: If scale or zero point cannot be found
@@ -560,7 +564,6 @@ def _get_scale_and_zp(
         if not producer or not producer.attribute:
             raise ValueError(f"Invalid scale producer for {scale_name}")
         scale = producer.attribute[0].t
-    scale_array = onnx.numpy_helper.to_array(scale)
 
     # Get zero point tensor
     zp_name = node.input[2]
@@ -571,9 +574,8 @@ def _get_scale_and_zp(
         if not producer or not producer.attribute:
             raise ValueError(f"Invalid zero point producer for {zp_name}")
         zp = producer.attribute[0].t
-    zp_array = onnx.numpy_helper.to_array(zp)
 
-    return scale_array, zp_array
+    return scale, zp
 
 
 def _get_successive_consumers(
@@ -611,16 +613,16 @@ def _get_successive_consumers(
 
 def _convert_weight(
     weight_array: np.ndarray,
-    scale_array: np.ndarray,
-    zp_array: np.ndarray,
+    scale: onnx.TensorProto,
+    zp: onnx.TensorProto,
     quantized_node: onnx.NodeProto,
 ) -> np.ndarray:
     """Convert a weight tensor to INT8/FP8 format based on scale and zero point.
 
     Args:
         weight_array: The weight tensor to convert
-        scale_array: The scale tensor for quantization
-        zp_array: The zero point tensor for quantization
+        scale: The scale tensor for quantization
+        zp: The zero point tensor for quantization
         quantized_node: The operation node that will use the converted weight
 
     Returns:
@@ -636,6 +638,10 @@ def _convert_weight(
     # Per-op quantization axis mapping (must match ORT config)
     weight_shape = weight_array.shape
     op_type = quantized_node.op_type
+
+    # Convert onnx tensors to numpy array
+    scale_array = onnx.numpy_helper.to_array(scale)
+    zp_array = onnx.numpy_helper.to_array(zp)
 
     # Dynamically determine transB for Gemm
     trans_b = 0
@@ -668,7 +674,7 @@ def _convert_weight(
     zp_array = zp_array.reshape(*reshape_dims)
 
     # Convert to INT8/FP8
-    if zp_array.dtype == onnx_dtype_map["Float8"]:
+    if zp.data_type == onnx_dtype_map["Float8"]:
         scaled = np.asarray(weight_array / scale_array) + zp_array
     else:
         scaled = np.asarray((weight_array / scale_array).round())
@@ -709,7 +715,9 @@ def _cast_fp4(array: np.ndarray) -> np.ndarray:
 def _create_fp8_tensor(scaled: np.ndarray, weight_name: str) -> onnx.TensorProto:
     """Create a FLOAT8E4M3FN tensor directly from numpy array."""
     fp8_data = _cast_fp8(scaled)
-    return onnx.numpy_helper.from_array(fp8_data, weight_name)
+    tensor = onnx.numpy_helper.from_array(fp8_data, weight_name)
+    tensor.data_type = onnx_dtype_map["Float8"]
+    return tensor
 
 
 def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
@@ -761,16 +769,16 @@ def qdq_to_dq(onnx_model: onnx.ModelProto) -> onnx.ModelProto:
             weight_array = onnx.numpy_helper.to_array(weight)
 
             # Get scale and zero point
-            scale_array, zp_array = _get_scale_and_zp(node, initializers, tensor_producers)
+            scale, zp = _get_scale_and_zp(node, initializers, tensor_producers)
 
             # Validate Q->DQ->Op pattern and get consumers
             dq_node, quantized_node = _get_successive_consumers(node, tensor_consumers)
 
             # Convert weight
-            scaled = _convert_weight(weight_array, scale_array, zp_array, quantized_node)
+            scaled = _convert_weight(weight_array, scale, zp, quantized_node)
 
             # Create and update new weight tensor
-            if zp_array.dtype == onnx_dtype_map["Float8"]:
+            if zp.data_type == onnx_dtype_map["Float8"]:
                 new_weight = _create_fp8_tensor(scaled, weight_name)
                 logger.debug(f"Converted {weight_name} to FP8")
             else:

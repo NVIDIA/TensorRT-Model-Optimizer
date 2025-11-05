@@ -15,8 +15,14 @@
 
 
 import pytest
-from _test_utils.model import BART_PATH, MIXTRAL_PATH, T5_PATH, TINY_LLAMA_PATH, WHISPER_PATH
-from _test_utils.ptq_utils import PTQCommand, WithRequirements
+from _test_utils.examples.llm_ptq_utils import PTQCommand, WithRequirements
+from _test_utils.examples.models import (
+    BART_PATH,
+    MIXTRAL_PATH,
+    T5_PATH,
+    TINY_LLAMA_PATH,
+    WHISPER_PATH,
+)
 
 
 @pytest.mark.parametrize(

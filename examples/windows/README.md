@@ -16,7 +16,7 @@ A Library to Quantize and Compress Deep Learning Models for Optimized Inference 
 ## Latest News
 
 - [2024/11/19] [Microsoft and NVIDIA Supercharge AI Development on RTX AI PCs](https://blogs.nvidia.com/blog/ai-decoded-microsoft-ignite-rtx/)
-- [2024/11/18] [Quantized INT4 ONNX models available on Hugging Face for download](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus-67373fe7c006ebc1df310613)
+- [2024/11/18] [Quantized INT4 ONNX models available on Hugging Face for download](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus)
 
 ## Table of Contents
 
@@ -120,7 +120,7 @@ onnx.save_model(
 For detailed instructions about deployment of quantized models with DirectML backend (ORT-DML), see the [DirectML](https://nvidia.github.io/TensorRT-Model-Optimizer/deployment/2_directml.html#directml-deployment).
 
 > [!Note]
-> The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at HuggingFace [NVIDIA collections](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus-67373fe7c006ebc1df310613).
+> The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at HuggingFace [NVIDIA collections](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus).
 
 ## Examples
 
@@ -140,7 +140,7 @@ Please refer to [benchmark results](./Benchmark.md) for performance and accuracy
 
 ## Collection Of Optimized ONNX Models
 
-The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at [HuggingFace NVIDIA collections](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus-67373fe7c006ebc1df310613). These models can be deployed using DirectML backend. Follow the instructions provided along with the published models for deployment.
+The ready-to-deploy optimized ONNX models from ModelOpt-Windows are available at [HuggingFace NVIDIA collections](https://huggingface.co/collections/nvidia/optimized-onnx-models-for-nvidia-rtx-gpus). These models can be deployed using DirectML backend. Follow the instructions provided along with the published models for deployment.
 
 ## Release Notes
 

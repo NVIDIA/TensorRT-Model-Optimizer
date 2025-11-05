@@ -65,6 +65,7 @@ def onnx_export_tester(model, device, num_bits, per_channel_quantization, consta
         input_names=input_names,
         output_names=output_names,
         do_constant_folding=constant_folding,
+        dynamo=False,
         **kwargs,
     )
 

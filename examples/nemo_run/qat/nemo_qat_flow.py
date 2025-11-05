@@ -228,7 +228,7 @@ def main(args):
         global_batch_size=GBS,
         micro_batch_size=MBS,
         use_hf_tokenizer_chat_template=True,
-        num_workers=2,
+        num_workers=1,
         persistent_workers=True,
     )
     if args.distill:

@@ -36,6 +36,8 @@ try:
 except ImportError:
     TRT_PYTHON_AVAILABLE = False
 
+MAX_IR_VERSION = 10
+
 
 def get_custom_layers(
     onnx_path: str | onnx.ModelProto,
@@ -296,7 +298,8 @@ def load_onnx_model(
 
             static_shaped_onnx_path = onnx_path.replace(".onnx", "_static.onnx")
             save_onnx(onnx_model, static_shaped_onnx_path, use_external_data_format)
-            intermediate_generated_files.append(static_shaped_onnx_path)  # type: ignore[union-attr]
+            if intermediate_generated_files is not None:
+                intermediate_generated_files.append(static_shaped_onnx_path)
 
     if TRT_PYTHON_AVAILABLE and platform.system() != "Windows":
         # Check if there's a custom TensorRT op in the ONNX model. If so, make it ORT compatible by adding
@@ -318,11 +321,33 @@ def load_onnx_model(
             # Infer types and shapes in the graph for ORT compatibility
             onnx_model = infer_types_shapes_tensorrt(onnx_model, trt_plugins or [], all_tensor_info)
 
+    # Enforce IR version = 10
+    ir_version_onnx_path = None
+    if onnx_model.ir_version > MAX_IR_VERSION:
+        onnx_model.ir_version = MAX_IR_VERSION
+        ir_version_onnx_path = (
+            static_shaped_onnx_path.replace(".onnx", f"_ir{MAX_IR_VERSION}.onnx")
+            if static_shaped_onnx_path
+            else onnx_path.replace(".onnx", f"_ir{MAX_IR_VERSION}.onnx")
+        )
+        save_onnx(onnx_model, ir_version_onnx_path, use_external_data_format)
+        if intermediate_generated_files is not None:
+            intermediate_generated_files.append(ir_version_onnx_path)
+
+    # Check that the model is valid
+    if use_external_data_format:
+        # For large models, use the file path to avoid protobuf size limitation
+        model_path_to_check = ir_version_onnx_path or static_shaped_onnx_path or onnx_path
+        onnx.checker.check_model(model_path_to_check)
+    else:
+        # For smaller models, checking the model object is fine
+        onnx.checker.check_model(onnx_model)
+
     return (
         onnx_model,
         has_custom_op,
         custom_ops,
-        static_shaped_onnx_path or onnx_path,
+        ir_version_onnx_path or static_shaped_onnx_path or onnx_path,
         use_external_data_format,
     )
 
@@ -330,7 +355,7 @@ def load_onnx_model(
 def interpret_trt_plugins_precision_flag(
     onnx_model: onnx.ModelProto,
     trt_plugins_precision: list[str],
-    quantize_mode: str,
+    quantize_mode: str = "int8",
 ) -> tuple[dict, dict]:
     """Convert custom ops precision flag to dictionaries with custom op and I/O indices to be cast/quantized.
 
