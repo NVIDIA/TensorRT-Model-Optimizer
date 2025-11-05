@@ -28,7 +28,7 @@ import scoring
 from omegaconf import DictConfig
 from puzzle_tools.runtime import IRuntime
 
-from modelopt.torch._compress.tools.hydra import initialize_hydra_config_for_dir
+from modelopt.torch._compress.tools.hydra_utils import initialize_hydra_config_for_dir
 
 
 def compress(
