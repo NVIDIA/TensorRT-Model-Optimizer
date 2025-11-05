@@ -50,6 +50,7 @@ from .model_config import (
     KV_CACHE_NVFP4_AFFINE,
     QUANTIZATION_FP8,
     QUANTIZATION_FP8_PB_REAL,
+    QUANTIZATION_FP8_PC_PT,
     QUANTIZATION_NONE,
     QUANTIZATION_NVFP4,
     QUANTIZATION_NVFP4_AWQ,
@@ -327,13 +328,15 @@ def _export_quantized_weight(
     weight_scale_2: torch.Tensor | None = getattr(sub_module, quantizer_attrs.weight_scale_2, None)
 
     # Transpose weight for bmm-style expert quantization (llama4, gpt-oss)
+    # Check if this is a BMM-style expert weight that needs transposition
+    is_bmm_expert_weight = weight.dim() == 3 and any(
+        expert_type in type(sub_module).__name__
+        for expert_type in ["Llama4TextExperts", "GptOssExperts"]
+    )
+
     if quantization_format in [QUANTIZATION_NVFP4, QUANTIZATION_NVFP4_AWQ]:
         # Transpose weight from (num_experts, input_dim, output_dim) to (num_experts, output_dim, input_dim)
         # for NVFP4 quantization functions that expect input_dim as the last dimension for block quantization
-        is_bmm_expert_weight = weight.dim() == 3 and any(
-            expert_type in type(sub_module).__name__
-            for expert_type in ["Llama4TextExperts", "GptOssExperts"]
-        )
         weight, _ = maybe_transpose_expert_weight_dimensions(
             weight, is_bmm_expert_weight=is_bmm_expert_weight
         )
@@ -353,6 +356,26 @@ def _export_quantized_weight(
 
         quantized_weight, weight_scale = maybe_transpose_expert_weight_dimensions(
             quantized_weight, weight_scale, is_bmm_expert_weight=is_bmm_expert_weight
+        )
+    elif quantization_format == QUANTIZATION_FP8_PC_PT and is_bmm_expert_weight:
+        # For FP8_PC_PT with BMM-style experts, transpose only the weight (not weight_scale)
+        # Transpose weight from (num_experts, input_dim, output_dim) to (num_experts, output_dim, input_dim)
+        # weight_scale remains (num_experts, output_dim) for per-channel quantization
+        weight, _ = maybe_transpose_expert_weight_dimensions(
+            weight, is_bmm_expert_weight=is_bmm_expert_weight
+        )
+
+        quantized_weight = to_quantized_weight(
+            weight.to(dtype),
+            weight_scale,
+            quantization_format,
+            weight_scale_2,
+            block_size,
+        )
+
+        # Transpose back to original BMM format
+        quantized_weight, _ = maybe_transpose_expert_weight_dimensions(
+            quantized_weight, is_bmm_expert_weight=is_bmm_expert_weight
         )
     else:
         quantized_weight = to_quantized_weight(
