@@ -31,7 +31,7 @@ from _test_utils.onnx.lib_test_models import (
 )
 
 from modelopt.onnx.quantization.quantize import quantize
-from modelopt.onnx.utils import save_onnx
+from modelopt.onnx.utils import get_opset_version, save_onnx
 
 
 def assert_nodes_are_quantized(nodes):
@@ -225,16 +225,21 @@ def test_conv_isinf_int8(tmp_path):
     assert os.path.isfile(output_onnx_path)
 
     # Load the output model and check QDQ node placements
-    graph = gs.import_onnx(onnx.load(output_onnx_path))
+    onnx_model = onnx.load(output_onnx_path)
+    graph = gs.import_onnx(onnx_model)
 
     # Check that Conv is quantized
     conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
     assert assert_nodes_are_quantized(conv_nodes)
 
-    # Check that IsInf is running in FP32
+    # Check that IsInf is running in the lowest supported precision:
+    # - FP32 if opset < 20, or
+    # - FP16 if opset >= 20
     isinf_nodes = [n for n in graph.nodes if n.op == "IsInf"]
+    opset_version = get_opset_version(onnx_model)
+    supported_dtype = "float32" if opset_version < 20 else "float16"
     for node in isinf_nodes:
         for inp in node.inputs:
-            assert inp.dtype == "float32", (
-                f"Node of type 'IsInf' has type {inp.dtype} but should have type float32"
+            assert inp.dtype == supported_dtype, (
+                f"Node of type {node.op} has type {inp.dtype} but should have type {supported_dtype}"
             )

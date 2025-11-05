@@ -824,7 +824,7 @@ def build_conv_act_pool_model(include_reshape_node=False):
     return model_inferred
 
 
-def build_conv_isinf_model():
+def build_conv_isinf_model(opset_version=13):
     # Define your model inputs and outputs
     input_names = ["input_0"]
     output_names = ["output_0"]
@@ -913,7 +913,7 @@ def build_conv_isinf_model():
 
     # Create the ONNX model
     model = helper.make_model(graph)
-    model.opset_import[0].version = 13
+    model.opset_import[0].version = opset_version
     model.ir_version = 10
 
     # Check the ONNX model
