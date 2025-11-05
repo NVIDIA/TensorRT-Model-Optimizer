@@ -240,7 +240,7 @@ class FP8SDPA(Function):
         attn_mask: "torch._C.Value | None" = None,
         dropout_p: float = 0.0,
         is_causal: bool = False,
-        scale: torch._C.Value | None = None,
+        scale: "torch._C.Value | None" = None,
         q_quantized_scale: float | None = 1.0,
         k_quantized_scale: float | None = 1.0,
         v_quantized_scale: float | None = 1.0,
