@@ -193,7 +193,7 @@ def _test_gpt_parameter_sorting(activation_func, rank, size):
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
     y1 = run_mcore_inference(model, prompt_tokens)
 
-    mtn.utils.sort_parameters(model)
+    mtn.utils.sort_parameters(model, force_assign=False)
 
     # check if all ffn_hidden_size, num_heads_per_group, num_query_groups, hidden_size have been sorted
     sortable_per_pp = [
@@ -410,7 +410,7 @@ def _test_gpt_moe_parameter_sorting(rank, size):
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
     y1 = run_mcore_inference(model, prompt_tokens)
 
-    mtn.utils.sort_parameters(model)
+    mtn.utils.sort_parameters(model, force_assign=False)
 
     # check if all num_moe_experts, moe_ffn, moe_shared_ffn, num_heads_per_group, num_query_groups, hidden_size
     # have been sorted

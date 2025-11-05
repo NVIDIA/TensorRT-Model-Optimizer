@@ -173,7 +173,7 @@ def _test_mamba_parameter_sorting(rank, size):
     prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
     y1 = run_mcore_inference(model, prompt_tokens)
 
-    mtn.utils.sort_parameters(model)
+    mtn.utils.sort_parameters(model, force_assign=False)
 
     # check if all mamba_num_heads, mamba_head_dim, hidden_size have been sorted
     sortable_per_pp = [

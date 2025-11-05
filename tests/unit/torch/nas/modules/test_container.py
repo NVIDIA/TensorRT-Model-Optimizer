@@ -128,7 +128,7 @@ def test_dynamic_module_list():
     # Test sorting by importance
     hp_depth = m.get_hparam("depth")
     hp_depth.register_importance(lambda: torch.tensor([0.8, 0.5, 1.0]))
-    sort_parameters(m)
+    sort_parameters(m, force_assign=False)
 
     m.depth = 3
     assert m[0] == m2 and m[1] == m0 and m[2] == m1

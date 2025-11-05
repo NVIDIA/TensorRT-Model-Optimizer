@@ -179,7 +179,10 @@ def _reset_before_sample(model: nn.Module):
 
 
 def sort_parameters(
-    model: nn.Module, hps_to_sort: set[str] | None = None, verbose: bool = False
+    model: nn.Module,
+    hps_to_sort: set[str] | None = None,
+    verbose: bool = False,
+    force_assign: bool = True,
 ) -> None:
     """Sort the parameters of the model according to the stored importances.
 
@@ -188,7 +191,7 @@ def sort_parameters(
         hps_to_sort: A set of hparam names to sort. If not provided or empty, all hparams will be sorted.
         verbose: Whether to print the search space and hparam importances.
     """
-    _SearchSpaceUnwrapped(model).sort_parameters(hps_to_sort, verbose)
+    _SearchSpaceUnwrapped(model).sort_parameters(hps_to_sort, verbose, force_assign)
 
 
 def print_search_space_summary(

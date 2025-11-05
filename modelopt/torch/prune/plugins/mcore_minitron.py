@@ -192,7 +192,7 @@ class MCoreMinitronSearcher(BaseSearcher):
         if self.config["skip_sorting"]:
             print_rank_0("Skipping sorting parameters...")
         else:
-            sort_parameters(self.model, self.hps_to_sort, verbose=True)
+            sort_parameters(self.model, self.hps_to_sort, verbose=True, force_assign=False)
 
         # Prune homogeneously
         export_config = self.constraints["export_config"]

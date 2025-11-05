@@ -128,12 +128,17 @@ class SearchSpace(DynamicSpace):
         return self.config()
 
     @torch.no_grad()
-    def sort_parameters(self, hps_to_sort: set[str] | None = None, verbose: bool = False) -> None:
+    def sort_parameters(
+        self, hps_to_sort: set[str] | None = None, verbose: bool = False, force_assign: bool = True
+    ) -> None:
         """A graph propagation based parameter sorting algorithm.
 
         Args:
             hps_to_sort: A set of hparam names to sort. If not provided or empty, all hparams will be sorted.
             verbose: Whether to print the search space and hparam importances.
+            force_assign: Whether to force reassign all parameters/buffers after sorting.
+            If True, the model will be in the same state as before sorting.
+                # TODO: Remove this in a separate PR with fastnas test fixes!
         """
         print_rank_0("Sorting parameters...")
         if verbose:
@@ -161,6 +166,11 @@ class SearchSpace(DynamicSpace):
                     f"Sorted {name} for rank {rank()} with "
                     f"{'order' if hp._importance_is_order else 'importance'}={importance}"
                 )
+
+        # now that we have enforced an order we can force reassign all parameters/buffers!
+        if force_assign:
+            for _, mod in self.named_dynamic_modules():
+                mod.force_assign()
 
         # go back to old config
         self.select(config)

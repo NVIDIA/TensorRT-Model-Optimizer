@@ -586,6 +586,28 @@ class DynamicModule(nn.Module):
 
         return self
 
+    @torch.no_grad()
+    def force_assign(self):
+        """Force re-assign all dynamic attributes to their current values.
+
+        .. warning::
+
+            Note that this method overwrites the actual buffers and parameters! Only use in
+            specific circumstances!!
+        """
+        # force-reassign all dynamic attributes
+        for name in self._get_dm_attribute_manager().da_keys():
+            val = getattr(self, name)
+            if isinstance(val, torch.Tensor):
+                val = val.detach().clone()
+            if name in self._parameters:
+                val = val if val is None else Parameter(val)
+                self.register_parameter(name, val)
+            elif name in self._buffers:
+                self.register_buffer(name, val)
+            else:
+                setattr(self, name, val)
+
     @classmethod
     @torch.no_grad()
     def convert(cls, module: nn.Module) -> "DynamicModule":
