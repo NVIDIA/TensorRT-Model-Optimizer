@@ -23,11 +23,11 @@ from pathlib import Path
 import build_library_and_stats
 import mip_and_realize_models
 import pruning_ckpts
-import score_pruning_activations
 import scoring
 import torch
 from torch import nn
 
+from modelopt.torch._compress.activation_scoring import score_pruning_activations
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
 )
