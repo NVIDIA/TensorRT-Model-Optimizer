@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+# mypy: ignore-errors
 import argparse
 import textwrap
 from copy import deepcopy
@@ -28,12 +28,14 @@ from transformers import (
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
-from utils.activation_hooks.utils import register_activation_hooks
 from utils.data.dataloaders import create_validation_dataloader
 from utils.parsing import simple_parse_args_string
 from utils.validate_runtime_pipeline import HiddenStatesAndLMHead, calculate_losses_pipeline
 from utils.validation import calculate_losses
 
+from modelopt.torch._compress.activation_scoring.activation_hooks.utils import (
+    register_activation_hooks,
+)
 from modelopt.torch._compress.tools.checkpoint_utils_hf import load_checkpoint
 from modelopt.torch._compress.tools.logger import aprint, mprint
 from modelopt.torch._compress.tools.runtime import IRuntime, NativeDdpRuntime
