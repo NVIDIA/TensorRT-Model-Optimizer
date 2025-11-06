@@ -21,7 +21,9 @@ from typing import Optional
 import torch
 import yaml
 from logger import mprint
-from puzzle_tools.bypassed_training.child_init import (
+
+from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
+from modelopt.torch._compress.tools.bypassed_training.child_init import (
     GQAInitMode,
     HiddenSizeInitMode,
     LinearInitMode,
@@ -29,8 +31,6 @@ from puzzle_tools.bypassed_training.child_init import (
     create_child_state_dict,
     update_model_config,
 )
-from puzzle_tools.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
-
 from modelopt.torch._compress.tools.checkpoint_utils import (
     copy_tokenizer,
     load_model_config,

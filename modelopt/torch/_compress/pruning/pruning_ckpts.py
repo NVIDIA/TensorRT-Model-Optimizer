@@ -20,19 +20,13 @@ from typing import Optional
 
 import hydra
 from omegaconf import DictConfig
-from puzzle_tools.bypassed_training.child_init import (
+
+from modelopt.torch._compress.tools.bypassed_training.child_init import (
     GQAInitMode,
     HiddenSizeInitMode,
     LinearInitMode,
     MlpInitMode,
 )
-
-# from modelopt.torch._compress.tools.bypassed_training.child_init import (
-#     GQAInitMode,
-#     HiddenSizeInitMode,
-#     LinearInitMode,
-#     MlpInitMode,
-# )
 from modelopt.torch._compress.tools.bypassed_training.init_child_from_parent import (
     init_child_from_parent,
 )
