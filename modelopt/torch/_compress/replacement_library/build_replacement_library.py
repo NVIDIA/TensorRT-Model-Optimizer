@@ -21,23 +21,27 @@ from typing import Any, Type
 import hydra
 import pandas as pd
 from omegaconf import DictConfig
-from puzzle_tools.checkpoint_utils import (
-    SAFETENSORS_SUBBLOCKS_DIR_NAME,
-    is_valid_decilm_checkpoint,
-    load_model_config,
-)
-from puzzle_tools.deci_lm_hf_code.block_config import AttentionConfig, BlockConfig, FFNConfig
-from utils.utils import block_config_to_str, subblock_config_to_str
 
+from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
+    AttentionConfig,
+    BlockConfig,
+    FFNConfig,
+)
 from modelopt.torch._compress.replacement_library.replacement_utils import (
     is_replacement_identical_to_teacher,
     replacement_is_teacher,
     sort_replacements,
 )
+from modelopt.torch._compress.tools.checkpoint_utils import (
+    SAFETENSORS_SUBBLOCKS_DIR_NAME,
+    is_valid_decilm_checkpoint,
+    load_model_config,
+)
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.robust_json import json_dump
 from modelopt.torch._compress.utils.parsing import format_global_config
+from modelopt.torch._compress.utils.utils import block_config_to_str, subblock_config_to_str
 
 """
 Standard Puzzle Usage:
