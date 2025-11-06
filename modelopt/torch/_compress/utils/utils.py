@@ -41,7 +41,11 @@ import numpy as np
 import pandas as pd
 import torch
 from fire import Fire
-from puzzle_tools.deci_lm_hf_code.block_config import AttentionConfig, BlockConfig, FFNConfig
+from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
+    AttentionConfig,
+    BlockConfig,
+    FFNConfig,
+)
 from tqdm import tqdm
 
 
