@@ -909,7 +909,7 @@ class _DynamicEagleGPTModel(EagleModel):
             # Get additional draft logits from parallel draft heads
             draft_logits_list = [eagle_logits]
             for draft_head in self.eagle_module.parallel_draft_heads:
-                draft_logits, _ = draft_head(eagle_hidden_states.detach())
+                draft_logits, _ = draft_head(eagle_hidden_states)
                 draft_logits_list.append(draft_logits)
             eagle_logits = torch.cat(draft_logits_list, dim=0)
 
@@ -1080,7 +1080,9 @@ class _DynamicEagleGPTModel(EagleModel):
                 else:
                     loss_ = self._compute_eagle_loss(logits_sbh, labels, eagle_logit)
                 loss_ = loss_[:, ttt_step:]
-                loss[:, i + ttt_step + 1 :] += self.eagle_loss_decay_factor**ttt_step * loss_
+                loss[:, i + ttt_step + 1 :] += (
+                    self.eagle_loss_decay_factor ** (ttt_step + i) * loss_
+                )
 
             if self.eagle_report_acc and not self.training:
                 with torch.no_grad():
