@@ -1,7 +1,14 @@
 Model Optimizer Changelog (Linux)
 =================================
 
-0.39 (2025-11-07)
+0.40 (2025-12-xx)
+^^^^^^^^^^^^^^^^^
+
+**Bug Fixes**
+
+- Fix a bug in FastNAS pruning (computer vision models) where the model parameters were sorted twice messing up the ordering.
+
+0.39 (2025-11-14)
 ^^^^^^^^^^^^^^^^^
 
 **Deprecations**
