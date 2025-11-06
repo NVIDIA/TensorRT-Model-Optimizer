@@ -19,7 +19,7 @@
 import os
 from itertools import product
 
-from puzzle_tools.deci_lm_hf_code.configuration_decilm import DeciLMConfig
+from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
@@ -34,14 +34,6 @@ import pandas as pd
 import torch
 from frozendict import frozendict
 from omegaconf import DictConfig, ListConfig, OmegaConf
-from puzzle_tools.calc_subblock_memory import (
-    calc_subblock_active_params,
-    calculate_non_block_memory,
-    calculate_non_block_params,
-    calculate_subblock_memory,
-    calculate_subblock_params,
-)
-from puzzle_tools.checkpoint_utils import load_model_config
 from puzzle_tools.deci_lm_hf_code.block_config import (
     AttentionConfig,
     BlockConfig,
@@ -52,6 +44,14 @@ from puzzle_tools.replacement_utils import parse_layer_replacement
 from tqdm import tqdm
 from utils.parsing import format_global_config
 
+from modelopt.torch._compress.subblock_stats.calc_subblock_memory import (
+    calc_subblock_active_params,
+    calculate_non_block_memory,
+    calculate_non_block_params,
+    calculate_subblock_memory,
+    calculate_subblock_params,
+)
+from modelopt.torch._compress.tools.checkpoint_utils import load_model_config
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.robust_json import json_dump
