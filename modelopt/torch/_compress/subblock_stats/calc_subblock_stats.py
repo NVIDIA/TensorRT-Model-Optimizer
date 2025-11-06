@@ -14,7 +14,7 @@
 # limitations under the License.
 # mypy: ignore-errors
 
-"""Calc subblock stats"""
+"""Calc subblock stats to compute memory and runtime statistics for subblocks."""
 
 import os
 from itertools import product
