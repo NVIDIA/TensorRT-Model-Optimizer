@@ -175,6 +175,16 @@ def get_parser() -> argparse.ArgumentParser:
             "For example: op_type_1:fp16 op_type_2:[fp16,fp32]:[fp16]."
         ),
     )
+    parser.add_argument(
+        "--opset",
+        type=int,
+        help=(
+            "Target ONNX opset version for the converted model. If not specified, uses default minimum opset "
+            "based on precision type (22 for bf16, 13 for fp16). Note: BF16 requires opset >= 22 for full support. "
+            "The opset may be automatically increased if certain operations (e.g., quantization nodes) require a "
+            "higher version."
+        ),
+    )
 
     return parser
 
@@ -207,6 +217,7 @@ def main(argv=None):
         trt_plugins=args.trt_plugins,
         trt_plugins_precision=args.trt_plugins_precision,
         max_depth_of_reduction=args.max_depth_of_reduction,
+        opset=args.opset,
     )
 
     output_path = args.output_path
