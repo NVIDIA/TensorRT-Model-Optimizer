@@ -36,14 +36,15 @@ except ImportError:
 
 import torch
 from logger import aprint, mprint
-from puzzle_tools.deci_lm_hf_code.block_config import (
+
+from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
     SUBBLOCK_CLS_DICT,
     BlockConfig,
     _get_dataclass_type,
     _is_dataclass_type,
 )
-from puzzle_tools.deci_lm_hf_code.configuration_decilm import DeciLMConfig
-from puzzle_tools.runtime import IRuntime
+from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
+from modelopt.torch._compress.tools.runtime import IRuntime
 
 
 class GQAInitMode(Enum):

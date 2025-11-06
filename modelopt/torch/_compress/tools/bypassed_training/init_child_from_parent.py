@@ -29,14 +29,17 @@ from puzzle_tools.bypassed_training.child_init import (
     create_child_state_dict,
     update_model_config,
 )
-from puzzle_tools.checkpoint_utils import (
-    _save_checkpoint,
+from puzzle_tools.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
+
+from modelopt.torch._compress.tools.checkpoint_utils import (
     copy_tokenizer,
     load_model_config,
     load_state_dict,
 )
-from puzzle_tools.checkpoint_utils_hf import copy_deci_lm_hf_code
-from puzzle_tools.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
+from modelopt.torch._compress.tools.checkpoint_utils_hf import (
+    _save_checkpoint,
+    copy_deci_lm_hf_code,
+)
 
 """
 
