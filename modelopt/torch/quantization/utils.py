@@ -266,6 +266,21 @@ def is_quantized_row_parallel_linear(module):
     return is_quantized_linear(module) and getattr(module, "_is_row_parallel", False)
 
 
+def is_vllm_fused_moe(module):
+    """Check if a module is a vLLM FusedMoE module."""
+    from .nn import QuantModule, TensorQuantizer
+
+    return (
+        isinstance(module, QuantModule)
+        and hasattr(module, "w13_weight")
+        and hasattr(module, "w2_weight")
+        and isinstance(getattr(module, "w13_input_quantizer", None), TensorQuantizer)
+        and isinstance(getattr(module, "w2_input_quantizer", None), TensorQuantizer)
+        and hasattr(module, "w13_weight_quantizer")
+        and hasattr(module, "w2_weight_quantizer")
+    )
+
+
 def is_quantized_parallel_linear(module):
     """Check if a module is a quantized parallel linear module."""
     return is_quantized_column_parallel_linear(module) or is_quantized_row_parallel_linear(module)
