@@ -20,7 +20,6 @@ import json
 import re
 import tempfile
 import warnings
-from builtins import ValueError
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -28,12 +27,11 @@ from typing import Any
 import torch
 import torch.nn as nn
 from safetensors.torch import save_file
-from torch.distributed.fsdp import FSDPModule
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
-from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, quantizer_attr_names
+from modelopt.torch.quantization.utils import quantizer_attr_names
 
 from .convert_hf_config import convert_hf_quant_config_format
 from .layer_utils import (
@@ -56,7 +54,6 @@ from .model_config import (
     QUANTIZATION_W4A8_AWQ,
     QUANTIZATION_W4A8_NVFP4_FP8,
 )
-from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
     fuse_prequant_layernorm,
@@ -73,6 +70,8 @@ from .quant_utils import (
 )
 
 __all__ = ["export_hf_checkpoint"]
+
+SPECULATIVE_DECODING_MODULE_NAMES = ["medusa_heads", "eagle_module", "drafter"]
 
 
 def _is_enabled_quantizer(quantizer):
@@ -115,8 +114,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             # update_experts_avg_prequant_scale(module)
             grouped_experts = get_experts_list(module, model_type)
             for modules in grouped_experts:
-                with fsdp2_aware_weight_update(model, modules):
-                    preprocess_linear_fusion(modules, resmooth_only=True)
+                preprocess_linear_fusion(modules, resmooth_only=True)
 
         # Attach hook to layernorm modules that need to be fused
         if is_layernorm(module):
@@ -134,10 +132,6 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
     with torch.no_grad():
         fake_input = torch.ones([1, 2], dtype=torch.long).to(model.device)
         decoder_fake_input = fake_input
-
-        # Check if this is a VL model that needs special input handling
-        is_vl_model = is_multimodal_model(model)
-
         if model_type.startswith("whisper"):
             # For Whisper models, we need to pass a fake input with the specific sequence length
             from transformers import AutoFeatureExtractor
@@ -153,23 +147,6 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             if getattr(model.config, "is_encoder_decoder", False):
                 # For encoder-decoder models, we need to pass both the encoder and decoder input ids
                 model(fake_input, decoder_input_ids=decoder_fake_input)
-            elif is_vl_model and "nemotron" in model_type:
-                # For Nemotron VL models, try to run optimization on just the language model part
-                language_model, _ = get_language_model_from_vl(model)
-
-                if language_model is not None:
-                    # Run optimization on just the language model with the same input format as regular LLMs
-                    # Use the same fake_input tensor that regular LLMs use
-                    print(
-                        f"Running optimization on language model with fake_input shape: {fake_input.shape}"
-                    )
-                    language_model(fake_input)
-                else:
-                    raise ValueError(
-                        f"Cannot extract language_model from Nemotron VL model (type: {model_type}). "
-                        "This is required for requantization/resmoothing optimization. "
-                        "Please ensure the model architecture is supported or file an issue."
-                    )
             else:
                 model(fake_input)
 
@@ -184,8 +161,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             QUANTIZATION_FP8_PB_REAL,
         ]:
             # Fuse modules that have the same input
-            with fsdp2_aware_weight_update(model, modules):
-                preprocess_linear_fusion(modules)
+            preprocess_linear_fusion(modules)
             fused_linears[modules[0].name] = [module.name for module in modules]
 
         # Fuse layernorms
@@ -195,8 +171,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             and tensor in output_to_layernorm
         ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
-            with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
-                fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+            fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.
@@ -217,8 +192,7 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                     assert new_expert_name in module_names
                     new_expert_modules.append(model.get_submodule(new_expert_name))
 
-                with fsdp2_aware_weight_update(model, new_expert_modules):
-                    preprocess_linear_fusion(new_expert_modules)
+                preprocess_linear_fusion(new_expert_modules)
 
                 expert_id += 1
 
@@ -364,19 +338,139 @@ def _export_quantized_weight(
         sub_module.register_buffer(quantizer_attrs.weight_scale, weight_scale)
 
 
+def _get_sparse_attention_config(model: nn.Module) -> dict[str, Any]:
+    """Extract sparse attention configuration from model for export.
+
+    Args:
+        model: Model with sparse attention modules
+
+    Returns:
+        Dictionary with sparse attention config in format:
+        {
+            "config_groups": {
+                "group_0": {
+                    "sparse_algo": "softmax_skip",
+                    "threshold": 1e-4,  # only if not calibrated
+                    "targets": ["LlamaAttention"]
+                }
+            },
+            "threshold_scale_factor": 0.001234,  # global, if calibrated
+            "target_sparsity": 0.5,  # global, if calibrated
+            "producer": {"name": "modelopt", "version": "..."}
+        }
+    """
+    from modelopt import __version__
+    from modelopt.torch.sparsity.attention_sparsity.nn.sparse_attention import SparseAttentionModule
+
+    # Collect all enabled sparse attention modules
+    sparse_modules = []
+    for name, module in model.named_modules():
+        if isinstance(module, SparseAttentionModule) and module.is_enabled:
+            sparse_modules.append((name, module))
+
+    if not sparse_modules:
+        return {}
+
+    sparse_config = {
+        "config_groups": {},
+        "producer": {
+            "name": "modelopt",
+            "version": __version__,
+        },
+    }
+
+    # Check first module for global calibration parameters
+    # (all modules share the same calibration parameters)
+    first_module = sparse_modules[0][1]
+    method_instance = first_module._sparse_method_instance
+    threshold_scale_factor = getattr(method_instance, "threshold_scale_factor", None)
+
+    if threshold_scale_factor is not None:
+        # Model was calibrated: add global calibration parameters
+        sparse_config["threshold_scale_factor"] = float(threshold_scale_factor)
+
+        target_sparsity = getattr(method_instance, "target_sparsity", None)
+        if target_sparsity is not None:
+            sparse_config["target_sparsity"] = float(target_sparsity)
+
+    # Group modules by configuration
+    # Key: (sparse_algo, threshold_repr), Value: list of module class names
+    config_to_targets = {}
+
+    for name, module in sparse_modules:
+        method_instance = module._sparse_method_instance
+
+        # Extract sparse algorithm name from method name
+        # e.g., "flash_softmax_skip" -> "softmax_skip"
+        method_name = method_instance.name
+        if method_name.startswith("flash_"):
+            sparse_algo = method_name[6:]  # Remove "flash_" prefix
+        else:
+            sparse_algo = method_name
+
+        # Get module's original class name for targets
+        # Get the class name before SparseAttentionModule wrapping
+        original_cls = module.get_original_cls_by_level(level=0)
+        target_class_name = original_cls.__name__
+
+        # Build config key for grouping
+        if threshold_scale_factor is None:
+            # Not calibrated: include threshold in grouping
+            threshold_config = getattr(method_instance, "threshold_config", None)
+            if isinstance(threshold_config, dict):
+                # Convert dict to tuple for hashable key
+                threshold_repr = tuple(sorted(threshold_config.items()))
+            else:
+                threshold_repr = threshold_config
+        else:
+            # Calibrated: no threshold in per-layer config
+            threshold_repr = None
+
+        config_key = (sparse_algo, threshold_repr)
+
+        if config_key not in config_to_targets:
+            config_to_targets[config_key] = {
+                "sparse_algo": sparse_algo,
+                "threshold_config": threshold_config if threshold_scale_factor is None else None,
+                "targets": set(),
+            }
+
+        config_to_targets[config_key]["targets"].add(target_class_name)
+
+    # Convert grouped configs to config_groups format
+    for group_idx, ((sparse_algo, threshold_repr), group_data) in enumerate(
+        config_to_targets.items()
+    ):
+        group_name = f"group_{group_idx}"
+        group_config = {
+            "sparse_algo": group_data["sparse_algo"],
+            "targets": sorted(group_data["targets"]),
+        }
+
+        # Add threshold only if not calibrated
+        if group_data["threshold_config"] is not None:
+            threshold_config = group_data["threshold_config"]
+            if isinstance(threshold_config, dict):
+                # Convert to JSON-serializable format
+                group_config["threshold"] = {k: float(v) for k, v in threshold_config.items()}
+            else:
+                group_config["threshold"] = float(threshold_config)
+
+        sparse_config["config_groups"][group_name] = group_config
+
+    return sparse_config
+
+
 def _export_hf_checkpoint(
-    model: nn.Module,
-    dtype: torch.dtype | None = None,
-    **kwargs,
+    model: nn.Module, dtype: torch.dtype | None = None
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
     The packed checkpoint will be consumed by the TensorRT-LLM unified converter.
 
     Args:
-        model: the full torch model to export. The actual quantized model may be a submodule.
+        model: the torch model.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
-        accelerator: the accelerator instance in case of distributed export setup.
 
     Returns:
         post_state_dict: Dict containing quantized weights
@@ -390,10 +484,15 @@ def _export_hf_checkpoint(
             f"({dtype}), which may lead to numerical errors."
         )
 
-    accelerator = kwargs.get("accelerator")
+    # Create a model layer pool
+    # If `model.model` exists use that, otherwise use `model` itself, e.g., Nemotron-H
+    root = getattr(model, "model", model)
+    # If that has a `.layers`, use it, otherwise fall back to the object itself
+    root = getattr(root, "layers", root)
+    layer_pool = {f"model.layers.{name}": sub_module for name, sub_module in root.named_modules()}
 
     # Handle input quantizers of experts that are not calibrated
-    for _, sub_module in model.named_modules():
+    for name, sub_module in model.named_modules():
         if is_moe(sub_module) and hasattr(sub_module, "experts"):
             expert_linear_names = get_expert_linear_names(sub_module)
             for linear_name in expert_linear_names:
@@ -446,6 +545,13 @@ def _export_hf_checkpoint(
                         f"Please file an issue or add support for this model architecture."
                     )
 
+    # NOTE: Speculative decoding models have extra modules that may be quantized
+    # Need to add these modules to the layer_pool
+    for key in SPECULATIVE_DECODING_MODULE_NAMES:
+        if hasattr(model, key):
+            for name, sub_module in getattr(model, key).named_modules():
+                layer_pool.update({f"{key}.{name}": sub_module})
+
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
     requantize_resmooth_fused_llm_layers(model)
@@ -458,7 +564,7 @@ def _export_hf_checkpoint(
     except ImportError:
         warnings.warn("accelerate is not installed, hooks will not be removed")
 
-    quant_config = get_quant_config(model)
+    quant_config = get_quant_config(layer_pool)
 
     kv_cache_max_bound = 0
     kv_cache_format = quant_config["quantization"]["kv_cache_quant_algo"]
@@ -475,24 +581,12 @@ def _export_hf_checkpoint(
 
     # Track if any layers are quantized to properly set exclude_modules
     has_quantized_layers = False
-    fsdp_module_to_reshard = None
 
-    for _, sub_module in model.named_modules():
-        # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
-        if isinstance(sub_module, FSDPModule):
-            # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
-            # We need to reshard the previous FSDPModule to prevent potential OOM.
-            # This hack reduces the number of unshard reshard operations, to avoid unnecessary communication.
-            if fsdp_module_to_reshard is not None:
-                fsdp_module_to_reshard.reshard()
-
-            fsdp_module_to_reshard = sub_module
-
+    for name, sub_module in layer_pool.items():
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
             if is_quantlinear(sub_module):
-                with fsdp2_aware_weight_update(model, sub_module, reshard=False):
-                    _export_quantized_weight(sub_module, dtype)
+                _export_quantized_weight(sub_module, dtype)
             elif (
                 "Llama4TextExperts" in type(sub_module).__name__
                 or "GptOssExperts" in type(sub_module).__name__
@@ -510,14 +604,9 @@ def _export_hf_checkpoint(
                 )
                 # Export the quantized weights
                 for weight_name in ["gate_up_proj", "down_proj"]:
-                    with fsdp2_aware_weight_update(model, sub_module, reshard=False):
-                        _export_quantized_weight(sub_module, dtype, weight_name)
+                    _export_quantized_weight(sub_module, dtype, weight_name)
 
-    if accelerator is not None:
-        # Gather state_dict from all ranks
-        quantized_state_dict = accelerator.get_state_dict(model)
-    else:
-        quantized_state_dict = model.state_dict()
+    quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
         quantized_state_dict, kv_cache_max_bound, kv_cache_format
@@ -539,7 +628,7 @@ def export_hf_checkpoint(
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
     Args:
-        model: the full torch model to export. The actual quantized model may be a submodule.
+        model: the torch model.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
@@ -576,6 +665,11 @@ def export_hf_checkpoint(
             config_data = json.load(file)
 
         config_data["quantization_config"] = hf_quant_config
+
+        # Add sparse attention config if model has sparse attention
+        sparse_attention_config = _get_sparse_attention_config(model)
+        if sparse_attention_config:
+            config_data["sparse_attention_config"] = sparse_attention_config
 
         with open(original_config, "w") as file:
             json.dump(config_data, file, indent=4)
