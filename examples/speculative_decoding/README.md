@@ -181,7 +181,7 @@ Please refer to [SGLang Doc: Speculative Decoding](https://docs.sglang.ai/advanc
 
 ### SpecDec Bench
 
-One can also use `examples/specdec_bench` to validate the trained Eagle3 checkpoints in a variety of frameworks (vLLM, SGLang, TRT-LLM) on a set of datasets.
+One can also use [examples/specdec_bench](../specdec_bench) to validate the trained Eagle3 checkpoints in a variety of frameworks (vLLM, SGLang, TRT-LLM) on a set of datasets.
 
 ### Deploying Quantized model
 
