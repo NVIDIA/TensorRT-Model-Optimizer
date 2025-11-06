@@ -242,7 +242,7 @@ def validate_model(
         )
 
         # Create checkpoint manager with hooks
-        from utils.checkpoint_manager import ScoringCheckpointManager
+        from modelopt.torch._compress.utils.checkpoint_manager import ScoringCheckpointManager
 
         mprint(
             f"Creating checkpoint manager with {len(activation_hooks)} hooks for dir: {args.activations_log_dir}"
