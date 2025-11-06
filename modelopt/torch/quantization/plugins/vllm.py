@@ -183,16 +183,13 @@ class _QuantVLLMFusedMoE(QuantModule):
     def forward(self, hidden_states: torch.Tensor, router_logits: torch.Tensor):
         hidden_states = self.w13_input_quantizer(hidden_states)
 
-        # Save the original kernel function
+        # Temporarily patch kernel to apply quantization
         self._original_invoke_kernel = vllm_fused_moe_package.invoke_fused_moe_kernel
-
-        # Patch the module-level function to use our quantized version
         vllm_fused_moe_package.invoke_fused_moe_kernel = self.invoke_fused_moe_quantized  # type: ignore[attr-defined]
 
         try:
             output = super().forward(hidden_states, router_logits)
         finally:
-            # Restore the original kernel function
             vllm_fused_moe_package.invoke_fused_moe_kernel = self._original_invoke_kernel  # type: ignore[attr-defined]
 
         return output

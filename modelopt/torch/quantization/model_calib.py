@@ -331,13 +331,9 @@ def apply_pre_quant_scale_and_smooth_fusedmoe(
         "weight_quantizer.pre_quant_scale should be None first!"
     )
 
-    # Convert to fp32 for numerical safety
     pre_quant_scale = pre_quant_scale.to(torch.float32)
 
-    # Reshape scale for broadcasting with weight
-    # Scale is always 1D [input_dim] for both linear and MoE weights
-    # For 2D weights [output_dim, input_dim]: broadcast [1, input_dim]
-    # For 3D weights [num_experts, output_dim, input_dim]: broadcast [1, 1, input_dim]
+    # Reshape scale for weight broadcasting: 2D [1, in_dim] or 3D [1, 1, in_dim]
     if weight.ndim == 3:
         scale_reshaped = pre_quant_scale.view(1, 1, -1)
     elif weight.ndim == 2:
@@ -345,43 +341,24 @@ def apply_pre_quant_scale_and_smooth_fusedmoe(
     else:
         raise ValueError(f"Unsupported weight dimensions: {weight.ndim}")
 
-    # Fuse scale into weight
-    # AWQ formula: (input * 1/scale) @ (weight * scale)
-    # So we multiply weight by scale
+    # Fuse scale into weight: (input * 1/scale) @ (weight * scale)
     weight.data = (weight.data * scale_reshaped).to(weight.dtype)
-
-    # Reset and re-calibrate weight quantizer
     weight_quantizer.reset_amax()
     max_calibrate(weight_quantizer, lambda q: q(weight))
-
-    # Disable pre_quant_scale for weight quantizer (already folded into weight)
     weight_quantizer._enable_pre_quant_scale = False
 
-    # Handle input quantizer (if it was enabled and has amax)
+    # Setup input quantizer with inverse scale
     if input_quantizer.amax is not None:
         act_amax = input_quantizer.amax
-
-        # Save per-channel amax for smoothing
         input_quantizer._amax_for_smoothing = act_amax.cpu()
         input_quantizer.reset_amax()
         input_quantizer.axis = None
 
-        # Set pre_quant_scale for input quantizer
-        # AWQ formula: (input * 1/scale) @ (weight * scale)
-        # Weight already has scale applied, so input needs 1/scale
+        # Input scale is 1D [in_dim] for both linear and MoE activations
         inv_scale_for_input = 1.0 / pre_quant_scale
-
-        # Input is always a regular activation tensor [batch, seq, hidden_dim]
-        # So we use 1D scale [hidden_dim] regardless of weight dimensions
-        # (Unlike weights which may be 3D for MoE: [num_experts, out_dim, in_dim])
         input_quantizer._enable_pre_quant_scale = True
         input_quantizer.pre_quant_scale = inv_scale_for_input.to(weight.dtype)
-
-        # Adjust amax to account for pre_quant_scale
-        # The input will be scaled by (1/scale), so the range changes
         input_quantizer.amax = (act_amax * inv_scale_for_input).amax().to(weight.dtype)
-
-        # Enable input quantizer for inference
         input_quantizer.enable()
 
 
@@ -625,9 +602,8 @@ def awq_lite(
             unpatch_forward_method(module, "_forward_no_awq")
 
     def forward_fusedmoe_w13(self, hidden_states, router_logits):
-        """Patched forward for FusedMoE to collect w13 stats during cache mode."""
+        """Patched forward to collect w13 stats before routing."""
         if AWQLiteFusedMoEHelper.cache_mode and self.awq_lite_w13.is_enabled:
-            # Collect act_scale from original hidden_states (before routing)
             hidden_states_local = (
                 hidden_states.to_local() if hasattr(hidden_states, "to_local") else hidden_states
             )
@@ -639,14 +615,12 @@ def awq_lite(
                 hidden_states_local.numel() / hidden_states_local.shape[-1]
             )
 
-            # Collect input quantizer amax
             if self.awq_lite_w13.is_input_quantized:
                 with set_quantizer_by_cfg_context(
                     self.w13_input_quantizer, {"*": {"enable": True}}
                 ):
                     max_calibrate(self.w13_input_quantizer, lambda q: q(hidden_states_local), False)
 
-        # Call original forward
         return self._forward_no_awq_w13(hidden_states, router_logits)
 
     class AWQLiteFusedMoEHelper:
@@ -693,15 +667,7 @@ def awq_lite(
             self.is_enabled = True
 
         def setup(self):
-            """Setup for AWQ-Lite calibration.
-
-            Similar to regular linear layers:
-            - Disable input_quantizer during calibration
-            - Set axis=-1 for per-channel calibration
-            - Will be temporarily enabled during cache mode for stats collection
-            - Stays disabled during search mode (manual pre_quant_scale per alpha)
-            - Re-enabled during postprocessing with optimal AWQ scale
-            """
+            """Setup for AWQ calibration: disable input quantizer and patch forward if needed."""
             if self.input_quantizer.is_enabled:
                 self.input_quantizer.disable()
                 if self.input_quantizer.axis not in [None, -1]:
@@ -709,8 +675,7 @@ def awq_lite(
                     return
                 self.input_quantizer.axis = -1
 
-            # For w13: Patch forward to collect stats at forward level (before routing)
-            # For w2: Stats collected at kernel level (no patching needed)
+            # Patch forward for w13 to collect stats before routing
             if self.projection_name == "w13":
                 bind_forward_method(self.module, forward_fusedmoe_w13, "_forward_no_awq_w13")
 
@@ -735,9 +700,7 @@ def awq_lite(
         scale = scale.view(org_shape)
         if slice_after_padding is not None:
             scale = scale[..., slice_after_padding]
-        # Average across all dimensions except the last (input_dim)
-        # For 2D [output_dim, input_dim]: mean(0) → [input_dim]
-        # For 3D [num_experts, output_dim, input_dim]: mean([0,1]) → [input_dim]
+        # Average to 1D [input_dim] for both 2D and 3D weights
         dims_to_reduce = list(range(scale.ndim - 1))
         scale = scale.mean(dim=dims_to_reduce).to(torch.float32)
         return scale
@@ -861,8 +824,8 @@ def awq_lite(
             original_invoke_kernel = vllm_fused_moe_package.invoke_fused_moe_kernel
 
             def patched_invoke_fused_moe_kernel(A, B, C, *args, **kwargs):  # noqa: N803
-                """Patched kernel that handles AWQ-lite calibration for all FusedMoE modules."""
-                # Find which module this call belongs to by checking B (weight tensor)
+                """Patched kernel for AWQ calibration of FusedMoE modules."""
+                # Find module by weight tensor
                 target_module = None
                 helper = None
                 input_q = None
@@ -882,7 +845,6 @@ def awq_lite(
                         weight_q = mod.w2_weight_quantizer
                         break
 
-                # If not found or not enabled, use original kernel
                 if (
                     target_module is None
                     or helper is None
@@ -891,26 +853,22 @@ def awq_lite(
                 ):
                     return original_invoke_kernel(A, B, C, *args, **kwargs)
 
-                # Type assertions for mypy
                 assert helper is not None and input_q is not None and weight_q is not None
 
-                # Compute actual output without quantization
+                # Compute ground truth without quantization
                 weight_q.disable()
                 c_actual = torch.empty_like(C)
                 original_invoke_kernel(A, B, c_actual, *args, **kwargs)
                 weight_q.enable()
 
                 if AWQLiteFusedMoEHelper.cache_mode:
-                    # Cache mode: collect activation statistics
-                    # For w13: Stats collected at forward level (skip here)
-                    # For w2: Collect from intermediate activation A
+                    # Cache mode: collect w2 stats (w13 stats collected at forward level)
                     if helper.projection_name == "w2":
                         a_local = A.to_local() if hasattr(A, "to_local") else A
                         helper.act_scale += get_act_scale(a_local)
                         helper.num_cache_steps += 1
                         helper.num_tokens += a_local.numel() / a_local.shape[-1]
 
-                        # Collect input quantizer stats for w2
                         if helper.is_input_quantized:
                             with set_quantizer_by_cfg_context(input_q, {"*": {"enable": True}}):
                                 max_calibrate(input_q, lambda q: q(a_local), False)
@@ -920,20 +878,9 @@ def awq_lite(
 
                 # Search mode: try different alpha values
                 for alpha in helper.loss:
-                    awq_scale = get_scale(
-                        helper.act_scale,
-                        helper.weight_scale,
-                        alpha,
-                        None,
-                    )
-                    # Apply AWQ scaling: input * (1/scale) @ weight * scale
-                    # For w13: input scaling applied at forward level (not here)
-                    # For w2: input scaling applied at kernel level (here)
+                    awq_scale = get_scale(helper.act_scale, helper.weight_scale, alpha, None)
 
-                    # Reshape scale for broadcasting with weight
-                    # awq_scale is always 1D [input_dim]
-                    # For 3D weights [num_experts, output_dim, input_dim]: reshape to [1, 1, input_dim]
-                    # For 2D weights [output_dim, input_dim]: reshape to [1, input_dim]
+                    # Reshape scale for weight broadcasting
                     if B.ndim == 3:
                         scale_reshaped = awq_scale.view(1, 1, -1)
                     elif B.ndim == 2:
@@ -941,26 +888,20 @@ def awq_lite(
                     else:
                         raise ValueError(f"Unsupported weight dimensions: {B.ndim}")
 
+                    # Apply AWQ scaling: input * (1/scale) @ weight * scale
                     if helper.projection_name == "w2":
-                        # w2: Apply input scaling at kernel level (on intermediate activations)
-                        # Input A_local is 2D [num_tokens, hidden_dim], so use 1D scale
                         input_q._enable_pre_quant_scale = True
                         input_q.pre_quant_scale = (1 / awq_scale).to(B.dtype)
-                    # For both: Apply weight scaling at kernel level
-                    # Weight is 3D [num_experts, out_dim, in_dim], so use reshaped scale
                     weight_q._enable_pre_quant_scale = True
                     weight_q.pre_quant_scale = scale_reshaped.to(B.dtype)
 
                     c_search = torch.empty_like(C)
                     original_invoke_kernel(A, B, c_search, *args, **kwargs)
 
-                    # Compute loss
                     loss = (c_search - c_actual).float().pow(2).mean()
                     helper.loss[alpha] += loss
 
-                # Clean up temporary pre_quant_scale after search completes
-                # The last alpha iteration leaves _enable_pre_quant_scale=True, which would
-                # cause errors if any forward pass happens before postprocessing
+                # Disable temporary scales
                 weight_q._enable_pre_quant_scale = False
                 if helper.projection_name == "w2":
                     input_q._enable_pre_quant_scale = False
