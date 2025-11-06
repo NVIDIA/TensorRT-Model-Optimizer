@@ -27,13 +27,13 @@ from puzzle_tools.checkpoint_utils import (
     load_model_config,
 )
 from puzzle_tools.deci_lm_hf_code.block_config import AttentionConfig, BlockConfig, FFNConfig
-from puzzle_tools.replacement_utils import (
+from utils.utils import block_config_to_str, subblock_config_to_str
+
+from modelopt.torch._compress.replacement_library.replacement_utils import (
     is_replacement_identical_to_teacher,
     replacement_is_teacher,
     sort_replacements,
 )
-from utils.utils import block_config_to_str, subblock_config_to_str
-
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.robust_json import json_dump

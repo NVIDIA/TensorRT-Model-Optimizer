@@ -100,11 +100,7 @@ optional_deps = {
         "setuptools-scm>=8",
     ],
     # Dependedencies for modelopt.torch._compress subpackage
-    "compress": [
-        "fire",
-        "hydra-core==1.3.2",
-        "omegaconf==2.3.0",
-    ],
+    "compress": ["fire", "hydra-core==1.3.2", "omegaconf==2.3.0", "lru-dict"],
 }
 
 # create "compound" optional dependencies
