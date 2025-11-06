@@ -22,8 +22,11 @@ import torch.distributed
 import wandb
 from logger import mprint
 from puzzle_tools.checkpoint_utils import init_module_with_state_dict
-from puzzle_tools.deci_lm_hf_code.configuration_decilm import DeciLMConfig
-from puzzle_tools.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM, LMHead
+from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
+from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import (
+    DeciLMForCausalLM,
+    LMHead,
+)
 from puzzle_tools.runtime import IRuntime
 from sewing_kit import ExternalTarget, InputArgs, ModuleTarget, Needle, RemoteTarget, StitchedModule
 from sewing_kit.core import InputReducer
