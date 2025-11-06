@@ -19,8 +19,12 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from puzzle_tools.deci_lm_hf_code.block_config import AttentionConfig, FFNConfig, MambaConfig
 
+from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
+    AttentionConfig,
+    FFNConfig,
+    MambaConfig,
+)
 from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
 from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import DeciLMMoe
 from modelopt.torch._compress.utils.utils import (
