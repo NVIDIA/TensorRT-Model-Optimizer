@@ -32,13 +32,13 @@ all the same configuration parameters for both build_replacement_library and cal
 import hydra
 from calc_subblock_stats import launch_calc_subblock_stats
 from omegaconf import DictConfig
-from utils.parsing import format_global_config
 
 from modelopt.torch._compress.replacement_library.build_replacement_library import (
     launch_build_replacement_library,
 )
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
+from modelopt.torch._compress.utils.parsing import format_global_config
 
 
 def launch_build_library_and_stats(cfg: DictConfig) -> None:
