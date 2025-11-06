@@ -558,7 +558,9 @@ class TensorQuantizer(nn.Module):
                 inputs,
                 axis=self._axis,
                 block_sizes=self._block_sizes,
-                scales=self.amax / 448.0 if self.amax is not None else None,
+                scales=self.amax / 448.0
+                if (self.amax is not None and not self._block_sizes)
+                else None,
             )
             buffer_to_register["_scale"] = _scale
         elif self._num_bits == 8:
