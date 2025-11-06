@@ -893,10 +893,10 @@ class _DynamicEagleGPTModel(EagleModel):
         eagle_hidden_states, eagle_hidden_states_pre_final_layernorm, eagle_logits = [], [], []
         for i in range(self.eagle_config.parallel_draft_step):
             hs, hs_pre_final_ln = self.eagle_module[i](
-                eagle_inputs[i]["embedding"],
-                eagle_inputs[i]["hidden_states"],
-                eagle_inputs[i]["attention_mask"],
-                eagle_inputs[i]["rotary_pos_emb"],
+                eagle_inputs["embedding"],
+                eagle_inputs["hidden_states"],
+                eagle_inputs["attention_mask"],
+                eagle_inputs["rotary_pos_emb"],
                 inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
                 inference_context=inference_context[i] if inference_context is not None else None,
@@ -907,7 +907,7 @@ class _DynamicEagleGPTModel(EagleModel):
 
             # Update inference_context.sequence_len_offset after each call of eagle_module
             if inference_context is not None:
-                inference_context[i].sequence_len_offset += eagle_inputs[i]["input_ids"].shape[1]
+                inference_context[i].sequence_len_offset += eagle_inputs["input_ids"].shape[1]
 
             if hasattr(self.eagle_module[i], "eagle_output_layer"):
                 eagle_logit, _ = self.eagle_module[i].eagle_output_layer(hs)
