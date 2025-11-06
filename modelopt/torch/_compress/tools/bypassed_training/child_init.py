@@ -35,7 +35,6 @@ except ImportError:
 
 
 import torch
-from logger import aprint, mprint
 
 from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
     SUBBLOCK_CLS_DICT,
@@ -44,6 +43,7 @@ from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
     _is_dataclass_type,
 )
 from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
+from modelopt.torch._compress.tools.logger import aprint, mprint
 from modelopt.torch._compress.tools.runtime import IRuntime
 
 
