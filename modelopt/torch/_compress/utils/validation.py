@@ -30,7 +30,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers.generation.logits_process import TopKLogitsWarper, TopPLogitsWarper
 from typing_extensions import Self
-from utils.data.dataloaders import create_padded_tensor
+from modelopt.torch._compress.utils.data.dataloaders import create_padded_tensor
 
 
 @torch.no_grad()
