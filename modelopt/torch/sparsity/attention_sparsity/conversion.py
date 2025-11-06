@@ -67,7 +67,7 @@ def convert_to_sparse_attention_model(
 
     # Apply configuration to sparse attention modules
     sparse_cfg = config.sparse_cfg if hasattr(config, "sparse_cfg") else {}
-    set_sparse_attention_by_cfg(model, sparse_cfg, config)
+    set_sparse_attention_by_cfg(model, sparse_cfg)
 
     # Create metadata
     metadata = {}
@@ -106,33 +106,31 @@ def _replace_sparse_attention_modules(model: nn.Module, version=None):
         _replace_sparse_attention_modules(getattr(model, name), version=version)
 
 
-def set_sparse_attention_by_cfg(model: nn.Module, sparse_cfg: dict, config: SparseAttentionConfig):
+def set_sparse_attention_by_cfg(model: nn.Module, sparse_cfg: dict):
     """Apply sparse attention configuration to model.
 
     Similar to quantization's set_quantizer_by_cfg.
 
     Args:
         model: Model with sparse attention modules
-        sparse_cfg: Sparse configuration dictionary
-        config: Global sparse attention configuration
+        sparse_cfg: Sparse configuration dictionary mapping patterns to attributes
     """
     sparse_cfg = sparse_cfg.copy()
 
     # Apply default first if exists
     if "default" in sparse_cfg:
-        set_sparse_attention_attribute(model, "*", sparse_cfg["default"], config)
+        set_sparse_attention_attribute(model, "*", sparse_cfg["default"])
         sparse_cfg.pop("default")
 
     # Apply pattern-specific configs
     for pattern, cfg in sparse_cfg.items():
-        set_sparse_attention_attribute(model, pattern, cfg, config)
+        set_sparse_attention_attribute(model, pattern, cfg)
 
 
 def set_sparse_attention_attribute(
     model: nn.Module,
     wildcard_or_filter: str | Callable,
     attribute_cfg: dict[str, Any],
-    global_config: SparseAttentionConfig,
 ):
     """Set sparse attention attributes for modules matching pattern.
 
@@ -141,18 +139,10 @@ def set_sparse_attention_attribute(
     Args:
         model: Model to configure
         wildcard_or_filter: Pattern to match module names
-        attribute_cfg: Attributes to apply
-        global_config: Global sparse attention configuration
+        attribute_cfg: Attributes to apply (must include 'method')
     """
-    # Merge global config fields with pattern config
     # Filter out model-level configs that shouldn't be passed to modules
     module_cfg = {k: v for k, v in attribute_cfg.items() if k != "calibration"}
-
-    full_cfg = {
-        "method": global_config.method,
-        "collect_stats": global_config.collect_stats,
-        **module_cfg,
-    }
 
     for name, module in model.named_modules():
         if not isinstance(module, SparseAttentionModule):
@@ -169,7 +159,7 @@ def set_sparse_attention_attribute(
 
         if matched:
             # Apply config using the same method as TensorQuantizer
-            module.set_from_attribute_config(full_cfg)
+            module.set_from_attribute_config(module_cfg)
 
 
 def restore_sparse_attention_model(
