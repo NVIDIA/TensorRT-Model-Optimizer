@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# mypy: ignore-errors
 
 import json
 from pathlib import Path
@@ -19,7 +20,6 @@ from typing import Any, Type
 
 import hydra
 import pandas as pd
-from logger import mprint
 from omegaconf import DictConfig
 from puzzle_tools.checkpoint_utils import (
     SAFETENSORS_SUBBLOCKS_DIR_NAME,
@@ -27,16 +27,17 @@ from puzzle_tools.checkpoint_utils import (
     load_model_config,
 )
 from puzzle_tools.deci_lm_hf_code.block_config import AttentionConfig, BlockConfig, FFNConfig
-from puzzle_tools.hydra_utils import register_hydra_resolvers
 from puzzle_tools.replacement_utils import (
     is_replacement_identical_to_teacher,
     replacement_is_teacher,
     sort_replacements,
 )
-from utils.parsing import format_global_config
 from utils.utils import block_config_to_str, subblock_config_to_str
 
+from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
+from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.robust_json import json_dump
+from modelopt.torch._compress.utils.parsing import format_global_config
 
 """
 Standard Puzzle Usage:
