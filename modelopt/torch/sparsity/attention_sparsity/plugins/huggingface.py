@@ -20,7 +20,7 @@ import transformers
 
 from modelopt.torch.opt.dynamic import DynamicModule
 
-from ..nn.sparse_attention import SparseAttentionModule, SparseAttentionRegistry
+from ..sparse_attention import SparseAttentionModule, SparseAttentionRegistry
 
 
 class _GenericSparseAttention(SparseAttentionModule):
@@ -80,10 +80,8 @@ def register_sparse_attention_on_the_fly(model: nn.Module) -> bool:
         type_name = module_type.__name__
 
         # Common attention module patterns
-        is_attention = (
-            "attention" in type_name.lower()
-            or type_name.endswith("Attention")
-            or type_name.endswith("SelfAttention")
+        is_attention = "attention" in type_name.lower() or type_name.endswith(
+            ("Attention", "SelfAttention")
         )
 
         if is_attention and module_type not in SparseAttentionRegistry:
