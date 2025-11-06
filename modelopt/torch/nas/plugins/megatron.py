@@ -51,7 +51,6 @@ from megatron.core.transformer.transformer_layer import TransformerLayer
 from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.opt.hparam import HPType
 from modelopt.torch.opt.searcher import ConstraintsDict
-from modelopt.torch.opt.utils import named_hparams
 from modelopt.torch.trace import Symbol
 from modelopt.torch.utils import distributed as dist
 from modelopt.torch.utils import (
@@ -1322,12 +1321,6 @@ class _DynamicMCoreLanguageModel(DynamicModule):
 
     def export(self) -> torch.nn.Module:
         """Export the dynamic module to a torch.nn.Module."""
-        # TODO: Improve this!
-        # Slice order needs to be reset before exporting since weights are already
-        # force assigned and we dont want to sort them again (losing the correct order)
-        for n, hp in named_hparams(self, configurable=True):
-            hp.enforce_order(None)
-
         for handle in self.hook_handles:
             handle.remove()
         self._export_drop_layers()
