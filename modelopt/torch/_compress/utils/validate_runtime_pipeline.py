@@ -28,13 +28,24 @@ from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import (
     LMHead,
 )
 from modelopt.torch._compress.tools.runtime import IRuntime
-from sewing_kit import ExternalTarget, InputArgs, ModuleTarget, Needle, RemoteTarget, StitchedModule
-from sewing_kit.core import InputReducer
-from sewing_kit.utils import distributed_recv_obj, distributed_send_obj, fake_tensor
+from modelopt.torch._compress.sewing_kit import (
+    ExternalTarget,
+    InputArgs,
+    ModuleTarget,
+    Needle,
+    RemoteTarget,
+    StitchedModule,
+)
+from modelopt.torch._compress.sewing_kit.core import InputReducer
+from modelopt.torch._compress.sewing_kit.utils import (
+    distributed_recv_obj,
+    distributed_send_obj,
+    fake_tensor,
+)
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from modelopt.torch._compress.tools.sharded_checkpoint_utils import DummyBlock
-from utils.validation import _organize_outputs, calculate_batch_outputs
+from modelopt.torch._compress.utils.validation import _organize_outputs, calculate_batch_outputs
 
 
 @torch.no_grad()
