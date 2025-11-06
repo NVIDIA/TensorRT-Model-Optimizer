@@ -359,8 +359,6 @@ def _export_quantized_weight(
         )
     elif quantization_format == QUANTIZATION_FP8_PC_PT and is_bmm_expert_weight:
         # For FP8_PC_PT with BMM-style experts, transpose only the weight (not weight_scale)
-        # Transpose weight from (num_experts, input_dim, output_dim) to (num_experts, output_dim, input_dim)
-        # weight_scale remains (num_experts, output_dim) for per-channel quantization
         weight, _ = maybe_transpose_expert_weight_dimensions(
             weight, is_bmm_expert_weight=is_bmm_expert_weight
         )
