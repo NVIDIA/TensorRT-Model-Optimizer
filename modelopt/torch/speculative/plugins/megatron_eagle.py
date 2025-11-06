@@ -1031,16 +1031,13 @@ class _DynamicEagleGPTModel(EagleModel):
 
         acc = []
         for ttt_step in range(ttt_steps):
-            eagle_inputs = [
-                self._get_eagle_module_inputs(
-                    input_ids=input_ids,
-                    hidden_states=eagle_module_input_hidden_states[i],
-                    attention_mask=attention_mask,
-                    position_ids=position_ids,
-                    ttt_step=ttt_step,
-                )
-                for i in range(self.eagle_config.parallel_draft_step)
-            ]
+            eagle_inputs = self._get_eagle_module_inputs(
+                input_ids=input_ids,
+                hidden_states=eagle_module_input_hidden_states,
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                ttt_step=ttt_step,
+            )
 
             _, eagle_logits, eagle_module_input_hidden_states = self._eagle_forward(
                 eagle_inputs,
