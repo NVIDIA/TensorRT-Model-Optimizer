@@ -26,12 +26,14 @@ from puzzle_tools.bypassed_training.child_init import (
     LinearInitMode,
     MlpInitMode,
 )
-from puzzle_tools.bypassed_training.init_child_from_parent import init_child_from_parent
-from puzzle_tools.checkpoint_utils import load_model_config
-from puzzle_tools.hydra_utils import register_hydra_resolvers
-from puzzle_tools.validate_model import validate_model
 
+from modelopt.torch._compress.tools.bypassed_training.init_child_from_parent import (
+    init_child_from_parent,
+)
+from modelopt.torch._compress.tools.checkpoint_utils import load_model_config
+from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 from modelopt.torch._compress.tools.logger import mprint
+from modelopt.torch._compress.tools.validate_model import validate_model
 
 
 def launch_score_activations(cfg: DictConfig, runtime):
