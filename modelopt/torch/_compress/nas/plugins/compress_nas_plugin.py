@@ -20,12 +20,12 @@ Compress NAS plugin for the Modelopt framework (based on Puzzle algorithm: https
 import datetime
 from pathlib import Path
 
-import build_library_and_stats
 import mip_and_realize_models
 import scoring
 import torch
 from torch import nn
 
+import modelopt.torch._compress.build_library_and_stats as build_library_and_stats
 import modelopt.torch._compress.pruning.pruning_ckpts as pruning_ckpts
 from modelopt.torch._compress.activation_scoring import score_pruning_activations
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
@@ -118,7 +118,8 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
         ],
     )
 
-    # Convert Llama3 model to DeciLM model
+    # Convert HF model to DeciLM model
+    # TODO: Make it generic, do not call convert_llama3_to_decilm directly.
     hf_ckpt_teacher_dir = "ckpts/teacher"  # TODO: make it configurable
     convert_llama3_to_decilm(
         input_dir=config.input_model_path,
