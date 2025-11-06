@@ -8,6 +8,10 @@ Model Optimizer Changelog (Linux)
 
 - Fix a bug in FastNAS pruning (computer vision models) where the model parameters were sorted twice messing up the ordering.
 
+**New Features**
+
+- Add MoE (e.g. Qwen3-30B-A3B) pruning support for ``num_moe_experts``, ``moe_ffn_hidden_size`` and ``moe_shared_expert_intermediate_size`` parameters in Minitron pruning (``mcore_minitron``).
+
 0.39 (2025-11-14)
 ^^^^^^^^^^^^^^^^^
 

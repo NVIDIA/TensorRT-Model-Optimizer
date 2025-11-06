@@ -16,6 +16,7 @@
 """Plugin to add NAS/Pruning support for megatron-core Language models like GPT and Mamba."""
 
 import types
+from abc import ABC
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -46,12 +47,14 @@ from megatron.core.transformer import MegatronModule
 from megatron.core.transformer.attention import SelfAttention
 from megatron.core.transformer.dot_product_attention import DotProductAttention
 from megatron.core.transformer.mlp import MLP
+from megatron.core.transformer.moe import moe_utils
 from megatron.core.transformer.moe.experts import SequentialMLP
 from megatron.core.transformer.moe.moe_layer import MoELayer
 from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_layer import TransformerLayer
 
+from modelopt.torch.nas.modules import DynamicModuleList
 from modelopt.torch.opt.dynamic import DynamicModule
 from modelopt.torch.opt.hparam import HPType
 from modelopt.torch.opt.searcher import ConstraintsDict
@@ -100,10 +103,10 @@ try:
 except ImportError:
     HAS_MAMBA = False
 
-
 __all__ = ["drop_mcore_language_model_layers"]
 
 
+# TODO: Allow passing setup_kwargs to DM.convert so we can reuse hparams directly during setup
 class _DynamicParallelLinear(DynamicModule):
     """A parallel linear layer with dynamic hyperparams."""
 
@@ -131,7 +134,7 @@ class _DynamicParallelLinear(DynamicModule):
     {ColumnParallelLinear: "megatron.core.tensor_parallel.layers.ColumnParallelLinear"}
 )
 class _DynamicColumnParallelLinear(_DynamicParallelLinear):
-    """A ``megatron.core.tensor_parallel.layers.ColumnParallelLinear`` layer with dynamic hyperparams."""
+    """A ColumnParallelLinear layer with dynamic hyperparams."""
 
     def _setup(self):
         super()._setup()
@@ -142,7 +145,7 @@ class _DynamicColumnParallelLinear(_DynamicParallelLinear):
 
 @DMRegistry.register({RowParallelLinear: "megatron.core.tensor_parallel.layers.RowParallelLinear"})
 class _DynamicRowParallelLinear(_DynamicParallelLinear):
-    """A ``megatron.core.tensor_parallel.layers.RowParallelLinear`` layer with dynamic hyperparams."""
+    """A RowParallelLinear layer with dynamic hyperparams."""
 
     def _setup(self):
         super()._setup()
@@ -155,7 +158,7 @@ class _DynamicRowParallelLinear(_DynamicParallelLinear):
     {VocabParallelEmbedding: "megatron.core.tensor_parallel.layers.VocabParallelEmbedding"}
 )
 class _DynamicVocabParallelEmbedding(DynamicModule):
-    """A ``megatron.core.tensor_parallel.layers.VocabParallelEmbedding`` layer with dynamic hyperparams."""
+    """A VocabParallelEmbedding layer with dynamic hyperparams."""
 
     def _setup(self):
         self._register_hparam("embedding_dim", TracedHp(list(range(1, self.embedding_dim + 1))))
@@ -169,7 +172,7 @@ class _DynamicVocabParallelEmbedding(DynamicModule):
 
 @DMRegistry.register({FusedLayerNorm: "megatron.core.fusions.fused_layer_norm.FusedLayerNorm"})
 class _DynamicFusedLayerNorm(_DynamicLayerNorm):
-    """A ``megatron.core.fusions.fused_layer_norm.FusedLayerNorm`` layer with dynamic hyperparams."""
+    """A FusedLayerNorm layer with dynamic hyperparams."""
 
     def _setup(self):
         # construct hidden_size with Hparam as last dimension
@@ -185,6 +188,7 @@ class _DynamicFusedLayerNorm(_DynamicLayerNorm):
         self._register_dynamic_attribute("hidden_size", self._get_normalized_shape)
 
 
+# MLP DynamicModule ################################################################################
 @DMRegistry.register(
     {
         MLP: "megatron.core.transformer.mlp.MLP",
@@ -192,7 +196,10 @@ class _DynamicFusedLayerNorm(_DynamicLayerNorm):
     }
 )
 class _DynamicMLP(DynamicModule):
-    """A ``megatron.core.transformer.mlp.MLP`` layer with dynamic hyperparams."""
+    """An MLP layer with dynamic hyperparams.
+
+    Use for standard MLP and inside MoE layers (SequentialMLP and SharedExpertMLP).
+    """
 
     def _setup(self):
         assert self.input_size == self.config.hidden_size, (
@@ -200,6 +207,8 @@ class _DynamicMLP(DynamicModule):
         )
         if isinstance(self, SharedExpertMLP):
             self.hparam_name = "moe_shared_expert_intermediate_size"
+        elif self.config.num_moe_experts is not None:
+            self.hparam_name = "moe_ffn_hidden_size"
         else:
             self.hparam_name = "ffn_hidden_size"
         self.linear_fc1 = DMRegistry.convert(self.linear_fc1)
@@ -262,15 +271,21 @@ class _DynamicMLP(DynamicModule):
         self.linear_fc1.input_size = hidden_size
         self.linear_fc2.output_size = hidden_size
 
+    def modify(self, ffn_hidden_size_divisor: int, **kwargs) -> None:
+        """Modify the ffn_hidden_size hparam choices based on search space config."""
+        hp_mlp = self.get_hparam(self.hparam_name)
+        choices = {int(make_divisible(c, ffn_hidden_size_divisor)) for c in hp_mlp.choices}  # type: ignore[arg-type]
+        hp_mlp.choices = list(set(hp_mlp.choices) & choices | {hp_mlp.original})
+
     def export(self) -> torch.nn.Module:
         """Export the dynamic module to a torch.nn.Module."""
         self.hook_handle.remove()
         self.linear_fc1.export()
         self.linear_fc2.export()
-        super().export()
-        return self
+        return super().export()
 
 
+# SelfAttention DynamicModules #####################################################################
 def expand_head_indices(heads: torch.LongTensor, hidden_size_per_head: int) -> torch.LongTensor:
     """Expand each head index to hidden_size_per_head indices and offset by head * hidden_size_per_head."""
     return (
@@ -484,7 +499,7 @@ class _DynamicProjRowParallelLinear(DynamicModule, RowParallelLinear):
 
 @DMRegistry.register({SelfAttention: "megatron.core.transformer.attention.SelfAttention"})
 class _DynamicSelfAttention(DynamicModule):
-    """A ``megatron.core.transformer.attention.SelfAttention`` layer with dynamic hyperparams.
+    """A SelfAttention layer with dynamic hyperparams.
 
     NOTE: Layernorms apply on hidden_size_per_attention_head hence no need to convert to dynamic
     """
@@ -637,103 +652,86 @@ class _DynamicSelfAttention(DynamicModule):
         self.core_attention.export()
         self.linear_qkv.export()
         self.linear_proj.export()
-        super().export()
-        return self
+        return super().export()
 
 
-# MoE Dynamic Classes
+# MoE DynamicModules ###############################################################################
+# Add ABC to avoid TypeError: object layout differs (because parent if TopKRouter inherits from ABC)
 @DMRegistry.register({TopKRouter: "megatron.core.transformer.moe.router.TopKRouter"})
-class _DynamicTopKRouter(DynamicModule):
-    """A TopKRouter with dynamic hyperparams following standard pattern."""
+class _DynamicTopKRouter(ABC, DynamicModule):
+    """A TopKRouter with dynamic hyperparams."""
 
     def _setup(self):
-        # Register hyperparameters for router weight dimensions
+        # Register hparams for router weight dimensions (will be overridden by _DynamicSequentialMLP's hp)
         # Router weight shape: [num_moe_experts, hidden_size]
-        # Initialize num_moe_experts (will be set by expert's num_moe_experts)
-        self._register_hparam("num_moe_experts", TracedHp(list(range(1, self.weight.shape[0] + 1))))
-        # Initialize hidden_size reference (will be set by parent via set_hidden_size_hp)
+        self._register_hparam("num_experts", TracedHp(list(range(1, self.weight.shape[0] + 1))))
+        # Register hidden_size reference (will be overridden by _DynamicMoELayer's hidden_size)
         self._register_hparam("hidden_size", TracedHp(list(range(1, self.weight.shape[1] + 1))))
 
-        # Register dynamic attributes like Mamba parameters
+        # Register dynamic attributes
         self._register_dynamic_attribute("weight", self._get_router_weight)
-        self._register_dynamic_attribute("expert_bias", self._get_expert_bias)
+        if self.enable_expert_bias:
+            self._register_dynamic_attribute(
+                "local_tokens_per_expert", self._get_slice_by_num_experts
+            )
+            self._register_dynamic_attribute("expert_bias", self._get_slice_by_num_experts)
 
     @staticmethod
     def _get_router_weight(mod: "_DynamicTopKRouter", weight: torch.Tensor) -> torch.Tensor:
-        """Return sliced router weight using recursive hidden_size pattern."""
-        # Use stored hidden_size reference from parent (recursive pattern)
-        return get_sliced_tensor(mod, weight, "num_moe_experts", "hidden_size")
+        return get_sliced_tensor(mod, weight, "num_experts", "hidden_size")
 
     @staticmethod
-    def _get_expert_bias(mod: "_DynamicTopKRouter", bias: torch.Tensor) -> torch.Tensor:
-        """Return sliced expert bias - same pattern as Mamba parameters."""
-        return get_sliced_tensor(mod, bias, "num_moe_experts")
+    def _get_slice_by_num_experts(mod: "_DynamicTopKRouter", bias: torch.Tensor) -> torch.Tensor:
+        return get_sliced_tensor(mod, bias, "num_experts")
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set hidden size for router weights - recursive pattern."""
-        # Store reference to parent's hidden_size (recursive pattern like other classes)
-        # Use object.__setattr__ to avoid DynamicModule __setattr__ interference
+        """Set hidden_size hparam for router weights from global hidden_size hparam."""
         self.hidden_size = hidden_size
 
 
 @DMRegistry.register({SequentialMLP: "megatron.core.transformer.moe.experts.SequentialMLP"})
 class _DynamicSequentialMLP(DynamicModule):
-    """A SequentialMLP with dynamic hyperparams following standard pattern."""
+    """A SequentialMLP with dynamic hyperparams."""
 
     def _setup(self):
-        # Register hyperparameter for number of active experts
-        # Use num_moe_experts to match export_config naming convention
-        self._register_hparam(
-            "num_moe_experts", TracedHp(list(range(1, self.num_local_experts + 1)))
-        )
+        # Register hparam for number of active experts (will be shared with _DynamicTopKRouter's hp)
+        num_moe_experts = TracedHp(list(range(1, self.num_local_experts + 1)))
+        self._register_hparam("num_local_experts", num_moe_experts)
 
-        # Convert each individual expert MLP to dynamic
+        # Convert local_experts list and each individual expert MLP to dynamic modules
+        self.local_experts = DynamicModuleList.convert(self.local_experts)
+        self.local_experts.depth = num_moe_experts  # Reuse same hparam for depth
         for i in range(len(self.local_experts)):
             self.local_experts[i] = DMRegistry.convert(self.local_experts[i])
 
-        # Register importance estimator for expert pruning based on L2 norms
-        self._register_temp_attribute("_expert_l2_scores", torch.zeros(self.num_local_experts))
-        self._register_temp_attribute("_expert_sample_counts", torch.zeros(self.num_local_experts))
-        self.hook_handle = self.register_forward_hook(self._track_expert_l2_importance)
-        self.get_hparam("num_moe_experts").register_importance(self._estimate_expert_importance)
+        # Track forward activations for importance estimation.
+        # _activations name is needed for get_activations_and_layer_scores to save scores for re-running pruning.
+        self._register_temp_attribute(
+            "_activations",
+            {
+                "expert_l2_scores": torch.zeros(self.num_local_experts),
+                "expert_sample_counts": torch.zeros(self.num_local_experts),
+            },
+        )
+        self.hook_handle = self.register_forward_hook(self._expert_l2_imp_forward_hook)
+        num_moe_experts.register_importance(self._estimate_expert_importance)
 
-    def _drop_experts_during_export(self) -> None:
-        """Drop experts during export based on active hyperparameter value."""
-        hp = self.get_hparam("num_moe_experts")
+    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
+        """Set hidden_size hparam for all expert MLPs from global hidden_size hparam."""
+        for expert in self.local_experts:
+            expert.set_hidden_size_hp(hidden_size)
 
-        active_count: int = hp.active
-        active_slice = hp.active_slice
-
-        # TODO: @ataghibakhsh: Hack sorting here, move to proper place.
-        importance = hp.importance
-        if (importance.sum() > 0.0).item():
-            importance = hp.importance.argsort(descending=True)
-
-            self.local_experts = nn.ModuleList([self.local_experts[i] for i in importance])
-
-        if isinstance(active_slice, slice):
-            # No sorting applied, keep first N experts
-            kept_experts = self.local_experts[active_slice]
-        else:
-            # Sorting applied, keep top N experts by importance
-            kept_experts = [self.local_experts[i] for i in active_slice[:active_count]]
-
-        # Physically replace the ModuleList with pruned experts
-        self.local_experts = nn.ModuleList(kept_experts)
-
-        # Update num_local_experts attribute to match pruned count
-        self.num_local_experts = active_count
-
-    def _track_expert_l2_importance(self, module, input, output):
+    def _expert_l2_imp_forward_hook(self, module, input, output):
         """Track expert importance based on L2 norms of expert outputs."""
-        tokens_per_expert = input[1]  # tokens_per_expert tensor
-        output_local = output[0]  # output_local tensor
-
-        # Convert to float32 for precision
-        output_local = output_local.to(torch.float32).detach()
+        # Dont aggregate activations from non-max subnets (e.g. from profiling)
+        num_moe_experts = self.get_hparam("num_local_experts")
+        if num_moe_experts.active != num_moe_experts.max:
+            return
 
         # Split output back to per-expert outputs using torch.split
-        tokens_per_expert_list = tokens_per_expert.tolist()
+        tokens_per_expert_list = input[1].tolist()
+        # use full precision to avoid overflow
+        output_local = output[0].to(torch.float32).detach()
 
         output_local_list = torch.split(output_local, tokens_per_expert_list)
 
@@ -747,93 +745,111 @@ class _DynamicSequentialMLP(DynamicModule):
                 l2_norm = torch.linalg.vector_norm(expert_output, ord=2, dim=-1).sum().item()
 
             # Accumulate L2 scores and sample counts
-            self._expert_l2_scores[expert_idx] += l2_norm
-            self._expert_sample_counts[expert_idx] += tokens_per_expert_list[expert_idx]
+            self._activations["expert_l2_scores"][expert_idx] += l2_norm
+            self._activations["expert_sample_counts"][expert_idx] += tokens_per_expert_list[
+                expert_idx
+            ]
 
     def _estimate_expert_importance(self) -> TracedHp.Importance:
         """Estimate expert importance based on accumulated L2 norms."""
-        # Average L2 scores across samples (avoid division by zero)
-        avg_l2_scores = self._expert_l2_scores / (self._expert_sample_counts + 1e-8)
-        # Normalize to get importance scores
-        return avg_l2_scores
-
-    def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set hidden size for all expert MLPs."""
-        for expert in self.local_experts:
-            expert.linear_fc1.input_size = hidden_size
-            expert.linear_fc2.output_size = hidden_size
-
-    def modify(self, *, ffn_hidden_size_divisor: int = 1, **kwargs):
-        """Modify expert FFN sizes."""
-        for expert in self.local_experts:
-            expert.modify(ffn_hidden_size_divisor=ffn_hidden_size_divisor)
+        assert self._activations["expert_sample_counts"].sum() > 0, (
+            "No activations collected for importance estimation."
+        )
+        # Average L2 scores across samples (avoid division by zero if some experts have no samples)
+        return self._activations["expert_l2_scores"] / (
+            self._activations["expert_sample_counts"] + 1e-8
+        )
 
     def export(self) -> torch.nn.Module:
-        """Export the dynamic module."""
-        # Drop experts based on active hyperparameter value
-        self._drop_experts_during_export()
-
-        # Remove forward hook
+        """Export the dynamic module to a standard SequentialMLP."""
         self.hook_handle.remove()
-
-        # Export remaining experts
         for expert in self.local_experts:
             expert.export()
-
-        super().export()
-        return self
+        self.local_experts.export()
+        return super().export()
 
 
 @DMRegistry.register({MoELayer: "megatron.core.transformer.moe.moe_layer.MoELayer"})
 class _DynamicMoELayer(DynamicModule):
-    """A MoELayer with dynamic hyperparams following standard pattern."""
+    """A MoELayer with dynamic hyperparams."""
 
     def _setup(self):
-        # Convert router to dynamic for hidden size handling
-
+        # Convert to dynamic modules
+        # Reuse _DynamicSequentialMLP's num_moe_experts hparam for _DynamicTopKRouter's hparam so
+        #   importance estimator and depth hparam is retained.
         self.router = DMRegistry.convert(self.router)
-
         self.experts = DMRegistry.convert(self.experts)
+        num_moe_experts_hp = self.experts.get_hparam("num_local_experts")
 
-        self.shared_experts = DMRegistry.convert(self.shared_experts)
-        self.router.num_moe_experts = self.experts.get_hparam("num_moe_experts")
+        # NOTE: Use num_moe_experts hparam name in top-level module to match TransformerConfig's name
+        self._register_hparam("num_moe_experts", num_moe_experts_hp)
+        self._register_dynamic_attribute(
+            "num_local_experts",
+            lambda mod, val: num_moe_experts_hp.active,  # EP = 1
+        )
+        self.router.num_experts = num_moe_experts_hp
+        if self.use_shared_expert:
+            self.shared_experts = DMRegistry.convert(self.shared_experts)
+
+    def forward(self, *args, **kwargs):
+        """Forward pass for the MoE layer."""
+        # Dont allow forward if model is sorted / trimmed unless exported (reinitializing token dispatcher correctly)
+        if isinstance(self, DynamicModule) and (
+            self.get_hparam("num_moe_experts")._slice_order is not None
+            or self.get_hparam("num_moe_experts").active != self.get_hparam("num_moe_experts").max
+        ):
+            raise RuntimeError("Only run forward after exporting the pruned model")
+        return super().forward(*args, **kwargs)
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
-        """Set hidden size for all MoE components."""
-        # Set for router (critical for hidden size sorting!)
-
+        """Set hidden size for all MoE components from global hidden_size hparam."""
         self.router.set_hidden_size_hp(hidden_size)
         self.experts.set_hidden_size_hp(hidden_size)
-        self.shared_experts.set_hidden_size_hp(hidden_size)
+        if self.use_shared_expert:
+            self.shared_experts.set_hidden_size_hp(hidden_size)
 
     def modify(
         self, *, num_moe_experts_divisor: int = 1, ffn_hidden_size_divisor: int = 1, **kwargs
     ):
-        """Modify MoE hyperparameters."""
-        # Modify expert count (applies to both router and experts)
-        expert_hp = self.experts.get_hparam("num_moe_experts")
+        """Modify MoE hparam choices based on search space config."""
+        # Modify num_moe_experts hparam choices (applies to both router and experts)
+        expert_hp = self.get_hparam("num_moe_experts")
         choices = {int(make_divisible(c, num_moe_experts_divisor)) for c in expert_hp.choices}  # type: ignore[arg-type]
         expert_hp.choices = list(set(expert_hp.choices) & choices | {expert_hp.original})
 
-        # Synchronize router num_experts with expert count
-        router_hp = self.router.get_hparam("num_moe_experts")
-        router_hp.choices = expert_hp.choices.copy()
-        router_hp.active = expert_hp.active
+        # Modify expert FFN hparam choices
+        for expert in self.experts.local_experts:
+            expert.modify(ffn_hidden_size_divisor=ffn_hidden_size_divisor)
+        if self.use_shared_expert:
+            self.shared_experts.modify(ffn_hidden_size_divisor)
 
-        # Modify expert FFN sizes
-        self.experts.modify(ffn_hidden_size_divisor=ffn_hidden_size_divisor)
-        self.shared_experts.modify(ffn_hidden_size_divisor=ffn_hidden_size_divisor)
+    def _export_reinit_token_dispatcher(self) -> None:
+        """Reinitialize the token dispatcher after pruning."""
+        print_rank_0("Reinitializing token dispatcher after pruning")
+        if hasattr(moe_utils, "get_default_model_comm_pgs"):
+            model_comm_pgs = moe_utils.get_default_model_comm_pgs()
+        else:
+            model_comm_pgs = moe_utils.get_default_pg_collection()
+        # NOTE: Update config.num_moe_experts for correct router initialization.
+        self.config.num_moe_experts = self.num_moe_experts
+        self.token_dispatcher = type(self.token_dispatcher)(
+            self.num_local_experts, list(range(self.num_local_experts)), self.config, model_comm_pgs
+        )
+
+        if self.use_shared_expert and self.shared_expert_overlap:
+            self.token_dispatcher.set_shared_experts(self.shared_experts)
 
     def export(self) -> torch.nn.Module:
-        """Export the dynamic module."""
-        # Export router
+        """Export the dynamic module to a standard MoELayer."""
         self.router.export()
         self.experts.export()
-        self.shared_experts.export()
-        super().export()
-        return self
+        if self.use_shared_expert:
+            self.shared_experts.export()
+        self._export_reinit_token_dispatcher()
+        return super().export()
 
 
+# TransformerLayer DynamicModule ###################################################################
 class MambaTransformerLayerMixin(nn.Module):
     """A mixin for MambaLayer and TransformerLayer to share the same logic."""
 
@@ -876,24 +892,18 @@ class MambaTransformerLayerMixin(nn.Module):
     {TransformerLayer: "megatron.core.transformer.transformer_layer.TransformerLayer"}
 )
 class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
-    """A ``megatron.core.transformer.transformer_layer.TransformerLayer`` layer with dynamic hyperparams."""
+    """A TransformerLayer layer with dynamic hyperparams."""
 
     def _setup(self):
-        # Convert the layernorms, self-attention, and mlp layers to dynamic modules
+        # Convert the layernorms, self-attention, and mlp/moe layers to dynamic modules
         # NOTE: Mamba stack layers have either Attention or MLP, not both unlike GPT models
-        if hasattr(self, "self_attention") and isinstance(self.self_attention, SelfAttention):
+        if isinstance(self.self_attention, SelfAttention):
             self.input_layernorm = DMRegistry.convert(self.input_layernorm)
             self.self_attention = DMRegistry.convert(self.self_attention)
 
-        if hasattr(self, "mlp") and self.mlp is not None:
-            if isinstance(self.mlp, MoELayer):
-                # Convert MoE layer and its layernorm
-                self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
-                self.mlp = DMRegistry.convert(self.mlp)
-            elif isinstance(self.mlp, MLP):
-                # Regular MLP
-                self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
-                self.mlp = DMRegistry.convert(self.mlp)
+        if isinstance(self.mlp, (MLP, MoELayer)):
+            self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
+            self.mlp = DMRegistry.convert(self.mlp)
 
         # Register forward hook to collect activations for importance estimation
         self._setup_mixin()
@@ -904,11 +914,9 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
             self.self_attention.linear_qkv.input_size = hidden_size
             self.self_attention.linear_proj.output_size = hidden_size
 
-        if hasattr(self, "mlp") and self.mlp is not None:
+        if isinstance(self.mlp, (MLP, MoELayer)):
             self.pre_mlp_layernorm.num_features = hidden_size
-            if isinstance(self.mlp, MoELayer):
-                # Set hidden size for MoE components
-                self.mlp.set_hidden_size_hp(hidden_size)
+            self.mlp.set_hidden_size_hp(hidden_size)
 
         self._register_temp_attribute("max_hidden_size", hidden_size.max)
 
@@ -918,11 +926,12 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
         num_heads_per_group_divisor: int = 1,
         num_query_groups_divisor: int = 1,
         ffn_hidden_size_divisor: int = 1,
-        num_moe_experts_divisor: int = 1,  # New parameter for MoE expert pruning
+        num_moe_experts_divisor: int = 1,
         **kwargs,  # Unused hparams
     ) -> None:
-        # Modify SelfAttention hparams
-        if hasattr(self, "self_attention") and isinstance(self.self_attention, SelfAttention):
+        """Modify TransformerLayer hparam choices based on search space config."""
+        # Modify SelfAttention hparam
+        if isinstance(self.self_attention, SelfAttention):
             for hp_name, divisor in [
                 ("num_heads_per_group", num_heads_per_group_divisor),
                 ("num_query_groups", num_query_groups_divisor),
@@ -931,57 +940,26 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
                 choices = {int(make_divisible(c, divisor)) for c in hp.choices}
                 hp.choices = list(set(hp.choices) & choices | {hp.original})
 
-        # Modify MLP hparams (regular or MoE)
-        if hasattr(self, "mlp") and self.mlp is not None:
-            if isinstance(self.mlp, MoELayer):
-                # MoE modification
-                self.mlp.modify(
-                    num_moe_experts_divisor=num_moe_experts_divisor,
-                    ffn_hidden_size_divisor=ffn_hidden_size_divisor,
-                )
-            elif isinstance(self.mlp, MLP):
-                # Regular MLP modification
-                hp_mlp = self.mlp.get_hparam(self.mlp.hparam_name)
-                choices = {int(make_divisible(c, ffn_hidden_size_divisor)) for c in hp_mlp.choices}
-                hp_mlp.choices = list(set(hp_mlp.choices) & choices | {hp_mlp.original})
+        # Modify MLP hparam (regular or MoE)
+        if isinstance(self.mlp, (MLP, MoELayer)):
+            self.mlp.modify(
+                ffn_hidden_size_divisor=ffn_hidden_size_divisor,
+                num_moe_experts_divisor=num_moe_experts_divisor,
+            )
 
     def export(self):
         """Export the dynamic module to a torch.nn.Module."""
         self._export_mixin()
-        if hasattr(self, "self_attention") and isinstance(self.self_attention, SelfAttention):
+        if isinstance(self.self_attention, SelfAttention):
             self.input_layernorm.export()
             self.self_attention.export()
-
-        if hasattr(self, "mlp") and self.mlp is not None:
-            if isinstance(self.mlp, MoELayer):
-                if hasattr(self, "pre_mlp_layernorm"):
-                    self.pre_mlp_layernorm.export()
-                if hasattr(self.mlp, "export"):
-                    self.mlp.export()
-            elif isinstance(self.mlp, MLP):
-                self.pre_mlp_layernorm.export()
-                self.mlp.export()
-        super().export()
-        return self
-
-    def freeze(self):
-        """Freeze the dynamic module."""
-        super().freeze()
-        if hasattr(self, "self_attention") and isinstance(self.self_attention, SelfAttention):
-            self.input_layernorm.freeze()
-            self.self_attention.freeze()
-
-        if hasattr(self, "mlp") and self.mlp is not None:
-            if isinstance(self.mlp, MoELayer):
-                if hasattr(self, "pre_mlp_layernorm"):
-                    self.pre_mlp_layernorm.freeze()
-                if hasattr(self.mlp, "freeze"):
-                    self.mlp.freeze()
-            elif isinstance(self.mlp, MLP):
-                self.pre_mlp_layernorm.freeze()
-                self.mlp.freeze()
+        if isinstance(self.mlp, (MLP, MoELayer)):
+            self.pre_mlp_layernorm.export()
+            self.mlp.export()
+        return super().export()
 
 
+# Mamba DynamicModules #############################################################################
 class MambaNumHeadsHp(TracedHp):
     """An hparam for Mamba's num_heads.
 
@@ -1074,7 +1052,7 @@ class MambaDInnerHp(TracedHp):
 
 
 class _DynamicExtendedRMSNorm(DynamicModule):
-    """A ``megatron.core.ssm.mamba_mixer.ExtendedRMSNorm`` (GroupNorm) layer with dynamic hyperparams.
+    """An ExtendedRMSNorm (GroupNorm) layer with dynamic hyperparams.
 
     Very similar to _DynamicGroupNorm but with group_size dynamic attribute instead of num_groups.
     Will be registered to DMRegistry if Mamba is available.
@@ -1160,7 +1138,7 @@ class _MambaContextParallelProxy:
 
 
 class _DynamicMambaMixer(DynamicModule):
-    """A ``megatron.core.ssm.mamba_mixer.MambaMixer`` layer with dynamic hyperparams.
+    """A MambaMixer layer with dynamic hyperparams.
 
     Will be registered to DMRegistry if Mamba is available.
     """
@@ -1321,12 +1299,11 @@ class _DynamicMambaMixer(DynamicModule):
         self.conv1d.export()
         if self.rmsnorm:
             self.norm.export()
-        super().export()
-        return self
+        return super().export()
 
 
 class _DynamicMambaLayer(DynamicModule, MambaTransformerLayerMixin):
-    """A ``megatron.core.ssm.mamba_layer.MambaLayer`` layer with dynamic hyperparams.
+    """A MambaLayer layer with dynamic hyperparams.
 
     Will be registered to DMRegistry if Mamba is available.
     """
@@ -1367,13 +1344,7 @@ class _DynamicMambaLayer(DynamicModule, MambaTransformerLayerMixin):
         self._export_mixin()
         self.mixer.export()
         self.norm.export()
-        super().export()
-        return self
-
-    def freeze(self):
-        """Freeze the hyperparameters."""
-        self.mixer.freeze()
-        super().freeze()
+        return super().export()
 
 
 if HAS_MAMBA:
@@ -1390,9 +1361,10 @@ if HAS_MAMBA:
     )
 
 
+# GPTModel / MambaModel DynamicModule ##############################################################
 @DMRegistry.register(SUPPORTED_MODELS)
 class _DynamicMCoreLanguageModel(DynamicModule):
-    """A ``megatron.core.models.gpt.GPTModel`` model with dynamic hyperparams."""
+    """A GPTModel / MambaModel with dynamic hyperparams."""
 
     def _setup(self):
         assert self.config.tensor_model_parallel_size == 1, "Only TP=1 is supported."
@@ -1446,9 +1418,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         self.hook_handles = []
         for layer in self.decoder.layers:
             if isinstance(layer, TransformerLayer):
-                if hasattr(layer, "self_attention") and isinstance(
-                    layer.self_attention, SelfAttention
-                ):
+                if isinstance(layer.self_attention, SelfAttention):
                     self.hook_handles.append(
                         layer.input_layernorm.register_forward_hook(
                             self._emb_layernorm_forward_hook
@@ -1456,21 +1426,13 @@ class _DynamicMCoreLanguageModel(DynamicModule):
                     )
 
                 # Handle both regular MLP and MoE layers
-                if hasattr(layer, "mlp") and layer.mlp is not None:
-                    if isinstance(layer.mlp, MoELayer):
-                        # MoE layer - register hook on pre_mlp_layernorm
-                        self.hook_handles.append(
-                            layer.pre_mlp_layernorm.register_forward_hook(
-                                self._emb_layernorm_forward_hook
-                            )
+                if isinstance(layer.mlp, (MLP, MoELayer)):
+                    # MoE layer - register hook on pre_mlp_layernorm
+                    self.hook_handles.append(
+                        layer.pre_mlp_layernorm.register_forward_hook(
+                            self._emb_layernorm_forward_hook
                         )
-                    elif isinstance(layer.mlp, MLP):
-                        # Regular MLP layer
-                        self.hook_handles.append(
-                            layer.pre_mlp_layernorm.register_forward_hook(
-                                self._emb_layernorm_forward_hook
-                            )
-                        )
+                    )
             elif HAS_MAMBA and isinstance(layer, MambaLayer):
                 self.hook_handles.append(
                     layer.norm.register_forward_hook(self._emb_layernorm_forward_hook)
@@ -1520,7 +1482,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         ffn_hidden_size_divisor: int = 1,
         mamba_num_heads_divisor: int = 1,
         mamba_head_dim_divisor: int = 1,
-        num_moe_experts_divisor: int = 1,  # New parameter for MoE expert pruning
+        num_moe_experts_divisor: int = 1,
     ):
         """Modify the dynamic choices of the module according to provided keyword arguments.
 
@@ -1592,14 +1554,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         if is_pipeline_last_stage():
             getattr(self.decoder, self.final_norm_attr_name).export()
             self.output_layer.export()
-        super().export()
-        return self
-
-    def freeze(self) -> None:
-        """Freeze the dynamic module."""
-        super().freeze()
-        for layer in self.decoder.layers:
-            layer.freeze()
+        return super().export()
 
     def get_activations_and_layer_scores(
         self,
