@@ -7,5 +7,5 @@
         "rope_type": "llama3"
     },
     "initializer_range": 0.02,
-    "attn_implementation": "flex_attention"
+    "_attn_implementation": "sdpa"
 }
