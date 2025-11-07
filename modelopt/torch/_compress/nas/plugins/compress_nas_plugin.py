@@ -21,12 +21,12 @@ import datetime
 from pathlib import Path
 
 import mip_and_realize_models
-import scoring
 import torch
 from torch import nn
 
 import modelopt.torch._compress.build_library_and_stats as build_library_and_stats
 import modelopt.torch._compress.pruning.pruning_ckpts as pruning_ckpts
+import modelopt.torch._compress.scoring.scoring as scoring
 from modelopt.torch._compress.activation_scoring import score_pruning_activations
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
