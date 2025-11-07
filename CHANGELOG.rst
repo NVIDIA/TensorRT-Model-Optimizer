@@ -31,6 +31,8 @@ Model Optimizer Changelog (Linux)
 - Add support for Nemotron Nano VL v1 & v2 models in FP8/NVFP4 PTQ workflow.
 - Add flags ``nodes_to_include`` and ``op_types_to_include`` in AutoCast to force-include nodes in low precision, even if they would otherwise be excluded by other rules.
 - Add support for ``torch.compile`` and benchmarking in ``examples/diffusers/quantization/diffusion_trt.py``.
+- Enabled native Modelopt quantization support for FP8 and NVFP4 formats in SGLang. See `SGLang quantization documentation <https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/quantization.md#using-nvidia-modelopt>`_ for more details.
+- Added modelopt quantized checkpoints in vLLM/SGLang CI/CD pipelines (PRs are under review).
 
 **Documentation**
 
