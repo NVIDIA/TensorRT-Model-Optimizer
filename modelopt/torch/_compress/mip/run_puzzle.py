@@ -22,24 +22,31 @@ from pathlib import Path
 from typing import Any, Hashable, Iterable, List, Literal, TypeAlias
 
 import numpy as np
-import puzzle_tools.constrain_search_space as css
 import yaml
-from logger import mprint
 from omegaconf import DictConfig, ListConfig, OmegaConf
-from puzzle_tools.checkpoint_utils import load_model_config
-from puzzle_tools.deci_lm_hf_code.block_config import AttentionConfig, BlockConfig, FFNConfig
-from puzzle_tools.greedy_search_with_multi_layer_replacements import run_greedy_search
-from puzzle_tools.mip_with_multi_layer_replacements import (
+
+import modelopt.torch._compress.mip.constrain_search_space as css
+from modelopt.torch._compress.decilm.deci_lm_hf_code.block_config import (
+    AttentionConfig,
+    BlockConfig,
+    FFNConfig,
+)
+from modelopt.torch._compress.mip.greedy_search_with_multi_layer_replacements import (
+    run_greedy_search,
+)
+from modelopt.torch._compress.mip.mip_with_multi_layer_replacements import (
     run_mip as run_multi_layer_replacement_mip,
 )
-from puzzle_tools.replacement_utils import (
+from modelopt.torch._compress.replacement_library.replacement_utils import (
     extract_block_configs_and_locations,
     parse_layer_replacement,
     replacement_is_teacher,
 )
-from puzzle_tools.robust_json import json_dump
-from utils.parsing import get_nested_key, parse_json, parse_path
-from utils.utils import block_config_to_str, solution_to_str
+from modelopt.torch._compress.tools.checkpoint_utils import load_model_config
+from modelopt.torch._compress.tools.logger import mprint
+from modelopt.torch._compress.tools.robust_json import json_dump
+from modelopt.torch._compress.utils.parsing import get_nested_key, parse_json, parse_path
+from modelopt.torch._compress.utils.utils import block_config_to_str, solution_to_str
 
 """
 Usage:
@@ -245,7 +252,7 @@ def run_single_puzzle_config(
     constraints: PuzzleConstraints,
     output_folder,
 ) -> None:
-    from puzzle_tools.grouped_knapsack import multi_solution_grouped_knapsack
+    from modelopt.torch._compress.mip.grouped_knapsack import multi_solution_grouped_knapsack
 
     args = deepcopy(
         args

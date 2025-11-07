@@ -20,15 +20,15 @@ using MIP-based NAS search algorithm.
 
 """
 
-import build_library_and_stats
-import mip_and_realize_models
-import pruning_ckpts
-import score_pruning_activations
-import scoring
 from omegaconf import DictConfig
-from puzzle_tools.runtime import IRuntime
 
+import modelopt.torch._compress.activation_scoring.score_pruning_activations as score_pruning_activations
+import modelopt.torch._compress.build_library_and_stats as build_library_and_stats
+import modelopt.torch._compress.mip.mip_and_realize_models as mip_and_realize_models
+import modelopt.torch._compress.pruning.pruning_ckpts as pruning_ckpts
+import modelopt.torch._compress.scoring.scoring as scoring
 from modelopt.torch._compress.tools.hydra_utils import initialize_hydra_config_for_dir
+from modelopt.torch._compress.tools.runtime import IRuntime
 
 
 def compress(

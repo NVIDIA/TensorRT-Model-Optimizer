@@ -20,7 +20,6 @@ import hydra
 import torch
 import torch.distributed as dist
 from omegaconf import DictConfig
-from utils.dist_utils import is_distributed
 
 from modelopt.torch._compress.mip.run_puzzle import run_puzzle
 from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
@@ -29,6 +28,7 @@ from modelopt.torch._compress.tools.runtime import BaseRuntime, IRuntime, Native
 from modelopt.torch._compress.tools.validate_puzzle_with_multi_replacements import (
     validate_puzzle_solutions,
 )
+from modelopt.torch._compress.utils.dist_utils import is_distributed
 
 
 def launch_mip(cfg: DictConfig) -> List[str]:
