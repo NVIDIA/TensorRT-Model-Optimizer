@@ -40,6 +40,14 @@ MODEL_ID = {
     "flux-schnell": ModelType.FLUX_SCHNELL,
 }
 
+DTYPE_MAP = {
+    "sdxl-1.0": torch.float16,
+    "sdxl-turbo": torch.float16,
+    "sd3-medium": torch.float16,
+    "flux-dev": torch.bfloat16,
+    "flux-schnell": torch.bfloat16,
+}
+
 
 def generate_image(pipe, prompt, image_name):
     seed = 42
@@ -154,9 +162,11 @@ def main():
     args = parser.parse_args()
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
+    model_dtype = DTYPE_MAP[args.model]
 
     pipe = PipelineManager.create_pipeline_from(
         MODEL_ID[args.model],
+        torch_dtype=model_dtype,
         override_model_path=args.override_model_path,
     )
 
@@ -170,9 +180,6 @@ def main():
         add_embedding = backbone.add_embedding
     else:
         raise ValueError("Pipeline does not have a transformer or unet backbone")
-
-    # Get dtype directly from the backbone's parameters
-    model_dtype = next(backbone.parameters()).dtype
 
     if args.restore_from:
         mto.restore(backbone, args.restore_from)
