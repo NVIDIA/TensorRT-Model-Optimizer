@@ -43,7 +43,6 @@ from megatron.core.tensor_parallel.mappings import (
     gather_from_tensor_model_parallel_region,
     scatter_to_sequence_parallel_region,
 )
-from megatron.core.transformer.attention import SelfAttention
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_block import TransformerBlock
@@ -361,18 +360,14 @@ class EagleModule(MegatronModule):
         eagle_transformer_layer_spec = self._get_eagle_transformer_layer_spec(config)
 
         self._num_aux_hidden_states = len(self.config.eagle_aux_hidden_state_layer_ids)
-        if self._num_aux_hidden_states > 0:
-            self.enorm = TENorm(config, config.hidden_size, config.layernorm_epsilon)
-            self._embeddings = None
-        elif self.config.use_mtp_layernorm:
-            self.enorm = TENorm(config, config.hidden_size, config.layernorm_epsilon)
+        if self.config.use_mtp_layernorm:
             self.hnorm = TENorm(config, config.hidden_size, config.layernorm_epsilon)
 
         device = "cpu" if config.use_cpu_initialization else torch.cuda.current_device()
 
         # EAGLE-3 uses aux_hidden_states (usually >= 3); otherwise EAGLE-1
         fc_input_size_multiplier = (
-            self._num_aux_hidden_states if self._num_aux_hidden_states > 0 else 2
+            self._num_aux_hidden_states if self._num_aux_hidden_states > 0 else 1
         )
 
         # This linear was previously a ColumnParallelLinear. We changed it to a normal linear
@@ -404,28 +399,6 @@ class EagleModule(MegatronModule):
             # for eagle3 auto regression.
             last_layer = self.decoder.layers[-1]
             last_layer.register_forward_hook(self._eagle3_layer_forward_hook)
-
-            # The first EAGLE3 layer needs to be specialized.
-            layer = self.decoder.layers[0]
-            self_attention = layer.self_attention
-            if not isinstance(self_attention, SelfAttention):
-                raise ValueError("EAGLE-3 only support SelfAttention (MHA, GQA).")
-
-            # EAGLE-3's first attention require [input_layernorm_output, aux_hidden_states]
-            self_attention.register_forward_pre_hook(self._eagle3_attention_forward_pre_hook)
-
-            # EAGLE-3's first layer reduces hidden_states from 2h to h.
-            self_attention.linear_qkv = tensor_parallel.ColumnParallelLinear(
-                self_attention.config.hidden_size * 2,
-                self_attention.query_projection_size + 2 * self_attention.kv_projection_size,
-                config=self_attention.config,
-                init_method=self_attention.config.init_method,
-                gather_output=False,
-                bias=self_attention.config.add_bias_linear or self_attention.config.add_qkv_bias,
-                skip_bias_add=False,
-                is_expert=False,
-                tp_comm_buffer_name="qkv",
-            )
 
         if self.config.draft_vocab_size != self.config.vocab_size:
             # Need an extra lm_head for eagle module since vocab size is reduced.
@@ -501,7 +474,6 @@ class EagleModule(MegatronModule):
 
     def forward(
         self,
-        embeddings: torch.Tensor,
         hidden_states: torch.Tensor,
         attention_mask: torch.Tensor,
         rotary_pos_emb: torch.Tensor = None,
@@ -519,19 +491,7 @@ class EagleModule(MegatronModule):
             rotary_seq_len *= self.config.tensor_model_parallel_size
 
         if self.config.use_mtp_layernorm:
-            embeddings = self.enorm(embeddings)
             hidden_states = self.hnorm(hidden_states)
-
-        # EAGLE-1 uses [s, b, h] input but EAGLE-3 uses [s, b, 2h] input
-        if self._num_aux_hidden_states == 0:
-            # [s, b, 2h]
-            decoder_input = torch.cat((embeddings, hidden_states), dim=-1)
-            decoder_input = self.fc(decoder_input)[0]
-        else:
-            # EAGLE-3 forward
-            # EAGLE-3 uses self.fc outside eagle_module forward to convert hidden_states from [s, b, 3h]
-            self._embeddings = self.enorm(embeddings)
-            decoder_input = hidden_states
 
         if rotary_pos_emb is None:
             rotary_pos_emb = (
@@ -540,10 +500,10 @@ class EagleModule(MegatronModule):
 
         self._next_hidden_states_input = None
 
-        decoder_input_list = [decoder_input]
+        decoder_input_list = [hidden_states]
         self.decoder.set_input_tensor(decoder_input_list[0])
         hidden_states = self.decoder(
-            hidden_states=decoder_input,
+            hidden_states=hidden_states,
             attention_mask=attention_mask,
             inference_params=inference_params,
             rotary_pos_emb=rotary_pos_emb,
@@ -668,14 +628,6 @@ class _DynamicEagleGPTModel(EagleModel):
         if self.eagle_config.position_embedding_type not in ["rope", "yarn"]:
             raise ValueError("For EAGLE, only RoPE or YaRN embedding are supported")
 
-        if not self.pre_process and self.post_process:
-            self.embedding = EagleLanguageModelEmbedding(
-                config=self.config,
-                vocab_size=self.vocab_size,
-                max_sequence_length=self.max_sequence_length,
-                position_embedding_type=self.position_embedding_type,
-            )
-
         # Register TransformerLayer forward hook to extract aux hidden_states.
         if len(self.eagle_config.eagle_aux_hidden_state_layer_ids) > 0:
             for layer in self.decoder.layers:
@@ -777,10 +729,6 @@ class _DynamicEagleGPTModel(EagleModel):
         eagle_inputs["input_ids"] = padded_input_ids
         eagle_inputs["position_ids"] = position_ids
 
-        eagle_inputs["embedding"] = self.embedding(
-            input_ids=eagle_inputs["input_ids"],
-            position_ids=eagle_inputs["position_ids"],
-        )
         eagle_inputs["hidden_states"] = hidden_states
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, ttt_step)
@@ -886,7 +834,6 @@ class _DynamicEagleGPTModel(EagleModel):
         extra_block_kwargs: dict | None = None,
     ):
         eagle_hidden_states, eagle_hidden_states_pre_final_layernorm = self.eagle_module(
-            eagle_inputs["embedding"],
             eagle_inputs["hidden_states"],
             eagle_inputs["attention_mask"],
             eagle_inputs["rotary_pos_emb"],
@@ -1348,12 +1295,6 @@ class _DynamicEagleGPTModel(EagleModel):
 
             eagle_inputs = {}
             eagle_inputs["input_ids"] = padded_eagle_ids
-            embeddings = self.embedding(
-                input_ids=padded_eagle_ids,
-                position_ids=eagle_position_ids,
-            )
-
-            eagle_inputs["embedding"] = embeddings
             eagle_inputs["hidden_states"] = padded_hidden_states
             eagle_inputs["attention_mask"] = eagle_attention_mask
 
