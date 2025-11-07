@@ -64,7 +64,10 @@ def generate_image(pipe, prompt, image_name):
 
 @torch.inference_mode()
 def benchmark_backbone_standalone(
-    pipe, num_warmup=10, num_benchmark=100, model_name="flux-dev",
+    pipe,
+    num_warmup=10,
+    num_benchmark=100,
+    model_name="flux-dev",
 ):
     """Benchmark the backbone model directly without running the full pipeline."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
@@ -90,10 +93,12 @@ def benchmark_backbone_standalone(
     print(f"Benchmarking: {num_benchmark} iterations")
     times = []
     for _ in tqdm(range(num_benchmark), desc="Benchmark"):
+        torch.cuda.profiler.cudart().cudaProfilerStart()
         start_event.record()
         _ = backbone(**dummy_inputs_dict)
         end_event.record()
         torch.cuda.synchronize()
+        torch.cuda.profiler.cudart().cudaProfilerStop()
         times.append(start_event.elapsed_time(end_event))
 
     avg_latency = sum(times) / len(times)
@@ -102,7 +107,7 @@ def benchmark_backbone_standalone(
     p95 = times[int(len(times) * 0.95)]
     p99 = times[int(len(times) * 0.99)]
 
-    print(f"\nBackbone-only inference latency:")
+    print("\nBackbone-only inference latency:")
     print(f"  Average: {avg_latency:.2f} ms")
     print(f"  P50: {p50:.2f} ms")
     print(f"  P95: {p95:.2f} ms")
