@@ -143,6 +143,8 @@ def train():
         model = transformers.AutoModelForCausalLM.from_pretrained(checkpoint, torch_dtype="auto")
         tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
     else:
+        # To avoid OOM for large models, we load and convert model on CPU first.
+        # Model will be moved to GPU during HF trainer.init().
         model = transformers.AutoModelForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             torch_dtype="auto",
