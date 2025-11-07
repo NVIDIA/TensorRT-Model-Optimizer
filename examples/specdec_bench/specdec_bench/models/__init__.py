@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""API for sparsification algorithms.
-
-This module provides access to both weight sparsity and attention sparsity algorithms.
-For backward compatibility, weight sparsity APIs are re-exported at the module level.
-"""
-
-# Import weight sparsity for backward compatibility
-from .weight_sparsity import mode, module, plugins
-from .weight_sparsity.sparsification import *
+from .base import Model
+from .sglang import SGLANGModel
+from .trtllm import TRTLLMModel
+from .trtllm_torch_api import TRTLLMPYTModel
+from .vllm import VLLMModel

@@ -85,7 +85,7 @@ def _test_mcore_gpt_pruning(
             normalization=normalization,
             num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
             num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
-        )
+        ).cuda()
         return model
 
     model = _get_model()
@@ -233,7 +233,112 @@ def test_mcore_gpt_pruning(
             num_layers_div,
             uneven_pp,
             skip_sorting,
-            tmp_path / "modelopt_minitron_scores.pth" if test_ckpt else None,
+            tmp_path / "minitron_scores.pth" if test_ckpt else None,
         ),
+        backend="nccl",
+    )
+
+
+def _test_mcore_gpt_pruning_moe(ckpt_path, rank, size):
+    num_layers = size
+    hidden_size = 128
+    moe_ffn_hidden_size = 128
+    num_moe_experts = 4
+    moe_shared_expert_intermediate_size = 256
+    max_sequence_length = 16
+    vocab_size = 64
+    batch_size = 2
+
+    def _get_model(initialize_megatron=True):
+        model = get_mcore_gpt_model(
+            tensor_model_parallel_size=1,
+            pipeline_model_parallel_size=size,
+            initialize_megatron=initialize_megatron,
+            num_layers=num_layers,
+            hidden_size=hidden_size,
+            max_sequence_length=max_sequence_length,
+            vocab_size=vocab_size,
+            activation_func="squared_relu",
+            num_moe_experts=num_moe_experts,
+            moe_ffn_hidden_size=moe_ffn_hidden_size,
+            moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+        ).cuda()
+        return model
+
+    model = _get_model()
+    sd = model.state_dict()
+
+    def forward_loop(m):
+        for _ in range(5):
+            run_mcore_inference_with_dummy_input(m, batch_size, hidden_size)
+
+    pruned_hidden_size = hidden_size // 2
+    pruned_moe_ffn = moe_ffn_hidden_size // 2
+    pruned_moe_shared_ffn = moe_shared_expert_intermediate_size // 2
+    pruned_num_moe_experts = num_moe_experts // 2
+
+    export_config = {
+        "hidden_size": pruned_hidden_size,
+        "moe_ffn_hidden_size": pruned_moe_ffn,
+        "moe_shared_expert_intermediate_size": pruned_moe_shared_ffn,
+        "num_moe_experts": pruned_num_moe_experts,
+    }
+
+    mtp.prune(
+        model,
+        mode="mcore_minitron",
+        constraints={"export_config": export_config},
+        dummy_input=None,  # Not used
+        config={"scores_path": ckpt_path, "forward_loop": forward_loop},
+    )
+
+    # Assert weights are pruned correctly
+    for layer in model.decoder.layers:
+        moe = layer.mlp
+        assert moe.router.num_experts == pruned_num_moe_experts
+        assert moe.router.weight.shape == (pruned_num_moe_experts, pruned_hidden_size)
+        assert moe.experts.num_local_experts == pruned_num_moe_experts
+        assert len(moe.experts.local_experts) == pruned_num_moe_experts
+        for expert in moe.experts.local_experts:
+            assert expert.linear_fc1.weight.shape == (pruned_moe_ffn, pruned_hidden_size)
+            assert expert.linear_fc2.weight.shape == (pruned_hidden_size, pruned_moe_ffn)
+        assert moe.shared_experts.linear_fc1.weight.shape == (
+            pruned_moe_shared_ffn,
+            pruned_hidden_size,
+        )
+        assert moe.shared_experts.linear_fc2.weight.shape == (
+            pruned_hidden_size,
+            pruned_moe_shared_ffn,
+        )
+
+    # Assert model.config is updated for correct save/restoring
+    assert model.config.hidden_size == pruned_hidden_size
+    assert model.config.moe_ffn_hidden_size == pruned_moe_ffn
+    assert model.config.num_moe_experts == pruned_num_moe_experts
+    assert model.config.moe_shared_expert_intermediate_size == pruned_moe_shared_ffn
+
+    # Assert forward pass works on the pruned model
+    prompt_tokens = torch.randint(0, vocab_size, (batch_size, max_sequence_length)).cuda()
+    output = run_mcore_inference(model, prompt_tokens, pruned_hidden_size)
+
+    # Assert re-pruning from scores_path works without running the forward loop again
+    model_rerun = _get_model(initialize_megatron=False)
+    model_rerun.load_state_dict(sd)
+    mtp.prune(
+        model_rerun,
+        mode="mcore_minitron",
+        constraints={"export_config": export_config},
+        dummy_input=None,  # Not used
+        config={"scores_path": ckpt_path},
+    )
+
+    output_rerun = run_mcore_inference(model_rerun, prompt_tokens, pruned_hidden_size)
+    assert torch.allclose(output, output_rerun, atol=1e-5)
+
+
+def test_mcore_gpt_pruning_moe(tmp_path):
+    spawn_multiprocess_job(
+        size=torch.cuda.device_count(),
+        job=partial(_test_mcore_gpt_pruning_moe, tmp_path / "minitron_scores.pth"),
         backend="nccl",
     )

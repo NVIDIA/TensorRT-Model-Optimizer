@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""API for sparsification algorithms.
 
-This module provides access to both weight sparsity and attention sparsity algorithms.
-For backward compatibility, weight sparsity APIs are re-exported at the module level.
-"""
+class Model:
+    def __init__(self, model_dir, tokenizer, max_draft_length):
+        raise NotImplementedError
 
-# Import weight sparsity for backward compatibility
-from .weight_sparsity import mode, module, plugins
-from .weight_sparsity.sparsification import *
+    async def run(self, prompt_ids, max_length, end_id, request_id):
+        """
+        prompt_ids is list of tokens
+        output is list of list of tokens
+            len(output) = beam width
+            len(output[i]) = tokens produced per step?
+        """
+        raise NotImplementedError
+
+    def stop(self):
+        pass
