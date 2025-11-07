@@ -404,8 +404,8 @@ class HFEagleModel(EagleModel):
         )
         self._aux_hidden_states.append(hidden_states)
 
-    def pop_aux_hidden_states(self):
-        """Return aux hidden states from base model, and clear the list."""
+    def pop_and_gather_aux_hiddens(self):
+        """Pop auxiliary hidden states from base model and gather them on the draft model device."""
         # In PTQ, forward method will be called with try and except to find max batch size.
         # This leads to uncleared aux hidden states in the front of the list.
         # To fix it, we only return the last num_aux_h items in the list.
@@ -413,7 +413,21 @@ class HFEagleModel(EagleModel):
         aux_h_list = self._aux_hidden_states[-num_aux_h:]
         self._aux_hidden_states.clear()
 
+        # Gather aux hidden states on the draft model device
+        aux_h_list = [h.to(self.eagle_module.fc.weight.device) for h in aux_h_list]
+
         return aux_h_list
+
+    def _get_eagle_device(self):
+        """Return the device where we should place eagle module."""
+        if self.eagle_offline:
+            # For offline training, the base model has no layers.
+            # Read the device from the base model lm_head instead.
+            return self._base_model_lm_head.weight.device
+        else:
+            # When there is a base model, put eagle on the last layer's device.
+            base_model_last_layer = self._base_model.layers[-1]
+            return next(base_model_last_layer.parameters()).device
 
     def modify(
         self,
@@ -469,7 +483,7 @@ class HFEagleModel(EagleModel):
 
         # find base model, lm head, and embeddings paths
         self._find_base_model_parts()
-        self.eagle_module.to(self._base_model.dtype).to(self._base_model_lm_head.weight.device)
+        self.eagle_module.to(self._base_model.dtype).to(self._get_eagle_device())
 
         # Make sure word embedding and lm head are frozen
         for param in self._base_model_embeddings.parameters():
@@ -777,52 +791,52 @@ class HFEagleModel(EagleModel):
         # ====Run eagle forward====
         eagle_loss = None
         train_accs = []
-        if self.training:
-            # In EAGLE-3, we have an additional FC layer to concentrate hidden states from multiple base model layers
-            b, seq_length, h = base_model_hidden_states.shape
-            if self.eagle_config.use_aux_hidden_state:
-                if "base_model_outputs" in kwargs:
-                    aux_hidden_states = kwargs["base_model_outputs"]["aux_hidden_states"]
-                else:
-                    aux_hidden_states = torch.cat(self.pop_aux_hidden_states(), dim=-1)
-                eagle_input_hidden_states = self.eagle_module.fc(aux_hidden_states)
+        # In EAGLE-3, we have an additional FC layer to concentrate hidden states from multiple base model layers
+        b, seq_length, h = base_model_hidden_states.shape
+        if self.eagle_config.use_aux_hidden_state:
+            if "base_model_outputs" in kwargs:
+                aux_hidden_states = kwargs["base_model_outputs"]["aux_hidden_states"]
             else:
-                eagle_input_hidden_states = base_model_hidden_states
+                aux_hidden_states = torch.cat(self.pop_and_gather_aux_hiddens(), dim=-1)
+            eagle_input_hidden_states = self.eagle_module.fc(aux_hidden_states)
+        else:
+            eagle_input_hidden_states = base_model_hidden_states
 
-            # Get eagle inputs for the first eagle forward pass
-            eagle_input_ids, attention_mask_0, position_ids = self._get_eagle_module_inputs(
-                input_ids,
-                eagle_input_hidden_states,
-                attention_mask,
-                position_ids,
-                eagle_cache,
-            )
-            with torch.no_grad():
-                inputs_embeds = self._base_model_embeddings(eagle_input_ids)
-            position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states, position_ids)
+        # Get eagle inputs for the first eagle forward pass
+        eagle_input_ids, attention_mask_0, position_ids = self._get_eagle_module_inputs(
+            input_ids,
+            eagle_input_hidden_states,
+            attention_mask,
+            position_ids,
+            eagle_cache,
+        )
+        with torch.no_grad():
+            inputs_embeds = self._base_model_embeddings(eagle_input_ids)
+        position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states, position_ids)
 
-            # Then, we run eagle forward
-            _, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
-                eagle_input_hidden_states,
-                inputs_embeds,
-                attention_mask_0,
-                position_ids,
-                position_embeddings,
-                eagle_cache,
-            )
+        # Then, we run eagle forward
+        _, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
+            eagle_input_hidden_states,
+            inputs_embeds,
+            attention_mask_0,
+            position_ids,
+            position_embeddings,
+            eagle_cache,
+        )
 
-            past_key_values.eagle_cache = eagle_cache
+        past_key_values.eagle_cache = eagle_cache
 
-            # Compute loss on the eagle modules
-            classification_loss, acc = self._eagle_loss(
-                base_model_logits[:, 1:],
-                eagle_logits[:, :-1],
-                loss_mask[:, 1:],
-            )
-            eagle_loss = classification_loss
-            train_accs.append(acc)
+        # Compute loss on the eagle modules
+        classification_loss, acc = self._eagle_loss(
+            base_model_logits[:, 1:],
+            eagle_logits[:, :-1],
+            loss_mask[:, 1:],
+        )
+        eagle_loss = classification_loss
+        train_accs.append(acc)
 
-            # ====Perform training-time-testing with 3 extra eagle forward passes====
+        # ====Perform training-time-testing with 3 extra eagle forward passes====
+        if self.training:
             for ttt_step in range(self.num_ttt_steps):
                 eagle_input_hidden_states = torch.cat(
                     (
@@ -931,7 +945,7 @@ class HFEagleModel(EagleModel):
         # Early return
         if steps < 1:
             if hasattr(self, "_aux_hidden_states"):
-                _ = self.pop_aux_hidden_states()
+                _ = self.pop_and_gather_aux_hiddens()
             return base_token, None
 
         eagle_ids = torch.cat((input_ids[:, 1:], base_token), dim=-1)
@@ -940,10 +954,7 @@ class HFEagleModel(EagleModel):
             # EAGLE-3
             # Only the first iteration input_hidden_states are from aux_hidden_state layers
             # Gather _aux_hidden_states from all devices before concatenation
-            gathered_aux_hidden_states = self.pop_aux_hidden_states()
-            gathered_aux_hidden_states = [
-                h.to(input_ids.device) for h in gathered_aux_hidden_states
-            ]
+            gathered_aux_hidden_states = self.pop_and_gather_aux_hiddens()
             eagle_input_hidden_states = self.eagle_module.fc(
                 torch.cat(gathered_aux_hidden_states, dim=-1)
             )
