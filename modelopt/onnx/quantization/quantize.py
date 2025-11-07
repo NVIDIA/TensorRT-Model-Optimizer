@@ -528,10 +528,6 @@ def quantize(
                 )
             if direct_io_types:
                 onnx_model = remove_graph_input_q(onnx_model)
-            # Sort nodes topologically
-            graph = gs.import_onnx(onnx_model)
-            graph.toposort().cleanup()
-            onnx_model = gs.export_onnx(graph)
         else:
             # Remove redundant cast nodes in the quantized model
             # Note. This is called within the qdq_to_dq function as well
