@@ -40,12 +40,6 @@ MODEL_ID = {
     "flux-schnell": ModelType.FLUX_SCHNELL,
 }
 
-dtype_map = {
-    "Half": torch.float16,
-    "BFloat16": torch.bfloat16,
-    "Float": torch.float32,
-}
-
 
 def generate_image(pipe, prompt, image_name):
     seed = 42
@@ -60,7 +54,7 @@ def generate_image(pipe, prompt, image_name):
 
 
 def benchmark_model(
-    pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20, model_dtype="Half"
+    pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20, model_dtype=torch.float16
 ):
     """Benchmark the backbone model inference time."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
@@ -83,7 +77,7 @@ def benchmark_model(
     try:
         print(f"Starting warmup: {num_warmup} runs")
         for _ in tqdm(range(num_warmup), desc="Warmup"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
+            with torch.amp.autocast("cuda", dtype=model_dtype):
                 _ = pipe(
                     prompt,
                     output_type="pil",
@@ -95,7 +89,7 @@ def benchmark_model(
 
         print(f"Starting benchmark: {num_runs} runs")
         for _ in tqdm(range(num_runs), desc="Benchmark"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
+            with torch.amp.autocast("cuda", dtype=model_dtype):
                 _ = pipe(
                     prompt,
                     output_type="pil",
@@ -169,16 +163,16 @@ def main():
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
     backbone = None
-    model_dtype = None
     if hasattr(pipe, "transformer"):
         backbone = pipe.transformer
-        model_dtype = "Bfloat16"
     elif hasattr(pipe, "unet"):
         backbone = pipe.unet
         add_embedding = backbone.add_embedding
-        model_dtype = "Half"
     else:
         raise ValueError("Pipeline does not have a transformer or unet backbone")
+
+    # Get dtype directly from the backbone's parameters
+    model_dtype = next(backbone.parameters()).dtype
 
     if args.restore_from:
         mto.restore(backbone, args.restore_from)
