@@ -127,13 +127,6 @@ def main():
         help="Path to the model if not using default paths in MODEL_ID mapping.",
     )
     parser.add_argument(
-        "--model-dtype",
-        type=str,
-        default="Half",
-        choices=["Half", "BFloat16", "Float"],
-        help="Precision used to load the model.",
-    )
-    parser.add_argument(
         "--restore-from", type=str, default=None, help="Path to the modelopt quantized checkpoint"
     )
     parser.add_argument(
@@ -170,18 +163,20 @@ def main():
 
     pipe = PipelineManager.create_pipeline_from(
         MODEL_ID[args.model],
-        dtype_map[args.model_dtype],
         override_model_path=args.override_model_path,
     )
 
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
     backbone = None
+    model_dtype = None
     if hasattr(pipe, "transformer"):
         backbone = pipe.transformer
+        model_dtype = "Bfloat16"
     elif hasattr(pipe, "unet"):
         backbone = pipe.unet
         add_embedding = backbone.add_embedding
+        model_dtype = "Half"
     else:
         raise ValueError("Pipeline does not have a transformer or unet backbone")
 
@@ -189,9 +184,6 @@ def main():
         mto.restore(backbone, args.restore_from)
 
     if args.torch_compile:
-        assert args.model_dtype in ["BFloat16", "Float", "Half"], (
-            "torch.compile() only supports BFloat16 and Float"
-        )
         print("Compiling backbone with torch.compile()...")
         backbone = torch.compile(backbone, mode="max-autotune")
 
@@ -203,7 +195,7 @@ def main():
         pipe.to("cuda")
 
         if args.benchmark:
-            benchmark_model(pipe, args.prompt, model_dtype=args.model_dtype)
+            benchmark_model(pipe, args.prompt, model_dtype=model_dtype)
 
         if not args.skip_image:
             generate_image(pipe, args.prompt, image_name)
