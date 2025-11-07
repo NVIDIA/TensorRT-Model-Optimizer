@@ -40,10 +40,12 @@ MODEL_ID = {
     "flux-schnell": ModelType.FLUX_SCHNELL,
 }
 
-dtype_map = {
-    "Half": torch.float16,
-    "BFloat16": torch.bfloat16,
-    "Float": torch.float32,
+DTYPE_MAP = {
+    "sdxl-1.0": torch.float16,
+    "sdxl-turbo": torch.float16,
+    "sd3-medium": torch.float16,
+    "flux-dev": torch.bfloat16,
+    "flux-schnell": torch.bfloat16,
 }
 
 
@@ -60,7 +62,7 @@ def generate_image(pipe, prompt, image_name):
 
 
 def benchmark_model(
-    pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20, model_dtype="Half"
+    pipe, prompt, num_warmup=10, num_runs=50, num_inference_steps=20, model_dtype=torch.float16
 ):
     """Benchmark the backbone model inference time."""
     backbone = pipe.transformer if hasattr(pipe, "transformer") else pipe.unet
@@ -83,7 +85,7 @@ def benchmark_model(
     try:
         print(f"Starting warmup: {num_warmup} runs")
         for _ in tqdm(range(num_warmup), desc="Warmup"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
+            with torch.amp.autocast("cuda", dtype=model_dtype):
                 _ = pipe(
                     prompt,
                     output_type="pil",
@@ -95,7 +97,7 @@ def benchmark_model(
 
         print(f"Starting benchmark: {num_runs} runs")
         for _ in tqdm(range(num_runs), desc="Benchmark"):
-            with torch.amp.autocast("cuda", dtype=dtype_map[model_dtype]):
+            with torch.amp.autocast("cuda", dtype=model_dtype):
                 _ = pipe(
                     prompt,
                     output_type="pil",
@@ -125,13 +127,6 @@ def main():
         type=str,
         default=None,
         help="Path to the model if not using default paths in MODEL_ID mapping.",
-    )
-    parser.add_argument(
-        "--model-dtype",
-        type=str,
-        default="Half",
-        choices=["Half", "BFloat16", "Float"],
-        help="Precision used to load the model.",
     )
     parser.add_argument(
         "--restore-from", type=str, default=None, help="Path to the modelopt quantized checkpoint"
@@ -167,10 +162,11 @@ def main():
     args = parser.parse_args()
 
     image_name = args.save_image_as if args.save_image_as else f"{args.model}.png"
+    model_dtype = DTYPE_MAP[args.model]
 
     pipe = PipelineManager.create_pipeline_from(
         MODEL_ID[args.model],
-        dtype_map[args.model_dtype],
+        torch_dtype=model_dtype,
         override_model_path=args.override_model_path,
     )
 
@@ -189,9 +185,6 @@ def main():
         mto.restore(backbone, args.restore_from)
 
     if args.torch_compile:
-        assert args.model_dtype in ["BFloat16", "Float", "Half"], (
-            "torch.compile() only supports BFloat16 and Float"
-        )
         print("Compiling backbone with torch.compile()...")
         backbone = torch.compile(backbone, mode="max-autotune")
 
@@ -203,7 +196,7 @@ def main():
         pipe.to("cuda")
 
         if args.benchmark:
-            benchmark_model(pipe, args.prompt, model_dtype=args.model_dtype)
+            benchmark_model(pipe, args.prompt, model_dtype=model_dtype)
 
         if not args.skip_image:
             generate_image(pipe, args.prompt, image_name)
