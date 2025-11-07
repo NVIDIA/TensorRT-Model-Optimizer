@@ -525,30 +525,33 @@ class EagleTrainerWithAccLog(Trainer):
 class EagleTrainingPlot(TrainerCallback):
     """Callback that plot training acc and AR during training."""
 
-    def __init__(self, ar_validate_steps: int = 1000):
+    def __init__(self, ar_validate_steps: int = 1000, estimate_ar: bool = False):
         self.ar_validate_steps = ar_validate_steps
         if wandb and is_master():
             wandb.init()
+        self.estimate_ar = estimate_ar
 
     def on_log(self, args, state, control, **kwargs):
         """Log training acc and estimate AR during log step."""
         if not hasattr(state, "training_accs"):
             return control
-        # Calculate mean training AR since last log
-        # NOTE: This is only a estimate of the real AR.
         average_acc = np.mean(state.training_accs, axis=0)
-        est_ar = 1
-        acc_cumprod = 1
-        for step_acc in average_acc:
-            est_ar += acc_cumprod * step_acc
-            acc_cumprod *= step_acc
-        print_rank_0(f"Step {state.global_step} Estimated Training AR: {est_ar:.4f}")
+        if self.estimate_ar:
+            # Calculate mean training AR since last log
+            # NOTE: This is only a estimate of the real AR.
+            est_ar = 1
+            acc_cumprod = 1
+            for step_acc in average_acc:
+                est_ar += acc_cumprod * step_acc
+                acc_cumprod *= step_acc
+            print_rank_0(f"Step {state.global_step} Estimated Training AR: {est_ar:.4f}")
 
         # log to wandb
         if wandb and is_master():
             for i, step_acc in enumerate(average_acc):
                 wandb.log({f"step_{i}_train_acc": step_acc}, step=state.global_step)
-            wandb.log({"estimated_training_ar": est_ar}, step=state.global_step)
+            if self.estimate_ar:
+                wandb.log({"estimated_training_ar": est_ar}, step=state.global_step)
 
         # reset training_accs
         state.training_accs = []
