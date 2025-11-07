@@ -8,6 +8,10 @@ Model Optimizer Changelog (Linux)
 
 - Fix a bug in FastNAS pruning (computer vision models) where the model parameters were sorted twice messing up the ordering.
 
+**New Features**
+
+- Add ``specdec_bench`` example to benchmark speculative decoding performance. See `examples/specdec_bench/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/specdec_bench#speculative-decoding-benchmark>`_ for more details.
+
 0.39 (2025-11-14)
 ^^^^^^^^^^^^^^^^^
 
