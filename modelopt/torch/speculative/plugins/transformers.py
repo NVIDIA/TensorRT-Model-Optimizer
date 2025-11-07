@@ -646,6 +646,37 @@ class HFEagleModel(EagleModel):
             ).masked_fill(~tensor_mask, dtypemin)
             return tensor_mask
 
+    def _llm_or_vlm_embedding(self, input_ids, kwargs):
+        """Return input embeddings with possibly vision embeddings for VLM."""
+        tok_embeds = self._base_model_embeddings(input_ids)
+
+        # LLM only have token embeddings
+        if "pixel_values" not in kwargs:
+            return tok_embeds
+
+        # Otherwise, insert vision embeddings in tok_embeds
+        if self.config.model_type == "NemotronH_Nano_VL_V2":
+            vit_embeds = self.extract_feature(kwargs["pixel_values"])
+            vit_embeds = vit_embeds[kwargs["image_flags"] == 1]
+            bs, seq_len, hid_size = tok_embeds.shape
+            tok_embeds = tok_embeds.reshape(bs * seq_len, hid_size)
+            input_ids = input_ids.reshape(bs * seq_len)
+            selected = input_ids == self.img_context_token_id
+            try:
+                tok_embeds[selected] = tok_embeds[selected] * 0.0 + vit_embeds.reshape(-1, hid_size)
+            except Exception as e:
+                vit_embeds = vit_embeds.reshape(-1, hid_size)
+                print(
+                    f"warning: {e}, tok_embeds[selected].shape={tok_embeds[selected].shape}, "
+                    f"vit_embeds.shape={vit_embeds.shape}"
+                )
+                n_token = selected.sum()
+                tok_embeds[selected] = tok_embeds[selected] * 0.0 + vit_embeds[:n_token]
+            del vit_embeds
+            return tok_embeds.reshape(bs, seq_len, hid_size)
+        else:
+            raise ValueError(f"VLM model type {self.config.model_type} not supported")
+
     def _base_model_forward(
         self,
         input_ids,
@@ -811,7 +842,8 @@ class HFEagleModel(EagleModel):
             eagle_cache,
         )
         with torch.no_grad():
-            inputs_embeds = self._base_model_embeddings(eagle_input_ids)
+            inputs_embeds = self._llm_or_vlm_embedding(eagle_input_ids, kwargs)
+
         position_embeddings = self.eagle_rotary_emb(eagle_input_hidden_states, position_ids)
 
         # Then, we run eagle forward
