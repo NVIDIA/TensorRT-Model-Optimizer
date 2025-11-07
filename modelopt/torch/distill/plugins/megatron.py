@@ -29,14 +29,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import yaml
-from megatron.core import parallel_state
-from megatron.core.pipeline_parallel.schedules import get_tensor_shapes
-from megatron.core.transformer import MegatronModule, TransformerLayer
-from megatron.core.utils import get_model_config
 from torch import Tensor
 from torch.nn.modules.loss import _Loss
 
 import modelopt.torch.distill as mtd
+from megatron.core import parallel_state
+from megatron.core.pipeline_parallel.schedules import get_tensor_shapes
+from megatron.core.transformer import MegatronModule, TransformerLayer
+from megatron.core.utils import get_model_config
 from modelopt.torch.distill.config import Criterion
 
 if TYPE_CHECKING:
@@ -433,7 +433,8 @@ class LogitsAndIntermediatesLossBalancer(mtd.DistillationLossBalancer):
             total_loss = logits_loss + intermediate_loss_scaled
         else:
             kd_loss = logits_loss + intermediate_loss_scaled
-            kd_loss *= original_loss.item() / kd_loss.item()
+            if kd_loss > 0:  # sometimes zero during CP when one rank has all context tokens
+                kd_loss *= original_loss.item() / kd_loss.item()
             total_loss = original_loss + kd_loss * self._kd_loss_scale
 
         out_dict = {
