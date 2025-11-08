@@ -16,6 +16,7 @@
 """ModelOpt plugin for transformers Trainer."""
 
 import gc
+import json
 import os
 import types
 from dataclasses import dataclass, field
@@ -168,6 +169,8 @@ class QATTrainer(ModelOptHFTrainer):
         elif is_quantized(self.model):
             self._save_modelopt_state_with_weights()
 
+        self._original_dtype = getattr(getattr(self.model, "config", None), "torch_dtype", None)
+
     def _save_modelopt_state_with_weights(self):
         """Save the modelopt weights for fsdp2 models."""
         if torch.distributed.is_initialized():
@@ -265,6 +268,11 @@ class QATTrainer(ModelOptHFTrainer):
             original_type = self.accelerator.state.fsdp_plugin.state_dict_type
             self.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
             outputs = super().save_model(*args, **kwargs)
+
+            out_dir = args[0]
+            # FSDP may upcast parameter dtype to float32 during mixed-precision training,
+            # we convert it back to original dtype by updating `torch-dtype` in `config.json`
+            self._update_config_json_dtype(out_dir, str(self._original_dtype).split(".")[1])
             if torch.distributed.is_initialized():
                 torch.distributed.barrier()
             if mto.ModeloptStateManager.is_converted(self.accelerator.unwrap_model(self.model)):
@@ -295,6 +303,26 @@ class QATTrainer(ModelOptHFTrainer):
             self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
         else:
             super()._load_best_model(*args, **kwargs)
+
+    def _update_config_json_dtype(self, output_dir: str, dtype_str: str | None) -> None:
+        """Rewrite <output_dir>/config.json 'torch_dtype' to dtype_str on main process only."""
+        if not self.accelerator.is_main_process or dtype_str is None:
+            return
+        cfg_path = os.path.join(output_dir, "config.json")
+        if not os.path.isfile(cfg_path):
+            print_rank_0(f"[warn] config.json not found under {output_dir}; skip dtype rewrite.")
+            return
+
+        try:
+            with open(cfg_path, encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("torch_dtype") != dtype_str:
+                data["torch_dtype"] = dtype_str
+                with open(cfg_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                print_rank_0(f'Updated config.json: torch_dtype -> "{dtype_str}"')
+        except Exception as e:
+            print_rank_0(f"[warn] Failed to update torch_dtype in config.json: {e}")
 
     def _patch_accelerate_for_fsdp2_fix(self):
         """Fixes for accelerate prepare.
