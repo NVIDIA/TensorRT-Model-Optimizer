@@ -61,6 +61,13 @@ def fp4_fake_quant_kernel(
     offs_n = pid_n * TILE_SIZE + tl.arange(0, TILE_SIZE)
     offs = offs_m[:, None] * N + offs_n[None, :]
     mask = (offs_m[:, None] < M) & (offs_n[None, :] < N)
+    # M_i64 = tl.full((), M, tl.int64)
+    # N_i64 = tl.full((), N, tl.int64)
+
+    # offs_m = pid_m.to(tl.int64) * TILE_SIZE + tl.arange(0, TILE_SIZE).to(tl.int64)
+    # offs_n = pid_n.to(tl.int64) * TILE_SIZE + tl.arange(0, TILE_SIZE).to(tl.int64)
+    # offs = offs_m[:, None] * N_i64 + offs_n[None, :]
+    # mask = (offs_m[:, None] < M_i64) & (offs_n[None, :] < N_i64)
 
     # Load input data
     x = tl.load(x_ptr + offs, mask=mask).to(tl.float32)
