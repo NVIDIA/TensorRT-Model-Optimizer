@@ -25,7 +25,11 @@ import torch
 import torch.nn as nn
 
 from modelopt import __version__
-from modelopt.torch.quantization.model_calib import enable_stats_collection, finish_stats_collection
+from modelopt.torch.quantization.model_calib import (
+    enable_stats_collection,
+    finish_stats_collection,
+    max_calibrate,
+)
 from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import (
     FP8QTensor,
@@ -38,7 +42,7 @@ from modelopt.torch.quantization.utils import (
     quantizer_attr_names,
     weight_attr_names,
 )
-from modelopt.torch.utils import clear_cuda_cache
+from modelopt.torch.utils import clear_cuda_cache, print_rank_0
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .model_config import (
@@ -974,29 +978,19 @@ PQS_FUSE_MODULE_MAPPING = [
 ]
 
 
-def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
+def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False, forward_loop=None):
     """Fuse pre_quant_scale to the linear weights if possible.
-
-    For example, we can fuse the pre_quant_scale of o_proj to the output_dimension of v_proj, such that
-    the results are mathematically equivalent to the following::
-
-        out_proj.input = (attn_weights @ v_proj.output)
-        out_proj.output = (out_proj.input * pre_quant_scale) * out_proj.weight
-                        = attn_weights @ (v_proj.output * pre_quant_scale) * out_proj.weight
-
-    For GQA/MQA models where v_proj output dimension < o_proj input dimension,
-    the pre_quant_scale is averaged across the repeated head groups and then the
-    o_proj's pre_quant_scale is updated to maintain mathematical equivalence.
 
     Args:
         model: The model to fuse pre_quant_scale to.
         fuse_grouped_heads: If True, fuse the pre_quant_scale even if dimension between pre_quant_scale
-        and linear weights is not the same. This is useful for GQA/MQA models but may lead to accuracy
-        drop.
-
-    Note:
-        Fuse_grouped_heads is useful for GQA/MQA models but may lead to accuracy drop.
+            and linear weights is not the same.
+        forward_loop: A callable which takes the model as argument and forwards calibration data through
+            the model. Used to recalibrate input quantizers after weight fusion.
     """
+    # Store modules that need recalibration
+    modules_to_recalibrate = []
+
     # Fuse pre_quant_scale to the linear weights
     for _, module in model.named_modules():
         for module_map in PQS_FUSE_MODULE_MAPPING:
@@ -1072,8 +1066,35 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
                             linear_fuse_into.bias * pre_quant_scale
                         )
 
+                    # Recalibrate the weight quantizer for linear_fuse_into
+                    linear_fuse_into.weight_quantizer.reset_amax()
+                    enable_stats_collection(linear_fuse_into.weight_quantizer)
+                    linear_fuse_into.weight_quantizer(linear_fuse_into.weight)
+                    finish_stats_collection(linear_fuse_into.weight_quantizer)
+
                     delattr(linear_pqs_from.input_quantizer, "_pre_quant_scale")
                     setattr(linear_pqs_from, "fused_with_prequant", True)
+
+                    # Mark for input quantizer recalibration if enabled
+                    if linear_pqs_from.input_quantizer.is_enabled:
+                        modules_to_recalibrate.append(linear_pqs_from)
+
+    # Recalibrate input quantizers if forward_loop is provided
+    if forward_loop is not None and len(modules_to_recalibrate) > 0:
+        print_rank_0(
+            f"Recalibrating {len(modules_to_recalibrate)} input quantizers after weight fusion..."
+        )
+
+        # Reset amax for modules that need recalibration
+        for module in modules_to_recalibrate:
+            module.input_quantizer.reset_amax()
+
+        # Collect statistics
+        enable_stats_collection(model)
+        forward_loop(model)
+
+        # Finish calibration
+        max_calibrate(model, lambda model: None)
 
 
 def fuse_prequant_layernorm(
