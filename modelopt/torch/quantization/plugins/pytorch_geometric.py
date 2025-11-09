@@ -33,7 +33,6 @@ Example:
     >>> quantized_model = mtq.quantize(model, mtq.INT8_DEFAULT_CFG, calibrate)
 """
 
-import torch
 from torch_geometric.nn.dense.linear import Linear as PyGLinear
 
 from modelopt.torch.quantization.nn.modules.quant_module import (
@@ -48,7 +47,13 @@ class QuantPyGLinear(QuantLinearConvBase):
 
     PyTorch Geometric uses a custom Linear layer that is functionally equivalent to
     torch.nn.Linear but has a different API (in_channels/out_channels instead of
-    in_features/out_features). This class enables quantization of PyG Linear layers.
+    in_features/out_features). This class enables quantization of PyG Linear layers
+    by inheriting from QuantLinearConvBase, which handles all quantization logic.
+
+    The quantization is handled automatically by the base classes:
+    - Input quantization: Handled by QuantInputBase.forward()
+    - Weight quantization: Handled by QuantLinearConvBase's dynamic weight attribute
+    - Output quantization: Handled by QuantInputBase.forward()
 
     Note:
         Many PyTorch Geometric layers (GCNConv, GATConv, SAGEConv, TransformerConv, etc.)
@@ -57,33 +62,6 @@ class QuantPyGLinear(QuantLinearConvBase):
     """
 
     default_quant_desc_weight = QUANT_DESC_8BIT_LINEAR_WEIGHT_PER_ROW
-
-    def forward(self, input, *args, **kwargs):
-        """Forward pass with quantization.
-
-        Args:
-            input: Input tensor to the linear layer
-            *args: Additional positional arguments
-            **kwargs: Additional keyword arguments
-
-        Returns:
-            Quantized output tensor
-        """
-        # Quantize input activations
-        input_q = self.input_quantizer(input)
-
-        # Quantize weights
-        weight_q = self.weight_quantizer(self.weight)
-
-        # Perform linear operation
-        output = torch.nn.functional.linear(
-            input_q,
-            weight_q,
-            self.bias if hasattr(self, "bias") and self.bias is not None else None,
-        )
-
-        # Quantize output (typically disabled by default)
-        return self.output_quantizer(output)
 
 
 QuantModuleRegistry.register({PyGLinear: "torch_geometric.nn.dense.linear.Linear"})(QuantPyGLinear)

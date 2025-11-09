@@ -183,7 +183,3 @@ class TestPyTorchGeometricPlugin:
         mean_relative_error = relative_error.mean().item()
 
         assert mean_relative_error < 0.1, f"Quantization error too large: {mean_relative_error:.2%}"
-
-
-if __name__ == "__main__":
-    pytest.main([__file__])
