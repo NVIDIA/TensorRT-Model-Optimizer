@@ -20,7 +20,6 @@ import shutil
 import sys
 import warnings
 from pathlib import Path
-from typing import Any
 
 import torch
 import transformers
@@ -159,7 +158,7 @@ def build_quant_cfg(
 
         # Check if any bmm_quantizer is in the quant_cfg. If so, we need to enable the bmm_quantizer.
         if enable_quant_kv_cache:
-            quant_cfg = apply_kv_cache_quant(
+            quant_cfg = mtq.update_quant_cfg_with_kv_cache_quant(
                 quant_cfg,
                 getattr(mtq, kv_quant_cfg_choices[kv_cache_qformat])["quant_cfg"],
             )
@@ -401,20 +400,6 @@ def is_model_on_gpu(model) -> bool:
 def is_enc_dec(model_type) -> bool:
     """Return if the model is a encoder-decoder model."""
     return model_type in ["t5", "bart", "whisper"]
-
-
-def apply_kv_cache_quant(quant_cfg: dict[str, Any], kv_cache_quant_cfg: dict[str, Any]):
-    """Apply quantization to the kv cache of the model."""
-    # Update KV cache related bmm quantizers
-    # If quant_cfg["quant_cfg"] is None, it corresponds to only kv cache quantization case
-    quant_cfg["quant_cfg"] = quant_cfg.get("quant_cfg", {"default": {"enable": False}})
-    quant_cfg["quant_cfg"].update(kv_cache_quant_cfg)
-
-    # Set default algorithm for kv cache quantization if not provided.
-    if not quant_cfg.get("algorithm"):
-        quant_cfg["algorithm"] = "max"
-
-    return quant_cfg
 
 
 def _resolve_model_path(model_name_or_path: str, trust_remote_code: bool = False) -> str:
