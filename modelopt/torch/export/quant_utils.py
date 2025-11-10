@@ -981,8 +981,8 @@ def _update_pre_quant_scale(module, new_pre_quant_scale):
     module.weight = nn.Parameter(
         module.weight.to(torch.float32)
         * old_pre_quant_scale.to(dtype=torch.float32, device=module.weight.device)
-        / new_pre_quant_scale.to(dtype=torch.float32, device=module.weight.device).to(dtype)
-    )
+        / new_pre_quant_scale.to(dtype=torch.float32, device=module.weight.device)
+    ).to(dtype)
     module.input_quantizer.pre_quant_scale = new_pre_quant_scale
 
     # Redo weights collection

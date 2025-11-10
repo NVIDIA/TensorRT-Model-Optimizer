@@ -47,6 +47,7 @@ Model Optimizer Changelog (Linux)
 - Enabled native Modelopt quantization support for FP8 and NVFP4 formats in SGLang. See `SGLang quantization documentation <https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/quantization.md#using-nvidia-modelopt>`_ for more details.
 - Added modelopt quantized checkpoints in vLLM/SGLang CI/CD pipelines (PRs are under review).
 - Add support for exporting QLoRA checkpoint fintuned using ModelOpt.
+- Update NVFP4 AWQ checkpoint export. It now fuses scaling factors of o_proj and down_proj layers into the model when possible to facilitate deployment.
 
 **Documentation**
 
