@@ -31,6 +31,7 @@ from safetensors.torch import save_file
 from torch.distributed.fsdp import FSDPModule
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
+from modelopt.torch.quantization.model_calib import enable_stats_collection, max_calibrate
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
 from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, quantizer_attr_names
@@ -60,6 +61,7 @@ from .model_utils import get_language_model_from_vl, is_multimodal_model
 from .plugins import export_spec_ckpt_config, export_spec_ckpt_state_dict, spec_opt_only
 from .quant_utils import (
     fuse_prequant_layernorm,
+    fuse_prequant_to_linear,
     get_activation_scaling_factor,
     get_quant_config,
     get_quantization_format,
@@ -85,7 +87,7 @@ def _is_enabled_quantizer(quantizer):
     return False
 
 
-def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
+def requantize_resmooth_fused_llm_layers(model: torch.nn.Module, forward_loop=None):
     """Group modules that take the same input and register shared parameters in module."""
     # TODO: Handle DBRX MoE
     input_to_linear = defaultdict(list)
@@ -106,6 +108,11 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
 
     fused_linears = {}
     module_names = set()
+
+    # Fuse pre_quant_scale to the linear weights if possible
+    modules_to_recalibrate = []
+    if quantization_format is not None and "nvfp4_awq" in quantization_format.lower():
+        modules_to_recalibrate.extend(fuse_prequant_to_linear(model))
 
     for name, module in model.named_modules():
         module_names.add(name)
@@ -197,6 +204,23 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
                 fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+                modules_to_recalibrate.extend(modules)
+
+    # Recalibrate input quantizers if forward_loop is provided
+    if forward_loop is not None and len(modules_to_recalibrate) > 0:
+        print(f"Reseting {len(modules)} input quantizers after scaling factor fusion...")
+
+        # Reset amax for modules that need recalibration
+        for module in modules_to_recalibrate:
+            if hasattr(module, "input_quantizer") and module.input_quantizer.is_enabled:
+                module.input_quantizer.reset_amax()
+
+        # Collect statistics
+        enable_stats_collection(model)
+        forward_loop(model)
+
+        # Finish calibration
+        max_calibrate(model, lambda model: None)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.
@@ -367,6 +391,7 @@ def _export_quantized_weight(
 def _export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
+    forward_loop=None,  # Add this parameter
     **kwargs,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
@@ -376,6 +401,7 @@ def _export_hf_checkpoint(
     Args:
         model: the full torch model to export. The actual quantized model may be a submodule.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
+        forward_loop: Optional calibration forward loop for recalibrating after weight fusion.
         accelerator: the accelerator instance in case of distributed export setup.
 
     Returns:
@@ -448,7 +474,7 @@ def _export_hf_checkpoint(
 
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
-    requantize_resmooth_fused_llm_layers(model)
+    requantize_resmooth_fused_llm_layers(model, forward_loop=forward_loop)
 
     # Remove all hooks from the model
     try:
@@ -535,6 +561,7 @@ def export_hf_checkpoint(
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
+    forward_loop=None,  # Add this parameter
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -543,6 +570,7 @@ def export_hf_checkpoint(
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
+        forward_loop: Optional calibration forward loop for recalibrating after weight fusion.
     """
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -556,7 +584,9 @@ def export_hf_checkpoint(
         return
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(
+            model, dtype, forward_loop=forward_loop
+        )
 
         # Save hf_quant_config.json for backward compatibility
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:
