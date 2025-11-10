@@ -23,7 +23,6 @@ import numpy as np
 import torch
 from accelerate.hooks import remove_hook_from_module
 from example_utils import (
-    apply_kv_cache_quant,
     build_quant_cfg,
     copy_custom_model_files,
     get_model,
@@ -86,8 +85,10 @@ QUANT_CFG_CHOICES: dict[str, dict[str, Any]] = {
 KV_QUANT_CFG_CHOICES = {
     "none": "none",
     "fp8": "FP8_KV_CFG",
+    "fp8_affine": "FP8_AFFINE_KV_CFG",
     "nvfp4": "NVFP4_KV_CFG",
     "nvfp4_affine": "NVFP4_AFFINE_KV_CFG",
+    "nvfp4_rotate": "NVFP4_KV_ROTATE_CFG",
 }
 
 mto.enable_huggingface_checkpointing()
@@ -257,7 +258,7 @@ def main(args):
         )
         quant_cfg = QUANT_CFG_CHOICES[args.qformat]
         if args.kv_cache_qformat != "none":
-            quant_cfg = apply_kv_cache_quant(
+            quant_cfg = mtq.utils.update_quant_cfg_with_kv_cache_quant(
                 quant_cfg, getattr(mtq, KV_QUANT_CFG_CHOICES[args.kv_cache_qformat])["quant_cfg"]
             )
 
