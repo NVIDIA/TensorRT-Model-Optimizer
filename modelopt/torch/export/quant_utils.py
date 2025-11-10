@@ -849,6 +849,11 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
     post_state_dict = {}
 
     for key, value in state_dict.items():
+        # Skip problematic parameters for specific model architectures, e.g., Nemotron Nano VL models
+        if key == "vision_model.radio_model.summary_idxs":
+            logger.info(f"Removing problematic parameter: {key}")
+            continue
+
         # Skip keys not related to quantizers
         if (
             "output_quantizer" not in key
