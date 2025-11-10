@@ -15,6 +15,7 @@
 
 import argparse
 
+import numpy as np
 import torch
 from onnx_utils.export import (
     generate_dummy_inputs_and_dynamic_axes_and_shapes,
@@ -102,10 +103,9 @@ def benchmark_backbone_standalone(
         times.append(start_event.elapsed_time(end_event))
 
     avg_latency = sum(times) / len(times)
-    times = sorted(times)
-    p50 = times[len(times) // 2]
-    p95 = times[int(len(times) * 0.95)]
-    p99 = times[int(len(times) * 0.99)]
+    p50 = np.percentile(times, 50)
+    p95 = np.percentile(times, 95)
+    p99 = np.percentile(times, 99)
 
     print("\nBackbone-only inference latency:")
     print(f"  Average: {avg_latency:.2f} ms")
