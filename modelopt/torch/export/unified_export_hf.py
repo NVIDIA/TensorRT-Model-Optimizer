@@ -209,7 +209,9 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module, forward_loop=No
 
     # Recalibrate input quantizers if forward_loop is provided
     if forward_loop is not None and len(modules_to_recalibrate) > 0:
-        print(f"Reseting {len(modules)} input quantizers after scaling factor fusion...")
+        print(
+            f"Reseting {len(modules_to_recalibrate)} input quantizers after scaling factor fusion..."
+        )
 
         # Reset amax for modules that need recalibration
         for module in modules_to_recalibrate:
