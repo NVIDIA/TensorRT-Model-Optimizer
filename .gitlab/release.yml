@@ -5,10 +5,12 @@ build-and-upload-wheels:
   stage: release
   timeout: 15m
   tags: [type/docker, os/linux] # Use a runner with these tags
+  needs: []
   rules:
     - if: $JET_ONLY != null
       when: never
     - if: $CI_COMMIT_TAG =~ /^\d+\.\d+\.\d+$/
+      when: manual
       variables:
         RELEASE: "true"
         TWINE_USERNAME: svc-dl-algo-ammo
@@ -16,6 +18,7 @@ build-and-upload-wheels:
         REPO_URL: https://urm.nvidia.com/artifactory/api/pypi/sw-dl-algo-ammo-pypi-local
     - if: $CI_PIPELINE_SOURCE == "schedule"
       variables:
+        when: manual
         RELEASE: "false"
         TWINE_USERNAME: gitlab-ci-token
         TWINE_PASSWORD: $CI_JOB_TOKEN
