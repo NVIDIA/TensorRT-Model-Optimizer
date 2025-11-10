@@ -321,6 +321,11 @@ def load_onnx_model(
             # Infer types and shapes in the graph for ORT compatibility
             onnx_model = infer_types_shapes_tensorrt(onnx_model, trt_plugins or [], all_tensor_info)
 
+    # Ensure nodes are topologically sorted
+    graph = gs.import_onnx(onnx_model)
+    graph.toposort()
+    onnx_model = gs.export_onnx(graph)
+
     # Enforce IR version = 10
     ir_version_onnx_path = None
     if onnx_model.ir_version > MAX_IR_VERSION:
@@ -333,11 +338,6 @@ def load_onnx_model(
         save_onnx(onnx_model, ir_version_onnx_path, use_external_data_format)
         if intermediate_generated_files is not None:
             intermediate_generated_files.append(ir_version_onnx_path)
-
-    # Ensure nodes are topologically sorted
-    graph = gs.import_onnx(onnx_model)
-    graph.toposort()
-    onnx_model = gs.export_onnx(graph)
 
     # Check that the model is valid
     if use_external_data_format:
