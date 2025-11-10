@@ -511,10 +511,10 @@ def copy_custom_model_files(source_path: str, export_path: str, trust_remote_cod
     # Common patterns for custom model files that need to be copied
     custom_file_patterns = [
         "configuration_*.py",
-        "modeling_*.py",
+        "modeling*.py",
         "tokenization_*.py",
         "processing_*.py",
-        "image_processing_*.py",
+        "image_processing*.py",
         "feature_extraction_*.py",
         "*.json",
     ]
