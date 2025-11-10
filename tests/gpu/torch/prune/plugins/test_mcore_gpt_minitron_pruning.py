@@ -42,6 +42,7 @@ def _test_mcore_gpt_pruning(
     pruned_hidden_size_div,
     pruned_num_layers_div,
     uneven_pp,
+    position_embedding_type,
     skip_sorting,
     ckpt_path,
     rank,
@@ -81,6 +82,7 @@ def _test_mcore_gpt_pruning(
             ffn_hidden_size=ffn_hidden_size,
             max_sequence_length=max_sequence_length,
             vocab_size=vocab_size,
+            position_embedding_type=position_embedding_type,
             activation_func=activation_func,
             normalization=normalization,
             num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
@@ -187,20 +189,21 @@ def _test_mcore_gpt_pruning(
         "hidden_size_div",
         "num_layers_div",
         "uneven_pp",
+        "position_embedding_type",
         "skip_sorting",
         "test_ckpt",
     ),
     [
         # MHA - pruned ffn/4
-        (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False, False, False),
+        (8, 8, "squared_relu", "LayerNorm", 4, 1, 1, 1, 1, False, "rope", False, False),
         # GQA - pruned attention/2
-        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, False, False),
+        (8, 4, "squared_relu", "RMSNorm", 1, 2, 2, 1, 1, False, "rope", False, False),
         # GQA - pruned hidden_size/4
-        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, True, False),
+        (8, 4, "swiglu", "RMSNorm", 1, 1, 1, 4, 1, False, "rope", True, False),
         # MHA - pruned num_layers/2
-        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, False, False),
+        (8, 8, "swiglu", "LayerNorm", 1, 1, 1, 1, 2, False, "rope", False, False),
         # GQA - pruned all/2, uneven pp
-        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, False, True),
+        (8, 4, "swiglu", "RMSNorm", 2, 2, 2, 2, 2, True, "yarn", False, True),
     ],
 )
 def test_mcore_gpt_pruning(
@@ -215,6 +218,7 @@ def test_mcore_gpt_pruning(
     hidden_size_div,
     num_layers_div,
     uneven_pp,
+    position_embedding_type,
     skip_sorting,
     test_ckpt,
 ):
@@ -232,6 +236,7 @@ def test_mcore_gpt_pruning(
             hidden_size_div,
             num_layers_div,
             uneven_pp,
+            position_embedding_type,
             skip_sorting,
             tmp_path / "minitron_scores.pth" if test_ckpt else None,
         ),
@@ -296,6 +301,7 @@ def _test_mcore_gpt_pruning_moe(ckpt_path, rank, size):
     for layer in model.decoder.layers:
         moe = layer.mlp
         assert moe.router.num_experts == pruned_num_moe_experts
+        assert moe.router.expert_bias.shape == (pruned_num_moe_experts,)
         assert moe.router.weight.shape == (pruned_num_moe_experts, pruned_hidden_size)
         assert moe.experts.num_local_experts == pruned_num_moe_experts
         assert len(moe.experts.local_experts) == pruned_num_moe_experts
