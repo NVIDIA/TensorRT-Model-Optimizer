@@ -31,6 +31,7 @@ from safetensors.torch import save_file
 from torch.distributed.fsdp import FSDPModule
 
 from modelopt.torch.quantization import set_quantizer_by_cfg_context
+from modelopt.torch.quantization.model_calib import enable_stats_collection, max_calibrate
 from modelopt.torch.quantization.nn import SequentialQuantizer, TensorQuantizer
 from modelopt.torch.quantization.qtensor import NVFP4QTensor
 from modelopt.torch.quantization.utils import fsdp2_aware_weight_update, quantizer_attr_names
@@ -109,8 +110,9 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module, forward_loop=No
     module_names = set()
 
     # Fuse pre_quant_scale to the linear weights if possible
+    modules_to_recalibrate = []
     if quantization_format is not None and "nvfp4_awq" in quantization_format.lower():
-        fuse_prequant_to_linear(model, forward_loop=forward_loop)
+        modules_to_recalibrate.extend(fuse_prequant_to_linear(model))
 
     for name, module in model.named_modules():
         module_names.add(name)
@@ -202,9 +204,24 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module, forward_loop=No
         ):
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
-                fuse_prequant_layernorm(
-                    output_to_layernorm[tensor], modules, forward_loop=forward_loop
-                )
+                fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
+                modules_to_recalibrate.extend(modules)
+
+    # Recalibrate input quantizers if forward_loop is provided
+    if forward_loop is not None and len(modules_to_recalibrate) > 0:
+        print(f"Reseting {len(modules)} input quantizers after scaling factor fusion...")
+
+        # Reset amax for modules that need recalibration
+        for module in modules_to_recalibrate:
+            if hasattr(module, "input_quantizer") and module.input_quantizer.is_enabled:
+                module.input_quantizer.reset_amax()
+
+        # Collect statistics
+        enable_stats_collection(model)
+        forward_loop(model)
+
+        # Finish calibration
+        max_calibrate(model, lambda model: None)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.

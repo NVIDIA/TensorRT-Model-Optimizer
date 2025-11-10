@@ -25,11 +25,7 @@ import torch
 import torch.nn as nn
 
 from modelopt import __version__
-from modelopt.torch.quantization.model_calib import (
-    enable_stats_collection,
-    finish_stats_collection,
-    max_calibrate,
-)
+from modelopt.torch.quantization.model_calib import enable_stats_collection, finish_stats_collection
 from modelopt.torch.quantization.nn.modules.quant_linear import RealQuantLinear
 from modelopt.torch.quantization.qtensor import (
     FP8QTensor,
@@ -42,7 +38,7 @@ from modelopt.torch.quantization.utils import (
     quantizer_attr_names,
     weight_attr_names,
 )
-from modelopt.torch.utils import clear_cuda_cache, print_rank_0
+from modelopt.torch.utils import clear_cuda_cache
 
 from ..quantization.nn import SequentialQuantizer, TensorQuantizer
 from .model_config import (
@@ -978,20 +974,38 @@ PQS_FUSE_MODULE_MAPPING = [
 ]
 
 
-def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False, forward_loop=None):
+def _update_pre_quant_scale(module, new_pre_quant_scale):
+    old_pre_quant_scale = module.input_quantizer._pre_quant_scale
+    # do the processing in fp32 for numerical stability
+    dtype = module.weight.dtype
+    module.weight = nn.Parameter(
+        module.weight.to(torch.float32)
+        * old_pre_quant_scale.to(dtype=torch.float32, device=module.weight.device)
+        / new_pre_quant_scale.to(dtype=torch.float32, device=module.weight.device).to(dtype)
+    )
+    module.input_quantizer.pre_quant_scale = new_pre_quant_scale
+
+    # Redo weights collection
+    module.weight_quantizer.reset_amax()
+    enable_stats_collection(module.weight_quantizer)
+    module.weight_quantizer(module.weight)
+    finish_stats_collection(module.weight_quantizer)
+
+
+def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
     """Fuse pre_quant_scale to the linear weights if possible.
 
     Args:
         model: The model to fuse pre_quant_scale to.
         fuse_grouped_heads: If True, fuse the pre_quant_scale even if dimension between pre_quant_scale
             and linear weights is not the same.
-        forward_loop: A callable which takes the model as argument and forwards calibration data through
-            the model. Used to recalibrate input quantizers after weight fusion.
-    """
-    # Store modules that need recalibration
-    modules_to_recalibrate = []
 
+    Returns:
+        fused_modules: A list of modules of which pre_quant_scale is fused to the previous linear layer.
+    """
     # Fuse pre_quant_scale to the linear weights
+    fused_modules = []
+
     for _, module in model.named_modules():
         for module_map in PQS_FUSE_MODULE_MAPPING:
             target_module_list = module_map[0]
@@ -1021,6 +1035,7 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False, fo
                         n_rep = pre_quant_scale.numel() // num_kv_heads // kv_head_dim
 
                         # Reshape:(num_kv_heads, n_rep, kv_head_dim)
+                        # n_rep is the number of q sharing a kv head
                         averaged_scale = pre_quant_scale.view(
                             num_kv_heads, n_rep, kv_head_dim
                         ).mean(dim=1)
@@ -1031,26 +1046,6 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False, fo
                             .expand(num_kv_heads, n_rep, kv_head_dim)
                             .reshape(-1)
                         )
-
-                        def _update_pre_quant_scale(module, new_pre_quant_scale):
-                            old_pre_quant_scale = module.input_quantizer._pre_quant_scale
-                            module.weight = nn.Parameter(
-                                module.weight
-                                * old_pre_quant_scale.to(
-                                    dtype=module.weight.dtype, device=module.weight.device
-                                )
-                                / new_pre_quant_scale.to(
-                                    dtype=module.weight.dtype, device=module.weight.device
-                                )
-                            )
-                            module.input_quantizer.pre_quant_scale = new_pre_quant_scale
-
-                            # Redo weights collection
-                            module.weight_quantizer.reset_amax()
-                            enable_stats_collection(module.weight_quantizer)
-                            module.weight_quantizer(module.weight)
-                            finish_stats_collection(module.weight_quantizer)
-
                         # Update o_proj's pre_quant_scale
                         _update_pre_quant_scale(linear_pqs_from, repeated_scale)
 
@@ -1075,32 +1070,14 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False, fo
                     delattr(linear_pqs_from.input_quantizer, "_pre_quant_scale")
                     setattr(linear_pqs_from, "fused_with_prequant", True)
 
-                    # Mark for input quantizer recalibration if enabled
-                    if linear_pqs_from.input_quantizer.is_enabled:
-                        modules_to_recalibrate.append(linear_pqs_from)
+                    fused_modules.append(linear_pqs_from)
 
-    # Recalibrate input quantizers if forward_loop is provided
-    if forward_loop is not None and len(modules_to_recalibrate) > 0:
-        print_rank_0(
-            f"Recalibrating {len(modules_to_recalibrate)} input quantizers after weight fusion..."
-        )
-
-        # Reset amax for modules that need recalibration
-        for module in modules_to_recalibrate:
-            module.input_quantizer.reset_amax()
-
-        # Collect statistics
-        enable_stats_collection(model)
-        forward_loop(model)
-
-        # Finish calibration
-        max_calibrate(model, lambda model: None)
+    return fused_modules
 
 
 def fuse_prequant_layernorm(
     layernorm_module: torch.nn.Module,
     modules: list[torch.Tensor],
-    forward_loop: None = None,
 ):
     """Scales layernorm weights with avg_pre_quant_scale of the modules list and sets pre_quant_scales to be deleted.
 
@@ -1130,16 +1107,6 @@ def fuse_prequant_layernorm(
         if module.input_quantizer.is_enabled:
             modules_to_recalibrate.append(module)
 
-    # Recalibrate input quantizers if forward_loop is provided
-    if forward_loop is not None and len(modules_to_recalibrate) > 0:
-        print_rank_0(
-            f"Recalibrating {len(modules_to_recalibrate)} input quantizers after weight fusion..."
-        )
-
-        # Reset amax for modules that need recalibration
-        for module in modules_to_recalibrate:
-            module.input_quantizer.reset_amax()
-
 
 def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False):
     """Preprocess the quantized linears that we plan to fuse.
@@ -1160,22 +1127,7 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
 
             for module in modules:
                 if not torch.equal(module.input_quantizer.pre_quant_scale, avg_prequant_scale):
-                    module.weight = nn.Parameter(
-                        module.weight
-                        * module.input_quantizer.pre_quant_scale.to(
-                            dtype=module.weight.dtype, device=module.weight.device
-                        )
-                        / avg_prequant_scale.to(
-                            dtype=module.weight.dtype, device=module.weight.device
-                        )
-                    )
-                    module.input_quantizer.pre_quant_scale = avg_prequant_scale
-
-                    # Redo weights collection
-                    module.weight_quantizer.reset_amax()
-                    enable_stats_collection(module.weight_quantizer)
-                    module.weight_quantizer(module.weight)
-                    finish_stats_collection(module.weight_quantizer)
+                    _update_pre_quant_scale(module, avg_prequant_scale)
 
         if resmooth_only:
             return
