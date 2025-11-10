@@ -1,13 +1,5 @@
 Model Optimizer Changelog (Linux)
 =================================
-0.41 (2025-12-xx)
-^^^^^^^^^^^^^^^^^
-
-**Deprecations**
-
-**New Features**
-- Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
-
 
 0.40 (2025-12-xx)
 ^^^^^^^^^^^^^^^^^
@@ -20,8 +12,9 @@ Model Optimizer Changelog (Linux)
 
 - Add MoE (e.g. Qwen3-30B-A3B) pruning support for ``num_moe_experts``, ``moe_ffn_hidden_size`` and ``moe_shared_expert_intermediate_size`` parameters in Minitron pruning (``mcore_minitron``).
 - Add ``specdec_bench`` example to benchmark speculative decoding performance. See `examples/specdec_bench/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/specdec_bench#speculative-decoding-benchmark>`_ for more details.
+- Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
 
-0.39 (2025-11-14)
+0.39 (2025-11-11)
 ^^^^^^^^^^^^^^^^^
 
 **Deprecations**
