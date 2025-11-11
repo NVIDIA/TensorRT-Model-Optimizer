@@ -24,6 +24,7 @@ import torch.nn as nn
 from transformers import AutoTokenizer
 
 from ..config import CalibrationConfig
+from ..conversion import print_sparse_attention_summary
 from ..sparse_attention import SparseAttentionModule
 from .calibrator import DynamicThresholdCalibrator
 from .dataset import RulerDatasetBuilder
@@ -161,6 +162,10 @@ def calibrate_sparse_attention(
         threshold_trials=calib_config.threshold_trials,
     )
     calibration_result = calibrator.calibrate(model, forward_loop)
+
+    # Print calibration statistics (regardless of success/failure for debugging)
+    print("\nCalibration complete!")
+    print_sparse_attention_summary(model)
 
     if "scale_factor" not in calibration_result:
         warnings.warn("Calibration did not produce valid results")

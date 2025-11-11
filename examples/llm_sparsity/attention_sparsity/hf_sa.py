@@ -196,29 +196,6 @@ def verify_outputs(model, tokenizer, args):
         print("\nOutputs differ")
 
 
-def sparsify_model(model, args):
-    """Apply sparse attention to the model with optional calibration."""
-    print(f"\nApplying sparse attention: {args.sparse_attn} with backend: {args.backend}")
-    base_config = SPARSE_ATTN_CFG_CHOICES[args.sparse_attn]
-
-    # Create modified config with selected backend
-    modified_sparse_cfg = {}
-    for pattern, cfg in base_config["sparse_cfg"].items():
-        modified_cfg = cfg.copy()
-        modified_cfg["backend"] = args.backend
-        modified_sparse_cfg[pattern] = modified_cfg
-
-    # Create new config with modified settings
-    sparse_config = SparseAttentionConfig(sparse_cfg=modified_sparse_cfg)
-
-    # Sparsify the model
-    model = mtsa.sparsify(model, config=sparse_config)
-
-    print("Sparse attention applied successfully!")
-
-    return model
-
-
 def main(args):
     """Main function to run the selected mode."""
     if not torch.cuda.is_available():
@@ -249,8 +226,22 @@ def main(args):
         model = model.cuda()
         print("Model moved to CUDA")
 
-    # Apply sparse attention to the model (with calibration if configured)
-    model = sparsify_model(model, args)
+    # Apply sparse attention with optional calibration
+    print(f"\nApplying sparse attention: {args.sparse_attn} with backend: {args.backend}")
+    base_config = SPARSE_ATTN_CFG_CHOICES[args.sparse_attn]
+
+    # Create modified config with selected backend
+    modified_sparse_cfg = {}
+    for pattern, cfg in base_config["sparse_cfg"].items():
+        modified_cfg = cfg.copy()
+        modified_cfg["backend"] = args.backend
+        modified_sparse_cfg[pattern] = modified_cfg
+
+    # Create config and apply sparsification (calibration happens automatically)
+    sparse_config = SparseAttentionConfig(sparse_cfg=modified_sparse_cfg)
+    model = mtsa.sparsify(model, config=sparse_config)
+
+    print("Sparse attention applied successfully!")
 
     # Verify outputs if requested (compares baseline vs calibrated sparse model)
     if args.verify_output:

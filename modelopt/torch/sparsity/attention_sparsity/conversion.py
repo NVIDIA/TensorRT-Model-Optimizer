@@ -349,14 +349,23 @@ def print_sparse_attention_summary(model: nn.Module):
 
     for name, module in sparse_modules:
         method = getattr(module, "_method", "unknown")
-        threshold = getattr(module, "_threshold", "N/A")
+        threshold_info = module.get_threshold_info()
 
-        # Format threshold nicely
-        if isinstance(threshold, dict):
-            threshold_str = str(threshold)
-        elif isinstance(threshold, float):
-            threshold_str = f"{threshold:.2e}"
+        # Format threshold information based on type
+        threshold_type = threshold_info.get("type", "unknown")
+
+        if threshold_type == "dynamic":
+            scale_factor = threshold_info.get("scale_factor")
+            threshold_str = f"Dynamic (λ={scale_factor:.6f})"
+        elif threshold_type == "static":
+            value = threshold_info.get("value")
+            threshold_str = (
+                f"Static ({value:.2e})" if isinstance(value, (int, float)) else f"Static ({value})"
+            )
+        elif threshold_type == "static_phased":
+            thresholds = threshold_info.get("thresholds", {})
+            threshold_str = f"Phased {thresholds}"
         else:
-            threshold_str = str(threshold)
+            threshold_str = "N/A"
 
         print(f"Method: {method}, Threshold: {threshold_str}")

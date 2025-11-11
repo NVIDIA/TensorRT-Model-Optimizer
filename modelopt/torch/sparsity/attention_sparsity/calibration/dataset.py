@@ -185,7 +185,7 @@ class RulerDatasetBuilder:
         self,
         samples: int,
         max_seqlen: int,
-        tokenizer_name_or_path: str,
+        tokenizer_name_or_path: str | object,
         seed: int = 42,
         num_length_bins: int = 4,
         max_length_filter: int = 65536,
@@ -195,7 +195,7 @@ class RulerDatasetBuilder:
         Args:
             samples: Total number of samples to generate (distributed evenly across length bins)
             max_seqlen: Maximum sequence length (length bins auto-generated as powers of 2)
-            tokenizer_name_or_path: HuggingFace tokenizer path
+            tokenizer_name_or_path: HuggingFace tokenizer path or tokenizer object
             seed: Random seed for reproducibility
             num_length_bins: Number of length bins to generate (default: 4)
             max_length_filter: Maximum sequence length to keep (default: 65536)
@@ -229,8 +229,11 @@ class RulerDatasetBuilder:
         # Distribute samples evenly across lengths
         self.samples_per_length = [samples // len(self.target_lengths)] * len(self.target_lengths)
 
-        # Initialize tokenizer and seed
-        self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path)
+        # Initialize tokenizer
+        if isinstance(tokenizer_name_or_path, str):
+            self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_name_or_path)
+        else:
+            self.tokenizer = tokenizer_name_or_path
         random.seed(seed)
 
     def build_calibration_dataset(self) -> list[dict[str, Any]]:
@@ -247,9 +250,7 @@ class RulerDatasetBuilder:
             desc="Generating RULER calibration samples",
             total=len(self.target_lengths),
         ):
-            samples_per_task = num_samples // len(self.subtasks)
-            if samples_per_task <= 0:
-                continue
+            samples_per_task = max(num_samples // len(self.subtasks), 1)
 
             # Generate equal samples for each task
             for task_name in self.subtasks:

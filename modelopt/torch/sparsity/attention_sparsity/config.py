@@ -77,6 +77,12 @@ class SparseAttentionAttributeConfig(ModeloptBaseConfig):
         ),
     )
 
+    collect_stats: bool = ModeloptField(
+        default=False,
+        title="Collect statistics.",
+        description="Whether to collect sparsity statistics during forward pass for monitoring.",
+    )
+
     is_causal: bool = ModeloptField(
         default=True,
         title="Causal attention flag.",
@@ -254,6 +260,7 @@ SKIP_SOFTMAX_DEFAULT = {
             "br": 128,  # Flash Attention block rows
             "bc": 128,  # Flash Attention block columns
             "backend": "pytorch",  # Only pytorch backend supported
+            "collect_stats": True,
             "enable": True,
         },
         "default": {"enable": False},
@@ -298,6 +305,7 @@ class FlashSkipSoftmaxConfig(SparseAttentionConfig):
                 "br": 128,  # Flash Attention block rows
                 "bc": 128,  # Flash Attention block columns
                 "backend": "pytorch",  # Only pytorch backend supported
+                "collect_stats": True,  # Enable statistics collection
                 "enable": True,
             },
             "default": {"enable": False},
@@ -319,10 +327,11 @@ SKIP_SOFTMAX_CALIB = {
             "br": 128,
             "bc": 128,
             "backend": "pytorch",  # Only pytorch backend supported
+            "collect_stats": True,
             "enable": True,
             "calibration": {
-                "target_sparse_ratio": 0.3,
-                "samples": 12,
+                "target_sparse_ratio": 0.5,
+                "samples": 128,
                 "max_seqlen": 1024,
             },
         },

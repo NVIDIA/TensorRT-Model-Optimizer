@@ -136,7 +136,7 @@ def sparsify(
 
                     from transformers import AutoModelForCausalLM
 
-                    model = AutoModelForCausalLM.from_pretrained(
+                    model = AutoModelForCausalLM.from_pretrained(b
                         model_path,
                         attn_implementation="eager",  # Required for sparse attention
                         torch_dtype=torch.bfloat16,
@@ -200,7 +200,7 @@ def calibrate(
     if not has_calibration:
         return model
 
-    # Run calibration (handles stats collection internally)
+    # Run calibration and collect stats internally
     calibrate_sparse_attention(model, config, forward_loop=forward_loop)
 
     return model
