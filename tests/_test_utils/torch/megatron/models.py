@@ -138,6 +138,7 @@ def get_mcore_gpt_model(
     ffn_hidden_size: int | None = 128,
     max_sequence_length: int = 16,
     vocab_size: int = 64,
+    position_embedding_type: str = "rope",
     activation_func: str = "swiglu",
     normalization: str = "LayerNorm",
     transformer_impl: str = "modelopt" if HAS_TE else "local",
@@ -149,6 +150,7 @@ def get_mcore_gpt_model(
     moe_ffn_hidden_size: int | None = None,
     moe_shared_expert_intermediate_size: int | None = None,
     num_moe_experts: int | None = None,
+    **config_kwargs: dict,
 ) -> GPTModel:
     assert activation_func in ["swiglu", "squared_relu"]
     assert normalization in ["LayerNorm", "RMSNorm"]
@@ -191,8 +193,21 @@ def get_mcore_gpt_model(
         moe_router_dtype="fp32",
         moe_ffn_hidden_size=moe_ffn_hidden_size,
         moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+        moe_router_enable_expert_bias=True,
+        moe_router_score_function="sigmoid",
         num_moe_experts=num_moe_experts,
+        **config_kwargs,
     )
+
+    if position_embedding_type == "yarn":  # gpt-oss like model
+        warn("Yarn RoPE config format will change soon. This is a temporary workaround")
+        config.yarn_rotary_scaling_factor = 32.0
+        config.yarn_original_max_position_embeddings = 4096
+        config.yarn_beta_fast = 32.0
+        config.yarn_beta_slow = 1.0
+        config.yarn_mscale = 1.0
+        config.yarn_mscale_all_dim = 0.0
+        config.yarn_correction_range_round_to_int = False
 
     if transformer_impl == "local":
         assert HAS_APEX, "Apex not installed"
@@ -224,7 +239,7 @@ def get_mcore_gpt_model(
         pre_process=is_pipeline_first_stage(),
         post_process=is_pipeline_last_stage(),
         share_embeddings_and_output_weights=False,
-        position_embedding_type="rope",
+        position_embedding_type=position_embedding_type,
     )
     return model.to(torch.bfloat16) if bf16 else model
 
@@ -305,6 +320,7 @@ def get_mcore_mamba_hybrid_model(
     moe_ffn_hidden_size: int | None = 64,
     moe_shared_expert_intermediate_size: int | None = 32,
     num_moe_experts: int | None = 8,
+    **config_kwargs: dict,
 ) -> MambaModel:
     """Builds a Mamba model with hybrid layer allocation (Mamba, MoE, Attention, MLP blocks).
 
@@ -335,11 +351,10 @@ def get_mcore_mamba_hybrid_model(
         num_moe_experts=num_moe_experts,
         moe_ffn_hidden_size=moe_ffn_hidden_size,
         moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
-        moe_router_enable_expert_bias=True,
-        moe_router_score_function="sigmoid",
         add_bias_linear=False,
         pipeline_dtype=torch.bfloat16 if bf16 else torch.float32,
         bf16=bf16,
+        **config_kwargs,
     )
 
     if not (skip_moe or "E" in Symbols.VALID):
