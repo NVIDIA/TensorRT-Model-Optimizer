@@ -32,6 +32,5 @@ if torch.cuda.is_available() and torch.cuda.get_device_capability() >= (8, 9):
         ),
     ):
         from .fp4_kernel import *
-        from .fp4_kernel_new import *
 
         IS_AVAILABLE = True
