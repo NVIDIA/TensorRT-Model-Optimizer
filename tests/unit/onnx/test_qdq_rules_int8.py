@@ -19,9 +19,10 @@ import numpy as np
 import onnx
 import onnx_graphsurgeon as gs
 import pytest
-from _test_utils.onnx.quantization.lib_test_models import (
+from _test_utils.onnx.lib_test_models import (
     build_conv_act_pool_model,
     build_conv_batchnorm_sig_mul_model,
+    build_conv_isinf_model,
     build_convtranspose_conv_residual_model,
     build_r1a_model,
     build_resnet_block,
@@ -30,7 +31,7 @@ from _test_utils.onnx.quantization.lib_test_models import (
 )
 
 from modelopt.onnx.quantization.quantize import quantize
-from modelopt.onnx.utils import save_onnx
+from modelopt.onnx.utils import get_opset_version, save_onnx
 
 
 def assert_nodes_are_quantized(nodes):
@@ -208,3 +209,37 @@ def test_conv_act_pool_int8(tmp_path, include_reshape_node):
     # Check that MaxPool is not quantized
     pool_nodes = [n for n in graph.nodes if n.op == "MaxPool"]
     assert assert_nodes_are_not_quantized(pool_nodes)
+
+
+def test_conv_isinf_int8(tmp_path):
+    onnx_model = build_conv_isinf_model()
+    onnx_path = os.path.join(tmp_path, "conv_isinf_model.onnx")
+    save_onnx(onnx_model, onnx_path)
+
+    quantize(onnx_path, quantize_mode="int8", high_precision_dtype="fp16")
+
+    # Output model should be produced in the same tmp_path
+    output_onnx_path = onnx_path.replace(".onnx", ".quant.onnx")
+
+    # Check that quantized explicit model is generated
+    assert os.path.isfile(output_onnx_path)
+
+    # Load the output model and check QDQ node placements
+    onnx_model = onnx.load(output_onnx_path)
+    graph = gs.import_onnx(onnx_model)
+
+    # Check that Conv is quantized
+    conv_nodes = [n for n in graph.nodes if "Conv" in n.op]
+    assert assert_nodes_are_quantized(conv_nodes)
+
+    # Check that IsInf is running in the lowest supported precision:
+    # - FP32 if opset < 20, or
+    # - FP16 if opset >= 20
+    isinf_nodes = [n for n in graph.nodes if n.op == "IsInf"]
+    opset_version = get_opset_version(onnx_model)
+    supported_dtype = "float32" if opset_version < 20 else "float16"
+    for node in isinf_nodes:
+        for inp in node.inputs:
+            assert inp.dtype == supported_dtype, (
+                f"Node of type {node.op} has type {inp.dtype} but should have type {supported_dtype}"
+            )

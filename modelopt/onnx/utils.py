@@ -686,6 +686,16 @@ def update_domain(onnx_model: onnx.ModelProto, op_type: str, domain: str) -> onn
     return onnx_model
 
 
+def get_opset_version(model: onnx.ModelProto) -> int:
+    """Returns the opset version of the given model."""
+    ai_onnx_domain = [
+        opset
+        for opset in model.opset_import
+        if not opset.domain or opset.domain in ["ai.onnx", "ai.onnx.contrib", "trt.plugins"]
+    ]
+    return ai_onnx_domain[0].version
+
+
 def bfloat16_to_float32(bf16_array):
     """Converts a bfloat16 array (as raw data) to a float32 array."""
     uint32_array = bf16_array.astype(np.uint32) << 16

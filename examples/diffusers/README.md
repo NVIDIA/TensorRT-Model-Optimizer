@@ -307,11 +307,16 @@ Generate images for the quantized checkpoint with the following [Script](./quant
 python diffusion_trt.py \
     --model {sdxl-1.0|sdxl-turbo|sd3-medium|flux-dev} \
     --prompt "A cat holding a sign that says hello world" \
+    [--override-model-path /path/to/model] \
     [--restore-from ./{MODEL}_fp8.pt] \
     [--onnx-load-path {ONNX_DIR}] \
     [--trt-engine-load-path {ENGINE_DIR}] \
-    [--dq_only] \
-    [--torch]
+    [--dq-only] \
+    [--torch] \
+    [--save-image-as /path/to/image] \
+    [--benchmark] \
+    [--torch-compile] \
+    [--skip-image]
 ```
 
 This script will save the output image as `./{MODEL}.png` and report the latency of the TensorRT backbone.

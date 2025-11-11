@@ -139,6 +139,15 @@ class PrecisionConverter:
         self.max_ir_version = max_ir_version
         self.trt_plugins = trt_plugins
 
+        # Detect additional ops not supported in low precision according to the model's opset version
+        self.op_types_not_supported_in_low_precision = OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION + (
+            utils.get_op_types_not_supported_in_low_precision(
+                self.model,
+                self.min_opset,
+                self.low_precision_type.str_full,
+            )
+        )
+
     def convert(
         self,
         high_precision_nodes: list[str],
@@ -446,7 +455,7 @@ class PrecisionConverter:
         # precision so we need to set Resize and Upsample to high precision
         for node in self.model.graph.node:
             if (
-                node.op_type in OP_TYPES_NOT_SUPPORTED_IN_LOW_PRECISION
+                node.op_type in self.op_types_not_supported_in_low_precision
                 and node.name in low_precision_nodes
             ):
                 low_precision_nodes.remove(node.name)

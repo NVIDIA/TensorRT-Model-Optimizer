@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections import namedtuple
 from contextlib import ExitStack, contextmanager, nullcontext
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.nn as nn
@@ -43,6 +43,7 @@ __all__ = [
     "is_quantized_row_parallel_linear",
     "reduce_amax",
     "replace_function",
+    "update_quant_cfg_with_kv_cache_quant",
     "weight_attr_names",
 ]
 
@@ -703,3 +704,18 @@ def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
             if reshard:
                 with enable_fake_quant(root_module):
                     root_module.reshard()
+
+
+def update_quant_cfg_with_kv_cache_quant(
+    quant_cfg: dict[str, Any], kv_cache_quant_cfg: dict[str, Any]
+) -> dict[str, Any]:
+    """Update the quant_cfg with the kv cache quant_cfg."""
+    # If quant_cfg["quant_cfg"] is None, it corresponds to only kv cache quantization case
+    quant_cfg["quant_cfg"] = quant_cfg.get("quant_cfg", {"default": {"enable": False}})
+    quant_cfg["quant_cfg"].update(kv_cache_quant_cfg)
+
+    # Set default algorithm for kv cache quantization if not provided.
+    if not quant_cfg.get("algorithm"):
+        quant_cfg["algorithm"] = "max"
+    print_rank_0(f"Updated quant_cfg with KV cache quantization: {quant_cfg}")
+    return quant_cfg

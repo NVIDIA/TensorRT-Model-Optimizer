@@ -272,6 +272,10 @@ def quantize(
                 trt_guided_options["group_qdq_tensors"] = group_qdq_tensors
                 logger.debug(f"Grouping QDQ tensors for concat elimination: {group_qdq_tensors}")
 
+        # Add disable_int32_weight_adjustment flag to extra options
+        trt_guided_options["QDQDisableWeightAdjustForInt32Bias"] = True
+        logger.debug("Disabled weight adjustment for INT32 bias in QDQ quantization")
+
         # Create a temp file for intermediate model
         tmp_onnx_file, tmp_onnx_path = tempfile.mkstemp(suffix=".onnx")
         os.close(tmp_onnx_file)

@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import textwrap
 from warnings import warn
 
 import torch
@@ -30,6 +31,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
 )
 from megatron.core.models.mamba import MambaModel
 from megatron.core.parallel_state import is_pipeline_first_stage, is_pipeline_last_stage
+from megatron.core.ssm.mamba_hybrid_layer_allocation import Symbols
 from megatron.core.tensor_parallel.layers import ColumnParallelLinear, RowParallelLinear
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -136,14 +138,19 @@ def get_mcore_gpt_model(
     ffn_hidden_size: int | None = 128,
     max_sequence_length: int = 16,
     vocab_size: int = 64,
+    position_embedding_type: str = "rope",
     activation_func: str = "swiglu",
     normalization: str = "LayerNorm",
     transformer_impl: str = "modelopt" if HAS_TE else "local",
     use_cpu_initialization: bool = False,
-    num_moe_experts: int | None = None,
-    moe_grouped_gemm: bool = False,
     bf16: bool = True,
     use_te: bool = False,
+    # MoE-specific parameters
+    moe_grouped_gemm: bool = False,
+    moe_ffn_hidden_size: int | None = None,
+    moe_shared_expert_intermediate_size: int | None = None,
+    num_moe_experts: int | None = None,
+    **config_kwargs: dict,
 ) -> GPTModel:
     assert activation_func in ["swiglu", "squared_relu"]
     assert normalization in ["LayerNorm", "RMSNorm"]
@@ -167,7 +174,6 @@ def get_mcore_gpt_model(
         expert_model_parallel_size=expert_model_parallel_size,
         expert_tensor_parallel_size=expert_tensor_parallel_size,
         sequence_parallel=False,
-        moe_grouped_gemm=moe_grouped_gemm,
         num_layers=num_layers,
         num_layers_in_first_pipeline_stage=num_layers_in_first_pipeline_stage,
         num_layers_in_last_pipeline_stage=num_layers_in_last_pipeline_stage,
@@ -175,7 +181,6 @@ def get_mcore_gpt_model(
         num_attention_heads=num_attention_heads,
         num_query_groups=num_query_groups,
         ffn_hidden_size=ffn_hidden_size,
-        num_moe_experts=num_moe_experts,
         activation_func=squared_relu if activation_func == "squared_relu" else F.silu,
         normalization=normalization,
         gated_linear_unit=(activation_func == "swiglu"),
@@ -183,7 +188,26 @@ def get_mcore_gpt_model(
         use_cpu_initialization=use_cpu_initialization,
         pipeline_dtype=torch.bfloat16 if bf16 else torch.float32,
         bf16=bf16,
+        # MoE-specific parameters
+        moe_grouped_gemm=moe_grouped_gemm,
+        moe_router_dtype="fp32",
+        moe_ffn_hidden_size=moe_ffn_hidden_size,
+        moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+        moe_router_enable_expert_bias=True,
+        moe_router_score_function="sigmoid",
+        num_moe_experts=num_moe_experts,
+        **config_kwargs,
     )
+
+    if position_embedding_type == "yarn":  # gpt-oss like model
+        warn("Yarn RoPE config format will change soon. This is a temporary workaround")
+        config.yarn_rotary_scaling_factor = 32.0
+        config.yarn_original_max_position_embeddings = 4096
+        config.yarn_beta_fast = 32.0
+        config.yarn_beta_slow = 1.0
+        config.yarn_mscale = 1.0
+        config.yarn_mscale_all_dim = 0.0
+        config.yarn_correction_range_round_to_int = False
 
     if transformer_impl == "local":
         assert HAS_APEX, "Apex not installed"
@@ -215,13 +239,9 @@ def get_mcore_gpt_model(
         pre_process=is_pipeline_first_stage(),
         post_process=is_pipeline_last_stage(),
         share_embeddings_and_output_weights=False,
-        position_embedding_type="rope",
+        position_embedding_type=position_embedding_type,
     )
-
-    if bf16:
-        model = model.to(torch.bfloat16)
-
-    return model
+    return model.to(torch.bfloat16) if bf16 else model
 
 
 def get_mcore_qwen3_600m(
@@ -275,7 +295,7 @@ def get_mcore_qwen3_600m(
     return model
 
 
-def get_mcore_mamba_model(
+def get_mcore_mamba_hybrid_model(
     tensor_model_parallel_size: int = 1,
     pipeline_model_parallel_size: int = 1,
     initialize_megatron: bool = False,
@@ -295,7 +315,20 @@ def get_mcore_mamba_model(
     mamba_state_dim: int = 32,
     mamba_head_dim: int = 16,
     mamba_num_groups: int = 2,
+    # MoE-specific parameters
+    skip_moe: bool = False,
+    moe_ffn_hidden_size: int | None = 64,
+    moe_shared_expert_intermediate_size: int | None = 32,
+    num_moe_experts: int | None = 8,
+    **config_kwargs: dict,
 ) -> MambaModel:
+    """Builds a Mamba model with hybrid layer allocation (Mamba, MoE, Attention, MLP blocks).
+
+    Notable Args:
+        hybrid_override_pattern: The hybrid layer pattern to override with.
+            If None, a default pattern will be generated.
+        skip_moe: Whether to skip MoE blocks in default hybrid pattern.
+    """
     assert HAS_MAMBA, "Mamba not installed"
 
     if initialize_megatron:
@@ -315,18 +348,45 @@ def get_mcore_mamba_model(
         mamba_state_dim=mamba_state_dim,
         mamba_head_dim=mamba_head_dim,
         mamba_num_groups=mamba_num_groups,
+        num_moe_experts=num_moe_experts,
+        moe_ffn_hidden_size=moe_ffn_hidden_size,
+        moe_shared_expert_intermediate_size=moe_shared_expert_intermediate_size,
+        add_bias_linear=False,
         pipeline_dtype=torch.bfloat16 if bf16 else torch.float32,
         bf16=bf16,
+        **config_kwargs,
     )
 
+    if not (skip_moe or "E" in Symbols.VALID):
+        warn("MoE blocks are not supported in current MambaModel. Skipping MoE blocks.")
+        skip_moe = True
+
     if hybrid_override_pattern is None:
-        # Generate pattern by repeating "M*-" and trimming to match num_layers
-        # For num_layers=3, return "M*-" (Mamba -> Attention -> MLP)
-        # For num_layers=5, return "M*-M*" (Mamba -> Attention -> MLP -> Mamba -> Attention)
-        hybrid_override_pattern = ("M*-" * num_layers)[:num_layers]
-    else:
-        assert len(hybrid_override_pattern) == num_layers
-    print(f"Using `{hybrid_override_pattern=}` for building Mamba Model.")
+        # Generate pattern by repeating base_pattern and trimming to match num_layers
+        #   E.g. for num_layers=3, return "MEM" (Mamba -> MoE -> Mamba)
+        #   E.g. for num_layers=6, return "MEM*M-" (Mamba -> MoE -> Attention -> MoE -> MLP)
+        base_pattern = "M*M-" if skip_moe else "MEM*M-"
+        hybrid_override_pattern = (base_pattern * num_layers)[:num_layers]
+
+    # Add | symbols for Pipeline parallelism (required for MCore 0.16+)
+    # E.g. MEM* with PP2 becomes ME|M* and MEM*M-ME with PP2 becomes MEM*|M-ME
+    if pipeline_model_parallel_size > 1 and "|" in Symbols.VALID:
+        if "|" not in hybrid_override_pattern:
+            assert (
+                num_layers_in_first_pipeline_stage is None
+                and num_layers_in_last_pipeline_stage is None
+            ), "hybrid_override_pattern with `|` must be provided for uneven PP"
+            hybrid_override_pattern = "|".join(
+                textwrap.wrap(
+                    hybrid_override_pattern,
+                    width=num_layers // pipeline_model_parallel_size,
+                    break_long_words=True,
+                    break_on_hyphens=False,
+                )
+            )
+        assert hybrid_override_pattern.count("|") == pipeline_model_parallel_size - 1
+    assert len(hybrid_override_pattern.replace("|", "")) == num_layers
+    print(f"Using `{hybrid_override_pattern=}` for building MambaModel")
 
     model = MambaModel(
         config=config,
@@ -339,6 +399,4 @@ def get_mcore_mamba_model(
         share_embeddings_and_output_weights=False,
         position_embedding_type="none",
     )
-    if bf16:
-        model = model.to(torch.bfloat16)
-    return model
+    return model.to(torch.bfloat16) if bf16 else model

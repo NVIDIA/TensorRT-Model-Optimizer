@@ -19,7 +19,9 @@ import torch
 from torch import nn
 from torchvision.models.mobilenetv2 import InvertedResidual
 
+from modelopt.torch.nas.modules import DynamicModuleList
 from modelopt.torch.nas.registry import DMRegistry
+from modelopt.torch.nas.utils import sort_parameters
 
 
 class ModuleContainerWrapper:
@@ -104,3 +106,37 @@ def test_contained_dynamic_module():
     seq = dynamic_seq.export()
     out = seq(input)
     assert torch.allclose(out, out_dynamic)
+
+
+def test_dynamic_module_list():
+    m0 = nn.Conv2d(3, 8, 3, bias=False)
+    m1 = nn.Linear(4, 8)
+    m2 = nn.ReLU()
+    m = nn.ModuleList([m0, m1, m2])
+    assert list(m.state_dict().keys()) == ["0.weight", "1.weight", "1.bias"]
+
+    # Test convert
+    DynamicModuleList.convert(m)
+    assert isinstance(m, DynamicModuleList)
+    assert m.get_hparam("depth").choices == [1, 2, 3]
+
+    # Test trimming depth
+    m.depth = 1
+    assert len(m) == 1 and m[0] == m0
+    assert list(m.state_dict().keys()) == ["0.weight"]
+
+    # Test sorting by importance
+    hp_depth = m.get_hparam("depth")
+    hp_depth.register_importance(lambda: torch.tensor([0.8, 0.5, 1.0]))
+    sort_parameters(m)
+
+    m.depth = 3
+    assert m[0] == m2 and m[1] == m0 and m[2] == m1
+    assert list(m.state_dict().keys()) == ["1.weight", "2.weight", "2.bias"]
+
+    # Test export
+    hp_depth.active = 2
+    m.export()
+    assert not isinstance(m, DynamicModuleList) and isinstance(m, nn.ModuleList)
+    assert len(m) == 2 and m[0] == m2 and m[1] == m0
+    assert list(m.state_dict().keys()) == ["1.weight"]

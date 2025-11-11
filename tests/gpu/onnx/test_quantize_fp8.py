@@ -18,7 +18,7 @@ import os
 import onnx
 import onnx_graphsurgeon as gs
 import torch
-from _test_utils.onnx.quantization.lib_test_models import SimpleMLP, export_as_onnx
+from _test_utils.onnx.lib_test_models import SimpleMLP, export_as_onnx
 
 import modelopt.onnx.quantization as moq
 

@@ -1,7 +1,20 @@
 Model Optimizer Changelog (Linux)
 =================================
 
-0.39 (2025-11-07)
+0.40 (2025-12-xx)
+^^^^^^^^^^^^^^^^^
+
+**Bug Fixes**
+
+- Fix a bug in FastNAS pruning (computer vision models) where the model parameters were sorted twice messing up the ordering.
+
+**New Features**
+
+- Add MoE (e.g. Qwen3-30B-A3B, gpt-oss-20b) pruning support for ``num_moe_experts``, ``moe_ffn_hidden_size`` and ``moe_shared_expert_intermediate_size`` parameters in Minitron pruning (``mcore_minitron``).
+- Add ``specdec_bench`` example to benchmark speculative decoding performance. See `examples/specdec_bench/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/specdec_bench#speculative-decoding-benchmark>`_ for more details.
+- Add FP8/NVFP4 KV cache quantization support for Megatron Core models.
+
+0.39 (2025-11-11)
 ^^^^^^^^^^^^^^^^^
 
 **Deprecations**
@@ -19,6 +32,9 @@ Model Optimizer Changelog (Linux)
 - Add support for multi-node PTQ and export with FSDP2 in ``examples/llm_ptq/multinode_ptq.py``. See `examples/llm_ptq/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/llm_ptq#multi-node-post-training-quantization-with-fsdp2>`_ for more details.
 - Add support for Nemotron Nano VL v1 & v2 models in FP8/NVFP4 PTQ workflow.
 - Add flags ``nodes_to_include`` and ``op_types_to_include`` in AutoCast to force-include nodes in low precision, even if they would otherwise be excluded by other rules.
+- Add support for ``torch.compile`` and benchmarking in ``examples/diffusers/quantization/diffusion_trt.py``.
+- Enabled native Modelopt quantization support for FP8 and NVFP4 formats in SGLang. See `SGLang quantization documentation <https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/quantization.md#using-nvidia-modelopt>`_ for more details.
+- Added modelopt quantized checkpoints in vLLM/SGLang CI/CD pipelines (PRs are under review).
 
 **Documentation**
 

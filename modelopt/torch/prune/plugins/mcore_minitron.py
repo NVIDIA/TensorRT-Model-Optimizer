@@ -60,14 +60,21 @@ from modelopt.torch.utils import print_rank_0
 from ..pruning import PruneModeRegistry
 
 SUPPORTED_HPARAMS = {
-    # Width pruning
+    # 1. Width pruning
+    "hidden_size",
+    # MLP
     "ffn_hidden_size",
+    # Attention
     "num_attention_heads",
     "num_query_groups",
-    "hidden_size",
+    # Mamba
     "mamba_num_heads",
     "mamba_head_dim",
-    # Depth pruning
+    # MoE
+    "moe_ffn_hidden_size",
+    "moe_shared_expert_intermediate_size",
+    "num_moe_experts",
+    # 2. Depth pruning
     "num_layers",
 }
 
@@ -144,12 +151,18 @@ class MCoreMinitronSearcher(BaseSearcher):
             )
             self.hps_to_sort.add("num_heads_per_group")
 
+        configurable_hp_names = (SUPPORTED_HPARAMS | {"num_heads_per_group"}) - {
+            "num_attention_heads"
+        }
         for n, hp in named_hparams(self.model, unique=True):
             hp_name = n.split(".")[-1]
-            if hp.is_configurable and hp_name in export_config:
-                assert export_config[hp_name] in hp.choices, (
-                    f"Invalid choice {export_config[hp_name]} for {n}! Available choices: {hp.choices}"
-                )
+            if hp.is_configurable:
+                # Make sure configurable hparams are the ones with right names else implementation needs to be fixed!
+                assert hp_name in configurable_hp_names, f"[ImplError] Invalid hparam {hp_name}!"
+                if hp_name in export_config:
+                    assert export_config[hp_name] in hp.choices, (
+                        f"Invalid choice {export_config[hp_name]} for {n}! Available choices: {hp.choices}"
+                    )
             hp.reset_choices()  # Make sure ConcatHparam choices are updated after modify()
 
     def run_search(self) -> None:
@@ -218,6 +231,7 @@ MCoreMinitronConfig: type[ModeloptBaseConfig] = create_model(
                 "num_heads_per_group_divisor": 1,
                 "num_query_groups_divisor": 1,
                 "ffn_hidden_size_divisor": 64,
+                "num_moe_experts_divisor": 1,
             },
             **(
                 {
@@ -228,6 +242,7 @@ MCoreMinitronConfig: type[ModeloptBaseConfig] = create_model(
                         "ffn_hidden_size_divisor": 64,
                         "mamba_num_heads_divisor": 4,
                         "mamba_head_dim_divisor": 4,
+                        "num_moe_experts_divisor": 1,
                     }
                 }
                 if HAS_MAMBA

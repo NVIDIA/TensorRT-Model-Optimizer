@@ -41,6 +41,7 @@ AutoCast can also be used programmatically through its Python API:
       providers=["cpu"],                    # list of Execution Providers for ONNX-Runtime backend
       trt_plugins=[],                       # list of TensorRT plugin library paths in .so format
       max_depth_of_reduction=None,          # maximum depth of reduction allowed in low precision
+      opset=None,                           # optional target ONNX opset version (default: 13 for fp16, 22 for bf16)
    )
 
    # Save the converted model
@@ -55,7 +56,7 @@ AutoCast follows these steps to convert a model:
 
    - Loads the ONNX model
    - Performs graph sanitization and optimizations
-   - Ensures minimum opset version requirements (22 for BF16, 13 for FP16)
+   - Ensures minimum opset version requirements (22 for BF16, 13 for FP16 by default, or user-specified via ``--opset``)
 
 #. **Node Classification**:
 
@@ -135,6 +136,14 @@ Best Practices
    - To also enable the CUDA execution provider, use ``--providers cpu cuda:x``, where ``x`` is your device ID (``x=0`` if your system only has 1 GPU).
    - Use ``--trt_plugins`` to provide the paths to the necessary TensorRT plugin libraries (in ``.so`` format).
 
+#. **Opset Version Control**
+
+   - Use ``--opset`` to specify a target ONNX opset version for the converted model.
+   - If not specified, AutoCast keeps the existing model's opset, subject to a minimum opset based on precision type (13 for FP16, 22 for BF16).
+   - A warning will be issued if you specify an opset lower than recommended minimum.
+   - A warning will be issued if you specify an opset lower than the original model's opset, as downgrading opset versions may cause compatibility issues.
+   - The opset may be automatically increased beyond your specified value if certain operations require it (e.g., quantization nodes require opset >= 19).
+
 Limitations and Restrictions
 ----------------------------
 - AutoCast does not yet support quantized models.
@@ -176,3 +185,15 @@ Limit depth of reduction for precision-sensitive operations:
 .. code-block:: bash
 
    python -m modelopt.onnx.autocast --onnx_path model.onnx --max_depth_of_reduction 1024
+
+Specify a target opset version:
+
+.. code-block:: bash
+
+   python -m modelopt.onnx.autocast --onnx_path model.onnx --opset 19
+
+Convert to BF16 with a specific opset:
+
+.. code-block:: bash
+
+   python -m modelopt.onnx.autocast --onnx_path model.onnx --low_precision_type bf16 --opset 22

@@ -61,7 +61,7 @@ def _test_unified_export_megatron(tmp_path, model_type, arch, algo, rank, size):
         activation_func=activation_func,
         normalization=normalization,
         transformer_impl="modelopt",
-    )
+    ).cuda()
 
     if algo == "medusa":
         config = {
@@ -150,7 +150,7 @@ def _test_unified_import_megatron(tiny_llama_dir, rank, size):
         vocab_size=vocab_size,
         activation_func=activation_func,
         normalization=normalization,
-    )
+    ).cuda()
 
     import_mcore_gpt_from_hf(model, tiny_llama_dir)
 

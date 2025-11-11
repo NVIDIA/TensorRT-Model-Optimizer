@@ -29,7 +29,6 @@ import torch
 import torch.nn as nn
 from onnx import ModelProto
 from onnxconverter_common import convert_float_to_float16
-from packaging.version import Version
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
 from modelopt.onnx.autocast.convert import convert_to_f16
@@ -443,7 +442,7 @@ def get_onnx_bytes_and_metadata(
     )
     with torch.inference_mode(), autocast, quantizer_context:
         additional_kwargs = {}
-        if not dynamo_export and Version(torch.__version__) >= Version("2.8"):
+        if not dynamo_export:
             additional_kwargs["dynamic_axes"] = dynamic_axes
         torch.onnx.export(
             model,

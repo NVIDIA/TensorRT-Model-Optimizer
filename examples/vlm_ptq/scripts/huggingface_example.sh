@@ -74,7 +74,16 @@ if [ -n "$KV_CACHE_QUANT" ]; then
 fi
 
 if [[ "${MODEL_NAME,,}" == *"vila"* ]]; then
-    # Install required dependency for VILA
+    # Check transformers version - must be <= 4.50.0
+    CURRENT_TRANSFORMERS_VERSION=$(pip show transformers | grep Version | cut -d' ' -f2)
+    if [ "$(printf '%s\n' "4.50.0" "$CURRENT_TRANSFORMERS_VERSION" | sort -V | head -n1)" = "4.50.0" ] && [ "$CURRENT_TRANSFORMERS_VERSION" != "4.50.0" ]; then
+        echo "ERROR: transformers version $CURRENT_TRANSFORMERS_VERSION is not supported." >&2
+        echo "VILA requires transformers<=4.50.0" >&2
+        echo "Please refer to examples/vlm_ptq/requirements-vila.txt for the supported versions." >&2
+        echo "You also need to download VILA repository from https://github.com/Efficient-Large-Model/VILA.git and checkout ec7fb2c264920bf004fd9fa37f1ec36ea0942db5" >&2
+        exit 1
+    fi
+
     pip install -r ../vlm_ptq/requirements-vila.txt
     # Clone original VILA repo
     if [ ! -d "$(dirname "$MODEL_PATH")/VILA" ]; then
