@@ -17,7 +17,7 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
 ```bash
 pip install -e .[dev,compress]
 ```
-- For this example we are using 2x NVIDIA H100 80GB HBM3 to show multi-GPU steps. You can use also use single GPU.
+- For this example we are using 2x NVIDIA H100 80GB HBM3 to show multi-GPU steps. You can use also use s single GPU.
 
 ## Compress the Model
 
@@ -182,12 +182,12 @@ block_14:  attention  no_op   ffn  intermediate_3072
 
 ## Evaluation
 
-Once the model is ready, you can evaluate it using [Language Model Evaluation Harness](https://pypi.org/project/lm-eval/). For example, run the following to evaluate the model on a subset of [MMLU](https://huggingface.co/datasets/cais/mmlu).
+Once the model is ready, you can evaluate it using [Language Model Evaluation Harness](https://pypi.org/project/lm-eval/). For example, run the following to evaluate the model on [Massive Multitask Language Understanding](https://huggingface.co/datasets/cais/mmlu) benchmark.
 
 ```bash
 lm_eval --model hf \
   --model_args pretrained=path/to/model,dtype=bfloat16,trust_remote_code=true,parallelize=True \
-  --tasks mmlu_humanities \
+  --tasks mmlu \
   --num_fewshot 5 \
   --batch_size 4
 ```
