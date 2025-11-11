@@ -43,9 +43,11 @@ from lm_eval.__main__ import cli_evaluate, parse_eval_args, setup_parser
 from lm_eval.api.model import T
 from lm_eval.models.huggingface import HFLM
 from quantization_utils import quantize_model
+from sparse_attention_utils import sparsify_model
 
 import modelopt.torch.opt as mto
 from modelopt.torch.quantization.utils import is_quantized
+from modelopt.torch.sparsity.attention_sparsity.conversion import is_attn_sparsified
 
 
 def create_from_arg_obj(cls: type[T], arg_dict: dict, additional_config: dict | None = None) -> T:
@@ -56,6 +58,11 @@ def create_from_arg_obj(cls: type[T], arg_dict: dict, additional_config: dict | 
     calib_batch_size = arg_dict.pop("calib_batch_size", None)
     calib_size = arg_dict.pop("calib_size", 512)
     compress = arg_dict.pop("compress", False)
+
+    # Sparse attention arguments
+    sparse_cfg = arg_dict.pop("sparse_cfg", None)
+    sparse_ruler_samples = arg_dict.pop("sparse_ruler_samples", 12)
+    sparse_max_seqlen = arg_dict.pop("sparse_max_seqlen", 8192)
 
     additional_config = {} if additional_config is None else additional_config
     additional_config = {k: v for k, v in additional_config.items() if v is not None}
@@ -84,6 +91,19 @@ def create_from_arg_obj(cls: type[T], arg_dict: dict, additional_config: dict | 
             test_generated=False,
             compress=compress,
         )
+
+    if sparse_cfg:
+        if is_attn_sparsified(model_obj.model):
+            warnings.warn("Skipping sparse attention: model already has sparse attention applied.")
+        else:
+            sparsify_model(
+                model=model_obj,
+                sparse_cfg=sparse_cfg,
+                tokenizer=model_obj.tokenizer,
+                ruler_samples=sparse_ruler_samples,
+                ruler_max_seqlen=sparse_max_seqlen,
+                test_generated=False,
+            )
 
     return model_obj
 
@@ -120,6 +140,23 @@ def setup_parser_with_modelopt_args():
         action="store_true",
         help="Compress the model after quantization",
     )
+    parser.add_argument(
+        "--sparse_cfg",
+        type=str,
+        help="Sparse attention configuration (e.g., SKIP_SOFTMAX_DEFAULT, SKIP_SOFTMAX_CALIB)",
+    )
+    parser.add_argument(
+        "--sparse_ruler_samples",
+        type=int,
+        default=12,
+        help="Number of RULER samples for sparse attention calibration (default: 12)",
+    )
+    parser.add_argument(
+        "--sparse_max_seqlen",
+        type=int,
+        default=8192,
+        help="Maximum sequence length for RULER calibration (default: 8192)",
+    )
     return parser
 
 
@@ -142,6 +179,9 @@ if __name__ == "__main__":
             "calib_batch_size": args.calib_batch_size,
             "calib_size": args.calib_size,
             "compress": args.compress,
+            "sparse_cfg": args.sparse_cfg,
+            "sparse_ruler_samples": args.sparse_ruler_samples,
+            "sparse_max_seqlen": args.sparse_max_seqlen,
         }
     )
 
