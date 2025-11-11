@@ -13,8 +13,11 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
 
 ## Environment
 
-- [Dockerfile](./Dockerfile) to use.
-- 2x NVIDIA H100 80GB HBM3 (1 card will be good as well).
+- Install TensorRT-Model-Optimizer in editable mode with corresponding dependencies:
+```bash
+pip install -e .[dev,compress]
+```
+- For this example we are using 2x NVIDIA H100 80GB HBM3 to show multi-GPU steps. You can use also use single GPU.
 
 ## Compress the Model
 
@@ -22,7 +25,7 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
 
    **_NOTE:_**
    How to choose `intermediate_size_list`? 
-   The list specifies the candidate FFN sizes that we wish to search over. It is recommended to choose several pruning sizes (e.g. 15%, 20%, 30% etc of the original). Note that the values must be hardware-friendly (divisible by a multiple of 2) to avoid issues with tensor operations in subsequent steps. 
+   The list specifies the candidate FFN sizes that we wish to search over. It is recommended to choose several pruning sizes (e.g. 15%, 20%, 30% etc of the original). Note that the values must be hardware-friendly (divisible by a 256) to avoid issues with tensor operations in subsequent steps. 
 
    Let's first shoot for 32% GPU memory reduction setting `target_memory = 78_000` GiB. This means that the algorithm will choose the candidates with highest accuracy that also meet the specified requirements.
 
