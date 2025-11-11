@@ -1091,7 +1091,12 @@ def get_quant_config(
             or hasattr(module, quantizer_attr_names(weight_name).input_quantizer)
             for weight_name in weight_names
         )
-        if has_quantizers:
+
+        # Skip LORA module and adapters.
+        # ModelOpt does not currently quantize these layers in QLoRA path.
+        is_lora = hasattr(module, "base_layer") or "lora_A" in name or "lora_B" in name
+
+        if has_quantizers and not is_lora:
             quantization_format = get_quantization_format(module)
 
             # For MoE expert modules, we need to extract block size from the correct weight quantizer
@@ -1102,24 +1107,15 @@ def get_quant_config(
                 weight_block_size = get_weight_block_size(module, weight_name)
                 if weight_block_size > 0:
                     block_size = weight_block_size
-                    weight_quantizer_enabled = True
                     break
 
             # Fallback to default weight quantizer if no specific weight quantizer found
             if block_size == 0:
                 block_size = get_weight_block_size(module)
-                weight_quantizer = getattr(
-                    module, quantizer_attr_names("weight").weight_quantizer, None
-                )
-                # Check if weight_quantizer is enabled
-                weight_quantizer_enabled = block_size > 0 or (
-                    weight_quantizer is not None and weight_quantizer.is_enabled
-                )
 
-            if weight_quantizer_enabled:
-                # Construct per layer config dictionary
-                layer_config_dict[name + ".quantization"] = quantization_format
-                layer_config_dict[name + ".awq_block_size"] = block_size
+            # Construct per layer config dictionary
+            layer_config_dict[name + ".quantization"] = quantization_format
+            layer_config_dict[name + ".awq_block_size"] = block_size
 
         # Find kv cache quant format
         if (
