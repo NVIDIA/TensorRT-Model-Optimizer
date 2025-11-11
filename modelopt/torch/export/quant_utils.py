@@ -1093,7 +1093,7 @@ def get_quant_config(
         )
 
         # Skip LORA module and adapters.
-        # ModelOpt does not currently quantize these layers in QLoRA path.
+        # ModelOpt does not currently quantize these layers in QLoRA/PTQ path.
         is_lora = hasattr(module, "base_layer") or "lora_A" in name or "lora_B" in name
 
         if has_quantizers and not is_lora:

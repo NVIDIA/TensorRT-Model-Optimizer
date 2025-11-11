@@ -276,7 +276,7 @@ def get_model(
             sys.path.append(vila_path)
         from llava.model import LlavaLlamaConfig, LlavaLlamaModel  # noqa: F401
 
-
+    # Prepare config kwargs for loading
     config_kwargs = {"trust_remote_code": trust_remote_code} if trust_remote_code else {}
 
     # Load config once and handle VL model detection
