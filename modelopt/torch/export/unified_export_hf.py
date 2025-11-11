@@ -475,7 +475,7 @@ def _export_hf_checkpoint(
     has_quantized_layers = False
     fsdp_module_to_reshard = None
 
-    for _, sub_module in model.named_modules():
+    for name, sub_module in model.named_modules():
         # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
         if isinstance(sub_module, FSDPModule):
             # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
@@ -485,6 +485,13 @@ def _export_hf_checkpoint(
                 fsdp_module_to_reshard.reshard()
 
             fsdp_module_to_reshard = sub_module
+
+        # ModelOpt QLoRA does not quantize lora_A and lora_B layers.
+        # We skip QuantLoRA linear module for modelopt QLoRA
+        if is_modelopt_qlora and (
+            hasattr(sub_module, "base_layer") or "lora_A" in name or "lora_B" in name
+        ):
+            continue
 
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
