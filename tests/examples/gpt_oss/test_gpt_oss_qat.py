@@ -18,7 +18,9 @@ import subprocess
 
 import pytest
 from _test_utils.examples.run_command import run_example_command
-from _test_utils.torch_misc import minimum_gpu
+from _test_utils.torch.misc import minimum_gpu
+
+pytestmark = pytest.mark.release(reason="This test is used for QA release.")
 
 
 class GPTOSS:
@@ -65,9 +67,29 @@ class GPTOSS:
         ]
 
         run_example_command(cmd_parts, "gpt-oss")
-
         # Verify SFT output directory exists
         assert output_dir.exists(), "SFT output directory should exist after training"
+
+    def gpt_oss_qat_training_lora(self, tmp_path):
+        model_name = self.model_path.split("/")[-1]
+        qat_output_dir = tmp_path / f"{model_name}-qat"
+        cmd_parts = [
+            "python",
+            "sft.py",
+            "--config",
+            "configs/sft_lora.yaml",
+            "--model_name_or_path",
+            self.model_path,
+            "--quant_cfg",
+            "MXFP4_MLP_WEIGHT_ONLY_CFG",
+            "--output_dir",
+            str(qat_output_dir),
+        ]
+
+        run_example_command(cmd_parts, "gpt-oss")
+
+        # Verify QAT output directory exists
+        assert qat_output_dir.exists(), "QAT output directory should exist after training"
 
     def gpt_oss_qat_training(self, tmp_path):
         """Test quantization-aware training (QAT) with MXFP4 configuration - Step 2."""
@@ -164,6 +186,9 @@ class GPTOSS:
 
     def deploy_gpt_oss_trtllm(self, tmp_path):
         """Deploy GPT-OSS model with TensorRT-LLM."""
+        # Skip if tensorrt_llm is not available
+        pytest.importorskip("tensorrt_llm")
+
         # Prepare benchmark data
         tensorrt_llm_workspace = "/app/tensorrt_llm"
         script = os.path.join(tensorrt_llm_workspace, "benchmarks", "cpp", "prepare_dataset.py")
@@ -205,7 +230,7 @@ class GPTOSS:
 @pytest.mark.parametrize(
     "model_path",
     [
-        pytest.param("openai/gpt-oss-20b", id="gpt-oss-20b", marks=minimum_gpu(2)),
+        pytest.param("openai/gpt-oss-20b", id="gpt-oss-20b", marks=minimum_gpu(4)),
         pytest.param("openai/gpt-oss-120b", id="gpt-oss-120b", marks=minimum_gpu(8)),
     ],
 )
@@ -216,27 +241,27 @@ def test_gpt_oss_complete_pipeline(model_path, tmp_path):
     model_name = model_path.split("/")[-1]
 
     # Execute Step 1: SFT Training
-    gpt_oss.gpt_oss_sft_training(tmp_path)
-
-    # Execute Step 2: QAT Training
-    gpt_oss.gpt_oss_qat_training(tmp_path)
+    if model_path == "openai/gpt-oss-20b":
+        gpt_oss.gpt_oss_sft_training(tmp_path)
+        # Execute Step 2: QAT Training
+        gpt_oss.gpt_oss_qat_training(tmp_path)
+    elif model_path == "openai/gpt-oss-120b":
+        # Execute QAT Training with LoRA
+        gpt_oss.gpt_oss_qat_training_lora(tmp_path)
 
     # Execute Step 3: MXFP4 Conversion
     gpt_oss.gpt_oss_mxfp4_conversion(tmp_path)
 
     # Verify all output directories exist
-    sft_dir = tmp_path / f"{model_name}-sft"
     qat_dir = tmp_path / f"{model_name}-qat"
     conversion_dir = tmp_path / f"{model_name}-qat-real-mxfp4"
 
-    assert sft_dir.exists(), "SFT output directory should exist after Step 1"
     assert qat_dir.exists(), "QAT output directory should exist after Step 2"
     assert conversion_dir.exists(), "MXFP4 conversion output directory should exist after Step 3"
 
     print(f"Complete pipeline executed successfully for {model_path}!")
-    print(f"Step 1 output: {sft_dir}")
-    print(f"Step 2 output: {qat_dir}")
-    print(f"Step 3 output: {conversion_dir}")
+    print(f"QAT output: {qat_dir}")
+    print(f"MXFP4 conversion output: {conversion_dir}")
 
     # Deploy with TensorRT-LLM
     gpt_oss.deploy_gpt_oss_trtllm(tmp_path)

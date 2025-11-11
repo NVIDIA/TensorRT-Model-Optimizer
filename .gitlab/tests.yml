@@ -83,7 +83,7 @@ example-onnx:
     - if [ "$EXAMPLE" = "diffusers" ]; then pip uninstall -y apex; fi
     - pip install ".[all,dev-test]"
     - find examples/$EXAMPLE -name "requirements.txt" | while read req_file; do pip install -r "$req_file" || exit 1; done
-    - if [ "$TEST_TYPE" = "pytest" ]; then pytest -s tests/examples/$EXAMPLE; else bash tests/examples/test_$EXAMPLE.sh; fi
+    - if [ "$TEST_TYPE" = "pytest" ]; then pytest -s -m "not release" tests/examples/$EXAMPLE; else bash tests/examples/test_$EXAMPLE.sh; fi
 
 ##### Megatron / NeMo Integration Tests #####
 megatron-nemo-integration:

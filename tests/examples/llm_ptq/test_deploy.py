@@ -19,6 +19,8 @@ import shutil
 import pytest
 from _test_utils.deploy_utils import ModelDeployerList
 
+pytestmark = pytest.mark.release
+
 
 def idfn(val):
     if hasattr(val, "test_id"):

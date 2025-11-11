@@ -118,7 +118,10 @@ disable_error_code = ["attr-defined"]
 # print execution time for 20 slowest tests and generate coverage reports
 addopts = "-ra --cov-report=term-missing --cov-report=html --cov-report=xml:coverage.xml --cov-config=pyproject.toml --durations=20 --strict-markers"
 pythonpath = ["tests/"]
-markers = ["manual: Only run when --run-manual is given"]
+markers = [
+    "manual: Only run when --run-manual is given",
+    "release: Regression tests that should be run before every release"
+    ]
 
 
 [tool.coverage.run]
