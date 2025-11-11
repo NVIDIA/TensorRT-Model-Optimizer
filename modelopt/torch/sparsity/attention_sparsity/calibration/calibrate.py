@@ -24,6 +24,7 @@ import torch.nn as nn
 from transformers import AutoTokenizer
 
 from ..config import CalibrationConfig
+from ..conversion import print_sparse_attention_summary
 from ..sparse_attention import SparseAttentionModule
 from .calibrator import DynamicThresholdCalibrator
 from .dataset import RulerDatasetBuilder
@@ -50,29 +51,37 @@ def _extract_tokenizer_from_model(model: nn.Module) -> str:
     return tokenizer_path
 
 
-def _extract_calibration_config(config: dict[str, Any]) -> CalibrationConfig | None:
-    """Extract and validate calibration config from sparse_cfg patterns.
+def _extract_calibration_config(config: dict[str, Any]) -> CalibrationConfig:
+    """Extract and validate calibration config from sparse_cfg.
 
     Args:
         config: Sparse attention configuration dict
 
     Returns:
-        Validated CalibrationConfig or None if not found
+        Validated CalibrationConfig instance
+
+    Raises:
+        ValueError: If calibration config is missing, invalid type, or contains invalid values
     """
-    # Extract sparse_cfg and search for calibration
     sparse_cfg = config.get("sparse_cfg", {})
 
-    calib_dict = next(
-        (
-            cfg["calibration"]
-            for cfg in sparse_cfg.values()
-            if isinstance(cfg, dict) and "calibration" in cfg
-        ),
-        None,
-    )
+    # Calibration config is required
+    if "calibration" not in sparse_cfg:
+        raise ValueError(
+            "Calibration config not found in sparse_cfg. "
+            "To use calibration, provide calibration settings. "
+            "Example: config = {'sparse_cfg': {'calibration': "
+            "{'target_sparse_ratio': 0.5, 'samples': 128, 'max_seqlen': 1024}}}"
+        )
 
-    # Create and calidate the calibration config
-    return CalibrationConfig(**calib_dict) if calib_dict else None
+    calib_dict = sparse_cfg["calibration"]
+
+    # Validate calibration is a dict
+    if not isinstance(calib_dict, dict):
+        raise ValueError(f"Calibration config must be a dict, got {type(calib_dict).__name__}. ")
+
+    # Create and validate CalibrationConfig
+    return CalibrationConfig(**calib_dict)
 
 
 def create_calibration_forward_loop(
@@ -127,8 +136,6 @@ def calibrate_sparse_attention(
     """
     # Extract and validate calibration config
     calib_config = _extract_calibration_config(config)
-    if not calib_config:
-        return {}
 
     # Generate forward_loop if not provided
     if not forward_loop:
@@ -138,7 +145,7 @@ def calibrate_sparse_attention(
             max_seqlen=calib_config.max_seqlen,
             tokenizer_name_or_path=tokenizer,
             num_length_bins=calib_config.num_length_bins,
-            max_length_filter=int(calib_config.max_seqlen * 1.2),
+            max_length_filter=int(calib_config.max_seqlen * 1.5),
         )
         calibration_data = builder.build_calibration_dataset()
         print(f"Generated {len(calibration_data)} calibration samples")
@@ -161,6 +168,10 @@ def calibrate_sparse_attention(
         threshold_trials=calib_config.threshold_trials,
     )
     calibration_result = calibrator.calibrate(model, forward_loop)
+
+    # Print calibration statistics (regardless of success/failure for debugging)
+    print("\nCalibration complete!")
+    print_sparse_attention_summary(model)
 
     if "scale_factor" not in calibration_result:
         warnings.warn("Calibration did not produce valid results")
