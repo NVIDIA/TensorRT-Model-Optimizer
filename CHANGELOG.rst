@@ -35,10 +35,12 @@ Model Optimizer Changelog (Linux)
 - Add support for ``torch.compile`` and benchmarking in ``examples/diffusers/quantization/diffusion_trt.py``.
 - Enabled native Modelopt quantization support for FP8 and NVFP4 formats in SGLang. See `SGLang quantization documentation <https://github.com/sgl-project/sglang/blob/main/docs/advanced_features/quantization.md#using-nvidia-modelopt>`_ for more details.
 - Added modelopt quantized checkpoints in vLLM/SGLang CI/CD pipelines (PRs are under review).
+- Add support for exporting QLoRA checkpoint fintuned using ModelOpt.
 
 **Documentation**
 
 - Add general guidelines for Minitron pruning and distillation. See `examples/pruning/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/main/examples/pruning#pruning-guidelines>`_ for more details.
+- Added example for exporting QLoRA checkpoint for vLLM deployment. Refer to `examples/llm_qat/README.md <https://github.com/NVIDIA/TensorRT-Model-Optimizer/blob/79ef31bc7269ba4da0cfab446da5b64509cbfcef/examples/llm_qat/README.md#qlora-deployment>`_ for more details
 
 0.37 (2025-10-08)
 ^^^^^^^^^^^^^^^^^

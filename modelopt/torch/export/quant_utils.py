@@ -827,13 +827,19 @@ def from_quantized_weight(
     raise NotImplementedError(f"quantization format {quantization} not supported")
 
 
-def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str | None) -> dict:
+def postprocess_state_dict(
+    state_dict: dict,
+    maxbound: float,
+    quantization: str | None,
+    is_modelopt_qlora: bool = False,
+) -> dict:
     """Filters out keys related to weight quantizers and updates KV cache related keys.
 
     Args:
         state_dict: The full model state_dict.
         maxbound: The maximum bound value for the output quantizer.
         quantization: The KV cache quantization format.
+        is_modelopt_qlora: Whether the model is a modelopt-trained QLoRA model.
 
     Returns:
         The filtered state_dict without unnecessary keys like '_amax' and non KV cache output quantizers.
@@ -845,6 +851,18 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
         "v_bmm_quantizer._bias_value": "v_proj.v_bias",
         "input_quantizer._pre_quant_scale": "pre_quant_scale",
     }
+    skip_keys = ["output_quantizer", "_amax", "_bias_value", "input_quantizer._pre_quant_scale"]
+
+    # For modelopt-trained LoRA models, we need to remove the base_layer prefix from the keys for deployment
+    if is_modelopt_qlora:
+        replacements.update(
+            {
+                "base_layer.weight": "weight",
+                "base_layer.input_scale": "input_scale",
+                "base_layer.weight_scale": "weight_scale",
+            }
+        )
+        skip_keys.append("base_layer")
 
     post_state_dict = {}
 
@@ -855,12 +873,7 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
             continue
 
         # Skip keys not related to quantizers
-        if (
-            "output_quantizer" not in key
-            and "_amax" not in key
-            and "_bias_value" not in key
-            and "input_quantizer._pre_quant_scale" not in key
-        ):
+        if all(skip_key not in key for skip_key in skip_keys):
             post_state_dict[key] = value
             continue
 
@@ -911,6 +924,11 @@ def postprocess_state_dict(state_dict: dict, maxbound: float, quantization: str 
         ):
             keys_to_delete.append(key)
 
+    # remove LoRA adapters from state dict
+    if is_modelopt_qlora:
+        for key in post_state_dict:
+            if "lora" in key and key not in keys_to_delete:
+                keys_to_delete.append(key)
     # Check for tied weights and remove duplicates
     seen_tensors = {}
 
@@ -1029,6 +1047,7 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
 
 def get_quant_config(
     model: nn.Module,
+    is_modelopt_qlora: bool = False,
 ) -> dict[str, Any]:
     """Generate quantization config for a model.
 
@@ -1037,6 +1056,7 @@ def get_quant_config(
 
     Args:
         model: The PyTorch model to make config for.
+        is_modelopt_qlora: Whether the model is a modelopt-trained QLoRA model.
 
     Returns:
         Dictionary containing the quantization configuration
@@ -1073,7 +1093,14 @@ def get_quant_config(
             or hasattr(module, quantizer_attr_names(weight_name).input_quantizer)
             for weight_name in weight_names
         )
-        if has_quantizers:
+
+        # Skip LORA module and adapters.
+        # ModelOpt does not currently quantize these layers in QLoRA path.
+        skip_layer = is_modelopt_qlora and (
+            hasattr(module, "base_layer") or "lora_A" in name or "lora_B" in name
+        )
+
+        if has_quantizers and not skip_layer:
             quantization_format = get_quantization_format(module)
 
             # For MoE expert modules, we need to extract block size from the correct weight quantizer
