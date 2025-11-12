@@ -277,8 +277,11 @@ def main():
     if hasattr(pipe, "unet") and add_embedding:
         setattr(device_model, "add_embedding", add_embedding)
 
-    # Move the backbone back to the CPU and set the backbone to the compiled device model
-    backbone.to("cpu")
+    # Delete the original backbone and empty the cache
+    del backbone
+    torch.cuda.empty_cache()
+
+    # Set the backbone to the device model
     if hasattr(pipe, "unet"):
         pipe.unet = device_model
     elif hasattr(pipe, "transformer"):
