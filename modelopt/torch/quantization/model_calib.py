@@ -33,7 +33,9 @@ from .calib import MaxCalibrator, MseCalibrator
 from .conversion import create_and_replace_svdquant_linear_on_the_fly, set_quantizer_by_cfg_context
 from .nn import QuantModule, SequentialQuantizer, TensorQuantizer
 from .utils import (
+    disable_calib,
     enable_fake_quant,
+    enable_quant,
     enable_weight_access_and_writeback,
     is_quantized_column_parallel_linear,
     is_quantized_linear,
@@ -216,31 +218,29 @@ def mse_calibrate(
     # Step 2: Replace calibrators with MseCalibrator for enabled quantizers
     for name, module in model.named_modules():
         if isinstance(module, TensorQuantizer) and not module._disabled:
+            # Static block quantization is not supported by MseCalibrator
+            if module.is_static_block_quant:
+                raise ValueError(
+                    f"MSE calibration does not support static block quantization. "
+                    f"Found static block quantization at {name}."
+                )
             if module._calibrator is not None and not module._dynamic and hasattr(module, "_amax"):
                 # Get the initial amax from max calibration
                 initial_amax = module._amax.clone().detach()
 
-                # Create quantization function that uses enable_fake_quant
                 def quant_func(x, amax, quantizer=module):
-                    # Temporarily store the original amax and mode states
                     original_amax = quantizer._amax.clone() if hasattr(quantizer, "_amax") else None
-                    was_quant_enabled = quantizer._if_quant
-                    was_calib_enabled = quantizer._if_calib
-
-                    # Set the candidate amax and disable calibration to avoid recursion
                     quantizer._amax = amax
-                    quantizer._if_quant = True
-                    quantizer._if_calib = False
 
-                    # Quantize with fake_quant enabled
-                    with enable_fake_quant(quantizer):
+                    with (
+                        enable_quant(quantizer),
+                        disable_calib(quantizer),
+                        enable_fake_quant(quantizer),
+                    ):
                         xq = quantizer(x)
 
-                    # Restore the original amax and mode states
                     if original_amax is not None:
                         quantizer._amax = original_amax
-                    quantizer._if_quant = was_quant_enabled
-                    quantizer._if_calib = was_calib_enabled
 
                     return xq
 

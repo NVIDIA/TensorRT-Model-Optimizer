@@ -631,6 +631,36 @@ def enable_fake_quant(module):
 
 
 @contextmanager
+def enable_quant(quantizer):
+    """Temporarily enable quantization for a quantizer.
+
+    Args:
+        quantizer: The quantizer module to enable quantization for.
+    """
+    original_if_quant = quantizer._if_quant
+    quantizer._if_quant = True
+    try:
+        yield
+    finally:
+        quantizer._if_quant = original_if_quant
+
+
+@contextmanager
+def disable_calib(quantizer):
+    """Temporarily disable calibration for a quantizer.
+
+    Args:
+        quantizer: The quantizer module to disable calibration for.
+    """
+    original_if_calib = quantizer._if_calib
+    quantizer._if_calib = False
+    try:
+        yield
+    finally:
+        quantizer._if_calib = original_if_calib
+
+
+@contextmanager
 def fsdp2_aware_weight_update(root_model, modules_to_update, reshard=True):
     """Context manager to update the FSDPParam list if an update is made to a submodule of an FSDPModule.
 

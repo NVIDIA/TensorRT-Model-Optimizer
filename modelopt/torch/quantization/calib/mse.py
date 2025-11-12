@@ -112,8 +112,12 @@ class MseCalibrator(_Calibrator):
         self._amax = None
 
     @torch.no_grad()
-    def compute_amax(self):
-        """Return the amax value that minimizes quantization error."""
+    def compute_amax(self, verbose: bool = False):
+        """Return the amax value that minimizes quantization error.
+
+        Args:
+            verbose: If True, print the ratio of best_amax to initial_amax.
+        """
         if not any(self._losses):
             return None
 
@@ -136,6 +140,10 @@ class MseCalibrator(_Calibrator):
             avg_losses = torch.stack(avg_losses)
             best_step = torch.argmin(avg_losses).item()
             self._amax = self._candidate_amaxs[best_step]
+
+            if verbose:
+                ratio = (self._amax / self._initial_amax).item()
+                print(f"MSE Calibrator: best_amax/initial_amax ratio = {ratio:.4f}")
 
         else:
             # Per-channel case: loss is a tensor with shape (num_channels,)
@@ -162,5 +170,14 @@ class MseCalibrator(_Calibrator):
             ]
             if self._amax is not None:
                 self._amax = self._amax.reshape(self._initial_amax.shape)
+
+            if verbose:
+                ratio = self._amax / self._initial_amax
+                print(
+                    f"MSE Calibrator: best_amax/initial_amax ratio - "
+                    f"mean: {ratio.mean().item():.4f}, "
+                    f"min: {ratio.min().item():.4f}, "
+                    f"max: {ratio.max().item():.4f}"
+                )
 
         return self._amax
