@@ -486,11 +486,8 @@ def _export_hf_checkpoint(
 
             fsdp_module_to_reshard = sub_module
 
-        # ModelOpt QLoRA does not quantize lora_A and lora_B layers.
-        # We skip QuantLoRA linear module for modelopt QLoRA
-        if is_modelopt_qlora and (
-            hasattr(sub_module, "base_layer") or "lora_A" in name or "lora_B" in name
-        ):
+        # We skip QuantLoraLinear module for modelopt QLoRA
+        if is_modelopt_qlora and (hasattr(sub_module, "base_layer")):
             continue
 
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
