@@ -105,9 +105,7 @@ optional_deps = {
         "hydra-core==1.3.2",
         "omegaconf==2.3.0",
         "wandb~=0.17.5",
-        "frozendict>=2.4.4",
         "lru-dict",
-        "mip",
     ],
 }
 
