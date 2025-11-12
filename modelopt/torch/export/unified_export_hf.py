@@ -475,7 +475,7 @@ def _export_hf_checkpoint(
     has_quantized_layers = False
     fsdp_module_to_reshard = None
 
-    for name, sub_module in model.named_modules():
+    for _, sub_module in model.named_modules():
         # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
         if isinstance(sub_module, FSDPModule):
             # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
