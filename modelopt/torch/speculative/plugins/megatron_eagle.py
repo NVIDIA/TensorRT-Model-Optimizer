@@ -726,9 +726,6 @@ class _DynamicEagleGPTModel(EagleModel):
 
         eagle_inputs = {}
 
-        eagle_inputs["input_ids"] = padded_input_ids
-        eagle_inputs["position_ids"] = position_ids
-
         eagle_inputs["hidden_states"] = hidden_states
 
         eagle_inputs["attention_mask"] = set_multi_step_attention_mask(attn_mask, ttt_step)
@@ -827,7 +824,6 @@ class _DynamicEagleGPTModel(EagleModel):
     def _eagle_forward(
         self,
         eagle_inputs,
-        output_weight,
         inference_params: InferenceParams = None,
         packed_seq_params: PackedSeqParams = None,
         inference_context: StaticInferenceContext | None = None,
@@ -847,24 +843,22 @@ class _DynamicEagleGPTModel(EagleModel):
         if inference_context is not None:
             inference_context.sequence_len_offset += eagle_inputs["input_ids"].shape[1]
 
+        return eagle_hidden_states, eagle_hidden_states_pre_final_layernorm
+
+    def _get_eagle_logits(self, eagle_hidden_states, output_weight):
         if hasattr(self.eagle_module, "eagle_output_layer"):
             eagle_logits, _ = self.eagle_module.eagle_output_layer(eagle_hidden_states)
         else:
             eagle_logits, _ = self.output_layer(eagle_hidden_states, weight=output_weight)
 
+        eagle_logits = [eagle_logits]
         if self.eagle_config.parallel_draft_step > 1:
             # Get additional draft logits from parallel draft heads
-            draft_logits_list = [eagle_logits]
             for draft_head in self.eagle_module.parallel_draft_heads:
                 draft_logits, _ = draft_head(eagle_hidden_states)
-                draft_logits_list.append(draft_logits)
-            eagle_logits = torch.cat(draft_logits_list, dim=0)
+                eagle_logits.append(draft_logits)
 
-        return (
-            eagle_hidden_states,
-            eagle_logits,
-            eagle_hidden_states_pre_final_layernorm,
-        )
+        return eagle_logits
 
     def forward(
         self,
@@ -981,14 +975,15 @@ class _DynamicEagleGPTModel(EagleModel):
                 ttt_step=ttt_step,
             )
 
-            _, eagle_logits, eagle_module_input_hidden_states = self._eagle_forward(
+            eagle_hidden_states, eagle_module_input_hidden_states = self._eagle_forward(
                 eagle_inputs,
-                output_weight,
                 inference_params=inference_params,
                 packed_seq_params=packed_seq_params,
                 inference_context=eagle_inference_context,
                 **(extra_block_kwargs or {}),
             )
+
+            eagle_logits = self._get_eagle_logits(eagle_hidden_states, output_weight)
 
             if self.config.sequence_parallel:
                 eagle_module_input_hidden_states = gather_from_sequence_parallel_region(
@@ -1019,7 +1014,7 @@ class _DynamicEagleGPTModel(EagleModel):
                 return logits_sbh.transpose(0, 1).contiguous()
 
             for i in range(self.eagle_config.parallel_draft_step):
-                eagle_logit = eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
+                eagle_logit = eagle_logits[i]
                 if i > 0:
                     loss_ = self._compute_eagle_loss(
                         logits_sbh[i:], labels[:, i:], eagle_logit[:-i]
@@ -1034,9 +1029,7 @@ class _DynamicEagleGPTModel(EagleModel):
             if self.eagle_report_acc and not self.training:
                 with torch.no_grad():
                     for i in range(self.eagle_config.parallel_draft_step):
-                        gathered_logits = gather_from_tensor_model_parallel_region(
-                            eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
-                        )
+                        gathered_logits = gather_from_tensor_model_parallel_region(eagle_logits[i])
                         gathered_logits = gathered_logits[ttt_step : -(1 + i)]
                         eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
@@ -1282,57 +1275,39 @@ class _DynamicEagleGPTModel(EagleModel):
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
         hidden_states = hidden_states[:seq_len, :, :]
 
-        draft_tokens = []
+        draft_hidden_states = []
         for _ in range(steps):
             padded_eagle_ids, seq_len, padded_hidden_states = right_padding(
                 eagle_ids, hidden_states
             )
             if self.config.sequence_parallel:
                 padded_hidden_states = scatter_to_sequence_parallel_region(padded_hidden_states)
-            eagle_attention_mask, eagle_position_ids = get_default_attention_mask_and_position_ids(
-                padded_eagle_ids
-            )
+            eagle_attention_mask, _ = get_default_attention_mask_and_position_ids(padded_eagle_ids)
 
             eagle_inputs = {}
-            eagle_inputs["input_ids"] = padded_eagle_ids
             eagle_inputs["hidden_states"] = padded_hidden_states
             eagle_inputs["attention_mask"] = eagle_attention_mask
 
             # [TODO] (chenhany): let the module compute itself
             eagle_inputs["rotary_pos_emb"] = None
 
-            _, eagle_logits, eagle_next_hidden_states_input = self._eagle_forward(
+            eagle_hidden_states, eagle_next_hidden_states_input = self._eagle_forward(
                 eagle_inputs,
-                output_weight,
             )
 
-            if self.eagle_config.parallel_draft_step > 1:
-                parallel_logits = [
-                    eagle_logits[
-                        padded_eagle_ids.shape[-1] * i + seq_len - 1 : padded_eagle_ids.shape[-1]
-                        * i
-                        + seq_len
-                    ]
-                    for i in range(1, self.eagle_config.parallel_draft_step)
-                ]
-            eagle_logits = eagle_logits[:seq_len, :, :]
             if self.config.sequence_parallel:
+                eagle_hidden_states = gather_from_sequence_parallel_region(eagle_hidden_states)
                 eagle_next_hidden_states_input = gather_from_sequence_parallel_region(
                     eagle_next_hidden_states_input
                 )
+            eagle_hidden_states = eagle_hidden_states[:seq_len, :, :]
             eagle_next_hidden_states_input = eagle_next_hidden_states_input[:seq_len, :, :]
 
-            draft_token = (
-                gather_from_tensor_model_parallel_region(eagle_logits)[-1:, :, :]
-                .argmax(dim=-1)
-                .transpose(0, 1)
-            )
-            if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                draft_token += self.eagle_module.d2t[draft_token]
+            draft_hidden_states.append(eagle_hidden_states[-1:, :, :])
 
-            draft_tokens.append(draft_token)
-
-            eagle_ids = torch.cat((eagle_ids, draft_token), dim=-1)
+            eagle_ids = torch.cat(
+                (eagle_ids, eagle_ids[:, -1:]), dim=-1
+            )  # dummy, only need this for attention mask
             hidden_states = torch.cat(
                 (
                     hidden_states,
@@ -1340,18 +1315,18 @@ class _DynamicEagleGPTModel(EagleModel):
                 ),
                 dim=0,
             )
-
-        draft_tokens = torch.cat(draft_tokens, dim=-1)
-        if self.eagle_config.parallel_draft_step > 1:
-            parallel_logits = torch.cat(parallel_logits, dim=0)
-            parallel_tokens = (
-                (gather_from_tensor_model_parallel_region(parallel_logits))
-                .argmax(dim=-1)
-                .transpose(0, 1)
-            )
-            if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
-                parallel_tokens += self.eagle_module.d2t[parallel_tokens]
-            draft_tokens = torch.cat((draft_tokens, parallel_tokens), dim=-1)
+        eagle_hidden_states = torch.cat(draft_hidden_states, dim=0)
+        eagle_logits = self._get_eagle_logits(eagle_hidden_states, output_weight)
+        draft_logits = [eagle_logits[0]]
+        draft_logits.extend(
+            [eagle_logits[i][-1:, :, :] for i in range(1, self.eagle_config.parallel_draft_step)]
+        )
+        draft_logits = torch.cat((draft_logits), dim=0)
+        draft_tokens = (
+            gather_from_tensor_model_parallel_region(draft_logits).argmax(dim=-1).transpose(0, 1)
+        )
+        if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
+            draft_tokens += self.eagle_module.d2t[draft_tokens]
 
         return base_token, draft_tokens
 
