@@ -24,6 +24,7 @@
 | `Qwen/Qwen3-{0.6B, 8B}` | ✅ | **Online** | | ✅ | ✅ |
 | `deepseek-ai/DeepSeek-R1` | ✅ | **Online** | | | |
 | `meta-llama/Llama-{3.1-8B, 3.1-405B, 3.2-1B}-Instruct` | ✅ | **Online** | | ✅ | ✅ |
+| `openai/gpt-oss-{20b, 120b}` | ✅ | **Online** | | ✅ | ✅ |
 
 ## Getting Started in a Local Environment
 

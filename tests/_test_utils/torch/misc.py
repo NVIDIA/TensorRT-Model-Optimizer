@@ -21,11 +21,13 @@ import torch
 from modelopt.torch.utils import flatten_tree
 
 
-def compare_outputs(out1, out2, rtol=1e-5, atol=1e-8, debug=False):
+def compare_outputs(out1, out2, rtol=1e-5, atol=1e-8):
     out1, _ = flatten_tree(out1)
     out2, _ = flatten_tree(out2)
     for i, (t1, t2) in enumerate(zip(out1, out2)):
-        if debug:
+        try:
+            assert torch.allclose(t1.to(torch.float32), t2.to(torch.float32), rtol, atol)
+        except AssertionError:  # noqa: PERF203
             diff = torch.abs(t1 - t2)
             print(f"\n{i=}")
             print(f"{t1=}")
@@ -35,7 +37,7 @@ def compare_outputs(out1, out2, rtol=1e-5, atol=1e-8, debug=False):
             print(f"{diff.min()=}")
             print(f"{diff.max()=}")
             print(f"{diff.mean()=}")
-        assert torch.allclose(t1.to(torch.float32), t2.to(torch.float32), rtol, atol)
+            raise
 
 
 def set_seed(seed_value=42):
