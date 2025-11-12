@@ -1056,6 +1056,7 @@ def get_quant_config(
 
     Args:
         model: The PyTorch model to make config for.
+        is_modelopt_qlora: Whether the model is a modelopt-trained QLoRA model.
 
     Returns:
         Dictionary containing the quantization configuration
