@@ -1024,6 +1024,15 @@ class GPTModelExporter:
                 self.rules["linear_fc1"](layer.mlp.linear_fc1, layer_id)
                 self.rules["linear_fc2"](layer.mlp.linear_fc2, layer_id)
 
+        parallel_draft_heads = getattr(eagle_module, "parallel_draft_heads", None)
+        if parallel_draft_heads is not None:
+            for head_id, head in enumerate(parallel_draft_heads):
+                self.rules["eagle_module.parallel_draft_heads.lm_head"](head.lm_head, head_id)
+                for layer_id, layer in enumerate(head.medusa_layers):
+                    self.rules["eagle_module.parallel_draft_heads.medusa_layers.linear"](
+                        layer.linear, head_id, layer_id
+                    )
+
     def _get_state_dict(self):
         model = self.model
 
