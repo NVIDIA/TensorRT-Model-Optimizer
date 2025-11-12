@@ -15,7 +15,7 @@ In this example, we compress the [meta-llama/Llama-3.1-8B-Instruct](https://hugg
 
 - Install TensorRT-Model-Optimizer in editable mode with the corresponding dependencies:
 ```bash
-pip install -e .[dev,compress]
+pip install -e .[hf,compress]
 ```
 - For this example we are using 2x NVIDIA H100 80GB HBM3 to show multi-GPU steps. You can use also use s single GPU.
 
