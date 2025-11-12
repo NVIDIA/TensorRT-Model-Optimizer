@@ -23,6 +23,8 @@ This section focuses on applying Model Optimizer's state-of-the-art complementar
 
 </div>
 
+For more advanced pruning strategies, such as the [Puzzle methodology](https://arxiv.org/pdf/2411.19146), please see [Puzzle pruning example](https://github.com/NVIDIA/TensorRT-Model-Optimizer/tree/feature/compress/examples/compress).
+
 ## Pre-Requisites
 
 For Minitron pruning for Megatron-LM / NeMo models, use the NeMo container (e.g., `nvcr.io/nvidia/nemo:25.07`) which has all the dependencies installed.
