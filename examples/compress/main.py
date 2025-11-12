@@ -34,12 +34,12 @@ from pathlib import Path
 
 import mip_and_realize_models
 import torch
-from logger import mprint
 from puzzle_tools.hydra_utils import register_hydra_resolvers
 
 import modelopt.torch.nas as mtn
 from modelopt.torch._compress.nas.plugins.compress_nas_plugin import CompressModel
 from modelopt.torch._compress.runtime import NativeDdpRuntime
+from modelopt.torch._compress.tools.logger import mprint
 from tests.utils.test_utils import initialize_hydra_config_for_dir
 
 
