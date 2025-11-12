@@ -26,7 +26,6 @@ import pruning_ckpts
 import score_pruning_activations
 import scoring
 import torch
-from logger import mprint
 from torch import nn
 
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
@@ -34,6 +33,7 @@ from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import 
 )
 from modelopt.torch._compress.hydra import initialize_hydra_config_for_dir
 from modelopt.torch._compress.runtime import NativeDdpRuntime
+from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch.nas.conversion import NASModeRegistry
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
 from modelopt.torch.opt.mode import (

@@ -76,14 +76,9 @@ class DistributedLogger(logging.Logger):
 
         message_source = self.get_caller_location()
 
-        if self.global_rank == 0:
-            color = LogColors.GREEN
-        elif self.local_rank == self.world_size - 1:
-            color = LogColors.RED
-        else:
-            color = LogColors.CYAN
-
-        self.info(f"{color}[rank-{self.global_rank}]{LogColors.RESET}[{message_source}]\t{msg}")
+        self.info(
+            f"{LogColors.GREEN}[rank-{self.global_rank}]{LogColors.RESET}[{message_source}]\t{msg}"
+        )
 
     # def dist_warning(self, msg):
     #     if self.verbosity <= logging.WARNING:
