@@ -251,9 +251,15 @@ def main():
         dq_only=args.dq_only,
     )
 
+    # Delete the original backbone and empty the cache
+    del backbone
+    torch.cuda.empty_cache()
+
     if not args.trt_engine_load_path:
         # Compile the TRT engine from the exported ONNX model
         compiled_model = client.ir_to_compiled(onnx_bytes, compilation_args)
+        # Clear onnx_bytes to free memory
+        del onnx_bytes
         # Save TRT engine for future use
         with open(f"{args.model}.plan", "wb") as f:
             # Remove the SHA-256 hash from the compiled model, used to maintain state in the trt_client
@@ -276,10 +282,6 @@ def main():
 
     if hasattr(pipe, "unet") and add_embedding:
         setattr(device_model, "add_embedding", add_embedding)
-
-    # Delete the original backbone and empty the cache
-    del backbone
-    torch.cuda.empty_cache()
 
     # Set the backbone to the device model
     if hasattr(pipe, "unet"):
