@@ -1,6 +1,7 @@
 # Compress Algorithm Tutorial
 
 This tutorial demonstrates how to compress large language models using the Compress algorithm based on the [Puzzle paper](https://arxiv.org/abs/2411.19146).
+This tutorial demonstrates how to compress large language models using the compress algorithm based on the [Puzzle paper](https://arxiv.org/abs/2411.19146).
 The goal of the algorithm it to find the most optimal modifications to MLP and attention layers of the model, resulting in a heterogeneous model architecture.
 The supported modifications are: 
 
@@ -46,14 +47,14 @@ pip install -e .[hf,compress]
    This will save the full output to `log.txt` and display the following progress on screen:
 
    ```bash
-   [2025-11-02 12:06:34] Compress Progress 1/8: starting compression pipeline
-   [2025-11-02 12:06:45] Compress Progress 2/8: converting model from HF to DeciLM (single-gpu)
-   [2025-11-02 12:07:07] Compress Progress 3/8: scoring pruning activations (multi-gpu)
-   [2025-11-02 12:11:36] Compress Progress 4/8: pruning the model and saving pruned checkpoints (single-gpu)
-   [2025-11-02 12:12:20] Compress Progress 5/8: building replacement library and subblock statistics (single-gpu)
-   [2025-11-02 12:12:21] Compress Progress 6/8: calculating one block scores (multi-gpu)
-   [2025-11-02 12:50:41] Compress Progress 7/8: running MIP and realizing models (multi-gpu)
-   [2025-11-02 12:52:34] Compress Progress 8/8: compression pipeline completed (multi-gpu)
+   [2025-11-02 12:06:34][rank-0][main.py:71] Compress Progress 1/8: starting compression pipeline
+   [2025-11-02 12:06:45][rank-0][compress_nas_plugin.py:123] Compress Progress 2/8: converting model from HF to DeciLM (single-gpu)
+   [2025-11-02 12:07:07][rank-0][compress_nas_plugin.py:132] Compress Progress 3/8: scoring pruning activations (multi-gpu)
+   [2025-11-02 12:11:36][rank-0][compress_nas_plugin.py:137] Compress Progress 4/8: pruning the model and saving pruned checkpoints (single-gpu)
+   [2025-11-02 12:12:20][rank-0][compress_nas_plugin.py:217] Compress Progress 5/8: building replacement library and subblock statistics (single-gpu)
+   [2025-11-02 12:12:21][rank-0][compress_nas_plugin.py:222] Compress Progress 6/8: calculating one block scores (multi-gpu)
+   [2025-11-02 12:50:41][rank-0][compress_nas_plugin.py:226] Compress Progress 7/8: running MIP and realizing models (multi-gpu)
+   [2025-11-02 12:52:34][rank-0][main.py:115] Compress Progress 8/8: compression pipeline completed (multi-gpu)
    ```
 
    Once the process is complete, the resulting network architecture will be recorded in `log.txt` for your review:
