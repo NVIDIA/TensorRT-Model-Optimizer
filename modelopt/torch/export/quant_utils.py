@@ -1047,6 +1047,7 @@ def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False
 
 def get_quant_config(
     model: nn.Module,
+    is_modelopt_qlora: bool = False,
 ) -> dict[str, Any]:
     """Generate quantization config for a model.
 
@@ -1093,10 +1094,12 @@ def get_quant_config(
         )
 
         # Skip LORA module and adapters.
-        # ModelOpt does not currently quantize these layers in QLoRA/PTQ path.
-        is_lora = hasattr(module, "base_layer") or "lora_A" in name or "lora_B" in name
+        # ModelOpt does not currently quantize these layers in QLoRA path.
+        skip_layer = is_modelopt_qlora and (
+            hasattr(module, "base_layer") or "lora_A" in name or "lora_B" in name
+        )
 
-        if has_quantizers and not is_lora:
+        if has_quantizers and not skip_layer:
             quantization_format = get_quantization_format(module)
 
             # For MoE expert modules, we need to extract block size from the correct weight quantizer
