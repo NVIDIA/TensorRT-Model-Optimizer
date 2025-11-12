@@ -172,6 +172,8 @@ def main():
         override_model_path=args.override_model_path,
     )
 
+    if args.torch_compile:
+        assert args.torch, "Torch mode must be enabled when torch_compile is used"
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
     backbone = None
@@ -186,11 +188,10 @@ def main():
     if args.restore_from:
         mto.restore(backbone, args.restore_from)
 
-    if args.torch_compile:
-        print("Compiling backbone with torch.compile()...")
-        backbone = torch.compile(backbone, mode="max-autotune")
-
     if args.torch:
+        if args.torch_compile:
+            print("Compiling backbone with torch.compile()...")
+            backbone = torch.compile(backbone, mode="max-autotune")
         if hasattr(pipe, "transformer"):
             pipe.transformer = backbone
         elif hasattr(pipe, "unet"):
