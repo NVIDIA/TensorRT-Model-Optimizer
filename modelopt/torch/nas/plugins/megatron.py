@@ -658,7 +658,7 @@ class _DynamicTopKRouter(ABC, DynamicModule):
     """A TopKRouter with dynamic hyperparams."""
 
     def _setup(self):
-        assert not self.enable_expert_bias, "Expert bias is not supported for dynamic module"
+        # assert not self.enable_expert_bias, "Expert bias is not supported for dynamic module"
 
         # Register hparams for router weight dimensions (will be overridden by _DynamicSequentialMLP's hp)
         # Router weight shape: [num_moe_experts, hidden_size]

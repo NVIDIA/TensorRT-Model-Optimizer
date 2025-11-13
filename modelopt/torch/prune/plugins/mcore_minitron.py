@@ -67,6 +67,7 @@ SUPPORTED_HPARAMS = {
     # Attention
     "num_attention_heads",
     "num_query_groups",
+    "num_heads_per_group",  # Added to support your model
     # Mamba
     "mamba_num_heads",
     "mamba_head_dim",
