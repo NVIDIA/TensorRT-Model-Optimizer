@@ -160,6 +160,8 @@ def test_autoquantize_huggingface():
             verbose=True,
         )
 
+    print(search_history, model)
+
 
 @pytest.mark.parametrize(
     ("model_cls", "quant_config"),

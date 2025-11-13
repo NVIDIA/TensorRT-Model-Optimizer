@@ -19,6 +19,7 @@ import fnmatch
 import gc
 import types
 import warnings
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from contextlib import nullcontext
@@ -170,19 +171,34 @@ class QuantRecipeHparam(Hparam):
     """An Hparam for quantization recipes.
 
     In addition, this Hparam also:
-    1. Keeps a link to its modules and sets the quantizers for the module based on the active recipe.
+    1. Keeps a link to its quant_modules and score_modules and sets the quantizers for the
+       quant_modules based on the active recipe.
     2. Keeps track of the importance of each recipe in a dict instead of a tensor
+    3. Registers itself with each score_module via the _hparams_for_scoring attribute
     """
 
     def __init__(
         self,
         choices: Sequence[QuantRecipe] | None = None,
-        nn_modules: list[nn.Module] | None = None,
+        quant_modules: list[nn.Module] | None = None,
+        score_modules: list[nn.Module] | None = None,
+        name: str | None = None,
     ) -> None:
         """Initializes Hparam with original value and choices."""
         choices = sorted({*(choices if choices else []), QuantRecipe(quant_cfg=None)})
         super().__init__(choices, original=choices[0])
-        self.nn_modules = nn_modules if nn_modules else []
+
+        self.name = name
+
+        self.quant_modules = quant_modules if quant_modules else []
+        self.score_modules = score_modules if score_modules else self.quant_modules
+
+        # Validate that score_modules and quant_modules have the same length
+        if len(self.score_modules) != len(self.quant_modules):
+            raise ValueError(
+                f"score_modules and quant_modules must have the same length. "
+                f"Got {len(self.score_modules)} score_modules and {len(self.quant_modules)} quant_modules."
+            )
 
         # This is a hack; We dont want to make the input_quantizer, weight_quantizer, output_quantizer
         # a dynamic attribute for backward compatibility with the model_calib.py
@@ -191,17 +207,17 @@ class QuantRecipeHparam(Hparam):
 
         quant_recipe: QuantRecipe
         for quant_recipe in self.choices:
-            for nn_module in self.nn_modules:
+            for quant_module in self.quant_modules:
                 for quantizer_attr_name in [
                     "input_quantizer",
                     "weight_quantizer",
                     "output_quantizer",
                 ]:
-                    setattr(nn_module, quantizer_attr_name, TensorQuantizer())
+                    setattr(quant_module, quantizer_attr_name, TensorQuantizer())
 
-                set_quantizer_by_cfg(nn_module, quant_recipe.config.quant_cfg)
-                self._all_quantizer_choices[quant_recipe][nn_module] = {
-                    quantizer_attr_name: getattr(nn_module, quantizer_attr_name)
+                set_quantizer_by_cfg(quant_module, quant_recipe.config.quant_cfg)
+                self._all_quantizer_choices[quant_recipe][quant_module] = {
+                    quantizer_attr_name: getattr(quant_module, quantizer_attr_name)
                     for quantizer_attr_name in [
                         "input_quantizer",
                         "weight_quantizer",
@@ -211,13 +227,20 @@ class QuantRecipeHparam(Hparam):
 
         self.active = self.original
 
+        # Importance dict is keyed by quant_module (where the quantization is applied)
         self._importance_dict = {
             quant_recipe: {
                 mod: torch.zeros((), device=mod.weight.device, dtype=torch.float32)
-                for mod in self.nn_modules
+                for mod in self.quant_modules
             }
             for quant_recipe in self.choices
         }
+
+        # Attach this hparam to each score_module's set of hparams it scores
+        for score_module in self.score_modules:
+            if not hasattr(score_module, "_hparams_for_scoring"):
+                score_module._hparams_for_scoring = set()
+            score_module._hparams_for_scoring.add(self)
 
     @property
     def active(self) -> HPType:
@@ -246,37 +269,33 @@ class QuantRecipeHparam(Hparam):
             for quant_recipe, importance_dict in self._importance_dict.items()
         }
 
+    @property
+    def attrs(self) -> list[str]:
+        """Return the attributes of the hparam for repr."""
+        return ["name", *super().attrs]
+
 
 def _add_auto_quantize_score(grad_output, output_diff, score_tensor):
     score_tensor += ((grad_output.float() ** 2) * (output_diff.float() ** 2)).sum()
 
 
-class AutoQuantizeSearcher(BaseSearcher):
-    """A searcher for AutoQuantize algorithm.
-
-    In AutoQuantize, we search for the best per-layer quantization configuration that minimizes the sum of per-layer
-    scores while meeting the specified constraint. AutoQuantize uses Linear Programming Solver to find the
-    optimal quantization configuration.
-
-    The auto_quantize score for a layer quantization configuration is an approximation of model loss change change due
-    to quantizing the particular layer with the particular configuration.
-    The approximation is based on taylor expansion of the loss function wrt to the quantized output of the layer and
-    substitution of Fisher information for Hessian.
-    This approximation is mathematically correct for models where the loss
-    is a log likelihood loss such as BERT, GPT, etc. However, the auto_quantize score can still be used as a proxy
-    for other models such as ResNet.
-    """
+class _AutoQuantizeBaseSearcher(BaseSearcher, ABC):
+    """A base searcher for AutoQuantize algorithm."""
 
     candidate_stats: dict[str, dict[str, list[float]]]
     best: dict[str, Any]
     custom_support: list[tuple[Callable, Callable, Callable]] = []
 
-    rules = [
+    quant_grouping_rules = [
         r"^(.*?)\.(q_proj|k_proj|v_proj)$",  # q_proj, k_proj, v_proj for llama like models
+        # gate_proj, up_proj, down_proj for Qwen3 like MoE models
+        r"^(.*?\.mlp\.experts)\.\d+\.(gate_proj|up_proj|down_proj)$",
         r"^(.*?)\.(gate_proj|up_proj)$",  # gate_proj, up_proj for llama like models
         r"^(.*?)\.(\d+\.(w1|w2|w3))$",  # mixtral experts
         r"^(.*?)\.((w1_linear|w2_linear|w3_linear)\.\d+)$",  # dbrx experts
     ]
+
+    score_module_rules = []
 
     @property
     def default_search_config(self):
@@ -284,9 +303,6 @@ class AutoQuantizeSearcher(BaseSearcher):
         return {
             "quantization_formats": ["NVFP4_DEFAULT_CFG", "FP8_DEFAULT_CFG"],
             "data_loader": None,
-            "forward_step": None,
-            "loss_func": None,
-            "forward_backward_step": None,
             "num_calib_steps": 512,
             "num_score_steps": 128,
             "deployment": None,
@@ -307,9 +323,6 @@ class AutoQuantizeSearcher(BaseSearcher):
     def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
         """Sanitize the search config dict."""
         config = config or {}
-        if "score_func" in config:
-            warnings.warn("`score_func` is ignored for `auto_quantize`.")
-            config.pop("score_func")
         config = super().sanitize_search_config(config)
         assert config["data_loader"] is not None, (
             "`data_loader` must be provided for `auto_quantize`."
@@ -317,13 +330,6 @@ class AutoQuantizeSearcher(BaseSearcher):
         assert config["forward_step"] is not None, (
             "`forward_step` must be provided for `auto_quantize`."
         )
-
-        if config["forward_backward_step"] is None:
-            assert config["loss_func"] is not None, (
-                "`loss_func` or `forward_backward_step` must be provided for `auto_quantize`."
-            )
-            config["forward_backward_step"] = self._get_default_forward_backward_step()
-
         return config
 
     @staticmethod
@@ -343,148 +349,69 @@ class AutoQuantizeSearcher(BaseSearcher):
             }
         )
 
-    @classmethod
-    def register_custom_support(
-        cls,
-        is_supported_checker: Callable,
-        grad_ckpt_context: Callable,
-        is_param_grad_enabled: Callable,
-    ):
-        """Register custom support for `AutoQuantize` score estimation.
+    def _apply_quant_group_rule(self, name: str, rule) -> str | None:
+        """Apply a single quant_group_rule to a module name.
 
-        If the `is_supported_checker(model)` returns True, the `grad_ckpt_context(model)` will be
-        used to enable gradient checkpointing and `is_param_grad_enabled(pname, model)`
-        will be used to enable gradient for the parameter.
+        Args:
+            name: Module name
+            rule: Either a regex pattern string or a callable that returns a unique key
+
+        Returns:
+            The group key if the rule matches, None otherwise
         """
-        cls.custom_support.append((is_supported_checker, grad_ckpt_context, is_param_grad_enabled))
+        if callable(rule):
+            return rule(name)
+        else:
+            # Regex pattern
+            pattern = re.compile(rule)
+            match = pattern.match(name)
+            if match:
+                return match.group(1)
+        return None
 
-    def _get_default_forward_backward_step(self):
-        def forward_backward_step(model, data):
-            output = self.config["forward_step"](model, data)
-            loss = self.config["loss_func"](output, data)
-            try:
-                loss.backward()
-            except RuntimeError as e:
-                raise RuntimeError(
-                    "AutoQuantize: Error while calling `backward()` on the loss returned by `loss_func`. "
-                    "Please fix this!"
-                ) from e
+    def _apply_score_group_rule(self, name: str, rule) -> str | None:
+        """Apply a single score_group_rule to a module name.
 
-        return forward_backward_step
+        Args:
+            name: Module name
+            rule: Either a regex pattern string or a callable that returns the score module name
 
-    @torch.enable_grad()
-    def _estimate_auto_quantize_scores(self, is_param_grad_enabled):
-        # TODO: remove the no-quant recipe
-        def auto_quantize_score_estimate_forward(module, input, *args, **kwargs):
-            module.quant_recipe = QuantRecipe(quant_cfg=None)
-            output = module._forward_original(input, *args, **kwargs)
+        Returns:
+            The score module name if the rule matches, None otherwise
+        """
+        if callable(rule):
+            return rule(name)
+        else:
+            # Regex pattern - return the matched name or full match
+            pattern = re.compile(rule)
+            match = pattern.match(name)
+            if match:
+                # For score rules, return the full match or first group
+                return match.group(0) if match.lastindex is None else match.group(1)
+        return None
 
-            # If gradient checkpointing is enabled, gradient will not be enabled in the global forward pass.
-            # With gradient checkpointing, gradients are computed in the local forward pass during backward pass
+    def _get_score_module_from_name(
+        self, model: nn.Module, score_module_name: str, fallback_module: nn.Module
+    ) -> nn.Module:
+        """Get the actual score module object from its name.
 
-            # Lets compute the output_diff and save it in memory only if gradient is enabled to be memory efficient
-            if not torch.is_grad_enabled():
-                return output
+        Args:
+            model: The model containing all modules
+            score_module_name: The name of the score module to retrieve
+            fallback_module: The fallback module to use if score_module_name doesn't exist (typically the quant module)
 
-            module.output_diff_dict = {}
-            with torch.no_grad():
-                for recipe in module.get_hparam("quant_recipe").choices:
-                    if recipe == QuantRecipe(quant_cfg=None):
-                        continue
-                    module.quant_recipe = recipe
-                    output_diff = module._forward_original(input, *args, **kwargs)
+        Returns:
+            The score module object, or fallback_module if not found
+        """
+        try:
+            score_module = model.get_submodule(score_module_name)
+            return score_module
+        except AttributeError:
+            # If score module doesn't exist, fall back to the provided fallback module
+            # This shouldn't happen with valid rules, but provide a safe fallback
+            return fallback_module
 
-                    if isinstance(output_diff, tuple):
-                        output_diff = output_diff[0] - output[0]
-                    else:
-                        output_diff -= output
-                    module.output_diff_dict[recipe] = output_diff
-
-            return output
-
-        def backward_hook(module, grad_input, grad_output):
-            for recipe, output_diff in module.output_diff_dict.items():
-                score_tensor = module.get_hparam("quant_recipe")._importance_dict[recipe][module]
-                _add_auto_quantize_score(grad_output[0], output_diff, score_tensor)
-
-            del module.output_diff_dict
-
-        def setup_params_for_score_estimation(name, param, params_metadata, enable_grad=True):
-            # Let us delete the gradient as soon as they are computed to save memory
-            # In addition, this method enables gradient for all parameters
-            # This is needed to make sure the re-entrant activation checkpointing works
-            params_metadata[name] = {"requires_grad": param.requires_grad}
-            param.requires_grad = enable_grad
-            if not enable_grad:
-                return
-            if self.config.get("verbose", False):
-                print_rank_0(f"AutoQuantize: Enabling gradient for param {name}.")
-            accum_grad, handle = create_param_grad_clear_hook(param)
-            params_metadata[name]["accum_grad"] = accum_grad  # We need to keep the accum_grad alive
-            params_metadata[name]["handle"] = handle
-
-        def setup_module_for_score_estimation(module):
-            module._forward_original = module.forward
-            module.forward = types.MethodType(auto_quantize_score_estimate_forward, module)
-            module._backward_hook_handle = module.register_full_backward_hook(backward_hook)
-
-        def cleanup_module_after_score_estimation(module):
-            module.forward = module._forward_original
-            del module._forward_original
-
-            module._backward_hook_handle.remove()
-
-        def cleanup_params_after_score_estimation(name, param, params_metadata):
-            param.requires_grad = params_metadata[name]["requires_grad"]
-            handle = params_metadata[name].get("handle", None)
-            if handle is not None:
-                handle.remove()
-
-        for name, module in self.model.named_modules():
-            if (
-                self._is_auto_quantize_module(module)
-                and module.get_hparam("quant_recipe").is_configurable
-            ):
-                # Monkey patch the forward methods to cache Y(Q(W), Q(X)) - Y(W,X)
-                setup_module_for_score_estimation(module)
-
-        params_metadata = {}
-
-        for name, param in self.model.named_parameters():
-            setup_params_for_score_estimation(
-                name, param, params_metadata, is_param_grad_enabled(name, self.model)
-            )
-
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.reset_peak_memory_stats()
-            report_memory("AutoQuantize: starting score estimation, ")
-
-        self._run_func(
-            self.config["forward_backward_step"],
-            num_iters=self.config["num_score_steps"],
-            desc="Estimating auto_quantize scores",
-        )
-
-        if torch.cuda.is_available():
-            report_memory("AutoQuantize: After score estimation")
-
-        for name, module in self.model.named_modules():
-            if (
-                self._is_auto_quantize_module(module)
-                and module.get_hparam("quant_recipe").is_configurable
-            ):
-                cleanup_module_after_score_estimation(module)
-
-        for name, param in self.model.named_parameters():
-            cleanup_params_after_score_estimation(name, param, params_metadata)
-
-        # Delete the params_metadata
-        del params_metadata
-        gc.collect()
-
-    @classmethod
-    def insert_hparams_after_merge_rules(cls, model, quant_recipes, disabled_layers=None):
+    def insert_hparams_after_merge_rules(self, model, quant_recipes, disabled_layers=None):
         """Restrict the search space using the merge rules and insert the hparams for the model."""
         # TRTLLM fuses linear layers such as q_proj, k_proj, v_proj into same layer
         # Hence we need to restrict the search space so that all these layers share the same recipe
@@ -495,9 +422,11 @@ class AutoQuantizeSearcher(BaseSearcher):
         elif isinstance(disabled_layers, str):
             disabled_layers = [disabled_layers]
 
-        search_map: dict[str, list[tuple[nn.Module, bool]]] = {}
+        # Map from group key to list of (quant_module, name, disabled, score_module)
+        search_map: dict[str, list[tuple[nn.Module, str, bool, nn.Module]]] = {}
+
         for name, module in model.named_modules():
-            if not cls._is_auto_quantize_module(module):
+            if not self._is_auto_quantize_module(module):
                 continue
 
             # Skip layers that match disabled_layers patterns
@@ -507,28 +436,54 @@ class AutoQuantizeSearcher(BaseSearcher):
                     disabled = True
                     break
 
-            prefix = name
-            for rule in cls.rules:
-                pattern = re.compile(rule)
-                match = pattern.match(name)
-                if match:
-                    prefix = match.group(1)
+            # Apply quant_grouping_rules to determine the group key
+            group_key = name  # Default: each module in its own group
+            for rule in self.quant_grouping_rules:
+                result = self._apply_quant_group_rule(name, rule)
+                if result is not None:
+                    group_key = result
                     # We support only one rule for matching per module
                     break
-            if prefix not in search_map:
-                search_map[prefix] = [(module, disabled)]
-            else:
-                search_map[prefix].append((module, disabled))
 
-        for prefix, module_info_list in search_map.items():
-            modules = [module for module, _ in module_info_list]
-            disabled = any(disabled for _, disabled in module_info_list)
+            # Apply score_module_rules to determine the score module name, then get the actual module
+            score_module_name = name  # Default: score from same module
+            for rule in self.score_module_rules:
+                result = self._apply_score_group_rule(name, rule)
+                if result is not None:
+                    score_module_name = result
+                    # We support only one rule for matching per module
+                    break
+
+            # Get the actual score module object immediately
+            score_module = self._get_score_module_from_name(model, score_module_name, module)
+
+            if group_key not in search_map:
+                search_map[group_key] = [(module, name, disabled, score_module)]
+            else:
+                search_map[group_key].append((module, name, disabled, score_module))
+
+        for group_key, module_info_list in search_map.items():
+            quant_modules = [module for module, _, _, _ in module_info_list]
+            disabled = any(disabled for _, _, disabled, _ in module_info_list)
+            score_modules = [score_module for _, _, _, score_module in module_info_list]
+
             hparam = (
-                QuantRecipeHparam(None, nn_modules=modules)
+                QuantRecipeHparam(
+                    None,
+                    quant_modules=quant_modules,
+                    score_modules=score_modules,
+                    name=str(group_key),
+                )
                 if disabled
-                else QuantRecipeHparam(quant_recipes, nn_modules=modules)
+                else QuantRecipeHparam(
+                    quant_recipes,
+                    quant_modules=quant_modules,
+                    score_modules=score_modules,
+                    name=str(group_key),
+                )
             )
-            for module in modules:
+
+            for module in quant_modules:
                 module._register_hparam("quant_recipe", hparam)
 
     def _get_formatted_weight_compression_constraint(self):
@@ -546,6 +501,10 @@ class AutoQuantizeSearcher(BaseSearcher):
             f"num_bits of most aggressive quantization format for this search which is "
             f"{search_recipes[0]} whose num_bits = {search_recipes[0].num_bits}."
         )
+
+    @abstractmethod
+    def estimate_sensitivity_scores(self):
+        """Estimate the sensitivity scores for the model."""
 
     def _run_func(self, func, num_iters=1, desc=""):
         for i, data in tqdm(
@@ -572,7 +531,7 @@ class AutoQuantizeSearcher(BaseSearcher):
 
         # Iterate over the search recipes and calibrate the quantizers for each recipe
         for recipe in search_recipes:
-            if recipe.compression >= 1.0:
+            if recipe == QuantRecipe(quant_cfg=None):  # No-quant format
                 continue
 
             # Lets reduce the number of calibration steps for AWQ since it takes longer
@@ -605,6 +564,306 @@ class AutoQuantizeSearcher(BaseSearcher):
             # TODO: This is a hack. We need to create a mode for auto_quantize to handle this in a clean way.
             ModeloptStateManager(self.model).state_dict().pop()
 
+        self.estimate_sensitivity_scores()
+
+    def _get_total_weight_size(self, modules):
+        return sum(
+            (module.weight.numel() if self._is_auto_quantize_module(module) else 0)
+            for module in modules
+        )
+
+    def _get_constraints_for_search(self, max_weight_size, lower_bound=None):
+        constraints = {
+            "weight_size_after_compression": (
+                lower_bound * max_weight_size if lower_bound else lower_bound,
+                max_weight_size,
+            )
+        }
+        return constraints, "weight_size_after_compression"
+
+    @abstractmethod
+    def run_search_with_stats(self, max_weight_size, verbose=False):
+        """Run the search with stats to get the best recipe and whether the constraints are satisfied."""
+
+    def get_dist_syncd_cost(self, cost: float, hparam: QuantRecipeHparam) -> float:
+        """Sync the cost across the distributed process group."""
+        return cost
+
+    def get_dist_syncd_score(self, score: float, hparam: QuantRecipeHparam) -> float:
+        """Sync the score across the distributed process group."""
+        return score
+
+    def run_search(self):
+        """Search for the best per-layer quantization configuration and return the best model and configuration."""
+        verbose = self.config["verbose"]
+        assert len(self.constraints) == 1 and "effective_bits" in self.constraints, (
+            f"`constraints` must contain only 'effective_bits' constraint. "
+            f"Got {self.constraints.keys()}"
+        )
+
+        compression = self._get_formatted_weight_compression_constraint()
+        total_weight_size = self._get_total_weight_size(self.model.modules())
+        max_weight_size = total_weight_size * compression
+
+        for name, hparam in named_hparams(self.model, unique=True):
+            if not isinstance(hparam, QuantRecipeHparam):
+                continue
+
+            formats, scores, costs = [], [], []
+            prev_score = float("inf")
+            for recipe in hparam.choices:
+                formats.append(recipe)
+                score = hparam.importance[recipe]
+
+                cost = self._get_total_weight_size(hparam.quant_modules) * recipe.compression  # type: ignore [union-attr]
+                score = self.get_dist_syncd_score(score, hparam)
+
+                scores.append(min(score, prev_score))
+                costs.append(self.get_dist_syncd_cost(cost, hparam))
+                prev_score = score
+
+            self.candidate_stats[name]["formats"] = formats
+            self.candidate_stats[name]["scores"] = scores
+            self.candidate_stats[name]["costs"] = costs
+
+        # Run the search with stats to get the best recipe and whether the constraints are satisfied
+        best_recipe_info, is_satisfied = self.run_search_with_stats(max_weight_size, verbose)
+        self.best["is_satisfied"] = is_satisfied
+
+        best_recipe = {}
+        best_constraints, best_scores = 0, 0
+        for name, best_hparam_recipe_info in best_recipe_info.items():
+            # Solvers could give different solutions for the same layer across DP/TP groups even though
+            # the scores and costs are the same. Lets make sure the same recipe is selected across DP/TP
+            _ps = self.model.get_submodule(name.split(".quant_recipe")[0]).parallel_state
+            best_format = DistributedProcessGroup.get_dist_syncd_obj(
+                best_hparam_recipe_info["format"],
+                [_ps.data_parallel_group, _ps.tensor_parallel_group],
+                lambda a: a[0],
+            )
+
+            best_recipe[name] = best_format
+            get_hparam(self.model, name).active = best_format
+            best_constraints += best_hparam_recipe_info["costs"]
+            best_scores += best_hparam_recipe_info["scores"]
+            if verbose:
+                print_rank_0(
+                    f"AutoQuantize best recipe for {name.replace('.quant_recipe', '')}: {best_recipe[name]}"
+                )
+
+        effective_bits_from_search = (best_constraints / total_weight_size) * 16
+        if verbose:
+            print_rank_0(
+                f"AutoQuantize effective bits from search: {effective_bits_from_search: .2f}"
+            )
+
+        self.best["recipe"] = best_recipe
+        self.best["constraints"] = {"effective_bits": effective_bits_from_search}
+        self.best["score"] = best_scores
+
+        QuantRecipe.fold_pqs_to_weights(self.model)
+
+
+class AutoQuantizeGradientSearcher(_AutoQuantizeBaseSearcher):
+    """A searcher for AutoQuantize algorithm that uses gradient based score estimation.
+
+    In AutoQuantize, we search for the best per-layer quantization configuration that minimizes the sum of per-layer
+    scores while meeting the specified constraint. AutoQuantize uses Linear Programming Solver to find the
+    optimal quantization configuration.
+
+    The auto_quantize score for a layer quantization configuration is an approximation of model loss change change due
+    to quantizing the particular layer with the particular configuration.
+    The approximation is based on taylor expansion of the loss function wrt to the quantized output of the layer and
+    substitution of Fisher information for Hessian.
+    This approximation is mathematically correct for models where the loss
+    is a log likelihood loss such as BERT, GPT, etc. However, the auto_quantize score can still be used as a proxy
+    for other models such as ResNet.
+    """
+
+    score_module_rules = [
+        # Use MLP layer output for gate_proj, up_proj, down_proj for Qwen3 like MoE models (local and shared experts)
+        r"^(.*?\.mlp\.experts)\.\d+\.(gate_proj|up_proj|down_proj)$",
+        r"^(.*?)\.(\d+\.(w1|w2|w3))$",  # mixtral experts
+        r"^(.*?)\.((w1_linear|w2_linear|w3_linear)\.\d+)$",  # dbrx experts
+    ]
+
+    @property
+    def default_search_config(self):
+        """Get the default config for the searcher."""
+        config = super().default_search_config
+        config.update(
+            {
+                "forward_step": None,
+                "loss_func": None,
+                "forward_backward_step": None,
+            }
+        )
+        return config
+
+    def sanitize_search_config(self, config: SearchConfig | None) -> SearchConfig:
+        """Sanitize the search config dict."""
+        config = config or {}
+        if "score_func" in config:
+            warnings.warn("`score_func` is ignored for gradient based `auto_quantize`.")
+            config.pop("score_func")
+        config = super().sanitize_search_config(config)
+        if config["forward_backward_step"] is None:
+            assert config["loss_func"] is not None, (
+                "`loss_func` or `forward_backward_step` must be provided for `auto_quantize`."
+            )
+            config["forward_backward_step"] = self._get_default_forward_backward_step()
+
+        return config
+
+    @classmethod
+    def register_custom_support(
+        cls,
+        is_supported_checker: Callable,
+        grad_ckpt_context: Callable,
+        is_param_grad_enabled: Callable,
+    ) -> None:
+        """Register custom support for `AutoQuantize` score estimation.
+
+        If the `is_supported_checker(model)` returns True, the `grad_ckpt_context(model)` will be
+        used to enable gradient checkpointing and `is_param_grad_enabled(pname, model)`
+        will be used to enable gradient for the parameter.
+        """
+        cls.custom_support.append((is_supported_checker, grad_ckpt_context, is_param_grad_enabled))
+
+    def _get_default_forward_backward_step(self):
+        def forward_backward_step(model, data):
+            output = self.config["forward_step"](model, data)
+            loss = self.config["loss_func"](output, data)
+            try:
+                loss.backward()
+            except RuntimeError as e:
+                raise RuntimeError(
+                    "AutoQuantize: Error while calling `backward()` on the loss returned by `loss_func`. "
+                    "Please fix this!"
+                ) from e
+
+        return forward_backward_step
+
+    @torch.enable_grad()
+    def _estimate_auto_quantize_scores(self, is_param_grad_enabled):
+        # TODO: remove the no-quant recipe
+        def auto_quantize_score_estimate_forward(module, input, *args, **kwargs):
+            for hparam in module._hparams_for_scoring:
+                if hparam.is_configurable:
+                    hparam.active = QuantRecipe(quant_cfg=None)
+
+            output = module._forward_original(input, *args, **kwargs)
+
+            # If gradient checkpointing is enabled, gradient will not be enabled in the global forward pass.
+            # With gradient checkpointing, gradients are computed in the local forward pass during backward pass
+
+            # Lets compute the output_diff and save it in memory only if gradient is enabled to be memory efficient
+            if not torch.is_grad_enabled():
+                return output
+
+            module.output_diff_dict = {hparam: {} for hparam in module._hparams_for_scoring}
+            with torch.no_grad():
+                for hparam in module._hparams_for_scoring:
+                    if not hparam.is_configurable:
+                        continue
+                    for recipe in hparam.choices:
+                        if recipe == QuantRecipe(quant_cfg=None):
+                            continue
+                        hparam.active = recipe
+                        output_diff = module._forward_original(input, *args, **kwargs)
+
+                        if isinstance(output_diff, tuple):
+                            output_diff = output_diff[0] - output[0]
+                        else:
+                            output_diff -= output
+                        module.output_diff_dict[hparam][recipe] = output_diff.detach()
+
+            # Disable the configurable hparam so that they do not affect the any
+            # other hparam's score estimation
+            for hparam in module._hparams_for_scoring:
+                if hparam.is_configurable:
+                    hparam.active = QuantRecipe(quant_cfg=None)
+
+            return output
+
+        def backward_hook(module, grad_input, grad_output):
+            for hparam, output_diff_dict in module.output_diff_dict.items():
+                for recipe, output_diff in output_diff_dict.items():
+                    score_tensor = hparam._importance_dict[recipe][module]
+                    _add_auto_quantize_score(grad_output[0], output_diff, score_tensor)
+
+        def setup_params_for_score_estimation(name, param, params_metadata, enable_grad=True):
+            # Let us delete the gradient as soon as they are computed to save memory
+            params_metadata[name] = {"requires_grad": param.requires_grad}
+            param.requires_grad = enable_grad
+            if not enable_grad:
+                return
+            if self.config.get("verbose", False):
+                print_rank_0(f"AutoQuantize: Enabling gradient for param {name}.")
+            accum_grad, handle = create_param_grad_clear_hook(param)
+            params_metadata[name]["accum_grad"] = accum_grad  # We need to keep the accum_grad alive
+            params_metadata[name]["handle"] = handle
+
+        def setup_module_for_score_estimation(module):
+            module._forward_original = module.forward
+            module.forward = types.MethodType(auto_quantize_score_estimate_forward, module)
+            module._backward_hook_handle = module.register_full_backward_hook(backward_hook)
+
+        def cleanup_module_after_score_estimation(module):
+            module.forward = module._forward_original
+            del module._forward_original
+
+            module._backward_hook_handle.remove()
+
+        def cleanup_params_after_score_estimation(name, param, params_metadata):
+            param.requires_grad = params_metadata[name]["requires_grad"]
+            handle = params_metadata[name].get("handle", None)
+            if handle is not None:
+                handle.remove()
+
+        score_modules = set()
+        for name, module in self.model.named_modules():
+            if (
+                hasattr(module, "_hparams_for_scoring")
+                and any(hparam.is_configurable for hparam in module._hparams_for_scoring)
+                and module not in score_modules
+            ):
+                # Monkey patch the forward methods to cache (Q(Y) - Y)
+                setup_module_for_score_estimation(module)
+                score_modules.add(module)
+
+        params_metadata = {}
+        for name, param in self.model.named_parameters():
+            setup_params_for_score_estimation(
+                name, param, params_metadata, is_param_grad_enabled(name, self.model)
+            )
+
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+            report_memory("AutoQuantize: starting score estimation, ")
+
+        self._run_func(
+            self.config["forward_backward_step"],
+            num_iters=self.config["num_score_steps"],
+            desc="Estimating auto_quantize scores",
+        )
+
+        if torch.cuda.is_available():
+            report_memory("AutoQuantize: After score estimation")
+
+        for module in score_modules:
+            cleanup_module_after_score_estimation(module)
+
+        for name, param in self.model.named_parameters():
+            cleanup_params_after_score_estimation(name, param, params_metadata)
+
+        # Delete the params_metadata
+        del params_metadata
+        gc.collect()
+
+    def estimate_sensitivity_scores(self):
+        """Estimate the sensitivity scores for the model."""
         self.model.eval()
 
         def _default_is_param_grad_enabled(pname, model):
@@ -621,73 +880,29 @@ class AutoQuantizeSearcher(BaseSearcher):
         with grad_checkpointing_ctxt(self.model) if grad_checkpointing_ctxt else nullcontext():
             self._estimate_auto_quantize_scores(is_param_grad_enabled)
 
-    def run_search(self):
-        """Search for the best per-layer quantization configuration and return the best model and configuration.
+    def get_dist_syncd_score(self, score: float, hparam: QuantRecipeHparam) -> float:
+        """Sync the score across the distributed process group."""
+        # For gradient based auto_quantize, we need to sync the score across the DP and TP groups
+        _ps = hparam.quant_modules[0].parallel_state
+        # The score is the sum of the scores across DP and TP groups
+        score = DistributedProcessGroup.get_dist_syncd_obj(
+            score, [_ps.data_parallel_group, _ps.tensor_parallel_group], sum
+        )
+        return score
+
+    def run_search_with_stats(self, max_weight_size, verbose=False):
+        """Linear Programming Solve for gradient based auto_quantize.
 
         AutoQuantize uses Linear Programming Solver to find the optimal quantization configuration which
         minimizes the sum of per-layer auto_quantize scores while meeting the specified constraint.
         """
-
-        def get_total_weight_size(modules):
-            return sum(
-                (module.weight.numel() if self._is_auto_quantize_module(module) else 0)
-                for module in modules
-            )
-
-        def _get_constraints_for_search(max_weight_size, lower_bound=None):
-            constraints = {
-                "weight_size_after_compression": (
-                    lower_bound * max_weight_size if lower_bound else lower_bound,
-                    max_weight_size,
-                )
-            }
-            return constraints, "weight_size_after_compression"
-
-        verbose = self.config["verbose"]
-        assert len(self.constraints) == 1 and "effective_bits" in self.constraints, (
-            f"`constraints` must contain only 'effective_bits' constraint. "
-            f"Got {self.constraints.keys()}"
-        )
-
-        compression = self._get_formatted_weight_compression_constraint()
-        total_weight_size = get_total_weight_size(self.model.modules())
-        weight_size_after_compression = total_weight_size * compression
-
-        for name, hparam in named_hparams(self.model, unique=True):
-            if not isinstance(hparam, QuantRecipeHparam):
-                continue
-
-            formats, scores, costs = [], [], []
-            prev_score = float("inf")
-            for recipe in hparam.choices:
-                formats.append(recipe)
-                score = hparam.importance[recipe]
-                cost = get_total_weight_size(hparam.nn_modules) * recipe.compression  # type: ignore [union-attr]
-
-                # Lets get the score across Data Parallel (DP) and Tensor Parallel (TP) groups
-                # This way we constraint the same quantization format for the same layer across the DP/TP groups
-                # The cost we use here is weight size. They are the same across DP/TP groups.
-                _ps = self.model.get_submodule(name.split(".quant_recipe")[0]).parallel_state
-                # The score is the sum of the scores across DP and TP groups
-                score = DistributedProcessGroup.get_dist_syncd_obj(
-                    score, [_ps.data_parallel_group, _ps.tensor_parallel_group], sum
-                )
-
-                scores.append(min(score, prev_score))
-                costs.append(cost)
-                prev_score = score
-
-            self.candidate_stats[name]["formats"] = formats
-            self.candidate_stats[name]["scores"] = scores
-            self.candidate_stats[name]["costs"] = costs
-
         for lower_bound in [None, 0.99, 0.90]:
             # The LP solver for auto_quantize sometimes fails to find a solution if a lower bound is not
             # specified. I dont know why this happens.
             # As a workaround, lets specify a lower bound for the weight compression if previous
             # search without lower bound fails.
-            constraints, constraint_name = _get_constraints_for_search(
-                weight_size_after_compression, lower_bound
+            constraints, constraint_name = self._get_constraints_for_search(
+                max_weight_size, lower_bound
             )
 
             lps = LPS(
@@ -708,47 +923,28 @@ class AutoQuantizeSearcher(BaseSearcher):
             if self.status == "Optimal":
                 break
 
-        self.best = {}
-
         if self.status != "Optimal":
             warnings.warn(
                 "AutoQuantize FAILED to find a solution! The searched model might not meet all constraints. "
             )
-            self.best["is_satisfied"] = False
+            is_satisfied = False
         else:
-            self.best["is_satisfied"] = True
+            is_satisfied = True
 
-        best_recipe = {}
-        best_constraints, best_scores = 0, 0
+        best_recipes = {}
         for name, selected_idx in zip(self.candidate_stats.keys(), selections):
-            best_recipe_for_name = self.candidate_stats[name]["formats"][selected_idx]
+            best_recipes[name] = {
+                "format": self.candidate_stats[name]["formats"][selected_idx],
+                "costs": self.candidate_stats[name]["costs"][selected_idx],
+                "scores": self.candidate_stats[name]["scores"][selected_idx],
+            }
 
-            # LP solver could give different solutions for the same layer across DP/TP groups even though
-            # the scores and costs are the same. Lets make sure the same quantization format is selected across DP/TP
-            _ps = self.model.get_submodule(name.split(".quant_recipe")[0]).parallel_state
-            best_recipe_for_name = DistributedProcessGroup.get_dist_syncd_obj(
-                best_recipe_for_name,
-                [_ps.data_parallel_group, _ps.tensor_parallel_group],
-                lambda a: a[0],
-            )
+        return best_recipes, is_satisfied
 
-            best_recipe[name] = best_recipe_for_name
-            get_hparam(self.model, name).active = best_recipe_for_name
-            best_constraints += self.candidate_stats[name]["costs"][selected_idx]
-            best_scores += self.candidate_stats[name]["scores"][selected_idx]
-            if verbose:
-                print_rank_0(
-                    f"AutoQuantize best recipe for {name.replace('.quant_recipe', '')}: {best_recipe[name]}"
-                )
 
-        effective_bits_from_search = (best_constraints / total_weight_size) * 16
-        if verbose:
-            print_rank_0(
-                f"AutoQuantize effective bits from search: {effective_bits_from_search: .2f}"
-            )
+class AutoQuantizeLossSearcher(_AutoQuantizeBaseSearcher):
+    """A searcher for AutoQuantize algorithm that uses loss based score estimation."""
 
-        self.best["recipe"] = best_recipe
-        self.best["constraints"] = {"effective_bits": effective_bits_from_search}
-        self.best["score"] = best_scores
 
-        QuantRecipe.fold_pqs_to_weights(self.model)
+# Backward compatibility alias (defaults to gradient-based searcher)
+AutoQuantizeSearcher = AutoQuantizeGradientSearcher
