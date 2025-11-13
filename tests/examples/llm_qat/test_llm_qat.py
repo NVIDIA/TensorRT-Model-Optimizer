@@ -97,7 +97,6 @@ def test_llama_lora_qat_nvfp4(tiny_llama_path, tmp_path):
     )
 
 
-@pytest.mark.skip(reason="Fix QLoRa test failure")
 def test_llama_qlora_nvfp4(tiny_llama_path, tmp_path):
     _run_command(
         [

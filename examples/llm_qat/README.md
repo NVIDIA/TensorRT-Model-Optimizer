@@ -301,14 +301,12 @@ See more details on running LLM evaluation benchmarks [here](../llm_eval/README.
 
 ## Deployment
 
-The final model after QAT is similar in architecture to that of PTQ model. QAT model simply have updated weights as compared to the PTQ model. It can be deployed to TensorRT-LLM (TRTLLM) or to TensorRT just like a regular **ModelOpt** PTQ model if the quantization format is supported for deployment.
+The final model after QAT/QAD is similar in architecture to that of PTQ model. QAT model simply have updated weights as compared to the PTQ model. It can be deployed to TensorRT-LLM (TRTLLM)/TensorRT/vLLM/SGLang just like a regular **ModelOpt** PTQ model if the quantization format is supported for deployment.
 
-To run QAT model with TRTLLM, run:
+To export TRTLLM/vLLM/SGLang compatible checkpoint for the model after QAT (or QAD) model, run:
 
 ```sh
-cd ../llm_ptq
-
-./scripts/huggingface_example.sh --model ../llm_qat/llama3-qat --quant w4a8_awq
+python export.py --pyt_ckpt_path llama3-qat --export_path llama3-qat-deploy
 ```
 
 Note: The QAT checkpoint for `w4a8_awq` config can be created by using `--quant_cfg W4A8_AWQ_BETA_CFG` in [QAT example](#end-to-end-qat-example).
@@ -345,8 +343,25 @@ To perform QLoRA training, run:
    --lora True
 ```
 
-> **_NOTE:_** QLoRA is currently an experimental feature designed to reduce the memory footprint during training. Deployment functionality is not yet available.
+## QLoRA deployment
 
+After performing QLoRA training the final checkpoint can be exported for deployment with vLLM using the following command.
+
+```sh
+python export.py \
+   --pyt_ckpt_path llama3-fp4-qlora \
+   --export_path llama3-fp4-qlora-hf \
+
+```
+
+To deploy with vLLM, run the following command. For more details about QLoRA deployment using vLLM refer to the documentation [here](https://docs.vllm.ai/en/latest/features/lora.html).
+
+```sh
+vllm serve llama3-fp4-qlora-hf/base_model --enable-lora --lora-modules adapter=llama3-fp4-qlora-hf --port 8000 --tokenizer llama3-fp4-qlora-hf
+```
+
+> _Note: We currently do not support export option for QLoRA models generated using FSDP2._
+>
 ## Pre-Quantized Checkpoints
 
 - Ready-to-deploy checkpoints \[[🤗 Hugging Face - Nvidia TensorRT Model Optimizer Collection](https://huggingface.co/collections/nvidia/inference-optimized-checkpoints-with-model-optimizer)\]

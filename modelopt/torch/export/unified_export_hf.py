@@ -365,9 +365,7 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module,
-    dtype: torch.dtype | None = None,
-    **kwargs,
+    model: nn.Module, dtype: torch.dtype | None = None, is_modelopt_qlora: bool = False, **kwargs
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
@@ -458,7 +456,7 @@ def _export_hf_checkpoint(
     except ImportError:
         warnings.warn("accelerate is not installed, hooks will not be removed")
 
-    quant_config = get_quant_config(model)
+    quant_config = get_quant_config(model, is_modelopt_qlora=is_modelopt_qlora)
 
     kv_cache_max_bound = 0
     kv_cache_format = quant_config["quantization"]["kv_cache_quant_algo"]
@@ -487,6 +485,10 @@ def _export_hf_checkpoint(
                 fsdp_module_to_reshard.reshard()
 
             fsdp_module_to_reshard = sub_module
+
+        # We skip QuantLoraLinear module for modelopt QLoRA
+        if is_modelopt_qlora and (hasattr(sub_module, "base_layer")):
+            continue
 
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
             has_quantized_layers = True
@@ -520,7 +522,7 @@ def _export_hf_checkpoint(
         quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_qlora
     )
 
     # Check if any layers are quantized

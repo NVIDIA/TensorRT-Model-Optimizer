@@ -172,6 +172,8 @@ def main():
         override_model_path=args.override_model_path,
     )
 
+    if args.torch_compile:
+        assert args.torch, "Torch mode must be enabled when torch_compile is used"
     # Save the backbone of the pipeline and move it to the GPU
     add_embedding = None
     backbone = None
@@ -186,11 +188,10 @@ def main():
     if args.restore_from:
         mto.restore(backbone, args.restore_from)
 
-    if args.torch_compile:
-        print("Compiling backbone with torch.compile()...")
-        backbone = torch.compile(backbone, mode="max-autotune")
-
     if args.torch:
+        if args.torch_compile:
+            print("Compiling backbone with torch.compile()...")
+            backbone = torch.compile(backbone, mode="max-autotune")
         if hasattr(pipe, "transformer"):
             pipe.transformer = backbone
         elif hasattr(pipe, "unet"):
@@ -250,9 +251,15 @@ def main():
         dq_only=args.dq_only,
     )
 
+    # Delete the original backbone and empty the cache
+    del backbone
+    torch.cuda.empty_cache()
+
     if not args.trt_engine_load_path:
         # Compile the TRT engine from the exported ONNX model
         compiled_model = client.ir_to_compiled(onnx_bytes, compilation_args)
+        # Clear onnx_bytes to free memory
+        del onnx_bytes
         # Save TRT engine for future use
         with open(f"{args.model}.plan", "wb") as f:
             # Remove the SHA-256 hash from the compiled model, used to maintain state in the trt_client
@@ -276,8 +283,7 @@ def main():
     if hasattr(pipe, "unet") and add_embedding:
         setattr(device_model, "add_embedding", add_embedding)
 
-    # Move the backbone back to the CPU and set the backbone to the compiled device model
-    backbone.to("cpu")
+    # Set the backbone to the device model
     if hasattr(pipe, "unet"):
         pipe.unet = device_model
     elif hasattr(pipe, "transformer"):

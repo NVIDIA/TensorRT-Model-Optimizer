@@ -79,6 +79,7 @@ optional_deps = {
         "pytest-timeout",
         "timm",
         "torchvision",
+        "torch-geometric",
         "tox>4.18",
         "tox-current-env>=0.0.12",
     ],
