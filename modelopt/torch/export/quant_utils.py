@@ -1092,9 +1092,6 @@ def fuse_prequant_layernorm(
         fused_bias = bias * avg_pre_quant_scale
         layernorm_output_scaled = (normalization(input) * fused_weight) + fused_bias
     """
-    # Store modules that need recalibration
-    modules_to_recalibrate = []
-
     layernorm_module.weight = torch.nn.Parameter(
         layernorm_module.weight * getattr(modules[0].input_quantizer, "_pre_quant_scale")
     )
@@ -1106,8 +1103,6 @@ def fuse_prequant_layernorm(
     for module in modules:
         delattr(module.input_quantizer, "_pre_quant_scale")
         setattr(module, "fused_with_prequant", True)
-        if module.input_quantizer.is_enabled:
-            modules_to_recalibrate.append(module)
 
 
 def preprocess_linear_fusion(modules: list[torch.nn.Module], resmooth_only=False):
