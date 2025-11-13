@@ -472,7 +472,7 @@ class PrecisionConverter:
     def _get_tensors_to_cast(
         self,
         low_precision_nodes: list[str],
-        high_precision_tensors: dict[str, dict[str, list[int]]],
+        high_precision_tensors: dict[str, dict[str, list[int]]] = {},
     ) -> tuple[list[str], list[str], dict[str, list[onnx.NodeProto]]]:
         cast_to_fp16 = []  # Tensors to cast down to FP16
         cast_to_fp32 = []  # Tensors to cast up to FP32
