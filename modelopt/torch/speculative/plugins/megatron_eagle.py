@@ -1119,6 +1119,8 @@ class _DynamicEagleGPTModel(EagleModel):
 
             if self.eagle_report_acc and not self.training:
                 with torch.no_grad():
+                    gathered_base_logits = gather_from_tensor_model_parallel_region(logits_sbh)
+                    base_top1 = gathered_base_logits.transpose(0, 1).argmax(dim=-1)
                     for i in range(self.eagle_config.parallel_draft_step):
                         gathered_logits = gather_from_tensor_model_parallel_region(
                             eagle_logits[i * input_ids.shape[1] : (i + 1) * input_ids.shape[1]]
@@ -1127,6 +1129,7 @@ class _DynamicEagleGPTModel(EagleModel):
                         eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                             eagle_top1 += self.eagle_module.d2t[eagle_top1]
+
                         top1_p = (
                             torch.eq(labels[:, i + ttt_step + 1 :], eagle_top1).sum()
                             / eagle_top1.numel()
