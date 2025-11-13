@@ -38,7 +38,11 @@ from pathlib import Path
 import onnx
 import onnx_graphsurgeon as gs
 import torch
-from diffusers.models.transformers import FluxTransformer2DModel, SD3Transformer2DModel
+from diffusers.models.transformers import (
+    FluxTransformer2DModel,
+    SD3Transformer2DModel,
+    WanTransformer3DModel,
+)
 from diffusers.models.transformers.transformer_ltx import LTXVideoTransformer3DModel
 from diffusers.models.unets import UNet2DConditionModel
 from torch.onnx import export as onnx_export
@@ -104,6 +108,11 @@ MODEL_ID_TO_DYNAMIC_AXES = {
         "encoder_attention_mask": {0: "batch_size"},
         "video_coords": {0: "batch_size", 2: "latent_dim"},
     },
+    "wan2.2-t2v-14b": {
+        "hidden_states": {0: "batch_size", 2: "frame_num", 3: "height", 4: "width"},
+        "encoder_hidden_states": {0: "batch_size"},
+        "timestep": {0: "batch_size"},
+    },
 }
 
 
@@ -159,7 +168,7 @@ def _gen_dummy_inp_and_dyn_shapes_sdxl(backbone, min_bs=1, opt_bs=1):
         "added_cond_kwargs.time_ids": {"min": [min_bs, 6], "opt": [opt_bs, 6]},
     }
 
-    dummy_input = {
+    dummy_kwargs = {
         "sample": torch.randn(*dynamic_shapes["sample"]["min"]),
         "timestep": torch.ones(1),
         "encoder_hidden_states": torch.randn(*dynamic_shapes["encoder_hidden_states"]["min"]),
@@ -169,9 +178,9 @@ def _gen_dummy_inp_and_dyn_shapes_sdxl(backbone, min_bs=1, opt_bs=1):
         },
         "return_dict": False,
     }
-    dummy_input = torch_to(dummy_input, dtype=backbone.dtype)
+    dummy_kwargs = torch_to(dummy_kwargs, dtype=backbone.dtype)
 
-    return dummy_input, dynamic_shapes
+    return dummy_kwargs, dynamic_shapes
 
 
 def _gen_dummy_inp_and_dyn_shapes_sd3(backbone, min_bs=1, opt_bs=1):
@@ -196,16 +205,16 @@ def _gen_dummy_inp_and_dyn_shapes_sd3(backbone, min_bs=1, opt_bs=1):
         },
     }
 
-    dummy_input = {
+    dummy_kwargs = {
         "hidden_states": torch.randn(*dynamic_shapes["hidden_states"]["min"]),
         "timestep": torch.ones(1),
         "encoder_hidden_states": torch.randn(*dynamic_shapes["encoder_hidden_states"]["min"]),
         "pooled_projections": torch.randn(*dynamic_shapes["pooled_projections"]["min"]),
         "return_dict": False,
     }
-    dummy_input = torch_to(dummy_input, dtype=backbone.dtype)
+    dummy_kwargs = torch_to(dummy_kwargs, dtype=backbone.dtype)
 
-    return dummy_input, dynamic_shapes
+    return dummy_kwargs, dynamic_shapes
 
 
 def _gen_dummy_inp_and_dyn_shapes_flux(backbone, min_bs=1, opt_bs=1):
@@ -237,7 +246,7 @@ def _gen_dummy_inp_and_dyn_shapes_flux(backbone, min_bs=1, opt_bs=1):
         dynamic_shapes["guidance"] = {"min": [1], "opt": [1]}
 
     dtype = backbone.dtype
-    dummy_input = {
+    dummy_kwargs = {
         "hidden_states": torch.randn(*dynamic_shapes["hidden_states"]["min"], dtype=dtype),
         "encoder_hidden_states": torch.randn(
             *dynamic_shapes["encoder_hidden_states"]["min"], dtype=dtype
@@ -251,9 +260,9 @@ def _gen_dummy_inp_and_dyn_shapes_flux(backbone, min_bs=1, opt_bs=1):
         "return_dict": False,
     }
     if cfg.guidance_embeds:  # flux-dev
-        dummy_input["guidance"] = torch.full((1,), 3.5, dtype=torch.float32)
+        dummy_kwargs["guidance"] = torch.full((1,), 3.5, dtype=torch.float32)
 
-    return dummy_input, dynamic_shapes
+    return dummy_kwargs, dynamic_shapes
 
 
 def _gen_dummy_inp_and_dyn_shapes_ltx(backbone, min_bs=2, opt_bs=2):
@@ -282,7 +291,7 @@ def _gen_dummy_inp_and_dyn_shapes_ltx(backbone, min_bs=2, opt_bs=2):
             "opt": [opt_bs, 3, video_dim],
         },
     }
-    dummy_input = {
+    dummy_kwargs = {
         "hidden_states": torch.randn(*dynamic_shapes["hidden_states"]["min"], dtype=dtype),
         "encoder_hidden_states": torch.randn(
             *dynamic_shapes["encoder_hidden_states"]["min"], dtype=dtype
@@ -293,7 +302,51 @@ def _gen_dummy_inp_and_dyn_shapes_ltx(backbone, min_bs=2, opt_bs=2):
         ),
         "video_coords": torch.randn(*dynamic_shapes["video_coords"]["min"], dtype=dtype),
     }
-    return dummy_input, dynamic_shapes
+
+    return dummy_kwargs, dynamic_shapes
+
+
+def _gen_dummy_inp_and_dyn_shapes_wan(backbone, min_bs=1, opt_bs=2):
+    assert isinstance(backbone, WanTransformer3DModel)
+    dtype = backbone.dtype
+
+    channels = 16  # latent channels from VAE
+    hidden_size = 4096  # text encoder hidden size (UMT5-XXL)
+
+    min_num_frames = 4 * 1 + 1
+    opt_num_frames = 4 * 20 + 1
+
+    min_height = 480
+    min_width = 480
+
+    opt_height = 1280
+    opt_width = 1280
+
+    min_latent_height = min_height // 8
+    min_latent_width = min_width // 8
+    opt_latent_height = opt_height // 8
+    opt_latent_width = opt_width // 8
+
+    dynamic_shapes = {
+        "hidden_states": {
+            "min": [min_bs, channels, min_num_frames, min_latent_height, min_latent_width],
+            "opt": [opt_bs, channels, opt_num_frames, opt_latent_height, opt_latent_width],
+        },
+        "encoder_hidden_states": {
+            "min": [min_bs, 512, hidden_size],
+            "opt": [opt_bs, 512, hidden_size],
+        },
+        "timestep": {"min": [min_bs], "opt": [opt_bs]},
+    }
+
+    dummy_kwargs = {
+        "hidden_states": torch.randn(*dynamic_shapes["hidden_states"]["min"], dtype=dtype),
+        "encoder_hidden_states": torch.randn(
+            *dynamic_shapes["encoder_hidden_states"]["min"], dtype=dtype
+        ),
+        "timestep": torch.ones(*dynamic_shapes["timestep"]["min"], dtype=dtype),
+    }
+    return dummy_kwargs, dynamic_shapes
 
 
 def update_dynamic_axes(model_id, dynamic_axes):
@@ -327,30 +380,32 @@ def _create_dynamic_shapes(dynamic_shapes):
 def generate_dummy_inputs_and_dynamic_axes_and_shapes(model_id, backbone):
     """Generate dummy inputs, dynamic axes, and dynamic shapes for the given model."""
     if model_id in ["sdxl-1.0", "sdxl-turbo"]:
-        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sdxl(
-            backbone, min_bs=2, opt_bs=16
+        dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sdxl(
+            backbone, min_bs=1, opt_bs=16
         )
     elif model_id in ["sd3-medium", "sd3.5-medium"]:
-        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sd3(
-            backbone, min_bs=2, opt_bs=16
+        dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_sd3(
+            backbone, min_bs=1, opt_bs=16
         )
     elif model_id in ["flux-dev", "flux-schnell"]:
-        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_flux(
-            backbone, min_bs=1, opt_bs=1
+        dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_flux(
+            backbone, min_bs=1, opt_bs=2
         )
     elif model_id == "ltx-video-dev":
-        dummy_input, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_ltx(
-            backbone, min_bs=2, opt_bs=2
+        dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_ltx(
+            backbone, min_bs=1, opt_bs=2
+        )
+    elif model_id == "wan2.2-t2v-14b":
+        dummy_kwargs, dynamic_shapes = _gen_dummy_inp_and_dyn_shapes_wan(
+            backbone, min_bs=1, opt_bs=2
         )
     else:
         raise NotImplementedError(f"Unsupported model_id: {model_id}")
 
-    dummy_input = torch_to(dummy_input, device=backbone.device)
-    dummy_inputs = (dummy_input,)
+    dummy_kwargs = torch_to(dummy_kwargs, device=backbone.device)
     dynamic_axes = MODEL_ID_TO_DYNAMIC_AXES[model_id]
-    dynamic_shapes = _create_dynamic_shapes(dynamic_shapes)
 
-    return dummy_inputs, dynamic_axes, dynamic_shapes
+    return dummy_kwargs, dynamic_axes, dynamic_shapes
 
 
 def get_io_shapes(model_id, onnx_load_path, dynamic_shapes):
@@ -415,7 +470,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
         configure_linear_module_onnx_quantizers(backbone) if precision == "fp4" else nullcontext()
     )
 
-    dummy_inputs, dynamic_axes, _ = generate_dummy_inputs_and_dynamic_axes_and_shapes(
+    dummy_kwargs, dynamic_axes, _ = generate_dummy_inputs_and_dynamic_axes_and_shapes(
         model_name, backbone
     )
 
@@ -449,6 +504,13 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
             "video_coords",
         ]
         output_names = ["latent"]
+    elif model_name in ["wan2.2-t2v-14b"]:
+        input_names = [
+            "hidden_states",
+            "encoder_hidden_states",
+            "timestep",
+        ]
+        output_names = ["latent"]
     else:
         raise NotImplementedError(f"Unsupported model_id: {model_name}")
 
@@ -456,15 +518,20 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     opset_version = 20
 
     with quantizer_context, torch.inference_mode():
+        # program = export(backbone, (), dummy_kwargs, dynamic_shapes=dynamic_shapes, strict=False)
+        # print(f"Exported program: {program}")
+        #    dynamic_shapes=dynamic_shapes,
         onnx_export(
             backbone,
-            dummy_inputs,
+            (),
             f=tmp_output.as_posix(),
+            kwargs=dummy_kwargs,
             input_names=input_names,
             output_names=output_names,
             dynamic_axes=dynamic_axes,
             do_constant_folding=do_constant_folding,
             opset_version=opset_version,
+            dynamo=False,
         )
     print(f"Saved at {tmp_output}")
     onnx_model = onnx.load(str(tmp_output), load_external_data=True)
