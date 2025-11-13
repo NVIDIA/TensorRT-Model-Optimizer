@@ -27,6 +27,13 @@ from ..nn import QuantLinearConvBase, QuantModule, QuantModuleRegistry, TensorQu
 vllm_fused_moe_package = importlib.import_module("vllm.model_executor.layers.fused_moe.fused_moe")
 
 
+def _assign_weight(target, weight):
+    if isinstance(target, torch.nn.Parameter):
+        target = torch.nn.Parameter(weight, requires_grad=target.requires_grad)
+    else:
+        target = weight
+
+
 class FakeQuantMethod:
     """A class that implements fake quantization methods for vLLM models.
 
@@ -150,44 +157,39 @@ class _QuantVLLMFusedMoE(QuantModule):
         **kwargs,
     ):
         if B is self.w13_weight:
-            # First layer of expert
-            A = self.w13_input_quantizer(A)  # noqa: N806
             if self.w13_weight_quantizer.is_enabled:
                 original_weight = self.w13_weight
-                self.w13_weight = self.w13_weight_quantizer(self.w13_weight)
-                vllm_fused_moe_package._invoke_fused_moe_kernel(A, B, C, *args, **kwargs)
-                self.w13_weight = original_weight
+                _assign_weight(self.w13_weight, self.w13_weight_quantizer(self.w13_weight))
+                self._original_invoke_kernel(A, B, C, *args, **kwargs)
+                _assign_weight(self.w13_weight, original_weight)
             else:
-                vllm_fused_moe_package._invoke_fused_moe_kernel(A, B, C, *args, **kwargs)
+                self._original_invoke_kernel(A, B, C, *args, **kwargs)
             if self.w13_output_quantizer.is_enabled:
                 C[:] = self.w13_output_quantizer(C)
         elif B is self.w2_weight:
             A = self.w2_input_quantizer(A)  # noqa: N806
             if self.w2_weight_quantizer.is_enabled:
                 original_weight = self.w2_weight
-                self.w2_weight = self.w2_weight_quantizer(self.w2_weight)
-                vllm_fused_moe_package._invoke_fused_moe_kernel(A, B, C, *args, **kwargs)
-                self.w2_weight = original_weight
+                _assign_weight(self.w2_weight, self.w2_weight_quantizer(self.w2_weight))
+                self._original_invoke_kernel(A, B, C, *args, **kwargs)
+                _assign_weight(self.w2_weight, original_weight)
             else:
-                vllm_fused_moe_package._invoke_fused_moe_kernel(A, B, C, *args, **kwargs)
+                self._original_invoke_kernel(A, B, C, *args, **kwargs)
             if self.w2_output_quantizer.is_enabled:
                 C[:] = self.w2_output_quantizer(C)
         else:
             raise ValueError("Cannot determine first or second layer of expert")
 
     def forward(self, hidden_states: torch.Tensor, router_logits: torch.Tensor):
-        # This is again due to the bad coding of vLLM
-        # fused_moe submodule is overwritten by the fused_moe function
-        # so we need to import the fused_moe module explicitly
-        assert vllm_fused_moe_package.invoke_fused_moe_kernel is not None
-        # This context manager will conflict with torch.compile
-        # with replace_function(
-        #     vllm_fused_moe_package,
-        #     "invoke_fused_moe_kernel",
-        #     self.invoke_fused_moe_quantized,
-        # ):
-        self._invoke_fused_moe_quantized = self.invoke_fused_moe_quantized
-        self.invoke_fused_moe_quantized = self.invoke_fused_moe_quantized
-        output = super().forward(hidden_states, router_logits)
-        self.invoke_fused_moe_quantized = self._invoke_fused_moe_quantized
+        hidden_states = self.w13_input_quantizer(hidden_states)
+
+        # Temporarily patch kernel to apply quantization
+        self._original_invoke_kernel = vllm_fused_moe_package.invoke_fused_moe_kernel
+        vllm_fused_moe_package.invoke_fused_moe_kernel = self.invoke_fused_moe_quantized  # type: ignore[attr-defined]
+
+        try:
+            output = super().forward(hidden_states, router_logits)
+        finally:
+            vllm_fused_moe_package.invoke_fused_moe_kernel = self._original_invoke_kernel  # type: ignore[attr-defined]
+
         return output
