@@ -507,8 +507,8 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
     elif model_name in ["wan2.2-t2v-14b"]:
         input_names = [
             "hidden_states",
-            "encoder_hidden_states",
             "timestep",
+            "encoder_hidden_states",
         ]
         output_names = ["latent"]
     else:
