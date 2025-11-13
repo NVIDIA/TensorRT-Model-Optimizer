@@ -628,7 +628,7 @@ class HFEagleModel(EagleModel):
 
         dtypemin = torch.finfo(self._base_llm_config.dtype).min
         q_len = seq_length
-        kv_len = seq_length * (2 + ttt_step)
+        kv_len = seq_length * (1 + ttt_step)
         if self.eagle_module.config._attn_implementation == "flex_attention":
             # Return block mask for flex attention
             block_mask = create_block_mask(msk, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len)
