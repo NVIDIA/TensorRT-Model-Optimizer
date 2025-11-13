@@ -152,12 +152,14 @@ class PrecisionConverter:
         self,
         high_precision_nodes: list[str],
         low_precision_nodes: list[str],
+        tensor_block_dict: dict[str, dict[str, list[int]]] = {},
     ) -> onnx.ModelProto:
         """Convert model to mixed precision.
 
         Args:
             high_precision_nodes: List of node names to keep in high precision.
             low_precision_nodes: List of node names to convert to low precision.
+            tensor_block_dict: Dictionary of tensors (operation type and I/O indices) that should remain in FP32.
 
         Returns:
             onnx.ModelProto: The converted mixed precision model.
@@ -188,7 +190,7 @@ class PrecisionConverter:
                     input.type.tensor_type.elem_type = self.low_precision_type.onnx_type
 
         cast_down_tensors, cast_up_tensors, fp32_input_to_low_precision_node = (
-            self._get_tensors_to_cast(low_precision_nodes)
+            self._get_tensors_to_cast(low_precision_nodes, tensor_block_dict)
         )
         logger.debug(f"cast down (to {self.low_precision_type.str_full}): {cast_down_tensors}")
         logger.debug(f"cast up (to {self.high_precision_type.str_full}): {cast_up_tensors}")
@@ -211,7 +213,8 @@ class PrecisionConverter:
                 # For the low precision nodes that take a FP32 input, we don't exclude it from
                 # casting up so that the input can be converted to FP32 as expected.
                 exclude_consumers = list(
-                    set(low_precision_nodes) - {fp32_input_to_low_precision_node[tensor_name].name}
+                    set(low_precision_nodes)
+                    - {n.name for n in fp32_input_to_low_precision_node[tensor_name]}
                 )
             self._add_cast(
                 tensor_name,
@@ -467,21 +470,26 @@ class PrecisionConverter:
         return high_precision_nodes, low_precision_nodes
 
     def _get_tensors_to_cast(
-        self, low_precision_nodes: list[str]
-    ) -> tuple[list[str], list[str], dict[str, onnx.NodeProto]]:
+        self,
+        low_precision_nodes: list[str],
+        high_precision_tensors: dict[str, dict[str, list[int]]],
+    ) -> tuple[list[str], list[str], dict[str, list[onnx.NodeProto]]]:
         cast_to_fp16 = []  # Tensors to cast down to FP16
         cast_to_fp32 = []  # Tensors to cast up to FP32
         # Keep track of the low precision nodes that take a FP32 input.
-        fp32_input_to_low_precision_node = {}
+        fp32_input_to_low_precision_node = defaultdict(list)
 
         # Get tensors for FP16 nodes
         for node in self.model.graph.node:
             if node.name in low_precision_nodes:
                 # Cast inputs to FP16 nodes down to FP16
-                for input in node.input:
-                    if self._should_skip_low_precision_input_conversion(node, input):
+                high_precision_tensor = high_precision_tensors.get(node.op_type, {})
+                for idx, input in enumerate(node.input):
+                    if self._should_skip_low_precision_input_conversion(
+                        node, input
+                    ) or idx in high_precision_tensor.get("inp", []):
                         cast_to_fp32.append(input)
-                        fp32_input_to_low_precision_node[input] = node
+                        fp32_input_to_low_precision_node[input].append(node)
                     else:
                         cast_to_fp16.append(input)
 
@@ -888,7 +896,7 @@ class PrecisionConverter:
         )
 
         if tensor_to_consumers is None:
-            utils.get_consumer_nodes(self.model, tensor_name)
+            consumer_nodes = utils.get_consumer_nodes(self.model, tensor_name)
         else:
             consumer_nodes = tensor_to_consumers.get(tensor_name, [])
         consumer_nodes = [n for n in consumer_nodes if n.name not in exclude_consumers]
