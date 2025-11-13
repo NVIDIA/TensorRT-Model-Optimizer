@@ -959,21 +959,6 @@ def all_items_same(item_list):
     return all(x == item_list[0] for x in item_list)
 
 
-# Format: (list of target modules, tuple of (linear_to_fuse_into, linear_from_with_scale))
-PQS_FUSE_MODULE_MAPPING = [
-    # Attention: Fuse o_proj's pre_quant_scale into v_proj's output dimension
-    # Mathematical equivalence:
-    #   Before: o_proj_out = [attn @ (v_proj_in @ v_proj.W^T)^T * scale] @ o_proj.W^T
-    #   After:  o_proj_out = [attn @ (v_proj_in @ (v_proj.W * scale)^T)^T] @ o_proj.W^T
-    (["LlamaAttention", "Qwen3Attention", "Qwen3MoeAttention"], ("v_proj", "o_proj")),
-    # MLP: Fuse down_proj's pre_quant_scale into up_proj's output dimension
-    # Mathematical equivalence:
-    #   Before: down_proj_out = {[act_fn(self.gate_proj(x)) * up_proj(x)] * scale} @ down_proj.W^T
-    #   After:  down_proj_out = {[act_fn(self.gate_proj(x)) * (up_proj(x) * scale)]} @ down_proj.W^T
-    (["LlamaMLP", "Qwen3MLP", "Qwen3MoeMLP"], ("up_proj", "down_proj")),
-]
-
-
 def _update_pre_quant_scale(module, new_pre_quant_scale):
     old_pre_quant_scale = module.input_quantizer._pre_quant_scale
     # do the processing in fp32 for numerical stability
@@ -992,6 +977,21 @@ def _update_pre_quant_scale(module, new_pre_quant_scale):
     enable_stats_collection(module.weight_quantizer)
     module.weight_quantizer(module.weight)
     finish_stats_collection(module.weight_quantizer)
+
+
+# Format: (list of target modules, tuple of (linear_to_fuse_into, linear_from_with_scale))
+PQS_FUSE_MODULE_MAPPING = [
+    # Attention: Fuse o_proj's pre_quant_scale into v_proj's output dimension
+    # Mathematical equivalence:
+    #   Before: o_proj_out = [attn @ (v_proj_in @ v_proj.W^T)^T * scale] @ o_proj.W^T
+    #   After:  o_proj_out = [attn @ (v_proj_in @ (v_proj.W * scale)^T)^T] @ o_proj.W^T
+    (["LlamaAttention", "Qwen3Attention", "Qwen3MoeAttention"], ("v_proj", "o_proj")),
+    # MLP: Fuse down_proj's pre_quant_scale into up_proj's output dimension
+    # Mathematical equivalence:
+    #   Before: down_proj_out = {[act_fn(self.gate_proj(x)) * up_proj(x)] * scale} @ down_proj.W^T
+    #   After:  down_proj_out = {[act_fn(self.gate_proj(x)) * (up_proj(x) * scale)]} @ down_proj.W^T
+    (["LlamaMLP", "Qwen3MLP", "Qwen3MoeMLP"], ("up_proj", "down_proj")),
+]
 
 
 def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
