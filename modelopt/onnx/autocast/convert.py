@@ -194,6 +194,7 @@ def convert_to_f16(
     low_precision_type: str = "fp16",
     keep_io_types: bool = True,
     op_block_list: list[str] = [],
+    tensor_block_dict: dict[str, dict[str, list[int]]] = {},
     trt_plugins: list[str] | None = [],
 ) -> onnx.ModelProto:
     """Convert model to mixed precision, using PrecisionConverter.
@@ -205,6 +206,7 @@ def convert_to_f16(
         low_precision_type: Target precision to reduce to ('fp16' or 'bf16').
         keep_io_types: Whether to preserve input/output types.
         op_block_list: List of operation types that should remain in FP32.
+        tensor_block_dict: Dictionary of tensors (operation type and I/O indices) that should remain in FP32.
         trt_plugins: List of TensorRT plugin library paths in .so format (compiled shared library).
     """
     assert low_precision_type in ["fp16", "bf16"], "low_precision_type must be either fp16 or bf16"
@@ -239,5 +241,7 @@ def convert_to_f16(
     low_precision_nodes = [
         node.name for node in model.graph.node if node.op_type not in op_block_list
     ]
-    model_mod = precision_converter.convert(high_precision_nodes, low_precision_nodes)
+    model_mod = precision_converter.convert(
+        high_precision_nodes, low_precision_nodes, tensor_block_dict
+    )
     return model_mod
