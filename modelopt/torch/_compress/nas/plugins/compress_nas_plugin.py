@@ -32,6 +32,7 @@ from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import 
     convert_llama3_to_decilm,
 )
 from modelopt.torch._compress.tools.hydra_utils import initialize_hydra_config_for_dir
+from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 from modelopt.torch.nas.conversion import NASModeRegistry
 from modelopt.torch.opt.config import ModeloptBaseConfig, ModeloptField
@@ -119,17 +120,24 @@ def convert_compress_model(model: nn.Module, config: CompressConfig) -> ConvertR
     )
 
     # Convert Llama3 model to DeciLM model
-    hf_ckpt_teacher_dir = "ckpts/teacher"  # TODO: make it configurable
-    convert_llama3_to_decilm(
-        input_dir=config.input_model_path,
-        output_dir=Path(config.puzzle_dir) / hf_ckpt_teacher_dir,
-    )
+    if runtime.global_rank == 0:
+        mprint("Compress Progress 2/8: converting model from HF to DeciLM (single-gpu)")
+        hf_ckpt_teacher_dir = "ckpts/teacher"  # TODO: make it configurable
+        convert_llama3_to_decilm(
+            input_dir=config.input_model_path,
+            output_dir=Path(config.puzzle_dir) / hf_ckpt_teacher_dir,
+        )
+    runtime.wait_for_everyone()
 
     # Score_pruning_activations (distributed processing)
+    mprint("Compress Progress 3/8: scoring pruning activations (multi-gpu)")
     score_pruning_activations.launch_score_activations(hydra_cfg, runtime)
 
     # Prune the model and save pruned checkpoints
     if runtime.global_rank == 0:
+        mprint(
+            "Compress Progress 4/8: pruning the model and saving pruned checkpoints (single-gpu)"
+        )
         pruning_ckpts.launch_prune_ckpt(hydra_cfg)
     runtime.wait_for_everyone()
 
@@ -209,11 +217,16 @@ class CompressSearcher(BaseSearcher):
 
         # Build_library_and_stats (single process)
         if runtime.global_rank == 0:
+            mprint(
+                "Compress Progress 5/8: building replacement library and subblock statistics (single-gpu)"
+            )
             build_library_and_stats.launch_build_library_and_stats(hydra_cfg)
         runtime.wait_for_everyone()
 
         # Calc_one_block_scores (distributed processing)
+        mprint("Compress Progress 6/8: calculating one block scores (multi-gpu)")
         scoring.launch_scoring(hydra_cfg, runtime)
 
         # mip_and_realize_models (distributed processing)
+        mprint("Compress Progress 7/8: running MIP and realizing models (multi-gpu)")
         mip_and_realize_models.launch_mip_and_realize_model(hydra_cfg, runtime)
