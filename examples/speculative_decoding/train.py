@@ -19,7 +19,7 @@ import os
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
-from distill_trainer import EagleTPTrainer
+from distill_trainer import EagleSGLTrainer
 from eagle_utils import DataCollatorWithPadding, make_eagle_supervised_data_module
 from transformers import AutoTokenizer
 
@@ -34,10 +34,10 @@ def _setup_distributed(rank, args, backend="nccl"):
     os.environ["LOCAL_RANK"] = str(rank)
     # Initialize process group
     dist.init_process_group(backend, rank=rank, world_size=args.world_size)
-    if rank in args.student_ranks:
-        torch.cuda.set_device(args.student_devices[rank])
+    if rank in args.teacher_ranks:
+        torch.cuda.set_device(args.teacher_devices[rank])
     else:
-        torch.cuda.set_device(args.teacher_devices[rank - len(args.student_ranks)])
+        torch.cuda.set_device(args.student_devices[rank - len(args.teacher_ranks)])
     print(
         f"Starting process rank={rank}, device={torch.cuda.current_device()}, world_size={args.world_size}"
     )
@@ -51,7 +51,10 @@ def train(rank, args):
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_path, model_max_length=args.training_seq_len
     )
-    data_module = make_eagle_supervised_data_module(tokenizer, args, use_offline_training=False)
+    args.use_offline_training = False
+    args.vlm_processor = None
+    args.offline_data_path = None
+    data_module = make_eagle_supervised_data_module(tokenizer, args)
 
     train_dataloader = torch.utils.data.DataLoader(
         data_module["train_dataset"],
@@ -62,7 +65,7 @@ def train(rank, args):
         drop_last=True,
     )
 
-    trainer = EagleTPTrainer(rank, args, tokenizer, train_dataloader)
+    trainer = EagleSGLTrainer(rank, args, tokenizer, train_dataloader)
     trainer.train()
     trainer.save_pretrained(args.out_path)
 
@@ -70,8 +73,8 @@ def train(rank, args):
 def main():
     parser = argparse.ArgumentParser(description="Multi-GPU distributed two-stage forward example")
     parser.add_argument("--model_path", type=str, default="TinyLlama/TinyLlama-1.1B-Chat-v1.0")
-    parser.add_argument("--student_devices", type=list, default=[0, 1, 2, 3])
-    parser.add_argument("--teacher_devices", type=list, default=[4, 5, 6, 7])
+    parser.add_argument("--teacher_devices", type=list, default=[0, 1, 2, 3])
+    parser.add_argument("--student_devices", type=list, default=[4, 5, 6, 7])
     parser.add_argument(
         "--data_path", type=str, default="data/magpie_llama3.2_1b_generated/data.cleaned.jsonl"
     )
@@ -92,11 +95,10 @@ def main():
     # TODO: add sanity check for args
 
     def set_ranks(args):
-        # TODO(hg): This is for TP-DDP setting only. Add "no-parallel", "MP", "FSDP".
         args.world_size = len(args.teacher_devices) + len(args.student_devices)
-        args.student_ranks = list(range(len(args.student_devices)))
-        args.teacher_ranks = list(
-            range(len(args.student_devices), len(args.student_devices) + len(args.teacher_devices))
+        args.teacher_ranks = list(range(len(args.teacher_devices)))
+        args.student_ranks = list(
+            range(len(args.teacher_devices), len(args.teacher_devices) + len(args.student_devices))
         )
 
     set_ranks(args)

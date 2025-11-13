@@ -907,7 +907,7 @@ class HFEagleModel(EagleModel):
                     ),
                 )
                 eagle_loss += classification_loss
-                train_accs[f"train_acc_step{ttt_step + 1}"] = acc
+                train_accs.append(acc)
         # Finally, we merge base model loss and eagle loss, raise error if both are None
         if base_model_loss is not None and eagle_loss is not None:
             loss = base_model_loss + eagle_loss
@@ -926,7 +926,7 @@ class HFEagleModel(EagleModel):
             logits=base_model_logits,
             past_key_values=past_key_values,
             hidden_states=base_model_hidden_states,
-            **train_accs,
+            train_acc=train_accs,
         )
 
     def _eagle_loss(

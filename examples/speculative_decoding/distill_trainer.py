@@ -21,6 +21,7 @@ from contextlib import nullcontext
 
 import torch
 import torch.distributed as dist
+from sgl_wrapper import SglangTargetModel
 from torch.distributed.device_mesh import DeviceMesh
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
@@ -40,9 +41,9 @@ except ImportError:
 mto.enable_huggingface_checkpointing()
 
 # Hyperparameters for profiling
-LOG_INTERVAL = 100
+LOG_INTERVAL = 50
 SAVE_INTERVAL = 20000
-TOTAL_STEPS = 500
+TOTAL_STEPS = 100
 
 # Shape and dtype description of the distillation signal
 DistillMetadata = dict[str, tuple[torch.Size, torch.dtype]]
@@ -170,9 +171,9 @@ class BaseDistillTrainer:
             f"Number of teacher outputs {len(teacher_outputs)} does not \
             match number of student ranks {len(self.args.student_ranks)}"
         )
-        for s in self.args.student_ranks:
-            self._check_valid_message(teacher_outputs[s])
-            reqs = [dist.isend(buffer, dst=s) for buffer in teacher_outputs[s].values()]
+        for idx, s in enumerate(self.args.student_ranks):
+            self._check_valid_message(teacher_outputs[idx])
+            reqs = [dist.isend(buffer, dst=s) for buffer in teacher_outputs[idx].values()]
             for req in reqs:
                 req.wait()
 
@@ -235,6 +236,13 @@ class BaseDistillTrainer:
                             # Attach all float metrics
                             **{k: round(v, 3) for k, v in output.items() if isinstance(v, float)},
                         }
+                        if "train_acc" in output:
+                            train_metrics.update(
+                                {
+                                    f"train_acc_step{i}": output["train_acc"][i]
+                                    for i in range(len(output["train_acc"]))
+                                }
+                            )
 
                         pbar.set_description(f"Epoch {epoch} Loss {train_metrics['loss']}")
                         if global_step % LOG_INTERVAL == 0:
@@ -277,10 +285,10 @@ class EagleTPTrainer(BaseDistillTrainer):
 
     @property
     def current_rank_device(self):
-        if self.rank in self.args.student_ranks:
-            return self.args.student_devices[self.rank]
+        if self.rank in self.args.teacher_ranks:
+            return self.args.teacher_devices[self.rank]
         else:
-            return self.args.teacher_devices[self.rank - len(self.args.student_ranks)]
+            return self.args.student_devices[self.rank - len(self.args.teacher_ranks)]
 
     def _prepare_teacher_model(self):
         # Load model with TP among teacher ranks.
@@ -380,7 +388,7 @@ class EagleTPTrainer(BaseDistillTrainer):
 
         # Aux_hidden_states could be on multiple devices. Gather before cat.
         aux_hidden_states = torch.cat(
-            [t.to(base_model_logits.device) for t in model.pop_aux_hidden_states()], dim=-1
+            [t.to(base_model_logits.device) for t in model.pop_and_gather_aux_hiddens()], dim=-1
         )
 
         # Chunk the tensors for each student rank.
@@ -405,9 +413,75 @@ class EagleTPTrainer(BaseDistillTrainer):
         self.optimizer.zero_grad()
 
         # Chunk input_ids and attention_mask for each student rank.
-        inputs = {k: v.chunk(len(self.args.student_ranks))[self.rank] for k, v in inputs.items()}
+        student_idx = self.rank - len(self.args.teacher_ranks)
+        inputs = {k: v.chunk(len(self.args.student_ranks))[student_idx] for k, v in inputs.items()}
 
         # Second stage forward with provided base model outputs.
         output = self.model(**inputs, base_model_outputs=distill_msgs)
 
         return output
+
+
+class EagleSGLTrainer(EagleTPTrainer):
+    """A subclass of EagleTPTrainer for online eagle training, with base model SGL and student DDP."""
+
+    def _prepare_teacher_model(self):
+        args = self.args
+        args.tp_size = len(self.args.teacher_devices)
+        args.max_length = self.args.training_seq_len
+
+        # patch torch.distributed functions to use only partial ranks
+        original_get_world_size = torch.distributed.get_world_size
+        original_barrier = torch.distributed.barrier
+        torch.distributed.get_world_size = lambda *args, **kwargs: len(self.args.teacher_devices)
+
+        def barrier_patch(*args, **kwargs):
+            if not args and not kwargs:
+                original_barrier(group=self.args.teacher_pgroup)
+            else:
+                original_barrier(*args, **kwargs)
+
+        torch.distributed.barrier = barrier_patch
+
+        # load SGL model with patches
+        model = SglangTargetModel(
+            args=args,
+            tp_group=self.args.teacher_pgroup,
+            return_full_logits=True,
+            gpu_id=self.current_rank_device,
+        )
+
+        # retore patches
+        torch.distributed.get_world_size = original_get_world_size
+        torch.distributed.barrier = original_barrier
+
+        model.set_aux_hidden_states_layers()
+        print("rank", self.rank, "SGL base model set")
+        model.device = self.current_rank_device
+        return model
+
+    def teacher_step(self, model, inputs):
+        # TODO: handle data loading in preprocess
+        sgl_inputs = [
+            {
+                "input_ids": inputs["input_ids"][i],
+                "attention_mask": inputs["attention_mask"][i],
+                "loss_mask": inputs["loss_mask"][i],
+            }
+            for i in range(inputs["input_ids"].shape[0])
+        ]
+
+        logits, h, aux_h = model.forward(sgl_inputs)
+
+        # Chunk the tensors for each student rank.
+        base_model_logits = logits.chunk(len(self.args.student_ranks))
+        base_model_hidden_states = h.chunk(len(self.args.student_ranks))
+        aux_hidden_states = aux_h.chunk(len(self.args.student_ranks))
+        return [
+            {
+                "base_model_hidden_states": base_model_hidden_states[i].unsqueeze(0),
+                "aux_hidden_states": aux_hidden_states[i].unsqueeze(0),
+                "base_model_logits": base_model_logits[i].unsqueeze(0).to(dtype=torch.bfloat16),
+            }
+            for i in range(len(self.args.student_ranks))
+        ]
