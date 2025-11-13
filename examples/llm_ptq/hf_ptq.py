@@ -654,8 +654,6 @@ def main(args):
                     "They will be set at deployment time."
                 )
 
-            from modelopt.torch.utils.dataset_utils import create_forward_loop
-
             export_forward_loop = create_forward_loop(dataloader=calib_dataloader)
             export_hf_checkpoint(
                 full_model,

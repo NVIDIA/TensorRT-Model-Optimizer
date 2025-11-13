@@ -113,6 +113,23 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module, forward_loop=No
     modules_to_recalibrate = []
     if quantization_format is not None and "nvfp4_awq" in quantization_format.lower():
         modules_to_recalibrate.extend(fuse_prequant_to_linear(model))
+        # Recalibrate input quantizers if forward_loop is provided
+        if forward_loop is not None and len(modules_to_recalibrate) > 0:
+            print(
+                f"Reseting {len(modules_to_recalibrate)} input quantizers after scaling factor fusion..."
+            )
+
+            # Reset amax for modules that need recalibration
+            for module in modules_to_recalibrate:
+                if hasattr(module, "input_quantizer") and module.input_quantizer.is_enabled:
+                    module.input_quantizer.reset_amax()
+
+            # Collect statistics
+            enable_stats_collection(model)
+            forward_loop(model)
+
+            # Finish calibration
+            max_calibrate(model, lambda model: None)
 
     for name, module in model.named_modules():
         module_names.add(name)
@@ -205,25 +222,6 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module, forward_loop=No
             # Pre quant scale of modules is already updated to avg_pre_quant_scale
             with fsdp2_aware_weight_update(model, output_to_layernorm[tensor]):
                 fuse_prequant_layernorm(output_to_layernorm[tensor], modules)
-                modules_to_recalibrate.extend(modules)
-
-    # Recalibrate input quantizers if forward_loop is provided
-    if forward_loop is not None and len(modules_to_recalibrate) > 0:
-        print(
-            f"Reseting {len(modules_to_recalibrate)} input quantizers after scaling factor fusion..."
-        )
-
-        # Reset amax for modules that need recalibration
-        for module in modules_to_recalibrate:
-            if hasattr(module, "input_quantizer") and module.input_quantizer.is_enabled:
-                module.input_quantizer.reset_amax()
-
-        # Collect statistics
-        enable_stats_collection(model)
-        forward_loop(model)
-
-        # Finish calibration
-        max_calibrate(model, lambda model: None)
 
     # The dummy forward may not be able to activate all the experts.
     # Process experts by naming rules like experts.0, experts.1, etc.
