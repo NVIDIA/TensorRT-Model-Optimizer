@@ -456,6 +456,8 @@ class HFEagleModel(EagleModel):
             eagle_architecture_config=eagle_architecture_config,
         )
         self.eagle_config = PretrainedConfig.from_dict(eagle_architecture_config)
+        if self.eagle_config._attn_implementation is None:
+            self.eagle_config._attn_implementation = "sdpa"
         decoder_cls = (
             type(self.model.layers[-1]) if self.eagle_reuse_base_decoder else LlamaDecoderLayer
         )
