@@ -135,6 +135,9 @@ def dict_to_config(
     )
     config.use_mtp_layernorm = architecture_config.get("use_mtp_layernorm")
     config.parallel_draft_step = architecture_config.get("parallel_draft_step")
+    config.parallel_draft_heads_num_layers = architecture_config.get(
+        "parallel_draft_heads_num_layers"
+    )
     config.has_lm_head = architecture_config.get("has_lm_head")
 
     return config
@@ -450,7 +453,11 @@ class EagleModule(MegatronModule):
 
         if self.config.parallel_draft_step > 1:
             self.parallel_draft_heads = torch.nn.ModuleList(
-                MedusaHead(self.config, self.config.draft_vocab_size, num_layers=4)
+                MedusaHead(
+                    self.config,
+                    self.config.draft_vocab_size,
+                    num_layers=self.config.parallel_draft_heads_num_layers,
+                )
                 for _ in range(self.config.parallel_draft_step - 1)
             )
 
