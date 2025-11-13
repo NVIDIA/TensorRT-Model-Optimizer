@@ -380,7 +380,6 @@ def _export_hf_checkpoint(
     Args:
         model: the full torch model to export. The actual quantized model may be a submodule.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
-        forward_loop: Optional calibration forward loop for recalibrating after weight fusion.
         accelerator: the accelerator instance in case of distributed export setup.
 
     Returns:
@@ -538,7 +537,6 @@ def export_hf_checkpoint(
     dtype: torch.dtype | None = None,
     export_dir: Path | str = tempfile.gettempdir(),
     save_modelopt_state: bool = False,
-    forward_loop=None,  # Add this parameter
 ):
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
@@ -547,7 +545,6 @@ def export_hf_checkpoint(
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.
-        forward_loop: Optional calibration forward loop for recalibrating after weight fusion.
     """
     export_dir = Path(export_dir)
     export_dir.mkdir(parents=True, exist_ok=True)
@@ -561,9 +558,7 @@ def export_hf_checkpoint(
         return
 
     try:
-        post_state_dict, hf_quant_config = _export_hf_checkpoint(
-            model, dtype, forward_loop=forward_loop
-        )
+        post_state_dict, hf_quant_config = _export_hf_checkpoint(model, dtype)
 
         # Save hf_quant_config.json for backward compatibility
         with open(f"{export_dir}/hf_quant_config.json", "w") as file:
