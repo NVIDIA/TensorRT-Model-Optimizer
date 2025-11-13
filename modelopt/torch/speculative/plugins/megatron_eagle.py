@@ -450,7 +450,7 @@ class EagleModule(MegatronModule):
 
         if self.config.parallel_draft_step > 1:
             self.parallel_draft_heads = torch.nn.ModuleList(
-                MedusaHead(self.config, self.config.draft_vocab_size)
+                MedusaHead(self.config, self.config.draft_vocab_size, num_layers=4)
                 for _ in range(self.config.parallel_draft_step - 1)
             )
 
