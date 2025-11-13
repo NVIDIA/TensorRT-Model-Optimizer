@@ -560,6 +560,39 @@ class EagleModule(MegatronModule):
 
         return hidden_states, next_hidden_states_input
 
+    def sharded_state_dict(
+        self, prefix: str = "", sharded_offsets: tuple = (), metadata: dict | None = None
+    ) -> ShardedStateDict:
+        """Override the shared_state_dict to take care parallel_draft_heads."""
+        assert not sharded_offsets, "Unexpected sharded offsets"
+
+        sharded_state_dict = MegatronModule.sharded_state_dict(
+            self, prefix, sharded_offsets, metadata
+        )
+
+        if not hasattr(self, "parallel_draft_heads") or self.parallel_draft_heads is None:
+            return sharded_state_dict
+
+        # This is a remedy for nn.ModuleList.
+        # MegatronModule.sharded_state_dict() requires all children to implement
+        # sharded_state_dict(). parallel_draft_heads is an nn.ModuleList which only has state_dict()
+        # implemented. As a result, all the submodules will not be sharded.
+        #
+        # The remedy is to pop all parallel_draft_heads* out and call the MedusaHead sharded_state_dict()
+        # again to populate the correct sharded_staet_dict.
+        extra_keys = []
+        for key in sharded_state_dict:
+            if "parallel_draft_heads" in key:
+                extra_keys += [key]
+        for key in extra_keys:
+            sharded_state_dict.pop(key, None)
+
+        head_prefix = f"{prefix}parallel_draft_heads."
+        for i, head in enumerate(self.parallel_draft_heads):
+            head_sharded_state_dict = head.sharded_state_dict(f"{head_prefix}{i}.", [], metadata)
+            sharded_state_dict.update(head_sharded_state_dict)
+        return sharded_state_dict
+
 
 @EagleDMRegistry.register({GPTModel: "megatron.core.models.gpt.GPTModel"})
 class _DynamicEagleGPTModel(EagleModel):
