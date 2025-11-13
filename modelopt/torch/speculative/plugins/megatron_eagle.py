@@ -1129,9 +1129,8 @@ class _DynamicEagleGPTModel(EagleModel):
                         eagle_top1 = gathered_logits.transpose(0, 1).argmax(dim=-1)
                         if self.eagle_config.draft_vocab_size != self.eagle_config.vocab_size:
                             eagle_top1 += self.eagle_module.d2t[eagle_top1]
-
                         top1_p = (
-                            torch.eq(labels[:, i + ttt_step + 1 :], eagle_top1).sum()
+                            torch.eq(base_top1[:, i + ttt_step + 1 :], eagle_top1).sum()
                             / eagle_top1.numel()
                         )
                         acc.append(top1_p)
