@@ -391,7 +391,7 @@ def _export_quantized_weight(
 def _export_hf_checkpoint(
     model: nn.Module,
     dtype: torch.dtype | None = None,
-    forward_loop=None,  # Add this parameter
+    forward_loop=None,
     **kwargs,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
