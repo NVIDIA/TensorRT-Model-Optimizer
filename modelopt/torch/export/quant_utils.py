@@ -1006,8 +1006,6 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
         fused_modules: A list of modules of which pre_quant_scale is fused to the previous linear layer.
     """
     # Fuse pre_quant_scale to the linear weights
-    fused_modules = []
-
     for _, module in model.named_modules():
         for module_map in PQS_FUSE_MODULE_MAPPING:
             target_module_list = module_map[0]
@@ -1071,10 +1069,6 @@ def fuse_prequant_to_linear(model: torch.nn.Module, fuse_grouped_heads=False):
 
                     delattr(linear_pqs_from.input_quantizer, "_pre_quant_scale")
                     setattr(linear_pqs_from, "fused_with_prequant", True)
-
-                    fused_modules.append(linear_pqs_from)
-
-    return fused_modules
 
 
 def fuse_prequant_layernorm(

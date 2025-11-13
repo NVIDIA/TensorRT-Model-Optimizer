@@ -654,11 +654,9 @@ def main(args):
                     "They will be set at deployment time."
                 )
 
-            export_forward_loop = create_forward_loop(dataloader=calib_dataloader)
             export_hf_checkpoint(
                 full_model,
                 export_dir=export_path,
-                forward_loop=export_forward_loop,  # Pass the calibration loop
             )
 
         # Copy custom model files (Python files and JSON configs) if trust_remote_code is used
