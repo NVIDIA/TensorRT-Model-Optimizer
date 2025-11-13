@@ -130,7 +130,7 @@ def get_language_model_from_vl(model) -> list[nn.Module] | None:
         >>> # For LLaVA-style models
         >>> lineage = get_language_model_from_vl(vlm_model)
         >>> # lineage[0] is vlm_model
-        >>> # lineage[1] is vllm_model.language_model
+        >>> # lineage[1] is vlm_model.language_model
     """
     # always prioritize model.model.langauge_model
     if hasattr(model, "model") and hasattr(model.model, "language_model"):
