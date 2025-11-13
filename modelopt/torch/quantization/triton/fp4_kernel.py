@@ -27,6 +27,21 @@ import triton.language as tl
 __all__ = ["fp4_fake_quant_block"]
 
 
+_TORCH_TO_TL_DTYPE = {
+    torch.float32: tl.float32,
+    torch.float: tl.float32,
+    torch.float16: tl.float16,
+    torch.half: tl.float16,
+    torch.bfloat16: tl.bfloat16,
+}
+
+
+def _torch_dtype_to_tl(dtype: torch.dtype):
+    if dtype not in _TORCH_TO_TL_DTYPE:
+        raise ValueError(f"Unsupported dtype for fp4 fake quantization: {dtype}")
+    return _TORCH_TO_TL_DTYPE[dtype]
+
+
 @triton.jit
 def fp4_fake_quant_kernel(
     x_ptr,
@@ -42,6 +57,7 @@ def fp4_fake_quant_kernel(
     TILE_M: tl.constexpr,
     TILE_N: tl.constexpr,
     NUM_FP4_BLOCKS: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
 ):
     """Applies FP4 fake quantization using block pointers for memory addressing."""
     pid_m = tl.program_id(axis=0)
@@ -119,7 +135,7 @@ def fp4_fake_quant_kernel(
 
     tile_quant = tl.reshape(x_rescaled, (TILE_M, TILE_N))
 
-    tl.store(y_block_ptr, tile_quant, boundary_check=(0, 1))
+    tl.store(y_block_ptr, tile_quant.to(OUT_DTYPE), boundary_check=(0, 1))
 
 
 def fp4_fake_quant_block(
@@ -151,7 +167,7 @@ def fp4_fake_quant_block(
     x = x.reshape(-1, x_shape[-1]).contiguous()
 
     M, N = x.shape
-    y = torch.empty_like(x, dtype=torch.float32)
+    y = torch.empty_like(x)
 
     stride_xm, stride_xn = x.stride()
     stride_ym, stride_yn = y.stride()
@@ -169,6 +185,7 @@ def fp4_fake_quant_block(
         "TILE_M": tile_rows,
         "TILE_N": tile_cols_aligned,
         "NUM_FP4_BLOCKS": num_fp4_blocks,
+        "OUT_DTYPE": _torch_dtype_to_tl(x_dtype),
     }
     if num_warps is not None:
         launch_kwargs["num_warps"] = num_warps
@@ -187,7 +204,7 @@ def fp4_fake_quant_block(
         **launch_kwargs,
     )
 
-    y = y.reshape(x_shape).contiguous().to(dtype=x_dtype)
+    y = y.reshape(x_shape)
     return y
 
 
