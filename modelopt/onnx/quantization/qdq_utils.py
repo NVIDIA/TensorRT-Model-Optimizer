@@ -872,22 +872,32 @@ def remove_input_dq_and_output_q(
                 )
 
                 # Only remove DQs from the inputs of custom ops
-                if consumers[0].op_type not in quantizable_custom_ops:
+                has_cast = consumers[0].op_type == "Cast"
+                consumers_2 = tensor_consumers[consumers[0].output[0]] if has_cast else consumers
+                if consumers_2[0].op_type not in quantizable_custom_ops:
                     continue
 
-                # Rewire graph to connect Q with the node after DQ (skip DQ)
-                for consumer in consumers:
-                    for cons_idx, cons_inp in enumerate(consumer.input):
-                        if cons_inp == node.output[0]:
-                            # If the input tensor is meant to be quantized, delete DQ. Otherwise, delete both Q/DQ.
-                            if cons_idx in quantizable_custom_ops[consumer.op_type]["inp"]:
-                                consumer.input[cons_idx] = q_node.output[0]
-                            else:
-                                q_node_prev = tensor_producers.get(q_node.input[0], None)
-                                consumer.input[cons_idx] = (
-                                    q_node_prev.output[0] if q_node_prev else q_node.input[0]
-                                )
-                            break
+                if has_cast:
+                    # Assume that this input tensor is not meant to be quantized as there's a Cast node between DQ
+                    # and the custom op. Keep the Cast node and delete both Q/DQ nodes.
+                    q_node_prev = tensor_producers.get(q_node.input[0], None)
+                    consumers[0].input[0] = (
+                        q_node_prev.output[0] if q_node_prev else q_node.input[0]
+                    )
+                else:
+                    # Rewire graph to connect Q with the node after DQ (skip DQ)
+                    for consumer in consumers:
+                        for cons_idx, cons_inp in enumerate(consumer.input):
+                            if cons_inp == node.output[0]:
+                                # If the input tensor is meant to be quantized, delete DQ. Otherwise, delete both Q/DQ.
+                                if cons_idx in quantizable_custom_ops[consumer.op_type]["inp"]:
+                                    consumer.input[cons_idx] = q_node.output[0]
+                                else:
+                                    q_node_prev = tensor_producers.get(q_node.input[0], None)
+                                    consumer.input[cons_idx] = (
+                                        q_node_prev.output[0] if q_node_prev else q_node.input[0]
+                                    )
+                                break
 
                 # Track DequantizeLinear node indices for cleanup
                 dq_indices.append(node_idx)
@@ -943,6 +953,11 @@ def remove_input_dq_and_output_q(
         f"Removed {len(q_indices)} Q node{'' if len(q_indices) == 1 else 's'} and"
         f" {len(dq_indices)} DQ node{'' if len(dq_indices) == 1 else 's'}"
     )
+
+    # Cleanup graph to remove any dangling Q/DQ nodes
+    graph = gs.import_onnx(onnx_model)
+    graph.cleanup()
+    onnx_model = gs.export_onnx(graph)
 
     # TODO: remove manual ir_version change once ORT supports ir_version 11
     onnx_model.ir_version = 10
