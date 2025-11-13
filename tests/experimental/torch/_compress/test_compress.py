@@ -26,7 +26,7 @@ from modelopt.torch._compress import compress
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
 )
-from modelopt.torch._compress.runtime import NativeDdpRuntime
+from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 
 # The e2e test to compress a model based on Local Neural Architecture Search (Mixed Integer Programing NAS search)
 # using a one-click command.
