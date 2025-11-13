@@ -231,6 +231,12 @@ def quantize(
     return calibrate(model, config["algorithm"], forward_loop=forward_loop)
 
 
+# TODO: create a config interface for auto_quantize and expose setting
+# quant_grouping_rules and score_module_rules as part of the config.
+# This will allow users to customize the grouping and scoring rules for their models.
+# This way wecan limit the granularity of quantization search. For example,
+#  - limit the quantization format search to decoder block level (instead of each linear layer level)
+#  - Same format for all self attention layers of a model etc.
 def auto_quantize(
     model: nn.Module,
     constraints: dict[str, float | str] = {"effective_bits": 4.8},
@@ -384,23 +390,32 @@ def auto_quantize(
         This is to ensure compatibility with TensorRT-LLM which fuses these three linear layers into a single linear
         layer.
 
-        A list of regex pattern rules as defined in :attr:`rules <.algorithms.AutoQuantizeSearcher.rules>`
-        are used to specify the group of layers. The first captured group
-        in the regex pattern (i.e, ``pattern.match(name).group(1)``) is used to group the layers. All the layers
-        that share the same first captured group will have the same quantization format..
+        Grouping rules are defined in :attr:`quant_grouping_rules
+        <.algorithms.AutoQuantizeSearcher.quant_grouping_rules>`.
+        Each rule can be either a regex pattern or a callable function.
 
-        For example, the rule ``r"^(.*?)\.(q_proj|k_proj|v_proj)$"``
-        groups the `q_proj`, `k_proj`, `v_proj` linear layers belonging to the same transformer layer.
+        - **Regex patterns**: The first captured group (e.g.,
+          ``pattern.match(name).group(1)``) determines the group key.
+          Layers with the same group key share the same quantization format.
+        - **Functions**: Should take a module name and return a group key
+          (or ``None`` if the rule doesn't apply).
 
-        You may modify the rules to group the layers as per your requirement.
+        Example regex rule: ``r"^(.*?)\.(q_proj|k_proj|v_proj)$"`` groups the
+        `q_proj`, `k_proj`, `v_proj` layers belonging to the same transformer layer.
+
+        You can customize the rules as needed:
 
         .. code-block:: python
 
             from modelopt.torch.quantization.algorithms import AutoQuantizeSearcher
 
-            # To additionally group the layers belonging to same `mlp` layer,
-            # add the following rule
-            AutoQuantizeSearcher.rules.append(r"^(.*?)\.mlp")
+            # Add a regex rule to group layers in the same `mlp` module
+            AutoQuantizeSearcher.quant_grouping_rules.append(r"^(.*?)\.mlp")
+
+            # Or add a function rule for custom logic
+            AutoQuantizeSearcher.quant_grouping_rules.append(
+                lambda name: name.rsplit(".", 1)[0] if "expert" in name else None
+            )
 
             # Perform `auto_quantize`
             model, state_dict = auto_quantize(model, ...)
