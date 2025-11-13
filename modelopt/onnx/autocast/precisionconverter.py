@@ -536,7 +536,7 @@ class PrecisionConverter:
             low_precision_nodes: List of node names that should use low precision initializers.
             high_precision_nodes: List of node names that should use high precision initializers.
         """
-        # 1. Compute a mapping from initiailizers to high precision nodes & low precision nodes that use them.
+        # 1. Compute a mapping from initializers to high precision nodes & low precision nodes that use them.
         low_precision_nodes_set: set[str] = set(low_precision_nodes)
         high_precision_nodes_set: set[str] = set(high_precision_nodes)
         initializer_to_nodes: dict[str, InitializerConsumerTracker] = defaultdict(

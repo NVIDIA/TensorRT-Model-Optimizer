@@ -204,7 +204,6 @@ def convert_to_f16(
         model: ONNX model to convert.
         low_precision_type: Target precision to reduce to ('fp16' or 'bf16').
         keep_io_types: Whether to preserve input/output types.
-        disable_shape_infer: Whether to disable shape inference.
         op_block_list: List of operation types that should remain in FP32.
         trt_plugins: List of TensorRT plugin library paths in .so format (compiled shared library).
     """
