@@ -31,16 +31,17 @@ from modelopt.torch.distill.mode import _convert_for_kd
 from modelopt.torch.distill.plugins.huggingface import KDTrainer
 from modelopt.torch.opt.conversion import restore_from_modelopt_state
 from modelopt.torch.opt.plugins import ModelOptHFTrainer
-from modelopt.torch.quantization.config import QuantizeConfig
-from modelopt.torch.quantization.nn import TensorQuantizer
-from modelopt.torch.quantization.utils import (
+from modelopt.torch.utils import print_rank_0
+
+from ..config import QuantizeConfig
+from ..nn import TensorQuantizer
+from ..utils import (
     calibrate_with_adapters,
     disable_lora_quantizers_in_config,
     get_quantizer_state_dict,
     is_quantized,
     set_quantizer_state_dict,
 )
-from modelopt.torch.utils import print_rank_0
 
 # TODO: Enable documentation rendering for this class
 
