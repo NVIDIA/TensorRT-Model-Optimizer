@@ -204,7 +204,7 @@ def fp4_fake_quant_block(
         **launch_kwargs,
     )
 
-    y = y.reshape(x_shape)
+    y = y.view(*x_shape)
     return y
 
 
