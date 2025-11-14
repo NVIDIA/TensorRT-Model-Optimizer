@@ -19,8 +19,9 @@ from pathlib import Path
 
 import torch
 from datasets import Dataset, DatasetDict
-from puzzle_tools.hydra_utils import register_hydra_resolvers
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerBase
+
+from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 
 
 def setup_test_model_and_data(
