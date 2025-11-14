@@ -302,7 +302,7 @@ class QATTrainer(ModelOptHFTrainer):
                 if "base_layer" in name
             ), "Some base_layer parameters are not frozen"
 
-            adapter_name = self.model.active_adapter()
+            adapter_name = self.model.active_adapters()[0]
             self.model.delete_adapter(adapter_name)
             self.model.load_adapter(self.state.best_model_checkpoint, adapter_name)
         else:
