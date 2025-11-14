@@ -104,6 +104,8 @@ optional_deps = {
         "fire",
         "hydra-core==1.3.2",
         "omegaconf==2.3.0",
+        "wandb~=0.17.5",
+        "lru-dict",
     ],
 }
 

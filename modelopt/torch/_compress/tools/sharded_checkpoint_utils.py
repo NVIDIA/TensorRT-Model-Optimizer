@@ -13,6 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
+"""
+Provides utilities for distributed loading, saving, and manipulation of
+large language model checkpoints across multiple GPUs/processes.
+"""
+
 import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -23,7 +29,6 @@ import torch
 import torch.distributed
 import torch.nn as nn
 from huggingface_hub import split_torch_state_dict_into_shards
-from logger import mprint
 from safetensors import safe_open
 from safetensors.torch import load_file as safe_load_file
 from safetensors.torch import save_file as safe_save_file
@@ -40,6 +45,7 @@ from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import (
     rope_type_to_class,
 )
 from modelopt.torch._compress.tools.checkpoint_utils import load_model_config, load_state_dict
+from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.runtime import IRuntime
 
 

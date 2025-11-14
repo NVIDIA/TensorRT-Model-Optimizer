@@ -14,6 +14,11 @@
 # limitations under the License.
 # mypy: ignore-errors
 
+"""
+Provides utilities for loading and saving PyTorch model checkpoints in the Hugging Face format,
+particularly for DeciLM models.
+"""
+
 import concurrent.futures
 import fcntl
 import os
