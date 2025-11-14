@@ -31,6 +31,21 @@ FP8_DEFAULT_CONFIG = {
     "algorithm": "max",
 }
 
+FP8_SAGE_DEFAULT_CONFIG = {
+    "quant_cfg": {
+        "*weight_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*input_quantizer": {"num_bits": (4, 3), "axis": None},
+        "*output_quantizer": {"enable": False},
+        "*[qkv]_bmm_quantizer": {"type": "dynamic", "num_bits": (4, 3), "block_sizes": {-2: 128}},
+        "*softmax_quantizer": {
+            "num_bits": (4, 3),
+            "axis": None,
+        },
+        "default": {"enable": False},
+    },
+    "algorithm": "max",
+}
+
 INT8_DEFAULT_CONFIG = {
     "quant_cfg": {
         "*weight_quantizer": {"num_bits": 8, "axis": 0},

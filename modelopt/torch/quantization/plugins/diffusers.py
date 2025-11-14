@@ -117,9 +117,26 @@ def _quantized_sdpa(self, *args, **kwargs):
         key = self.k_bmm_quantizer(key)
         value = self.v_bmm_quantizer(value)
 
-    q_quantized_scale = self.q_bmm_quantizer._get_amax(query)
-    k_quantized_scale = self.k_bmm_quantizer._get_amax(key)
-    v_quantized_scale = self.v_bmm_quantizer._get_amax(value)
+    if (
+        not self.q_bmm_quantizer._dynamic
+        and not self.k_bmm_quantizer._dynamic
+        and not self.v_bmm_quantizer._dynamic
+    ):
+        q_quantized_scale = self.q_bmm_quantizer._get_amax(query)
+        k_quantized_scale = self.k_bmm_quantizer._get_amax(key)
+        v_quantized_scale = self.v_bmm_quantizer._get_amax(value)
+    else:
+        assert (
+            self.q_bmm_quantizer._dynamic
+            and self.k_bmm_quantizer._dynamic
+            and self.v_bmm_quantizer._dynamic
+        ), "QKV QDQS must be in the same type"
+        q_quantized_scale, k_quantized_scale, v_quantized_scale = None, None, None
+
+    # Get block sizes lists for each quantizer if needed
+    q_block_sizes = self.q_bmm_quantizer._get_block_sizes_list(query.shape)  # type: ignore[union-attr]
+    k_block_sizes = self.k_bmm_quantizer._get_block_sizes_list(key.shape, transpose=True)  # type: ignore[union-attr]
+    v_block_sizes = self.v_bmm_quantizer._get_block_sizes_list(value.shape)  # type: ignore[union-attr]
 
     # We don't need to calibrate the output of softmax
     return self.bmm2_output_quantizer(
@@ -135,6 +152,9 @@ def _quantized_sdpa(self, *args, **kwargs):
             if hasattr(self.q_bmm_quantizer, "trt_high_precision_dtype")
             else "Half",
             self._disable_fp8_mha if hasattr(self, "_disable_fp8_mha") else True,
+            q_block_sizes,
+            k_block_sizes,
+            v_block_sizes,
         )
     )
 
@@ -188,6 +208,9 @@ class FP8SDPA(Function):
         v_quantized_scale=None,
         high_precision_flag=None,
         disable_fp8_mha=True,
+        q_block_shape: list | None = None,
+        k_block_shape: list | None = None,
+        v_block_shape: list | None = None,
     ):
         """Forward method."""
         ctx.save_for_backward(query, key, value, attn_mask)
@@ -206,7 +229,9 @@ class FP8SDPA(Function):
         )
 
     @staticmethod
-    @symbolic_helper.parse_args("v", "v", "v", "v", "f", "b", "v", "t", "t", "t", "s", "b")
+    @symbolic_helper.parse_args(
+        "v", "v", "v", "v", "f", "b", "v", "t", "t", "t", "s", "b", "is", "is", "is"
+    )
     def symbolic(
         g: "GraphContext",
         query: "torch._C.Value",
@@ -216,11 +241,14 @@ class FP8SDPA(Function):
         dropout_p: float = 0.0,
         is_causal: bool = False,
         scale: "torch._C.Value | None" = None,
-        q_quantized_scale: float = 1.0,
-        k_quantized_scale: float = 1.0,
-        v_quantized_scale: float = 1.0,
+        q_quantized_scale: "float | None" = 1.0,
+        k_quantized_scale: "float | None" = 1.0,
+        v_quantized_scale: "float | None" = 1.0,
         high_precision_flag: str = "Half",
         disable_fp8_mha: bool = True,
+        q_block_shape: "list | None" = None,
+        k_block_shape: "list | None" = None,
+        v_block_shape: "list | None" = None,
     ):
         """Symbolic method."""
         return export_fp8_mha(
@@ -237,4 +265,7 @@ class FP8SDPA(Function):
             v_quantized_scale,
             high_precision_flag,
             disable_fp8_mha,
+            q_block_shape,
+            k_block_shape,
+            v_block_shape,
         )
