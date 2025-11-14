@@ -70,7 +70,7 @@ else:
 
 
 # Adding the envs you want to pass to the workers
-additional_env_vars = {"QUANT_DATASET", "QUANT_NUM_SAMPLES", "QUANT_FORMAT", "AMAX_FILE_PATH"}
+additional_env_vars = {"QUANT_DATASET", "QUANT_CALIB_SIZE", "QUANT_CFG", "AMAX_FILE_PATH"}
 
 RayDistributedExecutor.ADDITIONAL_ENV_VARS.update(additional_env_vars)
 

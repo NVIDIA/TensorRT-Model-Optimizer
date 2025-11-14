@@ -52,9 +52,9 @@ def disable_compilation(model):
 
 
 quant_config: dict[str, Any] = {
-    "quant_dataset": os.environ.get("QUANT_DATASET", "cnn_dailymail"),
-    "quant_num_samples": int(os.environ.get("QUANT_NUM_SAMPLES", 512)),
-    "quant_format": os.environ.get("QUANT_FORMAT", "NVFP4_DEFAULT_CFG"),
+    "dataset": os.environ.get("QUANT_DATASET", "cnn_dailymail"),
+    "calib_size": int(os.environ.get("QUANT_CALIB_SIZE", 512)),
+    "quant_cfg": os.environ.get("QUANT_CFG", "NVFP4_DEFAULT_CFG"),
     "amax_file_path": os.environ.get("AMAX_FILE_PATH", None),
 }
 
@@ -77,13 +77,13 @@ def _fakequant_run_prolog_worker(self) -> None:
 
     if quant_config["amax_file_path"]:
         print("Will load amax, so only do a single sample calibration")
-        quant_config["quant_num_samples"] = 1
+        quant_config["calib_size"] = 1
 
     calib_dataloader = get_dataset_dataloader(
-        dataset_name=quant_config["quant_dataset"],
+        dataset_name=quant_config["dataset"],
         tokenizer=tokenizer,
         batch_size=1,
-        num_samples=quant_config["quant_num_samples"],
+        num_samples=quant_config["calib_size"],
         device=self.device,
     )
 
@@ -140,7 +140,7 @@ def _fakequant_run_prolog_worker(self) -> None:
                 if output is None:  # TODO: make this default when vllm <= 0.11 is outdated
                     self.sample_tokens(None)
 
-    quant_cfg = getattr(mtq, quant_config["quant_format"])
+    quant_cfg = getattr(mtq, quant_config["quant_cfg"])
 
     model = self.model_runner.model
     if hasattr(model, "unwrap"):
@@ -216,6 +216,6 @@ class FakeQuantWorker(BaseWorker):
             return super().determine_available_memory()
 
     def compile_or_warm_up_model(self) -> None:
-        if quant_config["quant_format"]:
+        if quant_config["quant_cfg"]:
             _fakequant_run_prolog_worker(self)
         super().compile_or_warm_up_model()
