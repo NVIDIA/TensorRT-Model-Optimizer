@@ -340,7 +340,7 @@ class GPTModelExporter:
 
         kv_cache_quantization = None
         kv_cache_dtype = get_kv_cache_dtype(self.model)
-        if  kv_cache_dtype == KV_CACHE_FP8 or kv_cache_dtype == KV_CACHE_NVFP4:
+        if kv_cache_dtype in (KV_CACHE_FP8, KV_CACHE_NVFP4):
             # Only FP8 KV Cache is supported in VLLM for now
             kv_cache_quantization = kv_cache_dtype
         # We use the last PP rank and the 1st EP rank to write the config because
