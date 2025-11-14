@@ -29,7 +29,7 @@ from modelopt.torch.utils import print_rank_0
 from modelopt.torch.utils.distributed import DistributedProcessGroup, ParallelState
 from modelopt.torch.utils.network import bind_forward_method, unpatch_forward_method
 
-from .calib import MaxCalibrator, MseCalibrator
+from .calib import MseCalibrator
 from .conversion import create_and_replace_svdquant_linear_on_the_fly, set_quantizer_by_cfg_context
 from .nn import QuantModule, SequentialQuantizer, TensorQuantizer
 from .utils import (
@@ -280,22 +280,27 @@ def enable_stats_collection(model: nn.Module):
 
 def finish_stats_collection(model: nn.Module, method: str | None = None):
     """Finish stats collection for all quantizers in the model."""
-    for name, module in model.named_modules():
-        if isinstance(module, TensorQuantizer) and not module._disabled:
-            if module._calibrator is not None and not module._dynamic:
-                if (
-                    isinstance(module._calibrator, MaxCalibrator)
-                    and module._calibrator.compute_amax() is not None
-                ) or isinstance(module._calibrator, MseCalibrator):
-                    module.load_calib_amax()
-                elif module._calibrator.compute_amax(method) is not None:
-                    module.load_calib_amax(method)
+    for _, module in model.named_modules():
+        if not isinstance(module, TensorQuantizer) or module._disabled:
+            continue
 
-            if module.bias_calibrator is not None and module.bias_type == "static":
-                module.load_calib_bias()
+        cal = getattr(module, "_calibrator", None)
+        if cal and not getattr(module, "_dynamic", False):
+            if method in {"mse", "entropy"}:
+                if cal.compute_amax(method) is not None:
+                    if method == "entropy":
+                        module.load_calib_amax("entropy")
+                    else:
+                        module.load_calib_amax()
+            elif cal.compute_amax() is not None:
+                # Max calibrator
+                module.load_calib_amax()
 
-            module.enable_quant()
-            module.disable_calib()
+        if module.bias_calibrator is not None and module.bias_type == "static":
+            module.load_calib_bias()
+
+        module.enable_quant()
+        module.disable_calib()
 
 
 @torch.no_grad()
