@@ -318,17 +318,23 @@ def main(args):
         tokenizer.padding_side = "left"
 
         # We only quantize the language model for VLMs other than the type supported above.
-        language_model, parent_model = get_language_model_from_vl(model)
-        if language_model is not None:
+        language_model_lineage = get_language_model_from_vl(full_model)
+        if language_model_lineage is not None:
+            language_model = language_model_lineage.pop(-1)
+            ancestors = language_model_lineage
+            # Apply disabled quant to all modules that are not part of language_model so we can exclude them during
+            # HF export.
             disabled_quant_cfg = {
                 "quant_cfg": {"default": {"enable": False}},
                 "algorithm": "max",
             }
 
-            for name, child in parent_model.named_children():
-                # Apply disabled quant to all children except language_model so we can exclude them during HF export.
-                if name != "language_model":
-                    mtq.quantize(child, disabled_quant_cfg, forward_loop=None)
+            memo = set(ancestors) | {language_model}
+            for ancestor in ancestors:
+                for _, module in ancestor.named_children():
+                    if module not in memo:
+                        mtq.quantize(module, disabled_quant_cfg, forward_loop=None)
+                        memo.add(module)
 
             model = language_model
             model_type = get_model_type(model)
@@ -493,10 +499,10 @@ def main(args):
 
             # For VL models, update full_model to use the quantized language model
             if is_nemotron_vl_model:
-                _, parent_model = get_language_model_from_vl(full_model)
-                if parent_model is not None:
+                language_model_lineage = get_language_model_from_vl(full_model)
+                if language_model_lineage is not None:
                     print("Updating full_model with quantized language_model...")
-                    parent_model.language_model = model
+                    language_model_lineage[-2].language_model = model
 
             if args.verbose:
                 mtq.print_quant_summary(full_model)

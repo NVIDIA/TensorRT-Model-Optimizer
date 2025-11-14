@@ -17,6 +17,7 @@
 
 import logging
 from collections.abc import Generator
+from types import SimpleNamespace
 from typing import Any
 from warnings import warn
 
@@ -1121,16 +1122,19 @@ def get_quant_config(
             layer_config_dict[name + ".quantization"] = quantization_format
             layer_config_dict[name + ".awq_block_size"] = block_size
 
+        not_enabled = SimpleNamespace(is_enabled=False)
+
         # Find kv cache quant format
         if (
-            hasattr(module, "k_bmm_quantizer")
-            or hasattr(module, "v_bmm_quantizer")
-            or (hasattr(module, "output_quantizer") and module.output_quantizer.is_enabled)
+            getattr(module, "k_bmm_quantizer", not_enabled).is_enabled
+            or getattr(module, "v_bmm_quantizer", not_enabled).is_enabled
+            or getattr(module, "output_quantizer", not_enabled).is_enabled
         ):
+            module_kv_quant = get_kv_cache_dtype(module)
             if kv_cache_format == QUANTIZATION_NONE:
-                kv_cache_format = get_kv_cache_dtype(module)
+                kv_cache_format = module_kv_quant
             else:
-                assert kv_cache_format == get_kv_cache_dtype(module), (
+                assert kv_cache_format == module_kv_quant, (
                     "Do not support mixed precision kv cache quantization"
                 )
 
