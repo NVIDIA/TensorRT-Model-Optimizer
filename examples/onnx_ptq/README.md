@@ -152,6 +152,8 @@ python torch_quant_to_onnx.py \
     --onnx_save_path=<path to save the exported ONNX model>
 ```
 
+> *Note: TensorRT has limited support for Convolution layers with certain precision formats. FP8 Convolution layers remain restricted to specific kernel sizes and channel multiples, and there are no NVFP4 convolution kernels today—NVFP4 export is effectively limited to GEMM-heavy Transformer-style models (e.g., ViT). Convolution-centric CNNs such as ResNet, ConvNeXt, or MobileNet will fail when exported with `quantize_mode=nvfp4|int4_awq`.*
+
 ### Evaluation
 
 If the input model is of type image classification, use the following script to evaluate it.
