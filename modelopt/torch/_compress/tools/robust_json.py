@@ -14,6 +14,11 @@
 # limitations under the License.
 # mypy: ignore-errors
 
+"""
+Provides a robust JSON encoder that can handle various types of objects,
+including dataclasses, paths, enums, namespaces, and functions.
+"""
+
 import argparse
 import dataclasses
 import datetime

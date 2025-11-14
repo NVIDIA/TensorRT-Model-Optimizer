@@ -14,6 +14,11 @@
 # limitations under the License.
 # mypy: ignore-errors
 
+"""
+It provides general utilities for loading and initializing PyTorch model checkpoints,
+particularly for DeciLM models.
+"""
+
 import concurrent.futures
 import warnings
 from functools import partial

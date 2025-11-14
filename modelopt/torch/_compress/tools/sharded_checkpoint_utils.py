@@ -13,6 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # mypy: ignore-errors
+
+"""
+Provides utilities for distributed loading, saving, and manipulation of
+large language model checkpoints across multiple GPUs/processes.
+"""
+
 import json
 from collections.abc import Iterable, Mapping
 from pathlib import Path
