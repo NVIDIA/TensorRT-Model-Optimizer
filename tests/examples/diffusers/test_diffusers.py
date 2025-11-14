@@ -92,6 +92,7 @@ class DiffuserModel(NamedTuple):
             "--onnx-load-path",
             str(tmp_path / f"{self.name}_{self.format_type}_onnx/model.onnx"),
             "--dq-only",
+            "--torch-autocast",
         )
 
 
