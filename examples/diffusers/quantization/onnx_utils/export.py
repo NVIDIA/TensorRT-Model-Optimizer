@@ -465,6 +465,7 @@ def modelopt_export_sd(backbone, onnx_dir, model_name, precision):
             dynamic_axes=dynamic_axes,
             do_constant_folding=do_constant_folding,
             opset_version=opset_version,
+            dynamo=False,
         )
     print(f"Saved at {tmp_output}")
     onnx_model = onnx.load(str(tmp_output), load_external_data=True)

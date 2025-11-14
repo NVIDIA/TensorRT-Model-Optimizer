@@ -38,8 +38,6 @@ class DiffuserModel(NamedTuple):
             self.name,
             "--override-model-path",
             self.path,
-            "--model-dtype",
-            self.dtype,
         ]
         cmd_args.extend(args)
         run_example_command(cmd_args, "diffusers/quantization")

@@ -410,7 +410,7 @@ def export_fp8_mha(
     if hasattr(torch.onnx, "_type_utils"):
         from torch.onnx._type_utils import JitScalarType
     else:  # torch >= 2.9
-        from torch.onnx._internal.torchscript_exporter import JitScalarType
+        from torch.onnx._internal.torchscript_exporter._type_utils import JitScalarType
 
     if hasattr(torch.onnx, "symbolic_opset14"):
         from torch.onnx.symbolic_opset14 import _attention_scale, _causal_attention_mask
