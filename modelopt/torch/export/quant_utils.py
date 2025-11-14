@@ -1089,7 +1089,7 @@ def fuse_prequant_layernorm(
     layernorm_module.weight = torch.nn.Parameter(
         layernorm_module.weight * getattr(modules[0].input_quantizer, "_pre_quant_scale")
     )
-    if hasattr(layernorm_module, "bias"):
+    if hasattr(layernorm_module, "bias") and layernorm_module.bias is not None:
         layernorm_module.bias = torch.nn.Parameter(
             layernorm_module.bias * getattr(modules[0].input_quantizer, "_pre_quant_scale")
         )
