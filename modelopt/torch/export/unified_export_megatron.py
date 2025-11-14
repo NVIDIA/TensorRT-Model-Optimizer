@@ -326,7 +326,6 @@ class GPTModelExporter:
         state_dict = self.extra_state_dict if self.export_extra_modules else self.state_dict
         quantization_format = get_quantization_format(self.model)
         quantization = None
-        kv_cache_quantization = None
 
         if quantization_format in (
             QUANTIZATION_FP8_PB_REAL,
@@ -338,6 +337,10 @@ class GPTModelExporter:
         elif quantization_format == QUANTIZATION_NVFP4:
             quantization = "NVFP4"
 
+        kv_cache_quantization = None
+        if get_kv_cache_dtype(self.model) == KV_CACHE_FP8:
+            # Only FP8 KV Cache is supported in VLLM for now
+            kv_cache_quantization = "FP8"
         # We use the last PP rank and the 1st EP rank to write the config because
         # medusa_heads and eagle_module only exist in the last stage.
         if is_last_stage_main_rank:
