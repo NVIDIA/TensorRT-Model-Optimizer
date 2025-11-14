@@ -1027,9 +1027,9 @@ class GPTModelExporter:
         parallel_draft_heads = getattr(eagle_module, "parallel_draft_heads", None)
         if parallel_draft_heads is not None:
             for head_id, head in enumerate(parallel_draft_heads):
-                self.rules["eagle_module.parallel_draft_heads.lm_head"](head.lm_head, head_id)
+                self.rules["parallel_draft_heads.lm_head"](head.lm_head, head_id)
                 for layer_id, layer in enumerate(head.medusa_layers):
-                    self.rules["eagle_module.parallel_draft_heads.medusa_layers.linear"](
+                    self.rules["parallel_draft_heads.medusa_layers"](
                         layer.linear, head_id, layer_id
                     )
 
