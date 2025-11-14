@@ -598,44 +598,26 @@ class HFEagleModel(EagleModel):
 
     def _compute_ttt_attention_mask(self, seq_length, ttt_step) -> BlockMask | torch.Tensor:
         """Return TTT attention_mask tensor of type BlockMask or Tensor depends on eagle attn impl."""
-        if ttt_step == 1:
 
-            def msk(b, h, q_idx, kv_idx):
-                # symbolic attention mask of shape [seq_len, 2* seq_len] for TTT step 0
-                return (kv_idx <= (q_idx - 1)) | (kv_idx == q_idx + seq_length)
-
-        elif ttt_step == 2:
-
-            def msk(b, h, q_idx, kv_idx):
-                # attention mask of shape [seq_len, 3* seq_len] for TTT step 1
-                return (
-                    (kv_idx <= (q_idx - 2))
-                    | ((kv_idx == q_idx + seq_length - 1) & (kv_idx >= seq_length))
-                    | ((kv_idx == q_idx + 2 * seq_length) & (kv_idx >= seq_length * 2))
+        def msk_func(b, h, q_idx, kv_idx):
+            mask = kv_idx <= (q_idx - ttt_step)
+            for i in range(1, ttt_step + 1):
+                mask_block_i = (kv_idx == q_idx + i * seq_length - (ttt_step - i)) & (
+                    kv_idx >= seq_length * i
                 )
-        elif ttt_step == 3:
-
-            def msk(b, h, q_idx, kv_idx):
-                # attention mask of shape [seq_len, 4* seq_len] for TTT step 2
-                return (
-                    (kv_idx <= (q_idx - 3))
-                    | ((kv_idx == q_idx + seq_length - 2) & (kv_idx >= seq_length))
-                    | ((kv_idx == q_idx + 2 * seq_length - 1) & (kv_idx >= seq_length * 2))
-                    | ((kv_idx == q_idx + 3 * seq_length) & (kv_idx >= seq_length * 3))
-                )
-        else:
-            raise ValueError(f"EAGLE TTT step {ttt_step} is not supported")
+                mask = mask | mask_block_i
+            return mask
 
         dtypemin = torch.finfo(self._base_llm_config.dtype).min
         q_len = seq_length
         kv_len = seq_length * (1 + ttt_step)
         if self.eagle_module.config._attn_implementation == "flex_attention":
             # Return block mask for flex attention
-            block_mask = create_block_mask(msk, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len)
+            block_mask = create_block_mask(msk_func, B=None, H=None, Q_LEN=q_len, KV_LEN=kv_len)
             return block_mask
         else:
             # Return tensor mask for non-flex attention
-            tensor_mask = msk(
+            tensor_mask = msk_func(
                 None,
                 None,
                 torch.arange(q_len).view(1, 1, q_len, 1),
@@ -848,32 +830,30 @@ class HFEagleModel(EagleModel):
         past_key_values.eagle_cache = eagle_cache
 
         # ====Perform training-time-testing with 3 extra eagle forward passes====
-        eagle_prenorm_h = eagle_input_hidden_states
         for ttt_step in range(self.num_ttt_steps):
-            if ttt_step > 0:
-                eagle_input_hidden_states = torch.cat(
-                    (
-                        torch.zeros(
-                            (b, 1, h),
-                            dtype=eagle_input_hidden_states.dtype,
-                            device=eagle_input_hidden_states.device,
-                        ),
-                        eagle_prenorm_h[:, :-1, :],
-                    ),
-                    dim=1,
-                )
             attention_mask = (
                 attention_mask_0
                 if ttt_step == 0
                 else self._get_ttt_attention_mask(seq_length, ttt_step)
             )
-            _, eagle_prenorm_h, eagle_logits, eagle_cache = self._eagle_forward(
+            _, eagle_input_hidden_states, eagle_logits, eagle_cache = self._eagle_forward(
                 eagle_input_hidden_states,
                 inputs_embeds,
                 attention_mask,
                 position_ids,
                 position_embeddings,
                 eagle_cache,
+            )
+            eagle_input_hidden_states = torch.cat(
+                (
+                    torch.zeros(
+                        (b, 1, h),
+                        dtype=eagle_input_hidden_states.dtype,
+                        device=eagle_input_hidden_states.device,
+                    ),
+                    eagle_input_hidden_states[:, :-1, :],
+                ),
+                dim=1,
             )
             classification_loss, acc = self._eagle_loss(
                 # base model predict +1 tok, while eagle predict +2

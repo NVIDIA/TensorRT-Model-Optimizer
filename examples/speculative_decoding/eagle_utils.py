@@ -82,27 +82,8 @@ def preprocess(examples, tokenizer, **kwargs):
         )
         input_ids = output.input_ids[0]
         attention_mask = output.attention_mask[0]
-        offset_mapping = output.offset_mapping[0]
-        loss_mask = torch.zeros_like(input_ids)
+        loss_mask = torch.ones_like(input_ids)
         labels = torch.full_like(input_ids, IGNORE_TOKEN_ID)
-
-        for turn in messages:
-            if turn["role"] == "assistant":
-                content = turn["content"]
-                # Unfortunate strip() necessary because chat templates are doing the same.
-                start = conversation.index(content.strip())
-                stop = start + len(content)
-                indices = []
-                for tok_index, (tok_start, tok_stop) in enumerate(offset_mapping):
-                    if tok_start >= start and tok_stop <= stop:
-                        indices.append(tok_index)
-                labels[indices] = input_ids[indices]
-                loss_mask[indices] = 1
-
-        # Shift loss_mask and labels to the left by 1 token
-        loss_mask = torch.cat([loss_mask[1:], torch.zeros(1, dtype=loss_mask.dtype)])
-        labels = torch.cat([labels[1:], torch.tensor([IGNORE_TOKEN_ID], dtype=labels.dtype)])
-
         new_examples["input_ids"].append(input_ids)
         new_examples["attention_mask"].append(attention_mask)
         new_examples["loss_mask"].append(loss_mask)
