@@ -36,13 +36,13 @@ from modelopt.torch.nas.plugins.megatron import (
     MambaDInnerHp,
     MambaNumHeadsHp,
     _DynamicColumnParallelLinear,
+    _DynamicEmbedding,
     _DynamicExtendedRMSNorm,
     _DynamicLayerNorm,
     _DynamicMambaLayer,
     _DynamicMambaMixer,
     _DynamicMCoreLanguageModel,
     _DynamicRowParallelLinear,
-    _DynamicVocabParallelEmbedding,
 )
 from modelopt.torch.nas.traced_hp import TracedHp
 from modelopt.torch.opt.utils import named_dynamic_modules, search_space_size
@@ -86,7 +86,7 @@ def _test_mamba_search_space(rank, size):
 
     assert isinstance(model, _DynamicMCoreLanguageModel)
     if is_pipeline_first_stage():
-        assert isinstance(model.embedding.word_embeddings, _DynamicVocabParallelEmbedding)
+        assert isinstance(model.embedding.word_embeddings, _DynamicEmbedding)
     for layer in model.decoder.layers:
         assert isinstance(layer, _DynamicMambaLayer)
         assert isinstance(layer.mixer, _DynamicMambaMixer)
