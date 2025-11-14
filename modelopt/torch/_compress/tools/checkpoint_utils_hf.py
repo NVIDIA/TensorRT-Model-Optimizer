@@ -26,15 +26,16 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 import torch
-from logger import mprint
-from puzzle_tools import deci_lm_hf_code
-from puzzle_tools.common import infer_weights_dtype
-from puzzle_tools.deci_lm_hf_code.configuration_decilm import DeciLMConfig
-from puzzle_tools.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
-from puzzle_tools.robust_json import json_dumps
 from safetensors.torch import save_file as safe_save_file
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME
-from utils.post_init_sparse import SparsityMethod
+
+from modelopt.torch._compress.decilm import deci_lm_hf_code
+from modelopt.torch._compress.decilm.deci_lm_hf_code.configuration_decilm import DeciLMConfig
+from modelopt.torch._compress.decilm.deci_lm_hf_code.modeling_decilm import DeciLMForCausalLM
+from modelopt.torch._compress.tools.common import infer_weights_dtype
+from modelopt.torch._compress.tools.logger import mprint
+from modelopt.torch._compress.tools.post_init_sparse import SparsityMethod
+from modelopt.torch._compress.tools.robust_json import json_dumps
 
 SAFETENSORS_SUBBLOCKS_DIR_NAME = "subblocks_safetensors"
 PTH_SUBBLOCKS_DIR_NAME = "subblocks"

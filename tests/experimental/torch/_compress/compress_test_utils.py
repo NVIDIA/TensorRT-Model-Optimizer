@@ -19,8 +19,9 @@ from pathlib import Path
 
 import torch
 from datasets import Dataset, DatasetDict
-from puzzle_tools.hydra_utils import register_hydra_resolvers
 from transformers import AutoTokenizer, LlamaConfig, LlamaForCausalLM, PreTrainedTokenizerBase
+
+from modelopt.torch._compress.tools.hydra_utils import register_hydra_resolvers
 
 
 def setup_test_model_and_data(
@@ -32,8 +33,6 @@ def setup_test_model_and_data(
     Path,
     Path,
     Path,
-    Path,
-    str,
 ]:
     """
     Setup the test model and data for the compress NAS search.
@@ -45,8 +44,8 @@ def setup_test_model_and_data(
         runtime: the runtime to use for the test
 
     Returns:
-        tuple[Path, Path, Path, Path, str]:
-        the puzzle_dir, llama_checkpoint_path, dataset_path, hydra_config_dir, hydra_config_name
+        tuple[Path, Path, Path]:
+        the puzzle_dir, llama_checkpoint_path, dataset_path
     """
 
     # Register Hydra custom resolvers (needed for config resolution)
@@ -57,8 +56,6 @@ def setup_test_model_and_data(
     puzzle_dir = tmp_path
     llama_checkpoint_path = puzzle_dir / "input_model/llama"
     dataset_path = puzzle_dir / "dummy_dataset"
-    hydra_config_dir = project_root_path / "tests/experimental/torch/_compress/resources/configs"
-    hydra_config_name = "Llama-3_1-8B"
 
     if rank == 0:
         # Setup puzzle_dir and dataset
@@ -76,8 +73,6 @@ def setup_test_model_and_data(
         puzzle_dir,
         llama_checkpoint_path,
         dataset_path,
-        hydra_config_dir,
-        hydra_config_name,
     )
 
 

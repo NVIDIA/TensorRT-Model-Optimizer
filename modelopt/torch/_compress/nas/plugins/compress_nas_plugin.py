@@ -20,18 +20,18 @@ Compress NAS plugin for the Modelopt framework (based on Puzzle algorithm: https
 import datetime
 from pathlib import Path
 
-import build_library_and_stats
-import mip_and_realize_models
-import pruning_ckpts
-import score_pruning_activations
-import scoring
 import torch
 from torch import nn
 
+import modelopt.torch._compress.build_library_and_stats as build_library_and_stats
+import modelopt.torch._compress.mip.mip_and_realize_models as mip_and_realize_models
+import modelopt.torch._compress.pruning.pruning_ckpts as pruning_ckpts
+import modelopt.torch._compress.scoring.scoring as scoring
+from modelopt.torch._compress.activation_scoring import score_pruning_activations
 from modelopt.torch._compress.decilm.converters.convert_llama3_to_decilm import (
     convert_llama3_to_decilm,
 )
-from modelopt.torch._compress.tools.hydra import initialize_hydra_config_for_dir
+from modelopt.torch._compress.tools.hydra_utils import initialize_hydra_config_for_dir
 from modelopt.torch._compress.tools.logger import mprint
 from modelopt.torch._compress.tools.runtime import NativeDdpRuntime
 from modelopt.torch.nas.conversion import NASModeRegistry
