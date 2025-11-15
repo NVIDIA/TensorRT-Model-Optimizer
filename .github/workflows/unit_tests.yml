@@ -119,8 +119,17 @@ jobs:
       - name: Run unit tests
         run: pip install tox && tox -e py312-partial-unit-${{ matrix.test-env }}
   unit-pr-required-check:
-    if: github.event_name == 'pull_request'
+    # Run even if some jobs are skipped
+    if: ${{ github.event_name == 'pull_request' && always() }}
     needs: [linux, windows, multi-py, multi-torch, multi-transformers, partial-install]
     runs-on: ubuntu-latest
     steps:
-      - run: echo "All PR unit test jobs completed"
+      - name: Required unit tests did not succeed
+        if: >-
+          ${{ needs.linux.result != 'success' ||
+          needs.windows.result != 'success' ||
+          needs.multi-py.result != 'success' ||
+          needs.multi-torch.result != 'success' ||
+          needs.multi-transformers.result != 'success' ||
+          needs.partial-install.result != 'success' }}
+        run: exit 1
