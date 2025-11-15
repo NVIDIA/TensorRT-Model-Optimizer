@@ -21,11 +21,11 @@ import types
 import warnings
 from collections import defaultdict
 from collections.abc import Callable, Sequence
+from contextlib import nullcontext
 from typing import Any
 
 import regex as re
 import torch
-import torch.distributed
 import torch.nn as nn
 from tqdm import tqdm
 
@@ -41,7 +41,7 @@ from . import model_calib
 from .config import QuantizeConfig, QuantizerAttributeConfig
 from .conversion import set_quantizer_by_cfg
 from .nn import QuantLinearConvBase, QuantModule, SequentialQuantizer, TensorQuantizer
-from .utils import is_quantized_linear, multi_context
+from .utils import is_quantized_linear
 
 
 def estimate_quant_compression(quant_cfg: QuantizeConfig) -> float:
@@ -212,7 +212,11 @@ class QuantRecipeHparam(Hparam):
         self.active = self.original
 
         self._importance_dict = {
-            quant_recipe: dict.fromkeys(self.nn_modules, 0.0) for quant_recipe in self.choices
+            quant_recipe: {
+                mod: torch.zeros((), device=mod.weight.device, dtype=torch.float32)
+                for mod in self.nn_modules
+            }
+            for quant_recipe in self.choices
         }
 
     @property
@@ -238,9 +242,13 @@ class QuantRecipeHparam(Hparam):
     def importance(self) -> dict:
         """Return the importance dict mapping recipe and importance."""
         return {
-            quant_recipe: sum(importance_dict.values())
+            quant_recipe: sum(v.cpu().item() for v in importance_dict.values())
             for quant_recipe, importance_dict in self._importance_dict.items()
         }
+
+
+def _add_auto_quantize_score(grad_output, output_diff, score_tensor):
+    score_tensor += ((grad_output.float() ** 2) * (output_diff.float() ** 2)).sum()
 
 
 class AutoQuantizeSearcher(BaseSearcher):
@@ -261,7 +269,7 @@ class AutoQuantizeSearcher(BaseSearcher):
 
     candidate_stats: dict[str, dict[str, list[float]]]
     best: dict[str, Any]
-    gradient_checkpointing_enable_contexts: list[tuple[Callable, Callable]] = []
+    custom_support: list[tuple[Callable, Callable, Callable]] = []
 
     rules = [
         r"^(.*?)\.(q_proj|k_proj|v_proj)$",  # q_proj, k_proj, v_proj for llama like models
@@ -336,15 +344,19 @@ class AutoQuantizeSearcher(BaseSearcher):
         )
 
     @classmethod
-    def register_gradient_checkpointing_enable_context(
-        cls, is_supported_checker: Callable, context: Callable
+    def register_custom_support(
+        cls,
+        is_supported_checker: Callable,
+        grad_ckpt_context: Callable,
+        is_param_grad_enabled: Callable,
     ):
-        """Register a gradient checkpointing enable context for `AutoQuantize` score estimation.
+        """Register custom support for `AutoQuantize` score estimation.
 
-        If the `is_supported_checker(model)` returns True, the `context(model)` will be used to enable gradient
-        checkpointing.
+        If the `is_supported_checker(model)` returns True, the `grad_ckpt_context(model)` will be
+        used to enable gradient checkpointing and `is_param_grad_enabled(pname, model)`
+        will be used to enable gradient for the parameter.
         """
-        cls.gradient_checkpointing_enable_contexts.append((is_supported_checker, context))
+        cls.custom_support.append((is_supported_checker, grad_ckpt_context, is_param_grad_enabled))
 
     def _get_default_forward_backward_step(self):
         def forward_backward_step(model, data):
@@ -361,7 +373,7 @@ class AutoQuantizeSearcher(BaseSearcher):
         return forward_backward_step
 
     @torch.enable_grad()
-    def _estimate_auto_quantize_scores(self):
+    def _estimate_auto_quantize_scores(self, is_param_grad_enabled):
         # TODO: remove the no-quant recipe
         def auto_quantize_score_estimate_forward(module, input, *args, **kwargs):
             module.quant_recipe = QuantRecipe(quant_cfg=None)
@@ -377,7 +389,7 @@ class AutoQuantizeSearcher(BaseSearcher):
             module.output_diff_dict = {}
             with torch.no_grad():
                 for recipe in module.get_hparam("quant_recipe").choices:
-                    if recipe.compression >= 1.0:
+                    if recipe == QuantRecipe(quant_cfg=None):
                         continue
                     module.quant_recipe = recipe
                     output_diff = module._forward_original(input, *args, **kwargs)
@@ -392,18 +404,21 @@ class AutoQuantizeSearcher(BaseSearcher):
 
         def backward_hook(module, grad_input, grad_output):
             for recipe, output_diff in module.output_diff_dict.items():
-                score = ((grad_output[0].float() ** 2) * (output_diff.float() ** 2)).sum()
-                module.get_hparam("quant_recipe")._importance_dict[recipe][module] += score.item()
-                module.output_diff_dict[recipe] = None
+                score_tensor = module.get_hparam("quant_recipe")._importance_dict[recipe][module]
+                _add_auto_quantize_score(grad_output[0], output_diff, score_tensor)
 
             del module.output_diff_dict
 
-        def setup_params_for_score_estimation(name, param, params_metadata):
+        def setup_params_for_score_estimation(name, param, params_metadata, enable_grad=True):
             # Let us delete the gradient as soon as they are computed to save memory
             # In addition, this method enables gradient for all parameters
             # This is needed to make sure the re-entrant activation checkpointing works
             params_metadata[name] = {"requires_grad": param.requires_grad}
-            param.requires_grad = True
+            param.requires_grad = enable_grad
+            if not enable_grad:
+                return
+            if self.config.get("verbose", False):
+                print_rank_0(f"AutoQuantize: Enabling gradient for param {name}.")
             accum_grad, handle = create_param_grad_clear_hook(param)
             params_metadata[name]["accum_grad"] = accum_grad  # We need to keep the accum_grad alive
             params_metadata[name]["handle"] = handle
@@ -421,7 +436,9 @@ class AutoQuantizeSearcher(BaseSearcher):
 
         def cleanup_params_after_score_estimation(name, param, params_metadata):
             param.requires_grad = params_metadata[name]["requires_grad"]
-            params_metadata[name]["handle"].remove()
+            handle = params_metadata[name].get("handle", None)
+            if handle is not None:
+                handle.remove()
 
         for name, module in self.model.named_modules():
             if (
@@ -432,10 +449,11 @@ class AutoQuantizeSearcher(BaseSearcher):
                 setup_module_for_score_estimation(module)
 
         params_metadata = {}
+
         for name, param in self.model.named_parameters():
-            # TODO: Enabling gradient for all parameters is not needed and making backward slow
-            # We need to enable gradient only for the the first parameter of the module such as embedding weights
-            setup_params_for_score_estimation(name, param, params_metadata)
+            setup_params_for_score_estimation(
+                name, param, params_metadata, is_param_grad_enabled(name, self.model)
+            )
 
         gc.collect()
         if torch.cuda.is_available():
@@ -588,14 +606,20 @@ class AutoQuantizeSearcher(BaseSearcher):
             ModeloptStateManager(self.model).state_dict().pop()
 
         self.model.eval()
-        with multi_context(
-            *(
-                context(self.model)
-                for is_supported_checker, context in self.gradient_checkpointing_enable_contexts
-                if is_supported_checker(self.model)
-            )
-        ):
-            self._estimate_auto_quantize_scores()
+
+        def _default_is_param_grad_enabled(pname, model):
+            return True
+
+        grad_checkpointing_ctxt = None
+        is_param_grad_enabled = _default_is_param_grad_enabled
+        for is_supported_checker, ctxt_candidate, grad_enabled_candidate in self.custom_support:
+            if is_supported_checker(self.model):
+                grad_checkpointing_ctxt = ctxt_candidate
+                is_param_grad_enabled = grad_enabled_candidate
+                break
+
+        with grad_checkpointing_ctxt(self.model) if grad_checkpointing_ctxt else nullcontext():
+            self._estimate_auto_quantize_scores(is_param_grad_enabled)
 
     def run_search(self):
         """Search for the best per-layer quantization configuration and return the best model and configuration.
