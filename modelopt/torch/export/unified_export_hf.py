@@ -74,8 +74,6 @@ from .quant_utils import (
 
 __all__ = ["export_hf_checkpoint"]
 
-SPECULATIVE_DECODING_MODULE_NAMES = ["medusa_heads", "eagle_module", "drafter"]
-
 
 def _is_enabled_quantizer(quantizer):
     if hasattr(quantizer, "is_enabled") and quantizer.is_enabled:
@@ -157,11 +155,12 @@ def requantize_resmooth_fused_llm_layers(model: torch.nn.Module):
                 model(fake_input, decoder_input_ids=decoder_fake_input)
             elif is_vl_model and "nemotron" in model_type:
                 # For Nemotron VL models, try to run optimization on just the language model part
-                language_model, _ = get_language_model_from_vl(model)
+                language_model_lineage = get_language_model_from_vl(model)
 
-                if language_model is not None:
+                if language_model_lineage is not None:
                     # Run optimization on just the language model with the same input format as regular LLMs
                     # Use the same fake_input tensor that regular LLMs use
+                    language_model = language_model_lineage[-1]
                     print(
                         f"Running optimization on language model with fake_input shape: {fake_input.shape}"
                     )
@@ -367,16 +366,14 @@ def _export_quantized_weight(
 
 
 def _export_hf_checkpoint(
-    model: nn.Module,
-    dtype: torch.dtype | None = None,
-    **kwargs,
+    model: nn.Module, dtype: torch.dtype | None = None, is_modelopt_qlora: bool = False, **kwargs
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Exports the torch model to the packed checkpoint with original HF naming.
 
     The packed checkpoint will be consumed by the TensorRT-LLM unified converter.
 
     Args:
-        model: the torch model.
+        model: the full torch model to export. The actual quantized model may be a submodule.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         accelerator: the accelerator instance in case of distributed export setup.
 
@@ -394,15 +391,8 @@ def _export_hf_checkpoint(
 
     accelerator = kwargs.get("accelerator")
 
-    # Create a model layer pool
-    # If `model.model` exists use that, otherwise use `model` itself, e.g., Nemotron-H
-    root = getattr(model, "model", model)
-    # If that has a `.layers`, use it, otherwise fall back to the object itself
-    root = getattr(root, "layers", root)
-    layer_pool = {f"model.layers.{name}": sub_module for name, sub_module in root.named_modules()}
-
     # Handle input quantizers of experts that are not calibrated
-    for name, sub_module in model.named_modules():
+    for _, sub_module in model.named_modules():
         if is_moe(sub_module) and hasattr(sub_module, "experts"):
             expert_linear_names = get_expert_linear_names(sub_module)
             for linear_name in expert_linear_names:
@@ -455,13 +445,6 @@ def _export_hf_checkpoint(
                         f"Please file an issue or add support for this model architecture."
                     )
 
-    # NOTE: Speculative decoding models have extra modules that may be quantized
-    # Need to add these modules to the layer_pool
-    for key in SPECULATIVE_DECODING_MODULE_NAMES:
-        if hasattr(model, key):
-            for name, sub_module in getattr(model, key).named_modules():
-                layer_pool.update({f"{key}.{name}": sub_module})
-
     # Resmooth and requantize fused layers
     # TODO: Handle mixed precision
     requantize_resmooth_fused_llm_layers(model)
@@ -474,7 +457,7 @@ def _export_hf_checkpoint(
     except ImportError:
         warnings.warn("accelerate is not installed, hooks will not be removed")
 
-    quant_config = get_quant_config(layer_pool)
+    quant_config = get_quant_config(model, is_modelopt_qlora=is_modelopt_qlora)
 
     kv_cache_max_bound = 0
     kv_cache_format = quant_config["quantization"]["kv_cache_quant_algo"]
@@ -490,10 +473,9 @@ def _export_hf_checkpoint(
         kv_cache_max_bound = cache_bound_mapping.get(kv_cache_format)
 
     # Track if any layers are quantized to properly set exclude_modules
-    has_quantized_layers = False
     fsdp_module_to_reshard = None
 
-    for name, sub_module in layer_pool.items():
+    for _, sub_module in model.named_modules():
         # Optimization to perform resharding only once per decoder layer to avoid extra communication overhead
         if isinstance(sub_module, FSDPModule):
             # Every time we encounter a new FSDPModule, the previous decoder layer is fully processed.
@@ -504,8 +486,11 @@ def _export_hf_checkpoint(
 
             fsdp_module_to_reshard = sub_module
 
+        # We skip QuantLoraLinear module for modelopt QLoRA
+        if is_modelopt_qlora and (hasattr(sub_module, "base_layer")):
+            continue
+
         if get_quantization_format(sub_module) != QUANTIZATION_NONE:
-            has_quantized_layers = True
             if is_quantlinear(sub_module):
                 with fsdp2_aware_weight_update(model, sub_module, reshard=False):
                     _export_quantized_weight(sub_module, dtype)
@@ -536,12 +521,8 @@ def _export_hf_checkpoint(
         quantized_state_dict = model.state_dict()
 
     quantized_state_dict = postprocess_state_dict(
-        quantized_state_dict, kv_cache_max_bound, kv_cache_format
+        quantized_state_dict, kv_cache_max_bound, kv_cache_format, is_modelopt_qlora
     )
-
-    # Check if any layers are quantized
-    if has_quantized_layers:
-        quant_config["quantization"].setdefault("exclude_modules", []).append("lm_head")
 
     return quantized_state_dict, quant_config
 
@@ -555,7 +536,7 @@ def export_hf_checkpoint(
     """Exports the torch model to unified checkpoint and saves to export_dir.
 
     Args:
-        model: the torch model.
+        model: the full torch model to export. The actual quantized model may be a submodule.
         dtype: the weights data type to export the unquantized layers or the default model data type if None.
         export_dir: the target export path.
         save_modelopt_state: whether to save the modelopt state_dict.

@@ -17,7 +17,7 @@ import os
 
 import onnx
 import onnx_graphsurgeon as gs
-from _test_utils.onnx.quantization.lib_test_models import export_as_onnx
+from _test_utils.onnx.lib_test_models import export_as_onnx
 from _test_utils.torch.vision_models import get_tiny_resnet_and_input
 
 from modelopt.onnx.quantization.graph_utils import (
