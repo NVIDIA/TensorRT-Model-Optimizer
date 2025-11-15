@@ -642,8 +642,12 @@ def _find_nodes_from_op_types_to_exclude(graph: Graph, op_types_to_exclude=None)
 def _find_int4_quantizable_weights(
     graph: onnx.GraphProto,
     nodes_to_exclude: list[str],
-) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int]]:
-    """Finds the int4 quantizable weights from the graph."""
+) -> list[tuple[onnx.ValueInfoProto, onnx.ValueInfoProto, bool, int, str]]:
+    """Finds the int4 quantizable weights from the graph.
+
+    Returns:
+        list of tuples: (act_tensor, weight_tensor, do_transpose, gemm_io_type, node_name)
+    """
     wa_pack = []
     gemm_nodes = [
         node
@@ -674,7 +678,8 @@ def _find_int4_quantizable_weights(
             attr.name == "transB" and attr.i > 0 for attr in gemm.attribute
         )
 
-        wa_pack.append((act_tensor, weight_tensor, do_transpose, gemm_io_type))
+        # Include node name for proper matching with layers_8bit_set
+        wa_pack.append((act_tensor, weight_tensor, do_transpose, gemm_io_type, gemm.name))
 
     return wa_pack
 
@@ -762,6 +767,8 @@ def get_layer_precision_mapping(
         pattern_regexes = [
             re.compile(r"^/model/layers\.(\d+)/attn/qkv_proj/MatMul$"),
             re.compile(r"^/model/layers\.(\d+)/attn/v_proj/MatMul$"),
+            re.compile(r"^/model/layers\.(\d+)/self_attn/qkv_proj/MatMul$"),
+            re.compile(r"^/model/layers\.(\d+)/self_attn/v_proj/MatMul$"),
             re.compile(r"^/model/layers\.(\d+)/mlp/down_proj/MatMul$"),
         ]
 
@@ -812,12 +819,12 @@ def get_layer_precision_mapping(
                 if (i - rest_start) % 3 == 0:
                     layers_8bit_set.add(names_sorted[i])
         layers_list_8bit = list(layers_8bit_set)
-
     # NEW: Create layer info mapping with precision, block_size, and axis
     layer_info = {}
-    for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type) in enumerate(wa_pack):
+    for i, (act_tensor, weight_tensor, do_transpose, gemm_io_type, node_name) in enumerate(wa_pack):
         weight_name = weight_tensor.name
-        if should_quantize_to_8bit(weight_name, layers_list_8bit):
+        # Use node_name for matching against layers_8bit patterns
+        if should_quantize_to_8bit(node_name, layers_list_8bit):
             layer_info[weight_name] = {
                 "precision": 8,
                 "block_size": -1,  # Per-channel for 8-bit

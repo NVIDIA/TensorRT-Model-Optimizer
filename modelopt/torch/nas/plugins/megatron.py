@@ -24,6 +24,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from megatron.core.fusions.fused_layer_norm import FusedLayerNorm
+from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.models.gpt import GPTModel
 from megatron.core.parallel_state import (
     get_data_parallel_group,
@@ -154,22 +155,54 @@ class _DynamicRowParallelLinear(_DynamicParallelLinear):
         )
 
 
+# Embedding DynamicModule ##########################################################################
 @DMRegistry.register(
-    {VocabParallelEmbedding: "megatron.core.tensor_parallel.layers.VocabParallelEmbedding"}
+    {
+        VocabParallelEmbedding: "megatron.core.tensor_parallel.layers.VocabParallelEmbedding",
+        nn.Embedding: "nn.Embedding",
+    },
 )
-class _DynamicVocabParallelEmbedding(DynamicModule):
-    """A VocabParallelEmbedding layer with dynamic hyperparams."""
+class _DynamicEmbedding(DynamicModule):
+    """A Embedding layer with dynamic hyperparams."""
 
     def _setup(self):
         self._register_hparam("embedding_dim", TracedHp(list(range(1, self.embedding_dim + 1))))
         self._register_dynamic_attribute("weight", self._get_weight)
 
     @staticmethod
-    def _get_weight(mod: "_DynamicVocabParallelEmbedding", weight: torch.Tensor) -> torch.Tensor:
+    def _get_weight(mod: "_DynamicEmbedding", weight: torch.Tensor) -> torch.Tensor:
         """Return the weight tensor of the embedding layer."""
         return get_sliced_tensor(mod, weight, None, "embedding_dim")
 
 
+@DMRegistry.register(
+    {
+        LanguageModelEmbedding: "megatron.core.models.common.embeddings.language_model_embedding.LanguageModelEmbedding"
+    }
+)
+class _DynamicLanguageModelEmbedding(DynamicModule):
+    """A LanguageModelEmbedding layer with dynamic hyperparams."""
+
+    def _setup(self):
+        DMRegistry.convert(self.word_embeddings)
+        hp_hidden_size = self.word_embeddings.get_hparam("embedding_dim")
+        if hasattr(self, "position_embeddings") and self.position_embeddings is not None:
+            DMRegistry.convert(self.position_embeddings)
+            self.position_embeddings.embedding_dim = hp_hidden_size
+        if hasattr(self, "tokentype_embeddings") and self.tokentype_embeddings is not None:
+            DMRegistry.convert(self.tokentype_embeddings)
+            self.tokentype_embeddings.embedding_dim = hp_hidden_size
+
+    def export(self) -> torch.nn.Module:
+        self.word_embeddings.export()
+        if hasattr(self, "position_embeddings") and self.position_embeddings is not None:
+            self.position_embeddings.export()
+        if hasattr(self, "tokentype_embeddings") and self.tokentype_embeddings is not None:
+            self.tokentype_embeddings.export()
+        return super().export()
+
+
+# Normalization DynamicModule ######################################################################
 @DMRegistry.register({FusedLayerNorm: "megatron.core.fusions.fused_layer_norm.FusedLayerNorm"})
 class _DynamicFusedLayerNorm(_DynamicLayerNorm):
     """A FusedLayerNorm layer with dynamic hyperparams."""
@@ -211,8 +244,8 @@ class _DynamicMLP(DynamicModule):
             self.hparam_name = "moe_ffn_hidden_size"
         else:
             self.hparam_name = "ffn_hidden_size"
-        self.linear_fc1 = DMRegistry.convert(self.linear_fc1)
-        self.linear_fc2 = DMRegistry.convert(self.linear_fc2)
+        DMRegistry.convert(self.linear_fc1)
+        DMRegistry.convert(self.linear_fc2)
 
         ffn_hidden_size = TracedHp(list(range(1, self.config.ffn_hidden_size + 1)))
         fc1_output_size = (
@@ -537,7 +570,7 @@ class _DynamicSelfAttention(DynamicModule):
                 {"_setup": lambda self: None},
             )
 
-            self.core_attention = _DynamicDotProductAttention.convert(self.core_attention)
+            _DynamicDotProductAttention.convert(self.core_attention)
             self.core_attention._register_dynamic_attribute(
                 "hidden_size_per_partition",
                 lambda mod, val: self.config.kv_channels * self.num_attention_heads_per_partition,
@@ -559,7 +592,7 @@ class _DynamicSelfAttention(DynamicModule):
                 {"_setup": lambda self: None},
             )
 
-            self.core_attention = _DynamicTEDotProductAttention.convert(self.core_attention)
+            _DynamicTEDotProductAttention.convert(self.core_attention)
             self.core_attention._register_dynamic_attribute(
                 "num_attention_heads", lambda mod, val: self.num_attention_heads_per_partition
             )
@@ -571,10 +604,10 @@ class _DynamicSelfAttention(DynamicModule):
             )
 
         # Convert the fused qkv and output projection linear layer to dynamic module
-        self.linear_qkv = _DynamicQKVColumnParallelLinear.convert(
+        _DynamicQKVColumnParallelLinear.convert(
             self.linear_qkv, num_heads_per_group, num_query_groups
         )
-        self.linear_proj = _DynamicProjRowParallelLinear.convert(
+        _DynamicProjRowParallelLinear.convert(
             self.linear_proj, num_heads_per_group, num_query_groups
         )
 
@@ -670,6 +703,8 @@ class _DynamicTopKRouter(ABC, DynamicModule):
 
         # Register dynamic attributes
         self._register_dynamic_attribute("weight", self._get_router_weight)
+        if self.config.add_bias_linear:
+            self._register_dynamic_attribute("bias", self._get_slice_by_num_experts)
         if self.enable_expert_bias:
             self._register_dynamic_attribute(
                 "local_tokens_per_expert", self._get_slice_by_num_experts
@@ -681,8 +716,8 @@ class _DynamicTopKRouter(ABC, DynamicModule):
         return get_sliced_tensor(mod, weight, "num_experts", "hidden_size")
 
     @staticmethod
-    def _get_slice_by_num_experts(mod: "_DynamicTopKRouter", bias: torch.Tensor) -> torch.Tensor:
-        return get_sliced_tensor(mod, bias, "num_experts")
+    def _get_slice_by_num_experts(mod: "_DynamicTopKRouter", val: torch.Tensor) -> torch.Tensor:
+        return get_sliced_tensor(mod, val, "num_experts")
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
         """Set hidden_size hparam for router weights from global hidden_size hparam."""
@@ -699,10 +734,10 @@ class _DynamicSequentialMLP(DynamicModule):
         self._register_hparam("num_local_experts", num_moe_experts)
 
         # Convert local_experts list and each individual expert MLP to dynamic modules
-        self.local_experts = DynamicModuleList.convert(self.local_experts)
+        DynamicModuleList.convert(self.local_experts)
         self.local_experts.depth = num_moe_experts  # Reuse same hparam for depth
         for i in range(len(self.local_experts)):
-            self.local_experts[i] = DMRegistry.convert(self.local_experts[i])
+            DMRegistry.convert(self.local_experts[i])
 
         # Track forward activations for importance estimation.
         # _activations name is needed for get_activations_and_layer_scores to save scores for re-running pruning.
@@ -777,8 +812,8 @@ class _DynamicMoELayer(DynamicModule):
         # Convert to dynamic modules
         # Reuse _DynamicSequentialMLP's num_moe_experts hparam for _DynamicTopKRouter's hparam so
         #   importance estimator and depth hparam is retained.
-        self.router = DMRegistry.convert(self.router)
-        self.experts = DMRegistry.convert(self.experts)
+        DMRegistry.convert(self.router)
+        DMRegistry.convert(self.experts)
         num_moe_experts_hp = self.experts.get_hparam("num_local_experts")
 
         # NOTE: Use num_moe_experts hparam name in top-level module to match TransformerConfig's name
@@ -789,7 +824,7 @@ class _DynamicMoELayer(DynamicModule):
         )
         self.router.num_experts = num_moe_experts_hp
         if self.use_shared_expert:
-            self.shared_experts = DMRegistry.convert(self.shared_experts)
+            DMRegistry.convert(self.shared_experts)
 
     def forward(self, *args, **kwargs):
         """Forward pass for the MoE layer."""
@@ -898,12 +933,12 @@ class _DynamicTransformerLayer(DynamicModule, MambaTransformerLayerMixin):
         # Convert the layernorms, self-attention, and mlp/moe layers to dynamic modules
         # NOTE: Mamba stack layers have either Attention or MLP, not both unlike GPT models
         if isinstance(self.self_attention, SelfAttention):
-            self.input_layernorm = DMRegistry.convert(self.input_layernorm)
-            self.self_attention = DMRegistry.convert(self.self_attention)
+            DMRegistry.convert(self.input_layernorm)
+            DMRegistry.convert(self.self_attention)
 
         if isinstance(self.mlp, (MLP, MoELayer)):
-            self.pre_mlp_layernorm = DMRegistry.convert(self.pre_mlp_layernorm)
-            self.mlp = DMRegistry.convert(self.mlp)
+            DMRegistry.convert(self.pre_mlp_layernorm)
+            DMRegistry.convert(self.mlp)
 
         # Register forward hook to collect activations for importance estimation
         self._setup_mixin()
@@ -1168,23 +1203,23 @@ class _DynamicMambaMixer(DynamicModule):
         self._register_dynamic_attribute("headdim", lambda mod, val: self.mamba_head_dim)
 
         # Convert to dynamic modules
-        self.in_proj = DMRegistry.convert(self.in_proj)
+        DMRegistry.convert(self.in_proj)
         self.in_proj.output_size = build_concat_hp(
             [d_inner, d_inner, bc, mamba_num_heads]
         )  # z, x, B, C, dt
 
         conv_dim = build_concat_hp([d_inner, bc])  # z, B, C
-        self.conv1d = DMRegistry.convert(self.conv1d)
+        DMRegistry.convert(self.conv1d)
         self.conv1d.in_channels = conv_dim
         self.conv1d.out_channels = conv_dim
         ks = self.conv1d.get_hparam("kernel_size")
         ks.choices = [ks.original]
 
         if self.rmsnorm:
-            self.norm = DMRegistry.convert(self.norm)
+            DMRegistry.convert(self.norm)
             self.norm.hidden_size = d_inner
 
-        self.out_proj = DMRegistry.convert(self.out_proj)
+        DMRegistry.convert(self.out_proj)
         self.out_proj.input_size = d_inner
 
         # Register dynamic attributes for Mamba-specific parameters
@@ -1310,8 +1345,8 @@ class _DynamicMambaLayer(DynamicModule, MambaTransformerLayerMixin):
 
     def _setup(self):
         # Convert to dynamic module
-        self.mixer = DMRegistry.convert(self.mixer)
-        self.norm = DMRegistry.convert(self.norm)
+        DMRegistry.convert(self.mixer)
+        DMRegistry.convert(self.norm)
         self._setup_mixin()
 
     def set_hidden_size_hp(self, hidden_size: TracedHp) -> None:
@@ -1336,7 +1371,7 @@ class _DynamicMambaLayer(DynamicModule, MambaTransformerLayerMixin):
             ("mamba_head_dim", mamba_head_dim_divisor),
         ]:
             hp = self.mixer.get_hparam(hp_name)
-            choices = {int(make_divisible(c, divisor)) for c in hp.choices}  # type: ignore[arg-type]
+            choices = {int(make_divisible(c, divisor)) for c in hp.choices}
             hp.choices = list(set(hp.choices) & choices | {hp.original})
 
     def export(self):
@@ -1376,16 +1411,13 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         assert self.config.expert_model_parallel_size == 1, "Expert parallel is not supported."
         assert self.pre_process == is_pipeline_first_stage()
         assert self.post_process == is_pipeline_last_stage()
-        assert self.position_embedding_type in ["rope", "none"], (
-            f"Only rope position embedding is supported, got {self.position_embedding_type}."
-        )
 
         # Register num_layers hparam for depth pruning
         self._register_hparam("num_layers", TracedHp(list(range(1, self.config.num_layers + 1))))
 
         # Convert layers to dynamic modules and set the shared hidden_size hparam
         if is_pipeline_first_stage():
-            self.embedding.word_embeddings = DMRegistry.convert(self.embedding.word_embeddings)
+            DMRegistry.convert(self.embedding)
             hidden_size = self.embedding.word_embeddings.get_hparam("embedding_dim")
         else:
             hidden_size = None
@@ -1393,7 +1425,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         self._register_hparam("hidden_size", hidden_size)
 
         for i in range(len(self.decoder.layers)):
-            self.decoder.layers[i] = DMRegistry.convert(self.decoder.layers[i])
+            DMRegistry.convert(self.decoder.layers[i])
             self.decoder.layers[i].set_hidden_size_hp(hidden_size)
 
         # NOTE: GPTModel has final_layernorm, MambaModel has final_norm
@@ -1409,7 +1441,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
                 DMRegistry.convert(getattr(self.decoder, self.final_norm_attr_name)),
             )
             getattr(self.decoder, self.final_norm_attr_name).num_features = hidden_size
-            self.output_layer = DMRegistry.convert(self.output_layer)
+            DMRegistry.convert(self.output_layer)
             self.output_layer.input_size = hidden_size
             self.output_layer.get_hparam("output_size").choices = [self.output_layer.output_size]
 
@@ -1548,7 +1580,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
             handle.remove()
         self._export_drop_layers()
         if is_pipeline_first_stage():
-            self.embedding.word_embeddings.export()
+            self.embedding.export()
         for layer in self.decoder.layers:
             layer.export()
         if is_pipeline_last_stage():
@@ -1587,9 +1619,7 @@ class _DynamicMCoreLanguageModel(DynamicModule):
         rank = get_pipeline_model_parallel_rank()
         pp_size = get_pipeline_model_parallel_world_size()
         assert len(activations_per_rank) == pp_size, (
-            len(activations_per_rank),
-            activations_per_rank,
-            pp_size,
+            f"Expected same PP size for stored pruning scores ({len(activations_per_rank)}) as current ({pp_size})!"
         )
         for layer in self.decoder.layers:
             layer._scores = layer_scores[layer.layer_number]
@@ -1611,14 +1641,14 @@ def drop_mcore_language_model_layers(model: nn.Module, *, layers_to_drop: list[i
     )
 
     supported_model_types = tuple(SUPPORTED_MODELS.keys())
-    for m in model.modules():
+    for n, m in model.named_modules():
         if isinstance(m, supported_model_types):
             model = m
             break
     assert isinstance(model, supported_model_types), (
         f"Model should have one of {supported_model_types} submodule, got {model}"
     )
-    print_rank_0(f"Dropping layers {layers_to_drop} from {type(model)}.")
+    print_rank_0(f"Dropping layers {layers_to_drop} from {n} ({type(model)}).")
 
     # get the number of layers remaining in each pp rank
     layers_remaining_per_pp = torch.zeros(

@@ -124,8 +124,6 @@ class _QuantAttention(QuantModule):
         # In addition, the new attention interface is not available for some models such as T5
         # Hence lets do a crude check here to see if the attention module is using the new_attention_interface
         # This is not foolproof but should work for most cases
-        if transformers.__version__ < "4.48.0":
-            return False
         module = inspect.getmodule(attn)
         return getattr(module, "ALL_ATTENTION_FUNCTIONS", None) is not None
 
