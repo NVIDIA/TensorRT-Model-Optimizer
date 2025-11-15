@@ -483,11 +483,18 @@ class EagleSGLTrainer(EagleTPTrainer):
         base_model_logits = logits.chunk(len(self.args.student_ranks))
         base_model_hidden_states = h.chunk(len(self.args.student_ranks))
         aux_hidden_states = aux_h.chunk(len(self.args.student_ranks))
+
+        seq_len = inputs["input_ids"].shape[1]
+        vocab_size = logits.shape[-1]
+        hid_size = h.shape[-1]
+
         return [
             {
-                "base_model_hidden_states": base_model_hidden_states[i].unsqueeze(0),
-                "aux_hidden_states": aux_hidden_states[i].unsqueeze(0),
-                "base_model_logits": base_model_logits[i].unsqueeze(0).to(dtype=torch.bfloat16),
+                "base_model_hidden_states": base_model_hidden_states[i].view(-1, seq_len, hid_size),
+                "aux_hidden_states": aux_hidden_states[i].view(-1, seq_len, hid_size * 3),
+                "base_model_logits": base_model_logits[i]
+                .view(-1, seq_len, vocab_size)
+                .to(dtype=torch.bfloat16),
             }
             for i in range(len(self.args.student_ranks))
         ]

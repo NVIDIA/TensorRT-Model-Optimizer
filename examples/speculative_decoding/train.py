@@ -78,7 +78,7 @@ def main():
     parser.add_argument(
         "--data_path", type=str, default="data/magpie_llama3.2_1b_generated/data.cleaned.jsonl"
     )
-    parser.add_argument("--training_seq_len", type=str, default=1024)
+    parser.add_argument("--training_seq_len", type=str, default=512)
     parser.add_argument("--eagle_config_path", type=str, default="eagle_config.json")
     parser.add_argument(
         "--lazy_preprocess", type=bool, default=True, help="Whether to use lazy preprocessing."
