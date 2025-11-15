@@ -133,16 +133,16 @@ def _preprocess_onnx(
     if simplify:
         logger.info("Attempting to simplify model")
         try:
-            import onnxsim
+            import onnxslim
         except ModuleNotFoundError as e:
             logger.warning(
-                "onnxsim is not installed. Please install it with 'pip install onnxsim'."
+                "onnxslim is not installed. Please install it with 'pip install onnxslim'."
             )
             raise e
 
         try:
-            model_simp, check = onnxsim.simplify(onnx_model)
-            if check:
+            model_simp = onnxslim.slim(onnx_model)
+            if model_simp:
                 onnx_model = model_simp
                 onnx_path = os.path.join(output_dir, f"{model_name}_simp.onnx")
                 save_onnx(onnx_model, onnx_path, use_external_data_format)
