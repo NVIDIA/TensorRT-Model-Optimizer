@@ -6,7 +6,13 @@ Model Optimizer Changelog (Linux)
 **Deprecations**
 
 **New Features**
+
 - Add support for PyTorch Geometric quantization.
+
+**Misc**
+
+- Bump minimum recommended transformers version to 4.53.
+
 
 0.40 (2025-12-xx)
 ^^^^^^^^^^^^^^^^^
