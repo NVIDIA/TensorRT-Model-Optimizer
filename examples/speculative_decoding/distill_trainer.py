@@ -24,7 +24,7 @@ import torch.distributed as dist
 from sgl_wrapper import SglangTargetModel
 from torch.distributed.device_mesh import DeviceMesh
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM
+from transformers import AutoConfig, AutoModelForCausalLM
 from transformers.optimization import get_linear_schedule_with_warmup
 from transformers.utils import ModelOutput
 
@@ -178,9 +178,6 @@ class BaseDistillTrainer:
                 req.wait()
 
     def _get_logging_context(self):
-        print(
-            f"Rank {self.rank} is logging: {wandb is not None and self.rank == self.args.student_ranks[0]}"
-        )
         if wandb is not None and self.rank == self.args.student_ranks[0]:
             return wandb.init(
                 entity=os.environ["WANDB_ENTITY"],
@@ -430,6 +427,15 @@ class EagleSGLTrainer(EagleTPTrainer):
         args.tp_size = len(self.args.teacher_devices)
         args.max_length = self.args.training_seq_len
 
+        teacher_config = AutoConfig.from_pretrained(args.model_path)
+        self.args.eagle_config["eagle_architecture_config"].update(
+            {
+                "hidden_size": teacher_config.hidden_size,
+                "vocab_size": teacher_config.vocab_size,
+                "draft_vocab_size": teacher_config.vocab_size,
+            }
+        )
+
         # patch torch.distributed functions to use only partial ranks
         original_get_world_size = torch.distributed.get_world_size
         original_barrier = torch.distributed.barrier
@@ -456,7 +462,7 @@ class EagleSGLTrainer(EagleTPTrainer):
         torch.distributed.barrier = original_barrier
 
         model.set_aux_hidden_states_layers()
-        print("rank", self.rank, "SGL base model set")
+        print("rank", self.rank, "SGL base model loaded")
         model.device = self.current_rank_device
         return model
 
