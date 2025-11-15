@@ -78,12 +78,11 @@ def preprocess(examples, tokenizer, **kwargs):
             return_tensors="pt",
             add_special_tokens=False,
             truncation=True,
-            return_offsets_mapping=True,
         )
         input_ids = output.input_ids[0]
         attention_mask = output.attention_mask[0]
         loss_mask = torch.ones_like(input_ids)
-        labels = torch.full_like(input_ids, IGNORE_TOKEN_ID)
+        labels = torch.cat([input_ids[1:], torch.tensor([IGNORE_TOKEN_ID], dtype=input_ids.dtype)])
         new_examples["input_ids"].append(input_ids)
         new_examples["attention_mask"].append(attention_mask)
         new_examples["loss_mask"].append(loss_mask)
@@ -139,7 +138,7 @@ def preprocess_vlm(examples, tokenizer, processor, img_dir):
         input_ids = output.input_ids[0]
         attention_mask = output.attention_mask[0]
         loss_mask = torch.ones_like(input_ids)
-        labels = torch.full_like(input_ids, IGNORE_TOKEN_ID)
+        labels = torch.cat([input_ids[1:], torch.tensor([IGNORE_TOKEN_ID], dtype=input_ids.dtype)])
         # TODO: add labels and answer-only loss masking?
 
         new_examples["input_ids"].append(input_ids)
