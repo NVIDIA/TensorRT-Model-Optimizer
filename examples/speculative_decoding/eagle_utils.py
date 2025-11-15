@@ -533,7 +533,7 @@ class EagleTrainingPlot(TrainerCallback):
 
     def on_log(self, args, state, control, **kwargs):
         """Log training acc and estimate AR during log step."""
-        if not hasattr(state, "training_accs"):
+        if not hasattr(state, "training_accs") or len(state.training_accs) == 0:
             return control
         average_acc = np.mean(state.training_accs, axis=0)
         if self.estimate_ar:
