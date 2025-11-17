@@ -236,12 +236,11 @@ def convert_to_f16(
         keep_io_types=keep_io_types,
         low_precision_type=low_precision_type,
         custom_ops=sanitizer.custom_ops,
+        tensor_block_dict=tensor_block_dict,
     )
     high_precision_nodes = [node.name for node in model.graph.node if node.op_type in op_block_list]
     low_precision_nodes = [
         node.name for node in model.graph.node if node.op_type not in op_block_list
     ]
-    model_mod = precision_converter.convert(
-        high_precision_nodes, low_precision_nodes, tensor_block_dict
-    )
+    model_mod = precision_converter.convert(high_precision_nodes, low_precision_nodes)
     return model_mod
